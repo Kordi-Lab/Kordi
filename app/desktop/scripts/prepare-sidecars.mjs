@@ -59,6 +59,11 @@ function ensureRepo(label, relativePath) {
   return repoPath;
 }
 
+function manifestArgs(configKey, fallbackPath) {
+  const manifestPath = workspaceConfig[configKey] ?? fallbackPath;
+  return ['build', '--release', '--manifest-path', manifestPath];
+}
+
 function copyBinary(label, sourcePath, targetName) {
   if (!existsSync(sourcePath)) {
     console.error(`[kordi] Missing built binary for ${label}: ${sourcePath}`);
@@ -77,10 +82,10 @@ const bbAgentRepo = ensureRepo('bb-agent', workspaceConfig.bbAgentPath);
 const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
 
 console.log('[kordi] Building bb-agent sidecar...');
-run('cargo', ['build', '--release', '--manifest-path', 'crates/cli/Cargo.toml'], bbAgentRepo);
+run('cargo', manifestArgs('bbAgentManifestPath', 'crates/cli/Cargo.toml'), bbAgentRepo);
 
 console.log('[kordi] Building Bridges sidecar...');
-run('cargo', ['build', '--release', '--manifest-path', 'cli/Cargo.toml'], bridgesRepo);
+run('cargo', manifestArgs('bridgesManifestPath', 'cli/Cargo.toml'), bridgesRepo);
 
 copyBinary(
   'bb-agent',
