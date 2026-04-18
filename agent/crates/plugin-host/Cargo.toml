@@ -1,0 +1,22 @@
+[package]
+name = "bb-plugin-host"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Plugin discovery and host runtime for BB-Agent extensions."
+publish = false
+
+[dependencies]
+bb-core.workspace = true
+bb-hooks.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["process", "io-util"] }
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio-util.workspace = true

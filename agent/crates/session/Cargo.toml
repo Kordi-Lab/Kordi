@@ -1,0 +1,30 @@
+[package]
+name = "bb-session"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "SQLite-backed session storage, context building, and compaction for BB-Agent."
+documentation = "https://docs.rs/bb-session"
+keywords = ["agent", "session", "sqlite", "persistence", "bb-agent"]
+categories = ["database", "development-tools"]
+
+[dependencies]
+bb-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+bb-provider.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

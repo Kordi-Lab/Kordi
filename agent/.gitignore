@@ -1,0 +1,22 @@
+target/
+.bb-agent/
+.env
+.env.*
+*.db
+*.db-shm
+*.db-wal
+*.log
+auth.json
+
+# npm
+node_modules/
+native/
+
+# Internal dev files
+PLAN.md
+ROLLING-MERGE-QUEUE.md
+TUI-PLAN.md
+TUI-GAPS.md
+CODE_REVIEW_AND_OPTIMIZATION_PLAN.md
+BB_AGENT_TREE.txt
+knowledge/

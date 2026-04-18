@@ -1,0 +1,443 @@
+//! ANSI-aware string utilities for terminal rendering.
+//!
+//! Ported from the earlier TypeScript TUI utilities. Handles:
+//! - Visible width calculation (strips ANSI, handles CJK/emoji)
+//! - Truncation to width (preserves ANSI codes)
+//! - Padding to width
+//! - ANSI code extraction and stripping
+
+use unicode_width::UnicodeWidthChar;
+
+fn next_char_at(s: &str, index: usize) -> Option<(char, usize)> {
+    s.get(index..)
+        .and_then(|tail| tail.chars().next())
+        .map(|ch| (ch, ch.len_utf8()))
+}
+
+/// Calculate the visible width of a string, excluding ANSI escape codes.
+pub fn visible_width(s: &str) -> usize {
+    if s.is_empty() {
+        return 0;
+    }
+
+    // Fast path: pure ASCII printable, no escape codes
+    if is_printable_ascii(s) {
+        return s.len();
+    }
+
+    let stripped = strip_ansi(s);
+    // Replace tabs with 3 spaces to preserve historical rendering behavior
+    let stripped = stripped.replace('\t', "   ");
+
+    stripped.chars().map(char_width).sum()
+}
+
+/// Width of a single character in terminal columns.
+pub(crate) fn char_width(c: char) -> usize {
+    if c < ' ' {
+        return 0; // control chars
+    }
+    UnicodeWidthChar::width(c).unwrap_or(0)
+}
+
+/// Check if string is pure printable ASCII (no escape codes, no unicode).
+fn is_printable_ascii(s: &str) -> bool {
+    s.bytes().all(|b| (0x20..=0x7e).contains(&b))
+}
+
+/// Strip all ANSI escape sequences from a string.
+pub fn strip_ansi(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == 0x1b
+            && let Some(skip) = ansi_sequence_len(bytes, i)
+        {
+            i += skip;
+            continue;
+        }
+        let Some((ch, len)) = next_char_at(s, i) else {
+            break;
+        };
+        result.push(ch);
+        i += len;
+    }
+
+    result
+}
+
+/// Sanitize text for terminal display while preserving BB's own ANSI styling.
+///
+/// - normalizes CRLF/CR to LF
+/// - preserves valid ANSI escape sequences already embedded in the string
+/// - drops all other control characters except `\n` and `\t`
+/// - strips DEL and C1 control characters that can corrupt terminal state
+pub fn sanitize_terminal_text(s: &str) -> String {
+    if s.is_empty() {
+        return String::new();
+    }
+
+    let normalized = s.replace("\r\n", "\n").replace('\r', "\n");
+    let bytes = normalized.as_bytes();
+    let mut out = String::with_capacity(normalized.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == 0x1b
+            && let Some(skip) = ansi_sequence_len(bytes, i)
+        {
+            out.push_str(&normalized[i..i + skip]);
+            i += skip;
+            continue;
+        }
+        let Some((ch, len)) = next_char_at(&normalized, i) else {
+            break;
+        };
+        let keep = match ch {
+            '\n' | '\t' => true,
+            _ if ch.is_control() => false,
+            _ => {
+                let code = ch as u32;
+                !(code == 0x7F || (0x80..=0x9F).contains(&code))
+            }
+        };
+        if keep {
+            out.push(ch);
+        }
+        i += len;
+    }
+
+    out
+}
+
+/// Determine the length of an ANSI escape sequence starting at `pos`.
+pub(crate) fn ansi_sequence_len(bytes: &[u8], pos: usize) -> Option<usize> {
+    if pos >= bytes.len() || bytes[pos] != 0x1b {
+        return None;
+    }
+    if pos + 1 >= bytes.len() {
+        return None;
+    }
+
+    match bytes[pos + 1] {
+        // CSI: ESC [ ... <terminator>
+        b'[' => {
+            let mut j = pos + 2;
+            while j < bytes.len() {
+                let b = bytes[j];
+                // CSI terminators: letters and a few special chars
+                if (0x40..=0x7e).contains(&b) {
+                    return Some(j + 1 - pos);
+                }
+                j += 1;
+            }
+            None
+        }
+        // OSC: ESC ] ... BEL or ESC ] ... ST
+        b']' => {
+            let mut j = pos + 2;
+            while j < bytes.len() {
+                if bytes[j] == 0x07 {
+                    return Some(j + 1 - pos);
+                }
+                if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
+                    return Some(j + 2 - pos);
+                }
+                j += 1;
+            }
+            None
+        }
+        // APC: ESC _ ... BEL or ESC _ ... ST
+        b'_' => {
+            let mut j = pos + 2;
+            while j < bytes.len() {
+                if bytes[j] == 0x07 {
+                    return Some(j + 1 - pos);
+                }
+                if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
+                    return Some(j + 2 - pos);
+                }
+                j += 1;
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Truncate a string to `max_width` visible columns, preserving ANSI codes.
+/// Appends `…` if truncated.
+pub fn truncate_to_width(s: &str, max_width: usize) -> String {
+    let vw = visible_width(s);
+    if vw <= max_width {
+        return s.to_string();
+    }
+
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let mut result = String::new();
+    let mut width = 0;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let target = if max_width > 1 {
+        max_width - 1
+    } else {
+        max_width
+    }; // room for …
+
+    while i < bytes.len() && width < target {
+        // Skip ANSI sequences (include them in output but don't count width)
+        if bytes[i] == 0x1b
+            && let Some(len) = ansi_sequence_len(bytes, i)
+        {
+            result.push_str(&s[i..i + len]);
+            i += len;
+            continue;
+        }
+
+        let Some((ch, len)) = next_char_at(s, i) else {
+            break;
+        };
+        let cw = char_width(ch);
+        if width + cw > target {
+            break;
+        }
+        result.push(ch);
+        width += cw;
+        i += len;
+    }
+
+    result.push_str("\x1b[0m…");
+    result
+}
+
+/// Pad a string to exactly `width` visible columns with trailing spaces.
+pub fn pad_to_width(s: &str, width: usize) -> String {
+    let vw = visible_width(s);
+    if vw >= width {
+        return s.to_string();
+    }
+    format!("{}{}", s, " ".repeat(width - vw))
+}
+
+/// Wrap text to `max_width`, preserving words when possible.
+/// Returns a Vec of lines. Handles ANSI codes (they pass through).
+pub fn word_wrap(s: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![s.to_string()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    let mut current_width = 0;
+
+    for word in s.split_inclusive(' ') {
+        let word_width = visible_width(word);
+
+        if current_width + word_width <= max_width {
+            current_line.push_str(word);
+            current_width += word_width;
+        } else if current_width == 0 {
+            // Word is longer than max_width, force it on its own line
+            current_line.push_str(word);
+            current_width += word_width;
+        } else {
+            // Start new line
+            lines.push(current_line.trim_end().to_string());
+            current_line = word.to_string();
+            current_width = word_width;
+        }
+    }
+
+    if !current_line.is_empty() {
+        lines.push(current_line.trim_end().to_string());
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    lines
+}
+
+/// Result of extracting before/after segments from a line for overlay compositing.
+pub struct ExtractedSegments {
+    pub before: String,
+    pub before_width: usize,
+    pub after: String,
+    pub after_width: usize,
+}
+
+/// Extract before and after segments from an ANSI string for overlay compositing.
+///
+/// `before_width`: take the first N visible columns as the "before" segment.
+/// `after_start`: visible column where the "after" segment begins.
+/// `after_width`: max visible columns for the "after" segment.
+///
+/// ANSI escape sequences encountered during traversal are included in the
+/// segment they fall within. This enables overlay compositing: splice overlay
+/// content between the before and after segments.
+pub fn extract_segments(
+    s: &str,
+    before_width: usize,
+    after_start: usize,
+    after_width: usize,
+) -> ExtractedSegments {
+    let mut before = String::new();
+    let mut bw = 0usize;
+    let mut after = String::new();
+    let mut aw = 0usize;
+    let mut col = 0usize;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Handle ANSI escape sequences — include in whichever segment is active
+        if bytes[i] == 0x1b
+            && let Some(len) = ansi_sequence_len(bytes, i)
+        {
+            let seq = &s[i..i + len];
+            if col < before_width {
+                before.push_str(seq);
+            } else if col >= after_start && aw < after_width {
+                after.push_str(seq);
+            }
+            i += len;
+            continue;
+        }
+
+        let Some((ch, len)) = next_char_at(s, i) else {
+            break;
+        };
+        let cw = char_width(ch);
+
+        if cw == 0 {
+            // Zero-width chars go into the active segment
+            if col < before_width {
+                before.push(ch);
+            } else if col >= after_start && aw < after_width {
+                after.push(ch);
+            }
+            i += len;
+            continue;
+        }
+
+        if col + cw <= before_width {
+            before.push(ch);
+            bw += cw;
+        } else if col >= after_start && aw + cw <= after_width {
+            after.push(ch);
+            aw += cw;
+        }
+
+        col += cw;
+        i += len;
+    }
+
+    ExtractedSegments {
+        before,
+        before_width: bw,
+        after,
+        after_width: aw,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_visible_width_plain() {
+        assert_eq!(visible_width("hello"), 5);
+        assert_eq!(visible_width(""), 0);
+        assert_eq!(visible_width("abc"), 3);
+    }
+
+    #[test]
+    fn test_visible_width_ansi() {
+        assert_eq!(visible_width("\x1b[31mhello\x1b[0m"), 5);
+        assert_eq!(visible_width("\x1b[1;32mbold green\x1b[0m"), 10);
+    }
+
+    #[test]
+    fn test_strip_ansi() {
+        assert_eq!(strip_ansi("\x1b[31mhello\x1b[0m"), "hello");
+        assert_eq!(strip_ansi("no codes"), "no codes");
+    }
+
+    #[test]
+    fn test_sanitize_terminal_text_drops_controls_but_keeps_newlines_and_ansi() {
+        let input = "a\r\nb\u{0000}\u{0008}\x1b[31mred\x1b[0m\u{007f}\u{0085}";
+        let sanitized = sanitize_terminal_text(input);
+        assert_eq!(sanitized, "a\nb\x1b[31mred\x1b[0m");
+        assert_eq!(visible_width(&sanitized), 5);
+    }
+
+    #[test]
+    fn test_truncate() {
+        assert_eq!(truncate_to_width("hello", 10), "hello");
+        assert_eq!(visible_width(&truncate_to_width("hello world!", 5)), 5);
+    }
+
+    #[test]
+    fn test_truncate_with_ansi() {
+        let s = "\x1b[31mhello world\x1b[0m";
+        let t = truncate_to_width(s, 5);
+        assert!(t.contains("\x1b[31m")); // ANSI preserved
+        assert_eq!(visible_width(&t), 5);
+    }
+
+    #[test]
+    fn test_pad() {
+        assert_eq!(pad_to_width("hi", 5), "hi   ");
+        assert_eq!(pad_to_width("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_word_wrap() {
+        let lines = word_wrap("hello world foo bar", 10);
+        assert!(lines.len() >= 2);
+        for line in &lines {
+            assert!(visible_width(line) <= 10);
+        }
+    }
+
+    #[test]
+    fn test_word_wrap_long_word() {
+        let lines = word_wrap("superlongword", 5);
+        assert_eq!(lines.len(), 1); // can't break, stays on one line
+    }
+
+    #[test]
+    fn test_extract_segments_plain() {
+        let s = "Hello World Goodbye";
+        let seg = extract_segments(s, 6, 12, 7);
+        assert_eq!(seg.before, "Hello ");
+        assert_eq!(seg.before_width, 6);
+        assert_eq!(seg.after, "Goodbye");
+        assert_eq!(seg.after_width, 7);
+    }
+
+    #[test]
+    fn test_extract_segments_with_ansi() {
+        let s = "\x1b[31mHello\x1b[0m World";
+        let seg = extract_segments(s, 5, 6, 5);
+        assert!(seg.before.contains("\x1b[31m"));
+        assert_eq!(seg.before_width, 5);
+        assert_eq!(seg.after, "World");
+        assert_eq!(seg.after_width, 5);
+    }
+
+    #[test]
+    fn test_extract_segments_short_string() {
+        let s = "Hi";
+        let seg = extract_segments(s, 5, 10, 5);
+        assert_eq!(seg.before, "Hi");
+        assert_eq!(seg.before_width, 2);
+        assert_eq!(seg.after, "");
+        assert_eq!(seg.after_width, 0);
+    }
+}

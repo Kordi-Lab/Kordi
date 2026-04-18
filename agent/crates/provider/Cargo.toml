@@ -1,0 +1,28 @@
+[package]
+name = "bb-provider"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Provider integrations and model resolution for BB-Agent."
+documentation = "https://docs.rs/bb-provider"
+keywords = ["agent", "llm", "providers", "openai", "anthropic"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+bb-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+tokio-util.workspace = true
+async-trait = "0.1"
+base64 = "0.22"
+regex.workspace = true
