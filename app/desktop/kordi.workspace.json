@@ -1,0 +1,6 @@
+{
+  "bbAgentPath": "../bb-agent",
+  "bridgesPath": "../Bridges",
+  "bbAgentBinary": "target/release/bb",
+  "bridgesBinary": "target/release/bridges"
+}
