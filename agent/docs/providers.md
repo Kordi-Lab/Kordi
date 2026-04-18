@@ -2,6 +2,17 @@
 
 BB-Agent supports multiple LLM providers out of the box.
 
+## Role in Kordi
+
+Use this document when you need the provider and model surface for the Kordi agent layer.
+
+It is the reference for:
+
+- supported providers
+- authentication flows
+- model selection
+- thinking-level selection
+
 ## Supported Providers
 
 | Provider | Auth Method | Models |
@@ -183,3 +194,9 @@ The `api` field determines the request/response format:
 | `openai` | OpenAI, Groq, xAI, OpenRouter, Ollama, vLLM, LiteLLM |
 | `anthropic` | Anthropic |
 | `google` | Google Gemini |
+
+## Related docs
+
+- [README.md](README.md)
+- [development.md](development.md)
+- [configuration.md](configuration.md)

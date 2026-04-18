@@ -11,6 +11,58 @@ If you also feel the struggle in today’s collaboration workflow that:
 
 Bridges is what you need!
 
+## Role in Kordi
+
+Inside the Kordi monorepo, this directory is the source-of-truth for the Bridges network layer.
+
+It owns:
+
+- the local CLI and daemon
+- secure transport and node identity
+- project coordination and membership
+- the registry service
+- skill assets for external runtimes
+
+## Monorepo commands
+
+Run these from the repository root:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm run:bridges -- --help
+pnpm check:bridges
+pnpm build:bridges
+pnpm dev:registry
+```
+
+Direct Rust entrypoints also work:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+cargo run --manifest-path bridges/cli/Cargo.toml --
+```
+
+## Directory guide
+
+| Path | Purpose |
+|------|---------|
+| `cli/` | Rust CLI, daemon, and local coordination server |
+| `registry/` | TypeScript registry service |
+| `skills/bridges/` | Bridges skill assets for agent runtimes |
+| `docs/` | Bridges-specific architecture and setup guides |
+
+## Validation in Kordi
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm check:bridges
+pnpm build:bridges
+pnpm build:registry
+```
+
+See [../README.md](../README.md) for the monorepo overview and [../docs/development.md](../docs/development.md) for the shared command map.
+For deeper Bridges-specific references, see [docs/README.md](docs/README.md).
+
 ## What ships in this repo
 
 - `cli/` — main Rust CLI, daemon, coordination server, auth/server APIs, and optional shared-workspace sync helpers

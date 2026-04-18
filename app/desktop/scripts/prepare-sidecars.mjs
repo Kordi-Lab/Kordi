@@ -74,13 +74,25 @@ function copyBinary(label, sourcePath, targetName) {
 const targetTriple = detectTargetTriple();
 
 const bbAgentRepo = ensureRepo('bb-agent', workspaceConfig.bbAgentPath);
+const bbAgentManifestPath =
+  workspaceConfig.bbAgentManifestPath ?? 'crates/cli/Cargo.toml';
 const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
+const bridgesManifestPath =
+  workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
 
 console.log('[kordi] Building bb-agent sidecar...');
-run('cargo', ['build', '--release', '--manifest-path', 'crates/cli/Cargo.toml'], bbAgentRepo);
+run(
+  'cargo',
+  ['build', '--release', '--manifest-path', bbAgentManifestPath],
+  bbAgentRepo
+);
 
 console.log('[kordi] Building Bridges sidecar...');
-run('cargo', ['build', '--release', '--manifest-path', 'cli/Cargo.toml'], bridgesRepo);
+run(
+  'cargo',
+  ['build', '--release', '--manifest-path', bridgesManifestPath],
+  bridgesRepo
+);
 
 copyBinary(
   'bb-agent',

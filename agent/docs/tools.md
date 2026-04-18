@@ -2,6 +2,17 @@
 
 BB-Agent comes with 10 built-in tools that the AI can use during conversations.
 
+## Role in Kordi
+
+Use this document when you need the built-in tool contract for the Kordi agent layer.
+
+It is the reference for:
+
+- built-in file tools
+- shell and search tools
+- web and browser tools
+- tool restriction controls
+
 ## File Tools
 
 ### `read`
@@ -124,3 +135,9 @@ bb --no-tools                       # Disable all tools
 ```
 
 Set `"tools": null` to enable all tools (default).
+
+## Related docs
+
+- [README.md](README.md)
+- [development.md](development.md)
+- [configuration.md](configuration.md)

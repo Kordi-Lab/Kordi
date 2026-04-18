@@ -179,7 +179,7 @@ async fn read_truncates_by_bytes() {
 async fn read_utf8_content() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("utf8.txt");
-    std::fs::write(&file, "你好世界\nこんにちは\n🎉🎉🎉\n").unwrap();
+    std::fs::write(&file, "γειά κόσμε\nこんにちは\n🎉🎉🎉\n").unwrap();
 
     let tool = ReadTool;
     let ctx = make_ctx(dir.path());
@@ -197,7 +197,7 @@ async fn read_utf8_content() {
         ContentBlock::Text { text } => text.clone(),
         _ => panic!("expected text"),
     };
-    assert!(text.contains("你好世界"));
+    assert!(text.contains("γειά κόσμε"));
     assert!(text.contains("こんにちは"));
     assert!(text.contains("🎉🎉🎉"));
 }

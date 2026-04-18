@@ -2,6 +2,19 @@
 
 This document is the canonical architecture overview for the Bridges core network component.
 
+## Role in Kordi
+
+Within the Kordi monorepo, the `bridges` directory is the source-of-truth for the network layer.
+
+Use this document when you need:
+
+- the system-level structure of Bridges
+- the responsibility split between CLI, daemon, runtime bridge, and server
+- the trust boundaries between local runtime, daemon, peers, and control plane
+- the canonical map of where network concerns belong
+
+For the monorepo-wide architecture view, see [../../docs/architecture.md](../../docs/architecture.md).
+
 It explains how the current Bridges implementation fits together as:
 - a local CLI
 - a local daemon and runtime bridge
@@ -45,6 +58,8 @@ For lower-level contracts, see:
 - `docs/permissions-model.md`
 - `docs/addressing-model.md`
 - `docs/identity-lifecycle.md`
+
+For a document map of the Bridges layer, see [README.md](README.md).
 
 ## 2. Core actors and trust domains
 

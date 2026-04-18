@@ -354,7 +354,7 @@ async fn edit_generates_diff() {
 async fn edit_utf8_content() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("utf8.txt");
-    std::fs::write(&file, "你好世界\n").unwrap();
+    std::fs::write(&file, "γειά κόσμε\n").unwrap();
 
     let tool = EditTool;
     let ctx = make_ctx(dir.path(), crate::ExecutionPolicy::Safety);
@@ -362,7 +362,7 @@ async fn edit_utf8_content() {
         .execute(
             json!({
                 "path": "utf8.txt",
-                "edits": [{ "oldText": "你好", "newText": "再见" }]
+                "edits": [{ "oldText": "γειά", "newText": "αντίο" }]
             }),
             &ctx,
             CancellationToken::new(),
@@ -371,7 +371,7 @@ async fn edit_utf8_content() {
         .unwrap();
 
     assert!(!result.is_error);
-    assert_eq!(read_file(dir.path(), "utf8.txt"), "再见世界\n");
+    assert_eq!(read_file(dir.path(), "utf8.txt"), "αντίο κόσμε\n");
 }
 
 #[tokio::test]

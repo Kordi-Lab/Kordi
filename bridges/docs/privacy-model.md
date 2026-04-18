@@ -2,6 +2,17 @@
 
 Bridges is **content-private, not metadata-private**.
 
+## Role in Kordi
+
+Use this document when you need the privacy contract for the Kordi Bridges layer.
+
+It is the reference for:
+
+- coordination-visible metadata
+- peer-visible metadata
+- delivery-path privacy boundaries
+- retention and non-guarantees
+
 That means:
 - private keys stay local
 - encrypted message bodies are intended to be opaque to the coordination server
@@ -118,6 +129,14 @@ Bridges does **not** currently guarantee:
 
 Code and tests should enforce the following boundaries:
 - key lookup is project-scoped
+
+## Related docs
+
+- [README.md](README.md)
+- [core-architecture.md](core-architecture.md)
+- [presence-model.md](presence-model.md)
+- [permissions-model.md](permissions-model.md)
+- [delivery-semantics.md](delivery-semantics.md)
 - endpoint lookup is project-scoped
 - member lists are project-scoped
 - mailbox entries are deleted after successful fetch

@@ -2,6 +2,19 @@
 
 This guide is for beta users who want to run a local or self-hosted Bridges deployment for their own group.
 
+## Role in Kordi
+
+Within the Kordi monorepo, this guide is the practical setup companion to the architecture and policy documents in `bridges/docs/`.
+
+Use this guide when you want to:
+
+- stand up a local or self-hosted Bridges environment
+- connect local runtimes to a coordination server
+- validate end-to-end collaboration flows
+- understand the minimum deployment shape before broader rollout
+
+For the system structure behind this setup flow, read [core-architecture.md](core-architecture.md) first.
+
 This guide is focused on the Bridges core: coordination service, local daemon, secure transport, runtime bridge, and optional shared workspace flows.
 
 The local agent runtime still runs on each user's own machine.

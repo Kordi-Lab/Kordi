@@ -3,15 +3,26 @@
   "private": true,
   "packageManager": "pnpm@10.29.3",
   "scripts": {
+    "dev": "pnpm dev:web",
     "dev:desktop": "pnpm --dir app/desktop tauri:dev",
-    "build:desktop": "pnpm --dir app/desktop tauri:build",
     "dev:web": "pnpm --dir app/desktop dev",
+    "preview:web": "pnpm --dir app/desktop preview",
+    "prepare:sidecars": "pnpm --dir app/desktop tauri:prepare-sidecars",
+    "build:desktop": "pnpm --dir app/desktop tauri:build",
     "build:web": "pnpm --dir app/desktop build",
+    "run:agent": "cargo run -p bb-cli --",
+    "check:agent": "cargo check -p bb-cli",
+    "build:agent": "cargo build -p bb-cli --release",
+    "run:bridges": "cargo run --manifest-path bridges/cli/Cargo.toml --",
+    "check:bridges": "cargo check --manifest-path bridges/cli/Cargo.toml",
+    "build:bridges": "cargo build --manifest-path bridges/cli/Cargo.toml --release",
     "lint:web": "pnpm --dir app/desktop lint",
+    "lint": "pnpm lint:web",
     "dev:registry": "pnpm --dir bridges/registry dev",
     "build:registry": "pnpm --dir bridges/registry build",
     "build:rust": "cargo build --workspace",
     "check:rust": "cargo check --workspace",
-    "test:rust": "cargo test --workspace"
+    "test:rust": "cargo test --workspace",
+    "check": "pnpm lint && pnpm check:rust"
   }
 }

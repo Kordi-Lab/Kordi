@@ -6,6 +6,60 @@
 
 A Rust-native AI coding agent for the terminal — featuring a TUI, multi-provider support, tool use, session persistence, branching, extensions, and skills.
 
+## Role in Kordi
+
+Inside the Kordi monorepo, this directory is the source-of-truth for the local agent runtime.
+
+It owns:
+
+- runtime execution
+- provider and model integration
+- sessions and persistence
+- tools and extensions
+- terminal UX
+
+## Monorepo commands
+
+Run these from the repository root:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm run:agent -- --help
+pnpm check:agent
+pnpm build:agent
+```
+
+Direct Rust entrypoints also work:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+cargo run -p bb-cli --
+```
+
+## Directory guide
+
+Core workspace crates:
+
+| Path | Purpose |
+|------|---------|
+| `crates/core` | Core runtime types and orchestration |
+| `crates/session` | Session persistence and context management |
+| `crates/tools` | Built-in tool implementations |
+| `crates/provider` | Provider and model integrations |
+| `crates/tui` | Terminal user interface |
+| `crates/cli` | Main `bb` binary |
+
+## Validation in Kordi
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm check:agent
+pnpm build:agent
+```
+
+See [../README.md](../README.md) for the monorepo overview and [../docs/development.md](../docs/development.md) for the shared command map.
+For deeper agent-specific references, see [docs/README.md](docs/README.md).
+
 ## Install
 
 ```bash

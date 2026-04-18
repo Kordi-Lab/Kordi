@@ -2,6 +2,18 @@
 
 This document defines the current delivery semantics for the Bridges core communication flows.
 
+## Role in Kordi
+
+Use this document when you need the delivery contract for the Kordi Bridges layer.
+
+It is the reference for:
+
+- `ask`
+- `debate`
+- `broadcast`
+- `publish`
+- mailbox and partial-failure semantics
+
 Bridges currently provides **best-effort encrypted delivery with explicit fallback behavior**, not exactly-once messaging.
 
 ## Global rules
@@ -118,6 +130,14 @@ Bridges does **not** currently promise:
 - at-least-once delivery after remote runtime processing
 - end-to-end acknowledgements for `broadcast` / `publish`
 - automatic retry/backoff policy
+
+## Related docs
+
+- [README.md](README.md)
+- [core-architecture.md](core-architecture.md)
+- [privacy-model.md](privacy-model.md)
+- [presence-model.md](presence-model.md)
+- [permissions-model.md](permissions-model.md)
 - delivery deduplication
 - causal or total ordering across peers
 

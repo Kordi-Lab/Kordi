@@ -2,6 +2,40 @@
 
 This guide walks you through setting up BB-Agent for local development — building from source, running in dev mode, making changes, and testing.
 
+## Role in Kordi
+
+Within the Kordi monorepo, the `agent` directory is the source-of-truth for the local runtime layer.
+
+Use this guide when you are working on:
+
+- runtime behavior
+- provider integration
+- session persistence
+- tools and extensions
+- terminal UX
+
+For the monorepo-wide command map, see [../../docs/development.md](../../docs/development.md).
+
+## Monorepo entrypoints
+
+From the monorepo root:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm run:agent -- --help
+pnpm check:agent
+pnpm build:agent
+```
+
+Direct Rust entrypoints also work:
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+cargo run -p bb-cli --
+cargo check -p bb-cli
+cargo build -p bb-cli --release
+```
+
 ## Prerequisites
 
 - **Rust 1.93+** (nightly features are used)
@@ -18,7 +52,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 The project includes a `rust-toolchain.toml` that pins the exact Rust version. Rustup will automatically install it when you first build.
 
-## Clone & Build
+## Standalone source build
 
 ```bash
 git clone https://github.com/shuyhere/bb-agent.git
@@ -38,7 +72,7 @@ bb
 
 > **Tip:** `cargo install --path crates/cli` is equivalent to `cargo build --release` + copying `target/release/bb` to your PATH. Use `cargo build --release` during development when you don't want to overwrite your installed version.
 
-## Dev Mode Workflow
+## Development workflow
 
 ### Quick iteration cycle
 
@@ -121,7 +155,7 @@ cargo clippy --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## Project Structure
+## Project structure
 
 ```
 bb-agent/
@@ -205,7 +239,7 @@ bb-agent/
 └── docs/                   # Documentation
 ```
 
-## Key Code Paths
+## Key code paths
 
 ### What happens when you type `bb`
 

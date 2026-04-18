@@ -2,6 +2,19 @@
 
 BB-Agent uses a layered configuration system. Project settings override global settings.
 
+## Role in Kordi
+
+Use this document when you need the configuration contract for the Kordi agent layer.
+
+It is the reference for:
+
+- file locations
+- settings structure
+- model and provider defaults
+- runtime behavior toggles
+
+For the broader agent development flow, see [development.md](development.md).
+
 ## File Locations
 
 | File | Purpose |
@@ -222,3 +235,10 @@ Templates fully replace the default system prompt when used.
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `BB_BROWSER` | Path to Chrome/Chromium binary for `browser_fetch` |
 | `BB_TUI_COMPAT` | Enable ASCII-safe TUI compatibility mode |
+
+## Related docs
+
+- [README.md](README.md)
+- [development.md](development.md)
+- [providers.md](providers.md)
+- [extensions.md](extensions.md)

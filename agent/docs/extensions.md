@@ -2,6 +2,17 @@
 
 BB-Agent supports two extension mechanisms: **skills** (markdown instructions) and **extensions** (JS/TS plugins).
 
+## Role in Kordi
+
+Use this document when you need the extension surface for the Kordi agent layer.
+
+It is the reference for:
+
+- skills
+- plugin extensions
+- prompt templates
+- discovery and install locations
+
 ## Skills
 
 Skills are markdown files that provide contextual instructions to the agent. They're listed in the system prompt and the agent reads them when relevant.
@@ -168,3 +179,9 @@ In `settings.json`, you can filter which resources a package provides:
   ]
 }
 ```
+
+## Related docs
+
+- [README.md](README.md)
+- [development.md](development.md)
+- [configuration.md](configuration.md)

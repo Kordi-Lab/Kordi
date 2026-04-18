@@ -2,6 +2,17 @@
 
 This document defines the current Bridges role and capability model.
 
+## Role in Kordi
+
+Use this document when you need the authorization contract for the Kordi Bridges layer.
+
+It is the reference for:
+
+- project roles
+- capability mapping
+- enforcement points
+- contributor rules for new actions
+
 Bridges separates:
 - **membership** — whether a node belongs to a project
 - **role** — the node's position inside that project
@@ -117,3 +128,11 @@ When adding new project actions:
 - `docs/privacy-model.md` explains who can see membership metadata
 - `docs/presence-model.md` explains status / reachability signals
 - `docs/delivery-semantics.md` explains what successful delivery means once an action is authorized
+
+## Related docs
+
+- [README.md](README.md)
+- [core-architecture.md](core-architecture.md)
+- [privacy-model.md](privacy-model.md)
+- [presence-model.md](presence-model.md)
+- [delivery-semantics.md](delivery-semantics.md)

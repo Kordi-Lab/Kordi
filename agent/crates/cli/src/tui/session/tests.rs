@@ -8,9 +8,9 @@ use chrono::Utc;
 
 #[test]
 fn truncate_preview_text_handles_utf8_safely() {
-    let text = "你好🙂こんにちはمرحباabcdef";
+    let text = "γειά🙂こんにちはمرحباabcdef";
     let truncated = truncate_preview_text(text, 5);
-    assert_eq!(truncated, "你好🙂こん…");
+    assert_eq!(truncated, "γειά🙂…");
 }
 
 #[test]

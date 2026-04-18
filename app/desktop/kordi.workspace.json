@@ -1,6 +1,8 @@
 {
-  "bbAgentPath": "../bb-agent",
-  "bridgesPath": "../Bridges",
-  "bbAgentBinary": "target/release/bb",
+  "bbAgentPath": "../../agent",
+  "bbAgentManifestPath": "crates/cli/Cargo.toml",
+  "bridgesPath": "../../bridges",
+  "bridgesManifestPath": "cli/Cargo.toml",
+  "bbAgentBinary": "../target/release/bb",
   "bridgesBinary": "target/release/bridges"
 }

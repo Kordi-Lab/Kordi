@@ -1,75 +1,91 @@
 # Kordi Desktop
 
-Kordi Desktop is the macOS application shell for:
+Kordi Desktop is the macOS application shell for the Kordi product.
 
-- the Kordi frontend in this repository
-- the local `bb-agent` runtime
-- the local `Bridges` network node and daemon
+## Role in Kordi
 
-## Repository role
-
-This repository is the desktop product layer.
-
-It is responsible for:
+This directory owns:
 
 - the React interface
 - the Tauri desktop shell
-- bundling local sidecar binaries
-- packaging and desktop release flows
+- desktop-specific orchestration
+- sidecar packaging for the local `agent` and `bridges` binaries
 
-It is **not** the source-of-truth repository for:
+It does **not** own the source-of-truth implementation of the agent runtime or network backend. Those live in:
 
-- the `bb-agent` runtime internals
-- the `Bridges` network backend internals
+- [`../../agent`](../../agent)
+- [`../../bridges`](../../bridges)
 
-See [/Users/shuyang/Desktop/Bridges-app/docs/desktop-workspace.md](/Users/shuyang/Desktop/Bridges-app/docs/desktop-workspace.md) for the recommended multi-repo layout.
+## Monorepo commands
 
-## Local workspace layout
-
-Recommended development layout:
-
-```text
-Desktop/
-  Kordi/
-  bb-agent/
-  Bridges/
-```
-
-This repository reads sibling repo locations from `kordi.workspace.json`.
-
-## Frontend preview
+Run these from the repository root.
 
 ```bash
-cd /Users/shuyang/Desktop/Bridges-app
-npm install
-npm run dev
+cd /Users/shuyang/Desktop/kordi
+pnpm install
 ```
 
-## Tauri desktop development
+### Web-only preview
 
 ```bash
-cd /Users/shuyang/Desktop/Bridges-app
-npm install
-npm run tauri:dev
+pnpm dev:web
 ```
 
-That flow:
-
-1. builds `bb-agent`
-2. builds `Bridges`
-3. copies their release binaries into `src-tauri/binaries/`
-4. launches the Tauri desktop shell
-
-## Production build
+### Tauri desktop development
 
 ```bash
-cd /Users/shuyang/Desktop/Bridges-app
-npm install
-npm run tauri:build
+pnpm dev:desktop
 ```
 
-## Notes
+### Build the desktop app
 
-- The current desktop integration uses sidecar binaries.
-- This is the fastest path to a working macOS app.
-- The longer-term direction is to expose cleaner library/service entry points from `bb-agent` and `Bridges`, then reduce sidecar dependence.
+```bash
+pnpm build:desktop
+```
+
+### Prepare sidecars only
+
+```bash
+pnpm prepare:sidecars
+```
+
+## Local commands
+
+Work from this directory only when you intentionally want to stay inside the desktop package:
+
+```bash
+cd /Users/shuyang/Desktop/kordi/app/desktop
+pnpm install
+pnpm tauri:dev
+```
+
+## Directory guide
+
+| Path | Purpose |
+|------|---------|
+| `src/` | React application |
+| `src-tauri/` | Tauri shell |
+| `scripts/prepare-sidecars.mjs` | Builds and copies local sidecars |
+| `kordi.workspace.json` | Sidecar source and binary map |
+
+## Validation
+
+```bash
+cd /Users/shuyang/Desktop/kordi
+pnpm lint
+pnpm build:web
+pnpm prepare:sidecars
+```
+
+## Sidecar behavior
+
+- `pnpm dev:desktop` and `pnpm build:desktop` both prepare sidecars first.
+- Sidecars are built from the monorepo-local `agent` and `bridges` directories.
+- Generated binaries are copied into `src-tauri/binaries/` for Tauri to bundle.
+
+## Related docs
+
+- [../../README.md](../../README.md)
+- [../../docs/development.md](../../docs/development.md)
+- [../../docs/architecture.md](../../docs/architecture.md)
+- [../../docs/release.md](../../docs/release.md)

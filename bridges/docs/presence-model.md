@@ -2,6 +2,17 @@
 
 This document defines the current Bridges model for node presence, liveness, and reachability.
 
+## Role in Kordi
+
+Use this document when you need the presence and reachability contract for the Kordi Bridges layer.
+
+It is the reference for:
+
+- daemon online/offline status
+- component health semantics
+- reachability modes
+- peer visibility from the local daemon API
+
 The goal is to separate three different questions that were previously mixed together:
 
 1. **Is the local daemon up?**
@@ -118,6 +129,13 @@ Important non-guarantees:
 - these timestamps are **not durable** across daemon restart
 - they do **not** imply remote runtime health
 - they do **not** imply project membership or authorization on their own
+
+## Related docs
+
+- [README.md](README.md)
+- [core-architecture.md](core-architecture.md)
+- [privacy-model.md](privacy-model.md)
+- [permissions-model.md](permissions-model.md)
 - they do **not** imply the message was processed by the remote runtime
 
 The older `peers.last_seen_at` database field should be treated as legacy/local metadata, not the authoritative presence contract for current core behavior.
