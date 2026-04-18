@@ -1,0 +1,17 @@
+{
+  "name": "kordi",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev:desktop": "pnpm --dir app/desktop tauri:dev",
+    "build:desktop": "pnpm --dir app/desktop tauri:build",
+    "dev:web": "pnpm --dir app/desktop dev",
+    "build:web": "pnpm --dir app/desktop build",
+    "lint:web": "pnpm --dir app/desktop lint",
+    "dev:registry": "pnpm --dir bridges/registry dev",
+    "build:registry": "pnpm --dir bridges/registry build",
+    "build:rust": "cargo build --workspace",
+    "check:rust": "cargo check --workspace",
+    "test:rust": "cargo test --workspace"
+  }
+}

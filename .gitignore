@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+
+target
+**/target
+
+app/desktop/src-tauri/target
+app/desktop/src-tauri/binaries
+app/desktop/src-tauri/gen
+
+.env
+.env.local
