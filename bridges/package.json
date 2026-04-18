@@ -1,0 +1,37 @@
+{
+  "name": "bridges",
+  "version": "0.0.1-beta",
+  "description": "Bridges collaboration infrastructure",
+  "type": "module",
+  "main": "./index.cjs",
+  "bin": {
+    "bridges": "./bin/bridges.js"
+  },
+  "files": [
+    "bin",
+    "index.cjs",
+    "scripts",
+    "skills"
+  ],
+  "scripts": {
+    "build": "npm run version:sync && cargo build --release --manifest-path cli/Cargo.toml && node scripts/copy-native.js && npm run plugin:preview",
+    "plugin:preview": "node scripts/prepare-plugin-preview.js",
+    "smoke:tmux": "bash scripts/tmux-two-agent-smoke.sh",
+    "version:sync": "node scripts/sync-version.js",
+    "postinstall": "node scripts/postinstall.js",
+    "test": "cargo test --manifest-path cli/Cargo.toml"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shuyhere/Bridges.git"
+  },
+  "license": "MIT",
+  "author": "shuyhere",
+  "keywords": [
+    "agent",
+    "collaboration",
+    "p2p",
+    "human-agent-network",
+    "e2e-encrypted"
+  ]
+}

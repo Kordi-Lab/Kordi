@@ -1,0 +1,52 @@
+################################################################################
+# Multi-stage Dockerfile for cross-compiling Bridges Linux binaries
+# Produces: bridges-linux-x64, bridges-linux-arm64, bridges-linux-musl-x64, bridges-linux-musl-arm64
+################################################################################
+
+# ---------- Stage 1: Build environment ----------
+FROM rust:1.82-bookworm AS builder
+
+# Install cargo-zigbuild for easy cross-compilation
+RUN apt-get update && apt-get install -y \
+    zig \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install cargo-zigbuild
+
+# Install all target triples
+RUN rustup target add \
+    x86_64-unknown-linux-gnu \
+    aarch64-unknown-linux-gnu \
+    x86_64-unknown-linux-musl \
+    aarch64-unknown-linux-musl
+
+WORKDIR /build
+COPY cli/Cargo.toml cli/Cargo.lock* ./cli/
+COPY cli/src ./cli/src
+COPY Cargo.toml ./
+
+# ---------- Stage 2: Build all Linux targets ----------
+FROM builder AS compile
+
+# Build linux-gnu-x64
+RUN cargo zigbuild --release --manifest-path cli/Cargo.toml --target x86_64-unknown-linux-gnu && \
+    cp cli/target/x86_64-unknown-linux-gnu/release/bridges /tmp/bridges-linux-x64
+
+# Build linux-gnu-arm64
+RUN cargo zigbuild --release --manifest-path cli/Cargo.toml --target aarch64-unknown-linux-gnu && \
+    cp cli/target/aarch64-unknown-linux-gnu/release/bridges /tmp/bridges-linux-arm64
+
+# Build linux-musl-x64
+RUN cargo zigbuild --release --manifest-path cli/Cargo.toml --target x86_64-unknown-linux-musl && \
+    cp cli/target/x86_64-unknown-linux-musl/release/bridges /tmp/bridges-linux-musl-x64
+
+# Build linux-musl-arm64
+RUN cargo zigbuild --release --manifest-path cli/Cargo.toml --target aarch64-unknown-linux-musl && \
+    cp cli/target/aarch64-unknown-linux-musl/release/bridges /tmp/bridges-linux-musl-arm64
+
+# ---------- Stage 3: Output ----------
+FROM scratch AS output
+COPY --from=compile /tmp/bridges-linux-x64 /
+COPY --from=compile /tmp/bridges-linux-arm64 /
+COPY --from=compile /tmp/bridges-linux-musl-x64 /
+COPY --from=compile /tmp/bridges-linux-musl-arm64 /

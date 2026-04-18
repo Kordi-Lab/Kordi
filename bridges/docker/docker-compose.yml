@@ -1,0 +1,35 @@
+services:
+  build-linux:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build
+      target: output
+    volumes:
+      - ../bin:/output
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cp /bridges-linux-x64 /output/bridges-linux-x64
+        cp /bridges-linux-arm64 /output/bridges-linux-arm64
+        cp /bridges-linux-musl-x64 /output/bridges-linux-musl-x64
+        cp /bridges-linux-musl-arm64 /output/bridges-linux-musl-arm64
+        chmod +x /output/bridges-*
+        echo "Linux binaries copied to bin/"
+
+  build-windows:
+    image: rust:1.82-bookworm
+    working_dir: /build
+    volumes:
+      - ..:/build
+      - cargo-cache:/usr/local/cargo/registry
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apt-get update && apt-get install -y gcc-mingw-w64-x86-64
+        rustup target add x86_64-pc-windows-gnu
+        cargo build --release --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu
+        cp cli/target/x86_64-pc-windows-gnu/release/bridges.exe bin/bridges-win32-x64.exe
+        echo "Windows binary copied to bin/"
+
+volumes:
+  cargo-cache:

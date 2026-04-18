@@ -1,0 +1,9 @@
+target/
+node_modules/
+dist/
+*.db
+bin/bridges-*
+!bin/bridges.js
+.env
+.bridges/
+Cargo.lock
