@@ -21,8 +21,8 @@ version = "0.0.18"
 edition = "2024"
 license = "MIT"
 authors = ["BB-Agent Contributors"]
-repository = "https://github.com/shuyhere/bb-agent"
-homepage = "https://github.com/shuyhere/bb-agent"
+repository = "https://github.com/Kordi-AI/Kordi"
+homepage = "https://github.com/Kordi-AI/Kordi"
 readme = "README.md"
 
 [workspace.dependencies]

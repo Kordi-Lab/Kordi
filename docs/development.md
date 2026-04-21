@@ -49,6 +49,8 @@ pnpm build:web
 
 ## App server
 
+The app server is the app-facing local orchestration backend used to compose runtime and bridge state behind one product contract.
+
 ### Run the app-facing server
 
 ```bash
@@ -137,7 +139,7 @@ pnpm check
 
 ## Notes
 
-- The desktop app is the integration surface.
+- The desktop app is the primary product surface.
 - The app server is the app-facing orchestration backend for desktop and future shared clients.
-- The app should prefer stable app-facing commands over directly wiring UI components to low-level runtime or network internals.
+- The app should prefer stable app-facing contracts over directly wiring UI components to low-level runtime or network internals.
 - Keep shared contracts in `shared/` whenever both Rust and TypeScript need the same protocol concepts.

@@ -6,6 +6,8 @@
 
 A Rust-native AI coding agent for the terminal — featuring a TUI, multi-provider support, tool use, session persistence, branching, extensions, and skills.
 
+> Note: this runtime is derived from BB-Agent. Inside the Kordi monorepo, the compiled CLI binary is `kordi`.
+
 ## Role in Kordi
 
 Inside the Kordi monorepo, this directory is the source-of-truth for the local agent runtime.
@@ -33,7 +35,7 @@ Direct Rust entrypoints also work:
 
 ```bash
 cd /path/to/kordi
-cargo run -p bb-cli --
+cargo run -p kordi-cli --
 ```
 
 ## Directory guide
@@ -94,12 +96,12 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 ```
 
-Then build and install BB-Agent from source:
+Then build and install the runtime from source:
 
 ```bash
-git clone https://github.com/shuyhere/bb-agent.git
-cd bb-agent
-cargo install --path crates/cli
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi
+cargo install --path agent/crates/cli
 ```
 
 This compiles the `bb` binary and installs it to `~/.cargo/bin/bb` (which Rust adds to your PATH).
@@ -257,7 +259,7 @@ Example:
 | `bb-hooks` | Hook event types for extensions |
 | `bb-plugin-host` | Plugin discovery and host runtime |
 | `bb-tui` | Terminal UI components and the interactive TUI experience |
-| `bb-cli` | The `bb` command-line application |
+| `kordi-cli` | The `kordi` command-line application used in this monorepo |
 
 ## Troubleshooting
 
@@ -306,10 +308,10 @@ Or set this in `~/.bb-agent/settings.json`:
 See the full [Development Guide](docs/development.md) for detailed instructions.
 
 ```bash
-git clone https://github.com/shuyhere/bb-agent.git
-cd bb-agent
-cargo install --path crates/cli      # Build + install to ~/.cargo/bin/bb
-bb                                   # Run it
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi
+cargo install --path agent/crates/cli   # Build + install the runtime binary
+kordi                                   # Run it
 ```
 
 Dev cycle:

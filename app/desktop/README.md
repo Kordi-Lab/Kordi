@@ -16,6 +16,8 @@ It does **not** own the source-of-truth implementation of the agent runtime or n
 - [`../../agent`](../../agent)
 - [`../../bridges`](../../bridges)
 
+The longer-term app-facing orchestration layer lives in [`../server`](../server) and is documented in [`../../docs/app-server.md`](../../docs/app-server.md).
+
 ## Monorepo commands
 
 Run these from the repository root.
@@ -67,6 +69,7 @@ pnpm tauri:dev
 | `src-tauri/` | Tauri shell |
 | `scripts/prepare-sidecars.mjs` | Builds and copies local sidecars |
 | `kordi.workspace.json` | Sidecar source and binary map |
+| `../server/` | App-facing local orchestration server crate |
 
 ## Validation
 
@@ -88,4 +91,5 @@ pnpm prepare:sidecars
 - [../../README.md](../../README.md)
 - [../../docs/development.md](../../docs/development.md)
 - [../../docs/architecture.md](../../docs/architecture.md)
+- [../../docs/app-server.md](../../docs/app-server.md)
 - [../../docs/release.md](../../docs/release.md)

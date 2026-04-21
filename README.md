@@ -1,12 +1,13 @@
 # Kordi
 
-Kordi is a monorepo for three product layers that ship together as one desktop experience:
+Kordi is a monorepo for three core product layers plus one app-facing orchestration layer that ship together as one desktop experience:
 
 - `app/desktop` — the macOS desktop application (React + Tauri)
+- `app/server` — the app-facing local orchestration server
 - `agent` — the local agent runtime derived from `bb-agent`
 - `bridges` — the local and remote network stack derived from `Bridges`
 
-The repository is organized so the app, runtime, and network layers can evolve together while still keeping clear boundaries.
+The repository is organized so the app, server, runtime, and network layers can evolve together while still keeping clear boundaries.
 
 ## Repository layout
 
@@ -14,6 +15,7 @@ The repository is organized so the app, runtime, and network layers can evolve t
 kordi/
   app/
     desktop/               # React + Tauri desktop app
+    server/                # App-facing local orchestration server
   agent/                   # Agent runtime source
   bridges/                 # Network / daemon / registry source
   shared/
@@ -43,11 +45,13 @@ Run all of these from the monorepo root:
 |------|---------|
 | Start the macOS app | `pnpm dev:desktop` |
 | Start the web preview only | `pnpm dev:web` |
+| Run the app-facing server | `pnpm run:app-server -- --help` |
 | Prepare Tauri sidecars manually | `pnpm prepare:sidecars` |
 | Run the agent CLI/TUI | `pnpm run:agent -- --help` |
 | Run the Bridges CLI | `pnpm run:bridges -- --help` |
 | Start the Bridges registry | `pnpm dev:registry` |
 | Lint the desktop app | `pnpm lint` |
+| Check the app server crate | `pnpm check:app-server` |
 | Check all Rust crates | `pnpm check:rust` |
 | Run the common validation pass | `pnpm check` |
 
@@ -71,6 +75,12 @@ Owns the product UI, Tauri shell, bundled sidecars, and desktop packaging.
 
 See [app/desktop/README.md](app/desktop/README.md).
 
+### `app/server`
+
+Owns the app-facing local orchestration layer that composes desktop-facing state from the runtime and bridge services.
+
+See [docs/app-server.md](docs/app-server.md).
+
 ### `agent`
 
 Owns the local agent runtime, tools, providers, sessions, and terminal UX.
@@ -90,7 +100,8 @@ Use `shared/rust/protocol` and `shared/typescript/protocol` for types or contrac
 ## Documentation map
 
 - [docs/development.md](docs/development.md) — root command map and day-to-day development entrypoints
-- [docs/architecture.md](docs/architecture.md) — structural view of the app, agent, and bridges layers
+- [docs/architecture.md](docs/architecture.md) — structural view of the app, server, agent, and bridges layers
+- [docs/app-server.md](docs/app-server.md) — app-facing local server contract and integration plan
 - [docs/release.md](docs/release.md) — packaging and release responsibilities by layer
 - [app/desktop/README.md](app/desktop/README.md) — desktop app responsibilities and local entrypoints
 - [agent/README.md](agent/README.md) — agent runtime guide

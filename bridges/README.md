@@ -147,9 +147,9 @@ bridges setup --coordination <COORDINATION_URL> \
 ### 1. Build the CLI
 
 ```bash
-git clone https://github.com/shuyhere/Bridges.git bridges
-cd bridges
-cargo build --release --manifest-path cli/Cargo.toml
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi
+cargo build --release --manifest-path bridges/cli/Cargo.toml
 ./target/release/bridges --version
 ```
 

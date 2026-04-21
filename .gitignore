@@ -13,3 +13,11 @@ app/desktop/src-tauri/gen
 .env.local
 
 tmp-chrome-profile.*
+
+# Local-only scratch assets and helper scripts
+logo.png
+scripts/dev-desktop-safe.sh
+app/desktop/scripts/reshape-mac-icon.swift
+app/desktop/src-tauri/icons/icon.icns
+app/desktop/src-tauri/icons/icon.iconset/
+app/desktop/src-tauri/icons/source-square.png

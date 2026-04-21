@@ -1,15 +1,16 @@
 # Architecture
 
-Kordi is organized into three product layers with one shared integration surface.
-The current next step is to introduce a dedicated app-facing server contract so
-the desktop frontend and the TUI can share one product backend instead of
-directly depending on runtime or network internals.
+Kordi is organized into three product layers plus one app-facing orchestration layer.
+The desktop frontend already uses real runtime and bridge integrations, and the
+app-facing server provides the longer-term contract for sharing one product backend
+across desktop and future clients.
 
 ## Top-level shape
 
 ```text
 kordi/
   app/desktop
+  app/server
   agent
   bridges
   shared
@@ -29,6 +30,19 @@ It owns:
 - bundling local sidecars for macOS packaging
 
 It should not directly encode low-level runtime or network internals. The app should stay focused on product flows and desktop UX.
+
+### `app/server`
+
+The app server is the app-facing orchestration layer.
+
+It owns:
+
+- product-facing HTTP endpoints
+- composition of runtime state and network state
+- client bootstrap and service snapshots
+- a stable integration contract for desktop and future shared clients
+
+It should not own provider internals, storage internals, or raw bridge transport semantics.
 
 ### `agent`
 
@@ -74,7 +88,7 @@ The intended direction is:
 
 ```text
 desktop app
-  -> app-facing orchestration layer
+  -> app/server
     -> agent runtime
     -> bridges daemon / registry client
 ```
@@ -85,6 +99,7 @@ See [app-server.md](app-server.md) for the concrete server/client/protocol plan.
 ## Development boundaries
 
 - UI and desktop shell work belong in `app/desktop`
+- app-facing orchestration belongs in `app/server`
 - runtime logic belongs in `agent`
 - network logic belongs in `bridges`
 - shared contracts belong in `shared`
