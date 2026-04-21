@@ -41,31 +41,32 @@ pnpm install
 
 Run all of these from the monorepo root:
 
-| Task | Command |
-|------|---------|
-| Start the macOS app | `pnpm dev:desktop` |
-| Start the web preview only | `pnpm dev:web` |
-| Run the app-facing server | `pnpm run:app-server -- --help` |
-| Prepare Tauri sidecars manually | `pnpm prepare:sidecars` |
-| Run the agent CLI/TUI | `pnpm run:agent -- --help` |
-| Run the Bridges CLI | `pnpm run:bridges -- --help` |
-| Start the Bridges registry | `pnpm dev:registry` |
-| Lint the desktop app | `pnpm lint` |
-| Check the app server crate | `pnpm check:app-server` |
-| Check all Rust crates | `pnpm check:rust` |
-| Run the common validation pass | `pnpm check` |
+| Task | Command | Description |
+|------|---------|-------------|
+| Start the whole local app stack | `pnpm dev` | Runs the app server and launches the Tauri desktop app together. |
+| Start the macOS desktop shell only | `pnpm dev:desktop` | Launches the desktop shell and prepares the local sidecars it needs. |
+| Start the web preview only | `pnpm dev:web` | Runs the frontend in a browser-only development mode without Tauri. |
+| Run the app-facing server only | `pnpm run:app-server -- --help` | Starts or inspects the local orchestration server separately. |
+| Prepare Tauri sidecars manually | `pnpm prepare:sidecars` | Builds and copies the local agent and bridges binaries for desktop packaging. |
+| Run the agent CLI/TUI | `pnpm run:agent -- --help` | Invokes the local runtime directly. |
+| Run the Bridges CLI | `pnpm run:bridges -- --help` | Invokes the local bridge/network CLI directly. |
+| Start the Bridges registry | `pnpm dev:registry` | Runs the registry service for bridge-network development. |
+| Lint the desktop app | `pnpm lint` | Runs the desktop frontend linter. |
+| Check the app server crate | `pnpm check:app-server` | Verifies the app-facing server crate builds. |
+| Check all Rust crates | `pnpm check:rust` | Verifies the Rust workspace builds. |
+| Run the common validation pass | `pnpm check` | Runs the standard lint + Rust workspace validation pass. |
 
 ## Build entrypoints
 
 Run all of these from the monorepo root:
 
-| Task | Command |
-|------|---------|
-| Build the macOS app | `pnpm build:desktop` |
-| Build the web UI | `pnpm build:web` |
-| Build the agent runtime | `pnpm build:agent` |
-| Build the Bridges CLI | `pnpm build:bridges` |
-| Build the Bridges registry | `pnpm build:registry` |
+| Task | Command | Description |
+|------|---------|-------------|
+| Build the macOS app | `pnpm build:desktop` | Produces the packaged desktop application with local sidecars. |
+| Build the web UI | `pnpm build:web` | Produces the browser-targeted frontend bundle. |
+| Build the agent runtime | `pnpm build:agent` | Produces the local runtime binary. |
+| Build the Bridges CLI | `pnpm build:bridges` | Produces the local bridge/network binary. |
+| Build the Bridges registry | `pnpm build:registry` | Produces the registry service build output. |
 
 ## Responsibilities by directory
 

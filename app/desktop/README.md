@@ -27,13 +27,21 @@ cd /path/to/kordi
 pnpm install
 ```
 
+### Run the whole local app stack
+
+```bash
+pnpm dev
+```
+
+This is the top-level development command for Kordi. It starts the local app server and launches the desktop app together.
+
 ### Web-only preview
 
 ```bash
 pnpm dev:web
 ```
 
-### Tauri desktop development
+### Tauri desktop development only
 
 ```bash
 pnpm dev:desktop

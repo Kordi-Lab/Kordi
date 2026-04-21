@@ -16,7 +16,21 @@ pnpm install
 
 ## Desktop app
 
-### Start the Tauri desktop app
+### Start the whole local app stack
+
+```bash
+pnpm dev
+```
+
+This command:
+
+1. starts the local app server
+2. launches the Tauri desktop app
+3. keeps both processes tied to the same terminal session
+
+Use this as the default development command when you want the product shell and the app-facing backend running together.
+
+### Start the Tauri desktop app only
 
 ```bash
 pnpm dev:desktop
@@ -28,6 +42,8 @@ This command:
 2. builds the local `bridges` sidecar
 3. copies both binaries into `app/desktop/src-tauri/binaries`
 4. launches the Tauri app
+
+Use this when you only want the desktop shell and sidecars, without separately starting the app server through the root `dev` command.
 
 ### Start the web-only preview
 
@@ -139,6 +155,7 @@ pnpm check
 
 ## Notes
 
+- `pnpm dev` is the default "run the whole app" command from the monorepo root.
 - The desktop app is the primary product surface.
 - The app server is the app-facing orchestration backend for desktop and future shared clients.
 - The app should prefer stable app-facing contracts over directly wiring UI components to low-level runtime or network internals.
