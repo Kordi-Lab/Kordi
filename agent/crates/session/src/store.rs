@@ -100,6 +100,10 @@ pub fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionRow>> {
     queries::list_sessions(conn, cwd)
 }
 
+pub fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
+    queries::list_all_sessions(conn)
+}
+
 pub fn set_leaf(conn: &Connection, session_id: &str, leaf_id: Option<&str>) -> Result<()> {
     writes::set_leaf(conn, session_id, leaf_id)
 }

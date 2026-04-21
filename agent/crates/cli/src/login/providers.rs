@@ -31,15 +31,15 @@ const KNOWN_PROVIDERS: &[(&str, &str, &str)] = &[
 
 const OAUTH_PROVIDERS: &[&str] = &["anthropic", "openai-codex", "github-copilot"];
 
-pub(super) fn known_providers() -> &'static [(&'static str, &'static str, &'static str)] {
+pub fn known_providers() -> &'static [(&'static str, &'static str, &'static str)] {
     KNOWN_PROVIDERS
 }
 
-pub(super) fn is_oauth_provider(provider: &str) -> bool {
+pub fn is_oauth_provider(provider: &str) -> bool {
     OAUTH_PROVIDERS.contains(&provider)
 }
 
-pub(super) fn normalize_provider_for_model_selection(provider: &str) -> String {
+pub fn normalize_provider_for_model_selection(provider: &str) -> String {
     match provider {
         "openai-codex" => "openai".to_string(),
         other => other.to_string(),
@@ -52,7 +52,7 @@ pub(super) fn normalize_provider_for_model_selection(provider: &str) -> String {
 /// Examples:
 /// - `provider_meta("google")` => (`"GOOGLE_API_KEY"`, `"https://aistudio.google.com/app/apikey"`)
 /// - unknown providers fall back to (`"API_KEY"`, `""`)
-pub(crate) fn provider_meta(provider: &str) -> (&str, &str) {
+pub fn provider_meta(provider: &str) -> (&str, &str) {
     KNOWN_PROVIDERS
         .iter()
         .find(|(name, _, _)| *name == provider)
@@ -65,7 +65,7 @@ pub(crate) fn provider_meta(provider: &str) -> (&str, &str) {
 ///
 /// Known providers borrow a static label; unknown providers fall back to the
 /// raw provider name without allocating a new `String`.
-pub(crate) fn provider_display_name(provider: &str) -> Cow<'_, str> {
+pub fn provider_display_name(provider: &str) -> Cow<'_, str> {
     match provider {
         "anthropic" => Cow::Borrowed("Claude Pro/Max"),
         "openai-codex" => Cow::Borrowed("ChatGPT Plus/Pro (Codex)"),
@@ -82,20 +82,20 @@ pub(crate) fn provider_display_name(provider: &str) -> Cow<'_, str> {
 /// Authentication mechanism shown in login menus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ProviderAuthMethod {
+pub enum ProviderAuthMethod {
     OAuth,
     ApiKey,
 }
 
 impl ProviderAuthMethod {
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::OAuth => "OAuth",
             Self::ApiKey => "API key",
         }
     }
 
-    pub(crate) fn footer_label(self) -> &'static str {
+    pub fn footer_label(self) -> &'static str {
         match self {
             Self::OAuth => "oauth",
             Self::ApiKey => "api-key",
@@ -105,7 +105,7 @@ impl ProviderAuthMethod {
 
 /// Return the login method used for a provider so callers can format their own
 /// UI labels without relying on stringly-typed flags.
-pub(crate) fn provider_auth_method(provider: &str) -> ProviderAuthMethod {
+pub fn provider_auth_method(provider: &str) -> ProviderAuthMethod {
     if is_oauth_provider(provider) {
         ProviderAuthMethod::OAuth
     } else {
@@ -117,7 +117,7 @@ pub(crate) fn provider_auth_method(provider: &str) -> ProviderAuthMethod {
 ///
 /// This is intentionally shared between `bb login` and the TUI auth menus so
 /// provider-specific caveats stay consistent in both entry points.
-pub(crate) fn provider_login_hint(provider: &str) -> String {
+pub fn provider_login_hint(provider: &str) -> String {
     match provider {
         "openai-codex" => {
             "Requires ChatGPT Plus or Pro subscription. Uses browser OAuth, not OpenAI API keys."
@@ -144,7 +144,7 @@ pub(crate) fn provider_login_hint(provider: &str) -> String {
     }
 }
 
-pub(crate) fn provider_oauth_variant(provider: &str) -> Option<&'static str> {
+pub fn provider_oauth_variant(provider: &str) -> Option<&'static str> {
     match provider {
         "anthropic" => Some("anthropic"),
         "openai" | "openai-codex" => Some("openai-codex"),
@@ -153,7 +153,7 @@ pub(crate) fn provider_oauth_variant(provider: &str) -> Option<&'static str> {
     }
 }
 
-pub(crate) fn provider_api_key_variant(provider: &str) -> Option<&'static str> {
+pub fn provider_api_key_variant(provider: &str) -> Option<&'static str> {
     match provider {
         "anthropic" => Some("anthropic"),
         "openai" | "openai-codex" => Some("openai"),

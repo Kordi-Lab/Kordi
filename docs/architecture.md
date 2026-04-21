@@ -1,6 +1,9 @@
 # Architecture
 
 Kordi is organized into three product layers with one shared integration surface.
+The current next step is to introduce a dedicated app-facing server contract so
+the desktop frontend and the TUI can share one product backend instead of
+directly depending on runtime or network internals.
 
 ## Top-level shape
 
@@ -77,6 +80,7 @@ desktop app
 ```
 
 That keeps the UI from depending directly on many unrelated backend details.
+See [app-server.md](app-server.md) for the concrete server/client/protocol plan.
 
 ## Development boundaries
 

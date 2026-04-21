@@ -59,7 +59,7 @@ pub(super) struct ProviderConfigRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StoredAuthProfileSummary {
+pub struct StoredAuthProfileSummary {
     pub profile_id: String,
     pub method: ProviderAuthMethod,
     pub account_label: Option<String>,
@@ -76,7 +76,7 @@ pub(crate) struct StoredAuthProfileSummary {
 /// the last OAuth payload, while cached model/API fields are only populated
 /// once an OAuth login has completed successfully.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct GithubCopilotStatus {
+pub struct GithubCopilotStatus {
     pub authority: Option<String>,
     pub login: Option<String>,
     pub api_base_url: Option<String>,
@@ -341,12 +341,12 @@ fn stored_auth_profiles_for_store(
     profiles
 }
 
-pub(crate) fn stored_auth_methods(provider: &str) -> Vec<ProviderAuthMethod> {
+pub fn stored_auth_methods(provider: &str) -> Vec<ProviderAuthMethod> {
     let store = load_auth();
     stored_auth_methods_for_store(&store, provider)
 }
 
-pub(crate) fn stored_auth_profiles(provider: &str) -> Vec<StoredAuthProfileSummary> {
+pub fn stored_auth_profiles(provider: &str) -> Vec<StoredAuthProfileSummary> {
     let store = load_auth();
     stored_auth_profiles_for_store(&store, provider)
 }
@@ -363,7 +363,7 @@ pub(super) fn stored_auth_profile_by_id<'a>(
         .and_then(|profiles| profiles.iter().find(|profile| profile.id == profile_id))
 }
 
-pub(crate) fn active_auth_method(provider: &str) -> Option<ProviderAuthMethod> {
+pub fn active_auth_method(provider: &str) -> Option<ProviderAuthMethod> {
     let store = load_auth();
     let normalized = normalized_auth_provider(provider);
     if let Some(active_profile_id) = store.active_auth_profiles.get(&normalized)
@@ -393,7 +393,7 @@ pub(crate) fn active_auth_method(provider: &str) -> Option<ProviderAuthMethod> {
     methods.first().copied()
 }
 
-pub(crate) fn set_active_auth_profile(provider: &str, profile_id: &str) -> Result<bool> {
+pub fn set_active_auth_profile(provider: &str, profile_id: &str) -> Result<bool> {
     let mut store = load_auth();
     let normalized = normalized_auth_provider(provider);
     let Some(profile) = stored_auth_profile_by_id(&store, &normalized, profile_id).cloned() else {
@@ -409,6 +409,35 @@ pub(crate) fn set_active_auth_profile(provider: &str, profile_id: &str) -> Resul
         .active_auth_methods
         .insert(normalized.clone(), profile.method);
     store.last_provider = Some(normalized);
+    save_auth(&store)?;
+    Ok(true)
+}
+
+#[allow(dead_code)]
+pub fn remove_auth_profile(provider: &str, profile_id: &str) -> Result<bool> {
+    let mut store = load_auth();
+    let normalized = normalized_auth_provider(provider);
+    let Some(profiles) = store.profiles.get_mut(&normalized) else {
+        return Ok(false);
+    };
+
+    let before_len = profiles.len();
+    profiles.retain(|profile| profile.id != profile_id);
+    let removed = profiles.len() != before_len;
+    if !removed {
+        return Ok(false);
+    }
+
+    if profiles.is_empty() {
+        store.profiles.remove(&normalized);
+    }
+
+    repair_active_auth_selections(&mut store);
+    if store.last_provider.as_deref() == Some(normalized.as_str())
+        && !store.profiles.contains_key(&normalized)
+    {
+        store.last_provider = None;
+    }
     save_auth(&store)?;
     Ok(true)
 }
@@ -543,7 +572,7 @@ fn migrate_loaded_store(store: &mut AuthStore) {
     store.version = AUTH_STORE_VERSION;
 }
 
-pub(crate) fn remove_auth(provider: &str) -> Result<bool> {
+pub fn remove_auth(provider: &str) -> Result<bool> {
     let mut store = load_auth();
     let normalized = normalized_auth_provider(provider);
     let removed_profiles = store.profiles.remove(&normalized).is_some();
@@ -569,7 +598,7 @@ pub(crate) fn remove_auth(provider: &str) -> Result<bool> {
 ///
 /// Example:
 /// - on Linux this typically resolves under `~/.bb-agent/auth.json`
-pub(crate) fn auth_path() -> PathBuf {
+pub fn auth_path() -> PathBuf {
     config::global_dir().join("auth.json")
 }
 
@@ -761,7 +790,7 @@ fn upsert_oauth_profile(
     profile_id
 }
 
-pub(crate) fn save_api_key(provider: &str, key: String) -> Result<()> {
+pub fn save_api_key(provider: &str, key: String) -> Result<()> {
     let mut store = load_auth();
     let normalized = normalized_auth_provider(provider);
     let profile_id = upsert_api_key_profile(&mut store, provider, key);
@@ -773,7 +802,7 @@ pub(crate) fn save_api_key(provider: &str, key: String) -> Result<()> {
     save_auth(&store)
 }
 
-pub(crate) fn save_github_copilot_config(domain: &str) -> Result<()> {
+pub fn save_github_copilot_config(domain: &str) -> Result<()> {
     let mut store = load_auth();
     let timestamp = now_ms();
     let normalized = normalize_github_domain(domain)?;
@@ -814,7 +843,7 @@ pub(super) fn save_oauth_state(
     save_auth(&store)
 }
 
-pub(crate) fn github_copilot_domain() -> Option<String> {
+pub fn github_copilot_domain() -> Option<String> {
     let store = load_auth();
     store
         .provider_configs
@@ -826,7 +855,7 @@ pub(crate) fn github_copilot_domain() -> Option<String> {
         })
 }
 
-pub(crate) fn github_copilot_api_base_url() -> String {
+pub fn github_copilot_api_base_url() -> String {
     let default = "https://api.githubcopilot.com".to_string();
     let store = load_auth();
     match stored_auth_profile_for_method(&store, "github-copilot", ProviderAuthMethod::OAuth) {
@@ -842,11 +871,11 @@ pub(crate) fn github_copilot_api_base_url() -> String {
     }
 }
 
-pub(crate) fn github_copilot_runtime_headers() -> std::collections::HashMap<String, String> {
+pub fn github_copilot_runtime_headers() -> std::collections::HashMap<String, String> {
     crate::oauth::github_copilot::github_copilot_runtime_headers()
 }
 
-pub(crate) fn github_copilot_cached_models() -> Vec<String> {
+pub fn github_copilot_cached_models() -> Vec<String> {
     github_copilot_status().cached_models
 }
 
@@ -855,7 +884,7 @@ pub(crate) fn github_copilot_cached_models() -> Vec<String> {
 /// This intentionally merges the provider-config-only case (enterprise host
 /// saved but no OAuth token yet) with the full OAuth case so session info and
 /// login UIs can explain exactly what has been configured.
-pub(crate) fn github_copilot_status() -> GithubCopilotStatus {
+pub fn github_copilot_status() -> GithubCopilotStatus {
     let store = load_auth();
     let config_authority = store
         .provider_configs
@@ -913,11 +942,11 @@ pub(crate) fn github_copilot_status() -> GithubCopilotStatus {
     }
 }
 
-pub(crate) fn normalize_github_domain(input: &str) -> Result<String> {
+pub fn normalize_github_domain(input: &str) -> Result<String> {
     crate::oauth::github_copilot::normalize_authority(input)
 }
 
-pub(crate) fn configured_providers() -> Vec<String> {
+pub fn configured_providers() -> Vec<String> {
     let store = load_auth();
     let mut providers = Vec::new();
     for provider in known_providers().iter().map(|(name, _, _)| *name) {

@@ -1,0 +1,386 @@
+.bridge-app.theme-light button,
+.bridge-app.theme-light input,
+.bridge-app.theme-light .app-shell,
+.bridge-app.theme-light .app-side-shell,
+.bridge-app.theme-light .app-left-glass,
+.bridge-app.theme-light .app-session-panel,
+.bridge-app.theme-light .app-main-panel,
+.bridge-app.theme-light .app-surface-card,
+.bridge-app.theme-light .app-modal-panel,
+.bridge-app.theme-light .app-code-panel,
+.bridge-app.theme-light .app-code-toolbar {
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-duration: var(--app-motion-base);
+  transition-timing-function: var(--app-motion-ease);
+}
+
+.bridge-app.theme-light .transition,
+.bridge-app.theme-light .transition-all,
+.bridge-app.theme-light .transition-colors,
+.bridge-app.theme-light .transition-shadow,
+.bridge-app.theme-light .transition-transform {
+  transition-duration: var(--app-motion-base) !important;
+  transition-timing-function: var(--app-motion-ease) !important;
+}
+
+.bridge-app.theme-light .duration-300 {
+  transition-duration: var(--app-motion-slow) !important;
+}
+
+.bridge-app.theme-light .app-surface-card,
+.bridge-app.theme-light .app-modal-panel,
+.bridge-app.theme-light .app-code-panel {
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.035),
+    0 10px 24px rgba(147, 128, 109, 0.055),
+    0 -3px 8px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.bridge-app.theme-light .app-left-glass,
+.bridge-app.theme-light .app-session-panel,
+.bridge-app.theme-light .app-main-panel {
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.028),
+    0 8px 20px rgba(147, 128, 109, 0.045),
+    0 -3px 8px rgba(255, 255, 255, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.04);
+}
+
+.bridge-app.theme-light .app-badge-neutral {
+  color: rgb(71 85 105);
+}
+
+.bridge-app.theme-light .app-badge-owned {
+  border-color: rgba(124, 58, 237, 0.22);
+  background: rgba(139, 92, 246, 0.14);
+  color: rgb(91 33 182);
+}
+
+.bridge-app.theme-light .app-badge-attention {
+  border-color: rgba(180, 83, 9, 0.18);
+  background: rgba(245, 158, 11, 0.16);
+  color: rgb(146 64 14);
+}
+
+.bridge-app.theme-light .app-detail-sheet {
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.035),
+    0 12px 26px rgba(147, 128, 109, 0.055),
+    0 -4px 10px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.bridge-app.theme-light .app-right-detail-rail .app-detail-sheet {
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-detail-block {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.bridge-app.theme-light .app-detail-note {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05),
+    0 4px 10px rgba(147, 128, 109, 0.03);
+}
+
+.bridge-app.theme-light .app-right-detail-rail .app-inspector-emphasis {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.04),
+    0 4px 10px rgba(147, 128, 109, 0.025);
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-workspace-note,
+.bridge-app.theme-light .app-workspace-sidebar .app-workspace-search,
+.bridge-app.theme-light .app-workspace-sidebar .app-filter-tabs,
+.bridge-app.theme-light .app-workspace-sidebar .app-session-row-active,
+.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section,
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
+.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section,
+.bridge-app.theme-light .app-settings-page .app-settings-surface,
+.bridge-app.theme-light .app-settings-page .app-settings-control,
+.bridge-app.theme-light .app-settings-page .app-settings-toggle,
+.bridge-app.theme-light .app-settings-page .app-settings-action-button,
+.bridge-app.theme-light .app-bridge-page .app-bridge-card,
+.bridge-app.theme-light .app-bridge-page .app-bridge-meta-block,
+.bridge-app.theme-light .app-bridge-page .app-bridge-empty,
+.bridge-app.theme-light .app-bridge-page .app-bridge-list-item,
+.bridge-app.theme-light .app-bridge-page .app-bridge-wizard-option {
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
+.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
+  background: rgba(15, 23, 42, 0.035);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
+  background: rgba(15, 23, 42, 0.035);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-nav-row:hover,
+.bridge-app.theme-light .app-workspace-sidebar .app-project-group-toggle:hover,
+.bridge-app.theme-light .app-workspace-sidebar .app-project-session-row:hover {
+  background: rgba(15, 23, 42, 0.05) !important;
+}
+
+.bridge-app.theme-light .app-page-header {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.24), rgba(255,255,255,0.08));
+}
+
+.bridge-app.theme-light .app-input-shell,
+.bridge-app.theme-light .app-icon-button,
+.bridge-app.theme-light .app-utility-button,
+.bridge-app.theme-light .app-control-chip,
+.bridge-app.theme-light .app-list-item:hover,
+.bridge-app.theme-light .app-composer-shell,
+.bridge-app.theme-light .app-surface-muted {
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.028),
+    0 8px 18px rgba(147, 128, 109, 0.045),
+    0 -2px 6px rgba(255, 255, 255, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.bridge-app.theme-light .app-control-chip-active {
+  border-color: rgba(43, 35, 32, 0.12);
+  background: rgba(255, 255, 255, 0.94);
+  color: rgb(31 27 25);
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.03),
+    0 8px 18px rgba(147, 128, 109, 0.05),
+    0 -2px 6px rgba(255, 255, 255, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.bridge-app.theme-light .app-list-item-active {
+  border-color: rgba(43, 35, 32, 0.08);
+  background: rgba(43, 35, 32, 0.075);
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.025),
+    0 8px 18px rgba(147, 128, 109, 0.04),
+    0 -2px 6px rgba(255, 255, 255, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.045);
+}
+
+.bridge-app.theme-light .app-session-row-active {
+  border-color: rgba(43, 35, 32, 0.08);
+  background: rgba(43, 35, 32, 0.07);
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.025),
+    0 8px 18px rgba(147, 128, 109, 0.04),
+    0 -2px 6px rgba(255, 255, 255, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.045);
+}
+
+.bridge-app.theme-light .app-icon-button,
+.bridge-app.theme-light .app-utility-button,
+.bridge-app.theme-light .app-control-chip,
+.bridge-app.theme-light .app-input-shell,
+.bridge-app.theme-light .app-composer-shell {
+  color: rgb(31 27 25);
+}
+
+.bridge-app.theme-light .bg-slate-800 {
+  background-color: rgb(222 216 207) !important;
+}
+
+.bridge-app.theme-light .bg-slate-900 {
+  background-color: rgb(235 230 223) !important;
+}
+
+.bridge-app.theme-light .bg-slate-950 {
+  background-color: rgb(35 31 28) !important;
+}
+
+.bridge-app.theme-dark .bg-slate-800 {
+  background-color: rgb(31 31 35) !important;
+}
+
+.bridge-app.theme-dark .bg-slate-900 {
+  background-color: rgb(18 18 21) !important;
+}
+
+.bridge-app.theme-dark .bg-slate-950 {
+  background-color: rgb(9 9 11) !important;
+}
+
+.bridge-app.theme-light .text-white,
+.bridge-app.theme-light .text-slate-100 {
+  color: rgb(15 23 42) !important;
+}
+
+.bridge-app.theme-light .text-slate-200 {
+  color: rgb(51 65 85) !important;
+}
+
+.bridge-app.theme-light .text-slate-300 {
+  color: rgb(71 85 105) !important;
+}
+
+.bridge-app.theme-light .text-slate-400 {
+  color: rgb(100 116 139) !important;
+}
+
+.bridge-app.theme-light .placeholder\:text-slate-400::placeholder {
+  color: rgb(100 116 139) !important;
+}
+
+.bridge-app.theme-light .border-white\/10 {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+.bridge-app.theme-light .border-white\/15 {
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.bridge-app.theme-light .bg-white\/5,
+.bridge-app.theme-light .bg-white\/\[0\.03\],
+.bridge-app.theme-light .bg-white\/\[0\.04\] {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
+.bridge-app.theme-light .bg-white\/10,
+.bridge-app.theme-light .bg-white\/\[0\.06\] {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+.bridge-app.theme-light .bg-white\/12,
+.bridge-app.theme-light .bg-white\/\[0\.08\] {
+  background-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+.bridge-app.theme-light .bg-slate-800 {
+  background-color: rgba(226, 232, 240, 0.92) !important;
+}
+
+.bridge-app.theme-light .bg-slate-800.text-slate-100 {
+  color: rgb(30 41 59) !important;
+}
+
+.bridge-app.theme-light .bg-slate-900,
+.bridge-app.theme-light .bg-slate-900\/80,
+.bridge-app.theme-light .bg-slate-950,
+.bridge-app.theme-light .bg-slate-950\/70 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.bridge-app.theme-light .ring-white\/15 {
+  --tw-ring-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.bridge-app.theme-light .border-emerald-400\/20,
+.bridge-app.theme-light .border-emerald-400\/25 {
+  border-color: rgba(5, 150, 105, 0.26) !important;
+}
+
+.bridge-app.theme-light .bg-emerald-400\/10 {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+.bridge-app.theme-light .text-emerald-100,
+.bridge-app.theme-light .text-emerald-200,
+.bridge-app.theme-light .text-emerald-200\/80 {
+  color: rgb(6 95 70) !important;
+}
+
+.bridge-app.theme-light .text-emerald-300,
+.bridge-app.theme-light .text-emerald-400 {
+  color: rgb(4 120 87) !important;
+}
+
+.bridge-app.theme-light .border-violet-400\/30 {
+  border-color: rgba(124, 58, 237, 0.28) !important;
+}
+
+.bridge-app.theme-light .bg-violet-400\/20 {
+  background-color: rgba(139, 92, 246, 0.18) !important;
+}
+
+.bridge-app.theme-light .text-violet-50 {
+  color: rgb(91 33 182) !important;
+}
+
+.bridge-app.theme-light .border-cyan-400\/35 {
+  border-color: rgba(8, 145, 178, 0.28) !important;
+}
+
+.bridge-app.theme-light .bg-cyan-400\/15 {
+  background-color: rgba(34, 211, 238, 0.14) !important;
+}
+
+.bridge-app.theme-light .text-cyan-50 {
+  color: rgb(14 116 144) !important;
+}
+
+.bridge-app.theme-light .text-rose-100 {
+  color: rgb(159 18 57) !important;
+}
+
+.bridge-app.theme-light .text-rose-300 {
+  color: rgb(190 24 93) !important;
+}
+
+.bridge-app.theme-light .text-slate-500 {
+  color: rgb(100 116 139) !important;
+}
+
+.bridge-app.theme-light .bg-rose-400\/12 {
+  background-color: rgba(251, 113, 133, 0.14) !important;
+}
+
+.bridge-app.theme-light .bg-emerald-400\/12 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+.bridge-app.theme-light .bg-emerald-400\/8 {
+  background-color: rgba(16, 185, 129, 0.09) !important;
+}
+
+.bridge-app.theme-light .bg-amber-400\/10 {
+  background-color: rgba(251, 191, 36, 0.18) !important;
+}
+
+@layer utilities {
+  .bg-background {
+    background-color: var(--utility-background, rgb(6 16 31));
+  }
+
+  .text-background {
+    color: var(--utility-background, rgb(6 16 31));
+  }
+
+  .bg-foreground {
+    background-color: var(--utility-foreground, rgb(241 245 249));
+  }
+
+  .text-foreground {
+    color: var(--utility-foreground, rgb(241 245 249));
+  }
+
+  .bg-card {
+    background-color: var(--utility-card, rgba(15, 23, 42, 0.84));
+  }
+
+  .bg-muted {
+    background-color: var(--utility-muted, rgba(30, 41, 59, 0.86));
+  }
+
+  .text-muted-foreground {
+    color: var(--utility-muted-text, rgb(148 163 184));
+  }
+}

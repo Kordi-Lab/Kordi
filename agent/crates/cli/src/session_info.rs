@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn session_summary_renders_explicit_auth_details() {
         let summary = SessionInfoSummary {
-            auth_source: "bb auth.json".to_string(),
+            auth_source: "kordi auth.json".to_string(),
             auth_method: "OAuth".to_string(),
             auth_account: Some("acct_test123".to_string()),
             auth_authority: Some("github.com".to_string()),
@@ -367,7 +367,7 @@ mod tests {
         };
 
         let rendered = render_session_info_text(&summary);
-        assert!(rendered.contains("Auth Source: bb auth.json"));
+        assert!(rendered.contains("Auth Source: kordi auth.json"));
         assert!(rendered.contains("Auth Method: OAuth"));
         assert!(rendered.contains("Auth Account: acct_test123"));
         assert!(rendered.contains("Auth Authority: github.com"));

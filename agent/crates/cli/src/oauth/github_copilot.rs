@@ -342,7 +342,7 @@ async fn request_device_code(server_url: &str) -> Result<DeviceCodeResponse> {
 async fn poll_device_flow(
     server_url: &str,
     device: &DeviceCodeResponse,
-    cancel_rx: Option<tokio::sync::oneshot::Receiver<String>>,
+    cancel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 ) -> Result<AccessTokenResponse> {
     let started = std::time::Instant::now();
     let expires = Duration::from_secs(device.expires_in.max(1) as u64);
@@ -361,7 +361,7 @@ async fn poll_device_flow(
             _ = &mut wait => {}
             manual = async {
                 match cancel_rx.as_mut() {
-                    Some(rx) => rx.await.ok(),
+                    Some(rx) => rx.recv().await,
                     None => None,
                 }
             }, if cancel_rx.is_some() => {
@@ -369,7 +369,7 @@ async fn poll_device_flow(
                 if value.trim().is_empty() {
                     anyhow::bail!("Manual input cancelled");
                 }
-                anyhow::bail!("GitHub Copilot device flow does not accept pasted callback URLs; complete the browser/device verification instead");
+                continue;
             }
         }
 
@@ -432,7 +432,7 @@ async fn refresh_github_access_token(
     refresh_token: &str,
 ) -> Result<AccessTokenResponse> {
     let client_secret = github_client_secret().context(
-        "GitHub Copilot refresh requires GITHUB_COPILOT_CLIENT_SECRET (or GH_COPILOT_CLIENT_SECRET). Re-run `bb login github-copilot` instead, or set the client secret explicitly for refresh support.",
+        "GitHub Copilot refresh requires GITHUB_COPILOT_CLIENT_SECRET (or GH_COPILOT_CLIENT_SECRET). Re-run `kordi login github-copilot` instead, or set the client secret explicitly for refresh support.",
     )?;
 
     let client = reqwest::Client::new();
@@ -588,11 +588,11 @@ pub(crate) fn github_copilot_runtime_headers() -> std::collections::HashMap<Stri
     );
     headers.insert(
         "Editor-Version".to_string(),
-        format!("bb-agent/{}", env!("CARGO_PKG_VERSION")),
+        format!("kordi/{}", env!("CARGO_PKG_VERSION")),
     );
     headers.insert(
         "Editor-Plugin-Version".to_string(),
-        format!("bb-agent/{}", env!("CARGO_PKG_VERSION")),
+        format!("kordi/{}", env!("CARGO_PKG_VERSION")),
     );
     headers.insert(
         "Copilot-Language-Server-Version".to_string(),
@@ -665,11 +665,11 @@ mod tests {
         );
         assert_eq!(
             headers.get("Editor-Version").map(String::as_str),
-            Some(concat!("bb-agent/", env!("CARGO_PKG_VERSION")))
+            Some(concat!("kordi/", env!("CARGO_PKG_VERSION")))
         );
         assert_eq!(
             headers.get("Editor-Plugin-Version").map(String::as_str),
-            Some(concat!("bb-agent/", env!("CARGO_PKG_VERSION")))
+            Some(concat!("kordi/", env!("CARGO_PKG_VERSION")))
         );
         assert_eq!(
             headers

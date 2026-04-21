@@ -37,7 +37,7 @@ pub struct OAuthCallbacks {
     /// If set, the OAuth flow will race the callback-server against this
     /// oneshot — the first value wins.  This lets the TUI offer a "paste
     /// code manually" fallback.
-    pub on_manual_input: Option<tokio::sync::oneshot::Receiver<String>>,
+    pub on_manual_input: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
     /// Optional progress updates (e.g. "Waiting for browser…").
     pub on_progress: Option<Box<dyn Fn(String) + Send>>,
 }

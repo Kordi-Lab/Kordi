@@ -2,7 +2,7 @@ use super::store::save_oauth_state;
 use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ResolvedProviderAuth {
+pub struct ResolvedProviderAuth {
     pub source: AuthSource,
     pub credential_provider: String,
     pub method: ProviderAuthMethod,
@@ -13,7 +13,7 @@ pub(crate) struct ResolvedProviderAuth {
 }
 
 impl ResolvedProviderAuth {
-    pub(crate) fn footer_badge(&self, provider: &str) -> String {
+    pub fn footer_badge(&self, provider: &str) -> String {
         let method = self.method.footer_label();
         match self.source {
             AuthSource::BbAuth => format!("{provider}/{method}"),
@@ -181,6 +181,15 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
     }
 
     let store = load_auth();
+    let explicit_active_profile = store.active_auth_profiles.get(&normalized).cloned();
+    let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
+    if explicit_active_profile.is_none()
+        && let Some(method) = explicit_active_method
+        && let Some(auth) = resolve_env_provider_auth(&normalized, method)
+    {
+        return Some(auth);
+    }
+
     let preferred_methods = match active_auth_method(&normalized) {
         Some(active) => match active {
             ProviderAuthMethod::OAuth => [ProviderAuthMethod::OAuth, ProviderAuthMethod::ApiKey],
@@ -202,7 +211,7 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
         .find_map(|method| resolve_env_provider_auth(&normalized, method))
 }
 
-pub(crate) fn resolve_provider_auth_choice(
+pub fn resolve_provider_auth_choice(
     provider: &str,
     choice: &str,
 ) -> Option<ResolvedProviderAuth> {

@@ -59,6 +59,50 @@ impl TuiController {
         true
     }
 
+    pub(crate) fn clear_current_auth_for_provider(&mut self, provider: &str) -> bool {
+        let target_provider = match provider {
+            "openai-codex" => "openai",
+            other => other,
+        };
+        if self.session_setup.model.provider != target_provider {
+            return false;
+        }
+
+        let base_url = if target_provider == "github-copilot" {
+            crate::login::github_copilot_api_base_url()
+        } else {
+            self.session_setup
+                .model
+                .base_url
+                .clone()
+                .unwrap_or_else(|| match self.session_setup.model.api {
+                    ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
+                    ApiType::GoogleGenerative => {
+                        "https://generativelanguage.googleapis.com".to_string()
+                    }
+                    _ => "https://api.openai.com/v1".to_string(),
+                })
+        };
+
+        self.session_setup.auth = None;
+        self.session_setup.api_key.clear();
+        self.session_setup.base_url = base_url;
+        self.session_setup.headers.clear();
+        self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+            provider: self.session_setup.provider.clone(),
+            model: self.session_setup.model.clone(),
+            api_key: String::new(),
+            base_url: self.session_setup.base_url.clone(),
+            headers: std::collections::HashMap::new(),
+            enabled: false,
+        });
+        if let Ok(mut tracker) = self.session_setup.request_metrics_tracker.try_lock() {
+            tracker.reset_history();
+        }
+        self.publish_footer();
+        true
+    }
+
     pub(crate) async fn begin_oauth_login(
         &mut self,
         provider: &str,
@@ -67,12 +111,9 @@ impl TuiController {
         use crate::oauth::OAuthCallbacks;
         use bb_tui::tui::TuiSubmission;
         use std::sync::{Arc, Mutex};
-        use tokio::sync::oneshot;
-
         let provider = crate::login::provider_oauth_variant(provider).unwrap_or(provider);
         let label = crate::login::provider_display_name(provider).into_owned();
-        let (manual_tx, manual_rx) = oneshot::channel::<String>();
-        let mut manual_tx = Some(manual_tx);
+        let (manual_tx, manual_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let dialog_shared = Arc::new(Mutex::new((None::<String>, None::<String>, None::<String>)));
 
         self.send_command(TuiCommand::SetLocalActionActive(true));
@@ -119,11 +160,11 @@ impl TuiController {
                     if let Ok(mut shared) = dialog_shared.lock() {
                         shared.0 = Some(device.verification_uri.clone());
                         shared.1 =
-                            Some("bb generated the device code shown on this screen.".to_string());
+                            Some("Kordi generated the device code shown on this screen.".to_string());
                         shared.2 = Some(device.user_code.clone());
                     }
                     let _ = command_tx.send(TuiCommand::SetStatusLine(format!(
-                        "Enter device code {} from bb in your browser",
+                        "Enter device code {} from Kordi in your browser",
                         device.user_code
                     )));
                     let _ =
@@ -175,17 +216,13 @@ impl TuiController {
                     match maybe_submission {
                         Some(TuiSubmission::CancelLocalAction) => {
                             cancelled = true;
-                            if let Some(tx) = manual_tx.take() {
-                                let _ = tx.send(String::new());
-                            }
+                            let _ = manual_tx.send(String::new());
                             break Ok::<_, anyhow::Error>(());
                         }
                         Some(TuiSubmission::Input(text)) => {
                             let text = text.trim().to_string();
-                            if !text.is_empty()
-                                && let Some(tx) = manual_tx.take()
-                            {
-                                let _ = tx.send(text);
+                            if !text.is_empty() {
+                                let _ = manual_tx.send(text);
                                 self.send_command(TuiCommand::SetInput(String::new()));
                                 let (url, launcher_hint) = if let Ok(shared) = dialog_shared.lock() {
                                     (shared.0.clone(), shared.1.clone())
@@ -207,10 +244,8 @@ impl TuiController {
                         }
                         Some(TuiSubmission::InputWithImages { text, .. }) => {
                             let text = text.trim().to_string();
-                            if !text.is_empty()
-                                && let Some(tx) = manual_tx.take()
-                            {
-                                let _ = tx.send(text);
+                            if !text.is_empty() {
+                                let _ = manual_tx.send(text);
                                 self.send_command(TuiCommand::SetInput(String::new()));
                                 let (url, launcher_hint) = if let Ok(shared) = dialog_shared.lock() {
                                     (shared.0.clone(), shared.1.clone())
@@ -235,9 +270,7 @@ impl TuiController {
                         Some(TuiSubmission::EditQueuedMessages) => {}
                         None => {
                             cancelled = true;
-                            if let Some(tx) = manual_tx.take() {
-                                let _ = tx.send(String::new());
-                            }
+                            let _ = manual_tx.send(String::new());
                             break Ok::<_, anyhow::Error>(());
                         }
                     }
@@ -341,7 +374,7 @@ impl TuiController {
         self.send_command(TuiCommand::PushNote {
             level: TuiNoteLevel::Status,
             text: format!(
-                "GitHub Copilot authority configured for {domain}. bb will use this authority for the GitHub device flow and Copilot token exchange."
+                "GitHub Copilot authority configured for {domain}. Kordi will use this authority for the GitHub device flow and Copilot token exchange."
             ),
         });
         Ok(())

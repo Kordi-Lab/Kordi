@@ -1,0 +1,17 @@
+export const composerModelOptions = [
+  'GPT-5.4',
+  'GPT-5.2-Codex',
+  'GPT-5.1-Codex-Max',
+  'GPT-5.4-Mini',
+  'GPT-5.3-Codex',
+  'GPT-5.3-Codex-Spark',
+  'GPT-5.2',
+  'GPT-5.1-Codex-Mini',
+] as const;
+
+export const composerModeOptions = {
+  chat: ['Send as Me', 'Send as Research Agent', 'Delegate to Research Agent', 'Internal note'],
+  project: ['Post update', 'Ask project agent', 'Start new session', 'Share artifact'],
+} as const;
+
+export const composerThinkingOptions = ['Minimal', 'Low', 'Medium', 'High', 'Extra High'] as const;

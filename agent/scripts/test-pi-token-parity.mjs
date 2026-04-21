@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as pi from '/home/shuyhere/projects/tako/node_modules/@mariozechner/pi-coding-agent/dist/core/compaction/compaction.js';
+
+const piModulePath = process.env.PI_AGENT_COMPACTION_PATH ?? '@mariozechner/pi-coding-agent/dist/core/compaction/compaction.js';
+const pi = await import(piModulePath);
 
 const settings = { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 };
 

@@ -21,25 +21,25 @@ mod update_check;
 
 #[derive(Parser)]
 #[command(
-    name = "bb",
-    about = "BB-Agent — a Rust-native coding agent",
+    name = "kordi",
+    about = "Kordi - a Rust-native coding agent",
     version,
     after_help = r#"Examples:
-  bb                                  TUI mode
-  bb "List all .rs files in src/"     TUI with initial prompt
-  bb -p "What is 2+2?"               Print mode (non-interactive)
-  bb -c                               Continue previous session
-  bb -r                               Resume: pick a session
-  bb --model anthropic/claude-sonnet-4-20250514
-  bb --model sonnet:high              Model with thinking level
-  bb --list-models                    List all available models
-  bb --list-models sonnet             Search models
-  bb login                            Login to a provider (OAuth)
-  bb logout                           Logout from a provider
-  bb install npm:bb-example-skill     Install a global package source
-  bb install --local ./my-skill       Install a local/project package source
-  bb list                             List configured package sources
-  bb update                           Update installed package sources"#
+  kordi                               TUI mode
+  kordi "List all .rs files in src/"  TUI with initial prompt
+  kordi -p "What is 2+2?"             Print mode (non-interactive)
+  kordi -c                            Continue previous session
+  kordi -r                            Resume: pick a session
+  kordi --model anthropic/claude-sonnet-4-20250514
+  kordi --model sonnet:high           Model with thinking level
+  kordi --list-models                 List all available models
+  kordi --list-models sonnet          Search models
+  kordi login                         Login to a provider (OAuth)
+  kordi logout                        Logout from a provider
+  kordi install npm:kordi-example-skill
+  kordi install --local ./my-skill
+  kordi list                          List configured package sources
+  kordi update                        Update installed package sources"#
 )]
 struct Cli {
     #[command(subcommand)]
@@ -143,11 +143,11 @@ enum Commands {
         provider: Option<String>,
     },
     #[command(after_help = r#"Examples:
-  bb install npm:bb-example-skill
-  bb install --local npm:my-project-skill
-  bb install --local ./my-skill
-  bb install git:https://github.com/org/repo.git
-  bb install https://example.com/package.tar.gz
+  kordi install npm:kordi-example-skill
+  kordi install --local npm:my-project-skill
+  kordi install --local ./my-skill
+  kordi install git:https://github.com/org/repo.git
+  kordi install https://example.com/package.tar.gz
 
 Source forms:
   npm:<package>             Install from npm
@@ -164,7 +164,7 @@ Notes:
         /// Install into project-local settings instead of global settings
         #[arg(short = 'l', long = "local")]
         local: bool,
-        /// Package source, e.g. npm:bb-example-skill, git:https://github.com/org/repo.git, ./my-skill, or https://example.com/package.tar.gz
+        /// Package source, e.g. npm:kordi-example-skill, git:https://github.com/org/repo.git, ./my-skill, or https://example.com/package.tar.gz
         source: String,
     },
     /// Remove a package source from settings
@@ -362,7 +362,7 @@ async fn main() -> Result<()> {
                 template_name,
                 template_path.display()
             );
-            eprintln!("Available templates (bb --list-templates):");
+            eprintln!("Available templates (kordi --list-templates):");
             if let Ok(entries) = std::fs::read_dir(&templates_dir) {
                 for e in entries.flatten() {
                     if e.path().extension().and_then(|ext| ext.to_str()) == Some("md")

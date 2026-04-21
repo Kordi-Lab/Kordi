@@ -10,6 +10,7 @@ members = [
     "agent/crates/tui",
     "agent/crates/cli",
     "agent/crates/bb-monitor",
+    "app/server",
     "app/desktop/src-tauri",
     "bridges/cli",
     "shared/rust/protocol",
@@ -55,6 +56,7 @@ bb-hooks = { version = "0.0.18", path = "agent/crates/hooks" }
 bb-plugin-host = { version = "0.0.18", path = "agent/crates/plugin-host" }
 bb-tui = { version = "0.0.18", path = "agent/crates/tui" }
 bb-monitor = { version = "0.0.18", path = "agent/crates/bb-monitor" }
+kordi-protocol = { version = "0.1.0", path = "shared/rust/protocol" }
 
 [profile.release]
 strip = "debuginfo"

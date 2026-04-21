@@ -2,7 +2,7 @@
 name = "kordi-desktop"
 version = "0.1.0"
 description = "Kordi macOS desktop application"
-authors = ["shuyang"]
+authors = ["Kordi contributors"]
 edition = "2021"
 
 [lib]
@@ -13,7 +13,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+bb-core.workspace = true
+kordi-cli = { path = "../../../agent/crates/cli" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+bs58 = "0.5"
+hex = "0.4"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+curve25519-dalek = "4"

@@ -1,0 +1,60 @@
+import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
+
+import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
+
+export function assembleSidebarSlot(args: SidebarShellArgs) {
+  return (
+    <WorkspaceSidebar
+      isNativeShell={args.isNativeShell}
+      isSingleWorkspacePage={args.isSingleWorkspacePage}
+      collapseChatSessions={args.collapseChatSessions}
+      showSessionRail={args.showSessionRail}
+      sessionRailWidth={args.sessionRailWidth}
+      activeNav={args.activeNav}
+      setActiveNav={args.setActiveNav}
+      chatConversations={args.chatConversations}
+      onCreateChatSession={() => {
+        void args.handleCreateChatSession();
+      }}
+      chatSearch={args.chatSearch}
+      setChatSearch={args.setChatSearch}
+      chatFilter={args.chatFilter}
+      setChatFilter={args.setChatFilter}
+      isDesktopChatLoading={args.isDesktopChatLoading}
+      desktopChatError={args.desktopChatError}
+      filteredConversations={args.filteredConversations}
+      activeConvId={args.activeConvId}
+      onSelectChatSession={(sessionId) => {
+        void args.handleSelectChatSession(sessionId);
+      }}
+      runtimeProjects={args.runtimeProjects}
+      projectSearch={args.projectSearch}
+      setProjectSearch={args.setProjectSearch}
+      filteredProjects={args.filteredProjects}
+      activeProjectId={args.activeProjectId}
+      activeProjectSessionId={args.activeProjectSessionId}
+      projectSelectedSessionIds={args.projectSelectedSessionIds}
+      selectProject={args.selectProject}
+      expandedProjectIds={args.expandedProjectIds}
+      setExpandedProjectIds={args.setExpandedProjectIds}
+      onSelectProjectSession={(projectId, sessionId) => {
+        void args.handleSelectProjectSession(projectId, sessionId);
+      }}
+      groupedContacts={args.groupedContacts}
+      displayedContacts={args.displayedContacts}
+      setActiveContactGroup={args.setActiveContactGroup}
+      setActiveContactId={args.setActiveContactId}
+      displayedAgents={args.displayedAgents}
+      activeBridgeHost={args.activeBridgeHost}
+      onRefreshBridge={() => {
+        void args.refreshDesktopBridge();
+      }}
+      onCopyBridgeHostUrl={() => {
+        if (args.activeBridgeHost) {
+          void args.handleCopyBridgeText(args.activeBridgeHost.serverUrl, 'Bridge host URL copied');
+        }
+      }}
+      onCreateBridgeDraft={args.handleCreateBridgeDraft}
+    />
+  );
+}

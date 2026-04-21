@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn authenticated_model_candidates(settings: &Settings) -> Vec<Model> {
+pub fn authenticated_model_candidates(settings: &Settings) -> Vec<Model> {
     let available = authenticated_providers();
     if available.is_empty() {
         return Vec::new();
@@ -54,7 +54,7 @@ fn resolve_available_model_for_provider(
         .map(|model| model.id)
 }
 
-pub(crate) fn available_model_for_provider(
+pub fn available_model_for_provider(
     settings: &Settings,
     provider: &str,
     requested_model: Option<&str>,
@@ -62,7 +62,7 @@ pub(crate) fn available_model_for_provider(
     resolve_available_model_for_provider(settings, provider, requested_model)
 }
 
-pub(crate) fn preferred_available_model_for_provider(
+pub fn preferred_available_model_for_provider(
     settings: &Settings,
     provider: &str,
 ) -> Option<String> {
@@ -87,7 +87,7 @@ fn preferred_model_for_provider(provider: &str) -> Option<String> {
     }
 }
 
-pub(crate) fn preferred_startup_provider_and_model(
+pub fn preferred_startup_provider_and_model(
     settings: &bb_core::settings::Settings,
 ) -> Option<(String, String)> {
     // If the user explicitly configured a default provider/model, honor that

@@ -146,10 +146,10 @@ fn build_tui_config(
     let transcript = Transcript::new();
 
     let title = if prompt_label.is_empty() || prompt_label == "default" {
-        format!("♡ BB-Agent v{}", env!("CARGO_PKG_VERSION"))
+        format!("♡ Kordi v{}", env!("CARGO_PKG_VERSION"))
     } else {
         format!(
-            "♡ BB-Agent v{} • prompt: {}",
+            "♡ Kordi v{} • prompt: {}",
             env!("CARGO_PKG_VERSION"),
             prompt_label
         )
@@ -157,7 +157,7 @@ fn build_tui_config(
 
     TuiAppConfig {
         title,
-        input_placeholder: "Type a prompt for BB-Agent…".to_string(),
+        input_placeholder: "Type a prompt for Kordi...".to_string(),
         status_line: String::new(),
         footer: build_footer_data(session_setup),
         transcript,

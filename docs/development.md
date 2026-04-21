@@ -5,7 +5,7 @@ This document keeps the top-level commands for the Kordi monorepo in one place.
 All commands below are intended to be run from:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 ```
 
 ## Install dependencies
@@ -45,6 +45,21 @@ pnpm build:desktop
 
 ```bash
 pnpm build:web
+```
+
+## App server
+
+### Run the app-facing server
+
+```bash
+pnpm run:app-server -- --help
+pnpm run:app-server --
+```
+
+### Check the app server crate
+
+```bash
+pnpm check:app-server
 ```
 
 ## Agent runtime
@@ -123,5 +138,6 @@ pnpm check
 ## Notes
 
 - The desktop app is the integration surface.
+- The app server is the app-facing orchestration backend for desktop and future shared clients.
 - The app should prefer stable app-facing commands over directly wiring UI components to low-level runtime or network internals.
 - Keep shared contracts in `shared/` whenever both Rust and TypeScript need the same protocol concepts.

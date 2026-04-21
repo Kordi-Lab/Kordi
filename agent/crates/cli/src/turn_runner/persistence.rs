@@ -164,6 +164,7 @@ pub(crate) fn open_sibling_conn(
     Ok(Arc::new(Mutex::new(new_conn)))
 }
 
+#[allow(dead_code)]
 pub(crate) fn wrap_conn(conn: rusqlite::Connection) -> Arc<Mutex<rusqlite::Connection>> {
     Arc::new(Mutex::new(conn))
 }

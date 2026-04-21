@@ -1,5 +1,5 @@
 [package]
-name = "bb-cli"
+name = "kordi-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,11 +7,11 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-description = "Command-line interface for BB-Agent."
+description = "Command-line interface for Kordi."
 publish = false
 
 [[bin]]
-name = "bb"
+name = "kordi"
 path = "src/main.rs"
 
 [dependencies]

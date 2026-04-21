@@ -126,7 +126,7 @@ async fn handle_connection(
         &mut stream,
         200,
         "Authentication Successful",
-        "You can close this tab and return to the terminal.",
+        "You can close this tab and return to Kordi.",
     )
     .await;
 
@@ -174,12 +174,17 @@ async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, title: &
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
-<head><title>{title}</title></head>
-<body style="font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:80vh">
-<div style="text-align:center">
-<h1>{title}</h1>
-<p>{body}</p>
-</div>
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>{title}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif;background:radial-gradient(circle at top,rgba(76,72,58,.18),rgba(19,19,17,.96) 48%,rgba(11,11,12,1));color:#f8fafc;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px;box-sizing:border-box;">
+  <div style="width:min(100%,460px);border:1px solid rgba(255,255,255,.10);background:linear-gradient(180deg,rgba(29,29,26,.95),rgba(17,17,18,.98));border-radius:28px;padding:28px 24px;box-shadow:0 24px 80px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04);text-align:center;">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#cbd5e1;">Kordi Authentication</div>
+    <h1 style="margin:18px 0 10px;font-size:28px;line-height:1.08;letter-spacing:-0.03em;color:white;">{title}</h1>
+    <p style="margin:0 auto;max-width:30ch;font-size:14px;line-height:1.7;color:#cbd5e1;">{body}</p>
+  </div>
 </body>
 </html>"#,
     );

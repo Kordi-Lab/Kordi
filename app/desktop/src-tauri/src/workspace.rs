@@ -58,7 +58,7 @@ fn default_config() -> WorkspaceConfig {
     WorkspaceConfig {
         bb_agent_path: "../bb-agent".into(),
         bridges_path: "../Bridges".into(),
-        bb_agent_binary: "target/release/bb".into(),
+        bb_agent_binary: "target/release/kordi".into(),
         bridges_binary: "target/release/bridges".into(),
     }
 }
@@ -99,13 +99,13 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
     DesktopWorkspaceStatus {
         app_root: app_root.display().to_string(),
         workspace_file: workspace_file.display().to_string(),
-        bb_agent: build_repo_status("bb-agent", &bb_agent_repo, &config.bb_agent_binary),
+        bb_agent: build_repo_status("Kordi runtime", &bb_agent_repo, &config.bb_agent_binary),
         bridges: build_repo_status("Bridges", &bridges_repo, &config.bridges_binary),
         sidecars: vec![
             SidecarStatus {
-                label: "bb-agent".into(),
-                bundled_path: sidecar_dir.join(format!("bb-{}", target_triple)).display().to_string(),
-                exists: sidecar_dir.join(format!("bb-{}", target_triple)).exists(),
+                label: "Kordi runtime".into(),
+                bundled_path: sidecar_dir.join(format!("kordi-{}", target_triple)).display().to_string(),
+                exists: sidecar_dir.join(format!("kordi-{}", target_triple)).exists(),
             },
             SidecarStatus {
                 label: "Bridges".into(),

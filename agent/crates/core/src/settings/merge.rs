@@ -8,6 +8,22 @@ use super::{
 pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings {
     Settings {
         execution_mode: project.execution_mode.or(global.execution_mode),
+        project_name: project
+            .project_name
+            .clone()
+            .or_else(|| global.project_name.clone()),
+        project_context: project
+            .project_context
+            .clone()
+            .or_else(|| global.project_context.clone()),
+        project_system_prompt: project
+            .project_system_prompt
+            .clone()
+            .or_else(|| global.project_system_prompt.clone()),
+        project_shared_sources: merge_project_shared_sources(
+            &global.project_shared_sources,
+            &project.project_shared_sources,
+        ),
         compaction: merge_compaction(&global.compaction, &project.compaction),
         retry: merge_retry(&global.retry, &project.retry),
         default_provider: project
@@ -111,6 +127,17 @@ fn merge_update_check(
         } else {
             global.ttl_hours
         },
+    }
+}
+
+fn merge_project_shared_sources(
+    global: &[super::ProjectSharedSource],
+    project: &[super::ProjectSharedSource],
+) -> Vec<super::ProjectSharedSource> {
+    if !project.is_empty() {
+        project.to_vec()
+    } else {
+        global.to_vec()
     }
 }
 

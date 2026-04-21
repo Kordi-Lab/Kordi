@@ -9,7 +9,7 @@ use bb_core::agent_session_runtime::{
     RuntimeModelRef, create_agent_session_runtime,
 };
 use bb_core::config;
-use bb_core::settings::Settings;
+use bb_core::settings::{ProjectSharedSource, Settings};
 use bb_provider::Provider;
 use bb_provider::anthropic::AnthropicProvider;
 use bb_provider::google::GoogleProvider;
@@ -117,8 +117,130 @@ pub(crate) struct SessionRuntimeSetup {
     pub sibling_conn: Option<std::sync::Arc<tokio::sync::Mutex<rusqlite::Connection>>>,
     pub extension_commands: ExtensionCommandRegistry,
     pub extension_bootstrap: ExtensionBootstrap,
+    #[allow(dead_code)]
+    pub slash_command_items: Vec<bb_tui::select_list::SelectItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
+}
+
+fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> Option<String> {
+    if sources.is_empty() {
+        return None;
+    }
+
+    let lines = sources
+        .iter()
+        .map(|source| {
+            let mut line = format!("- {}", source.label.trim());
+            if let Some(path) = source.path.as_deref().filter(|value| !value.trim().is_empty()) {
+                line.push_str(&format!(" ({path})"));
+            }
+            if let Some(detail) = source.detail.as_deref().filter(|value| !value.trim().is_empty()) {
+                line.push_str(&format!(": {detail}"));
+            }
+            line
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(lines)
+}
+
+fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
+    let project_root = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let project_name = settings
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            project_root
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Project".to_string());
+
+    let mut sections = vec![format!("Project: {project_name}"), format!("Project root: {}", project_root.display())];
+
+    if let Some(context) = settings
+        .project_context
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        sections.push(format!("Shared project context:\n{context}"));
+    }
+
+    if let Some(background) = settings
+        .project_system_prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        sections.push(format!("Project background instructions:\n{background}"));
+    }
+
+    if let Some(sources) = format_project_shared_sources_for_prompt(&settings.project_shared_sources) {
+        sections.push(format!("Shared information sources:\n{sources}"));
+    }
+
+    if sections.len() <= 2 && settings.project_context.is_none() && settings.project_system_prompt.is_none() && settings.project_shared_sources.is_empty() {
+        return String::new();
+    }
+
+    format!("\n\n## Shared project memory\n{}", sections.join("\n\n"))
+}
+
+fn build_slash_command_items(
+    session_resources: &bb_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Vec<bb_tui::select_list::SelectItem> {
+    let mut items = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    for item in bb_tui::slash_commands::shared_slash_command_select_items() {
+        if matches!(item.value.as_str(), "/settings" | "/model" | "/copy" | "/hotkeys" | "/login" | "/logout") {
+            continue;
+        }
+        if seen.insert(item.value.clone()) {
+            items.push(item);
+        }
+    }
+
+    for skill in &session_resources.skills {
+        let value = format!("/skill:{}", skill.info.name);
+        if seen.insert(value.clone()) {
+            items.push(bb_tui::select_list::SelectItem {
+                label: value.clone(),
+                detail: None,
+                value,
+            });
+        }
+    }
+
+    for prompt in &session_resources.prompts {
+        let value = format!("/{}", prompt.info.name);
+        if seen.insert(value.clone()) {
+            items.push(bb_tui::select_list::SelectItem {
+                label: value.clone(),
+                detail: Some(prompt.info.description.clone()),
+                value,
+            });
+        }
+    }
+
+    for cmd in &session_resources.extensions.registered_commands {
+        let value = format!("/{}", cmd.invocation_name);
+        if seen.insert(value.clone()) {
+            items.push(bb_tui::select_list::SelectItem {
+                label: value.clone(),
+                detail: Some(cmd.description.clone()),
+                value,
+            });
+        }
+    }
+
+    items
 }
 
 fn prompt_label_for_cli(cli: &crate::Cli) -> String {
@@ -177,14 +299,32 @@ pub(crate) async fn prepare_session_runtime(
     SessionRuntimeSetup,
 )> {
     let cwd = std::env::current_dir()?;
+    prepare_session_runtime_for_cwd(cwd, entry).await
+}
 
+pub(crate) async fn prepare_session_runtime_for_cwd(
+    cwd: std::path::PathBuf,
+    entry: SessionBootstrapOptions,
+) -> Result<(
+    AgentSessionRuntimeHost,
+    SessionUiOptions,
+    SessionRuntimeSetup,
+)> {
     let global_dir = config::global_dir();
     std::fs::create_dir_all(&global_dir)?;
 
     let conn = store::open_db(&global_dir.join("sessions.db"))?;
     let (session_id, session_created) = resolve_startup_session_id(&conn, &cwd, &entry)?;
+    let effective_cwd = if session_created {
+        store::get_session(&conn, &session_id)?
+            .map(|row| std::path::PathBuf::from(row.cwd))
+            .unwrap_or_else(|| cwd.clone())
+    } else {
+        cwd.clone()
+    };
 
-    let settings = Settings::load_merged(&cwd);
+    let settings = Settings::load_merged(&effective_cwd);
+    let project_settings = Settings::load_project(&effective_cwd);
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let resumed_session_context = load_resumed_session_context(&conn, &session_id, session_created);
@@ -216,7 +356,7 @@ pub(crate) async fn prepare_session_runtime(
     );
     let thinking_str = thinking_level.as_str();
 
-    let agents_md = load_agents_md(&cwd);
+    let agents_md = load_agents_md(&effective_cwd);
 
     let base_prompt = entry
         .system_prompt
@@ -277,26 +417,27 @@ pub(crate) async fn prepare_session_runtime(
         std::collections::HashMap::new()
     };
 
-    auto_install_missing_packages(&cwd, &settings);
+    auto_install_missing_packages(&effective_cwd, &settings);
 
-    let extension_bootstrap = ExtensionBootstrap::from_cli_values(&cwd, &entry.extensions);
+    let extension_bootstrap = ExtensionBootstrap::from_cli_values(&effective_cwd, &entry.extensions);
     let RuntimeExtensionSupport {
         session_resources,
         tools,
         mut commands,
-    } = load_runtime_extension_support_with_ui(&cwd, &settings, &extension_bootstrap, true).await?;
+    } = load_runtime_extension_support_with_ui(&effective_cwd, &settings, &extension_bootstrap, true).await?;
     let sibling_conn = crate::turn_runner::open_sibling_conn(&conn)?;
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&bb_hooks::Event::SessionStart).await;
     let tool_selection = entry.tool_selection.resolve(settings.tools.as_deref());
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection.clone());
     let skill_section = build_skill_system_prompt_section(&session_resources);
-    let system_prompt = format!("{base_system_prompt}{skill_section}");
+    let project_system_section = build_project_system_prompt_section(&project_settings, &effective_cwd);
+    let system_prompt = format!("{base_system_prompt}{project_system_section}{skill_section}");
 
     let artifacts_dir = global_dir.join("artifacts");
     std::fs::create_dir_all(&artifacts_dir)?;
     let tool_ctx = ToolContext {
-        cwd: cwd.clone(),
+        cwd: effective_cwd.clone(),
         artifacts_dir,
         execution_policy,
         on_output: None,
@@ -334,6 +475,8 @@ pub(crate) async fn prepare_session_runtime(
         context_window: model.context_window as usize,
     };
 
+    let slash_command_items = build_slash_command_items(&session_resources);
+
     let setup = SessionRuntimeSetup {
         conn,
         session_id,
@@ -360,6 +503,7 @@ pub(crate) async fn prepare_session_runtime(
         sibling_conn: Some(sibling_conn),
         extension_commands: commands,
         extension_bootstrap,
+        slash_command_items,
         request_metrics_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
             RequestMetricsTracker::new(),
         )),
@@ -374,7 +518,7 @@ pub(crate) async fn prepare_session_runtime(
         ..AgentSessionRuntimeBootstrap::default()
     };
     let runtime =
-        create_agent_session_runtime(&bootstrap, CreateAgentSessionRuntimeOptions::new(cwd));
+        create_agent_session_runtime(&bootstrap, CreateAgentSessionRuntimeOptions::new(effective_cwd));
     let mut runtime_host = AgentSessionRuntimeHost::new(bootstrap, runtime);
     runtime_host.runtime_mut().set_model(Some(runtime_model));
 
@@ -389,7 +533,7 @@ fn resolve_startup_session_id(
     let cwd_str = cwd.to_str().unwrap_or(".");
 
     if let Some(session_arg) = &entry.session {
-        let all = store::list_sessions(conn, cwd_str)?;
+        let all = store::list_all_sessions(conn)?;
         let matches: Vec<_> = all
             .iter()
             .filter(|s| s.session_id.starts_with(session_arg.as_str()))

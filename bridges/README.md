@@ -28,7 +28,7 @@ It owns:
 Run these from the repository root:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm run:bridges -- --help
 pnpm check:bridges
 pnpm build:bridges
@@ -38,7 +38,7 @@ pnpm dev:registry
 Direct Rust entrypoints also work:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 cargo run --manifest-path bridges/cli/Cargo.toml --
 ```
 
@@ -54,7 +54,7 @@ cargo run --manifest-path bridges/cli/Cargo.toml --
 ## Validation in Kordi
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm check:bridges
 pnpm build:bridges
 pnpm build:registry

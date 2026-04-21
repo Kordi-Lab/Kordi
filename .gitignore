@@ -11,3 +11,5 @@ app/desktop/src-tauri/gen
 
 .env
 .env.local
+
+tmp-chrome-profile.*

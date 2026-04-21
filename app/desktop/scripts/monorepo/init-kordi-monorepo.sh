@@ -8,10 +8,10 @@ Usage:
 
 Example:
   ./scripts/monorepo/init-kordi-monorepo.sh \
-    /Users/shuyang/Desktop/kordi \
-    /Users/shuyang/Desktop/Bridges-app \
-    /Users/shuyang/Desktop/bb-agent \
-    /Users/shuyang/Desktop/Bridges
+    /path/to/kordi \
+    /path/to/desktop-repo \
+    /path/to/agent-repo \
+    /path/to/bridges-repo
 EOF
   exit 1
 fi

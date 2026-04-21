@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProviderAuthOptionSummary {
+pub struct ProviderAuthOptionSummary {
     pub profile_id: Option<String>,
     pub method: ProviderAuthMethod,
     pub source: AuthSource,
@@ -58,9 +58,12 @@ fn env_auth_methods_for_provider(provider: &str) -> Vec<ProviderAuthMethod> {
     }
 }
 
-pub(crate) fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionSummary> {
+pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionSummary> {
     let normalized = normalize_provider_for_model_selection(provider);
     let active_method = active_auth_method(&normalized);
+    let store = load_auth();
+    let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
+    let has_explicit_active_profile = store.active_auth_profiles.contains_key(&normalized);
     let mut options = stored_auth_profiles(&normalized)
         .into_iter()
         .map(|profile| ProviderAuthOptionSummary {
@@ -77,7 +80,9 @@ pub(crate) fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuth
 
     let stored_methods = stored_auth_methods(&normalized);
     for method in env_auth_methods_for_provider(&normalized) {
-        let active = stored_methods.is_empty() && active_method == Some(method);
+        let active = active_method == Some(method)
+            && (stored_methods.is_empty()
+                || (explicit_active_method == Some(method) && !has_explicit_active_profile));
         options.push(ProviderAuthOptionSummary {
             profile_id: None,
             method,
@@ -173,7 +178,7 @@ fn render_auth_option_summary(summary: &ProviderAuthOptionSummary) -> String {
     }
 }
 
-pub(crate) fn provider_model_selection_detail(provider: &str) -> String {
+pub fn provider_model_selection_detail(provider: &str) -> String {
     let options = provider_auth_option_summaries(provider);
     if options.is_empty() {
         return "[not authenticated]".to_string();
@@ -185,7 +190,7 @@ pub(crate) fn provider_model_selection_detail(provider: &str) -> String {
         .join(" | ")
 }
 
-pub(crate) fn provider_auth_status_summary(provider: &str) -> String {
+pub fn provider_auth_status_summary(provider: &str) -> String {
     let (has_oauth, has_api_key) = auth_methods_for_provider(provider);
     let active = active_auth_method(provider);
     let base = if has_oauth && has_api_key {
@@ -206,7 +211,7 @@ pub(crate) fn provider_auth_status_summary(provider: &str) -> String {
     }
 }
 
-pub(crate) fn add_cached_github_copilot_models(registry: &mut ModelRegistry) {
+pub fn add_cached_github_copilot_models(registry: &mut ModelRegistry) {
     for model_id in github_copilot_cached_models() {
         if registry.find("github-copilot", &model_id).is_none() {
             registry.add(Model {
@@ -232,9 +237,9 @@ pub enum AuthSource {
 }
 
 impl AuthSource {
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            AuthSource::BbAuth => "bb auth.json",
+            AuthSource::BbAuth => "kordi auth.json",
             AuthSource::EnvVar => "environment",
         }
     }

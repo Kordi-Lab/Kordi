@@ -63,25 +63,39 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
 
     // Race: browser callback vs manual paste.
     let CallbackServerParts {
-        result_rx,
+        mut result_rx,
         cancel_tx,
     } = server.into_parts();
+    let mut cancel_tx = Some(cancel_tx);
     let params = match callbacks.on_manual_input {
-        Some(manual_rx) => {
+        Some(mut manual_rx) => loop {
             tokio::select! {
-                result = result_rx => {
-                    result.map_err(|_| anyhow::anyhow!("Callback channel closed"))??
+                result = &mut result_rx => {
+                    break result.map_err(|_| anyhow::anyhow!("Callback channel closed"))??;
                 }
-                manual = manual_rx => {
-                    let _ = cancel_tx.send(());
-                    let raw = manual.map_err(|_| anyhow::anyhow!("Manual input cancelled"))?;
+                manual = manual_rx.recv() => {
+                    let raw = manual.ok_or_else(|| anyhow::anyhow!("Manual input cancelled"))?;
+                    if raw.trim().is_empty() {
+                        anyhow::bail!("Manual input cancelled");
+                    }
+
                     let parsed = parse_authorization_input(&raw);
-                    let code = parsed.code.ok_or_else(|| anyhow::anyhow!("No authorization code found in pasted input"))?;
-                    let parsed_state = parsed.state.unwrap_or_else(|| state.clone());
-                    CallbackParams { code, state: parsed_state }
+                    if let Some(code) = parsed.code {
+                        if let Some(cancel_tx) = cancel_tx.take() {
+                            let _ = cancel_tx.send(());
+                        }
+                        let parsed_state = parsed.state.unwrap_or_else(|| state.clone());
+                        break CallbackParams { code, state: parsed_state };
+                    }
+
+                    if let Some(ref on_progress) = callbacks.on_progress {
+                        on_progress(
+                            "Could not parse the pasted callback yet. Paste the full redirect URL or the authorization code.".into(),
+                        );
+                    }
                 }
             }
-        }
+        },
         None => result_rx
             .await
             .map_err(|_| anyhow::anyhow!("Callback channel closed"))??,

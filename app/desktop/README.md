@@ -21,7 +21,7 @@ It does **not** own the source-of-truth implementation of the agent runtime or n
 Run these from the repository root.
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm install
 ```
 
@@ -54,7 +54,7 @@ pnpm prepare:sidecars
 Work from this directory only when you intentionally want to stay inside the desktop package:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi/app/desktop
+cd /path/to/kordi/app/desktop
 pnpm install
 pnpm tauri:dev
 ```
@@ -71,7 +71,7 @@ pnpm tauri:dev
 ## Validation
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm lint
 pnpm build:web
 pnpm prepare:sidecars

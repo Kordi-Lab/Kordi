@@ -46,7 +46,7 @@ pub(crate) struct TurnConfig {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum TurnEvent {
+pub enum TurnEvent {
     TurnStart {
         turn_index: u32,
     },
@@ -100,9 +100,11 @@ mod persistence;
 mod runner;
 mod tools;
 
+#[allow(unused_imports)]
 pub(crate) use persistence::{
     append_user_message_with_images, get_leaf_raw, open_sibling_conn, wrap_conn,
 };
+#[allow(unused_imports)]
 pub(crate) use runner::{run_turn, run_turn_inner};
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use super::*;
 use std::io::Write;
 
-pub(crate) fn try_open_browser(url: &str) -> bool {
+pub fn try_open_browser(url: &str) -> bool {
     #[cfg(target_os = "macos")]
     {
         return std::process::Command::new("open")
@@ -32,7 +32,7 @@ pub(crate) fn try_open_browser(url: &str) -> bool {
     }
 }
 
-pub(crate) async fn run_oauth_login(
+pub async fn run_oauth_login(
     provider: &str,
     callbacks: crate::oauth::OAuthCallbacks,
 ) -> Result<()> {
@@ -51,7 +51,7 @@ pub(crate) async fn run_oauth_login(
     resolver::save_oauth_credentials(provider, &creds)
 }
 
-pub(crate) async fn handle_login(provider: Option<&str>) -> Result<()> {
+pub async fn handle_login(provider: Option<&str>) -> Result<()> {
     let provider = match provider {
         Some(p) => p.to_string(),
         None => prompt_for_provider_login()?,
@@ -71,7 +71,7 @@ pub(crate) async fn handle_login(provider: Option<&str>) -> Result<()> {
     handle_api_key_login_cli(&provider)
 }
 
-pub(crate) async fn handle_logout(provider: Option<&str>) -> Result<()> {
+pub async fn handle_logout(provider: Option<&str>) -> Result<()> {
     let Some(provider) = (match provider {
         Some(p) => Some(p.to_string()),
         None => prompt_for_provider_logout()?,
@@ -189,7 +189,7 @@ async fn handle_oauth_login_cli(provider: &str) -> Result<()> {
         on_device_code: Some(Box::new(|device| {
             println!("Device verification URL: {}", device.verification_uri);
             println!(
-                "bb generated this device code for you: {}",
+                "kordi generated this device code for you: {}",
                 device.user_code
             );
             println!("Enter that code on the GitHub device page above.");

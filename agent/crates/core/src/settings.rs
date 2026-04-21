@@ -22,6 +22,14 @@ pub struct Settings {
         skip_serializing_if = "Option::is_none"
     )]
     pub execution_mode: Option<ExecutionMode>,
+    #[serde(default, alias = "projectName")]
+    pub project_name: Option<String>,
+    #[serde(default, alias = "projectContext")]
+    pub project_context: Option<String>,
+    #[serde(default, alias = "projectSystemPrompt")]
+    pub project_system_prompt: Option<String>,
+    #[serde(default, alias = "projectSharedSources")]
+    pub project_shared_sources: Vec<ProjectSharedSource>,
     #[serde(default)]
     pub compaction: CompactionConfig,
     #[serde(default)]
@@ -169,6 +177,15 @@ pub struct ModelOverride {
     pub input: Option<Vec<String>>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectSharedSource {
+    pub label: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderOverride {
     pub name: String,
@@ -186,6 +203,10 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             execution_mode: None,
+            project_name: None,
+            project_context: None,
+            project_system_prompt: None,
+            project_shared_sources: Vec::new(),
             compaction: CompactionConfig::default(),
             retry: RetryConfig::default(),
             default_provider: None,

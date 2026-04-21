@@ -23,7 +23,7 @@ It owns:
 Run these from the repository root:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm run:agent -- --help
 pnpm check:agent
 pnpm build:agent
@@ -32,7 +32,7 @@ pnpm build:agent
 Direct Rust entrypoints also work:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 cargo run -p bb-cli --
 ```
 
@@ -52,7 +52,7 @@ Core workspace crates:
 ## Validation in Kordi
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm check:agent
 pnpm build:agent
 ```

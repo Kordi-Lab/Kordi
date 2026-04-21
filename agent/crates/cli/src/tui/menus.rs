@@ -188,7 +188,12 @@ impl TuiController {
             }
             LOGOUT_PROVIDER_MENU_ID => {
                 if crate::login::remove_auth(value)? {
-                    self.send_command(TuiCommand::SetStatusLine(format!("Logged out of {value}")));
+                    let cleared_current = self.clear_current_auth_for_provider(value);
+                    self.send_command(TuiCommand::SetStatusLine(if cleared_current {
+                        format!("Logged out of {value} • cleared current session auth")
+                    } else {
+                        format!("Logged out of {value}")
+                    }));
                 } else {
                     self.send_command(TuiCommand::SetStatusLine(format!(
                         "No saved credentials for {value}"

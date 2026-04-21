@@ -27,6 +27,7 @@ type ContactsPageProps = {
   activeContactRequest?: ContactRequest;
   onCloseOverlay: () => void;
   getStatusBadgeClass: (value: string) => string;
+  onMessageContact?: (contact: Contact) => void;
 };
 
 export function ContactsPage({
@@ -47,10 +48,11 @@ export function ContactsPage({
   activeContactRequest,
   onCloseOverlay,
   getStatusBadgeClass,
+  onMessageContact,
 }: ContactsPageProps) {
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 justify-center">
-      <div className="flex h-full min-h-0 w-full max-w-[980px] flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-1">
+      <div className="flex h-full min-h-0 w-full flex-col">
         <div className="border-b border-white/10 px-5 py-4">
           <div className="w-full">
             <div className="mb-1 text-white">
@@ -219,7 +221,9 @@ export function ContactsPage({
                       ))}
                     </div>
                     <div className="grid gap-2">
-                      <Button className="rounded-xl">Message</Button>
+                      <Button className="rounded-xl" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
+                        Message
+                      </Button>
                       <Button variant="secondary" className="rounded-xl">
                         <Eye className="mr-2 h-4 w-4" />
                         View full profile
@@ -260,6 +264,7 @@ type AgentsPageProps = {
   onOpenAgent: (agentId: string) => void;
   onCloseOverlay: () => void;
   getStatusBadgeClass: (value: string) => string;
+  onMessageAgent?: (agent: Agent) => void;
 };
 
 export function AgentsPage({
@@ -270,16 +275,17 @@ export function AgentsPage({
   onOpenAgent,
   onCloseOverlay,
   getStatusBadgeClass,
+  onMessageAgent,
 }: AgentsPageProps) {
   return (
-    <div className="relative flex h-full min-h-0 min-w-0 flex-1 justify-center p-4">
-      <div className="h-full w-full max-w-[1120px]">
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 p-4">
+      <div className="h-full w-full">
         <ScrollArea className="h-full pr-2">
           <div className="w-full">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="text-sm text-slate-400">My agents</div>
-                <div className="text-xl font-semibold text-white">{agents.length} active identities</div>
+                <div className="text-sm text-slate-400">Agents</div>
+                <div className="text-xl font-semibold text-white">{agents.length} visible identities</div>
               </div>
               <Button className="app-control-chip rounded-xl border-0">
                 <Plus className="mr-2 h-4 w-4" />
@@ -379,9 +385,16 @@ export function AgentsPage({
                 ))}
               </div>
             </div>
+            <div className="mt-4 grid gap-2">
+              <Button className="rounded-xl" onClick={() => onMessageAgent?.(activeAgent)} disabled={!onMessageAgent || !activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId}>
+                Message
+              </Button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
+
+export { AuthPage } from './auth/AuthPage';

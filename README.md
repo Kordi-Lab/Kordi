@@ -31,7 +31,7 @@ kordi/
 Install JavaScript dependencies once from the repository root:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /path/to/kordi
 pnpm install
 ```
 

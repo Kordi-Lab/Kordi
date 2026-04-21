@@ -125,6 +125,27 @@ pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionR
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// List all sessions, most recent first.
+pub(super) fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
+         FROM sessions ORDER BY updated_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(SessionRow {
+            session_id: row.get(0)?,
+            cwd: row.get(1)?,
+            created_at: row.get(2)?,
+            updated_at: row.get(3)?,
+            name: row.get(4)?,
+            leaf_id: row.get(5)?,
+            entry_count: row.get(6)?,
+            parent_session_id: row.get(7)?,
+        })
+    })?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 /// Parse an EntryRow payload into a SessionEntry.
 pub(super) fn parse_entry(row: &EntryRow) -> Result<SessionEntry> {
     let entry: SessionEntry = serde_json::from_str(&row.payload)?;

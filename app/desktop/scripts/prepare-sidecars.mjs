@@ -73,14 +73,14 @@ function copyBinary(label, sourcePath, targetName) {
 
 const targetTriple = detectTargetTriple();
 
-const bbAgentRepo = ensureRepo('bb-agent', workspaceConfig.bbAgentPath);
+const bbAgentRepo = ensureRepo('Kordi runtime', workspaceConfig.bbAgentPath);
 const bbAgentManifestPath =
   workspaceConfig.bbAgentManifestPath ?? 'crates/cli/Cargo.toml';
 const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
 const bridgesManifestPath =
   workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
 
-console.log('[kordi] Building bb-agent sidecar...');
+console.log('[kordi] Building Kordi runtime sidecar...');
 run(
   'cargo',
   ['build', '--release', '--manifest-path', bbAgentManifestPath],
@@ -95,9 +95,9 @@ run(
 );
 
 copyBinary(
-  'bb-agent',
+  'Kordi runtime',
   join(bbAgentRepo, workspaceConfig.bbAgentBinary),
-  `bb-${targetTriple}`
+  `kordi-${targetTriple}`
 );
 
 copyBinary(

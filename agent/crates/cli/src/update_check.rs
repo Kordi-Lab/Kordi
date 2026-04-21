@@ -270,7 +270,7 @@ fn is_newer_version(candidate: &str, current: &str) -> bool {
 
 pub(crate) fn build_update_available_note(notice: &UpdateNotice) -> String {
     let mut lines = vec![format!(
-        "bb update available: {} • use {}",
+        "kordi update available: {} • use {}",
         notice.latest_version, notice.install_command
     )];
     if let Some(changelog_url) = &notice.changelog_url {
@@ -341,7 +341,7 @@ mod tests {
             changelog_url: Some("https://example.com/bb-agent/changelog".to_string()),
         });
 
-        assert!(text.contains("bb update available: 0.65.0"));
+        assert!(text.contains("kordi update available: 0.65.0"));
         assert!(text.contains("npm install -g bb-agent"));
         assert!(text.contains("release notes: https://example.com/bb-agent/changelog"));
     }

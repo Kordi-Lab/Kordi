@@ -162,7 +162,7 @@ pub(super) fn build_device_oauth_dialog(
         steps: vec![
             auth_step("Open verification page", TuiAuthStepState::Done),
             auth_step(
-                "Get the device code from this bb screen",
+                "Get the device code from this Kordi screen",
                 TuiAuthStepState::Done,
             ),
             auth_step(
@@ -170,14 +170,14 @@ pub(super) fn build_device_oauth_dialog(
                 TuiAuthStepState::Active,
             ),
             auth_step(
-                "Wait for bb to finish sign-in automatically",
+                "Wait for Kordi to finish sign-in automatically",
                 TuiAuthStepState::Pending,
             ),
         ],
         url: Some(verification_uri),
         lines: vec![
-            "bb generated the device code for you. Copy the code shown below from this screen and enter it on the GitHub verification page.".to_string(),
-            format!("Device code (from bb): {user_code}"),
+            "Kordi generated the device code for you. Copy the code shown below from this screen and enter it on the GitHub verification page.".to_string(),
+            format!("Device code (from Kordi): {user_code}"),
             "This flow does not use a localhost callback URL.".to_string(),
         ],
         input_label: None,
@@ -197,7 +197,7 @@ pub(super) fn build_copilot_enterprise_dialog() -> TuiAuthDialog {
         url: None,
         lines: vec![
             "Examples: github.acme.com or https://github.acme.com".to_string(),
-            "Press Esc to cancel. Press Enter to save the host target, then bb will open the Copilot auth skeleton."
+            "Press Esc to cancel. Press Enter to save the host target, then Kordi will open the Copilot auth skeleton."
                 .to_string(),
         ],
         input_label: Some("GitHub Enterprise Server domain".to_string()),
