@@ -29,6 +29,20 @@ struct KeysQueryResp {
     x25519_pubkey: String,
 }
 
+/// Contact / peer info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactInfo {
+    #[serde(rename = "nodeId")]
+    pub node_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "ownerName")]
+    pub owner_name: Option<String>,
+    pub runtime: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
 /// Project member info.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemberInfo {
@@ -160,6 +174,63 @@ impl CoordClient {
         resp.json::<Vec<EndpointHint>>()
             .await
             .map_err(|e| format!("parse endpoints: {}", e))
+    }
+
+    /// List same-server contacts visible to this node.
+    #[allow(dead_code)]
+    pub async fn get_contacts(&self) -> Result<Vec<ContactInfo>, String> {
+        let url = format!("{}/v1/contacts", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("get_contacts: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("get_contacts HTTP {}", resp.status()));
+        }
+
+        resp.json::<Vec<ContactInfo>>()
+            .await
+            .map_err(|e| format!("parse contacts: {}", e))
+    }
+
+    /// Add a same-server contact. The current contact model is symmetric.
+    #[allow(dead_code)]
+    pub async fn add_contact(&self, peer_id: &str) -> Result<(), String> {
+        let url = format!("{}/v1/contacts/{}", self.base_url, peer_id);
+        let resp = self
+            .client
+            .put(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("add_contact: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("add_contact HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    /// Remove a same-server contact from both sides.
+    #[allow(dead_code)]
+    pub async fn remove_contact(&self, peer_id: &str) -> Result<(), String> {
+        let url = format!("{}/v1/contacts/{}", self.base_url, peer_id);
+        let resp = self
+            .client
+            .delete(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("remove_contact: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("remove_contact HTTP {}", resp.status()));
+        }
+        Ok(())
     }
 
     /// Get members of a project.

@@ -798,7 +798,7 @@ pub fn cmd_setup(
     }
 
     println!("\nRegistering with {}...", coordination);
-    cmd_register(&coordination, display_name.as_deref());
+    cmd_register(&coordination, display_name.as_deref(), Some(&runtime));
 
     let cfg = DaemonConfig {
         coordination_url: coordination.to_string(),
@@ -885,6 +885,7 @@ fn register_node_with_verifying_key(
     coordination: &str,
     verifying_key: &ed25519_dalek::VerifyingKey,
     display_name: Option<&str>,
+    runtime: Option<&str>,
 ) -> Result<RegisteredNode, String> {
     let node_id = identity::derive_node_id(verifying_key);
     let ed_pub = bs58::encode(verifying_key.as_bytes()).into_string();
@@ -900,6 +901,7 @@ fn register_node_with_verifying_key(
         "ed25519Pubkey": ed_pub,
         "x25519Pubkey": x_pub,
         "displayName": name,
+        "runtime": runtime,
     });
 
     let url = format!("{}/v1/auth/register", coordination.trim_end_matches('/'));
@@ -925,16 +927,17 @@ fn register_node_with_verifying_key(
 }
 
 /// Register with a coordination server and save config.
-pub fn cmd_register(coordination: &str, display_name: Option<&str>) {
+pub fn cmd_register(coordination: &str, display_name: Option<&str>, runtime: Option<&str>) {
     let (_signing_key, verifying_key) = load_identity_or_exit();
     let name = display_name
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| identity::derive_node_id(&verifying_key));
-    let registered = register_node_with_verifying_key(coordination, &verifying_key, Some(&name))
-        .unwrap_or_else(|err| {
-            eprintln!("Failed to register node: {}", err);
-            std::process::exit(1);
-        });
+    let registered =
+        register_node_with_verifying_key(coordination, &verifying_key, Some(&name), runtime)
+            .unwrap_or_else(|err| {
+                eprintln!("Failed to register node: {}", err);
+                std::process::exit(1);
+            });
 
     let cfg = ClientConfig {
         coordination: coordination.to_string(),
@@ -1197,6 +1200,62 @@ pub fn cmd_members(project_id: &str) {
     }
 }
 
+/// List same-server contacts.
+pub fn cmd_contacts_list() {
+    let cfg = ClientConfig::load_or_exit();
+    let client = authed_client(&cfg);
+    let url = format!("{}/v1/contacts", cfg.coordination);
+    let resp = send_or_exit(&client, &url, None, "GET");
+    if !resp.status().is_success() {
+        eprintln!("Contacts failed: HTTP {}", resp.status());
+        std::process::exit(1);
+    }
+    let contacts: Vec<crate::coord_client::ContactInfo> = parse_json_or_exit(resp);
+    if contacts.is_empty() {
+        println!("No same-server contacts yet.");
+        return;
+    }
+    println!("Contacts:");
+    for contact in &contacts {
+        println!(
+            "  {} ({}) [{}]",
+            contact.node_id,
+            contact
+                .display_name
+                .as_deref()
+                .or(contact.owner_name.as_deref())
+                .unwrap_or("?"),
+            contact.runtime.as_deref().unwrap_or("bridge-node")
+        );
+    }
+}
+
+/// Add a same-server contact. The current contact model is symmetric.
+pub fn cmd_contacts_add(node_id: &str) {
+    let cfg = ClientConfig::load_or_exit();
+    let client = authed_client(&cfg);
+    let url = format!("{}/v1/contacts/{}", cfg.coordination, node_id.trim());
+    let resp = send_or_exit(&client, &url, None, "PUT");
+    if !resp.status().is_success() {
+        eprintln!("Add contact failed: HTTP {}", resp.status());
+        std::process::exit(1);
+    }
+    println!("Added contact {}", node_id.trim());
+}
+
+/// Remove a same-server contact from both sides.
+pub fn cmd_contacts_remove(node_id: &str) {
+    let cfg = ClientConfig::load_or_exit();
+    let client = authed_client(&cfg);
+    let url = format!("{}/v1/contacts/{}", cfg.coordination, node_id.trim());
+    let resp = send_or_exit(&client, &url, None, "DELETE");
+    if !resp.status().is_success() {
+        eprintln!("Remove contact failed: HTTP {}", resp.status());
+        std::process::exit(1);
+    }
+    println!("Removed contact {}", node_id.trim());
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct RemoteIdentityStatus {
     #[serde(rename = "nodeId")]
@@ -1350,10 +1409,12 @@ pub fn cmd_identity_rotate() {
 
     println!("Generating replacement identity for {}...", old_node_id);
     let (new_signing, new_verifying) = identity::generate_ephemeral_keypair();
+    let runtime_label = DaemonConfig::load().ok().map(|cfg| cfg.runtime);
     let replacement = register_node_with_verifying_key(
         &cfg.coordination,
         &new_verifying,
         display_name.as_deref(),
+        runtime_label.as_deref(),
     )
     .unwrap_or_else(|err| {
         eprintln!("Failed to register replacement node: {}", err);
