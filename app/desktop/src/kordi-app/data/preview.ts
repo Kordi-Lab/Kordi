@@ -1,4 +1,6 @@
-export const settingsEditPreview = {
+import type { EditFilePreview } from '../types';
+
+export const settingsEditPreview: { files: EditFilePreview[] } = {
   files: [
     {
       path: 'src/KordiApp.tsx',

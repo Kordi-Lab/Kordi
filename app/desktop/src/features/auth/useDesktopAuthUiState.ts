@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
+import type { SettingsSectionId } from '@/kordi-app/data/settings';
+import type { DesktopAuthProvider, DesktopAuthState, NavId } from '@/kordi-app/types';
 
 type UseDesktopAuthUiStateArgs = {
   isNativeShell: boolean;
-  activeNav: string;
-  activeSettingsSectionId: string;
+  activeNav: NavId;
+  activeSettingsSectionId: SettingsSectionId;
   desktopAuthState: DesktopAuthState | null;
   isDesktopAuthLoading: boolean;
-  setActiveNav: (nav: string) => void;
-  setActiveSettingsSectionId: (sectionId: string) => void;
+  setActiveNav: (nav: NavId) => void;
+  setActiveSettingsSectionId: (sectionId: SettingsSectionId) => void;
   setActiveLoginProviderId: (providerId: string) => void;
   clearDesktopAuthError: () => void;
 };

@@ -55,42 +55,44 @@ export function useComposerViewModel({
       return first?.trim() || null;
     };
 
-    return displayProviders.flatMap((provider) => {
-      let oauthIndex = 0;
-      let apiIndex = 0;
-      const providerOptions = provider.methods.flatMap((method) =>
-        method.options.map((option) => {
-          const index = method.mode === 'oauth' ? ++oauthIndex : ++apiIndex;
-          const oauthId = accountSuffix(option.accountLabel) ?? profileSuffix(option.profileId) ?? `${index}`;
-          const oauthExtra = detailIdentity(option.detail);
-          const identity = method.mode === 'oauth'
-            ? [`oauth id ${oauthId}`, oauthExtra].filter(Boolean).join(' • ')
-            : (option.profileId ? `api id ${profileSuffix(option.profileId)}` : detailIdentity(option.detail)) ?? `api id ${index}`;
+    return displayProviders
+      .flatMap<ComposerProviderOption>((provider) => {
+        let oauthIndex = 0;
+        let apiIndex = 0;
+        const providerOptions: ComposerProviderOption[] = provider.methods.flatMap((method) =>
+          method.options.map((option) => {
+            const index = method.mode === 'oauth' ? ++oauthIndex : ++apiIndex;
+            const oauthId = accountSuffix(option.accountLabel) ?? profileSuffix(option.profileId) ?? `${index}`;
+            const oauthExtra = detailIdentity(option.detail);
+            const identity = method.mode === 'oauth'
+              ? [`oauth id ${oauthId}`, oauthExtra].filter(Boolean).join(' • ')
+              : (option.profileId ? `api id ${profileSuffix(option.profileId)}` : detailIdentity(option.detail)) ?? `api id ${index}`;
 
-          return {
-            value: `${provider.id}::${option.value}`,
-            providerId: provider.id,
-            label: method.title,
-            detail: identity,
-            selectionLabel: `${method.title} • ${method.mode === 'oauth' ? `oauth id ${oauthId}` : identity}`.trim(),
-            active: option.active,
-          } satisfies ComposerProviderOption;
-        }),
-      );
+            return {
+              value: `${provider.id}::${option.value}`,
+              providerId: provider.id,
+              label: method.title,
+              detail: identity,
+              selectionLabel: `${method.title} • ${method.mode === 'oauth' ? `oauth id ${oauthId}` : identity}`.trim(),
+              active: option.active,
+            };
+          }),
+        );
 
-      if (providerOptions.length > 0) {
-        return providerOptions;
-      }
+        if (providerOptions.length > 0) {
+          return providerOptions;
+        }
 
-      return [{
-        value: provider.id,
-        providerId: provider.id,
-        label: provider.label,
-        detail: null,
-        selectionLabel: provider.label,
-        active: false,
-      } satisfies ComposerProviderOption];
-    }).filter((option) => providerLabels.has(option.providerId) || chatModelOptions.some((model) => model.provider === option.providerId));
+        return [{
+          value: provider.id,
+          providerId: provider.id,
+          label: provider.label,
+          detail: null,
+          selectionLabel: provider.label,
+          active: false,
+        }];
+      })
+      .filter((option) => providerLabels.has(option.providerId) || chatModelOptions.some((model) => model.provider === option.providerId));
   }, [chatModelOptions, desktopAuthState]);
 
   const preferredModelValueForProvider = useCallback((providerId: string) => {
@@ -137,7 +139,7 @@ export function useComposerViewModel({
         const rightIsCurrent = right.id === providerId;
         return Number(rightIsCurrent) - Number(leftIsCurrent);
       });
-      const options = orderedProviders.flatMap((provider) =>
+      const options: ComposerAuthOption[] = orderedProviders.flatMap((provider) =>
         provider.methods.flatMap((method) =>
           method.options.map((option) => ({
             providerId: option.providerId,

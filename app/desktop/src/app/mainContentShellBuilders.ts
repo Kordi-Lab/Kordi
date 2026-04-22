@@ -25,22 +25,27 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onSelectBridgeHost: (hostId) => {
       void args.handleSelectBridgeHost(hostId);
     },
-    onOpenBridgeWizard: args.openBridgeWizard,
     onCreateBridgeDraft: args.handleCreateBridgeDraft,
-    onStartLocalHost: args.handleStartLocalBridgeHost,
-    onStopLocalHost: args.handleStopLocalBridgeHost,
     onRefreshBridge: () => {
       void args.refreshDesktopBridge();
     },
-    onSaveBridgeSettings: () => {
-      void args.handleSaveBridgeSettings();
+    onSaveBridgeSettings: (draftOverride) => {
+      void args.handleSaveBridgeSettings(draftOverride);
     },
-    onRemoveBridgeHost: (hostId) => {
-      void args.handleRemoveBridgeHost(hostId);
-    },
+    onRemoveBridgeHost: (hostId) => args.handleRemoveBridgeHost(hostId),
     onCopyBridgeText: (value, successMessage) => {
-      void args.handleCopyBridgeText(value, successMessage);
+      void args.handleCopyBridgeText(value, successMessage ?? 'Copied to clipboard');
     },
+    onOpenBridgeConfigFolder: args.handleOpenBridgeConfigFolder,
+    onRevealBridgeStorageFile: args.handleRevealBridgeStorageFile,
+    onExportBridgeHostsConfig: args.handleExportBridgeHostsConfig,
+    onImportBridgeHostsConfig: args.handleImportBridgeHostsConfig,
+    onAddBridgeContact: args.handleAddBridgeContact,
+    onSetBridgeDiscoveryMode: args.handleSetBridgeDiscoveryMode,
+    onCreateBridgeAgent: args.handleCreateBridgeAgent,
+    onActivateBridgeAgent: args.handleActivateBridgeAgent,
+    onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
+    onRemoveBridgeContact: args.handleRemoveBridgeContact,
     onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime) => {
       void args.handleOpenBridgeConversation(hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime);
     },
@@ -65,8 +70,6 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,
     onRenameDesktopSession: args.handleRenameDesktopSession,
-    activeProjectBridgeHost: args.activeProjectBridgeHost,
-    activeProjectBridgeProject: args.activeProjectBridgeProject,
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     onTranscriptScroll: args.onProjectTranscriptScroll,
     onOpenSource: (file) => {
