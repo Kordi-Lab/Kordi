@@ -104,6 +104,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
   const latestDesktopRefreshRequestRef = useRef(0);
   const visibleLocalSessionIdRef = useRef<string | null>(null);
+  const desktopLiveTurnsBySessionRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
+  const hasLoadedInitialDesktopChatRef = useRef(false);
 
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
   const [isDesktopChatLoading, setIsDesktopChatLoading] = useState(isNativeShell);
@@ -124,6 +126,10 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     ));
   }, []);
 
+  useEffect(() => {
+    desktopLiveTurnsBySessionRef.current = desktopLiveTurnsBySession;
+  }, [desktopLiveTurnsBySession]);
+
   const setVisibleLocalSessionId = useCallback((sessionId?: string | null) => {
     visibleLocalSessionIdRef.current = sessionId ?? null;
     clearUnreadForSession(sessionId);
@@ -140,13 +146,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (targetSessionId && nextState.activeSessionId !== targetSessionId) return;
 
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
-    const activeLiveTurn = desktopLiveTurnsBySession[nextState.activeSessionId];
+    const activeLiveTurn = desktopLiveTurnsBySessionRef.current[nextState.activeSessionId];
     setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
     if (visibleLocalSessionIdRef.current === nextState.activeSessionId) {
       clearUnreadForSession(nextState.activeSessionId);
     }
     setDesktopChatError(null);
-  }, [clearUnreadForSession, desktopLiveTurnsBySession]);
+  }, [clearUnreadForSession]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -195,11 +201,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (!isNativeShell) return;
 
     let cancelled = false;
-    setIsDesktopChatLoading(true);
-    fetchDesktopChatState()
+    if (!hasLoadedInitialDesktopChatRef.current) {
+      setIsDesktopChatLoading(true);
+    }
+    fetchDesktopChatState(latestDesktopSessionIdRef.current)
       .then((state) => {
         if (cancelled || !state) return;
-        const activeLiveTurn = desktopLiveTurnsBySession[state.activeSessionId];
+        const activeLiveTurn = desktopLiveTurnsBySessionRef.current[state.activeSessionId];
         setDesktopChatState((current) => mergeLatestDesktopChatState(current, state, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
         if (visibleLocalSessionIdRef.current === state.activeSessionId) {
           clearUnreadForSession(state.activeSessionId);
@@ -211,15 +219,15 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to load chat sessions');
       })
       .finally(() => {
-        if (!cancelled) {
-          setIsDesktopChatLoading(false);
-        }
+        if (cancelled) return;
+        hasLoadedInitialDesktopChatRef.current = true;
+        setIsDesktopChatLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [clearUnreadForSession, desktopLiveTurnsBySession, isNativeShell]);
+  }, [clearUnreadForSession, isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;

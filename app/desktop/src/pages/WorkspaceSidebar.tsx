@@ -213,7 +213,6 @@ export function WorkspaceSidebar({
   setChatSearch,
   chatFilter,
   setChatFilter,
-  isDesktopChatLoading,
   desktopChatError,
   filteredConversations,
   activeConvId,
@@ -359,11 +358,6 @@ export function WorkspaceSidebar({
                     </div>
                   </div>
 
-                  {isDesktopChatLoading ? (
-                    <div className="mb-2 rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] text-slate-300">
-                      Loading real chat sessions…
-                    </div>
-                  ) : null}
                   {desktopChatError ? (
                     <div className="mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
                       {desktopChatError}
