@@ -355,6 +355,78 @@
   background-color: rgba(251, 191, 36, 0.18) !important;
 }
 
+.bridge-app.theme-light .app-transcript-live-status {
+  color: rgb(88 102 119) !important;
+}
+
+.bridge-app.theme-light .app-transcript-live-status span {
+  color: rgb(71 85 105) !important;
+}
+
+.bridge-app.theme-light .app-transcript-block-label,
+.bridge-app.theme-light .app-transcript-section-meta {
+  color: rgb(100 116 139) !important;
+}
+
+.bridge-app.theme-light .app-transcript-section-title {
+  color: rgb(30 41 59) !important;
+}
+
+.bridge-app.theme-light .app-transcript-section-toggle {
+  color: rgb(88 102 119) !important;
+}
+
+.bridge-app.theme-light .app-transcript-wrap-toggle {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.05) !important;
+  color: rgb(71 85 105) !important;
+}
+
+.bridge-app.theme-light .app-transcript-wrap-toggle:hover {
+  background: rgba(15, 23, 42, 0.08) !important;
+  color: rgb(30 41 59) !important;
+}
+
+.bridge-app.theme-light .app-transcript-utility-chip {
+  background: rgba(15, 23, 42, 0.06) !important;
+  color: rgb(88 102 119) !important;
+}
+
+.bridge-app.theme-light .app-transcript-tool-badge {
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-transcript-tool-badge-neutral {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(15, 23, 42, 0.05) !important;
+  color: rgb(100 116 139) !important;
+}
+
+.bridge-app.theme-light .app-transcript-tool-badge-done {
+  border-color: rgba(5, 150, 105, 0.16) !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+  color: rgb(6 95 70) !important;
+}
+
+.bridge-app.theme-light .app-transcript-tool-badge-error {
+  border-color: rgba(225, 29, 72, 0.16) !important;
+  background: rgba(244, 63, 94, 0.08) !important;
+  color: rgb(159 18 57) !important;
+}
+
+.bridge-app.theme-light .app-markdown-muted-heading {
+  color: rgb(71 85 105) !important;
+}
+
+.bridge-app.theme-light .app-markdown-muted-copy {
+  color: rgb(88 102 119) !important;
+}
+
+.bridge-app.theme-light .app-markdown-muted-quote {
+  border-color: rgba(100, 116, 139, 0.18) !important;
+  color: rgb(100 116 139) !important;
+}
+
 @layer utilities {
   .bg-background {
     background-color: var(--utility-background, rgb(6 16 31));
