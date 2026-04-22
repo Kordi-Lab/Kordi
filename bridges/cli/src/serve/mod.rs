@@ -1,4 +1,6 @@
 pub mod auth;
+pub mod contacts;
+pub mod discovery;
 pub mod endpoints;
 pub mod invites;
 pub mod keys;
@@ -51,6 +53,16 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
     conn.execute_batch(SERVER_SCHEMA)
         .map_err(ServerInitError::Schema)?;
 
+    add_column_if_missing(conn, "registered_nodes", "runtime", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "human_id", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "agent_id", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "discovery_mode", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        "registered_nodes",
+        "is_default_agent",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     add_column_if_missing(conn, "registered_nodes", "endpoint_hints", "TEXT")?;
     add_column_if_missing(conn, "registered_nodes", "revoked_at", "TEXT")?;
     add_column_if_missing(conn, "registered_nodes", "revocation_reason", "TEXT")?;
@@ -111,6 +123,11 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             x25519_pubkey       TEXT NOT NULL,
             display_name        TEXT,
             owner_name          TEXT,
+            runtime             TEXT,
+            human_id            TEXT,
+            agent_id            TEXT,
+            discovery_mode      TEXT,
+            is_default_agent    INTEGER NOT NULL DEFAULT 0,
             api_key_hash        TEXT NOT NULL,
             endpoint_hints      TEXT,
             revoked_at          TEXT,
@@ -125,6 +142,11 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             x25519_pubkey,
             display_name,
             owner_name,
+            runtime,
+            human_id,
+            agent_id,
+            discovery_mode,
+            is_default_agent,
             api_key_hash,
             endpoint_hints,
             revoked_at,
@@ -138,6 +160,11 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             x25519_pubkey,
             display_name,
             owner_name,
+            NULL,
+            NULL,
+            NULL,
+            'open',
+            0,
             api_key_hash,
             endpoint_hints,
             revoked_at,
@@ -220,6 +247,8 @@ pub fn router(state: Arc<ServerState>) -> Router {
 
     Router::new()
         .merge(auth::routes(state.clone()))
+        .merge(contacts::routes(state.clone()))
+        .merge(discovery::routes(state.clone()))
         .merge(keys::routes(state.clone()))
         .merge(endpoints::routes(state.clone()))
         .merge(projects::routes(state.clone()))
@@ -251,6 +280,37 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
         .map_err(|e| format!("serve: {}", e))
 }
 
+pub(crate) fn nodes_share_project_or_contact(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    if left_node_id == right_node_id {
+        return Ok(true);
+    }
+
+    let shares_project = conn
+        .query_row(
+            "SELECT 1 FROM server_members m1 \
+             JOIN server_members m2 ON m1.project_id = m2.project_id \
+             WHERE m1.node_id = ?1 AND m2.node_id = ?2 LIMIT 1",
+            rusqlite::params![left_node_id, right_node_id],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if shares_project {
+        return Ok(true);
+    }
+
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM server_contacts WHERE node_id = ?1 AND contact_node_id = ?2 LIMIT 1",
+            rusqlite::params![left_node_id, right_node_id],
+            |_| Ok(()),
+        )
+        .is_ok())
+}
+
 const SERVER_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS registered_nodes (
     node_id             TEXT PRIMARY KEY,
@@ -258,12 +318,24 @@ CREATE TABLE IF NOT EXISTS registered_nodes (
     x25519_pubkey       TEXT NOT NULL,
     display_name        TEXT,
     owner_name          TEXT,
+    runtime             TEXT,
+    human_id            TEXT,
+    agent_id            TEXT,
+    discovery_mode      TEXT,
+    is_default_agent    INTEGER NOT NULL DEFAULT 0,
     api_key_hash        TEXT NOT NULL,
     endpoint_hints      TEXT,
     revoked_at          TEXT,
     revocation_reason   TEXT,
     replacement_node_id TEXT,
     created_at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_contacts (
+    node_id             TEXT NOT NULL,
+    contact_node_id     TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    PRIMARY KEY (node_id, contact_node_id)
 );
 
 CREATE TABLE IF NOT EXISTS server_projects (
@@ -310,6 +382,9 @@ CREATE TABLE IF NOT EXISTS server_mailbox (
     project_id      TEXT,
     created_at      TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
+    ON server_contacts (node_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
     ON server_mailbox (target_node_id, created_at);

@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::auth::{auth_middleware, extract_node_id, AuthNode};
-use super::ServerState;
+use super::{nodes_share_project_or_contact, ServerState};
 
 /// Relay request: opaque message blob only.
 /// For mailbox/direct relay, the server routes the blob without understanding its body.
@@ -26,7 +26,7 @@ pub struct RelayReq {
     pub blob: String,
     /// Optional project ID for authorization-aware decrypt/key lookup on clients.
     #[serde(rename = "projectId")]
-    pub _project_id: Option<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -114,17 +114,41 @@ async fn relay_message(
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
 
+    let mut db = state
+        .open_connection()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let sender_node_id = auth.0;
+    let target_node_id = req.target_node_id;
+    let allowed = if let Some(project_id) = req
+        .project_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        db.query_row(
+            "SELECT 1 FROM server_members m1 \
+             JOIN server_members m2 ON m1.project_id = m2.project_id \
+             WHERE m1.project_id = ?1 AND m1.node_id = ?2 AND m2.node_id = ?3 LIMIT 1",
+            params![project_id, &sender_node_id, &target_node_id],
+            |_| Ok(()),
+        )
+        .is_ok()
+    } else {
+        nodes_share_project_or_contact(&db, &sender_node_id, &target_node_id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    if !allowed {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     let entry = MailboxEntry {
-        from: auth.0,
+        from: sender_node_id,
         blob: req.blob,
         project_id: None,
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let mut db = state
-        .open_connection()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let delivered = enqueue_mailbox_entry(&mut db, &req.target_node_id, &entry)
+    let delivered = enqueue_mailbox_entry(&mut db, &target_node_id, &entry)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if !delivered {
         return Err(StatusCode::TOO_MANY_REQUESTS);
@@ -132,7 +156,7 @@ async fn relay_message(
 
     Ok(Json(RelayResp {
         delivered: true,
-        message: format!("queued for {}", req.target_node_id),
+        message: format!("queued for {}", target_node_id),
     }))
 }
 
@@ -403,7 +427,7 @@ mod tests {
             Json(RelayReq {
                 target_node_id: "receiver".to_string(),
                 blob: "hello".to_string(),
-                _project_id: Some("proj_1".to_string()),
+                project_id: Some("proj_1".to_string()),
             }),
         )
         .await
@@ -436,7 +460,7 @@ mod tests {
                 Json(RelayReq {
                     target_node_id: "receiver".to_string(),
                     blob: blob.to_string(),
-                    _project_id: None,
+                    project_id: None,
                 }),
             )
             .await

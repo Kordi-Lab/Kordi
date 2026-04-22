@@ -44,6 +44,15 @@ pub struct RegisterReq {
     pub display_name: Option<String>,
     #[serde(rename = "ownerName")]
     pub owner_name: Option<String>,
+    pub runtime: Option<String>,
+    #[serde(rename = "humanId")]
+    pub human_id: Option<String>,
+    #[serde(rename = "agentId")]
+    pub agent_id: Option<String>,
+    #[serde(rename = "discoveryMode")]
+    pub discovery_mode: Option<String>,
+    #[serde(rename = "isDefaultAgent")]
+    pub is_default_agent: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -98,6 +107,11 @@ struct ValidatedRegisterReq {
     x25519_pubkey: String,
     display_name: Option<String>,
     owner_name: Option<String>,
+    runtime: Option<String>,
+    human_id: Option<String>,
+    agent_id: Option<String>,
+    discovery_mode: String,
+    is_default_agent: bool,
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -136,12 +150,24 @@ fn validate_register_req(req: &RegisterReq) -> Result<ValidatedRegisterReq, Stat
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    let discovery_mode = normalize_optional_text(req.discovery_mode.as_deref())
+        .unwrap_or_else(|| "open".to_string())
+        .to_lowercase();
+    if !matches!(discovery_mode.as_str(), "off" | "contacts" | "open") {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     Ok(ValidatedRegisterReq {
         node_id: derived_node_id,
         ed25519_pubkey: bs58::encode(ed_pub_bytes).into_string(),
         x25519_pubkey: hex::encode(expected_x25519),
         display_name: normalize_optional_text(req.display_name.as_deref()),
         owner_name: normalize_optional_text(req.owner_name.as_deref()),
+        runtime: normalize_optional_text(req.runtime.as_deref()),
+        human_id: normalize_optional_text(req.human_id.as_deref()),
+        agent_id: normalize_optional_text(req.agent_id.as_deref()),
+        discovery_mode,
+        is_default_agent: req.is_default_agent.unwrap_or(false),
     })
 }
 
@@ -196,10 +222,15 @@ async fn register(
         }
 
         db.execute(
-            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, api_key_hash = ?3 WHERE node_id = ?4",
+            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, runtime = ?3, human_id = ?4, agent_id = ?5, discovery_mode = ?6, is_default_agent = ?7, api_key_hash = ?8 WHERE node_id = ?9",
             rusqlite::params![
                 validated.display_name,
                 validated.owner_name,
+                validated.runtime,
+                validated.human_id,
+                validated.agent_id,
+                validated.discovery_mode,
+                if validated.is_default_agent { 1 } else { 0 },
                 key_hash,
                 validated.node_id,
             ],
@@ -208,14 +239,19 @@ async fn register(
     } else {
         db.execute(
             "INSERT INTO registered_nodes \
-             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, api_key_hash, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, discovery_mode, is_default_agent, api_key_hash, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 validated.node_id,
                 validated.ed25519_pubkey,
                 validated.x25519_pubkey,
                 validated.display_name,
                 validated.owner_name,
+                validated.runtime,
+                validated.human_id,
+                validated.agent_id,
+                validated.discovery_mode,
+                if validated.is_default_agent { 1 } else { 0 },
                 key_hash,
                 now,
             ],
@@ -497,6 +533,11 @@ mod tests {
             x25519_pubkey: hex::encode(x25519),
             display_name: Some("node".to_string()),
             owner_name: Some("owner".to_string()),
+            runtime: Some("generic".to_string()),
+            human_id: Some("kh_test_owner".to_string()),
+            agent_id: Some("ka_test_agent".to_string()),
+            discovery_mode: Some("open".to_string()),
+            is_default_agent: Some(true),
         }
     }
 

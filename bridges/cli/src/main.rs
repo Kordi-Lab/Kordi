@@ -149,6 +149,11 @@ enum Commands {
         #[arg(short, long)]
         project: String,
     },
+    /// Manage same-server contacts that can communicate without a shared project
+    Contacts {
+        #[command(subcommand)]
+        action: ContactAction,
+    },
     /// Ask another agent a question
     Ask {
         /// Target node ID or project-scoped selector (display name, `owner`, or `role:<role>`)
@@ -214,6 +219,16 @@ enum IdentityAction {
         #[arg(long)]
         reason: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum ContactAction {
+    /// List current same-server contacts
+    List,
+    /// Add a same-server contact by node ID
+    Add { node_id: String },
+    /// Remove a same-server contact by node ID
+    Remove { node_id: String },
 }
 
 #[derive(Subcommand)]
@@ -314,7 +329,8 @@ fn main() {
             }
         },
         Commands::Register { coordination } => {
-            commands::cmd_register(&coordination, None);
+            let runtime_label = config::DaemonConfig::load().ok().map(|cfg| cfg.runtime);
+            commands::cmd_register(&coordination, None, runtime_label.as_deref());
         }
         Commands::Setup {
             coordination,
@@ -343,6 +359,11 @@ fn main() {
         Commands::Members { project } => {
             commands::cmd_members(&project);
         }
+        Commands::Contacts { action } => match action {
+            ContactAction::List => commands::cmd_contacts_list(),
+            ContactAction::Add { node_id } => commands::cmd_contacts_add(&node_id),
+            ContactAction::Remove { node_id } => commands::cmd_contacts_remove(&node_id),
+        },
         Commands::Ask {
             node_id,
             question,

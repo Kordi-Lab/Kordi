@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::auth::{auth_middleware, AuthNode};
-use super::ServerState;
+use super::{nodes_share_project_or_contact, ServerState};
 
 #[derive(Debug, Serialize)]
 pub struct KeysResp {
@@ -44,8 +44,8 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
-/// Get a specific node's public keys. Requires auth — caller must share
-/// at least one project with the target node.
+/// Get a specific node's public keys. Requires auth — caller must either
+/// share a project with the target node or have a contact relationship.
 async fn get_keys(
     State(state): State<Arc<ServerState>>,
     Extension(auth): Extension<AuthNode>,
@@ -65,14 +65,8 @@ async fn get_keys(
         )
         .is_ok()
     } else {
-        db.query_row(
-            "SELECT 1 FROM server_members m1 \
-             JOIN server_members m2 ON m1.project_id = m2.project_id \
-             WHERE m1.node_id = ?1 AND m2.node_id = ?2 LIMIT 1",
-            rusqlite::params![auth.0, node_id],
-            |_| Ok(()),
-        )
-        .is_ok()
+        nodes_share_project_or_contact(&db, &auth.0, &node_id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     if !allowed {
         return Err(StatusCode::FORBIDDEN);
