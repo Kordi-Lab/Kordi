@@ -24,17 +24,19 @@ function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, fi
   };
 }
 
-function notifyBackgroundSessionCompletion(sessionTitle: string, turn: DesktopChatTurnSnapshot) {
+function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
   if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
   if (Notification.permission !== 'granted') return;
 
-  const preview = turn.assistantText.trim() || turn.error?.trim() || 'Background session finished.';
-  const body = preview.length > 140 ? `${preview.slice(0, 137)}…` : preview;
-  const prefix = turn.succeeded ? 'Finished' : turn.status === 'cancelled' ? 'Stopped' : 'Needs attention';
+  const title = turn.succeeded
+    ? 'Kordi: Background session finished'
+    : turn.status === 'cancelled'
+      ? 'Kordi: Background session stopped'
+      : 'Kordi: Background session needs attention';
 
-  new Notification(`${prefix}: ${sessionTitle}`, {
-    body,
+  new Notification(title, {
+    body: 'Open Kordi to review the update.',
     tag: `kordi-session-${turn.sessionId}`,
   });
 }
@@ -42,7 +44,6 @@ function notifyBackgroundSessionCompletion(sessionTitle: string, turn: DesktopCh
 export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDesktopChatStateArgs) {
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
   const latestDesktopRefreshRequestRef = useRef(0);
-  const sessionTitleByIdRef = useRef<Record<string, string>>({});
   const visibleLocalSessionIdRef = useRef<string | null>(null);
 
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
@@ -91,10 +92,6 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
   useEffect(() => {
     if (!desktopChatState) return;
-
-    sessionTitleByIdRef.current = Object.fromEntries(
-      desktopChatState.sessions.map((session) => [session.id, session.title]),
-    );
 
     const knownSessionIds = new Set(desktopChatState.sessions.map((session) => session.id));
     setLocalSessionUnreadCounts((current) => {
@@ -238,10 +235,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         ...current,
         [turn.sessionId]: (current[turn.sessionId] ?? 0) + 1,
       }));
-      notifyBackgroundSessionCompletion(
-        sessionTitleByIdRef.current[turn.sessionId] ?? 'Kordi session',
-        turn,
-      );
+      notifyBackgroundSessionCompletion(turn);
     } else {
       clearUnreadForSession(turn.sessionId);
     }
