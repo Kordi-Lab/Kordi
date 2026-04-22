@@ -51,6 +51,12 @@ export type Message = {
   };
 };
 
+export type SessionStatusIndicator = {
+  label: string;
+  tone: 'running' | 'ready' | 'draft' | 'error' | 'stopped';
+  live?: boolean;
+};
+
 export type Conversation = {
   id: string;
   name: string;
@@ -63,6 +69,7 @@ export type Conversation = {
   participants: string[];
   messages: Message[];
   updatedAtLabel?: string;
+  statusIndicator?: SessionStatusIndicator;
 };
 
 export type Contact = {
@@ -126,6 +133,7 @@ export type ProjectSession = {
   artifacts: number;
   tasks: number;
   unread: number;
+  statusIndicator?: SessionStatusIndicator;
   messages: Message[];
 };
 

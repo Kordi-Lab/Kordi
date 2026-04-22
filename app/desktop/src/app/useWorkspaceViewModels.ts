@@ -9,8 +9,10 @@ import type {
   DesktopBridgeState,
   DesktopChatMessage,
   DesktopChatState,
+  DesktopChatTurnSnapshot,
   Message,
   Project,
+  SessionStatusIndicator,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 
@@ -21,6 +23,7 @@ type UseWorkspaceViewModelsArgs = {
   desktopBridgeState: DesktopBridgeState | null;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
+  activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
@@ -33,6 +36,7 @@ type UseWorkspaceViewModelsArgs = {
   cachedChatSessionMessages: Record<string, Message[]>;
   cachedProjectSessionMessages: Record<string, Message[]>;
   localSessionUnreadCounts: Record<string, number>;
+  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
 
@@ -52,6 +56,48 @@ function normalizeBridgeProjectKey(value?: string | null) {
   return (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function truncateInlineText(value: string, maxChars = 96) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function buildConversationPreview(messages: Message[], fallback?: string) {
+  const latestMessage = [...messages]
+    .reverse()
+    .find((message) => message.role !== 'system' && message.text.trim().length > 0);
+
+  if (latestMessage) {
+    return truncateInlineText(latestMessage.text);
+  }
+
+  return truncateInlineText(fallback ?? '', 72);
+}
+
+function buildSessionStatusIndicator({
+  unreadCount,
+  showBackgroundActivity,
+  liveTurn,
+}: {
+  unreadCount: number;
+  showBackgroundActivity: boolean;
+  liveTurn?: DesktopChatTurnSnapshot;
+}): SessionStatusIndicator | undefined {
+  if (showBackgroundActivity && liveTurn && !liveTurn.completed) {
+    if (liveTurn.status === 'cancelling') {
+      return { label: 'Stopping', tone: 'stopped', live: true };
+    }
+
+    return { label: 'Running', tone: 'running', live: true };
+  }
+
+  if (unreadCount > 0) {
+    return { label: 'Unread', tone: 'ready' };
+  }
+
+  return undefined;
+}
+
 export function findBridgeProjectForWorkspace(host: DesktopBridgeHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
   if (!host) return null;
   const rootLeaf = (projectRoot ?? '').split(/[\\/]/).filter(Boolean).pop() ?? '';
@@ -69,6 +115,7 @@ export function useWorkspaceViewModels({
   desktopBridgeState,
   projectWorkspaces,
   projectSelectedSessionIds,
+  activeNav,
   activeConvId,
   activeProjectId,
   activeProjectSessionId,
@@ -81,6 +128,7 @@ export function useWorkspaceViewModels({
   cachedChatSessionMessages,
   cachedProjectSessionMessages,
   localSessionUnreadCounts,
+  desktopLiveTurnsBySession,
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
   const localChatConversations = useMemo(() => {
@@ -90,26 +138,34 @@ export function useWorkspaceViewModels({
 
     return desktopChatState.sessions.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
+      const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
         ? mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages)
-        : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.subtitle, time: session.updatedAtLabel }];
+        : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
+      const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
+      const statusIndicator = buildSessionStatusIndicator({
+        unreadCount,
+        showBackgroundActivity: !isVisibleSession,
+        liveTurn: desktopLiveTurnsBySession[session.id],
+      });
 
       return {
         id: session.id,
         name: session.title,
         type: 'owned-agent' as const,
-        subtitle: session.subtitle,
-        unread: localSessionUnreadCounts[session.id] ?? 0,
+        subtitle: buildConversationPreview(activeMessages, session.subtitle),
+        unread: unreadCount,
         bridges: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
         participants: ['You', 'Kordi'],
         messages: activeMessages,
         updatedAtLabel: session.updatedAtLabel,
+        statusIndicator,
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [cachedChatSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -390,23 +446,35 @@ export function useWorkspaceViewModels({
       sharedContext: project.summary,
       backgroundSystem: project.backgroundSystem ?? undefined,
       sharedSources: project.sharedSources,
-      sessions: project.sessions.map((session) => ({
-        id: session.id,
-        name: session.title,
-        summary: session.subtitle,
-        lastActive: session.updatedAtLabel,
-        status: session.draft ? 'Draft' : 'Active',
-        participants: ['You', 'Kordi'],
-        artifacts: project.sharedSources.length,
-        tasks: 0,
-        unread: localSessionUnreadCounts[session.id] ?? 0,
-        messages:
+      sessions: project.sessions.map((session) => {
+        const messages =
           desktopChatState.activeSessionId === session.id
             ? mapDesktopMessages(session.id, desktopChatState.activeSession.messages)
-            : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.subtitle, time: session.updatedAtLabel }],
-      })),
+            : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
+
+        const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
+        const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
+
+        return {
+          id: session.id,
+          name: session.title,
+          summary: buildConversationPreview(messages, session.subtitle),
+          lastActive: session.updatedAtLabel,
+          status: session.draft ? 'Draft' : 'Active',
+          participants: ['You', 'Kordi'],
+          artifacts: project.sharedSources.length,
+          tasks: 0,
+          unread: unreadCount,
+          statusIndicator: buildSessionStatusIndicator({
+            unreadCount,
+            showBackgroundActivity: !isVisibleSession,
+            liveTurn: desktopLiveTurnsBySession[session.id],
+          }),
+          messages,
+        };
+      }),
     }));
-  }, [cachedProjectSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
