@@ -68,6 +68,23 @@ fn test_convert_messages_for_anthropic_tool_result() {
 }
 
 #[test]
+fn test_convert_messages_for_anthropic_error_tool_result_preserves_error_flag() {
+    let messages = vec![json!({
+        "role": "tool",
+        "tool_call_id": "call_123",
+        "content": "Error: command timed out",
+        "is_error": true
+    })];
+    let result = convert_messages_for_anthropic(&messages);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0]["role"], "user");
+    let content = result[0]["content"].as_array().unwrap();
+    assert_eq!(content[0]["type"], "tool_result");
+    assert_eq!(content[0]["tool_use_id"], "call_123");
+    assert_eq!(content[0]["is_error"], true);
+}
+
+#[test]
 fn test_convert_messages_for_openai_tool_use() {
     let messages = vec![json!({
         "role": "assistant",
@@ -100,6 +117,22 @@ fn test_convert_messages_for_openai_tool_result() {
     assert_eq!(result.len(), 1);
     assert_eq!(result[0]["role"], "tool");
     assert_eq!(result[0]["tool_call_id"], "toolu_abc");
+}
+
+#[test]
+fn test_convert_messages_for_openai_tool_result_strips_error_flag() {
+    let messages = vec![json!({
+        "role": "tool",
+        "tool_call_id": "toolu_abc",
+        "content": "timed out",
+        "is_error": true
+    })];
+    let result = convert_messages_for_openai(&messages);
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0]["role"], "tool");
+    assert_eq!(result[0]["tool_call_id"], "toolu_abc");
+    assert_eq!(result[0]["content"], "timed out");
+    assert!(result[0].get("is_error").is_none());
 }
 
 #[test]

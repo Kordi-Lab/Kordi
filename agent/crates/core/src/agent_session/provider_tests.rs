@@ -211,6 +211,41 @@ fn orphan_and_duplicate_tool_results_are_repaired_deterministically() {
 }
 
 #[test]
+fn errored_tool_results_preserve_error_flag_for_provider_conversion() {
+    let messages = vec![
+        AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::ToolCall {
+                id: "call_1".to_string(),
+                name: "bash".to_string(),
+                arguments: serde_json::json!({"command": "sleep 5"}),
+            }],
+            provider: "openai".to_string(),
+            model: "gpt".to_string(),
+            usage: Usage::default(),
+            stop_reason: StopReason::ToolUse,
+            error_message: None,
+            timestamp: 0,
+        }),
+        AgentMessage::ToolResult(ToolResultMessage {
+            tool_call_id: "call_1".to_string(),
+            tool_name: "bash".to_string(),
+            content: vec![ContentBlock::Text {
+                text: "Error: command timed out".to_string(),
+            }],
+            details: None,
+            is_error: true,
+            timestamp: 1,
+        }),
+    ];
+
+    let provider_messages = messages_to_provider(&messages);
+    assert_eq!(provider_messages.len(), 2);
+    assert_eq!(provider_messages[1]["role"], "tool");
+    assert_eq!(provider_messages[1]["tool_call_id"], "call_1");
+    assert_eq!(provider_messages[1]["is_error"], true);
+}
+
+#[test]
 fn tool_result_images_are_preserved_for_provider_conversion() {
     let messages = vec![
         AgentMessage::Assistant(AssistantMessage {

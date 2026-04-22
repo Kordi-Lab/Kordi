@@ -142,11 +142,15 @@ pub(super) fn validate_and_repair_messages_for_provider(
                     continue;
                 }
 
-                provider_messages.push(json!({
+                let mut provider_message = json!({
                     "role": "tool",
                     "tool_call_id": pending.full_id,
                     "content": provider_tool_result_content(&tool_result.content),
-                }));
+                });
+                if tool_result.is_error {
+                    provider_message["is_error"] = json!(true);
+                }
+                provider_messages.push(provider_message);
             }
             AgentMessage::Custom(custom) => {
                 flush_pending_tool_results(
