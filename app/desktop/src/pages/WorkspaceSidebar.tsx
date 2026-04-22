@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, NavId } from '@/kordi-app/types';
+import type { ChatFilter, ContactClass, NavId, SessionStatusIndicator } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +26,7 @@ type ConversationItem = {
   unread: number;
   messages: Array<{ time?: string }>;
   updatedAtLabel?: string;
+  statusIndicator?: SessionStatusIndicator;
 };
 
 type ProjectSessionItem = {
@@ -33,6 +34,7 @@ type ProjectSessionItem = {
   name: string;
   lastActive: string;
   unread?: number;
+  statusIndicator?: SessionStatusIndicator;
 };
 
 type ProjectItem = {
@@ -107,6 +109,52 @@ type WorkspaceSidebarProps = {
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
 };
+
+function SidebarSessionStatusIndicator({
+  indicator,
+  active = false,
+}: {
+  indicator?: SessionStatusIndicator;
+  active?: boolean;
+}) {
+  if (!indicator) return null;
+
+  const toneClasses =
+    indicator.tone === 'running'
+      ? {
+          pill: active ? 'border-sky-300/35 bg-sky-400/14 text-sky-100' : 'border-sky-400/20 bg-sky-400/10 text-sky-200',
+          dot: 'bg-sky-300',
+        }
+      : indicator.tone === 'draft'
+        ? {
+            pill: active ? 'border-amber-300/30 bg-amber-400/14 text-amber-100' : 'border-amber-400/18 bg-amber-400/10 text-amber-200',
+            dot: 'bg-amber-300',
+          }
+        : indicator.tone === 'error'
+          ? {
+              pill: active ? 'border-rose-300/32 bg-rose-500/14 text-rose-100' : 'border-rose-400/20 bg-rose-500/10 text-rose-200',
+              dot: 'bg-rose-300',
+            }
+          : indicator.tone === 'stopped'
+            ? {
+                pill: active ? 'border-slate-200/18 bg-white/[0.1] text-slate-100' : 'border-white/10 bg-white/[0.045] text-slate-300',
+                dot: 'bg-slate-300',
+              }
+            : {
+                pill: active ? 'border-emerald-300/30 bg-emerald-400/14 text-emerald-100' : 'border-emerald-400/16 bg-emerald-400/10 text-emerald-200',
+                dot: 'bg-emerald-300',
+              };
+
+  return (
+    <div className={cn('inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-[0.22rem] text-[9.5px] font-medium leading-none', toneClasses.pill)}>
+      <span className="relative flex h-1.5 w-1.5 shrink-0 items-center justify-center">
+        {indicator.live ? <span className={cn('absolute inset-0 rounded-full opacity-65 motion-safe:animate-ping motion-reduce:animate-none', toneClasses.dot)} /> : null}
+        <span className={cn('relative h-1.5 w-1.5 rounded-full', toneClasses.dot)} />
+      </span>
+      <span className="truncate">{indicator.label}</span>
+    </div>
+  );
+}
 
 export function WorkspaceSidebar({
   isNativeShell,
@@ -303,22 +351,28 @@ export function WorkspaceSidebar({
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
-                                  <div className="flex items-center gap-1.5">
-                                    {conversation.unread > 0 ? (
-                                      <span className="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                        {formatUnreadCount(conversation.unread)}
-                                      </span>
-                                    ) : null}
-                                    <span className="w-[4.1rem] shrink-0 text-right text-[10px] tabular-nums text-slate-500">{rowTimeLabel}</span>
-                                  </div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="truncate pr-2 text-[12px] font-medium text-slate-100">{conversation.name}</div>
+                                  <span className={cn('w-[4.1rem] shrink-0 text-right text-[10px] tabular-nums', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                    {rowTimeLabel}
+                                  </span>
                                 </div>
-                                {conversation.subtitle.trim().length > 0 ? (
-                                  <div className={`truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
-                                    {conversation.subtitle}
-                                  </div>
-                                ) : null}
+                                <div className="mt-1 flex items-center justify-between gap-2">
+                                  {conversation.statusIndicator ? (
+                                    <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
+                                  ) : conversation.subtitle.trim().length > 0 ? (
+                                    <div className={`min-w-0 truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                                      {conversation.subtitle}
+                                    </div>
+                                  ) : (
+                                    <div className="min-w-0" />
+                                  )}
+                                  {conversation.unread > 0 ? (
+                                    <span className="inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
+                                      {formatUnreadCount(conversation.unread)}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           </button>
@@ -411,7 +465,12 @@ export function WorkspaceSidebar({
                                             </span>
                                           ) : null}
                                         </div>
-                                        <div className="mt-0.5 truncate text-[11px] text-slate-400">{session.lastActive}</div>
+                                        <div className="mt-1 flex items-center justify-between gap-2">
+                                          <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActiveSession} />
+                                          <div className={cn('shrink-0 text-[10px] tabular-nums', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                            {session.lastActive}
+                                          </div>
+                                        </div>
                                       </button>
                                     );
                                   })}
