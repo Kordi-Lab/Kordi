@@ -442,7 +442,7 @@ pub async fn desktop_chat_start_message(
         session_id: target_session_id.clone(),
         prompt: text.trim().to_string(),
         status: "starting".to_string(),
-        message: "Preparing request…".to_string(),
+        message: "Working…".to_string(),
         assistant_text: String::new(),
         thinking_text: String::new(),
         tools: Vec::new(),
@@ -482,7 +482,7 @@ pub async fn desktop_chat_start_message(
                 {
                     TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
                         state.status = "streaming".to_string();
-                        state.message = "Streaming response…".to_string();
+                        state.message = "Working…".to_string();
                     }),
                     TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
                         state.status = "writing".to_string();
@@ -497,7 +497,7 @@ pub async fn desktop_chat_start_message(
                     TurnEvent::ToolCallStart { id, name } => {
                         update_turn(&snapshot_for_task, |state| {
                             state.status = "tooling".to_string();
-                            state.message = format!("Preparing {name}…");
+                            state.message = "Working…".to_string();
                             state.tools.push(DesktopChatToolSnapshot {
                                 id: id.clone(),
                                 name: name.clone(),
