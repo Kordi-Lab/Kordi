@@ -69,7 +69,7 @@ pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionS
         .map(|profile| ProviderAuthOptionSummary {
             profile_id: Some(profile.profile_id),
             method: profile.method,
-            source: AuthSource::BbAuth,
+            source: AuthSource::KordiAuth,
             account_label: profile.account_label,
             authority: profile.authority,
             configured_at_ms: profile.configured_at_ms,
@@ -100,8 +100,8 @@ pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionS
             .active
             .cmp(&left.active)
             .then_with(|| match (left.source, right.source) {
-                (AuthSource::BbAuth, AuthSource::EnvVar) => std::cmp::Ordering::Less,
-                (AuthSource::EnvVar, AuthSource::BbAuth) => std::cmp::Ordering::Greater,
+                (AuthSource::KordiAuth, AuthSource::EnvVar) => std::cmp::Ordering::Less,
+                (AuthSource::EnvVar, AuthSource::KordiAuth) => std::cmp::Ordering::Greater,
                 _ => std::cmp::Ordering::Equal,
             })
             .then_with(|| {
@@ -141,14 +141,14 @@ fn render_auth_option_summary(summary: &ProviderAuthOptionSummary) -> String {
     let mut parts = Vec::new();
     match (summary.method, summary.source) {
         (ProviderAuthMethod::ApiKey, AuthSource::EnvVar) => parts.push("API key (env)".to_string()),
-        (ProviderAuthMethod::ApiKey, AuthSource::BbAuth) => parts.push("API key".to_string()),
+        (ProviderAuthMethod::ApiKey, AuthSource::KordiAuth) => parts.push("API key".to_string()),
         (ProviderAuthMethod::OAuth, AuthSource::EnvVar) => parts.push("OAuth (env)".to_string()),
-        (ProviderAuthMethod::OAuth, AuthSource::BbAuth) => parts.push("OAuth".to_string()),
+        (ProviderAuthMethod::OAuth, AuthSource::KordiAuth) => parts.push("OAuth".to_string()),
     }
     if let Some(account_label) = &summary.account_label {
         parts.push(account_label.clone());
     }
-    if matches!(summary.source, AuthSource::BbAuth)
+    if matches!(summary.source, AuthSource::KordiAuth)
         && matches!(summary.method, ProviderAuthMethod::ApiKey)
         && let Some(profile_id) = &summary.profile_id
     {
@@ -218,11 +218,11 @@ pub fn add_cached_github_copilot_models(registry: &mut ModelRegistry) {
                 id: model_id.clone(),
                 name: model_id.clone(),
                 provider: "github-copilot".to_string(),
-                api: bb_provider::registry::ApiType::OpenaiCompletions,
+                api: kordi_provider::registry::ApiType::OpenaiCompletions,
                 context_window: 128_000,
                 max_tokens: 16_384,
                 reasoning: true,
-                input: vec![bb_provider::registry::ModelInput::Text],
+                input: vec![kordi_provider::registry::ModelInput::Text],
                 base_url: Some(github_copilot_api_base_url()),
                 cost: Default::default(),
             });
@@ -232,14 +232,14 @@ pub fn add_cached_github_copilot_models(registry: &mut ModelRegistry) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthSource {
-    BbAuth,
+    KordiAuth,
     EnvVar,
 }
 
 impl AuthSource {
     pub fn label(self) -> &'static str {
         match self {
-            AuthSource::BbAuth => "kordi auth.json",
+            AuthSource::KordiAuth => "kordi auth.json",
             AuthSource::EnvVar => "environment",
         }
     }
@@ -248,7 +248,7 @@ impl AuthSource {
 pub fn auth_source(provider: &str) -> Option<AuthSource> {
     let store = load_auth();
     if !stored_auth_methods_for_store(&store, provider).is_empty() {
-        return Some(AuthSource::BbAuth);
+        return Some(AuthSource::KordiAuth);
     }
     if !env_auth_methods_for_provider(provider).is_empty() {
         return Some(AuthSource::EnvVar);
@@ -359,7 +359,7 @@ mod tests {
 
         let summaries = provider_auth_option_summaries("github-copilot");
         assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].source, AuthSource::BbAuth);
+        assert_eq!(summaries[0].source, AuthSource::KordiAuth);
         assert_eq!(summaries[0].method, ProviderAuthMethod::OAuth);
         assert_eq!(summaries[0].account_label.as_deref(), Some("octocat"));
         assert_eq!(
@@ -402,7 +402,7 @@ mod tests {
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-env-key");
 
         crate::login::save_api_key("openai", "saved-key".to_string()).expect("save api key");
-        assert_eq!(auth_source("openai"), Some(AuthSource::BbAuth));
+        assert_eq!(auth_source("openai"), Some(AuthSource::KordiAuth));
     }
 
     #[test]

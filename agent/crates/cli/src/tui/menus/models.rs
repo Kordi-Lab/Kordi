@@ -1,4 +1,4 @@
-use bb_provider::registry::{Model, ModelRegistry};
+use kordi_provider::registry::{Model, ModelRegistry};
 
 use super::*;
 
@@ -91,7 +91,7 @@ impl TuiController {
                             .unwrap_or_else(|| "API key (env)".to_string()),
                         (
                             crate::login::ProviderAuthMethod::ApiKey,
-                            crate::login::AuthSource::BbAuth,
+                            crate::login::AuthSource::KordiAuth,
                         ) => option
                             .account_label
                             .as_ref()
@@ -107,7 +107,7 @@ impl TuiController {
                             .unwrap_or_else(|| "OAuth (env)".to_string()),
                         (
                             crate::login::ProviderAuthMethod::OAuth,
-                            crate::login::AuthSource::BbAuth,
+                            crate::login::AuthSource::KordiAuth,
                         ) => option
                             .account_label
                             .as_ref()
@@ -118,7 +118,7 @@ impl TuiController {
                     if option.active {
                         detail_parts.push("currently active".to_string());
                     }
-                    if matches!(option.source, crate::login::AuthSource::BbAuth)
+                    if matches!(option.source, crate::login::AuthSource::KordiAuth)
                         && matches!(option.method, crate::login::ProviderAuthMethod::ApiKey)
                         && let Some(profile_id) = option.profile_id.as_ref()
                     {
@@ -292,7 +292,7 @@ impl TuiController {
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
-        self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: self.session_setup.api_key.clone(),
@@ -478,13 +478,13 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    use bb_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
-    use bb_core::settings::{ModelOverride, Settings};
-    use bb_provider::openai::OpenAiProvider;
-    use bb_provider::registry::{ApiType, CostConfig, Model, ModelInput};
-    use bb_session::store;
-    use bb_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
-    use bb_tui::tui::TuiCommand;
+    use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
+    use kordi_core::settings::{ModelOverride, Settings};
+    use kordi_provider::openai::OpenAiProvider;
+    use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
+    use kordi_session::store;
+    use kordi_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
+    use kordi_tui::tui::TuiCommand;
     use tokio::sync::mpsc;
 
     use crate::extensions::{ExtensionBootstrap, ExtensionCommandRegistry};
@@ -586,7 +586,7 @@ mod tests {
             retry_max_delay_ms: 1_000,
             session_created: true,
             request_metrics_tracker: Arc::new(tokio::sync::Mutex::new(
-                bb_monitor::RequestMetricsTracker::new(),
+                kordi_monitor::RequestMetricsTracker::new(),
             )),
             request_metrics_log_path: None,
             sibling_conn: None,

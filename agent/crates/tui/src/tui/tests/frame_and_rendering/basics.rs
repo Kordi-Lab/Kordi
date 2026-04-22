@@ -3,7 +3,7 @@ use super::super::*;
 
 fn make_attachment_test_dir() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "bb-tui-attachment-chips-{}-{}",
+        "kordi-tui-attachment-chips-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -18,7 +18,7 @@ fn make_attachment_test_dir() -> std::path::PathBuf {
 fn frame_renders_header_title_when_space_allows() {
     let mut state = TuiState::new(
         TuiAppConfig {
-            title: "♡ BB-Agent v0.1.0".to_string(),
+            title: "♡ Kordi v0.1.0".to_string(),
             ..TuiAppConfig::default()
         },
         Size {
@@ -29,7 +29,7 @@ fn frame_renders_header_title_when_space_allows() {
     state.prepare_for_render();
     let frame = build_frame(&state);
 
-    assert!(frame.lines[0].contains("♡ BB-Agent v0.1.0"));
+    assert!(frame.lines[0].contains("♡ Kordi v0.1.0"));
     assert!(frame.lines[1].contains("Ctrl-C exit"));
 }
 
@@ -84,7 +84,7 @@ fn frame_renders_attachment_chips_for_pending_and_at_files() {
 fn header_and_input_borders_follow_tui_color_theme() {
     let mut state = TuiState::new(
         TuiAppConfig {
-            title: "♡ BB-Agent v0.1.0".to_string(),
+            title: "♡ Kordi v0.1.0".to_string(),
             ..TuiAppConfig::default()
         },
         Size {
@@ -428,7 +428,7 @@ fn scroll_events_toggle_follow_but_stay_in_normal_mode() {
 #[test]
 fn submitted_user_message_keeps_attachment_chip_preview() {
     let dir = make_attachment_test_dir();
-    let image = dir.join("bb-clipboard-demo.png");
+    let image = dir.join("kordi-clipboard-demo.png");
     std::fs::write(&image, b"png-bytes").expect("write image file");
 
     let mut state = TuiState::new(
@@ -449,7 +449,7 @@ fn submitted_user_message_keeps_attachment_chip_preview() {
         .transcript
         .block(block_id)
         .expect("user block content");
-    assert!(block.content.contains("[bb-clipboard-demo.png, 1KB]"));
+    assert!(block.content.contains("[kordi-clipboard-demo.png, 1KB]"));
     assert!(block.content.contains("check this image"));
 
     let _ = std::fs::remove_file(image);
@@ -459,7 +459,7 @@ fn submitted_user_message_keeps_attachment_chip_preview() {
 #[test]
 fn image_only_submit_creates_user_message_and_submission() {
     let dir = make_attachment_test_dir();
-    let image = dir.join("bb-clipboard-demo.png");
+    let image = dir.join("kordi-clipboard-demo.png");
     std::fs::write(&image, b"png-bytes").expect("write image file");
 
     let mut state = TuiState::new(
@@ -478,7 +478,7 @@ fn image_only_submit_creates_user_message_and_submission() {
         .transcript
         .block(block_id)
         .expect("user block content");
-    assert_eq!(block.content, "[bb-clipboard-demo.png, 1KB]");
+    assert_eq!(block.content, "[kordi-clipboard-demo.png, 1KB]");
     assert!(state.input.is_empty());
     assert_eq!(state.status_line, "Working...");
     assert!(state.submitted_inputs.is_empty());

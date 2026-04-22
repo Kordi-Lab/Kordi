@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -49,15 +49,15 @@ impl Tool for WriteTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let path_str = params
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'path' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'path' parameter".into()))?;
         let content = params
             .get("content")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'content' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'content' parameter".into()))?;
 
         let path = resolve_path(&ctx.cwd, path_str);
         ensure_write_allowed(ctx, &path, "write")?;
@@ -66,13 +66,13 @@ impl Tool for WriteTool {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| BbError::Tool(format!("Failed to create directories: {e}")))?;
+                .map_err(|e| KordiError::Tool(format!("Failed to create directories: {e}")))?;
         }
 
         let bytes = content.len();
         tokio::fs::write(&path, content)
             .await
-            .map_err(|e| BbError::Tool(format!("Failed to write {}: {e}", path.display())))?;
+            .map_err(|e| KordiError::Tool(format!("Failed to write {}: {e}", path.display())))?;
 
         Ok(text_result(
             format!("Successfully wrote {bytes} bytes to {path_str}"),

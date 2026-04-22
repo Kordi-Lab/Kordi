@@ -3,7 +3,7 @@ use super::{
     estimate_tokens_message, estimate_tokens_text, extract_file_operations, prepare_compaction,
     serialize_conversation, should_compact,
 };
-use bb_core::types::{
+use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, CompactionSettings, ContentBlock, EntryBase,
     SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
 };
@@ -244,7 +244,7 @@ fn test_estimate_context_tokens_ignores_usage_before_latest_compaction() {
         error_message: None,
         timestamp: 0,
     });
-    let compaction = AgentMessage::CompactionSummary(bb_core::types::CompactionSummaryMessage {
+    let compaction = AgentMessage::CompactionSummary(kordi_core::types::CompactionSummaryMessage {
         summary: "summary".to_string(),
         tokens_before: 320_000,
         timestamp: 1,
@@ -268,7 +268,7 @@ fn prepare_compaction_tokens_before_ignores_usage_before_latest_compaction() {
     let now = Utc::now();
     let before_assistant = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("a1".to_string()),
+            id: kordi_core::types::EntryId("a1".to_string()),
             parent_id: None,
             timestamp: now,
         },
@@ -289,28 +289,28 @@ fn prepare_compaction_tokens_before_ignores_usage_before_latest_compaction() {
     };
     let compaction = SessionEntry::Compaction {
         base: EntryBase {
-            id: bb_core::types::EntryId("c1".to_string()),
-            parent_id: Some(bb_core::types::EntryId("a1".to_string())),
+            id: kordi_core::types::EntryId("c1".to_string()),
+            parent_id: Some(kordi_core::types::EntryId("a1".to_string())),
             timestamp: now,
         },
         summary: "summary".to_string(),
-        first_kept_entry_id: bb_core::types::EntryId("u1".to_string()),
+        first_kept_entry_id: kordi_core::types::EntryId("u1".to_string()),
         tokens_before: 320_000,
         details: None,
         from_plugin: false,
     };
     let after_one = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("u1".to_string()),
-            parent_id: Some(bb_core::types::EntryId("c1".to_string())),
+            id: kordi_core::types::EntryId("u1".to_string()),
+            parent_id: Some(kordi_core::types::EntryId("c1".to_string())),
             timestamp: now,
         },
         message: make_user_msg("12345678"),
     };
     let after_two = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("u2".to_string()),
-            parent_id: Some(bb_core::types::EntryId("u1".to_string())),
+            id: kordi_core::types::EntryId("u2".to_string()),
+            parent_id: Some(kordi_core::types::EntryId("u1".to_string())),
             timestamp: now,
         },
         message: make_user_msg("abcdefgh"),
@@ -339,7 +339,7 @@ fn prepare_compaction_tokens_before_ignores_usage_before_latest_compaction() {
     };
     let prep = prepare_compaction(&entries, &settings).expect("prep");
     let expected = estimate_tokens_message(&AgentMessage::CompactionSummary(
-        bb_core::types::CompactionSummaryMessage {
+        kordi_core::types::CompactionSummaryMessage {
             summary: "summary".to_string(),
             tokens_before: 320_000,
             timestamp: now.timestamp_millis(),
@@ -355,7 +355,7 @@ fn prepare_compaction_uses_session_entry_payloads_for_cut_detection() {
     let now = Utc::now();
     let user_entry = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("u1".to_string()),
+            id: kordi_core::types::EntryId("u1".to_string()),
             parent_id: None,
             timestamp: now,
         },
@@ -363,11 +363,11 @@ fn prepare_compaction_uses_session_entry_payloads_for_cut_detection() {
     };
     let branch_summary_entry = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("b1".to_string()),
-            parent_id: Some(bb_core::types::EntryId("u1".to_string())),
+            id: kordi_core::types::EntryId("b1".to_string()),
+            parent_id: Some(kordi_core::types::EntryId("u1".to_string())),
             timestamp: now,
         },
-        message: AgentMessage::BranchSummary(bb_core::types::BranchSummaryMessage {
+        message: AgentMessage::BranchSummary(kordi_core::types::BranchSummaryMessage {
             summary: "branch checkpoint".to_string(),
             from_id: "u1".to_string(),
             timestamp: 0,

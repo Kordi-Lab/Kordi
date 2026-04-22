@@ -1,4 +1,4 @@
-use bb_core::types::{
+use kordi_core::types::{
     AgentMessage, BranchSummaryMessage, CustomMessage, ModelInfo, SessionEntry, ThinkingLevel,
 };
 

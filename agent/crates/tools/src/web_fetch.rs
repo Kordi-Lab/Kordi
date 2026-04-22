@@ -2,7 +2,7 @@ mod html;
 mod output;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -69,9 +69,9 @@ impl Tool for WebFetchTool {
         params: Value,
         ctx: &ToolContext,
         cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let input: WebFetchInput = serde_json::from_value(params)
-            .map_err(|e| BbError::Tool(format!("Invalid web_fetch parameters: {e}")))?;
+            .map_err(|e| KordiError::Tool(format!("Invalid web_fetch parameters: {e}")))?;
         validate_input(&input)?;
 
         let url = parse_http_url("web_fetch", &input.url)?;
@@ -116,7 +116,7 @@ impl Tool for WebFetchTool {
         .await?;
 
         if !status.is_success() {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Web fetch failed ({}): {}",
                 status,
                 truncate_for_output(&body, 800)
@@ -163,9 +163,9 @@ impl Tool for WebFetchTool {
     }
 }
 
-fn validate_input(input: &WebFetchInput) -> BbResult<()> {
+fn validate_input(input: &WebFetchInput) -> KordiResult<()> {
     if input.url.trim().is_empty() {
-        return Err(BbError::Tool("web_fetch url must be non-empty".into()));
+        return Err(KordiError::Tool("web_fetch url must be non-empty".into()));
     }
     validate_optional_max_chars("web_fetch", input.max_chars)?;
     validate_optional_timeout("web_fetch", input.timeout)?;
@@ -175,7 +175,7 @@ fn validate_input(input: &WebFetchInput) -> BbResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bb_core::types::ContentBlock;
+    use kordi_core::types::ContentBlock;
     use std::io::{Read, Write};
     use std::path::Path;
     use std::thread;

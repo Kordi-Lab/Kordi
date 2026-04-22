@@ -3,8 +3,8 @@ use std::{
     time::SystemTime,
 };
 
-use bb_core::agent_session_runtime::AgentSessionRuntimeHost;
-use bb_tools::{ToolApprovalOutcome, ToolApprovalRequest};
+use kordi_core::agent_session_runtime::AgentSessionRuntimeHost;
+use kordi_tools::{ToolApprovalOutcome, ToolApprovalRequest};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -31,12 +31,8 @@ struct ResourceWatchState {
 impl ResourceWatchState {
     fn capture(cwd: &std::path::Path) -> Self {
         Self {
-            global_settings_mtime: settings_mtime(
-                &bb_core::config::global_dir().join("settings.json"),
-            ),
-            project_settings_mtime: settings_mtime(
-                &bb_core::config::project_dir(cwd).join("settings.json"),
-            ),
+            global_settings_mtime: settings_mtime(&kordi_core::config::global_settings_path()),
+            project_settings_mtime: settings_mtime(&kordi_core::config::project_settings_path(cwd)),
         }
     }
 }
@@ -130,8 +126,8 @@ pub(super) enum QueuedPrompt {
 
 #[derive(Clone)]
 pub(super) struct PendingModelAuthSelection {
-    pub model: bb_provider::registry::Model,
-    pub thinking_override: Option<bb_core::agent_session::ThinkingLevel>,
+    pub model: kordi_provider::registry::Model,
+    pub thinking_override: Option<kordi_core::agent_session::ThinkingLevel>,
 }
 
 #[derive(Clone)]
@@ -144,7 +140,7 @@ pub(super) struct TuiController {
     pub(super) runtime_host: AgentSessionRuntimeHost,
     pub(super) session_setup: SessionRuntimeSetup,
     pub(super) options: SessionUiOptions,
-    pub(super) command_tx: mpsc::UnboundedSender<bb_tui::tui::TuiCommand>,
+    pub(super) command_tx: mpsc::UnboundedSender<kordi_tui::tui::TuiCommand>,
     pub(super) abort_token: CancellationToken,
     pub(super) streaming: bool,
     pub(super) retry_status: Option<String>,
@@ -163,7 +159,7 @@ pub(super) struct TuiController {
     pub(super) manual_compaction_generation: u64,
     pub(super) manual_compaction_tx: mpsc::UnboundedSender<ManualCompactionEvent>,
     pub(super) manual_compaction_rx: mpsc::UnboundedReceiver<ManualCompactionEvent>,
-    pub(super) color_theme: bb_tui::tui::spinner::ColorTheme,
+    pub(super) color_theme: kordi_tui::tui::spinner::ColorTheme,
     pub(super) shutdown_requested: bool,
     pub(super) approval_rx: mpsc::UnboundedReceiver<PendingApprovalRequest>,
     pub(super) pending_approval: Option<PendingApprovalRequest>,
@@ -195,7 +191,7 @@ impl TuiController {
         runtime_host: AgentSessionRuntimeHost,
         options: SessionUiOptions,
         session_setup: SessionRuntimeSetup,
-        command_tx: mpsc::UnboundedSender<bb_tui::tui::TuiCommand>,
+        command_tx: mpsc::UnboundedSender<kordi_tui::tui::TuiCommand>,
         approval_rx: mpsc::UnboundedReceiver<PendingApprovalRequest>,
     ) -> Self {
         let resource_watch = ResourceWatchState::capture(&session_setup.tool_ctx.cwd);
@@ -223,7 +219,7 @@ impl TuiController {
             manual_compaction_generation: 0,
             manual_compaction_tx,
             manual_compaction_rx,
-            color_theme: bb_tui::tui::spinner::ColorTheme::default(),
+            color_theme: kordi_tui::tui::spinner::ColorTheme::default(),
             shutdown_requested: false,
             approval_rx,
             pending_approval: None,

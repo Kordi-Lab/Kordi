@@ -1,4 +1,4 @@
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -14,10 +14,10 @@ use crate::text::{lossy_trimmed, truncate_chars_trimmed};
 const MIN_VIRTUAL_TIME_BUDGET_MS: u64 = 5_000;
 const MAX_VIRTUAL_TIME_BUDGET_MS: u64 = 20_000;
 
-pub(super) fn create_temp_profile_dir() -> BbResult<PathBuf> {
-    let dir = env::temp_dir().join(format!("bb-browser-fetch-{}", Uuid::new_v4()));
+pub(super) fn create_temp_profile_dir() -> KordiResult<PathBuf> {
+    let dir = env::temp_dir().join(format!("kordi-browser-fetch-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&dir)
-        .map_err(|e| BbError::Tool(format!("Failed to create browser profile dir: {e}")))?;
+        .map_err(|e| KordiError::Tool(format!("Failed to create browser profile dir: {e}")))?;
     Ok(dir)
 }
 
@@ -55,7 +55,7 @@ pub(super) fn build_browser_args(
 }
 
 fn should_use_no_sandbox() -> bool {
-    if env::var("BB_BROWSER_NO_SANDBOX").as_deref() == Ok("1") {
+    if env::var("KORDI_BROWSER_NO_SANDBOX").as_deref() == Ok("1") {
         return true;
     }
     cfg!(target_os = "linux") && matches!(env::var("USER"), Ok(user) if user == "root")
@@ -66,7 +66,7 @@ pub(super) async fn run_browser_dump_dom(
     args: &[String],
     timeout_secs: f64,
     cancel: CancellationToken,
-) -> BbResult<String> {
+) -> KordiResult<String> {
     let mut child = Command::new(browser)
         .args(args)
         .stdin(Stdio::null())
@@ -74,7 +74,7 @@ pub(super) async fn run_browser_dump_dom(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
-            BbError::Tool(format!(
+            KordiError::Tool(format!(
                 "Failed to launch browser executable {}: {e}",
                 browser.display()
             ))
@@ -101,29 +101,29 @@ pub(super) async fn run_browser_dump_dom(
     let status = tokio::select! {
         _ = cancel.cancelled() => {
             let _ = child.kill().await;
-            return Err(BbError::Tool("browser_fetch cancelled".into()));
+            return Err(KordiError::Tool("browser_fetch cancelled".into()));
         }
         _ = tokio::time::sleep(Duration::from_secs_f64(timeout_secs + 5.0)) => {
             let _ = child.kill().await;
-            return Err(BbError::Tool("browser_fetch timed out waiting for browser output".into()));
+            return Err(KordiError::Tool("browser_fetch timed out waiting for browser output".into()));
         }
         status = child.wait() => {
-            status.map_err(|e| BbError::Tool(format!("browser_fetch failed while waiting for browser: {e}")))?
+            status.map_err(|e| KordiError::Tool(format!("browser_fetch failed while waiting for browser: {e}")))?
         }
     };
 
     let stdout = stdout_task
         .await
-        .map_err(|e| BbError::Tool(format!("browser_fetch stdout join error: {e}")))?;
+        .map_err(|e| KordiError::Tool(format!("browser_fetch stdout join error: {e}")))?;
     let stderr = stderr_task
         .await
-        .map_err(|e| BbError::Tool(format!("browser_fetch stderr join error: {e}")))?;
+        .map_err(|e| KordiError::Tool(format!("browser_fetch stderr join error: {e}")))?;
 
     if !status.success() {
         let stderr = lossy_trimmed(&stderr);
         let stdout = lossy_trimmed(&stdout);
         let detail = if !stderr.is_empty() { stderr } else { stdout };
-        return Err(BbError::Tool(format!(
+        return Err(KordiError::Tool(format!(
             "browser_fetch browser process failed: {}",
             truncate_chars_trimmed(&detail, 800)
         )));
@@ -135,14 +135,14 @@ pub(super) async fn run_browser_dump_dom(
 pub(super) fn missing_browser_error_message() -> String {
     let mut lines = vec![
         "No supported Chrome/Chromium browser executable found.".to_string(),
-        "Set BB_BROWSER to a Chrome/Chromium binary path or install Google Chrome / Chromium."
+        "Set KORDI_BROWSER to a Chrome/Chromium binary path or install Google Chrome / Chromium."
             .to_string(),
     ];
 
-    if let Ok(configured) = env::var("BB_BROWSER") {
+    if let Ok(configured) = env::var("KORDI_BROWSER") {
         let trimmed = configured.trim();
         if !trimmed.is_empty() {
-            lines.push(format!("BB_BROWSER is currently set to: {trimmed}"));
+            lines.push(format!("KORDI_BROWSER is currently set to: {trimmed}"));
         }
     }
 
@@ -153,7 +153,7 @@ pub(super) fn missing_browser_error_message() -> String {
 
     if cfg!(target_os = "linux") {
         lines.push(
-            "Linux hint: install Chromium/Chrome or set BB_BROWSER=/path/to/chrome (for Ubuntu snap installs, /snap/bin/chromium is a common path).".to_string(),
+            "Linux hint: install Chromium/Chrome or set KORDI_BROWSER=/path/to/chrome (for Ubuntu snap installs, /snap/bin/chromium is a common path).".to_string(),
         );
     } else if cfg!(target_os = "macos") {
         lines.push(
@@ -161,7 +161,7 @@ pub(super) fn missing_browser_error_message() -> String {
         );
     } else if cfg!(target_os = "windows") {
         lines.push(
-            "Windows hint: set BB_BROWSER to chrome.exe/msedge.exe if it is not on PATH."
+            "Windows hint: set KORDI_BROWSER to chrome.exe/msedge.exe if it is not on PATH."
                 .to_string(),
         );
     }
@@ -170,7 +170,7 @@ pub(super) fn missing_browser_error_message() -> String {
 }
 
 pub(super) fn resolve_browser_executable() -> Option<PathBuf> {
-    if let Ok(path) = env::var("BB_BROWSER") {
+    if let Ok(path) = env::var("KORDI_BROWSER") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             let candidate = PathBuf::from(trimmed);

@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide walks you through setting up BB-Agent for local development — building from source, running in dev mode, making changes, and testing.
+This guide walks you through setting up the Kordi agent runtime for local development — building from source, running in dev mode, making changes, and testing.
 
 ## Role in Kordi
 
@@ -31,9 +31,9 @@ Direct Rust entrypoints also work:
 
 ```bash
 cd /Users/shuyang/Desktop/kordi
-cargo run -p bb-cli --
-cargo check -p bb-cli
-cargo build -p bb-cli --release
+cargo run -p kordi-cli --
+cargo check -p kordi-cli
+cargo build -p kordi-cli --release
 ```
 
 ## Prerequisites
@@ -55,22 +55,22 @@ The project includes a `rust-toolchain.toml` that pins the exact Rust version. R
 ## Standalone source build
 
 ```bash
-git clone https://github.com/shuyhere/bb-agent.git
-cd bb-agent
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi/agent
 cargo install --path crates/cli
 ```
 
-This compiles the optimized `bb` binary and installs it to `~/.cargo/bin/bb`.
+This compiles the optimized `kordi` binary and installs it to `~/.cargo/bin/kordi`.
 Rust adds `~/.cargo/bin` to your PATH during installation.
 
 Verify:
 
 ```bash
-bb --version
-bb
+kordi --version
+kordi
 ```
 
-> **Tip:** `cargo install --path crates/cli` is equivalent to `cargo build --release` + copying `target/release/bb` to your PATH. Use `cargo build --release` during development when you don't want to overwrite your installed version.
+> **Tip:** `cargo install --path crates/cli` is equivalent to `cargo build --release` + copying `target/release/kordi` to your PATH. Use `cargo build --release` during development when you don't want to overwrite your installed version.
 
 ## Development workflow
 
@@ -83,12 +83,12 @@ During development, use these commands:
 cargo build
 
 # Run directly without installing
-cargo run --bin bb
+cargo run --bin kordi
 
 # Run with arguments
-cargo run --bin bb -- "hello world"
-cargo run --bin bb -- --help
-cargo run --bin bb -- -p "What is 2+2?"
+cargo run --bin kordi -- "hello world"
+cargo run --bin kordi -- --help
+cargo run --bin kordi -- -p "What is 2+2?"
 
 # Build release (optimized — slower compile, fast runtime)
 cargo build --release
@@ -102,8 +102,8 @@ cargo install --path crates/cli
 If you don't want to install, run directly:
 
 ```bash
-./target/debug/bb
-./target/release/bb
+./target/debug/kordi
+./target/release/kordi
 ```
 
 ### Rebuild on change
@@ -112,7 +112,7 @@ For rapid iteration, use `cargo watch` (install with `cargo install cargo-watch`
 
 ```bash
 # Rebuild on every file change
-cargo watch -x "build --bin bb"
+cargo watch -x "build --bin kordi"
 
 # Rebuild and run tests
 cargo watch -x "test --workspace --release"
@@ -125,15 +125,15 @@ cargo watch -x "test --workspace --release"
 cargo test --workspace --release
 
 # Run tests for a specific crate
-cargo test -p bb-core --release
-cargo test -p bb-tui --release
-cargo test -p bb-tools --release
-cargo test -p bb-session --release
-cargo test -p bb-provider --release
-cargo test -p bb-cli --release
+cargo test -p kordi-core --release
+cargo test -p kordi-tui --release
+cargo test -p kordi-tools --release
+cargo test -p kordi-session --release
+cargo test -p kordi-provider --release
+cargo test -p kordi-cli --release
 
 # Run a specific test
-cargo test -p bb-tui --release -- tui::tests::typing_at
+cargo test -p kordi-tui --release -- tui::tests::typing_at
 
 # Run tests with output
 cargo test --workspace --release -- --nocapture
@@ -158,12 +158,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 ## Project structure
 
 ```
-bb-agent/
+agent/
 ├── Cargo.toml              # Workspace root
 ├── rust-toolchain.toml     # Pinned Rust version (1.93.0)
 ├── .cargo/config.toml      # Linker config (Linux)
 ├── crates/
-│   ├── core/               # bb-core: agent, session, config, runtime types
+│   ├── core/               # kordi-core: agent, session, config, runtime types
 │   │   └── src/
 │   │       ├── agent/          # Agent runtime, callbacks, events
 │   │       ├── agent_session/  # Session config, models, orchestration
@@ -171,9 +171,9 @@ bb-agent/
 │   │       ├── config.rs       # Global/project directory resolution
 │   │       ├── settings.rs     # Settings struct + layered merge
 │   │       ├── types/          # ContentBlock, SessionEntry, etc.
-│   │       └── error.rs        # BbError enum
+│   │       └── error.rs        # KordiError enum
 │   │
-│   ├── session/            # bb-session: SQLite persistence
+│   ├── session/            # kordi-session: SQLite persistence
 │   │   └── src/
 │   │       ├── store/          # CRUD, queries, fork
 │   │       ├── schema.rs       # DB schema + migrations
@@ -181,7 +181,7 @@ bb-agent/
 │   │       ├── context/        # Context assembly for LLM
 │   │       └── compaction/     # Token-aware compaction
 │   │
-│   ├── tools/              # bb-tools: built-in tool implementations
+│   ├── tools/              # kordi-tools: built-in tool implementations
 │   │   └── src/
 │   │       ├── bash.rs         # Shell execution
 │   │       ├── read.rs         # File reading (text + images)
@@ -193,7 +193,7 @@ bb-agent/
 │   │       ├── browser_fetch/  # Headless Chrome fetch
 │   │       └── registry.rs     # builtin_tools() list
 │   │
-│   ├── provider/           # bb-provider: LLM API integrations
+│   ├── provider/           # kordi-provider: LLM API integrations
 │   │   └── src/
 │   │       ├── anthropic.rs    # Anthropic (Claude) streaming
 │   │       ├── openai.rs       # OpenAI + compatible APIs
@@ -202,18 +202,18 @@ bb-agent/
 │   │       ├── retry.rs        # Exponential backoff
 │   │       └── transforms.rs   # Message format conversion
 │   │
-│   ├── hooks/              # bb-hooks: extension event types
+│   ├── hooks/              # kordi-hooks: extension event types
 │   │   └── src/
 │   │       ├── events.rs       # Event enum (Input, ToolCall, etc.)
 │   │       └── bus.rs          # Async event bus
 │   │
-│   ├── plugin-host/        # bb-plugin-host: JS/TS extension runtime
+│   ├── plugin-host/        # kordi-plugin-host: JS/TS extension runtime
 │   │   └── src/
 │   │       ├── host/           # Plugin lifecycle, messaging, UI
 │   │       ├── discovery.rs    # Find plugins on disk
 │   │       └── protocol.rs     # JSON stdin/stdout protocol
 │   │
-│   ├── tui/                # bb-tui: terminal UI (largest crate)
+│   ├── tui/                # kordi-tui: terminal UI (largest crate)
 │   │   └── src/
 │   │       ├── tui/     # TUI app/runtime (events, frame, projection, etc.)
 │   │       ├── editor/         # Multi-line text editor
@@ -222,7 +222,7 @@ bb-agent/
 │   │       ├── select_list.rs  # Fuzzy select menu
 │   │       └── theme.rs        # Terminal color themes
 │   │
-│   └── cli/                # bb-cli: the `bb` binary
+│   └── cli/                # kordi-cli: the `kordi` binary
 │       └── src/
 │           ├── main.rs         # CLI arg parsing, entry point
 │           ├── tui/     # TUI controller, menus, session
@@ -233,7 +233,7 @@ bb-agent/
 │           ├── extensions.rs   # Extension discovery + loading
 │           └── slash.rs        # Slash command dispatch
 │
-├── bin/bb                  # npm launcher (Node.js shim)
+├── bin/kordi                  # npm launcher (Node.js shim)
 ├── scripts/postinstall.js  # npm postinstall (binary download)
 ├── package.json            # npm package metadata
 └── docs/                   # Documentation
@@ -241,7 +241,7 @@ bb-agent/
 
 ## Key code paths
 
-### What happens when you type `bb`
+### What happens when you type `kordi`
 
 1. `cli/src/main.rs` → parses CLI args
 2. `cli/src/session_bootstrap.rs` → loads settings, resolves model/provider, builds tools
@@ -267,7 +267,7 @@ bb-agent/
        fn name(&self) -> &str { "my_tool" }
        fn description(&self) -> &str { "..." }
        fn parameters_schema(&self) -> Value { json!({...}) }
-       async fn execute(&self, params: Value, ctx: &ToolContext, cancel: CancellationToken) -> BbResult<ToolResult> {
+       async fn execute(&self, params: Value, ctx: &ToolContext, cancel: CancellationToken) -> KordiResult<ToolResult> {
            // ...
        }
    }
@@ -292,27 +292,27 @@ bb-agent/
 
 ```bash
 # Show all log levels
-bb --verbose
+kordi --verbose
 
 # Or set env var
-RUST_LOG=debug bb
-RUST_LOG=bb_core=trace,bb_provider=debug bb
+RUST_LOG=debug kordi
+RUST_LOG=kordi_core=trace,kordi_provider=debug kordi
 ```
 
 ### Debug a specific crate
 
 ```bash
-# Run only bb-tui tests with output
-cargo test -p bb-tui --release -- --nocapture
+# Run only kordi-tui tests with output
+cargo test -p kordi-tui --release -- --nocapture
 
 # Run with backtrace on panic
-RUST_BACKTRACE=1 cargo run --bin bb
+RUST_BACKTRACE=1 cargo run --bin kordi
 ```
 
 ### Inspect the session database
 
 ```bash
-sqlite3 ~/.bb-agent/sessions.db
+sqlite3 ~/.kordi/sessions.db
 .tables
 SELECT session_id, cwd, created_at FROM sessions ORDER BY created_at DESC LIMIT 5;
 SELECT entry_id, type, substr(payload, 1, 100) FROM entries WHERE session_id = '...' ORDER BY seq;
@@ -341,7 +341,7 @@ cargo build --release
 
 # 6. Upload stripped/compressed binaries to the GitHub release
 # (the release workflow also does this automatically for tagged pushes)
-gh release create v0.x.x target/release/bb --title "v0.x.x"
+gh release create v0.x.x target/release/kordi --title "v0.x.x"
 
 # 7. Update package.json version, publish to npm
 npm publish

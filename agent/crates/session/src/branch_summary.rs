@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use bb_core::types::{AgentMessage, SessionEntry};
-use bb_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent};
+use kordi_core::types::{AgentMessage, SessionEntry};
+use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent};
 use tokio_util::sync::CancellationToken;
 
 use crate::compaction::{extract_file_operations, serialize_conversation};
@@ -74,7 +74,7 @@ pub fn prepare_branch_summary_entries(rows: &[EntryRow]) -> Result<BranchSummary
                 display,
                 details,
                 ..
-            } => messages.push(AgentMessage::Custom(bb_core::types::CustomMessage {
+            } => messages.push(AgentMessage::Custom(kordi_core::types::CustomMessage {
                 custom_type,
                 content,
                 display,
@@ -105,7 +105,7 @@ pub fn prepare_branch_summary_entries(rows: &[EntryRow]) -> Result<BranchSummary
                     }
                 }
                 messages.push(AgentMessage::BranchSummary(
-                    bb_core::types::BranchSummaryMessage {
+                    kordi_core::types::BranchSummaryMessage {
                         summary,
                         from_id: from_id.0,
                         timestamp: chrono::Utc::now().timestamp_millis(),
@@ -117,7 +117,7 @@ pub fn prepare_branch_summary_entries(rows: &[EntryRow]) -> Result<BranchSummary
                 tokens_before,
                 ..
             } => messages.push(AgentMessage::CompactionSummary(
-                bb_core::types::CompactionSummaryMessage {
+                kordi_core::types::CompactionSummaryMessage {
                     summary,
                     tokens_before,
                     timestamp: chrono::Utc::now().timestamp_millis(),
@@ -210,7 +210,7 @@ pub async fn generate_branch_summary(
 
     let options = RequestOptions {
         api_key: api_key.to_string(),
-        auth_mode: bb_provider::ProviderAuthMode::ApiKey,
+        auth_mode: kordi_provider::ProviderAuthMode::ApiKey,
         auth_account_id: None,
         base_url: base_url.to_string(),
         headers: std::collections::HashMap::new(),
@@ -270,7 +270,7 @@ fn append_file_lists(summary: &mut String, read_files: &[String], modified_files
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bb_core::types::{EntryBase, EntryId, UserMessage};
+    use kordi_core::types::{EntryBase, EntryId, UserMessage};
     use chrono::Utc;
 
     #[test]
@@ -287,7 +287,7 @@ mod tests {
                 timestamp: Utc::now(),
             },
             message: AgentMessage::User(UserMessage {
-                content: vec![bb_core::types::ContentBlock::Text {
+                content: vec![kordi_core::types::ContentBlock::Text {
                     text: "hello".into(),
                 }],
                 timestamp: Utc::now().timestamp_millis(),

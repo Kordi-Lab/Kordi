@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::{
     CompactionConfig, ModelOverride, PackageEntry, ProviderOverride, RetryConfig, Settings,
-    UpdateCheckSettings,
+    StorageSettings, UpdateCheckSettings,
 };
 
 pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings {
@@ -61,6 +61,18 @@ pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings 
             false,
         ),
         update_check: merge_update_check(&global.update_check, &project.update_check),
+        storage: merge_storage(&global.storage, &project.storage),
+    }
+}
+
+fn merge_storage(global: &StorageSettings, project: &StorageSettings) -> StorageSettings {
+    StorageSettings {
+        root_dir: project.root_dir.clone().or_else(|| global.root_dir.clone()),
+        db_path: project.db_path.clone().or_else(|| global.db_path.clone()),
+        artifacts_dir: project
+            .artifacts_dir
+            .clone()
+            .or_else(|| global.artifacts_dir.clone()),
     }
 }
 

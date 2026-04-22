@@ -1,4 +1,4 @@
-pub use bb_core::types::CacheMetricsSource;
+pub use kordi_core::types::CacheMetricsSource;
 
 pub fn cache_read_hit_rate_pct(input_tokens: u64, cache_read_tokens: u64) -> Option<f64> {
     let total = input_tokens + cache_read_tokens;

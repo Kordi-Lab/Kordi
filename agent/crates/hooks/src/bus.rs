@@ -302,7 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_context_hook_modifies_messages() {
-        use bb_core::types::{AgentMessage, ContentBlock, UserMessage};
+        use kordi_core::types::{AgentMessage, ContentBlock, UserMessage};
 
         let bus = EventBus::new();
         bus.on(
@@ -437,7 +437,7 @@ mod tests {
             "1",
             "bash",
             serde_json::json!({"command": "echo secret"}),
-            vec![bb_core::types::ContentBlock::Text {
+            vec![kordi_core::types::ContentBlock::Text {
                 text: "secret output".into(),
             }],
             None,

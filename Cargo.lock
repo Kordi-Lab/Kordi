@@ -255,149 +255,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
-name = "bb-core"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "bb-hooks"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "bb-core",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "bb-monitor"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "bb-core",
- "chrono",
- "serde",
- "serde_json",
- "sha2",
- "uuid",
-]
-
-[[package]]
-name = "bb-plugin-host"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "bb-core",
- "bb-hooks",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "bb-provider"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bb-core",
- "futures",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "bb-session"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "bb-core",
- "bb-provider",
- "chrono",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "bb-tools"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bb-core",
- "bb-provider",
- "futures",
- "libc",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "similar",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "bb-tui"
-version = "0.0.18"
-dependencies = [
- "anyhow",
- "bb-core",
- "bb-hooks",
- "bb-provider",
- "bb-session",
- "chrono",
- "crossterm",
- "pulldown-cmark",
- "rand 0.8.6",
- "regex",
- "serde",
- "serde_json",
- "syntect",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "unicode-segmentation",
- "unicode-width",
- "url",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2424,12 +2281,12 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "bb-core",
- "bb-session",
  "chrono",
  "clap",
  "directories",
+ "kordi-core",
  "kordi-protocol",
+ "kordi-session",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
@@ -2449,19 +2306,19 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
- "bb-core",
- "bb-hooks",
- "bb-monitor",
- "bb-plugin-host",
- "bb-provider",
- "bb-session",
- "bb-tools",
- "bb-tui",
  "chrono",
  "clap",
  "crossterm",
  "futures",
  "glob",
+ "kordi-core",
+ "kordi-hooks",
+ "kordi-monitor",
+ "kordi-plugin-host",
+ "kordi-provider",
+ "kordi-session",
+ "kordi-tools",
+ "kordi-tui",
  "rand 0.8.6",
  "reqwest 0.12.28",
  "rusqlite",
@@ -2479,17 +2336,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-core"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "kordi-desktop"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bb-core",
  "bs58",
  "chrono",
  "curve25519-dalek",
  "ed25519-dalek",
  "hex",
  "kordi-cli",
+ "kordi-core",
  "rand 0.8.6",
  "reqwest 0.12.28",
  "rusqlite",
@@ -2504,11 +2375,140 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-hooks"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "kordi-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "kordi-monitor"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "kordi-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
+name = "kordi-plugin-host"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "kordi-core",
+ "kordi-hooks",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "kordi-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "kordi-provider"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "kordi-core",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "kordi-session"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "kordi-core",
+ "kordi-provider",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "kordi-tools"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "kordi-core",
+ "kordi-provider",
+ "libc",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "similar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "kordi-tui"
+version = "0.0.18"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "kordi-core",
+ "kordi-hooks",
+ "kordi-provider",
+ "kordi-session",
+ "pulldown-cmark",
+ "rand 0.8.6",
+ "regex",
+ "serde",
+ "serde_json",
+ "syntect",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "unicode-segmentation",
+ "unicode-width",
+ "url",
 ]
 
 [[package]]

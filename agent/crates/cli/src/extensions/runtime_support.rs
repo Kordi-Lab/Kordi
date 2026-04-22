@@ -42,7 +42,7 @@ pub(crate) struct RuntimeExtensionSupport {
 /// Render the prompt section that advertises discovered skills and prompt
 /// templates to the agent.
 ///
-/// This is shared by `bb run`, TUI startup, and session bootstrap so the agent
+/// This is shared by `kordi run`, TUI startup, and session bootstrap so the agent
 /// sees the same skill/prompt inventory regardless of entry point.
 pub(crate) fn build_skill_system_prompt_section(resources: &SessionResourceBootstrap) -> String {
     let mut sections = Vec::new();

@@ -4,13 +4,13 @@ use std::{
     time::Duration,
 };
 
-use bb_core::settings::Settings;
-use bb_tui::tui::{TuiCommand, TuiNoteLevel};
+use kordi_core::settings::Settings;
+use kordi_tui::tui::{TuiCommand, TuiNoteLevel};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-const DEFAULT_NPM_PACKAGE: Option<&str> = Some("@shuyhere/bb-agent");
-const DEFAULT_CHANGELOG_URL: Option<&str> = Some("https://github.com/shuyhere/bb-agent/releases");
+const DEFAULT_NPM_PACKAGE: Option<&str> = None;
+const DEFAULT_CHANGELOG_URL: Option<&str> = Some("https://github.com/Kordi-AI/Kordi/releases");
 const DEFAULT_INSTALL_COMMAND: Option<&str> = None;
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -89,12 +89,12 @@ pub(crate) async fn check_for_updates(
 }
 
 fn detect_install_command(package_name: &str) -> String {
-    if let Ok(cmd) = std::env::var("BB_UPDATE_CHECK_INSTALL")
+    if let Ok(cmd) = std::env::var("KORDI_UPDATE_CHECK_INSTALL")
         && !cmd.trim().is_empty()
     {
         return cmd;
     }
-    if std::env::var("BB_NPM_WRAPPER_ACTIVE").ok().as_deref() == Some("1") {
+    if std::env::var("KORDI_NPM_WRAPPER_ACTIVE").ok().as_deref() == Some("1") {
         return format!("npm install -g {package_name}@latest");
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -103,7 +103,7 @@ fn detect_install_command(package_name: &str) -> String {
             return format!("npm install -g {package_name}@latest");
         }
         if exe.contains(".cargo") || exe.contains("cargo") {
-            return "cargo install --git https://github.com/shuyhere/bb-agent.git bb-cli --force"
+            return "cargo install --git https://github.com/Kordi-AI/Kordi.git kordi-cli --force"
                 .to_string();
         }
     }
@@ -118,15 +118,15 @@ fn load_config(cwd: &Path) -> Option<UpdateCheckConfig> {
         return None;
     }
 
-    let package_name = std::env::var("BB_UPDATE_CHECK_PACKAGE")
+    let package_name = std::env::var("KORDI_UPDATE_CHECK_PACKAGE")
         .ok()
         .or_else(|| DEFAULT_NPM_PACKAGE.map(ToString::to_string))?;
     let install_command = detect_install_command(&package_name);
-    let changelog_url = std::env::var("BB_UPDATE_CHECK_CHANGELOG")
+    let changelog_url = std::env::var("KORDI_UPDATE_CHECK_CHANGELOG")
         .ok()
         .or_else(|| DEFAULT_CHANGELOG_URL.map(ToString::to_string));
 
-    let ttl_hours = std::env::var("BB_UPDATE_CHECK_TTL_HOURS")
+    let ttl_hours = std::env::var("KORDI_UPDATE_CHECK_TTL_HOURS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(settings.update_check.ttl_hours);
@@ -202,10 +202,11 @@ fn store_cached_outcome_to_path(
 }
 
 fn cache_file_path() -> PathBuf {
-    if let Ok(path) = std::env::var("BB_UPDATE_CHECK_CACHE_PATH") {
+    if let Ok(path) = std::env::var("KORDI_UPDATE_CHECK_CACHE_PATH") {
         return PathBuf::from(path);
     }
-    bb_core::config::global_dir().join("update-check.json")
+    let settings = Settings::load_global();
+    kordi_core::config::update_check_cache_path(&settings.storage)
 }
 
 async fn fetch_update_notice(config: &UpdateCheckConfig) -> anyhow::Result<Option<UpdateNotice>> {
@@ -337,13 +338,17 @@ mod tests {
     fn formats_update_available_note() {
         let text = build_update_available_note(&UpdateNotice {
             latest_version: "0.65.0".to_string(),
-            install_command: "npm install -g bb-agent".to_string(),
-            changelog_url: Some("https://example.com/bb-agent/changelog".to_string()),
+            install_command:
+                "cargo install --git https://github.com/Kordi-AI/Kordi.git kordi-cli --force"
+                    .to_string(),
+            changelog_url: Some("https://example.com/kordi/changelog".to_string()),
         });
 
         assert!(text.contains("kordi update available: 0.65.0"));
-        assert!(text.contains("npm install -g bb-agent"));
-        assert!(text.contains("release notes: https://example.com/bb-agent/changelog"));
+        assert!(text.contains(
+            "cargo install --git https://github.com/Kordi-AI/Kordi.git kordi-cli --force"
+        ));
+        assert!(text.contains("release notes: https://example.com/kordi/changelog"));
     }
 
     #[test]
@@ -440,8 +445,8 @@ mod tests {
     #[test]
     fn detect_install_command_prefers_explicit_env_override() {
         let _guard = env_lock().lock().unwrap();
-        let _install = EnvGuard::set("BB_UPDATE_CHECK_INSTALL", "custom install cmd");
-        let _wrapper = EnvGuard::remove("BB_NPM_WRAPPER_ACTIVE");
+        let _install = EnvGuard::set("KORDI_UPDATE_CHECK_INSTALL", "custom install cmd");
+        let _wrapper = EnvGuard::remove("KORDI_NPM_WRAPPER_ACTIVE");
 
         assert_eq!(detect_install_command("demo"), "custom install cmd");
     }
@@ -452,14 +457,14 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let cwd = tempfile::tempdir().unwrap();
         let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-        let _package = EnvGuard::remove("BB_UPDATE_CHECK_PACKAGE");
-        let _changelog = EnvGuard::remove("BB_UPDATE_CHECK_CHANGELOG");
-        let _ttl = EnvGuard::remove("BB_UPDATE_CHECK_TTL_HOURS");
-        let _cache = EnvGuard::remove("BB_UPDATE_CHECK_CACHE_PATH");
-        let _install = EnvGuard::remove("BB_UPDATE_CHECK_INSTALL");
-        let _wrapper = EnvGuard::remove("BB_NPM_WRAPPER_ACTIVE");
+        let _package = EnvGuard::remove("KORDI_UPDATE_CHECK_PACKAGE");
+        let _changelog = EnvGuard::remove("KORDI_UPDATE_CHECK_CHANGELOG");
+        let _ttl = EnvGuard::remove("KORDI_UPDATE_CHECK_TTL_HOURS");
+        let _cache = EnvGuard::remove("KORDI_UPDATE_CHECK_CACHE_PATH");
+        let _install = EnvGuard::remove("KORDI_UPDATE_CHECK_INSTALL");
+        let _wrapper = EnvGuard::remove("KORDI_NPM_WRAPPER_ACTIVE");
 
-        let project_settings_dir = cwd.path().join(".bb-agent");
+        let project_settings_dir = cwd.path().join(".kordi");
         std::fs::create_dir_all(&project_settings_dir).unwrap();
         std::fs::write(
             project_settings_dir.join("settings.json"),

@@ -1,15 +1,15 @@
 use anyhow::{Result, anyhow, bail};
-use bb_core::agent_session::{ImageContent, ThinkingLevel};
-use bb_core::settings::Settings;
-use bb_core::types::{
+use kordi_core::agent_session::{ImageContent, ThinkingLevel};
+use kordi_core::settings::Settings;
+use kordi_core::types::{
     AgentMessage, AssistantContent, ContentBlock, EntryBase, EntryId, SessionEntry,
 };
-use bb_monitor::{
+use kordi_monitor::{
     CacheMonitorTextInput, ContextResolutionInput, ContextWindowStatus, RequestCacheMetrics,
     SessionCacheMetricsSource, latest_request_metrics_for_session, render_cache_monitor_text,
     render_context_window_status, resolve_context_window_status,
 };
-use bb_provider::registry::{Model, ModelRegistry};
+use kordi_provider::registry::{Model, ModelRegistry};
 use chrono::{Local, TimeZone, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -353,7 +353,7 @@ impl DesktopRuntimeSession {
             bail!("Session name cannot be empty");
         }
         ensure_session_row_created(&mut self.setup)?;
-        bb_session::store::set_session_name(&self.setup.conn, &self.setup.session_id, Some(name))?;
+        kordi_session::store::set_session_name(&self.setup.conn, &self.setup.session_id, Some(name))?;
         Ok(())
     }
 
@@ -454,18 +454,18 @@ fn parse_db_timestamp_millis(value: &str) -> Option<i64> {
 }
 
 fn session_last_message_timestamp(conn: &rusqlite::Connection, session_id: &str) -> Option<String> {
-    bb_session::store::get_last_message_timestamp(conn, session_id)
+    kordi_session::store::get_last_message_timestamp(conn, session_id)
         .ok()
         .flatten()
 }
 
 fn session_last_activity_timestamp(
     conn: &rusqlite::Connection,
-    row: &bb_session::store::SessionRow,
+    row: &kordi_session::store::SessionRow,
 ) -> String {
     session_last_message_timestamp(conn, &row.session_id)
         .or_else(|| {
-            bb_session::store::get_last_entry_timestamp(conn, &row.session_id)
+            kordi_session::store::get_last_entry_timestamp(conn, &row.session_id)
                 .ok()
                 .flatten()
         })
@@ -474,21 +474,21 @@ fn session_last_activity_timestamp(
 
 fn session_sort_timestamp_ms(
     conn: &rusqlite::Connection,
-    row: &bb_session::store::SessionRow,
+    row: &kordi_session::store::SessionRow,
 ) -> i64 {
     parse_db_timestamp_millis(&session_last_activity_timestamp(conn, row)).unwrap_or_default()
 }
 
 fn session_activity_label(
     conn: &rusqlite::Connection,
-    row: &bb_session::store::SessionRow,
+    row: &kordi_session::store::SessionRow,
 ) -> String {
     format_db_timestamp(&session_last_activity_timestamp(conn, row))
 }
 
 fn session_summary_from_row(
     conn: &rusqlite::Connection,
-    row: bb_session::store::SessionRow,
+    row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
     let updated_at_label = session_activity_label(conn, &row);
     let title = row
@@ -496,7 +496,7 @@ fn session_summary_from_row(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| format!("Session {}", short_session_id(&row.session_id)));
-    let subtitle = match bb_session::context::build_context(conn, &row.session_id) {
+    let subtitle = match kordi_session::context::build_context(conn, &row.session_id) {
         Ok(context) => context
             .model
             .map(|model| format!("{}/{}", model.provider, model.model_id))
@@ -514,12 +514,15 @@ fn session_summary_from_row(
     })
 }
 
+fn open_sessions_db() -> Result<rusqlite::Connection> {
+    let global_settings = Settings::load_global();
+    kordi_session::store::open_db(&kordi_core::config::session_db_path(&global_settings.storage))
+}
+
 pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSessionSummary>> {
-    let global_dir = bb_core::config::global_dir();
-    std::fs::create_dir_all(&global_dir)?;
-    let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
+    let conn = open_sessions_db()?;
     let cwd_str = cwd.display().to_string();
-    let mut rows = bb_session::store::list_sessions(&conn, &cwd_str)?;
+    let mut rows = kordi_session::store::list_sessions(&conn, &cwd_str)?;
     rows.sort_by(|left, right| {
         session_sort_timestamp_ms(&conn, right)
             .cmp(&session_sort_timestamp_ms(&conn, left))
@@ -532,10 +535,8 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
 }
 
 pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProjectGroup>> {
-    let global_dir = bb_core::config::global_dir();
-    std::fs::create_dir_all(&global_dir)?;
-    let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
-    let rows = bb_session::store::list_all_sessions(&conn)?;
+    let conn = open_sessions_db()?;
+    let rows = kordi_session::store::list_all_sessions(&conn)?;
     let mut groups: std::collections::BTreeMap<String, DesktopChatProjectGroup> =
         std::collections::BTreeMap::new();
     let mut group_sort_keys = std::collections::HashMap::<String, i64>::new();
@@ -546,7 +547,7 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
         let session_id = row.session_id.clone();
         let session_cwd = std::path::PathBuf::from(&row.cwd);
         let project_root =
-            bb_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
+            kordi_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
         let group_id = format!("project:{}", project_root.display());
         let settings = Settings::load_project(&session_cwd);
         let project_name = settings
@@ -623,10 +624,8 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
 }
 
 pub fn session_exists(session_id: &str) -> Result<bool> {
-    let global_dir = bb_core::config::global_dir();
-    std::fs::create_dir_all(&global_dir)?;
-    let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
-    Ok(bb_session::store::get_session(&conn, session_id)?.is_some())
+    let conn = open_sessions_db()?;
+    Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
 }
 
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
@@ -923,7 +922,7 @@ fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
     setup.api_key = runtime.api_key.clone();
     setup.base_url = runtime.base_url.clone();
     setup.headers = runtime.headers.clone();
-    setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+    setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
         provider: setup.provider.clone(),
         model: setup.model.clone(),
         api_key: setup.api_key.clone(),
@@ -939,7 +938,7 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     }
 
     let cwd = setup.tool_ctx.cwd.display().to_string();
-    bb_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
+    kordi_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
     append_model_change_entry(&setup.conn, &setup.session_id, &setup.model)?;
     let initial_thinking =
         ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Medium);
@@ -962,7 +961,7 @@ fn append_model_change_entry(
         provider: model.provider.clone(),
         model_id: model.id.clone(),
     };
-    bb_session::store::append_entry(conn, session_id, &entry)?;
+    kordi_session::store::append_entry(conn, session_id, &entry)?;
     Ok(())
 }
 
@@ -979,7 +978,7 @@ fn append_thinking_level_change_entry(
         },
         thinking_level,
     };
-    bb_session::store::append_entry(conn, session_id, &entry)?;
+    kordi_session::store::append_entry(conn, session_id, &entry)?;
     Ok(())
 }
 
@@ -988,7 +987,7 @@ fn maybe_name_session_from_prompt(
     session_id: &str,
     prompt: &str,
 ) -> Result<()> {
-    let Some(row) = bb_session::store::get_session(conn, session_id)? else {
+    let Some(row) = kordi_session::store::get_session(conn, session_id)? else {
         return Ok(());
     };
     if row
@@ -1009,7 +1008,7 @@ fn maybe_name_session_from_prompt(
     } else {
         truncate_chars(&title, 60)
     };
-    bb_session::store::set_session_name(conn, session_id, Some(&title))?;
+    kordi_session::store::set_session_name(conn, session_id, Some(&title))?;
     Ok(())
 }
 
@@ -1036,13 +1035,13 @@ fn build_turn_config(
         api_key: setup.api_key.clone(),
         base_url: setup.base_url.clone(),
         headers: setup.headers.clone(),
-        compaction_settings: bb_core::types::CompactionSettings {
+        compaction_settings: kordi_core::types::CompactionSettings {
             enabled: setup.compaction_enabled,
             reserve_tokens: setup.compaction_reserve_tokens,
             keep_recent_tokens: setup.compaction_keep_recent_tokens,
         },
         tool_registry,
-        tool_ctx: bb_tools::ToolContext {
+        tool_ctx: kordi_tools::ToolContext {
             cwd: setup.tool_ctx.cwd.clone(),
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
             execution_policy: setup.tool_ctx.execution_policy,
@@ -1080,7 +1079,7 @@ fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSe
 }
 
 fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
-    let project_root = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     let settings = Settings::load_project(cwd);
     let name = settings
         .project_name
@@ -1125,7 +1124,7 @@ fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
 
 fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSessionDetail> {
     let session_row = if setup.session_created {
-        bb_session::store::get_session(&setup.conn, &setup.session_id)?
+        kordi_session::store::get_session(&setup.conn, &setup.session_id)?
     } else {
         None
     };
@@ -1257,12 +1256,12 @@ fn load_session_messages(
     conn: &rusqlite::Connection,
     session_id: &str,
 ) -> Result<Vec<DesktopChatMessage>> {
-    let path = bb_session::tree::active_path(conn, session_id)?;
+    let path = kordi_session::tree::active_path(conn, session_id)?;
     let mut out = Vec::new();
     let mut current_turn: Option<HistoricalTurnBuilder> = None;
 
     for row in path {
-        let entry = bb_session::store::parse_entry(&row)?;
+        let entry = kordi_session::store::parse_entry(&row)?;
         match entry {
             SessionEntry::Message { message, .. } => match message {
                 AgentMessage::User(user) => {
@@ -1287,11 +1286,11 @@ fn load_session_messages(
                         message.provider,
                         message.model,
                         match &message.stop_reason {
-                            bb_core::types::StopReason::Stop => "completed",
-                            bb_core::types::StopReason::Length => "length limit",
-                            bb_core::types::StopReason::ToolUse => "tool use",
-                            bb_core::types::StopReason::Error => "error",
-                            bb_core::types::StopReason::Aborted => "aborted",
+                            kordi_core::types::StopReason::Stop => "completed",
+                            kordi_core::types::StopReason::Length => "length limit",
+                            kordi_core::types::StopReason::ToolUse => "tool use",
+                            kordi_core::types::StopReason::Error => "error",
+                            kordi_core::types::StopReason::Aborted => "aborted",
                         }
                     ));
 
@@ -1676,25 +1675,25 @@ fn request_matches_cache_domain(
         && current_context_epoch.is_none_or(|epoch| metrics.context_epoch == epoch)
 }
 
-fn active_path_has_contextful_entries(path: &[bb_session::store::EntryRow]) -> bool {
+fn active_path_has_contextful_entries(path: &[kordi_session::store::EntryRow]) -> bool {
     path.iter().any(|row| row.entry_type == "message")
 }
 
-fn estimate_active_path_context_tokens(path: &[bb_session::store::EntryRow]) -> Option<u64> {
+fn estimate_active_path_context_tokens(path: &[kordi_session::store::EntryRow]) -> Option<u64> {
     let latest_compaction_index = path.iter().rposition(|row| row.entry_type == "compaction");
     if let Some(compaction_index) = latest_compaction_index {
         let has_post_compaction_usage = path.iter().skip(compaction_index + 1).rev().any(|row| {
-            let Ok(entry) = bb_session::store::parse_entry(row) else {
+            let Ok(entry) = kordi_session::store::parse_entry(row) else {
                 return false;
             };
             match entry {
-                bb_core::types::SessionEntry::Message {
-                    message: bb_core::types::AgentMessage::Assistant(assistant),
+                kordi_core::types::SessionEntry::Message {
+                    message: kordi_core::types::AgentMessage::Assistant(assistant),
                     ..
                 } => {
-                    assistant.stop_reason != bb_core::types::StopReason::Aborted
-                        && assistant.stop_reason != bb_core::types::StopReason::Error
-                        && bb_session::compaction::calculate_context_tokens(&assistant.usage) > 0
+                    assistant.stop_reason != kordi_core::types::StopReason::Aborted
+                        && assistant.stop_reason != kordi_core::types::StopReason::Error
+                        && kordi_session::compaction::calculate_context_tokens(&assistant.usage) > 0
                 }
                 _ => false,
             }
@@ -1704,9 +1703,9 @@ fn estimate_active_path_context_tokens(path: &[bb_session::store::EntryRow]) -> 
         }
     }
 
-    bb_session::context::build_context_from_path(path)
+    kordi_session::context::build_context_from_path(path)
         .ok()
-        .map(|ctx| bb_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
+        .map(|ctx| kordi_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
 }
 
 fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
@@ -1770,7 +1769,7 @@ fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
 }
 
 fn current_context_window_status(setup: &SessionRuntimeSetup) -> ContextWindowStatus {
-    let active_path = bb_session::tree::active_path(&setup.conn, &setup.session_id).ok();
+    let active_path = kordi_session::tree::active_path(&setup.conn, &setup.session_id).ok();
     let latest_entry_is_compaction = active_path
         .as_ref()
         .and_then(|rows| rows.last())

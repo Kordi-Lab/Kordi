@@ -16,10 +16,10 @@ const SYNC_BEGIN: &str = "\x1b[?2026h";
 const SYNC_END: &str = "\x1b[?2026l";
 const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
 
-/// Cached check for the `BB_DEBUG_REDRAW` environment variable.
+/// Cached check for the `KORDI_DEBUG_REDRAW` environment variable.
 fn debug_redraw_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var("BB_DEBUG_REDRAW").as_deref() == Ok("1"))
+    *ENABLED.get_or_init(|| std::env::var("KORDI_DEBUG_REDRAW").as_deref() == Ok("1"))
 }
 
 /// Cached Termux detection.
@@ -28,17 +28,17 @@ fn in_termux() -> bool {
     *TERMUX.get_or_init(is_termux)
 }
 
-/// Append a debug-redraw message to `~/.bb-agent/tui-debug.log`.
+/// Append a debug-redraw message to `~/.kordi/tui-debug.log`, with legacy
+/// debug-log migration handled through shared config helpers.
 fn log_redraw(reason: &str, prev_len: usize, new_len: usize, height: u16) {
     if !debug_redraw_enabled() {
         return;
     }
-    let Ok(home) = std::env::var("HOME") else {
-        return;
-    };
-    let dir = format!("{home}/.bb-agent");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = format!("{dir}/tui-debug.log");
+    let settings = kordi_core::settings::Settings::load_global();
+    let path = kordi_core::config::tui_debug_log_path(&settings.storage);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let now = chrono::Utc::now().to_rfc3339();
     let msg = format!(
         "[{now}] fullRender: {reason} (prev={prev_len}, new={new_len}, height={height})\n",

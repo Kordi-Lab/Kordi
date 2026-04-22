@@ -1,8 +1,8 @@
 use super::types::TuiNoteLevel;
 use std::time::{Duration, Instant};
 
-use bb_core::types::ContentBlock;
-use bb_session::{store::EntryRow, tree::TreeNode};
+use kordi_core::types::ContentBlock;
+use kordi_session::{store::EntryRow, tree::TreeNode};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use crate::select_list::SelectItem;

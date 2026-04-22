@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
-use bb_session::{compaction, store};
-use bb_tui::tui::{TuiCommand, TuiNoteLevel, TuiSubmission};
+use kordi_session::{compaction, store};
+use kordi_tui::tui::{TuiCommand, TuiNoteLevel, TuiSubmission};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
@@ -20,7 +20,7 @@ impl TuiController {
             return Ok(());
         }
 
-        let settings = bb_core::types::CompactionSettings {
+        let settings = kordi_core::types::CompactionSettings {
             enabled: self.session_setup.compaction_enabled,
             reserve_tokens: self.session_setup.compaction_reserve_tokens,
             keep_recent_tokens: self.session_setup.compaction_keep_recent_tokens,

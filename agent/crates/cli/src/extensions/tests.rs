@@ -1,9 +1,9 @@
 use std::fs;
 
-use bb_core::agent_session_extensions::{
+use kordi_core::agent_session_extensions::{
     PromptTemplateDefinition, PromptTemplateInfo, SkillDefinition, SkillInfo,
 };
-use bb_core::settings::PackageEntry;
+use kordi_core::settings::PackageEntry;
 use tempfile::tempdir;
 
 use super::command_results::{
@@ -206,11 +206,11 @@ fn plugin_tool_result_mapping_preserves_blocks_and_flags() {
 
     assert!(matches!(
         mapped.content.first(),
-        Some(bb_core::types::ContentBlock::Text { text }) if text == "hello"
+        Some(kordi_core::types::ContentBlock::Text { text }) if text == "hello"
     ));
     assert!(matches!(
         mapped.content.get(1),
-        Some(bb_core::types::ContentBlock::Image { mime_type, .. }) if mime_type == "image/png"
+        Some(kordi_core::types::ContentBlock::Image { mime_type, .. }) if mime_type == "image/png"
     ));
     assert_eq!(mapped.details, Some(serde_json::json!({ "exitCode": 0 })));
     assert!(mapped.is_error);
@@ -227,7 +227,7 @@ fn plugin_tool_result_mapping_falls_back_to_pretty_json_when_needed() {
 
     assert!(matches!(
         mapped.content.first(),
-        Some(bb_core::types::ContentBlock::Text { text }) if text.contains("\"unexpected\": true")
+        Some(kordi_core::types::ContentBlock::Text { text }) if text.contains("\"unexpected\": true")
     ));
 }
 
@@ -293,7 +293,7 @@ fn discovers_package_resources_from_manifest() {
         package_dir.join("package.json"),
         r#"{
                 "name": "demo-package",
-                "bb": {
+                "kordi": {
                     "extensions": ["./pkg-extensions"],
                     "skills": ["./pkg-skills"],
                     "prompts": ["./pkg-prompts"]
@@ -327,7 +327,7 @@ async fn loads_package_skills_and_prompts_from_settings() {
         package_dir.join("package.json"),
         r#"{
                 "name": "skills-package",
-                "bb": {
+                "kordi": {
                     "skills": ["./skills"],
                     "prompts": ["./prompts"]
                 }
@@ -380,7 +380,7 @@ async fn disabled_skills_are_excluded_from_runtime_resources() {
         package_dir.join("package.json"),
         r#"{
                 "name": "skills-package",
-                "bb": { "skills": ["./skills"] }
+                "kordi": { "skills": ["./skills"] }
             }"#,
     )
     .unwrap();
@@ -533,7 +533,7 @@ async fn package_loaded_extension_command_executes_with_context() {
         package_dir.join("package.json"),
         r#"{
                 "name": "command-package",
-                "bb": {
+                "kordi": {
                     "extensions": ["./extensions"]
                 }
             }"#,
@@ -542,8 +542,8 @@ async fn package_loaded_extension_command_executes_with_context() {
     fs::write(
             package_dir.join("extensions/hello.js"),
             r#"
-                module.exports = function(bb) {
-                    bb.registerCommand('pkghello', {
+                module.exports = function(kordi) {
+                    kordi.registerCommand('pkghello', {
                         description: 'package hello',
                         handler: async (args, ctx) => ({
                             message: [
@@ -563,34 +563,34 @@ async fn package_loaded_extension_command_executes_with_context() {
         )
         .unwrap();
 
-    let conn = bb_session::store::open_db(&cwd.path().join("sessions.db")).unwrap();
+    let conn = kordi_session::store::open_db(&cwd.path().join("sessions.db")).unwrap();
     let session_id =
-        bb_session::store::create_session(&conn, cwd.path().to_str().unwrap()).unwrap();
-    let root = bb_core::types::SessionEntry::Message {
-        base: bb_core::types::EntryBase {
-            id: bb_core::types::EntryId::generate(),
+        kordi_session::store::create_session(&conn, cwd.path().to_str().unwrap()).unwrap();
+    let root = kordi_core::types::SessionEntry::Message {
+        base: kordi_core::types::EntryBase {
+            id: kordi_core::types::EntryId::generate(),
             parent_id: None,
             timestamp: chrono::Utc::now(),
         },
-        message: bb_core::types::AgentMessage::User(bb_core::types::UserMessage {
-            content: vec![bb_core::types::ContentBlock::Text {
+        message: kordi_core::types::AgentMessage::User(kordi_core::types::UserMessage {
+            content: vec![kordi_core::types::ContentBlock::Text {
                 text: "hello".to_string(),
             }],
             timestamp: chrono::Utc::now().timestamp_millis(),
         }),
     };
     let root_id = root.base().id.to_string();
-    bb_session::store::append_entry(&conn, &session_id, &root).unwrap();
-    let label = bb_core::types::SessionEntry::Label {
-        base: bb_core::types::EntryBase {
-            id: bb_core::types::EntryId::generate(),
-            parent_id: Some(bb_core::types::EntryId(root_id.clone())),
+    kordi_session::store::append_entry(&conn, &session_id, &root).unwrap();
+    let label = kordi_core::types::SessionEntry::Label {
+        base: kordi_core::types::EntryBase {
+            id: kordi_core::types::EntryId::generate(),
+            parent_id: Some(kordi_core::types::EntryId(root_id.clone())),
             timestamp: chrono::Utc::now(),
         },
-        target_id: bb_core::types::EntryId(root_id.clone()),
+        target_id: kordi_core::types::EntryId(root_id.clone()),
         label: Some("root-label".to_string()),
     };
-    bb_session::store::append_entry(&conn, &session_id, &label).unwrap();
+    kordi_session::store::append_entry(&conn, &session_id, &label).unwrap();
 
     let settings = Settings {
         packages: vec![PackageEntry::Simple(package_dir.display().to_string())],
@@ -639,8 +639,8 @@ async fn extension_command_timeout_returns_error_instead_of_hanging() {
     fs::write(
         &extension_path,
         r#"
-                module.exports = function(bb) {
-                    bb.registerCommand('slow', {
+                module.exports = function(kordi) {
+                    kordi.registerCommand('slow', {
                         description: 'slow command',
                         handler: async () => {
                             await new Promise((resolve) => setTimeout(resolve, 60000));
@@ -684,8 +684,8 @@ async fn reload_reloads_extension_command_output() {
     fs::write(
         &extension_path,
         r#"
-                module.exports = function(bb) {
-                    bb.registerCommand('hello', {
+                module.exports = function(kordi) {
+                    kordi.registerCommand('hello', {
                         description: 'hello',
                         handler: async () => ({ message: 'v1' }),
                     });
@@ -710,8 +710,8 @@ async fn reload_reloads_extension_command_output() {
     fs::write(
         &extension_path,
         r#"
-                module.exports = function(bb) {
-                    bb.registerCommand('hello', {
+                module.exports = function(kordi) {
+                    kordi.registerCommand('hello', {
                         description: 'hello',
                         handler: async () => ({ message: 'v2' }),
                     });
@@ -821,7 +821,7 @@ async fn filtered_package_loads_only_matching_resources() {
         package_dir.join("package.json"),
         r#"{
                 "name": "filtered-pkg",
-                "bb": {
+                "kordi": {
                     "skills": ["./skills"],
                     "prompts": ["./prompts"]
                 }
@@ -843,7 +843,7 @@ async fn filtered_package_loads_only_matching_resources() {
 
     // Load with filter: only review skill, no prompts
     let settings = Settings {
-        packages: vec![PackageEntry::Filtered(bb_core::settings::PackageFilter {
+        packages: vec![PackageEntry::Filtered(kordi_core::settings::PackageFilter {
             source: package_dir.display().to_string(),
             extensions: None,
             skills: Some(vec!["**/review/**".to_string()]),
@@ -888,8 +888,8 @@ async fn extension_ui_notify_and_confirm_plumbing() {
     fs::write(
         &ext_path,
         r#"
-                module.exports = function(bb) {
-                    bb.registerCommand('ui-demo', {
+                module.exports = function(kordi) {
+                    kordi.registerCommand('ui-demo', {
                         description: 'demo UI methods',
                         handler: async (args, ctx) => {
                             ctx.ui.notify('extension says hi', 'info');
@@ -978,7 +978,7 @@ fn resolve_package_directory_prefers_project_root_install_from_nested_cwd() {
 
     let resolved = resolve_package_directory(&nested, &format!("npm:{spec}")).unwrap();
     assert_eq!(resolved, package_dir);
-    assert!(resolved.starts_with(repo.path().join(".bb-agent")));
+    assert!(resolved.starts_with(normalize_path(repo.path().join(".kordi"))));
 }
 
 #[test]

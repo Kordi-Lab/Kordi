@@ -5,18 +5,18 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use async_trait::async_trait;
-use bb_core::agent_session_extensions::{
+use kordi_core::agent_session_extensions::{
     ExtensionsResult, LoadedExtension, RegisteredCommand, RegisteredTool, SessionResourceBootstrap,
     SourceInfo, ToolDefinition,
 };
-use bb_core::error::{BbError, BbResult};
-use bb_core::settings::Settings;
-use bb_core::types::{ContentBlock, SessionEntry};
-use bb_plugin_host::{
+use kordi_core::error::{KordiError, KordiResult};
+use kordi_core::settings::Settings;
+use kordi_core::types::{ContentBlock, SessionEntry};
+use kordi_plugin_host::{
     PluginContext, PluginHost, RegisteredCommand as HostRegisteredCommand,
     RegisteredTool as HostRegisteredTool, SharedUiHandler,
 };
-use bb_tools::{Tool, ToolContext, ToolResult};
+use kordi_tools::{Tool, ToolContext, ToolResult};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -128,21 +128,21 @@ impl ExtensionCommandRegistry {
 
         let conn = session.conn.lock().await;
         let entries =
-            bb_session::store::get_entries(&conn, &session.session_id).unwrap_or_default();
-        let branch = bb_session::tree::active_path(&conn, &session.session_id).unwrap_or_default();
-        let session_row = bb_session::store::get_session(&conn, &session.session_id)
+            kordi_session::store::get_entries(&conn, &session.session_id).unwrap_or_default();
+        let branch = kordi_session::tree::active_path(&conn, &session.session_id).unwrap_or_default();
+        let session_row = kordi_session::store::get_session(&conn, &session.session_id)
             .ok()
             .flatten();
         drop(conn);
 
         context.session_entries = entries
             .into_iter()
-            .filter_map(|row| bb_session::store::parse_entry(&row).ok())
+            .filter_map(|row| kordi_session::store::parse_entry(&row).ok())
             .filter_map(|entry| serde_json::to_value(entry).ok())
             .collect();
         context.session_branch = branch
             .into_iter()
-            .filter_map(|row| bb_session::store::parse_entry(&row).ok())
+            .filter_map(|row| kordi_session::store::parse_entry(&row).ok())
             .filter_map(|entry| serde_json::to_value(entry).ok())
             .collect();
         context.leaf_id = session_row.as_ref().and_then(|row| row.leaf_id.clone());
@@ -212,7 +212,7 @@ impl ExtensionCommandRegistry {
         }
     }
 
-    pub(crate) async fn send_event(&self, event: &bb_hooks::Event) -> Option<bb_hooks::HookResult> {
+    pub(crate) async fn send_event(&self, event: &kordi_hooks::Event) -> Option<kordi_hooks::HookResult> {
         let host = self.host.as_ref()?;
 
         match tokio::time::timeout(EXTENSION_EVENT_TIMEOUT, async {
@@ -240,7 +240,7 @@ impl ExtensionCommandRegistry {
         source: &str,
     ) -> Result<InputHookOutcome> {
         let Some(result) = self
-            .send_event(&bb_hooks::Event::Input(bb_hooks::events::InputEvent::new(
+            .send_event(&kordi_hooks::Event::Input(kordi_hooks::events::InputEvent::new(
                 text, source,
             )))
             .await
@@ -253,7 +253,7 @@ impl ExtensionCommandRegistry {
         };
 
         let action = InputHookAction::from_hook_action(result.action.as_deref());
-        let bb_hooks::HookResult {
+        let kordi_hooks::HookResult {
             text: hook_text,
             message,
             ..

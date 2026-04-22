@@ -148,7 +148,7 @@ pub fn fuzzy_score(pattern: &str, text: &str) -> u32 {
 mod tests {
     use super::*;
     use crate::registry::ModelRegistry;
-    use bb_core::settings::{ModelOverride, Settings};
+    use kordi_core::settings::{ModelOverride, Settings};
 
     #[test]
     fn test_parse_model_arg_simple() {

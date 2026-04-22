@@ -1,4 +1,4 @@
-use bb_core::types::CacheMetricsSource;
+use kordi_core::types::CacheMetricsSource;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;

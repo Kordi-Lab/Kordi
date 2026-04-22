@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to BB-Agent will be documented in this file.
+All notable changes to Kordi will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - OAuth estimated cache-hit normalization no longer pegs changed prompts to misleading `100.0%` latest-hit readings
 - switching models or auth sources now resets latest-request cache state so the monitor starts cold instead of reusing stale latest-hit/source data from the previous cache domain
-- clean `bb-tui` test builds no longer fail on the stale `wrap_visual_line` test-only re-export visibility issue
+- clean `kordi-tui` test builds no longer fail on the stale `wrap_visual_line` test-only re-export visibility issue
 
 ### Improved
 
@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- added the reusable `bb-monitor` backend crate and wired request metrics, session usage summaries, and cache provenance tracking through it
+- added the reusable `kordi-monitor` backend crate and wired request metrics, session usage summaries, and cache provenance tracking through it
 - added a dedicated under-input TUI cache monitor that shows cache source plus average and latest request hit rate
 - added a profile-aware auth store with saved timestamps, active-profile tracking, and richer provider auth summaries in `/model`
 
@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- added `bb setup browser`, including platform-specific guidance and optional shell-profile persistence for configuring `BB_BROWSER`
+- added `kordi setup browser`, including platform-specific guidance and optional shell-profile persistence for configuring `KORDI_BROWSER`
 - added a dedicated release-notes draft for `v0.0.16` under `docs/release-notes-0.0.16.md`
 
 ### Changed
@@ -75,11 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - queued prompt previews no longer hide compaction/local-action status, and fast local actions no longer flash meaningless `0ms` / `0.0s` timing
 - failed or interrupted tool calls no longer wedge later prompts with provider-side `No tool output found ...` errors; transcript repair and lifecycle finalization now guarantee a valid follow-up turn state
 - join-timeout warnings no longer make an active TUI turn look finished before the runner actually completes
-- clean `bb-cli` builds no longer emit dead-code warnings from the new tool registry surface, and secret-bearing auth/token structs now redact sensitive fields in debug output instead of exposing raw credentials
+- clean `kordi-cli` builds no longer emit dead-code warnings from the new tool registry surface, and secret-bearing auth/token structs now redact sensitive fields in debug output instead of exposing raw credentials
 
 ### Improved
 
-- ongoing Rust audit cleanup significantly reduced boolean-heavy APIs, overexposed state, and hotspot modules across `bb-cli`, `bb-core`, `bb-tools`, `bb-session`, `bb-tui`, `bb-provider`, `bb-plugin-host`, and `bb-hooks`, with expanded focused regression coverage throughout
+- ongoing Rust audit cleanup significantly reduced boolean-heavy APIs, overexposed state, and hotspot modules across `kordi-cli`, `kordi-core`, `kordi-tools`, `kordi-session`, `kordi-tui`, `kordi-provider`, `kordi-plugin-host`, and `kordi-hooks`, with expanded focused regression coverage throughout
 - npm install now prefers compressed `.gz` GitHub release assets when available, falling back to the legacy uncompressed binaries for older releases
 - release builds now strip debug info before publishing, substantially reducing native binary download size for npm installs and updates
 
@@ -106,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/settings` in tui now exposes compaction controls for `Auto-compact`, `Reserve tokens`, and `Keep recent tokens`
 - skills can now be listed, disabled, and re-enabled from the CLI without deleting their installed files
 - startup model selection now prefers configured provider/model defaults more consistently, with better OpenAI startup fallback behavior
-- added a parity test script against installed pi compaction logic to keep BB token accounting aligned with upstream behavior
+- added a parity test script against installed pi compaction logic to keep Kordi token accounting aligned with upstream behavior
 
 ### Fixed
 
@@ -131,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tui clipboard image attach no longer leaks helper `true` / `false` output or stray follow-up paste text into the input block
 - attached image chips can now be removed with `Backspace`, image-only prompts can be submitted, and optimistic user messages keep attachment chip previews in the transcript
 - rebuilt tui session transcripts now preserve user image attachment markers instead of silently dropping image blocks
-- managed `bb-clipboard-*.png` temp files are now cleaned up after removal or ingestion instead of lingering in `/tmp`
+- managed `kordi-clipboard-*.png` temp files are now cleaned up after removal or ingestion instead of lingering in `/tmp`
 - the tui input block now hides raw `@file` tokens when the corresponding attachment chip is already shown, preventing duplicated `@file` text in the editor
 - tui tool-header regression tests now match the intended live bash-header rendering and running-dot animation behavior
 
@@ -178,7 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- README install docs now lead with `npm install -g @shuyhere/bb-agent`, move terminal/font guidance into Troubleshooting, and clearly separate npm install from building from source for development
+- README install docs now lead with `npm install -g kordi`, move terminal/font guidance into Troubleshooting, and clearly separate npm install from building from source for development
 
 ## [0.0.9] - 2026-04-07
 
@@ -221,14 +221,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - latest published package includes the post-0.0.7 startup, auth, model-default, and update-notice improvements
 
-[0.0.18]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.18
-[0.0.17]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.17
-[0.0.16]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.16
-[0.0.15]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.15
-[0.0.14]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.14
-[0.0.13]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.13
-[0.0.12]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.12
-[0.0.11]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.11
-[0.0.10]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.10
-[0.0.9]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.9
-[0.0.8]: https://github.com/shuyhere/bb-agent/releases/tag/v0.0.8
+[0.0.18]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.18
+[0.0.17]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.17
+[0.0.16]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.16
+[0.0.15]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.15
+[0.0.14]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.14
+[0.0.13]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.13
+[0.0.12]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.12
+[0.0.11]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.11
+[0.0.10]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.10
+[0.0.9]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.9
+[0.0.8]: https://github.com/Kordi-AI/Kordi/releases/tag/v0.0.8

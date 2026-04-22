@@ -150,12 +150,12 @@ async fn session_has_running_turn(manager: &DesktopChatManager, session_id: &str
         .any(|turn| turn_matches_running_session(&turn.snapshot, session_id))
 }
 
-fn content_blocks_to_text(content: &[bb_core::types::ContentBlock]) -> String {
+fn content_blocks_to_text(content: &[kordi_core::types::ContentBlock]) -> String {
     let text = content
         .iter()
         .filter_map(|block| match block {
-            bb_core::types::ContentBlock::Text { text } => Some(text.as_str()),
-            bb_core::types::ContentBlock::Image { .. } => None,
+            kordi_core::types::ContentBlock::Text { text } => Some(text.as_str()),
+            kordi_core::types::ContentBlock::Image { .. } => None,
         })
         .collect::<Vec<_>>()
         .join("\n\n");

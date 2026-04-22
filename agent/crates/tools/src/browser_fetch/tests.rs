@@ -4,7 +4,7 @@ use std::path::Path;
 #[test]
 fn missing_browser_message_includes_configuration_guidance() {
     let message = missing_browser_error_message();
-    assert!(message.contains("BB_BROWSER"));
+    assert!(message.contains("KORDI_BROWSER"));
     assert!(message.contains("Chrome/Chromium"));
     assert!(message.contains("Checked PATH/common candidates:"));
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use bb_core::agent_session::PromptOptions;
-use bb_tui::tui::{TuiCommand, TuiNoteLevel, TuiSubmission};
+use kordi_core::agent_session::PromptOptions;
+use kordi_tui::tui::{TuiCommand, TuiNoteLevel, TuiSubmission};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -53,7 +53,7 @@ impl TuiController {
             });
         }
         for img in &pending {
-            opts.images.push(bb_core::agent_session::ImageContent {
+            opts.images.push(kordi_core::agent_session::ImageContent {
                 source: img.data.clone(),
                 mime_type: Some(img.mime_type.clone()),
             });
@@ -92,7 +92,7 @@ impl TuiController {
         let mut opts = PromptOptions::default();
         let pending = std::mem::take(&mut self.pending_images);
         for img in &pending {
-            opts.images.push(bb_core::agent_session::ImageContent {
+            opts.images.push(kordi_core::agent_session::ImageContent {
                 source: img.data.clone(),
                 mime_type: Some(img.mime_type.clone()),
             });
@@ -170,13 +170,13 @@ impl TuiController {
             api_key: self.session_setup.api_key.clone(),
             base_url: self.session_setup.base_url.clone(),
             headers: self.session_setup.headers.clone(),
-            compaction_settings: bb_core::types::CompactionSettings {
+            compaction_settings: kordi_core::types::CompactionSettings {
                 enabled: self.session_setup.compaction_enabled,
                 reserve_tokens: self.session_setup.compaction_reserve_tokens,
                 keep_recent_tokens: self.session_setup.compaction_keep_recent_tokens,
             },
             tool_registry,
-            tool_ctx: bb_tools::ToolContext {
+            tool_ctx: kordi_tools::ToolContext {
                 cwd: self.session_setup.tool_ctx.cwd.clone(),
                 artifacts_dir: self.session_setup.tool_ctx.artifacts_dir.clone(),
                 execution_policy: self.session_setup.tool_ctx.execution_policy,
@@ -202,10 +202,10 @@ impl TuiController {
     }
 
     fn approval_follow_up_prompt(
-        choice: bb_tui::tui::TuiApprovalChoice,
+        choice: kordi_tui::tui::TuiApprovalChoice,
         steer_message: Option<&str>,
     ) -> Option<String> {
-        if choice == bb_tui::tui::TuiApprovalChoice::Deny {
+        if choice == kordi_tui::tui::TuiApprovalChoice::Deny {
             steer_message
                 .map(str::trim)
                 .filter(|message| !message.is_empty())

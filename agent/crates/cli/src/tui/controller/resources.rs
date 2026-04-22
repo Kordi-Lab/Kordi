@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use bb_core::agent_session_runtime::RuntimeModelRef;
-use bb_core::settings::Settings;
-use bb_tui::tui::{TuiCommand, TuiNoteLevel};
+use kordi_core::agent_session_runtime::RuntimeModelRef;
+use kordi_core::settings::Settings;
+use kordi_tui::tui::{TuiCommand, TuiNoteLevel};
 
 use crate::agents_md::load_agents_md;
 use crate::extensions::{
@@ -79,7 +79,7 @@ impl TuiController {
         }
 
         // Extension-registered slash commands take precedence over falling
-        // through to the LLM. Matches the one-shot `bb run` dispatch path.
+        // through to the LLM. Matches the one-shot `kordi run` dispatch path.
         if self.session_setup.extension_commands.is_registered(text) {
             self.execute_extension_command_text(text).await?;
             return Ok(true);
@@ -240,11 +240,17 @@ impl TuiController {
     }
 
     fn activate_saved_shape_agent(&mut self, agent_id: &str, note: Option<&str>) -> Result<()> {
-        let home = std::env::var("HOME").context("HOME is not set")?;
-        let agent_dir = std::path::Path::new(&home)
-            .join(".bb-agent")
+        let preferred_agent_dir = kordi_core::config::preferred_global_agents_dir().join(agent_id);
+        let legacy_agent_dir = kordi_core::config::global_dir()
             .join("agents")
             .join(agent_id);
+        let agent_dir = if preferred_agent_dir.exists() {
+            preferred_agent_dir
+        } else if legacy_agent_dir.exists() {
+            legacy_agent_dir
+        } else {
+            preferred_agent_dir
+        };
         let system_prompt_path = agent_dir.join("SYSTEM_PROMPT.md");
         let agent_json_path = agent_dir.join("agent.json");
 
@@ -291,7 +297,8 @@ impl TuiController {
         })?;
 
         let agents_md = load_agents_md(&self.session_setup.tool_ctx.cwd);
-        let base_prompt = bb_core::agent::build_system_prompt(&system_prompt, agents_md.as_deref());
+        let base_prompt =
+            kordi_core::agent::build_system_prompt(&system_prompt, agents_md.as_deref());
         self.session_setup.base_system_prompt = base_prompt;
         self.session_setup.system_prompt = format!(
             "{}{}",
@@ -339,9 +346,9 @@ impl TuiController {
                 .map(|d| d.as_nanos())
                 .unwrap_or(0)
         );
-        let select_items: Vec<bb_tui::select_list::SelectItem> = items
+        let select_items: Vec<kordi_tui::select_list::SelectItem> = items
             .into_iter()
-            .map(|item| bb_tui::select_list::SelectItem {
+            .map(|item| kordi_tui::select_list::SelectItem {
                 label: item.label,
                 detail: item.detail,
                 value: item.value,
@@ -368,7 +375,7 @@ impl TuiController {
         self.pending_extension_prompt = Some(prompt.clone());
         self.send_command(TuiCommand::SetLocalActionActive(true));
         self.send_command(TuiCommand::CloseSelectMenu);
-        self.send_command(TuiCommand::OpenAuthDialog(bb_tui::tui::TuiAuthDialog {
+        self.send_command(TuiCommand::OpenAuthDialog(kordi_tui::tui::TuiAuthDialog {
             title: prompt.title,
             status: None,
             steps: Vec::new(),
@@ -566,7 +573,7 @@ impl TuiController {
         let _ = self
             .session_setup
             .extension_commands
-            .send_event(&bb_hooks::Event::SessionShutdown)
+            .send_event(&kordi_hooks::Event::SessionShutdown)
             .await;
 
         let RuntimeExtensionSupport {
@@ -589,7 +596,7 @@ impl TuiController {
             conn
         };
         commands.bind_session_context(sibling_conn, self.session_setup.session_id.clone(), None);
-        let _ = commands.send_event(&bb_hooks::Event::SessionStart).await;
+        let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
 
         self.session_setup.tool_registry = ToolRegistry::from_builtin_and_extensions(
             tools,

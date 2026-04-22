@@ -219,11 +219,11 @@ async fn execute_prepared_tool_call(
 ) -> ExecutedToolCallOutcome {
     let _ = prepared;
 
-    // Transitional legacy path: bb-core's hidden agent_loop compatibility layer does
+    // Transitional legacy path: kordi-core's hidden agent_loop compatibility layer does
     // not execute tools directly, so it returns an explicit tool error result instead.
     ExecutedToolCallOutcome {
         result: create_error_tool_result(
-            "bb-core's transitional legacy agent_loop does not execute tools directly",
+            "kordi-core's transitional legacy agent_loop does not execute tools directly",
         ),
         is_error: true,
     }

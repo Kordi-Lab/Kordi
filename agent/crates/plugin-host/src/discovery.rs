@@ -98,7 +98,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("bb-plugin-discovery-{name}-{unique}"))
+        std::env::temp_dir().join(format!("kordi-plugin-discovery-{name}-{unique}"))
     }
 
     #[test]

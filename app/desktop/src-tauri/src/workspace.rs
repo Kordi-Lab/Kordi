@@ -5,9 +5,11 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceConfig {
-    pub bb_agent_path: String,
+    #[serde(alias = "bbAgentPath")]
+    pub kordi_runtime_path: String,
     pub bridges_path: String,
-    pub bb_agent_binary: String,
+    #[serde(alias = "bbAgentBinary")]
+    pub kordi_runtime_binary: String,
     pub bridges_binary: String,
 }
 
@@ -35,7 +37,7 @@ pub struct SidecarStatus {
 pub struct DesktopWorkspaceStatus {
     pub app_root: String,
     pub workspace_file: String,
-    pub bb_agent: RepoStatus,
+    pub kordi_runtime: RepoStatus,
     pub bridges: RepoStatus,
     pub sidecars: Vec<SidecarStatus>,
 }
@@ -56,9 +58,9 @@ fn source_root() -> PathBuf {
 
 fn default_config() -> WorkspaceConfig {
     WorkspaceConfig {
-        bb_agent_path: "../bb-agent".into(),
-        bridges_path: "../Bridges".into(),
-        bb_agent_binary: "target/release/kordi".into(),
+        kordi_runtime_path: "../../agent".into(),
+        bridges_path: "../../bridges".into(),
+        kordi_runtime_binary: "../target/release/kordi".into(),
         bridges_binary: "target/release/bridges".into(),
     }
 }
@@ -91,7 +93,7 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
     let app_root = source_root();
     let (workspace_file, config) = read_workspace_config();
 
-    let bb_agent_repo = app_root.join(&config.bb_agent_path);
+    let kordi_runtime_repo = app_root.join(&config.kordi_runtime_path);
     let bridges_repo = app_root.join(&config.bridges_path);
     let sidecar_dir = app_root.join("src-tauri").join("binaries");
     let target_triple = current_target_triple();
@@ -99,18 +101,32 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
     DesktopWorkspaceStatus {
         app_root: app_root.display().to_string(),
         workspace_file: workspace_file.display().to_string(),
-        bb_agent: build_repo_status("Kordi runtime", &bb_agent_repo, &config.bb_agent_binary),
+        kordi_runtime: build_repo_status(
+            "Kordi runtime",
+            &kordi_runtime_repo,
+            &config.kordi_runtime_binary,
+        ),
         bridges: build_repo_status("Bridges", &bridges_repo, &config.bridges_binary),
         sidecars: vec![
             SidecarStatus {
                 label: "Kordi runtime".into(),
-                bundled_path: sidecar_dir.join(format!("kordi-{}", target_triple)).display().to_string(),
-                exists: sidecar_dir.join(format!("kordi-{}", target_triple)).exists(),
+                bundled_path: sidecar_dir
+                    .join(format!("kordi-{}", target_triple))
+                    .display()
+                    .to_string(),
+                exists: sidecar_dir
+                    .join(format!("kordi-{}", target_triple))
+                    .exists(),
             },
             SidecarStatus {
                 label: "Bridges".into(),
-                bundled_path: sidecar_dir.join(format!("bridges-{}", target_triple)).display().to_string(),
-                exists: sidecar_dir.join(format!("bridges-{}", target_triple)).exists(),
+                bundled_path: sidecar_dir
+                    .join(format!("bridges-{}", target_triple))
+                    .display()
+                    .to_string(),
+                exists: sidecar_dir
+                    .join(format!("bridges-{}", target_triple))
+                    .exists(),
             },
         ],
     }

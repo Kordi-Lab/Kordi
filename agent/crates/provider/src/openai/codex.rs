@@ -32,7 +32,7 @@ fn oauth_usage_info(usage: &Value) -> UsageInfo {
         output_tokens: output,
         cache_read_tokens: cached,
         cache_write_tokens: 0,
-        cache_metrics_source: bb_core::types::CacheMetricsSource::Estimated,
+        cache_metrics_source: kordi_core::types::CacheMetricsSource::Estimated,
     }
 }
 
@@ -43,7 +43,7 @@ impl OpenAiProvider {
         options: RequestOptions,
         account_id: String,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let url = resolve_codex_url(&options.base_url);
         let mut body = json!({
             "model": request.model,
@@ -83,20 +83,20 @@ impl OpenAiProvider {
                     .header("OpenAI-Beta", "responses=experimental")
                     .header("accept", "text/event-stream")
                     .header("content-type", "application/json")
-                    .header("originator", "bb")
-                    .header("User-Agent", "bb-agent");
+                    .header("originator", "kordi")
+                    .header("User-Agent", "kordi");
                 for (k, v) in &options.headers {
                     r = r.header(k.as_str(), v.as_str());
                 }
                 let body_clone = body.clone();
                 async move {
                     let resp = r.json(&body_clone).send().await.map_err(|e| {
-                        BbError::Provider(format!("Codex OAuth request failed: {e}"))
+                        KordiError::Provider(format!("Codex OAuth request failed: {e}"))
                     })?;
                     if !resp.status().is_success() {
                         let status = resp.status();
                         let body = resp.text().await.unwrap_or_default();
-                        return Err(BbError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
                     }
                     Ok(resp)
                 }
@@ -116,7 +116,7 @@ impl OpenAiProvider {
             }
 
             let chunk = chunk_result
-                .map_err(|e| BbError::Provider(format!("Codex OAuth stream error: {e}")))?;
+                .map_err(|e| KordiError::Provider(format!("Codex OAuth stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {
@@ -232,7 +232,7 @@ impl OpenAiProvider {
 #[cfg(test)]
 mod tests {
     use super::oauth_usage_info;
-    use bb_core::types::CacheMetricsSource;
+    use kordi_core::types::CacheMetricsSource;
     use serde_json::json;
 
     #[test]

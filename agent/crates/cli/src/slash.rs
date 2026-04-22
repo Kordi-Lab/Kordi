@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_tui::slash_commands::{install_help_lines, shared_slash_command_help_lines};
+use kordi_tui::slash_commands::{install_help_lines, shared_slash_command_help_lines};
 
 /// Handle shared local slash commands.
 pub fn handle_slash_command(text: &str) -> SlashResult {

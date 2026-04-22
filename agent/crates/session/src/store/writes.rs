@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_core::types::SessionEntry;
+use kordi_core::types::SessionEntry;
 use chrono::Utc;
 use rusqlite::{Connection, params};
 use uuid::Uuid;

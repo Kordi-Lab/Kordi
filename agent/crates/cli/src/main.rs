@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -70,7 +72,7 @@ struct Cli {
     #[arg(long)]
     append_system_prompt: Option<String>,
 
-    /// Use a named system prompt template from ~/.bb-agent/system-prompts/<name>.md
+    /// Use a named system prompt template from ~/.kordi/system-prompts/<name>.md
     #[arg(short = 't', long = "template")]
     system_prompt_template: Option<String>,
 
@@ -157,8 +159,8 @@ Source forms:
   https://...               Install from a remote archive/repo URL
 
 Notes:
-  --local installs into the detected project root's .bb-agent directory.
-  Without --local, installs go into ~/.bb-agent and are available globally.
+  --local installs into the detected project root's .kordi directory.
+  Without --local, installs go into ~/.kordi and are available globally.
 "#)]
     /// Install a package source into settings (supports npm:pkg, git:repo/url, local path, or archive URL)
     Install {
@@ -196,6 +198,42 @@ Notes:
     },
 }
 
+fn system_prompt_template_dirs() -> Vec<std::path::PathBuf> {
+    kordi_core::config::global_resource_dir_candidates("system-prompts")
+}
+
+fn resolve_system_prompt_template_path(template_name: &str) -> Option<std::path::PathBuf> {
+    system_prompt_template_dirs()
+        .into_iter()
+        .map(|dir| dir.join(format!("{template_name}.md")))
+        .find(|path| path.is_file())
+}
+
+fn list_system_prompt_templates() -> BTreeMap<String, std::path::PathBuf> {
+    let mut found = BTreeMap::new();
+
+    for templates_dir in system_prompt_template_dirs() {
+        if !templates_dir.is_dir() {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&templates_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                continue;
+            }
+            let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            found.entry(name.to_string()).or_insert(path);
+        }
+    }
+
+    found
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -204,9 +242,9 @@ async fn main() -> Result<()> {
     }
 
     if let Ok(cwd) = std::env::current_dir() {
-        let settings = bb_core::settings::Settings::load_merged(&cwd);
+        let settings = kordi_core::settings::Settings::load_merged(&cwd);
         if settings.compatibility_mode {
-            bb_tui::theme::set_compatibility_mode(true);
+            kordi_tui::theme::set_compatibility_mode(true);
         }
     }
 
@@ -287,50 +325,32 @@ async fn main() -> Result<()> {
 
     // Handle --list-templates
     if cli.list_templates {
-        let templates_dir = bb_core::config::global_dir().join("system-prompts");
-        if templates_dir.is_dir() {
-            let mut found = false;
-            if let Ok(entries) = std::fs::read_dir(&templates_dir) {
-                let mut names: Vec<String> = entries
-                    .flatten()
-                    .filter(|e| {
-                        e.path().is_file()
-                            && e.path().extension().and_then(|ext| ext.to_str()) == Some("md")
-                    })
-                    .filter_map(|e| {
-                        e.path()
-                            .file_stem()
-                            .and_then(|s| s.to_str().map(String::from))
-                    })
-                    .collect();
-                names.sort();
-                for name in &names {
-                    let path = templates_dir.join(format!("{name}.md"));
-                    let desc = std::fs::read_to_string(&path)
-                        .ok()
-                        .and_then(|c| {
-                            c.lines()
-                                .find(|l| !l.trim().is_empty() && l.trim() != "---")
-                                .map(|l| {
-                                    let s = l.trim().trim_start_matches("# ");
-                                    if s.len() > 60 {
-                                        format!("{}...", &s[..57])
-                                    } else {
-                                        s.to_string()
-                                    }
-                                })
-                        })
-                        .unwrap_or_default();
-                    println!("  {name:20} {desc}");
-                    found = true;
-                }
-            }
-            if !found {
-                println!("No templates found in {}", templates_dir.display());
-            }
-        } else {
+        let templates = list_system_prompt_templates();
+        if templates.is_empty() {
             println!("No templates directory. Create templates at:");
-            println!("  {}/", templates_dir.display());
+            println!(
+                "  {}/",
+                kordi_core::config::preferred_global_resource_dir("system-prompts").display()
+            );
+        } else {
+            for (name, path) in templates {
+                let desc = std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|c| {
+                        c.lines()
+                            .find(|l| !l.trim().is_empty() && l.trim() != "---")
+                            .map(|l| {
+                                let s = l.trim().trim_start_matches("# ");
+                                if s.len() > 60 {
+                                    format!("{}...", &s[..57])
+                                } else {
+                                    s.to_string()
+                                }
+                            })
+                    })
+                    .unwrap_or_default();
+                println!("  {name:20} {desc}");
+            }
         }
         return Ok(());
     }
@@ -355,26 +375,18 @@ async fn main() -> Result<()> {
     // Resolve system prompt template or @file
     let mut cli = cli;
     if let Some(template_name) = &cli.system_prompt_template {
-        let templates_dir = bb_core::config::global_dir().join("system-prompts");
-        let template_path = templates_dir.join(format!("{template_name}.md"));
-        if !template_path.is_file() {
+        let Some(template_path) = resolve_system_prompt_template_path(template_name) else {
             eprintln!(
-                "Error: system prompt template '{}' not found at {}",
+                "Error: system prompt template '{}' not found under {}",
                 template_name,
-                template_path.display()
+                kordi_core::config::preferred_global_resource_dir("system-prompts").display()
             );
             eprintln!("Available templates (kordi --list-templates):");
-            if let Ok(entries) = std::fs::read_dir(&templates_dir) {
-                for e in entries.flatten() {
-                    if e.path().extension().and_then(|ext| ext.to_str()) == Some("md")
-                        && let Some(name) = e.path().file_stem().and_then(|s| s.to_str())
-                    {
-                        eprintln!("  {name}");
-                    }
-                }
+            for name in list_system_prompt_templates().keys() {
+                eprintln!("  {name}");
             }
             std::process::exit(1);
-        }
+        };
         cli.system_prompt = Some(std::fs::read_to_string(&template_path)?);
     } else if let Some(ref sp) = cli.system_prompt
         && let Some(path) = sp.strip_prefix('@')

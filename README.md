@@ -4,8 +4,8 @@ Kordi is a monorepo for three core product layers plus one app-facing orchestrat
 
 - `app/desktop` — the macOS desktop application (React + Tauri)
 - `app/server` — the app-facing local orchestration server
-- `agent` — the local agent runtime derived from `bb-agent`
-- `bridges` — the local and remote network stack derived from `Bridges`
+- `agent` — the local agent runtime
+- `bridges` — the local and remote network stack
 
 The repository is organized so the app, server, runtime, and network layers can evolve together while still keeping clear boundaries.
 

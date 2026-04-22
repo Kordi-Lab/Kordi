@@ -1,4 +1,4 @@
-use bb_core::types::{
+use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, CacheMetricsSource, SessionEntry,
 };
 use serde::{Deserialize, Serialize};
@@ -128,7 +128,7 @@ mod tests {
         SessionCacheMetricsSource, SessionMetricsSummary, collect_session_metrics,
         render_cache_metrics_source,
     };
-    use bb_core::types::{
+    use kordi_core::types::{
         AgentMessage, AssistantContent, AssistantMessage, CacheMetricsSource, ContentBlock, Cost,
         EntryBase, EntryId, SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
     };

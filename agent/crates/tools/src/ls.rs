@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -44,7 +44,7 @@ impl Tool for LsTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let dir = params
             .get("path")
             .and_then(|v| v.as_str())
@@ -58,14 +58,14 @@ impl Tool for LsTool {
             .unwrap_or(DEFAULT_LIMIT);
 
         if !dir.exists() {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Directory not found: {}",
                 dir.display()
             )));
         }
 
         if !dir.is_dir() {
-            return Err(BbError::Tool(format!("Not a directory: {}", dir.display())));
+            return Err(KordiError::Tool(format!("Not a directory: {}", dir.display())));
         }
 
         // Load .gitignore patterns for the directory

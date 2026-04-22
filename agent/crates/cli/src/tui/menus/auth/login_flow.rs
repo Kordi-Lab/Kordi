@@ -25,7 +25,7 @@ impl TuiController {
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
-        self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: self.session_setup.api_key.clone(),
@@ -55,7 +55,7 @@ impl TuiController {
         self.session_setup.api_key.clear();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers.clear();
-        self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: String::new(),
@@ -73,10 +73,10 @@ impl TuiController {
     pub(crate) async fn begin_oauth_login(
         &mut self,
         provider: &str,
-        submission_rx: &mut tokio::sync::mpsc::UnboundedReceiver<bb_tui::tui::TuiSubmission>,
+        submission_rx: &mut tokio::sync::mpsc::UnboundedReceiver<kordi_tui::tui::TuiSubmission>,
     ) -> Result<()> {
         use crate::oauth::OAuthCallbacks;
-        use bb_tui::tui::TuiSubmission;
+        use kordi_tui::tui::TuiSubmission;
         use std::sync::{Arc, Mutex};
         let provider = crate::login::provider_oauth_variant(provider).unwrap_or(provider);
         let label = crate::login::provider_display_name(provider).into_owned();

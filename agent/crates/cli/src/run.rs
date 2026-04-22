@@ -1,19 +1,19 @@
 use anyhow::{Result, anyhow, bail};
 
-use bb_core::agent::{self, DEFAULT_SYSTEM_PROMPT};
-use bb_core::agent_session::{
+use kordi_core::agent::{self, DEFAULT_SYSTEM_PROMPT};
+use kordi_core::agent_session::{
     ImageContent, ModelRef, PrintTurnResult, PrintTurnStopReason, parse_model_arg,
 };
 
 use crate::agents_md::load_agents_md;
-use bb_core::agent_session_runtime::{
+use kordi_core::agent_session_runtime::{
     CreateAgentSessionRuntimeOptions, create_agent_session_runtime,
 };
-use bb_core::config;
-use bb_core::settings::Settings;
-use bb_provider::registry::ModelRegistry;
-use bb_session::store;
-use bb_tools::{ExecutionPolicy, ToolContext};
+use kordi_core::config;
+use kordi_core::settings::Settings;
+use kordi_provider::registry::ModelRegistry;
+use kordi_session::store;
+use kordi_tools::{ExecutionPolicy, ToolContext};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -27,7 +27,7 @@ use crate::login;
 use crate::runtime_model::{build_runtime_config, resolve_or_synthesize_model};
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
-use bb_monitor::RequestMetricsTracker;
+use kordi_monitor::RequestMetricsTracker;
 
 #[derive(Debug, Clone)]
 struct PreparedPrintPrompt {
@@ -38,15 +38,15 @@ struct PreparedPrintPrompt {
 pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let cwd = std::fs::canonicalize(cli.cwd.as_deref().unwrap_or("."))?;
 
-    let global_dir = config::global_dir();
-    std::fs::create_dir_all(&global_dir)?;
-    let artifacts_dir = global_dir.join("artifacts");
+    let global_settings = Settings::load_global();
+    let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
 
-    let conn = store::open_db(&global_dir.join("sessions.db"))?;
+    let conn = store::open_db(&config::session_db_path(&global_settings.storage))?;
     let session_id = resolve_session_id(&conn, &cwd, &cli)?;
 
-    let settings = Settings::load_merged(&cwd);
+    let project_settings = Settings::load_project(&cwd);
+    let settings = Settings::merge(&global_settings, &project_settings);
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let model_input = cli
@@ -105,20 +105,20 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         session_id.clone(),
         None,
     );
-    let _ = commands.send_event(&bb_hooks::Event::SessionStart).await;
+    let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings);
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let system_prompt = format!("{system_prompt}{skill_section}");
 
-    let provider: Arc<dyn bb_provider::Provider> = runtime.provider.clone();
+    let provider: Arc<dyn kordi_provider::Provider> = runtime.provider.clone();
 
     let tool_ctx = ToolContext {
         cwd: cwd.clone(),
         artifacts_dir,
         execution_policy,
         on_output: None,
-        web_search: Some(bb_tools::WebSearchRuntime {
+        web_search: Some(kordi_tools::WebSearchRuntime {
             provider: provider.clone(),
             model: model.clone(),
             api_key: api_key.clone(),
@@ -126,11 +126,11 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             headers: headers.clone(),
             enabled: true,
         }),
-        execution_mode: bb_tools::ToolExecutionMode::NonInteractive,
+        execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
     };
 
-    let bootstrap = bb_core::agent_session_runtime::AgentSessionRuntimeBootstrap {
+    let bootstrap = kordi_core::agent_session_runtime::AgentSessionRuntimeBootstrap {
         cwd: Some(cwd.clone()),
         model: Some(ModelRef {
             provider: provider_name.clone(),
@@ -192,7 +192,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         api_key,
         base_url,
         headers,
-        compaction_settings: bb_core::types::CompactionSettings {
+        compaction_settings: kordi_core::types::CompactionSettings {
             enabled: settings.compaction.enabled,
             reserve_tokens: settings.compaction.reserve_tokens,
             keep_recent_tokens: settings.compaction.keep_recent_tokens,
@@ -207,7 +207,9 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         cancel: CancellationToken::new(),
         extensions: commands.clone(),
         request_metrics_tracker: Arc::new(tokio::sync::Mutex::new(RequestMetricsTracker::new())),
-        request_metrics_log_path: Some(global_dir.join("request-metrics.jsonl")),
+        request_metrics_log_path: Some(kordi_core::config::request_metrics_log_path(
+            &global_settings.storage,
+        )),
     };
 
     let mut last_result = None;
@@ -218,7 +220,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         last_result = Some(run_print_turn(&turn_config, message).await?);
     }
 
-    let _ = commands.send_event(&bb_hooks::Event::SessionShutdown).await;
+    let _ = commands.send_event(&kordi_hooks::Event::SessionShutdown).await;
     if let Some(last_result) = last_result {
         if last_result.is_error() {
             return Err(anyhow!(last_result.error_message.clone().unwrap_or_else(

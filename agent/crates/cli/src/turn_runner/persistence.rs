@@ -1,9 +1,9 @@
 use anyhow::Result;
-use bb_core::types::*;
-use bb_monitor::ResolvedCacheUsage;
-use bb_provider::CollectedResponse;
-use bb_provider::registry::Model;
-use bb_session::store;
+use kordi_core::types::*;
+use kordi_monitor::ResolvedCacheUsage;
+use kordi_provider::CollectedResponse;
+use kordi_provider::registry::Model;
+use kordi_session::store;
 use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -62,7 +62,7 @@ pub(crate) async fn append_user_message_with_images(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,
     prompt: &str,
-    images: &[bb_core::agent_session::ImageContent],
+    images: &[kordi_core::agent_session::ImageContent],
 ) -> Result<()> {
     let conn = conn.lock().await;
     let mut content = vec![ContentBlock::Text {

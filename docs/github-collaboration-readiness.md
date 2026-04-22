@@ -57,7 +57,7 @@ The repo is much safer to publish now, but if you want to enforce a strict "no o
 - `agent/crates/cli/src/login/store.rs` — 1216
 - `agent/crates/cli/src/extensions/tests.rs` — 1052
 - `agent/crates/cli/src/turn_runner/tests.rs` — 1027
-- `agent/crates/bb-monitor/src/request_metrics/tracker.rs` — 1001
+- `agent/crates/kordi-monitor/src/request_metrics/tracker.rs` — 1001
 
 ### Recommended next refactor targets
 
@@ -69,7 +69,7 @@ The repo is much safer to publish now, but if you want to enforce a strict "no o
 2. Review long test/support files
    - `agent/crates/cli/src/extensions/tests.rs`
    - `agent/crates/cli/src/turn_runner/tests.rs`
-   - `agent/crates/bb-monitor/src/request_metrics/tracker.rs`
+   - `agent/crates/kordi-monitor/src/request_metrics/tracker.rs`
 
 ## Metadata still needing final decision before first public push
 

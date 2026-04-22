@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bb_provider::Provider;
-use bb_provider::anthropic::AnthropicProvider;
-use bb_provider::google::GoogleProvider;
-use bb_provider::openai::OpenAiProvider;
-use bb_provider::registry::{ApiType, Model, ModelInput, ModelRegistry};
+use kordi_provider::Provider;
+use kordi_provider::anthropic::AnthropicProvider;
+use kordi_provider::google::GoogleProvider;
+use kordi_provider::openai::OpenAiProvider;
+use kordi_provider::registry::{ApiType, Model, ModelInput, ModelRegistry};
 
 use crate::login::{self, ResolvedProviderAuth};
 
@@ -132,7 +132,7 @@ pub(crate) fn resolve_runtime_config(model: &Model) -> ResolvedRuntimeConfig {
 #[cfg(test)]
 mod tests {
     use super::{default_base_url_for_model, resolve_or_synthesize_model};
-    use bb_provider::registry::{ApiType, ModelRegistry};
+    use kordi_provider::registry::{ApiType, ModelRegistry};
 
     #[test]
     fn resolve_or_synthesize_model_preserves_provider_runtime_shape_for_unknown_live_models() {

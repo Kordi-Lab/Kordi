@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use bb_core::error::BbResult;
-use bb_provider::{Provider, registry::Model};
+use kordi_core::error::KordiResult;
+use kordi_provider::{Provider, registry::Model};
 use serde_json::Value;
 use std::{collections::HashMap, future::Future, path::PathBuf, pin::Pin, sync::Arc};
 use tokio_util::sync::CancellationToken;
@@ -21,7 +21,7 @@ impl ToolScheduling {
 /// Result from a tool execution.
 #[derive(Clone, Debug)]
 pub struct ToolResult {
-    pub content: Vec<bb_core::types::ContentBlock>,
+    pub content: Vec<kordi_core::types::ContentBlock>,
     pub details: Option<Value>,
     pub is_error: bool,
     pub artifact_path: Option<PathBuf>,
@@ -99,11 +99,11 @@ impl ExecutionPolicy {
     }
 }
 
-impl From<bb_core::settings::ExecutionMode> for ExecutionPolicy {
-    fn from(value: bb_core::settings::ExecutionMode) -> Self {
+impl From<kordi_core::settings::ExecutionMode> for ExecutionPolicy {
+    fn from(value: kordi_core::settings::ExecutionMode) -> Self {
         match value {
-            bb_core::settings::ExecutionMode::Safety => Self::Safety,
-            bb_core::settings::ExecutionMode::Yolo => Self::Yolo,
+            kordi_core::settings::ExecutionMode::Safety => Self::Safety,
+            kordi_core::settings::ExecutionMode::Yolo => Self::Yolo,
         }
     }
 }
@@ -150,5 +150,5 @@ pub trait Tool: Send + Sync {
         params: Value,
         ctx: &ToolContext,
         cancel: CancellationToken,
-    ) -> BbResult<ToolResult>;
+    ) -> KordiResult<ToolResult>;
 }

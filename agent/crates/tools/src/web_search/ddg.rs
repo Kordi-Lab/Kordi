@@ -14,7 +14,7 @@ pub(super) async fn run_duckduckgo_search(
     input: &WebSearchInput,
     cancel: CancellationToken,
     started: std::time::Instant,
-) -> BbResult<(WebSearchOutput, String, usize)> {
+) -> KordiResult<(WebSearchOutput, String, usize)> {
     let fetched_query = build_duckduckgo_query(input);
     let client = create_web_client(
         "web search",
@@ -23,7 +23,7 @@ pub(super) async fn run_duckduckgo_search(
     )?;
 
     let mut url = Url::parse(DDG_HTML_ENDPOINT)
-        .map_err(|e| BbError::Tool(format!("Invalid DuckDuckGo endpoint: {e}")))?;
+        .map_err(|e| KordiError::Tool(format!("Invalid DuckDuckGo endpoint: {e}")))?;
     url.query_pairs_mut().append_pair("q", &fetched_query);
 
     let response = send_with_cancel(
@@ -45,7 +45,7 @@ pub(super) async fn run_duckduckgo_search(
 
     if !status.is_success() {
         let detail = crate::text::truncate_chars_trimmed(&body, 800);
-        return Err(BbError::Tool(format!(
+        return Err(KordiError::Tool(format!(
             "DuckDuckGo search failed ({}): {}",
             status,
             if detail.is_empty() {
@@ -57,7 +57,7 @@ pub(super) async fn run_duckduckgo_search(
     }
 
     if is_bot_challenge(&body) {
-        return Err(BbError::Tool(
+        return Err(KordiError::Tool(
             "DuckDuckGo returned a bot-detection challenge".into(),
         ));
     }
@@ -66,7 +66,7 @@ pub(super) async fn run_duckduckgo_search(
     parsed = apply_domain_filters(parsed, input);
 
     if parsed.is_empty() {
-        return Err(BbError::Tool(
+        return Err(KordiError::Tool(
             "DuckDuckGo returned no matching search results".into(),
         ));
     }

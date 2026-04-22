@@ -1,5 +1,5 @@
 use super::*;
-use bb_session::{store::EntryRow, tree::TreeNode};
+use kordi_session::{store::EntryRow, tree::TreeNode};
 
 fn make_tree() -> Vec<TreeNode> {
     vec![TreeNode {

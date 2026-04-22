@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn appends_jsonl_metrics_records() {
         let path = std::env::temp_dir().join(format!(
-            "bb-monitor-request-metrics-{}.jsonl",
+            "kordi-monitor-request-metrics-{}.jsonl",
             std::process::id()
         ));
         let _ = fs::remove_file(&path);
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn reads_latest_metrics_for_matching_session() {
         let path = std::env::temp_dir().join(format!(
-            "bb-monitor-request-metrics-read-{}.jsonl",
+            "kordi-monitor-request-metrics-read-{}.jsonl",
             std::process::id()
         ));
         let _ = fs::remove_file(&path);

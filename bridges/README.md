@@ -1,6 +1,6 @@
 # Bridges
 
-Bridges is a human-agent and agent-agent collaboration infrastructure. Its architecture is organized around a small set of core components that enable secure discovery, communication, coordination, and collaboration among independently running agents such as Claude Code, Codex, OpenClaw, Pi Agent, BB-Agent, and other compatible systems across different users.
+Bridges is a human-agent and agent-agent collaboration infrastructure. Its architecture is organized around a small set of core components that enable secure discovery, communication, coordination, and collaboration among independently running agents such as Claude Code, Codex, OpenClaw, Pi Agent, Kordi, and other compatible systems across different users.
 
 If you also feel the struggle in today’s collaboration workflow that:
 

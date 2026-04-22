@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use std::path::Path;
 use tokio::process::Command;
@@ -67,11 +67,11 @@ impl Tool for GrepTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let pattern = params
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'pattern' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'pattern' parameter".into()))?;
 
         let search_path = params
             .get("path")
@@ -100,7 +100,7 @@ impl Tool for GrepTool {
             .unwrap_or(DEFAULT_LIMIT);
 
         if !search_path.exists() {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Path not found: {}",
                 search_path.display()
             )));
@@ -132,7 +132,7 @@ impl Tool for GrepTool {
                 .await
                 {
                     Ok(results) => format_results(results, limit),
-                    Err(e) => Err(BbError::Tool(format!("Grep failed: {e}"))),
+                    Err(e) => Err(KordiError::Tool(format!("Grep failed: {e}"))),
                 }
             }
         }
@@ -228,7 +228,7 @@ async fn grep_with_grep_cmd(
     Ok(results)
 }
 
-fn format_results(results: Vec<String>, limit: usize) -> BbResult<ToolResult> {
+fn format_results(results: Vec<String>, limit: usize) -> KordiResult<ToolResult> {
     let total = results.len();
     let (text, truncated) = format_limited_results(&results, "No matches found.", limit);
 

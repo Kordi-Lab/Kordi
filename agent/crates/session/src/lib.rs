@@ -1,4 +1,4 @@
-//! Session persistence, branching, context building, and compaction for BB-Agent.
+//! Session persistence, branching, context building, and compaction for Kordi.
 
 pub mod branch_summary;
 pub mod compaction;

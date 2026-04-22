@@ -9,7 +9,7 @@ members = [
     "agent/crates/plugin-host",
     "agent/crates/tui",
     "agent/crates/cli",
-    "agent/crates/bb-monitor",
+    "agent/crates/kordi-monitor",
     "app/server",
     "app/desktop/src-tauri",
     "bridges/cli",
@@ -20,7 +20,7 @@ members = [
 version = "0.0.18"
 edition = "2024"
 license = "MIT"
-authors = ["BB-Agent Contributors"]
+authors = ["Kordi Contributors"]
 repository = "https://github.com/Kordi-AI/Kordi"
 homepage = "https://github.com/Kordi-AI/Kordi"
 readme = "README.md"
@@ -48,14 +48,14 @@ rand = "0.8"
 base64 = "0.22"
 
 # Internal crates
-bb-core = { version = "0.0.18", path = "agent/crates/core" }
-bb-session = { version = "0.0.18", path = "agent/crates/session" }
-bb-tools = { version = "0.0.18", path = "agent/crates/tools" }
-bb-provider = { version = "0.0.18", path = "agent/crates/provider" }
-bb-hooks = { version = "0.0.18", path = "agent/crates/hooks" }
-bb-plugin-host = { version = "0.0.18", path = "agent/crates/plugin-host" }
-bb-tui = { version = "0.0.18", path = "agent/crates/tui" }
-bb-monitor = { version = "0.0.18", path = "agent/crates/bb-monitor" }
+kordi-core = { version = "0.0.18", path = "agent/crates/core" }
+kordi-session = { version = "0.0.18", path = "agent/crates/session" }
+kordi-tools = { version = "0.0.18", path = "agent/crates/tools" }
+kordi-provider = { version = "0.0.18", path = "agent/crates/provider" }
+kordi-hooks = { version = "0.0.18", path = "agent/crates/hooks" }
+kordi-plugin-host = { version = "0.0.18", path = "agent/crates/plugin-host" }
+kordi-tui = { version = "0.0.18", path = "agent/crates/tui" }
+kordi-monitor = { version = "0.0.18", path = "agent/crates/kordi-monitor" }
 kordi-protocol = { version = "0.1.0", path = "shared/rust/protocol" }
 
 [profile.release]

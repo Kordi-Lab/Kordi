@@ -1,4 +1,4 @@
-//! Provider integrations, streaming abstractions, and model resolution for BB-Agent.
+//! Provider integrations, streaming abstractions, and model resolution for Kordi.
 
 pub mod anthropic;
 mod error;

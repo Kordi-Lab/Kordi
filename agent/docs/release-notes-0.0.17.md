@@ -6,7 +6,7 @@ _Date: 2026-04-17_
 
 ### Cache monitoring is now a first-class backend + TUI feature
 This release lands the full cache-monitoring stack that was still in progress after `v0.0.16`:
-- reusable backend monitor logic now lives in `crates/bb-monitor`
+- reusable backend monitor logic now lives in `crates/kordi-monitor`
 - request metrics, usage rollups, and cache provenance tracking are centralized there
 - the TUI now shows a dedicated cache monitor line directly under the input block
 - that monitor now includes:
@@ -40,7 +40,7 @@ OpenAI GPT-5 API-key sessions now route tool/reasoning requests through the Resp
 ## Notable user-facing changes
 
 ### Added
-- `crates/bb-monitor` as a reusable backend monitor crate
+- `crates/kordi-monitor` as a reusable backend monitor crate
 - under-input TUI cache monitor
 - profile-aware auth metadata and timestamps
 - multiple saved API-key profiles per provider
@@ -57,11 +57,11 @@ OpenAI GPT-5 API-key sessions now route tool/reasoning requests through the Resp
 
 ## Upgrade notes
 - Existing `auth.json` stores continue to migrate automatically; no manual auth-store migration is required.
-- If you already have saved provider auth, BB will continue to load it, but richer profile metadata may now appear in `/login`, `/model`, and `/session`.
+- If you already have saved provider auth, Kordi will continue to load it, but richer profile metadata may now appear in `/login`, `/model`, and `/session`.
 - Distinct saved API keys for the same provider are now preserved as separate profiles instead of overwriting one another.
 
 ## Suggested GitHub release summary
-BB-Agent v0.0.17 focuses on visibility and control: cache behavior is now first-class in both the backend and TUI, auth source/profile selection is explicit across `/model`, `/login`, and `/session`, multiple saved auth profiles can coexist cleanly, and GPT-5 API-key requests now use OpenAI’s correct Responses API path.
+Kordi v0.0.17 focuses on visibility and control: cache behavior is now first-class in both the backend and TUI, auth source/profile selection is explicit across `/model`, `/login`, and `/session`, multiple saved auth profiles can coexist cleanly, and GPT-5 API-key requests now use OpenAI’s correct Responses API path.
 
 ## Final clean build/test matrix
 
@@ -69,13 +69,13 @@ Performed from a clean `origin/master`-based worktree for `release/0.0.17` prep.
 
 | Area | Command | Result |
 | --- | --- | --- |
-| Build | `cargo +stable build -q -p bb-cli --bin bb` | Passed |
-| CLI auth tests | `cargo +stable test -q -p bb-cli login -- --nocapture` | Passed |
-| Session info auth tests | `cargo +stable test -q -p bb-cli session_summary -- --nocapture` | Passed |
-| OpenAI provider tests | `cargo +stable test -q -p bb-provider openai -- --nocapture` | Passed |
-| Multi saved API-key chooser | `cargo +stable test -q -p bb-cli model_auth_menu_distinguishes_multiple_saved_api_keys -- --nocapture` | Passed |
-| Multi saved API-key summaries | `cargo +stable test -q -p bb-cli provider_auth_option_summaries_distinguish_multiple_saved_api_keys -- --nocapture` | Passed |
-| Release binary smoke test | `./target/debug/bb --help` | Passed |
+| Build | `cargo +stable build -q -p kordi-cli --bin kordi` | Passed |
+| CLI auth tests | `cargo +stable test -q -p kordi-cli login -- --nocapture` | Passed |
+| Session info auth tests | `cargo +stable test -q -p kordi-cli session_summary -- --nocapture` | Passed |
+| OpenAI provider tests | `cargo +stable test -q -p kordi-provider openai -- --nocapture` | Passed |
+| Multi saved API-key chooser | `cargo +stable test -q -p kordi-cli model_auth_menu_distinguishes_multiple_saved_api_keys -- --nocapture` | Passed |
+| Multi saved API-key summaries | `cargo +stable test -q -p kordi-cli provider_auth_option_summaries_distinguish_multiple_saved_api_keys -- --nocapture` | Passed |
+| Release binary smoke test | `./target/debug/kordi --help` | Passed |
 
 ### Notes
 - Commands are run with `CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`, and `RUSTFLAGS='-Cdebuginfo=0'` to reduce host-side Rust instability during validation.

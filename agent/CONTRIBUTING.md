@@ -1,4 +1,4 @@
-# Contributing to BB-Agent
+# Contributing to Kordi
 
 Thank you for your interest in contributing! Here's how to get started.
 
@@ -12,13 +12,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 
 # Clone, build, install
-git clone https://github.com/shuyhere/bb-agent.git
-cd bb-agent
+git clone https://github.com/Kordi-AI/Kordi.git
+cd kordi
 cargo install --path crates/cli
 
 # Verify
-bb --version
-bb
+kordi --version
+kordi
 ```
 
 ### Prerequisites
@@ -63,7 +63,7 @@ crates/
 ├── hooks/         # Event types for extensions
 ├── plugin-host/   # JS/TS plugin discovery and runtime
 ├── tui/           # Terminal UI components and tui experience
-└── cli/           # The `bb` binary — CLI, controller, TUI wiring
+└── cli/           # The `kordi` binary — CLI, controller, TUI wiring
 ```
 
 ## Adding a New Tool
@@ -82,7 +82,7 @@ crates/
 
 ## Adding a Skill
 
-Skills are just markdown files. Create `~/.bb-agent/skills/<name>/SKILL.md`:
+Skills are just markdown files. Create `~/.kordi/skills/<name>/SKILL.md`:
 
 ```markdown
 ---
@@ -94,8 +94,8 @@ Instructions for the agent...
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/shuyhere/bb-agent/issues)
-- Include: OS, Rust version (`rustc --version`), BB-Agent version (`bb --version`)
+- Use [GitHub Issues](https://github.com/Kordi-AI/Kordi/issues)
+- Include: OS, Rust version (`rustc --version`), Kordi version (`kordi --version`)
 - For bugs: steps to reproduce, expected vs actual behavior
 
 ## License

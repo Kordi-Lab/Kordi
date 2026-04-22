@@ -1,6 +1,6 @@
 use anyhow::Result;
-use bb_core::types::{EntryBase, EntryId, SessionEntry};
-use bb_provider::Provider;
+use kordi_core::types::{EntryBase, EntryId, SessionEntry};
+use kordi_provider::Provider;
 use chrono::Utc;
 use rusqlite::Connection;
 use tokio_util::sync::CancellationToken;
@@ -87,8 +87,8 @@ async fn navigate_tree_with_summary_impl(
     base_url: &str,
     cancel: CancellationToken,
 ) -> Result<TreeNavigateOutcome> {
-    let resolved = bb_session::tree::resolve_tree_target(conn, session_id, target_entry_id)?;
-    let collected = bb_session::tree::collect_entries_for_branch_summary(
+    let resolved = kordi_session::tree::resolve_tree_target(conn, session_id, target_entry_id)?;
+    let collected = kordi_session::tree::collect_entries_for_branch_summary(
         conn,
         session_id,
         current_leaf_id,
@@ -96,11 +96,11 @@ async fn navigate_tree_with_summary_impl(
     )?;
 
     if collected.is_empty() {
-        let resolved = bb_session::tree::resolve_tree_target(conn, session_id, target_entry_id)?;
+        let resolved = kordi_session::tree::resolve_tree_target(conn, session_id, target_entry_id)?;
         let new_leaf_id = resolved.new_leaf_id().map(ToOwned::to_owned);
         match new_leaf_id.as_deref() {
-            Some(new_leaf_id) => bb_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?,
-            None => bb_session::store::set_leaf(conn, session_id, None)?,
+            Some(new_leaf_id) => kordi_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?,
+            None => kordi_session::store::set_leaf(conn, session_id, None)?,
         }
         return Ok(TreeNavigateOutcome {
             editor_text: resolved.into_editor_text(),
@@ -109,8 +109,8 @@ async fn navigate_tree_with_summary_impl(
         });
     }
 
-    let result = bb_session::branch_summary::generate_branch_summary(
-        bb_session::branch_summary::BranchSummaryRequest {
+    let result = kordi_session::branch_summary::generate_branch_summary(
+        kordi_session::branch_summary::BranchSummaryRequest {
             rows: collected.entries(),
             provider,
             model,
@@ -126,8 +126,8 @@ async fn navigate_tree_with_summary_impl(
     let new_leaf_id = resolved.new_leaf_id().map(ToOwned::to_owned);
     let editor_text = resolved.editor_text().map(ToOwned::to_owned);
     match new_leaf_id.as_deref() {
-        Some(new_leaf_id) => bb_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?,
-        None => bb_session::store::set_leaf(conn, session_id, None)?,
+        Some(new_leaf_id) => kordi_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?,
+        None => kordi_session::store::set_leaf(conn, session_id, None)?,
     }
 
     let summary_entry = SessionEntry::BranchSummary {
@@ -145,7 +145,7 @@ async fn navigate_tree_with_summary_impl(
         from_plugin: false,
     };
     let summary_entry_id = summary_entry.base().id.0.clone();
-    bb_session::store::append_entry(conn, session_id, &summary_entry)?;
+    kordi_session::store::append_entry(conn, session_id, &summary_entry)?;
 
     Ok(TreeNavigateOutcome {
         editor_text,

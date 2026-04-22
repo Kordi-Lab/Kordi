@@ -47,7 +47,7 @@ pub async fn login_openai_codex(callbacks: OAuthCallbacks) -> Result<OAuthCreden
          &state={state}\
          &id_token_add_organizations=true\
          &codex_cli_simplified_flow=true\
-         &originator=bb",
+         &originator=kordi",
         redirect = url_encode(REDIRECT_URI),
         scopes = url_encode(SCOPES),
     );

@@ -1,5 +1,5 @@
 use super::*;
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 use std::path::Path;
 use tokio_util::sync::CancellationToken;
 

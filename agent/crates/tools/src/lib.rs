@@ -1,4 +1,4 @@
-//! Builtin tool implementations and tool integration types for BB-Agent.
+//! Builtin tool implementations and tool integration types for Kordi.
 
 mod artifacts;
 pub mod bash;

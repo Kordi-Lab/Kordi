@@ -1,4 +1,4 @@
-use bb_core::types::{AgentMessage, AssistantContent, ContentBlock};
+use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock};
 
 fn truncate_utf8(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
@@ -125,7 +125,7 @@ fn format_tool_args(_name: &str, arguments: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bb_core::types::{BashExecutionMessage, ToolResultMessage};
+    use kordi_core::types::{BashExecutionMessage, ToolResultMessage};
     use serde_json::json;
 
     #[test]

@@ -1,9 +1,9 @@
 use super::{build_tui_transcript, truncate_preview_text};
-use bb_core::types::{
+use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, ContentBlock, Cost, EntryBase, EntryId,
     SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
 };
-use bb_session::store;
+use kordi_session::store;
 use chrono::Utc;
 
 #[test]
@@ -68,7 +68,7 @@ fn rebuild_transcript_renders_compaction_summary_as_visible_block() {
     let (transcript, _) = build_tui_transcript(&conn, &session_id).expect("transcript");
     let root = transcript.root_blocks()[0];
     let block = transcript.block(root).expect("compaction block");
-    assert_eq!(block.kind, bb_tui::tui::BlockKind::SystemNote);
+    assert_eq!(block.kind, kordi_tui::tui::BlockKind::SystemNote);
     assert_eq!(block.title, "compaction");
     assert!(block.expandable);
     assert!(block.collapsed);
@@ -163,7 +163,7 @@ fn rebuild_transcript_uses_shared_collapsed_tool_formatting() {
         .find(|id| {
             transcript
                 .block(**id)
-                .is_some_and(|block| block.kind == bb_tui::tui::BlockKind::AssistantMessage)
+                .is_some_and(|block| block.kind == kordi_tui::tui::BlockKind::AssistantMessage)
         })
         .expect("assistant root");
     let tool_use_id = transcript.block(assistant_root).unwrap().children[0];

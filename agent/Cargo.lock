@@ -112,20 +112,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bb-cli"
+name = "kordi-cli"
 version = "0.0.18"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
- "bb-core",
- "bb-hooks",
- "bb-monitor",
- "bb-plugin-host",
- "bb-provider",
- "bb-session",
- "bb-tools",
- "bb-tui",
+ "kordi-core",
+ "kordi-hooks",
+ "kordi-monitor",
+ "kordi-plugin-host",
+ "kordi-provider",
+ "kordi-session",
+ "kordi-tools",
+ "kordi-tui",
  "chrono",
  "clap",
  "crossterm",
@@ -148,7 +148,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-core"
+name = "kordi-core"
 version = "0.0.18"
 dependencies = [
  "anyhow",
@@ -162,11 +162,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-hooks"
+name = "kordi-hooks"
 version = "0.0.18"
 dependencies = [
  "anyhow",
- "bb-core",
+ "kordi-core",
  "serde",
  "serde_json",
  "thiserror",
@@ -175,11 +175,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-monitor"
+name = "kordi-monitor"
 version = "0.0.18"
 dependencies = [
  "anyhow",
- "bb-core",
+ "kordi-core",
  "chrono",
  "serde",
  "serde_json",
@@ -188,12 +188,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-plugin-host"
+name = "kordi-plugin-host"
 version = "0.0.18"
 dependencies = [
  "anyhow",
- "bb-core",
- "bb-hooks",
+ "kordi-core",
+ "kordi-hooks",
  "serde",
  "serde_json",
  "thiserror",
@@ -203,13 +203,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-provider"
+name = "kordi-provider"
 version = "0.0.18"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
- "bb-core",
+ "kordi-core",
  "futures",
  "regex",
  "reqwest",
@@ -222,12 +222,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-session"
+name = "kordi-session"
 version = "0.0.18"
 dependencies = [
  "anyhow",
- "bb-core",
- "bb-provider",
+ "kordi-core",
+ "kordi-provider",
  "chrono",
  "rusqlite",
  "serde",
@@ -241,14 +241,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-tools"
+name = "kordi-tools"
 version = "0.0.18"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
- "bb-core",
- "bb-provider",
+ "kordi-core",
+ "kordi-provider",
  "futures",
  "libc",
  "regex",
@@ -265,14 +265,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "bb-tui"
+name = "kordi-tui"
 version = "0.0.18"
 dependencies = [
  "anyhow",
- "bb-core",
- "bb-hooks",
- "bb-provider",
- "bb-session",
+ "kordi-core",
+ "kordi-hooks",
+ "kordi-provider",
+ "kordi-session",
  "chrono",
  "crossterm",
  "pulldown-cmark",

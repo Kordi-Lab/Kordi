@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_core::types::{SessionContext, SessionEntry, ThinkingLevel};
+use kordi_core::types::{SessionContext, SessionEntry, ThinkingLevel};
 use rusqlite::Connection;
 
 use crate::store::{self, EntryRow};
@@ -46,7 +46,7 @@ pub fn build_context_from_path(path: &[EntryRow]) -> Result<SessionContext> {
     if path.is_empty() {
         return Ok(SessionContext {
             messages: Vec::new(),
-            thinking_level: bb_core::types::ThinkingLevel::Off,
+            thinking_level: kordi_core::types::ThinkingLevel::Off,
             model: None,
         });
     }

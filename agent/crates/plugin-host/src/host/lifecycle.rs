@@ -21,7 +21,7 @@ impl PluginHost {
         }
 
         // Write host.js to a temp file
-        let temp_dir = std::env::temp_dir().join("bb-agent-plugin-host");
+        let temp_dir = std::env::temp_dir().join("kordi-plugin-host");
         std::fs::create_dir_all(&temp_dir)
             .map_err(|e| PluginHostError::Io(format!("create temp dir: {e}")))?;
         let host_js_path = temp_dir.join("host.js");

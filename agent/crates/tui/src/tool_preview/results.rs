@@ -1,4 +1,4 @@
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 use serde_json::Value;
 
 use crate::ui_hints::{

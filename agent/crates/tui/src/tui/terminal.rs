@@ -189,7 +189,7 @@ fn send_tui_event(
 }
 
 fn sync_updates_supported() -> bool {
-    if std::env::var("BB_DISABLE_SYNC_UPDATES").as_deref() == Ok("1") {
+    if std::env::var("KORDI_DISABLE_SYNC_UPDATES").as_deref() == Ok("1") {
         return false;
     }
 

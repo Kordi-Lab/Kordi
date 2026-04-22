@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -70,15 +70,15 @@ impl Tool for BrowserFetchTool {
         params: Value,
         ctx: &ToolContext,
         cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let input: BrowserFetchInput = serde_json::from_value(params)
-            .map_err(|e| BbError::Tool(format!("Invalid browser_fetch parameters: {e}")))?;
+            .map_err(|e| KordiError::Tool(format!("Invalid browser_fetch parameters: {e}")))?;
         validate_input(&input)?;
 
         let url = parse_http_url("browser_fetch", &input.url)?;
 
         let browser = resolve_browser_executable()
-            .ok_or_else(|| BbError::Tool(missing_browser_error_message()))?;
+            .ok_or_else(|| KordiError::Tool(missing_browser_error_message()))?;
         let timeout_secs = input.timeout.unwrap_or(DEFAULT_TIMEOUT_SECONDS).max(1.0);
         let max_chars = input
             .max_chars
@@ -95,13 +95,13 @@ impl Tool for BrowserFetchTool {
         let browser_output = result?;
 
         if browser_output.trim().is_empty() {
-            return Err(BbError::Tool(
+            return Err(KordiError::Tool(
                 "browser_fetch got no DOM output from the browser".into(),
             ));
         }
 
         if is_browser_protection_page(&browser_output) {
-            return Err(BbError::Tool(
+            return Err(KordiError::Tool(
                 "browser_fetch reached a protection/login/challenge page instead of readable article content".into(),
             ));
         }
@@ -145,9 +145,9 @@ impl Tool for BrowserFetchTool {
     }
 }
 
-fn validate_input(input: &BrowserFetchInput) -> BbResult<()> {
+fn validate_input(input: &BrowserFetchInput) -> KordiResult<()> {
     if input.url.trim().is_empty() {
-        return Err(BbError::Tool("browser_fetch url must be non-empty".into()));
+        return Err(KordiError::Tool("browser_fetch url must be non-empty".into()));
     }
     validate_optional_max_chars("browser_fetch", input.max_chars)?;
     validate_optional_timeout("browser_fetch", input.timeout)?;

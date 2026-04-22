@@ -4,7 +4,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 fn make_temp_dir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("bb-settings-test-{}", Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("kordi-settings-test-{}", Uuid::new_v4()));
     fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -50,6 +50,11 @@ fn test_settings_deserialize() {
                 "enabled": false,
                 "ttlHours": 6
             },
+            "storage": {
+                "rootDir": "~/.kordi",
+                "dbPath": "~/.kordi/sessions.db",
+                "artifactsDir": "~/.kordi/artifacts"
+            },
             "models": [
                 {
                     "id": "my-model",
@@ -60,8 +65,14 @@ fn test_settings_deserialize() {
         }"#;
     let s: Settings = serde_json::from_str(json).unwrap();
     assert_eq!(s.project_name.as_deref(), Some("Kordi Desktop"));
-    assert_eq!(s.project_context.as_deref(), Some("Shared context across project sessions."));
-    assert_eq!(s.project_system_prompt.as_deref(), Some("Always align answers with the desktop app scope."));
+    assert_eq!(
+        s.project_context.as_deref(),
+        Some("Shared context across project sessions.")
+    );
+    assert_eq!(
+        s.project_system_prompt.as_deref(),
+        Some("Always align answers with the desktop app scope.")
+    );
     assert_eq!(s.project_shared_sources.len(), 1);
     assert_eq!(s.project_shared_sources[0].label, "Product brief");
     assert_eq!(s.default_provider.as_deref(), Some("anthropic"));
@@ -74,6 +85,12 @@ fn test_settings_deserialize() {
     assert!(!s.enable_skill_commands);
     assert!(!s.update_check.enabled);
     assert_eq!(s.update_check.ttl_hours, 6);
+    assert_eq!(s.storage.root_dir.as_deref(), Some("~/.kordi"));
+    assert_eq!(s.storage.db_path.as_deref(), Some("~/.kordi/sessions.db"));
+    assert_eq!(
+        s.storage.artifacts_dir.as_deref(),
+        Some("~/.kordi/artifacts")
+    );
     assert_eq!(s.models.as_ref().unwrap().len(), 1);
     assert_eq!(s.models.as_ref().unwrap()[0].id, "my-model");
 }
@@ -97,6 +114,11 @@ fn test_settings_merge() {
         update_check: UpdateCheckSettings {
             enabled: true,
             ttl_hours: 48,
+        },
+        storage: StorageSettings {
+            root_dir: Some("~/.kordi".into()),
+            db_path: Some("~/.kordi/global.db".into()),
+            artifacts_dir: None,
         },
         models: Some(vec![ModelOverride {
             id: "custom-1".into(),
@@ -133,6 +155,11 @@ fn test_settings_merge() {
             enabled: false,
             ttl_hours: 12,
         },
+        storage: StorageSettings {
+            root_dir: None,
+            db_path: None,
+            artifacts_dir: Some("~/.kordi/project-artifacts".into()),
+        },
         models: Some(vec![ModelOverride {
             id: "custom-2".into(),
             name: Some("Custom 2".into()),
@@ -151,8 +178,14 @@ fn test_settings_merge() {
 
     assert_eq!(merged.resolved_execution_mode(), ExecutionMode::Yolo);
     assert_eq!(merged.project_name.as_deref(), Some("Desktop"));
-    assert_eq!(merged.project_context.as_deref(), Some("Shared across project sessions"));
-    assert_eq!(merged.project_system_prompt.as_deref(), Some("Keep answers aligned with desktop work."));
+    assert_eq!(
+        merged.project_context.as_deref(),
+        Some("Shared across project sessions")
+    );
+    assert_eq!(
+        merged.project_system_prompt.as_deref(),
+        Some("Keep answers aligned with desktop work.")
+    );
     assert_eq!(merged.project_shared_sources.len(), 1);
     assert_eq!(merged.project_shared_sources[0].label, "Spec");
     assert_eq!(merged.default_provider.as_deref(), Some("anthropic"));
@@ -168,6 +201,15 @@ fn test_settings_merge() {
     assert!(!merged.enable_skill_commands);
     assert!(!merged.update_check.enabled);
     assert_eq!(merged.update_check.ttl_hours, 12);
+    assert_eq!(merged.storage.root_dir.as_deref(), Some("~/.kordi"));
+    assert_eq!(
+        merged.storage.db_path.as_deref(),
+        Some("~/.kordi/global.db")
+    );
+    assert_eq!(
+        merged.storage.artifacts_dir.as_deref(),
+        Some("~/.kordi/project-artifacts")
+    );
     let models = merged.models.unwrap();
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "custom-1");
@@ -415,9 +457,9 @@ fn test_load_from_file_result_invalid_json_errors() {
 fn load_project_uses_detected_ancestor_project_root() {
     let root = make_temp_dir();
     fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
-    fs::create_dir_all(root.join(".bb-agent")).unwrap();
+    fs::create_dir_all(root.join(".kordi")).unwrap();
     fs::write(
-        root.join(".bb-agent").join("settings.json"),
+        root.join(".kordi").join("settings.json"),
         r#"{"default_model":"ancestor-model"}"#,
     )
     .unwrap();
@@ -443,9 +485,9 @@ fn save_project_writes_to_detected_ancestor_project_root() {
     };
     settings.save_project(&nested).unwrap();
 
-    let saved = Settings::load_from_file(&root.join(".bb-agent").join("settings.json"));
+    let saved = Settings::load_from_file(&root.join(".kordi").join("settings.json"));
     assert_eq!(saved.default_provider.as_deref(), Some("anthropic"));
-    assert!(!nested.join(".bb-agent").join("settings.json").exists());
+    assert!(!nested.join(".kordi").join("settings.json").exists());
 
     let _ = fs::remove_dir_all(root);
 }

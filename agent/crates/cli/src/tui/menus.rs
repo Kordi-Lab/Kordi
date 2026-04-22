@@ -1,11 +1,11 @@
 use anyhow::Result;
-use bb_core::agent_session::{ModelRef, ThinkingLevel, parse_model_arg};
-use bb_core::agent_session_runtime::RuntimeModelRef;
-use bb_core::settings::{ExecutionMode, Settings};
-use bb_core::types::AgentMessage;
-use bb_session::{context, store};
-use bb_tui::select_list::SelectItem;
-use bb_tui::tui::{TuiAuthDialog, TuiAuthStep, TuiAuthStepState, TuiCommand, TuiNoteLevel};
+use kordi_core::agent_session::{ModelRef, ThinkingLevel, parse_model_arg};
+use kordi_core::agent_session_runtime::RuntimeModelRef;
+use kordi_core::settings::{ExecutionMode, Settings};
+use kordi_core::types::AgentMessage;
+use kordi_session::{context, store};
+use kordi_tui::select_list::SelectItem;
+use kordi_tui::tui::{TuiAuthDialog, TuiAuthStep, TuiAuthStepState, TuiCommand, TuiNoteLevel};
 
 use crate::slash::LocalSlashCommandHost;
 
@@ -26,7 +26,7 @@ impl TuiController {
         &mut self,
         menu_id: &str,
         value: &str,
-        submission_rx: &mut tokio::sync::mpsc::UnboundedReceiver<bb_tui::tui::TuiSubmission>,
+        submission_rx: &mut tokio::sync::mpsc::UnboundedReceiver<kordi_tui::tui::TuiSubmission>,
     ) -> Result<()> {
         match menu_id {
             "model" => {

@@ -1,4 +1,4 @@
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use futures::future::join_all;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -106,7 +106,7 @@ pub async fn execute_reserved_tool_call(
     ctx: &ToolContext,
     cancel: CancellationToken,
     reservation: FileQueueReservation,
-) -> BbResult<ToolResult> {
+) -> KordiResult<ToolResult> {
     reservation.hold();
     tool.execute(args, ctx, cancel).await
 }
@@ -118,7 +118,7 @@ pub async fn execute_tool_call(
     ctx: &ToolContext,
     cancel: CancellationToken,
     file_queue: &FileQueue,
-) -> BbResult<ToolResult> {
+) -> KordiResult<ToolResult> {
     let reservation = file_queue
         .reserve_scheduling(&tool.scheduling(&args, ctx))
         .await;
@@ -133,7 +133,7 @@ pub async fn execute_tool_calls(
     ctx: &ToolContext,
     cancel: CancellationToken,
     file_queue: &FileQueue,
-) -> Vec<(String, BbResult<ToolResult>)> {
+) -> Vec<(String, KordiResult<ToolResult>)> {
     let mut pending = Vec::new();
     let mut immediate = Vec::new();
 
@@ -142,7 +142,7 @@ pub async fn execute_tool_calls(
             immediate.push((
                 index,
                 call_id.clone(),
-                Err(BbError::Tool(format!("Unknown tool: {tool_name}"))),
+                Err(KordiError::Tool(format!("Unknown tool: {tool_name}"))),
             ));
             continue;
         };
@@ -168,7 +168,7 @@ pub async fn execute_tool_calls(
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use bb_core::types::ContentBlock;
+    use kordi_core::types::ContentBlock;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::{Mutex as TokioMutex, Notify};
@@ -221,7 +221,7 @@ mod tests {
             _params: Value,
             _ctx: &ToolContext,
             _cancel: CancellationToken,
-        ) -> BbResult<ToolResult> {
+        ) -> KordiResult<ToolResult> {
             let should_wait = {
                 let mut entered = self.entered.lock().await;
                 *entered += 1;
@@ -242,7 +242,7 @@ mod tests {
                     }
                 })
                 .await
-                .map_err(|_| BbError::Tool("read-only tool calls did not overlap".into()))?;
+                .map_err(|_| KordiError::Tool("read-only tool calls did not overlap".into()))?;
             }
 
             Ok(text_result("ok"))
@@ -288,7 +288,7 @@ mod tests {
             _params: Value,
             _ctx: &ToolContext,
             _cancel: CancellationToken,
-        ) -> BbResult<ToolResult> {
+        ) -> KordiResult<ToolResult> {
             let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
             let mut observed = self.max_active.load(Ordering::SeqCst);
             while current > observed {

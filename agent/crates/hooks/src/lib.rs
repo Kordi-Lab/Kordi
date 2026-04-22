@@ -1,11 +1,11 @@
-//! Hook event types and the shared event bus used by BB-Agent extensions.
+//! Hook event types and the shared event bus used by Kordi extensions.
 //!
 //! # Example
 //!
 //! ```no_run
 //! use std::sync::Arc;
 //!
-//! use bb_hooks::{Event, EventBus, HookResult, ToolCallEvent};
+//! use kordi_hooks::{Event, EventBus, HookResult, ToolCallEvent};
 //!
 //! # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
 //! let bus = EventBus::new();

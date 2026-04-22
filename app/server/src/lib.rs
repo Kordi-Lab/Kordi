@@ -5,17 +5,17 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bb_core::config;
-use bb_core::settings::Settings;
-use bb_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};
-use bb_session::store;
 use directories::BaseDirs;
+use kordi_core::config;
+use kordi_core::settings::Settings;
+use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};
 use kordi_protocol::{
     APP_PROTOCOL_VERSION, BootstrapSnapshot, ClientKind, ClientMetadata, FeatureFlags,
     ModelSelector, ServerMetadata, ServiceSnapshot, ServiceState, ServiceStatusSummary,
     SessionSource, SessionStatus, SessionSummary, SessionsPage, SubmitTurnAccepted,
     SubmitTurnRequest, ThinkingLevel, WorkspaceSummary,
 };
+use kordi_session::store;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -214,12 +214,16 @@ impl TurnExecutor for ProcessTurnExecutor {
             command.arg("--model").arg(format_cli_model(model));
         }
 
-        let thinking = execution
-            .thinking
-            .clone()
-            .or_else(|| execution.model.as_ref().and_then(|model| model.reasoning.clone()));
+        let thinking = execution.thinking.clone().or_else(|| {
+            execution
+                .model
+                .as_ref()
+                .and_then(|model| model.reasoning.clone())
+        });
         if let Some(thinking) = thinking {
-            command.arg("--thinking").arg(protocol_thinking_level(&thinking));
+            command
+                .arg("--thinking")
+                .arg(protocol_thinking_level(&thinking));
         }
 
         command
@@ -262,7 +266,8 @@ impl AppServer {
     pub fn from_cwd(cwd: PathBuf) -> Result<Self> {
         let cwd = std::fs::canonicalize(&cwd)
             .with_context(|| format!("canonicalizing cwd {}", cwd.display()))?;
-        let sessions_db_path = config::global_dir().join("sessions.db");
+        let global_settings = Settings::load_global();
+        let sessions_db_path = config::session_db_path(&global_settings.storage);
         let bridges_base_url = resolve_bridges_base_url();
         let turn_command = resolve_turn_command();
 
@@ -322,10 +327,7 @@ async fn handle_bootstrap(
             cwd: state.cwd.display().to_string(),
             root_name: workspace_root_name(&state.cwd),
             platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
-            execution_mode: settings
-                .resolved_execution_mode()
-                .as_str()
-                .to_string(),
+            execution_mode: settings.resolved_execution_mode().as_str().to_string(),
         },
         services,
         features: FeatureFlags {
@@ -334,7 +336,10 @@ async fn handle_bootstrap(
             projects: false,
             peers: false,
         },
-        current_session_id: sessions.items.first().map(|session| session.session_id.clone()),
+        current_session_id: sessions
+            .items
+            .first()
+            .map(|session| session.session_id.clone()),
     }))
 }
 
@@ -356,17 +361,19 @@ async fn handle_submit_turn(
     validate_turn_request(&state, &session_id, &request)?;
 
     let cwd_display = state.cwd.display().to_string();
-    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
-        format!(
-            "opening Kordi session store at {}",
-            state.sessions_db_path.display()
-        )
-    })
-    .map_err(AppError::internal)?;
+    let conn = store::open_db(&state.sessions_db_path)
+        .with_context(|| {
+            format!(
+                "opening Kordi session store at {}",
+                state.sessions_db_path.display()
+            )
+        })
+        .map_err(AppError::internal)?;
 
     let Some(session) = store::get_session(&conn, &session_id)
         .with_context(|| format!("looking up session {}", session_id))
-        .map_err(AppError::internal)? else {
+        .map_err(AppError::internal)?
+    else {
         return Err(AppError::not_found(format!(
             "session {} was not found for workspace {}",
             session_id, cwd_display
@@ -714,9 +721,7 @@ fn client_metadata_from_headers(headers: &HeaderMap) -> ClientMetadata {
     ClientMetadata {
         client_id: header_value(headers, "x-kordi-client-id")
             .unwrap_or_else(|| "anonymous".to_string()),
-        client_kind: parse_client_kind(
-            header_value(headers, "x-kordi-client-kind").as_deref(),
-        ),
+        client_kind: parse_client_kind(header_value(headers, "x-kordi-client-kind").as_deref()),
         client_name: header_value(headers, "x-kordi-client-name")
             .unwrap_or_else(|| "unknown-client".to_string()),
         protocol_version: APP_PROTOCOL_VERSION.to_string(),
@@ -790,19 +795,21 @@ fn default_bridges_port() -> u16 {
 }
 
 fn resolve_turn_command() -> TurnCommand {
-    if let Ok(path) = std::env::var("KORDI_BB_BIN") {
-        if !path.trim().is_empty() {
-            return TurnCommand {
-                program: path,
-                base_args: Vec::new(),
-                current_dir: None,
-            };
+    // Preserve the legacy env var as a fallback while preferring the new Kordi name.
+    for key in ["KORDI_BIN", "KORDI_BB_BIN"] {
+        if let Ok(path) = std::env::var(key) {
+            if !path.trim().is_empty() {
+                return TurnCommand {
+                    program: path,
+                    base_args: Vec::new(),
+                    current_dir: None,
+                };
+            }
         }
     }
 
     if let Ok(current_exe) = std::env::current_exe() {
-        let sibling =
-            current_exe.with_file_name(format!("kordi{}", std::env::consts::EXE_SUFFIX));
+        let sibling = current_exe.with_file_name(format!("kordi{}", std::env::consts::EXE_SUFFIX));
         if sibling.is_file() {
             return TurnCommand {
                 program: sibling.display().to_string(),
@@ -849,7 +856,12 @@ fn describe_turn_command(command: &TurnCommand) -> String {
 }
 
 fn format_cli_model(model: &ModelSelector) -> String {
-    match model.provider.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    match model
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(provider) => format!("{provider}/{}", model.model_id),
         None => model.model_id.clone(),
     }
@@ -884,10 +896,10 @@ fn trim_command_output(output: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::{to_bytes, Body};
+    use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use bb_core::types::{EntryBase, EntryId, UserMessage};
     use chrono::Utc;
+    use kordi_core::types::{EntryBase, EntryId, UserMessage};
     use tempfile::TempDir;
     use tokio::sync::Notify;
     use tower::util::ServiceExt;
@@ -900,9 +912,7 @@ mod tests {
     #[async_trait]
     impl BridgesStatusProvider for FakeBridgesStatusProvider {
         async fn fetch_status(&self) -> Result<BridgesStatusResponse> {
-            self.response
-                .clone()
-                .map_err(anyhow::Error::msg)
+            self.response.clone().map_err(anyhow::Error::msg)
         }
     }
 
@@ -1028,15 +1038,17 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body");
-        let snapshot: BootstrapSnapshot =
-            serde_json::from_slice(&body).expect("bootstrap json");
+        let snapshot: BootstrapSnapshot = serde_json::from_slice(&body).expect("bootstrap json");
 
         assert_eq!(snapshot.server.protocol_version, APP_PROTOCOL_VERSION);
         assert_eq!(snapshot.client.client_kind, ClientKind::Tui);
         assert_eq!(snapshot.client.client_name, "test-tui");
         assert_eq!(snapshot.services.runtime.state, ServiceState::Ready);
         assert_eq!(snapshot.services.bridges.state, ServiceState::Ready);
-        assert_eq!(snapshot.current_session_id.as_deref(), Some(session_id.as_str()));
+        assert_eq!(
+            snapshot.current_session_id.as_deref(),
+            Some(session_id.as_str())
+        );
     }
 
     #[tokio::test]
@@ -1076,11 +1088,13 @@ mod tests {
         assert!(page.next_cursor.is_none());
         assert_eq!(page.items[0].source, SessionSource::Local);
         assert_eq!(page.items[0].status, SessionStatus::Idle);
-        assert!(page.items[0]
-            .last_message_preview
-            .as_deref()
-            .unwrap_or_default()
-            .contains("preview"));
+        assert!(
+            page.items[0]
+                .last_message_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("preview")
+        );
     }
 
     #[tokio::test]
@@ -1097,12 +1111,7 @@ mod tests {
             gate: Some(gate.clone()),
         };
 
-        let app = test_server(
-            cwd,
-            db_path,
-            Ok(sample_bridges_status()),
-            executor.clone(),
-        );
+        let app = test_server(cwd, db_path, Ok(sample_bridges_status()), executor.clone());
 
         let response = app
             .router()

@@ -75,7 +75,7 @@ pub fn create_session_with_id_and_parent(
 pub fn append_entry(
     conn: &Connection,
     session_id: &str,
-    entry: &bb_core::types::SessionEntry,
+    entry: &kordi_core::types::SessionEntry,
 ) -> Result<i64> {
     writes::append_entry(conn, session_id, entry)
 }
@@ -120,7 +120,7 @@ pub fn set_session_name(conn: &Connection, session_id: &str, name: Option<&str>)
     writes::set_session_name(conn, session_id, name)
 }
 
-pub fn parse_entry(row: &EntryRow) -> Result<bb_core::types::SessionEntry> {
+pub fn parse_entry(row: &EntryRow) -> Result<kordi_core::types::SessionEntry> {
     queries::parse_entry(row)
 }
 

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bb_core::settings::Settings;
+use kordi_core::settings::Settings;
 
 use super::models::builtin_models;
 use super::types::{ApiType, CostConfig, Model, ModelInput};

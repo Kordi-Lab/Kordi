@@ -3,7 +3,7 @@ mod responses;
 mod sse;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -20,7 +20,7 @@ pub struct OpenAiProvider {
 }
 
 pub(super) fn default_prompt_cache_key(model: &str) -> String {
-    format!("bb-agent:{model}")
+    format!("kordi:{model}")
 }
 
 impl Default for OpenAiProvider {
@@ -99,7 +99,7 @@ impl Provider for OpenAiProvider {
         &self,
         request: CompletionRequest,
         options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.stream(request, options, tx).await?;
 
@@ -115,7 +115,7 @@ impl Provider for OpenAiProvider {
         request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         if matches!(options.auth_mode, ProviderAuthMode::OAuth)
             && let Some(account_id) = options.auth_account_id.clone()
         {
@@ -204,7 +204,7 @@ impl Provider for OpenAiProvider {
                         .json(&body_clone)
                         .send()
                         .await
-                        .map_err(|e| BbError::Provider(format!("Request failed: {e}")))?;
+                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
                     if !resp.status().is_success() {
                         let status = resp.status();
                         let body = resp.text().await.unwrap_or_default();
@@ -213,7 +213,7 @@ impl Provider for OpenAiProvider {
                         } else {
                             format!("HTTP {status}: {body}")
                         };
-                        return Err(BbError::Provider(message));
+                        return Err(KordiError::Provider(message));
                     }
                     Ok(resp)
                 }
@@ -233,7 +233,7 @@ impl Provider for OpenAiProvider {
             }
 
             let chunk =
-                chunk_result.map_err(|e| BbError::Provider(format!("Stream error: {e}")))?;
+                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {

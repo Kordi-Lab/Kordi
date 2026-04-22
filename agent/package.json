@@ -1,13 +1,13 @@
 {
-  "name": "@shuyhere/bb-agent",
+  "name": "kordi",
   "version": "0.0.18",
-  "description": "BB-Agent — a Rust-native AI coding agent for the terminal",
+  "description": "Kordi — a Rust-native AI coding agent for the terminal",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shuyhere/bb-agent.git"
+    "url": "https://github.com/Kordi-AI/Kordi.git"
   },
-  "homepage": "https://github.com/shuyhere/bb-agent",
+  "homepage": "https://github.com/Kordi-AI/Kordi",
   "author": "shuyhere",
   "keywords": [
     "ai",
@@ -22,7 +22,7 @@
     "rust"
   ],
   "bin": {
-    "bb": "bin/bb"
+    "kordi": "bin/kordi"
   },
   "files": [
     "bin/",

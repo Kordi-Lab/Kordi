@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use bb_core::agent_session_extensions::{
+use kordi_core::agent_session_extensions::{
     PromptTemplateDefinition, PromptTemplateInfo, SkillDefinition, SkillInfo, SourceInfo,
 };
-use bb_core::config;
-use bb_core::settings::Settings;
+use kordi_core::config;
+use kordi_core::settings::Settings;
 use serde_json::Value;
 
 use super::ExtensionBootstrap;
@@ -211,24 +211,20 @@ fn collect_package_resources(
 }
 
 fn default_extension_roots(cwd: &Path) -> Vec<PathBuf> {
-    vec![
-        config::global_dir().join("extensions"),
-        config::project_dir(cwd).join("extensions"),
-    ]
+    let mut roots = config::global_resource_dir_candidates("extensions");
+    roots.extend(config::project_resource_dir_candidates(cwd, "extensions"));
+    roots
 }
 
 fn default_prompt_roots(cwd: &Path) -> Vec<PathBuf> {
-    vec![
-        config::global_dir().join("prompts"),
-        config::project_dir(cwd).join("prompts"),
-    ]
+    let mut roots = config::global_resource_dir_candidates("prompts");
+    roots.extend(config::project_resource_dir_candidates(cwd, "prompts"));
+    roots
 }
 
 fn default_skill_roots(cwd: &Path) -> Vec<PathBuf> {
-    let mut roots = vec![
-        config::global_dir().join("skills"),
-        config::project_dir(cwd).join("skills"),
-    ];
+    let mut roots = config::global_resource_dir_candidates("skills");
+    roots.extend(config::project_resource_dir_candidates(cwd, "skills"));
     if let Some(home) = home_path() {
         roots.push(home.join(".agents").join("skills"));
     }
@@ -430,10 +426,15 @@ fn resource_source_label(path: &Path, cwd: &Path, package_root: Option<&Path>) -
             .unwrap_or("package");
         return format!("package:{name}");
     }
-    if path.starts_with(config::global_dir()) {
+    if path.starts_with(config::preferred_global_settings_dir())
+        || path.starts_with(config::global_dir())
+    {
         return "settings:global".to_string();
     }
-    if path.starts_with(config::project_dir(cwd)) || path.starts_with(cwd) {
+    if path.starts_with(config::preferred_project_settings_dir(cwd))
+        || path.starts_with(config::project_dir(cwd))
+        || path.starts_with(cwd)
+    {
         return "settings:project".to_string();
     }
     "settings:external".to_string()
@@ -523,11 +524,11 @@ pub(super) fn discover_package_resources(
         )
         .with_context(|| format!("parse {}", manifest.display()))?;
 
-        if let Some(bb) = package_json.get("bb").and_then(Value::as_object) {
+        if let Some(kordi) = package_json.get("kordi").and_then(Value::as_object) {
             return Ok(PackageResources {
-                extensions: manifest_entries(package_dir, bb.get("extensions")),
-                skills: manifest_entries(package_dir, bb.get("skills")),
-                prompts: manifest_entries(package_dir, bb.get("prompts")),
+                extensions: manifest_entries(package_dir, kordi.get("extensions")),
+                skills: manifest_entries(package_dir, kordi.get("skills")),
+                prompts: manifest_entries(package_dir, kordi.get("prompts")),
             });
         }
     }

@@ -85,7 +85,7 @@ pub(crate) fn default_stream_fn() -> super::callbacks::StreamFn {
     Arc::new(|_context, _config, _sink, _signal| {
         Box::pin(async move {
             anyhow::bail!(
-                "bb-core requires an explicit runtime stream_fn; the legacy agent_loop surface remains transitional and is not a stable default runtime"
+                "kordi-core requires an explicit runtime stream_fn; the legacy agent_loop surface remains transitional and is not a stable default runtime"
             )
         })
     })

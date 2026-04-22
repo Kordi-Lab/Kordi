@@ -1,5 +1,5 @@
 [package]
-name = "bb-tui"
+name = "kordi-tui"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,14 +7,14 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-description = "Terminal UI components and TUI experience for BB-Agent."
+description = "Terminal UI components and TUI experience for Kordi."
 publish = false
 
 [dependencies]
-bb-core.workspace = true
-bb-session.workspace = true
-bb-hooks.workspace = true
-bb-provider.workspace = true
+kordi-core.workspace = true
+kordi-session.workspace = true
+kordi-hooks.workspace = true
+kordi-provider.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

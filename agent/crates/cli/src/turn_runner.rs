@@ -11,11 +11,11 @@
 use crate::extensions::ExtensionCommandRegistry;
 use crate::login::ResolvedProviderAuth;
 use crate::tool_registry::ToolRegistry;
-use bb_core::types::ContentBlock;
-use bb_monitor::RequestMetricsTracker;
-use bb_provider::Provider;
-use bb_provider::registry::Model;
-use bb_tools::ToolContext;
+use kordi_core::types::ContentBlock;
+use kordi_monitor::RequestMetricsTracker;
+use kordi_provider::Provider;
+use kordi_provider::registry::Model;
+use kordi_tools::ToolContext;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -31,7 +31,7 @@ pub(crate) struct TurnConfig {
     pub api_key: String,
     pub base_url: String,
     pub headers: std::collections::HashMap<String, String>,
-    pub compaction_settings: bb_core::types::CompactionSettings,
+    pub compaction_settings: kordi_core::types::CompactionSettings,
     pub tool_registry: ToolRegistry,
     pub tool_ctx: ToolContext,
     pub thinking: Option<String>,

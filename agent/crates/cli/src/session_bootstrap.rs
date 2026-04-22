@@ -1,19 +1,19 @@
 use anyhow::Result;
-use bb_core::agent::{self, DEFAULT_SYSTEM_PROMPT};
-use bb_core::agent_session::{ModelRef, ThinkingLevel, parse_model_arg};
-use bb_core::types::SessionContext;
+use kordi_core::agent::{self, DEFAULT_SYSTEM_PROMPT};
+use kordi_core::agent_session::{ModelRef, ThinkingLevel, parse_model_arg};
+use kordi_core::types::SessionContext;
 
 use crate::agents_md::load_agents_md;
-use bb_core::agent_session_runtime::{
+use kordi_core::agent_session_runtime::{
     AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost, CreateAgentSessionRuntimeOptions,
     RuntimeModelRef, create_agent_session_runtime,
 };
-use bb_core::config;
-use bb_core::settings::{ProjectSharedSource, Settings};
-use bb_provider::Provider;
-use bb_provider::registry::ModelRegistry;
-use bb_session::store;
-use bb_tools::{ExecutionPolicy, ToolContext};
+use kordi_core::config;
+use kordi_core::settings::{ProjectSharedSource, Settings};
+use kordi_provider::Provider;
+use kordi_provider::registry::ModelRegistry;
+use kordi_session::store;
+use kordi_tools::{ExecutionPolicy, ToolContext};
 use std::sync::Arc;
 
 use crate::extensions::{
@@ -23,7 +23,7 @@ use crate::extensions::{
 };
 use crate::login;
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
-use bb_monitor::RequestMetricsTracker;
+use kordi_monitor::RequestMetricsTracker;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SessionBootstrapOptions {
@@ -90,7 +90,7 @@ pub(crate) struct SessionRuntimeSetup {
     pub conn: rusqlite::Connection,
     pub session_id: String,
     pub provider: Arc<dyn Provider>,
-    pub model: bb_provider::registry::Model,
+    pub model: kordi_provider::registry::Model,
     pub auth: Option<crate::login::ResolvedProviderAuth>,
     pub api_key: String,
     pub base_url: String,
@@ -115,7 +115,7 @@ pub(crate) struct SessionRuntimeSetup {
     pub extension_commands: ExtensionCommandRegistry,
     pub extension_bootstrap: ExtensionBootstrap,
     #[allow(dead_code)]
-    pub slash_command_items: Vec<bb_tui::select_list::SelectItem>,
+    pub slash_command_items: Vec<kordi_tui::select_list::SelectItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
 }
@@ -151,7 +151,7 @@ fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> 
 }
 
 fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
-    let project_root = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     let project_name = settings
         .project_name
         .as_deref()
@@ -207,12 +207,12 @@ fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Pat
 }
 
 fn build_slash_command_items(
-    session_resources: &bb_core::agent_session_extensions::SessionResourceBootstrap,
-) -> Vec<bb_tui::select_list::SelectItem> {
+    session_resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Vec<kordi_tui::select_list::SelectItem> {
     let mut items = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
 
-    for item in bb_tui::slash_commands::shared_slash_command_select_items() {
+    for item in kordi_tui::slash_commands::shared_slash_command_select_items() {
         if matches!(
             item.value.as_str(),
             "/settings" | "/model" | "/copy" | "/hotkeys" | "/login" | "/logout"
@@ -227,7 +227,7 @@ fn build_slash_command_items(
     for skill in &session_resources.skills {
         let value = format!("/skill:{}", skill.info.name);
         if seen.insert(value.clone()) {
-            items.push(bb_tui::select_list::SelectItem {
+            items.push(kordi_tui::select_list::SelectItem {
                 label: value.clone(),
                 detail: None,
                 value,
@@ -238,7 +238,7 @@ fn build_slash_command_items(
     for prompt in &session_resources.prompts {
         let value = format!("/{}", prompt.info.name);
         if seen.insert(value.clone()) {
-            items.push(bb_tui::select_list::SelectItem {
+            items.push(kordi_tui::select_list::SelectItem {
                 label: value.clone(),
                 detail: Some(prompt.info.description.clone()),
                 value,
@@ -249,7 +249,7 @@ fn build_slash_command_items(
     for cmd in &session_resources.extensions.registered_commands {
         let value = format!("/{}", cmd.invocation_name);
         if seen.insert(value.clone()) {
-            items.push(bb_tui::select_list::SelectItem {
+            items.push(kordi_tui::select_list::SelectItem {
                 label: value.clone(),
                 detail: Some(cmd.description.clone()),
                 value,
@@ -280,7 +280,7 @@ fn load_resumed_session_context(
     if !session_created {
         return None;
     }
-    bb_session::context::build_context(conn, session_id).ok()
+    kordi_session::context::build_context(conn, session_id).ok()
 }
 
 fn load_resumed_thinking_level(
@@ -291,7 +291,7 @@ fn load_resumed_thinking_level(
     if !session_created {
         return None;
     }
-    bb_session::context::active_path_explicit_thinking_level(conn, session_id)
+    kordi_session::context::active_path_explicit_thinking_level(conn, session_id)
         .ok()
         .flatten()
 }
@@ -327,10 +327,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     SessionUiOptions,
     SessionRuntimeSetup,
 )> {
-    let global_dir = config::global_dir();
-    std::fs::create_dir_all(&global_dir)?;
+    let global_settings = Settings::load_global();
 
-    let conn = store::open_db(&global_dir.join("sessions.db"))?;
+    let conn = store::open_db(&config::session_db_path(&global_settings.storage))?;
     let (session_id, session_created) = resolve_startup_session_id(&conn, &cwd, &entry)?;
     let effective_cwd = if session_created {
         store::get_session(&conn, &session_id)?
@@ -340,8 +339,8 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         cwd.clone()
     };
 
-    let settings = Settings::load_merged(&effective_cwd);
     let project_settings = Settings::load_project(&effective_cwd);
+    let settings = Settings::merge(&global_settings, &project_settings);
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let resumed_session_context = load_resumed_session_context(&conn, &session_id, session_created);
@@ -414,7 +413,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     .await?;
     let sibling_conn = crate::turn_runner::open_sibling_conn(&conn)?;
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
-    let _ = commands.send_event(&bb_hooks::Event::SessionStart).await;
+    let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
     let tool_selection = entry.tool_selection.resolve(settings.tools.as_deref());
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection.clone());
     let skill_section = build_skill_system_prompt_section(&session_resources);
@@ -422,14 +421,14 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         build_project_system_prompt_section(&project_settings, &effective_cwd);
     let system_prompt = format!("{base_system_prompt}{project_system_section}{skill_section}");
 
-    let artifacts_dir = global_dir.join("artifacts");
+    let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
         artifacts_dir,
         execution_policy,
         on_output: None,
-        web_search: Some(bb_tools::WebSearchRuntime {
+        web_search: Some(kordi_tools::WebSearchRuntime {
             provider: provider.clone(),
             model: model.clone(),
             api_key: api_key.clone(),
@@ -437,7 +436,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             headers: headers.clone(),
             enabled: true,
         }),
-        execution_mode: bb_tools::ToolExecutionMode::Interactive,
+        execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };
 
@@ -495,7 +494,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         request_metrics_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
             RequestMetricsTracker::new(),
         )),
-        request_metrics_log_path: Some(global_dir.join("request-metrics.jsonl")),
+        request_metrics_log_path: Some(kordi_core::config::request_metrics_log_path(
+            &global_settings.storage,
+        )),
     };
 
     let bootstrap = AgentSessionRuntimeBootstrap {
@@ -553,9 +554,9 @@ mod tests {
     };
     use crate::tool_registry::{ToolSelectionPreference, build_tool_defs};
     use async_trait::async_trait;
-    use bb_core::agent_session::ThinkingLevel;
-    use bb_core::error::BbResult;
-    use bb_tools::{Tool, ToolContext, ToolResult};
+    use kordi_core::agent_session::ThinkingLevel;
+    use kordi_core::error::KordiResult;
+    use kordi_tools::{Tool, ToolContext, ToolResult};
     use serde_json::{Value, json};
     use tempfile::tempdir;
     use tokio_util::sync::CancellationToken;
@@ -627,7 +628,7 @@ mod tests {
             _params: Value,
             _ctx: &ToolContext,
             _cancel: CancellationToken,
-        ) -> BbResult<ToolResult> {
+        ) -> KordiResult<ToolResult> {
             unreachable!("execution is not needed for bootstrap tests")
         }
     }
@@ -713,10 +714,10 @@ mod tests {
 
     #[test]
     fn resolve_startup_session_id_uses_unique_prefix_match() {
-        let conn = bb_session::store::open_memory().expect("memory db");
+        let conn = kordi_session::store::open_memory().expect("memory db");
         let cwd = tempdir().expect("tempdir");
         let cwd_str = cwd.path().display().to_string();
-        let session_id = bb_session::store::create_session(&conn, &cwd_str).expect("session");
+        let session_id = kordi_session::store::create_session(&conn, &cwd_str).expect("session");
 
         let entry = SessionBootstrapOptions {
             session: Some(session_id[..8].to_string()),
@@ -729,10 +730,10 @@ mod tests {
 
     #[test]
     fn resolve_startup_session_id_uses_latest_session_for_continue_or_resume() {
-        let conn = bb_session::store::open_memory().expect("memory db");
+        let conn = kordi_session::store::open_memory().expect("memory db");
         let cwd = tempdir().expect("tempdir");
         let cwd_str = cwd.path().display().to_string();
-        let session_id = bb_session::store::create_session(&conn, &cwd_str).expect("session");
+        let session_id = kordi_session::store::create_session(&conn, &cwd_str).expect("session");
 
         let entry = SessionBootstrapOptions {
             continue_session: true,
@@ -745,7 +746,7 @@ mod tests {
 
     #[test]
     fn resolve_startup_session_id_creates_new_id_when_no_session_is_selected() {
-        let conn = bb_session::store::open_memory().expect("memory db");
+        let conn = kordi_session::store::open_memory().expect("memory db");
         let cwd = tempdir().expect("tempdir");
 
         let resolved =

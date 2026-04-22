@@ -2,7 +2,7 @@ mod preview;
 
 use std::collections::HashSet;
 
-use bb_session::tree::TreeNode;
+use kordi_session::tree::TreeNode;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::theme::theme;
@@ -483,7 +483,7 @@ use preview::{extract_preview_from_payload, truncate_str};
 /// display topology that only increases depth on true forks.
 pub fn build_tree_selector(
     tree: Vec<TreeNode>,
-    entries: &[bb_session::store::EntryRow],
+    entries: &[kordi_session::store::EntryRow],
     active_leaf: Option<&str>,
     max_visible: usize,
 ) -> TreeSelector {

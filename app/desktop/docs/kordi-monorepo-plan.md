@@ -3,7 +3,7 @@
 This document defines the recommended monorepo layout for Kordi and a migration path from the current three-repo setup:
 
 - `Bridges-app` -> desktop product shell
-- `bb-agent` -> agent/runtime backend
+- `agent` -> agent/runtime backend
 - `Bridges` -> network backend
 
 The goal is to move them into one repository **without** losing the architectural boundary between:
@@ -34,7 +34,7 @@ kordi/
       plugin-host/
       tui/
       cli/
-      bb-monitor/
+      kordi-monitor/
       service/                 # new app-facing runtime service crate
     assets/
     docs/
@@ -85,7 +85,7 @@ This remains the source of truth for:
 - hooks
 - tools
 
-The current `bb-agent` crate layout is already good. Do not flatten it.
+The current `agent` crate layout is already good. Do not flatten it.
 
 ### `bridges`
 
@@ -134,13 +134,13 @@ Import all three repositories into one new root while preserving history.
 Use these paths:
 
 - `Bridges-app` -> `app/desktop`
-- `bb-agent` -> `agent`
+- `agent` -> `agent`
 - `Bridges` -> `bridges`
 
 At this point:
 
 - the UI still works from `app/desktop`
-- the agent repo still looks like `bb-agent`
+- the agent repo still looks like `agent`
 - the Bridges repo still looks like `Bridges`
 
 This keeps the migration safe.
@@ -149,7 +149,7 @@ This keeps the migration safe.
 
 After import:
 
-1. Promote the `bb-agent` Rust workspace into the monorepo root `Cargo.toml`
+1. Promote the `agent` Rust workspace into the monorepo root `Cargo.toml`
 2. Add `app/desktop/src-tauri` and `bridges/cli` as workspace members
 3. Add `shared/rust/protocol` as the first shared crate
 4. Add root `pnpm-workspace.yaml` covering the desktop app and registry packages
@@ -159,7 +159,7 @@ After import:
 
 The practical rule is:
 
-- reuse the current `bb-agent` workspace as the base
+- reuse the current `agent` workspace as the base
 - move that workspace definition to the repo root
 - rewrite internal crate paths from `crates/...` to `agent/crates/...`
 
@@ -178,7 +178,7 @@ members = [
   "agent/crates/plugin-host",
   "agent/crates/tui",
   "agent/crates/cli",
-  "agent/crates/bb-monitor",
+  "agent/crates/kordi-monitor",
   "bridges/cli",
   "shared/rust/protocol",
 ]
@@ -189,17 +189,17 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-bb-core = { path = "agent/crates/core" }
-bb-session = { path = "agent/crates/session" }
-bb-tools = { path = "agent/crates/tools" }
-bb-provider = { path = "agent/crates/provider" }
-bb-hooks = { path = "agent/crates/hooks" }
-bb-plugin-host = { path = "agent/crates/plugin-host" }
-bb-tui = { path = "agent/crates/tui" }
-bb-monitor = { path = "agent/crates/bb-monitor" }
+kordi-core = { path = "agent/crates/core" }
+kordi-session = { path = "agent/crates/session" }
+kordi-tools = { path = "agent/crates/tools" }
+kordi-provider = { path = "agent/crates/provider" }
+kordi-hooks = { path = "agent/crates/hooks" }
+kordi-plugin-host = { path = "agent/crates/plugin-host" }
+kordi-tui = { path = "agent/crates/tui" }
+kordi-monitor = { path = "agent/crates/kordi-monitor" }
 kordi-protocol = { path = "shared/rust/protocol" }
 
-# plus the shared external dependencies currently defined by bb-agent
+# plus the shared external dependencies currently defined by agent
 ```
 
 ### Important note

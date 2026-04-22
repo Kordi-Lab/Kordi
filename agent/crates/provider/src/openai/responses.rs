@@ -1,6 +1,6 @@
 use super::{OpenAiProvider, default_prompt_cache_key};
-use bb_core::error::{BbError, BbResult};
-use bb_core::types::CacheMetricsSource;
+use kordi_core::error::{KordiError, KordiResult};
+use kordi_core::types::CacheMetricsSource;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -23,7 +23,7 @@ impl OpenAiProvider {
         options: RequestOptions,
         messages: Vec<Value>,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let url = format!("{}/responses", options.base_url.trim_end_matches('/'));
         let body = build_responses_request_body(&request, messages);
 
@@ -49,11 +49,11 @@ impl OpenAiProvider {
                         .json(&body_clone)
                         .send()
                         .await
-                        .map_err(|e| BbError::Provider(format!("Request failed: {e}")))?;
+                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
                     if !resp.status().is_success() {
                         let status = resp.status();
                         let body = resp.text().await.unwrap_or_default();
-                        return Err(BbError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
                     }
                     Ok(resp)
                 }
@@ -73,7 +73,7 @@ impl OpenAiProvider {
             }
 
             let chunk =
-                chunk_result.map_err(|e| BbError::Provider(format!("Stream error: {e}")))?;
+                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {
@@ -564,6 +564,6 @@ mod tests {
         assert_eq!(body["parallel_tool_calls"], false);
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert_eq!(body["max_output_tokens"], 1024);
-        assert_eq!(body["prompt_cache_key"], "bb-agent:gpt-5.4");
+        assert_eq!(body["prompt_cache_key"], "kordi:gpt-5.4");
     }
 }

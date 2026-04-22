@@ -1,8 +1,8 @@
 use anyhow::Result;
-use bb_core::agent_session::ThinkingLevel;
-use bb_core::types::{AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage};
-use bb_session::store;
-use bb_tui::tui::TuiCommand;
+use kordi_core::agent_session::ThinkingLevel;
+use kordi_core::types::{AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage};
+use kordi_session::store;
+use kordi_tui::tui::TuiCommand;
 use chrono::Utc;
 
 use super::super::controller::{PendingImage, TuiController};

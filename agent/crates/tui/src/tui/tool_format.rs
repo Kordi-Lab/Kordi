@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 use regex::{Captures, Regex};
 
 fn is_bash_prelude_line(line: &str) -> bool {

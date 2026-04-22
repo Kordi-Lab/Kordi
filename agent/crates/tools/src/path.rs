@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 
 use crate::ToolContext;
 
@@ -19,7 +19,7 @@ pub(crate) fn ensure_write_allowed(
     ctx: &ToolContext,
     path: &Path,
     operation: &str,
-) -> BbResult<()> {
+) -> KordiResult<()> {
     if !ctx.execution_policy.restricts_workspace_writes() {
         return Ok(());
     }
@@ -30,7 +30,7 @@ pub(crate) fn ensure_write_allowed(
     if target.starts_with(&workspace) {
         Ok(())
     } else {
-        Err(BbError::Tool(format!(
+        Err(KordiError::Tool(format!(
             "{operation} is restricted to the workspace in safety mode: {} is outside {}",
             target.display(),
             workspace.display()
@@ -38,9 +38,9 @@ pub(crate) fn ensure_write_allowed(
     }
 }
 
-fn canonicalize_target_for_write(path: &Path) -> BbResult<PathBuf> {
+fn canonicalize_target_for_write(path: &Path) -> KordiResult<PathBuf> {
     if path.exists() {
-        return std::fs::canonicalize(path).map_err(BbError::from);
+        return std::fs::canonicalize(path).map_err(KordiError::from);
     }
 
     let mut missing_suffix = Vec::<OsString>::new();
@@ -48,14 +48,14 @@ fn canonicalize_target_for_write(path: &Path) -> BbResult<PathBuf> {
 
     while !current.exists() {
         let Some(name) = current.file_name() else {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Cannot resolve write target outside filesystem root: {}",
                 path.display()
             )));
         };
         missing_suffix.push(name.to_os_string());
         let Some(parent) = current.parent() else {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Cannot resolve write target parent for {}",
                 path.display()
             )));
@@ -63,7 +63,7 @@ fn canonicalize_target_for_write(path: &Path) -> BbResult<PathBuf> {
         current = parent;
     }
 
-    let mut resolved = std::fs::canonicalize(current).map_err(BbError::from)?;
+    let mut resolved = std::fs::canonicalize(current).map_err(KordiError::from)?;
     for component in missing_suffix.iter().rev() {
         resolved.push(component);
     }

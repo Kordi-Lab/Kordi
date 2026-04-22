@@ -11,7 +11,7 @@ fn unique_temp_file(name: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("time should move forward")
         .as_nanos();
-    let path = std::env::temp_dir().join(format!("bb-tui-{name}-{nanos}.txt"));
+    let path = std::env::temp_dir().join(format!("kordi-tui-{name}-{nanos}.txt"));
     std::fs::write(&path, "demo").expect("temp file should be writable");
     path
 }

@@ -2,15 +2,15 @@ use crate::extensions::ExtensionCommandRegistry;
 use crate::tool_registry::ToolRegistry;
 use crate::turn_runner::{TurnConfig, TurnEvent, run_turn, wrap_conn};
 use async_trait::async_trait;
-use bb_core::error::BbResult;
-use bb_core::types::{
+use kordi_core::error::KordiResult;
+use kordi_core::types::{
     AgentMessage, CacheMetricsSource, ContentBlock, EntryBase, SessionEntry, StopReason,
     UserMessage,
 };
-use bb_monitor::RequestMetricsTracker;
-use bb_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, UsageInfo};
-use bb_session::store;
-use bb_tools::{Tool, ToolResult, ToolScheduling};
+use kordi_monitor::RequestMetricsTracker;
+use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, UsageInfo};
+use kordi_session::store;
+use kordi_tools::{Tool, ToolResult, ToolScheduling};
 use chrono::Utc;
 use serde_json::json;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ impl Provider for DummyProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -42,7 +42,7 @@ impl Provider for DummyProvider {
         _request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
             let _ = tx.send(StreamEvent::ToolCallStart {
@@ -75,7 +75,7 @@ impl Provider for CancelAfterToolCallProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -84,7 +84,7 @@ impl Provider for CancelAfterToolCallProvider {
         _request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let _ = tx.send(StreamEvent::ToolCallStart {
             id: "tool-cancel-1".to_string(),
             name: "panic-tool".to_string(),
@@ -113,7 +113,7 @@ impl Provider for AliasProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -122,7 +122,7 @@ impl Provider for AliasProvider {
         _request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
             let _ = tx.send(StreamEvent::ToolCallStart {
@@ -170,9 +170,9 @@ impl Tool for EchoTool {
     async fn execute(
         &self,
         params: serde_json::Value,
-        _ctx: &bb_tools::ToolContext,
+        _ctx: &kordi_tools::ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         self.invocations.fetch_add(1, Ordering::SeqCst);
         let command = params
             .get("command")
@@ -201,7 +201,7 @@ impl Provider for OverflowProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(vec![
             StreamEvent::TextDelta {
                 text: "## Goal\nRecover overflow\n\n## Progress\n### Done\n- [x] summarized\n"
@@ -216,7 +216,7 @@ impl Provider for OverflowProvider {
         _request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let _ = tx.send(StreamEvent::Error {
             message: "HTTP 400: context_length_exceeded".to_string(),
         });
@@ -240,7 +240,7 @@ impl Provider for MetricsProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -249,7 +249,7 @@ impl Provider for MetricsProvider {
         _request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let _ = tx.send(StreamEvent::Usage(UsageInfo {
             input_tokens: 100,
             output_tokens: 20,
@@ -343,9 +343,9 @@ impl Tool for PanicTool {
     async fn execute(
         &self,
         _params: serde_json::Value,
-        _ctx: &bb_tools::ToolContext,
+        _ctx: &kordi_tools::ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         panic!("panic containment test marker");
     }
 }
@@ -405,7 +405,7 @@ impl Provider for MultiToolProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -414,7 +414,7 @@ impl Provider for MultiToolProvider {
         _request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
             let _ = tx.send(StreamEvent::ToolCallStart {
@@ -465,9 +465,9 @@ impl Tool for OverlapProbeTool {
     async fn execute(
         &self,
         _params: serde_json::Value,
-        _ctx: &bb_tools::ToolContext,
+        _ctx: &kordi_tools::ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let entered = self.entered.fetch_add(1, Ordering::SeqCst) + 1;
         if entered < 2 {
             timeout(Duration::from_millis(200), async {
@@ -476,7 +476,7 @@ impl Tool for OverlapProbeTool {
                 }
             })
             .await
-            .map_err(|_| bb_core::error::BbError::Tool("tool calls did not overlap".into()))?;
+            .map_err(|_| kordi_core::error::KordiError::Tool("tool calls did not overlap".into()))?;
         } else {
             self.notify.notify_waiters();
         }
@@ -520,7 +520,7 @@ impl Tool for SameFileMutationProbeTool {
     fn scheduling(
         &self,
         params: &serde_json::Value,
-        ctx: &bb_tools::ToolContext,
+        ctx: &kordi_tools::ToolContext,
     ) -> ToolScheduling {
         let path = params
             .get("path")
@@ -540,9 +540,9 @@ impl Tool for SameFileMutationProbeTool {
     async fn execute(
         &self,
         _params: serde_json::Value,
-        _ctx: &bb_tools::ToolContext,
+        _ctx: &kordi_tools::ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
         let mut observed = self.max_active.load(Ordering::SeqCst);
         while current > observed {
@@ -570,16 +570,16 @@ impl Tool for SameFileMutationProbeTool {
     }
 }
 
-fn test_model(context_window: u64) -> bb_provider::registry::Model {
-    bb_provider::registry::Model {
+fn test_model(context_window: u64) -> kordi_provider::registry::Model {
+    kordi_provider::registry::Model {
         id: "dummy-model".to_string(),
         name: "dummy-model".to_string(),
         provider: "dummy".to_string(),
-        api: bb_provider::registry::ApiType::OpenaiCompletions,
+        api: kordi_provider::registry::ApiType::OpenaiCompletions,
         context_window,
         max_tokens: 4_096,
         reasoning: false,
-        input: vec![bb_provider::registry::ModelInput::Text],
+        input: vec![kordi_provider::registry::ModelInput::Text],
         base_url: None,
         cost: Default::default(),
     }
@@ -589,14 +589,14 @@ fn test_request_metrics_tracker() -> Arc<tokio::sync::Mutex<RequestMetricsTracke
     Arc::new(tokio::sync::Mutex::new(RequestMetricsTracker::new()))
 }
 
-fn test_tool_context() -> bb_tools::ToolContext {
-    bb_tools::ToolContext {
+fn test_tool_context() -> kordi_tools::ToolContext {
+    kordi_tools::ToolContext {
         cwd: "/tmp".into(),
         artifacts_dir: "/tmp".into(),
-        execution_policy: bb_tools::ExecutionPolicy::Safety,
+        execution_policy: kordi_tools::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,
-        execution_mode: bb_tools::ToolExecutionMode::Interactive,
+        execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }
 }
@@ -619,7 +619,7 @@ async fn run_turn_contains_tool_panics_without_aborting_the_turn() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(PanicTool)]),
         tool_ctx: test_tool_context(),
         thinking: None,
@@ -768,7 +768,7 @@ async fn run_turn_normalizes_builtin_tool_aliases_before_lookup() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(EchoTool {
             invocations: invocations.clone(),
         })]),
@@ -840,7 +840,7 @@ async fn cancelled_turn_with_tool_calls_persists_cancelled_tool_results() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(PanicTool)]),
         tool_ctx: test_tool_context(),
         thinking: None,
@@ -896,7 +896,7 @@ async fn cancelled_turn_with_tool_calls_persists_cancelled_tool_results() {
         .expect("get session")
         .expect("session exists");
     let leaf_id = session.leaf_id.expect("leaf id");
-    let path = bb_session::tree::walk_to_root(&db, &session_id, &leaf_id).expect("path to root");
+    let path = kordi_session::tree::walk_to_root(&db, &session_id, &leaf_id).expect("path to root");
     let messages = path
         .into_iter()
         .filter_map(|entry| store::parse_entry(&entry).ok())
@@ -942,7 +942,7 @@ async fn read_only_tool_calls_can_overlap_in_real_turn_execution() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(OverlapProbeTool {
             entered,
             notify,
@@ -1008,7 +1008,7 @@ async fn same_file_mutations_stay_serialized_in_real_turn_execution() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(SameFileMutationProbeTool {
             active,
             max_active: max_active.clone(),
@@ -1048,7 +1048,7 @@ async fn overflow_recovery_compacts_only_active_path_context() {
 
     let root = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("root0001".into()),
+            id: kordi_core::types::EntryId("root0001".into()),
             parent_id: None,
             timestamp: Utc::now(),
         },
@@ -1063,8 +1063,8 @@ async fn overflow_recovery_compacts_only_active_path_context() {
 
     let historical = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("hist0002".into()),
-            parent_id: Some(bb_core::types::EntryId("root0001".into())),
+            id: kordi_core::types::EntryId("hist0002".into()),
+            parent_id: Some(kordi_core::types::EntryId("root0001".into())),
             timestamp: Utc::now(),
         },
         message: AgentMessage::User(UserMessage {
@@ -1080,8 +1080,8 @@ async fn overflow_recovery_compacts_only_active_path_context() {
 
     let active = SessionEntry::Message {
         base: EntryBase {
-            id: bb_core::types::EntryId("actv0003".into()),
-            parent_id: Some(bb_core::types::EntryId("root0001".into())),
+            id: kordi_core::types::EntryId("actv0003".into()),
+            parent_id: Some(kordi_core::types::EntryId("root0001".into())),
             timestamp: Utc::now(),
         },
         message: AgentMessage::User(UserMessage {
@@ -1104,7 +1104,7 @@ async fn overflow_recovery_compacts_only_active_path_context() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings {
+        compaction_settings: kordi_core::types::CompactionSettings {
             enabled: true,
             reserve_tokens: 0,
             keep_recent_tokens: 1,
@@ -1145,7 +1145,7 @@ async fn overflow_recovery_compacts_only_active_path_context() {
     );
 
     let append_conn = store::open_db(&db_path).expect("reopen db");
-    let path = bb_session::tree::active_path(&append_conn, &session_id).expect("active path");
+    let path = kordi_session::tree::active_path(&append_conn, &session_id).expect("active path");
     assert_eq!(
         path.len(),
         3,
@@ -1174,7 +1174,7 @@ async fn run_turn_writes_request_metrics_log_when_path_is_configured() {
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::default(),
         tool_ctx: test_tool_context(),
         thinking: None,

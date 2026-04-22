@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_core::types::SessionEntry;
+use kordi_core::types::SessionEntry;
 use rusqlite::{Connection, params};
 
 use super::{EntryRow, SessionRow};

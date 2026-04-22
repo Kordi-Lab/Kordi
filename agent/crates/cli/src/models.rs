@@ -1,4 +1,4 @@
-use bb_provider::registry::ModelRegistry;
+use kordi_provider::registry::ModelRegistry;
 
 pub fn list_models(search: Option<&str>) {
     let registry = ModelRegistry::new();

@@ -1,4 +1,4 @@
-use bb_core::types::CacheMetricsSource;
+use kordi_core::types::CacheMetricsSource;
 use serde_json::Value;
 use tokio::sync::mpsc;
 

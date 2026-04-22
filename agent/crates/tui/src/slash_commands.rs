@@ -113,7 +113,7 @@ const SHARED_SLASH_COMMANDS: &[SlashCommandSpec] = &[
     },
     SlashCommandSpec {
         command: "/update",
-        menu_detail: "Check for a newer BB-Agent version",
+        menu_detail: "Check for a newer Kordi version",
         help_usage: "/update",
         help_detail: "Check for updates now",
         accepts_arguments: false,
@@ -136,14 +136,14 @@ const SHARED_SLASH_COMMANDS: &[SlashCommandSpec] = &[
         command: "/quit",
         menu_detail: "Quit",
         help_usage: "/quit",
-        help_detail: "Quit bb-agent",
+        help_detail: "Quit kordi",
         accepts_arguments: false,
     },
     SlashCommandSpec {
         command: "/exit",
         menu_detail: "Quit (alias)",
         help_usage: "/exit",
-        help_detail: "Quit bb-agent (alias for /quit)",
+        help_detail: "Quit kordi (alias for /quit)",
         accepts_arguments: false,
     },
 ];
@@ -199,7 +199,7 @@ pub fn install_help_lines() -> Vec<String> {
         "  -l, --local                        Install into the detected project root only".into(),
         String::new(),
         "Examples:".into(),
-        "  /install npm:bb-example-skill".into(),
+        "  /install npm:kordi-example-skill".into(),
         "  /install -l npm:my-project-skill".into(),
         "  /install -l ./my-skill".into(),
         "  /install git:https://github.com/org/repo.git".into(),
@@ -225,7 +225,7 @@ pub fn shared_slash_command_help_lines() -> Vec<String> {
     }));
     lines.push(String::new());
     lines.push("  Install examples:".into());
-    lines.push("    /install npm:bb-example-skill".into());
+    lines.push("    /install npm:kordi-example-skill".into());
     lines.push("    /install -l ./my-skill".into());
     lines.push("    /install git:https://github.com/org/repo.git".into());
     lines.push("    /install https://example.com/package.tar.gz".into());
@@ -258,7 +258,7 @@ mod tests {
         assert!(help.contains("/model [name]"));
         assert!(help.contains("/name <name>"));
         assert!(help.contains("/install [-l|--local] <source>"));
-        assert!(help.contains("npm:bb-example-skill"));
+        assert!(help.contains("npm:kordi-example-skill"));
         assert!(help.contains("/update"));
         assert!(help.contains("/exit"));
     }

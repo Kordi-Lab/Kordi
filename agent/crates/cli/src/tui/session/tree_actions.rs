@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
-use bb_core::types::{AgentMessage, SessionEntry};
-use bb_session::{store, tree};
-use bb_tui::select_list::SelectItem;
-use bb_tui::tui::{TuiCommand, TuiSubmission};
+use kordi_core::types::{AgentMessage, SessionEntry};
+use kordi_session::{store, tree};
+use kordi_tui::select_list::SelectItem;
+use kordi_tui::tui::{TuiCommand, TuiSubmission};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 

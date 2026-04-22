@@ -1,4 +1,4 @@
-//! Shared backend monitoring helpers for BB-Agent.
+//! Shared backend monitoring helpers for Kordi.
 //!
 //! This crate is intentionally UI-agnostic: it owns metric types, cache-metric
 //! vocabularies, and text-formatting helpers for usage/context summaries, but it

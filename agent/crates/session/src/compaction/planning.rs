@@ -1,6 +1,6 @@
 use super::types::*;
 use crate::store::EntryRow;
-use bb_core::types::{
+use kordi_core::types::{
     AgentMessage, AssistantContent, CompactionSettings, ContentBlock, SessionEntry, StopReason,
 };
 
@@ -22,7 +22,7 @@ pub fn should_compact(
 }
 
 /// Calculate total context tokens from usage.
-pub fn calculate_context_tokens(usage: &bb_core::types::Usage) -> u64 {
+pub fn calculate_context_tokens(usage: &kordi_core::types::Usage) -> u64 {
     if usage.total_tokens > 0 {
         usage.total_tokens
     } else {
