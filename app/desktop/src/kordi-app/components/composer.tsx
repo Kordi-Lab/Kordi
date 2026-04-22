@@ -183,7 +183,7 @@ export function ComposerModelControls({
     ? providerOptions
     : activeSelector === 'model'
       ? filteredModelOptions
-      : composerThinkingOptions.map((option) => ({ value: option, label: option }));
+      : composerThinkingOptions.map((option) => ({ value: option, label: option, detail: null }));
   const selectedModel = selectedModelOption?.label ?? selection.model;
 
   return (

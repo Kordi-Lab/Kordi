@@ -11,7 +11,45 @@ import {
   User,
 } from 'lucide-react';
 
-export const settingsSections = [
+import { DEFAULT_BRIDGE_OWNER_NAME } from '@/features/bridge/constants';
+
+export type SettingsSectionId =
+  | 'general'
+  | 'appearance'
+  | 'configuration'
+  | 'projects'
+  | 'auth'
+  | 'personalization'
+  | 'usage'
+  | 'mcp'
+  | 'git'
+  | 'environments'
+  | 'worktrees'
+  | 'archived';
+
+export type SettingsControl =
+  | { type: 'select'; iconGlyph?: string }
+  | { type: 'toggle'; enabled: boolean }
+  | { type: 'action'; actionLabel?: string }
+  | { type: 'theme' };
+
+export type SettingsItem = {
+  label: string;
+  value: string;
+  hint: string;
+  control?: SettingsControl;
+};
+
+export type SettingsSection = {
+  id: SettingsSectionId;
+  label: string;
+  icon: typeof Settings;
+  title: string;
+  description: string;
+  items: SettingsItem[];
+};
+
+export const settingsSections: SettingsSection[] = [
   {
     id: 'general',
     label: 'General',
@@ -112,7 +150,7 @@ export const settingsSections = [
     title: 'Personalization',
     description: 'Identity, display preferences, and custom prompt shaping for your workspace.',
     items: [
-      { label: 'Display name', value: 'Kordi User', hint: 'Shown to peers and their agents in shared spaces.' },
+      { label: 'Display name', value: DEFAULT_BRIDGE_OWNER_NAME, hint: 'Shown to peers and their agents in shared spaces.' },
       { label: 'Primary contact ID', value: 'contact://primary-user', hint: 'Used for direct reachability and trusted introductions.' },
       { label: 'Default intro style', value: 'Concise and technical', hint: 'Applied to first-contact drafts and summaries.' },
       { label: 'Personal memory mode', value: 'Scoped by project', hint: 'Keeps recall separate across collaboration spaces.' },
@@ -196,4 +234,4 @@ export const settingsSections = [
       { label: 'Compaction mode', value: 'Metadata only after archive', hint: 'Reduces token cost while keeping context discoverable.' },
     ],
   },
-] as const;
+];

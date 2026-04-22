@@ -177,7 +177,7 @@ export function useWorkspaceViewModels({
       return {
         id: conversation.id,
         name: conversation.title,
-        type: (isAgent ? 'external-agent' : 'person') as const,
+        type: isAgent ? ('external-agent' as const) : ('person' as const),
         subtitle: conversation.projectName ? `${conversation.projectName} • ${conversation.subtitle}` : conversation.subtitle,
         unread: conversation.unreadCount,
         bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],

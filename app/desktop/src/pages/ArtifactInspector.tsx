@@ -78,7 +78,7 @@ export function ArtifactInspector({
   useEffect(() => {
     setPreviewError(null);
 
-    if (!activeArtifact?.id || !isNativeShell || cachedPreview) {
+    if (!activeArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview) {
       setIsPreviewLoading(false);
       return;
     }

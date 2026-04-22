@@ -490,7 +490,7 @@ export function ContactRequestRow({
   active,
   onReview,
 }: {
-  request: (typeof contactRequests)[number];
+  request: ContactRequest;
   active: boolean;
   onReview: () => void;
 }) {

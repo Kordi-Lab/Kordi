@@ -13,7 +13,8 @@ export function SettingsValueControl({
   themeMode: ThemeMode;
   onToggleTheme: () => void;
 }) {
-  const controlType = item.control?.type ?? 'select';
+  const control = item.control;
+  const controlType = control?.type ?? 'select';
 
   if (controlType === 'theme') {
     const isLightTheme = themeMode === 'light';
@@ -40,7 +41,7 @@ export function SettingsValueControl({
   }
 
   if (controlType === 'toggle') {
-    const enabled = item.control?.enabled ?? false;
+    const enabled = control?.type === 'toggle' ? control.enabled : false;
     return (
       <div
         className={cn(
@@ -63,7 +64,7 @@ export function SettingsValueControl({
       <div className="app-settings-action-row flex items-center justify-end gap-2.5">
         <div className="text-[12px] font-medium text-slate-300">{item.value}</div>
         <button className="app-control-chip app-settings-action-button rounded-xl px-2.5 py-1 text-[12px] font-medium transition">
-          {item.control?.actionLabel ?? 'Set'}
+          {control?.type === 'action' ? (control.actionLabel ?? 'Set') : 'Set'}
         </button>
       </div>
     );
@@ -72,9 +73,9 @@ export function SettingsValueControl({
   return (
     <button className="app-input-shell app-settings-control flex min-w-[232px] items-center justify-between gap-3 rounded-[14px] px-3 py-2 text-left transition">
       <div className="flex items-center gap-3">
-        {item.control?.iconGlyph && (
+        {control?.type === 'select' && control.iconGlyph && (
           <div className="app-settings-control-icon grid h-6 w-6 place-items-center rounded-[10px] bg-slate-900 text-[13px] font-bold text-amber-400">
-            {item.control.iconGlyph}
+            {control.iconGlyph}
           </div>
         )}
         <div className="text-[13px] font-medium">{item.value}</div>

@@ -1,10 +1,11 @@
-import type { ComponentType, Dispatch, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { LoaderCircle, Plus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
+import type { SettingsSection } from '@/kordi-app/data/settings';
 import type {
   DesktopAuthState,
   DesktopProjectSettings,
@@ -13,25 +14,11 @@ import type {
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
-type SettingsSection = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  icon: ComponentType<{ className?: string }>;
-  items: Array<{
-    label: string;
-    hint: string;
-    value: string;
-    type?: string;
-  }>;
-};
-
 type SettingsPageProps = {
   settingsRailWidth: number;
   settingsContentRef: MutableRefObject<HTMLDivElement | null>;
-  activeSettingsSectionId: string;
-  setActiveSettingsSectionId: Dispatch<SetStateAction<string>>;
+  activeSettingsSectionId: SettingsSection['id'];
+  setActiveSettingsSectionId: Dispatch<SetStateAction<SettingsSection['id']>>;
   settingsSections: SettingsSection[];
   activeSettingsSection: SettingsSection;
   authSettingsLayoutWidth: number;

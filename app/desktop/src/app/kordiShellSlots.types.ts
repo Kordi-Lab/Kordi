@@ -1,6 +1,7 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
   Contact,
@@ -31,8 +32,14 @@ import type {
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
+export type BridgeSettingsDraft = {
+  hostId?: string | null;
+  serverUrl: string;
+  displayName: string;
+  ownerName: string;
+};
 export type BridgeWizardDraft = {
-  mode: 'local' | 'self-hosted' | 'public' | 'join';
+  mode: 'have-url' | 'need-host';
   serverUrl: string;
   displayName: string;
   ownerName: string;
@@ -45,7 +52,7 @@ export type AssembleKordiShellSlotsArgs = {
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
-  activeSettingsSectionId: string;
+  activeSettingsSectionId: SettingsSectionId;
   isSingleWorkspacePage: boolean;
   collapseChatSessions: boolean;
   showSessionRail: boolean;
@@ -74,7 +81,7 @@ export type AssembleKordiShellSlotsArgs = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
   activeBridgeHost: DesktopBridgeHost | null;
-  refreshDesktopBridge: () => Promise<unknown>;
+  refreshDesktopBridge: () => Promise<void>;
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
@@ -114,37 +121,47 @@ export type AssembleKordiShellSlotsArgs = {
   desktopBridgeState: DesktopBridgeState | null;
   activeBridgePeople: DesktopBridgePeer[];
   activeBridgeAgents: DesktopBridgePeer[];
-  bridgeSettingsDraft: { serverUrl: string; displayName: string; ownerName: string; endpoint: string } | null;
-  setBridgeSettingsDraft: Dispatch<SetStateAction<{ serverUrl: string; displayName: string; ownerName: string; endpoint: string } | null>>;
+  bridgeSettingsDraft: BridgeSettingsDraft | null;
+  setBridgeSettingsDraft: Dispatch<SetStateAction<BridgeSettingsDraft | null>>;
   isDesktopBridgeSaving: boolean;
   desktopBridgeError: string | null;
   bridgeWizardOpen: boolean;
   setBridgeWizardOpen: Dispatch<SetStateAction<boolean>>;
-  bridgeWizardStep: number;
-  setBridgeWizardStep: Dispatch<SetStateAction<number>>;
+  bridgeWizardStep: 1 | 2 | 3;
+  setBridgeWizardStep: Dispatch<SetStateAction<1 | 2 | 3>>;
   bridgeWizardDraft: BridgeWizardDraft;
   setBridgeWizardDraft: Dispatch<SetStateAction<BridgeWizardDraft>>;
   handleSelectBridgeHost: (hostId: string) => Promise<void>;
   openBridgeWizard: () => void;
   handleStartLocalBridgeHost: () => void;
   handleStopLocalBridgeHost: () => void;
-  handleSaveBridgeSettings: () => Promise<void>;
+  handleSaveBridgeSettings: (draftOverride?: BridgeSettingsDraft) => Promise<void>;
   handleRemoveBridgeHost: (hostId: string) => Promise<void>;
+  handleOpenBridgeConfigFolder: () => Promise<void>;
+  handleRevealBridgeStorageFile: (kind: 'config' | 'conversations' | 'legacy') => Promise<void>;
+  handleExportBridgeHostsConfig: () => Promise<void>;
+  handleImportBridgeHostsConfig: (raw: string) => Promise<void>;
+  handleAddBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
+  handleSetBridgeDiscoveryMode: (hostId: string, discoveryMode: 'off' | 'contacts' | 'open') => Promise<void>;
+  handleCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
+  handleActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
+  handleSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
+  handleRemoveBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   handleBridgeWizardPrimary: () => Promise<void>;
 
   settingsRailWidth: number;
   settingsContentRef: MutableRefObject<HTMLDivElement | null>;
-  setActiveSettingsSectionId: Dispatch<SetStateAction<string>>;
-  settingsSections: typeof import('@/kordi-app/data').settingsSections;
-  activeSettingsSection: (typeof import('@/kordi-app/data').settingsSections)[number];
+  setActiveSettingsSectionId: Dispatch<SetStateAction<SettingsSectionId>>;
+  settingsSections: SettingsSection[];
+  activeSettingsSection: SettingsSection;
   authSettingsLayoutWidth: number;
   desktopAuthState: DesktopAuthState | null;
   isDesktopAuthLoading: boolean;
   desktopAuthError: string | null;
-  activeLoginProviderId: string;
+  activeLoginProviderId: string | null;
   selectAuthProvider: (providerId: string) => void;
   openLoginFlow: (provider: DesktopAuthProvider, mode: 'oauth' | 'api-key', options?: { authority?: string; requireAuthority?: boolean }) => void;
-  refreshDesktopAuth: () => Promise<unknown>;
+  refreshDesktopAuth: () => Promise<void>;
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   handleRemoveAuthProfile: (providerId: string, profileId: string) => Promise<void>;
   handleLogoutProvider: (providerId: string) => Promise<void>;
@@ -152,7 +169,7 @@ export type AssembleKordiShellSlotsArgs = {
   isDesktopProjectSaving: boolean;
   desktopProjectError: string | null;
   handleSaveProjectSettings: () => Promise<void>;
-  updateProjectSettingsDraft: (field: 'name' | 'context' | 'systemPrompt' | 'sharedSources', value: string | DesktopProjectSettings['sharedSources']) => void;
+  updateProjectSettingsDraft: (apply: (current: DesktopProjectSettings) => DesktopProjectSettings) => void;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
 
@@ -328,14 +345,21 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'bridgeWizardDraft'
   | 'setBridgeWizardDraft'
   | 'handleSelectBridgeHost'
-  | 'openBridgeWizard'
   | 'handleCreateBridgeDraft'
-  | 'handleStartLocalBridgeHost'
-  | 'handleStopLocalBridgeHost'
   | 'refreshDesktopBridge'
   | 'handleSaveBridgeSettings'
   | 'handleRemoveBridgeHost'
   | 'handleCopyBridgeText'
+  | 'handleOpenBridgeConfigFolder'
+  | 'handleRevealBridgeStorageFile'
+  | 'handleExportBridgeHostsConfig'
+  | 'handleImportBridgeHostsConfig'
+  | 'handleAddBridgeContact'
+  | 'handleSetBridgeDiscoveryMode'
+  | 'handleCreateBridgeAgent'
+  | 'handleActivateBridgeAgent'
+  | 'handleSetDefaultBridgeAgent'
+  | 'handleRemoveBridgeContact'
   | 'handleBridgeWizardPrimary'
   | 'settingsRailWidth'
   | 'settingsContentRef'

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Check, SquareArrowOutUpRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';

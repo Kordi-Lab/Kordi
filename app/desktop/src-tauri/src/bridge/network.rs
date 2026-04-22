@@ -1,16 +1,13 @@
 use base64::Engine as _;
 use reqwest::{Client, Response, StatusCode};
-use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use super::constants::{
-    API_STYLE_REGISTRY, API_STYLE_SERVE, DEFAULT_BRIDGE_RUNTIME, DESKTOP_BRIDGE_RUNTIME,
+use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE, DESKTOP_BRIDGE_RUNTIME};
+use super::storage::{
+    derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
 };
-use super::{
-    derive_node_id, ed25519_to_x25519_public, generate_registry_node_id,
-    load_or_create_bridge_identity, DesktopBridgePeer, DesktopBridgeProject,
-};
+use super::{generate_registry_node_id, DesktopBridgePeer, DesktopBridgeProject};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +36,34 @@ struct NodeListItem {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ServeDiscoveryItem {
+    node_id: String,
+    display_name: Option<String>,
+    owner_name: Option<String>,
+    runtime: Option<String>,
+    created_at: Option<String>,
+    human_id: Option<String>,
+    agent_id: Option<String>,
+    is_default_agent: Option<bool>,
+    discovery_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServeContactItem {
+    node_id: String,
+    display_name: Option<String>,
+    owner_name: Option<String>,
+    runtime: Option<String>,
+    created_at: Option<String>,
+    human_id: Option<String>,
+    agent_id: Option<String>,
+    is_default_agent: Option<bool>,
+    discovery_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ServeProjectItem {
     project_id: String,
     slug: String,
@@ -53,14 +78,8 @@ pub(super) struct ServeProjectMemberItem {
     display_name: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ServeCreateProjectResponse {
-    project_id: String,
-    slug: String,
-    display_name: Option<String>,
-}
+pub(super) struct ServeCreateProjectResponse {}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +139,24 @@ async fn parse_json_response<T: DeserializeOwned>(
         .map_err(|err| format!("{parse_error}: {err}"))
 }
 
-pub(super) async fn register_node_registry(
+pub(super) async fn health_check(base_url: &str) -> Result<(), String> {
+    let url = format!("{}/health", trimmed_base_url(base_url));
+    let response = bridge_client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| format!("Unable to reach bridge server: {err}"))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Bridge server health check failed: HTTP {}",
+            response.status()
+        ))
+    }
+}
+
+async fn register_node_registry(
     base_url: &str,
     node_id: &str,
     display_name: &str,
@@ -159,13 +195,19 @@ pub(super) async fn register_node_registry(
     ))
 }
 
-pub(super) async fn register_node_serve(
+async fn register_node_serve(
     base_url: &str,
     display_name: &str,
     owner_name: &str,
+    runtime: &str,
+    human_id: Option<&str>,
+    agent_id: Option<&str>,
+    discovery_mode: Option<&str>,
+    is_default_agent: bool,
 ) -> Result<(String, String, String), String> {
     let url = format!("{}/v1/auth/register", trimmed_base_url(base_url));
-    let (_signing, verifying) = load_or_create_bridge_identity()?;
+    let agent_identity_id = agent_id.unwrap_or("default-agent");
+    let (_signing, verifying) = load_or_create_bridge_identity_for_agent(agent_identity_id)?;
     let node_id = derive_node_id(&verifying);
     let x25519_pub = ed25519_to_x25519_public(verifying.as_bytes())?;
     let body = serde_json::json!({
@@ -174,6 +216,11 @@ pub(super) async fn register_node_serve(
         "x25519Pubkey": hex::encode(x25519_pub),
         "displayName": display_name,
         "ownerName": owner_name,
+        "runtime": runtime,
+        "humanId": human_id,
+        "agentId": agent_id,
+        "discoveryMode": discovery_mode,
+        "isDefaultAgent": is_default_agent,
     });
     let response = send_request(
         bridge_client().post(url).json(&body),
@@ -206,21 +253,53 @@ pub(super) async fn register_bridge_host(
     display_name: &str,
     owner_name: &str,
     endpoint: &str,
+    runtime: &str,
+    human_id: Option<&str>,
+    agent_id: Option<&str>,
+    discovery_mode: Option<&str>,
+    is_default_agent: bool,
     existing_api_style: Option<&str>,
     existing_node_id: Option<&str>,
 ) -> Result<(String, String, String), String> {
+    let try_serve = || async {
+        register_node_serve(
+            base_url,
+            display_name,
+            owner_name,
+            runtime,
+            human_id,
+            agent_id,
+            discovery_mode,
+            is_default_agent,
+        )
+        .await
+    };
+
     if matches!(existing_api_style, Some(API_STYLE_SERVE)) {
-        return register_node_serve(base_url, display_name, owner_name).await;
+        return try_serve().await;
     }
     if matches!(existing_api_style, Some(API_STYLE_REGISTRY)) {
-        return register_node_registry(
+        let registry_node_id = existing_node_id
+            .map(ToString::to_string)
+            .unwrap_or_else(generate_registry_node_id);
+        return match register_node_registry(
             base_url,
-            existing_node_id.unwrap_or(&generate_registry_node_id()),
+            &registry_node_id,
             display_name,
             owner_name,
             endpoint,
         )
-        .await;
+        .await
+        {
+            Ok(result) => Ok(result),
+            Err(registry_err) => match try_serve().await {
+                Ok(result) => Ok(result),
+                Err(serve_err) => Err(format!(
+                    "{}; fallback serve registration also failed: {}",
+                    registry_err, serve_err
+                )),
+            },
+        };
     }
 
     let registry_node_id = existing_node_id
@@ -237,7 +316,7 @@ pub(super) async fn register_bridge_host(
     {
         return Ok(result);
     }
-    register_node_serve(base_url, display_name, owner_name).await
+    try_serve().await
 }
 
 pub(super) async fn update_registered_registry_node(
@@ -267,6 +346,144 @@ pub(super) async fn update_registered_registry_node(
         .await);
     }
     Ok(())
+}
+
+pub(super) async fn update_serve_discovery_mode(
+    base_url: &str,
+    api_key: &str,
+    discovery_mode: &str,
+) -> Result<(), String> {
+    let url = format!("{}/v1/discovery", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client()
+            .put(url)
+            .bearer_auth(api_key)
+            .json(&serde_json::json!({
+                "discoveryMode": discovery_mode,
+            })),
+        "Unable to update bridge discovery mode",
+    )
+    .await?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(response_error_with_body(
+            response,
+            "Bridge discovery update",
+            "Unable to update bridge discovery mode",
+        )
+        .await)
+    }
+}
+
+fn sort_peers_by_label<T>(
+    peers: &mut [T],
+    mut label: impl FnMut(&T) -> (&Option<String>, &Option<String>, &str),
+) {
+    peers.sort_by(|a, b| {
+        let (a_display, a_owner, a_node) = label(a);
+        let (b_display, b_owner, b_node) = label(b);
+        a_display
+            .as_deref()
+            .or(a_owner.as_deref())
+            .unwrap_or(a_node)
+            .cmp(
+                b_display
+                    .as_deref()
+                    .or(b_owner.as_deref())
+                    .unwrap_or(b_node),
+            )
+    });
+}
+
+pub(super) async fn fetch_serve_discovery(
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<DesktopBridgePeer>, String> {
+    let url = format!("{}/v1/discovery", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client().get(url).bearer_auth(api_key),
+        "Unable to list bridge discovery peers",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to list bridge discovery peers",
+            response.status(),
+        ));
+    }
+
+    let mut peers = parse_json_response::<Vec<ServeDiscoveryItem>>(
+        response,
+        "Unable to parse bridge discovery peers",
+    )
+    .await?;
+    sort_peers_by_label(&mut peers, |peer| {
+        (&peer.display_name, &peer.owner_name, peer.node_id.as_str())
+    });
+    Ok(peers
+        .into_iter()
+        .map(|peer| DesktopBridgePeer {
+            node_id: peer.node_id,
+            display_name: peer.display_name,
+            runtime: peer.runtime.unwrap_or_else(|| "bridge-agent".to_string()),
+            endpoint: String::new(),
+            owner_name: peer.owner_name,
+            created_at: peer.created_at,
+            shared_projects: Vec::new(),
+            human_id: peer.human_id,
+            agent_id: peer.agent_id,
+            is_default_agent: peer.is_default_agent.unwrap_or(false),
+            discovery_mode: peer.discovery_mode,
+        })
+        .collect())
+}
+
+pub(super) async fn fetch_serve_contacts(
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<DesktopBridgePeer>, String> {
+    let url = format!("{}/v1/contacts", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client().get(url).bearer_auth(api_key),
+        "Unable to list bridge contacts",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to list bridge contacts",
+            response.status(),
+        ));
+    }
+
+    let mut contacts =
+        parse_json_response::<Vec<ServeContactItem>>(response, "Unable to parse bridge contacts")
+            .await?;
+    sort_peers_by_label(&mut contacts, |contact| {
+        (
+            &contact.display_name,
+            &contact.owner_name,
+            contact.node_id.as_str(),
+        )
+    });
+    Ok(contacts
+        .into_iter()
+        .map(|contact| DesktopBridgePeer {
+            node_id: contact.node_id,
+            display_name: contact.display_name,
+            runtime: contact
+                .runtime
+                .unwrap_or_else(|| "bridge-contact".to_string()),
+            endpoint: String::new(),
+            owner_name: contact.owner_name,
+            created_at: contact.created_at,
+            shared_projects: Vec::new(),
+            human_id: contact.human_id,
+            agent_id: contact.agent_id,
+            is_default_agent: contact.is_default_agent.unwrap_or(false),
+            discovery_mode: contact.discovery_mode,
+        })
+        .collect())
 }
 
 async fn fetch_serve_projects(
@@ -353,43 +570,12 @@ pub(super) async fn fetch_registry_visible_nodes(
             owner_name: node.owner_name,
             created_at: node.created_at,
             shared_projects: Vec::new(),
+            human_id: None,
+            agent_id: None,
+            is_default_agent: false,
+            discovery_mode: None,
         })
         .collect())
-}
-
-pub(super) fn fetch_local_registered_nodes(
-    db_path: &str,
-    own_node_id: &str,
-) -> Result<Vec<DesktopBridgePeer>, String> {
-    let conn = Connection::open(db_path)
-        .map_err(|err| format!("Unable to open local bridge database: {err}"))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT node_id, display_name, owner_name, created_at FROM registered_nodes WHERE revoked_at IS NULL ORDER BY created_at DESC",
-        )
-        .map_err(|err| err.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(DesktopBridgePeer {
-                node_id: row.get(0)?,
-                display_name: row.get(1)?,
-                runtime: DEFAULT_BRIDGE_RUNTIME.to_string(),
-                endpoint: String::new(),
-                owner_name: row.get(2)?,
-                created_at: row.get(3)?,
-                shared_projects: Vec::new(),
-            })
-        })
-        .map_err(|err| err.to_string())?;
-
-    let mut peers = Vec::new();
-    for row in rows {
-        let peer = row.map_err(|err| err.to_string())?;
-        if peer.node_id != own_node_id {
-            peers.push(peer);
-        }
-    }
-    Ok(peers)
 }
 
 fn ensure_peer_index(
@@ -412,6 +598,10 @@ fn ensure_peer_index(
         owner_name: None,
         created_at: None,
         shared_projects: Vec::new(),
+        human_id: None,
+        agent_id: None,
+        is_default_agent: false,
+        discovery_mode: None,
     });
     let idx = peers.len() - 1;
     index.insert(member.node_id.clone(), idx);
@@ -560,6 +750,50 @@ pub(super) async fn join_serve_project(
             response,
             "Unable to join bridge project",
             "Unable to join bridge project",
+        )
+        .await);
+    }
+    Ok(())
+}
+
+pub(super) async fn add_serve_contact(
+    base_url: &str,
+    api_key: &str,
+    peer_node_id: &str,
+) -> Result<(), String> {
+    let url = format!("{}/v1/contacts/{peer_node_id}", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client().put(url).bearer_auth(api_key),
+        "Unable to add bridge contact",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(response_error_with_body(
+            response,
+            "Unable to add bridge contact",
+            "Unable to add bridge contact",
+        )
+        .await);
+    }
+    Ok(())
+}
+
+pub(super) async fn remove_serve_contact(
+    base_url: &str,
+    api_key: &str,
+    peer_node_id: &str,
+) -> Result<(), String> {
+    let url = format!("{}/v1/contacts/{peer_node_id}", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client().delete(url).bearer_auth(api_key),
+        "Unable to remove bridge contact",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(response_error_with_body(
+            response,
+            "Unable to remove bridge contact",
+            "Unable to remove bridge contact",
         )
         .await);
     }
