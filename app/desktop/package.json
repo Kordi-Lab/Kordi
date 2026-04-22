@@ -12,6 +12,7 @@
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
     "tauri:prepare-sidecars": "node scripts/prepare-sidecars.mjs",
     "tauri:dev": "npm run tauri:prepare-sidecars && tauri dev",
+    "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
     "tauri:build": "npm run tauri:prepare-sidecars && tauri build"
   },
   "dependencies": {
