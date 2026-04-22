@@ -226,16 +226,24 @@ export function useWorkspaceViewModels({
 
   const nativeChatPlaceholder = useMemo(
     () => ({
-      id: 'loading-chat-session',
-      name: isDesktopChatLoading ? 'Loading chat session' : 'Chat session',
+      id: 'local-chat-session',
+      name: 'Chat session',
       type: 'owned-agent' as const,
-      subtitle: isDesktopChatLoading ? 'Loading your real local session history…' : 'Real chat session state is unavailable.',
+      subtitle: isDesktopChatLoading
+        ? 'Opening your local chat history…'
+        : 'No local chat session is selected.',
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
       directness: 'Direct chat',
       participants: ['You', 'Kordi'],
-      messages: [{ role: 'system' as const, text: isDesktopChatLoading ? 'Loading real chat session…' : 'No real chat session is loaded.', time: '--:--' }],
+      messages: [{
+        role: 'system' as const,
+        text: isDesktopChatLoading
+          ? 'Opening your local chat history…'
+          : 'Select a local session from the sidebar or create a new one to start chatting.',
+        time: '--:--',
+      }],
     }),
     [isDesktopChatLoading],
   );

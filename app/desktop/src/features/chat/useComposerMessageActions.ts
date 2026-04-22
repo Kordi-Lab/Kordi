@@ -64,6 +64,14 @@ function appendOptimisticOutboundMessage(
   displayText: string,
   sentAt: string,
 ) {
+  const optimisticMessage = {
+    role: 'user' as const,
+    sender: 'You',
+    text: displayText,
+    timeLabel: sentAt,
+    timestampMs: Date.now(),
+  };
+
   return {
     ...current,
     sessions: current.sessions.map((session) =>
@@ -76,22 +84,16 @@ function appendOptimisticOutboundMessage(
           }
         : session,
     ),
-    activeSession: {
-      ...current.activeSession,
-      subtitle: displayText,
-      updatedAtLabel: sentAt,
-      messageCount: current.activeSession.messageCount + 1,
-      messages: [
-        ...current.activeSession.messages,
-        {
-          role: 'user' as const,
-          sender: 'You',
-          text: displayText,
-          timeLabel: sentAt,
-          timestampMs: Date.now(),
-        },
-      ],
-    },
+    activeSession:
+      current.activeSession.id === targetSessionId
+        ? {
+            ...current.activeSession,
+            subtitle: displayText,
+            updatedAtLabel: sentAt,
+            messageCount: current.activeSession.messageCount + 1,
+            messages: [...current.activeSession.messages, optimisticMessage],
+          }
+        : current.activeSession,
   };
 }
 
@@ -281,7 +283,11 @@ export function useComposerMessageActions({
       return;
     }
 
-    if (!desktopChatState?.activeSessionId) return;
+    const targetSessionId = activeConvId && !activeConvId.startsWith('bridge:')
+      ? activeConvId
+      : desktopChatState?.activeSessionId;
+
+    if (!targetSessionId) return;
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
@@ -293,18 +299,21 @@ export function useComposerMessageActions({
     try {
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
+      if (desktopChatState?.activeSessionId !== targetSessionId) {
+        await refreshDesktopChat(targetSessionId);
+      }
+
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const displayText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
-      setDesktopChatState((current) => {
-        if (!current || current.activeSessionId !== desktopChatState.activeSessionId) return current;
-        return appendOptimisticOutboundMessage(current, current.activeSessionId, displayText, sentAt);
-      });
+      setDesktopChatState((current) => (
+        current ? appendOptimisticOutboundMessage(current, targetSessionId, displayText, sentAt) : current
+      ));
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-      const turn = await startDesktopChatMessage(desktopChatState.activeSessionId, text, attachmentPaths);
+      const turn = await startDesktopChatMessage(targetSessionId, text, attachmentPaths);
       void watchDesktopLiveTurn(turn);
     } catch (error) {
       setPendingUserChatMessage(null);

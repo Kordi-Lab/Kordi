@@ -92,7 +92,7 @@ export function useKordiUiEffects({
 }: UseKordiUiEffectsArgs) {
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSessionId) return;
-    setActiveConvId((current) => (current === 'my-agent' ? desktopChatState.activeSessionId : current));
+    setActiveConvId((current) => (!current || current === 'my-agent' ? desktopChatState.activeSessionId : current));
   }, [desktopChatState?.activeSessionId, isNativeShell, setActiveConvId]);
 
   useEffect(() => {

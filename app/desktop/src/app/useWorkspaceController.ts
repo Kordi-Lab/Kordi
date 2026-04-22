@@ -14,7 +14,7 @@ export function useWorkspaceController({
   isNativeShell,
 }: UseWorkspaceControllerArgs) {
   const [activeNav, setActiveNav] = useState<NavId>('chats');
-  const [activeConvId, setActiveConvId] = useState('my-agent');
+  const [activeConvId, setActiveConvId] = useState(isNativeShell ? '' : 'my-agent');
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0]?.id ?? '');
   const [activeProjectSessionId, setActiveProjectSessionId] = useState(initialProjects[0]?.sessions[0]?.id ?? '');
   const [projectSelectedSessionIds, setProjectSelectedSessionIds] = useState<Record<string, string>>(() =>
