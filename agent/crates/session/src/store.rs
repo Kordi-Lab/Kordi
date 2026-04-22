@@ -104,6 +104,14 @@ pub fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
     queries::list_all_sessions(conn)
 }
 
+pub fn get_last_message_timestamp(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    queries::get_last_message_timestamp(conn, session_id)
+}
+
+pub fn get_last_entry_timestamp(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    queries::get_last_entry_timestamp(conn, session_id)
+}
+
 pub fn set_leaf(conn: &Connection, session_id: &str, leaf_id: Option<&str>) -> Result<()> {
     writes::set_leaf(conn, session_id, leaf_id)
 }

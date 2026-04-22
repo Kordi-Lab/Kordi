@@ -1,19 +1,23 @@
 use super::*;
 use bb_core::types::*;
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 
 fn make_user_entry(parent: Option<&str>) -> SessionEntry {
+    make_user_entry_at(parent, Utc::now())
+}
+
+fn make_user_entry_at(parent: Option<&str>, timestamp: chrono::DateTime<Utc>) -> SessionEntry {
     SessionEntry::Message {
         base: EntryBase {
             id: EntryId::generate(),
             parent_id: parent.map(|s| EntryId(s.to_string())),
-            timestamp: Utc::now(),
+            timestamp,
         },
         message: AgentMessage::User(UserMessage {
             content: vec![ContentBlock::Text {
                 text: "hello".to_string(),
             }],
-            timestamp: Utc::now().timestamp_millis(),
+            timestamp: timestamp.timestamp_millis(),
         }),
     }
 }
@@ -91,4 +95,52 @@ fn test_fork_session_from_entry_creates_new_session() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].entry_id, root_id.as_str());
     assert_eq!(entries[1].entry_id, middle_id.as_str());
+}
+
+#[test]
+fn test_set_leaf_does_not_update_session_timestamp() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let entry = make_user_entry(None);
+    let entry_id = entry.base().id.clone();
+    append_entry(&conn, &sid, &entry).unwrap();
+
+    let before = get_session(&conn, &sid)
+        .unwrap()
+        .expect("session before set_leaf")
+        .updated_at;
+    set_leaf(&conn, &sid, Some(entry_id.as_str())).unwrap();
+    let after = get_session(&conn, &sid)
+        .unwrap()
+        .expect("session after set_leaf")
+        .updated_at;
+
+    assert_eq!(after, before);
+}
+
+#[test]
+fn test_list_sessions_orders_by_last_message_timestamp_not_metadata_updates() {
+    let conn = open_memory().unwrap();
+    let older_session_id = create_session(&conn, "/tmp/test").unwrap();
+    let newer_session_id = create_session(&conn, "/tmp/test").unwrap();
+
+    let older_timestamp = Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    let newer_timestamp = Utc.with_ymd_and_hms(2026, 1, 1, 11, 0, 0).unwrap();
+
+    let older_entry = make_user_entry_at(None, older_timestamp);
+    append_entry(&conn, &older_session_id, &older_entry).unwrap();
+
+    let newer_entry = make_user_entry_at(None, newer_timestamp);
+    append_entry(&conn, &newer_session_id, &newer_entry).unwrap();
+
+    set_session_name(&conn, &older_session_id, Some("older renamed later")).unwrap();
+
+    let sessions = list_sessions(&conn, "/tmp/test").unwrap();
+    let ordered_ids = sessions
+        .into_iter()
+        .map(|session| session.session_id)
+        .collect::<Vec<_>>();
+
+    assert_eq!(ordered_ids, vec![newer_session_id, older_session_id]);
 }

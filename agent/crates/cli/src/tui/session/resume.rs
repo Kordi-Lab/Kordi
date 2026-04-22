@@ -51,15 +51,18 @@ impl TuiController {
         }
         let items = sessions
             .into_iter()
-            .map(|row| SelectItem {
-                label: row
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| row.session_id.chars().take(8).collect()),
-                detail: Some(format!("{} entries • {}", row.entry_count, row.updated_at)),
-                value: row.session_id,
+            .map(|row| {
+                let activity_label = session_activity_label(&self.session_setup.conn, &row);
+                SelectItem {
+                    label: row
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| row.session_id.chars().take(8).collect()),
+                    detail: Some(format!("{} entries • {}", row.entry_count, activity_label)),
+                    value: row.session_id,
+                }
             })
-            .collect();
+            .collect::<Vec<_>>();
         self.send_command(TuiCommand::OpenSelectMenu {
             menu_id: RESUME_SESSION_MENU_ID.to_string(),
             title: "Resume session".to_string(),
@@ -174,6 +177,40 @@ impl TuiController {
                 Err(err)
             }
         }
+    }
+}
+
+fn session_activity_label(conn: &rusqlite::Connection, row: &store::SessionRow) -> String {
+    let timestamp = store::get_last_message_timestamp(conn, &row.session_id)
+        .ok()
+        .flatten()
+        .or_else(|| {
+            store::get_last_entry_timestamp(conn, &row.session_id)
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_else(|| row.created_at.clone());
+    format_timestamp(&timestamp)
+}
+
+fn format_timestamp(ts: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+        let now = chrono::Utc::now();
+        let diff = now.signed_duration_since(dt);
+
+        if diff.num_minutes() < 1 {
+            "just now".to_string()
+        } else if diff.num_hours() < 1 {
+            format!("{}m ago", diff.num_minutes())
+        } else if diff.num_hours() < 24 {
+            format!("{}h ago", diff.num_hours())
+        } else if diff.num_days() < 7 {
+            format!("{}d ago", diff.num_days())
+        } else {
+            dt.format("%Y-%m-%d").to_string()
+        }
+    } else {
+        ts.chars().take(16).collect()
     }
 }
 
