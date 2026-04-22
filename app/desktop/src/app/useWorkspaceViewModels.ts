@@ -138,13 +138,14 @@ export function useWorkspaceViewModels({
 
     return desktopChatState.sessions.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
+      const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
         ? mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages)
         : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
-      const unreadCount = localSessionUnreadCounts[session.id] ?? 0;
+      const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
       const statusIndicator = buildSessionStatusIndicator({
         unreadCount,
-        showBackgroundActivity: activeNav !== 'chats' || activeConvId !== session.id,
+        showBackgroundActivity: !isVisibleSession,
         liveTurn: desktopLiveTurnsBySession[session.id],
       });
 
@@ -398,7 +399,8 @@ export function useWorkspaceViewModels({
             ? mapDesktopMessages(session.id, desktopChatState.activeSession.messages)
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
 
-        const unreadCount = localSessionUnreadCounts[session.id] ?? 0;
+        const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
+        const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
 
         return {
           id: session.id,
@@ -412,7 +414,7 @@ export function useWorkspaceViewModels({
           unread: unreadCount,
           statusIndicator: buildSessionStatusIndicator({
             unreadCount,
-            showBackgroundActivity: activeNav !== 'projects' || activeProjectId !== project.id || activeProjectSessionId !== session.id,
+            showBackgroundActivity: !isVisibleSession,
             liveTurn: desktopLiveTurnsBySession[session.id],
           }),
           messages,
