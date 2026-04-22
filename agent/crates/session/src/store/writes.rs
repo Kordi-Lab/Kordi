@@ -108,8 +108,7 @@ pub(super) fn append_entry(
 /// Move the leaf pointer to an earlier entry (branching).
 pub(super) fn set_leaf(conn: &Connection, session_id: &str, leaf_id: Option<&str>) -> Result<()> {
     conn.execute(
-        "UPDATE sessions SET leaf_id = ?1, updated_at = datetime('now')
-         WHERE session_id = ?2",
+        "UPDATE sessions SET leaf_id = ?1 WHERE session_id = ?2",
         params![leaf_id, session_id],
     )?;
     Ok(())

@@ -104,11 +104,51 @@ pub(super) fn get_session(conn: &Connection, session_id: &str) -> Result<Option<
     }
 }
 
+pub(super) fn get_last_message_timestamp(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT timestamp FROM entries
+         WHERE session_id = ?1 AND type = 'message'
+         ORDER BY seq DESC LIMIT 1",
+    )?;
+    let row = stmt.query_row(params![session_id], |row| row.get(0));
+
+    match row {
+        Ok(timestamp) => Ok(Some(timestamp)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub(super) fn get_last_entry_timestamp(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<String>> {
+    let mut stmt = conn
+        .prepare("SELECT timestamp FROM entries WHERE session_id = ?1 ORDER BY seq DESC LIMIT 1")?;
+    let row = stmt.query_row(params![session_id], |row| row.get(0));
+
+    match row {
+        Ok(timestamp) => Ok(Some(timestamp)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// List sessions for a given cwd, most recent first.
 pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionRow>> {
     let mut stmt = conn.prepare(
         "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
-         FROM sessions WHERE cwd = ?1 ORDER BY updated_at DESC",
+         FROM sessions
+         WHERE cwd = ?1
+         ORDER BY COALESCE(
+             (SELECT timestamp FROM entries WHERE session_id = sessions.session_id AND type = 'message' ORDER BY seq DESC LIMIT 1),
+             (SELECT timestamp FROM entries WHERE session_id = sessions.session_id ORDER BY seq DESC LIMIT 1),
+             created_at
+         ) DESC,
+         created_at DESC",
     )?;
     let rows = stmt.query_map(params![cwd], |row| {
         Ok(SessionRow {
@@ -129,7 +169,13 @@ pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionR
 pub(super) fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
     let mut stmt = conn.prepare(
         "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
-         FROM sessions ORDER BY updated_at DESC",
+         FROM sessions
+         ORDER BY COALESCE(
+             (SELECT timestamp FROM entries WHERE session_id = sessions.session_id AND type = 'message' ORDER BY seq DESC LIMIT 1),
+             (SELECT timestamp FROM entries WHERE session_id = sessions.session_id ORDER BY seq DESC LIMIT 1),
+             created_at
+         ) DESC,
+         created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(SessionRow {

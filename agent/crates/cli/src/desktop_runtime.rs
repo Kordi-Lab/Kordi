@@ -453,37 +453,44 @@ fn parse_db_timestamp_millis(value: &str) -> Option<i64> {
         })
 }
 
-fn session_last_assistant_response_ms(
+fn session_last_message_timestamp(conn: &rusqlite::Connection, session_id: &str) -> Option<String> {
+    bb_session::store::get_last_message_timestamp(conn, session_id)
+        .ok()
+        .flatten()
+}
+
+fn session_last_activity_timestamp(
     conn: &rusqlite::Connection,
-    session_id: &str,
-) -> Option<i64> {
-    let rows = bb_session::store::get_entries(conn, session_id).ok()?;
-    rows.into_iter()
-        .filter_map(|row| bb_session::store::parse_entry(&row).ok())
-        .filter_map(|entry| match entry {
-            SessionEntry::Message {
-                base,
-                message: AgentMessage::Assistant(_),
-                ..
-            } => Some(base.timestamp.timestamp_millis()),
-            _ => None,
+    row: &bb_session::store::SessionRow,
+) -> String {
+    session_last_message_timestamp(conn, &row.session_id)
+        .or_else(|| {
+            bb_session::store::get_last_entry_timestamp(conn, &row.session_id)
+                .ok()
+                .flatten()
         })
-        .max()
+        .unwrap_or_else(|| row.created_at.clone())
 }
 
 fn session_sort_timestamp_ms(
     conn: &rusqlite::Connection,
     row: &bb_session::store::SessionRow,
 ) -> i64 {
-    session_last_assistant_response_ms(conn, &row.session_id)
-        .or_else(|| parse_db_timestamp_millis(&row.updated_at))
-        .unwrap_or_default()
+    parse_db_timestamp_millis(&session_last_activity_timestamp(conn, row)).unwrap_or_default()
+}
+
+fn session_activity_label(
+    conn: &rusqlite::Connection,
+    row: &bb_session::store::SessionRow,
+) -> String {
+    format_db_timestamp(&session_last_activity_timestamp(conn, row))
 }
 
 fn session_summary_from_row(
     conn: &rusqlite::Connection,
     row: bb_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
+    let updated_at_label = session_activity_label(conn, &row);
     let title = row
         .name
         .clone()
@@ -501,7 +508,7 @@ fn session_summary_from_row(
         id: row.session_id,
         title,
         subtitle,
-        updated_at_label: format_db_timestamp(&row.updated_at),
+        updated_at_label,
         message_count: row.entry_count.max(0) as usize,
         draft: false,
     })
@@ -516,7 +523,7 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
     rows.sort_by(|left, right| {
         session_sort_timestamp_ms(&conn, right)
             .cmp(&session_sort_timestamp_ms(&conn, left))
-            .then_with(|| right.updated_at.cmp(&left.updated_at))
+            .then_with(|| right.created_at.cmp(&left.created_at))
     });
 
     rows.into_iter()
@@ -1142,7 +1149,7 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
     let subtitle = session_focus_subtitle(&messages).unwrap_or_default();
     let updated_at_label = session_row
         .as_ref()
-        .map(|row| format_db_timestamp(&row.updated_at))
+        .map(|row| session_activity_label(&setup.conn, row))
         .unwrap_or_else(|| "Draft".to_string());
 
     let context_window_status = current_context_window_status(setup);
