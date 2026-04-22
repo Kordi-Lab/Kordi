@@ -4,6 +4,9 @@ use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
+use super::constants::{
+    API_STYLE_REGISTRY, API_STYLE_SERVE, DEFAULT_BRIDGE_RUNTIME, DESKTOP_BRIDGE_RUNTIME,
+};
 use super::{
     derive_node_id, ed25519_to_x25519_public, generate_registry_node_id,
     load_or_create_bridge_identity, DesktopBridgePeer, DesktopBridgeProject,
@@ -128,7 +131,7 @@ pub(super) async fn register_node_registry(
     let body = serde_json::json!({
         "nodeId": node_id,
         "displayName": display_name,
-        "runtime": "kordi-desktop",
+        "runtime": DESKTOP_BRIDGE_RUNTIME,
         "endpoint": endpoint,
         "ownerName": owner_name,
     });
@@ -149,7 +152,11 @@ pub(super) async fn register_node_registry(
         "Unable to parse bridge registration response",
     )
     .await?;
-    Ok(("registry".to_string(), registered.node_id, registered.token))
+    Ok((
+        API_STYLE_REGISTRY.to_string(),
+        registered.node_id,
+        registered.token,
+    ))
 }
 
 pub(super) async fn register_node_serve(
@@ -187,7 +194,11 @@ pub(super) async fn register_node_serve(
         "Unable to parse bridge registration response",
     )
     .await?;
-    Ok(("serve".to_string(), registered.node_id, registered.api_key))
+    Ok((
+        API_STYLE_SERVE.to_string(),
+        registered.node_id,
+        registered.api_key,
+    ))
 }
 
 pub(super) async fn register_bridge_host(
@@ -198,10 +209,10 @@ pub(super) async fn register_bridge_host(
     existing_api_style: Option<&str>,
     existing_node_id: Option<&str>,
 ) -> Result<(String, String, String), String> {
-    if matches!(existing_api_style, Some("serve")) {
+    if matches!(existing_api_style, Some(API_STYLE_SERVE)) {
         return register_node_serve(base_url, display_name, owner_name).await;
     }
-    if matches!(existing_api_style, Some("registry")) {
+    if matches!(existing_api_style, Some(API_STYLE_REGISTRY)) {
         return register_node_registry(
             base_url,
             existing_node_id.unwrap_or(&generate_registry_node_id()),
@@ -239,7 +250,7 @@ pub(super) async fn update_registered_registry_node(
     let url = format!("{}/nodes/{node_id}", trimmed_base_url(base_url));
     let body = serde_json::json!({
         "displayName": display_name,
-        "runtime": "kordi-desktop",
+        "runtime": DESKTOP_BRIDGE_RUNTIME,
         "endpoint": endpoint,
     });
     let response = send_request(
@@ -362,7 +373,7 @@ pub(super) fn fetch_local_registered_nodes(
             Ok(DesktopBridgePeer {
                 node_id: row.get(0)?,
                 display_name: row.get(1)?,
-                runtime: "bridge-node".to_string(),
+                runtime: DEFAULT_BRIDGE_RUNTIME.to_string(),
                 endpoint: String::new(),
                 owner_name: row.get(2)?,
                 created_at: row.get(3)?,

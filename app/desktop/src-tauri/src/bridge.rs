@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+mod constants;
 mod conversation_commands;
 mod conversations;
 mod host_commands;
@@ -10,6 +11,7 @@ mod project_commands;
 mod server_commands;
 mod storage;
 
+use constants::*;
 use conversations::*;
 use local_server::*;
 use network::*;
@@ -257,7 +259,7 @@ async fn build_bridge_host_state(
     };
 
     let (visible_peers, projects) = if connected && !config.api_key.trim().is_empty() {
-        if config.api_style == "registry" {
+        if config.api_style == API_STYLE_REGISTRY {
             match fetch_registry_visible_nodes(&config.coordination, &config.api_key).await {
                 Ok(nodes) => (nodes, Vec::new()),
                 Err(err) => {
@@ -378,13 +380,13 @@ async fn build_bridge_state(
     DesktopBridgeState {
         config_path: desktop_bridge_config_path()
             .map(|path| path.display().to_string())
-            .unwrap_or_else(|_| "~/.korde/desktop-bridges.json".to_string()),
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
         legacy_config_path: legacy_bridge_config_path()
             .map(|path| path.display().to_string())
-            .unwrap_or_else(|_| "~/.korde/config.json".to_string()),
+            .unwrap_or_else(|_| LEGACY_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
         conversations_path: desktop_bridge_conversations_path()
             .map(|path| path.display().to_string())
-            .unwrap_or_else(|_| "~/.korde/desktop-bridge-conversations.json".to_string()),
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONVERSATIONS_FALLBACK_PATH.to_string()),
         active_host_id: store.active_host_id,
         hosts,
         conversations,
@@ -584,7 +586,7 @@ mod tests {
                 api_key: "secret-host-key".to_string(),
                 display_name: Some("Kordi".to_string()),
                 owner: Some("User".to_string()),
-                api_style: "serve".to_string(),
+                api_style: API_STYLE_SERVE.to_string(),
             }],
         };
 
@@ -608,7 +610,7 @@ mod tests {
                 api_key: String::new(),
                 display_name: Some("Kordi".to_string()),
                 owner: Some("User".to_string()),
-                api_style: "serve".to_string(),
+                api_style: API_STYLE_SERVE.to_string(),
             }],
         };
         let secrets = DesktopBridgeSecretsStore {

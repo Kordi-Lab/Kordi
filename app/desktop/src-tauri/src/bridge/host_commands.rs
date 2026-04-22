@@ -1,3 +1,4 @@
+use super::constants::API_STYLE_REGISTRY;
 use super::{
     build_bridge_state, build_current_bridge_state, current_local_server_status,
     default_display_name, default_endpoint, default_owner_name, generate_host_id, health_check,
@@ -49,7 +50,7 @@ pub(super) async fn desktop_save_bridge_host_impl(
 
     let saved_host = if let Some(index) = existing_index {
         let existing = store.hosts[index].clone();
-        let (api_style, node_id, api_key) = if existing.api_style == "registry"
+        let (api_style, node_id, api_key) = if existing.api_style == API_STYLE_REGISTRY
             && existing.coordination == server_url
             && !existing.api_key.trim().is_empty()
             && !existing.node_id.trim().is_empty()

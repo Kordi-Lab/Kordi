@@ -4,6 +4,9 @@ use std::time::Duration;
 
 use crate::workspace;
 
+use super::constants::{
+    BRIDGE_SERVE_SUBCOMMAND, DEFAULT_LOCAL_SERVER_HOST, LOCAL_SERVER_STARTUP_WAIT_MS,
+};
 use super::{
     health_check, hosted_bridge_dir, DesktopBridgeLocalServerStatus, DesktopBridgeManager,
 };
@@ -109,7 +112,7 @@ pub(super) async fn start_local_server(
 
     let mut command = if let Some(binary_path) = binary_path {
         let mut command = Command::new(binary_path);
-        command.arg("serve");
+        command.arg(BRIDGE_SERVE_SUBCOMMAND);
         command
     } else {
         let manifest = repo_path
@@ -122,7 +125,7 @@ pub(super) async fn start_local_server(
             .arg("--manifest-path")
             .arg(manifest)
             .arg("--")
-            .arg("serve");
+            .arg(BRIDGE_SERVE_SUBCOMMAND);
         command
     };
     command
@@ -140,7 +143,7 @@ pub(super) async fn start_local_server(
     runtime.child = Some(child);
     runtime.status = DesktopBridgeLocalServerStatus {
         running: true,
-        server_url: Some(format!("http://127.0.0.1:{port}")),
+        server_url: Some(format!("{DEFAULT_LOCAL_SERVER_HOST}:{port}")),
         port: Some(port),
         db_path: Some(db_path.display().to_string()),
         launcher: Some(launcher),
@@ -148,7 +151,7 @@ pub(super) async fn start_local_server(
     };
     drop(runtime);
 
-    tokio::time::sleep(Duration::from_millis(900)).await;
+    tokio::time::sleep(Duration::from_millis(LOCAL_SERVER_STARTUP_WAIT_MS)).await;
     let status = current_local_server_status(manager).await;
     if let Some(url) = &status.server_url {
         health_check(url).await?;

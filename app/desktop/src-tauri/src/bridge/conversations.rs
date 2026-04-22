@@ -1,6 +1,10 @@
 use base64::Engine as _;
 use uuid::Uuid;
 
+use super::constants::{
+    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+    PEER_TYPING_WINDOW_MS,
+};
 use super::{
     bridge_conversation_id, format_time_label, format_time_label_with_seconds, now_ms,
     DesktopBridgeConversation, DesktopBridgeConversationMessage,
@@ -100,7 +104,7 @@ pub(super) fn append_conversation_message(
     conversation
         .messages
         .push(DesktopBridgeConversationMessageRecord {
-            id: format!("bridge_msg_{}", Uuid::new_v4().simple()),
+            id: format!("{}{}", BRIDGE_MESSAGE_ID_PREFIX, Uuid::new_v4().simple()),
             direction: direction.to_string(),
             sender,
             text,
@@ -141,7 +145,7 @@ pub(super) fn note_peer_typing(
         peer_node_id,
         None,
         None,
-        "bridge-node".to_string(),
+        DEFAULT_BRIDGE_RUNTIME.to_string(),
         project_id,
         project_name,
     );
@@ -161,7 +165,7 @@ pub(super) fn note_peer_heartbeat(
         peer_node_id,
         None,
         None,
-        "bridge-node".to_string(),
+        DEFAULT_BRIDGE_RUNTIME.to_string(),
         project_id,
         project_name,
     );
@@ -209,11 +213,11 @@ pub(super) fn build_conversation_state(
         .rev()
         .find(|message| message.direction == "outbound")
         .and_then(|message| message.delivery_state.clone())
-        .map(|state| state != "responded")
+        .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
         .unwrap_or(false);
     let peer_typing = record
         .peer_last_typing_at_ms
-        .map(|timestamp| now_ms().saturating_sub(timestamp) <= 6000)
+        .map(|timestamp| now_ms().saturating_sub(timestamp) <= PEER_TYPING_WINDOW_MS)
         .unwrap_or(false);
     let peer_last_heartbeat_label = record
         .peer_last_heartbeat_at_ms
