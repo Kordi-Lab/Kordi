@@ -255,7 +255,7 @@ export function WorkspaceSidebar({
         >
           <div className="flex w-full flex-col items-center gap-4">
             {!isNativeShell && (
-              <div className="flex translate-x-[6px] items-center justify-center gap-2 pt-1.5">
+              <div className="flex w-full items-center justify-center gap-1.5 px-2.5 pt-1.5">
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
                 <span className="h-3 w-3 rounded-full bg-[#febc2e] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
                 <span className="h-3 w-3 rounded-full bg-[#28c840] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
