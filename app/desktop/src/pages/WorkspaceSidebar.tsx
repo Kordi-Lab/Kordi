@@ -349,33 +349,36 @@ export function WorkspaceSidebar({
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              <Avatar className="h-7 w-7 border border-white/10">
+                              <Avatar className="mt-0.5 h-7 w-7 border border-white/10">
                                 <AvatarFallback className={isActive ? 'bg-[#e7e1d8] text-[#201d1a]' : 'bg-white/[0.045] text-slate-200'}>
                                   {getInitials(conversation.name)}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="truncate pr-2 text-[12px] font-medium text-slate-100">{conversation.name}</div>
-                                  <span className={cn('w-[4.1rem] shrink-0 text-right text-[10px] tabular-nums', isActive ? 'text-slate-300' : 'text-slate-500')}>
-                                    {rowTimeLabel}
-                                  </span>
-                                </div>
-                                <div className="mt-1.5 flex min-h-[0.7rem] items-center justify-between gap-2">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    {conversation.statusIndicator ? (
-                                      <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
-                                    ) : conversation.subtitle.trim().length > 0 ? (
-                                      <div className={`min-w-0 truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1 pr-1">
+                                    <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
+                                    {conversation.subtitle.trim().length > 0 ? (
+                                      <div className={cn('mt-0.5 truncate text-[11px] leading-4', isActive ? 'text-slate-300' : 'text-slate-500')}>
                                         {conversation.subtitle}
                                       </div>
                                     ) : null}
                                   </div>
-                                  {conversation.unread > 0 ? (
-                                    <span className="inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                      {formatUnreadCount(conversation.unread)}
+                                  <div className="flex w-[4.1rem] shrink-0 flex-col items-end gap-1 pt-[1px]">
+                                    <span className={cn('text-right text-[10px] tabular-nums', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                      {rowTimeLabel}
                                     </span>
-                                  ) : null}
+                                    <div className="flex min-h-[0.7rem] items-center justify-end gap-1.5">
+                                      {conversation.unread > 0 ? (
+                                        <span className="inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
+                                          {formatUnreadCount(conversation.unread)}
+                                        </span>
+                                      ) : null}
+                                      {conversation.statusIndicator ? (
+                                        <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
+                                      ) : null}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -461,18 +464,27 @@ export function WorkspaceSidebar({
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
                                         )}
                                       >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <div className="truncate text-[12px] font-medium">{session.name}</div>
-                                          {session.unread && session.unread > 0 ? (
-                                            <span className="inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                              {formatUnreadCount(session.unread)}
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                        <div className="mt-1.5 flex min-h-[0.7rem] items-center justify-between gap-2">
-                                          <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActiveSession} />
-                                          <div className={cn('shrink-0 text-[10px] tabular-nums', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
-                                            {session.lastActive}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0 flex-1 pr-1">
+                                            <div className="truncate text-[12px] font-medium">{session.name}</div>
+                                            {session.summary.trim().length > 0 ? (
+                                              <div className={cn('mt-0.5 truncate text-[11px] leading-4', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                                {session.summary}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                          <div className="flex w-[4.1rem] shrink-0 flex-col items-end gap-1 pt-[1px]">
+                                            <div className={cn('text-right text-[10px] tabular-nums', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                              {session.lastActive}
+                                            </div>
+                                            <div className="flex min-h-[0.7rem] items-center justify-end gap-1.5">
+                                              {session.unread && session.unread > 0 ? (
+                                                <span className="inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
+                                                  {formatUnreadCount(session.unread)}
+                                                </span>
+                                              ) : null}
+                                              <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActiveSession} />
+                                            </div>
                                           </div>
                                         </div>
                                       </button>

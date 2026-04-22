@@ -158,33 +158,35 @@ export function useWorkspaceViewModels({
       const host = hostById.get(conversation.hostId);
       const hostLabel = host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
       const isAgent = isBridgeAgentRuntime(conversation.peerRuntime);
+      const mappedMessages = conversation.messages.map((message) => ({
+        role: (message.direction === 'outbound'
+          ? 'user'
+          : isAgent
+            ? 'external-agent'
+            : 'person') as Message['role'],
+        sender: message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title),
+        text: message.text,
+        time: message.timeLabel,
+        statusChips: message.direction === 'outbound'
+          ? [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')].filter(Boolean)
+          : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
+            ? ['typing']
+            : [],
+        detail: message.direction === 'outbound' && message.deliveryState === 'responded' ? 'Peer replied' : undefined,
+      }));
+
       return {
         id: conversation.id,
         name: conversation.title,
         type: (isAgent ? 'external-agent' : 'person') as const,
-        subtitle: conversation.projectName ? `${conversation.projectName} • ${conversation.subtitle}` : conversation.subtitle,
+        subtitle: buildConversationPreview(mappedMessages, conversation.subtitle),
         unread: conversation.unreadCount,
         bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
         trust: 'Bridge',
         directness: 'Bridge chat',
         participants: ['You', conversation.title],
         updatedAtLabel: conversation.updatedAtLabel,
-        messages: conversation.messages.map((message) => ({
-          role: (message.direction === 'outbound'
-            ? 'user'
-            : isAgent
-              ? 'external-agent'
-              : 'person') as Message['role'],
-          sender: message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title),
-          text: message.text,
-          time: message.timeLabel,
-          statusChips: message.direction === 'outbound'
-            ? [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')].filter(Boolean)
-            : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
-              ? ['typing']
-              : [],
-          detail: message.direction === 'outbound' && message.deliveryState === 'responded' ? 'Peer replied' : undefined,
-        })),
+        messages: mappedMessages,
         _updatedAtMs: conversation.updatedAtMs,
       };
     });
