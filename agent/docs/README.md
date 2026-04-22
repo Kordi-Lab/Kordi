@@ -20,7 +20,7 @@ Use these documents when you need implementation detail beyond the monorepo over
 
 ## Planning notes
 
-- [bb-monitor-plan.md](bb-monitor-plan.md)
+- [kordi-monitor-plan.md](kordi-monitor-plan.md)
 
 ## Related monorepo docs
 

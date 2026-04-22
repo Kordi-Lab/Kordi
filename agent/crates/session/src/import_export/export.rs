@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::store;
 
-/// Export a session from SQLite to legacy BB-Agent-compatible JSONL.
+/// Export a session from SQLite to legacy Kordi-compatible JSONL.
 pub(super) fn export_jsonl(conn: &Connection, session_id: &str, output: &Path) -> Result<()> {
     use std::io::Write;
 

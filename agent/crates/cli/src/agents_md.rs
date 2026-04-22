@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bb_core::config;
+use kordi_core::config;
 
 /// Pure logic: merge multiple AGENTS.md / CLAUDE.md content strings into one.
 /// The input should be ordered from most-global to most-local.
@@ -16,7 +16,7 @@ pub(crate) fn merge_agents_md_contents(contents: &[String]) -> Option<String> {
 pub(crate) fn load_agents_md(cwd: &Path) -> Option<String> {
     let mut contents = Vec::new();
 
-    let global = config::global_dir().join("AGENTS.md");
+    let global = config::global_agents_md_path();
     if global.exists()
         && let Ok(content) = std::fs::read_to_string(&global)
     {

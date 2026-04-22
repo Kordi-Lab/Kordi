@@ -593,13 +593,15 @@ pub fn remove_auth(provider: &str) -> Result<bool> {
     Ok(removed)
 }
 
-/// Path to the shared CLI auth store used by both `bb login` and the TUI
+/// Path to the shared CLI auth store used by both `kordi login` and the TUI
 /// auth flows.
 ///
 /// Example:
-/// - on Linux this typically resolves under `~/.bb-agent/auth.json`
+/// - on Linux this typically resolves under `~/.kordi/auth.json`
+/// - legacy auth stores are migrated automatically when possible
 pub fn auth_path() -> PathBuf {
-    config::global_dir().join("auth.json")
+    let global_settings = Settings::load_global();
+    config::auth_path(&global_settings.storage)
 }
 
 pub(super) fn load_auth() -> AuthStore {

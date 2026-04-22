@@ -56,7 +56,7 @@ impl ExtensionCommandOutcome {
         match self {
             ExtensionCommandOutcome::Text(text) => Some(text),
             ExtensionCommandOutcome::Dispatch { note, prompt } => {
-                // Non-TUI callers (e.g. `bb run`) can't dispatch a
+                // Non-TUI callers (e.g. `kordi run`) can't dispatch a
                 // turn mid-flight, so fall back to printing both the note
                 // and the prompt as plain text.
                 let mut out = String::new();

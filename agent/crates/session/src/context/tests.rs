@@ -1,6 +1,6 @@
 use super::*;
 use crate::store;
-use bb_core::types::*;
+use kordi_core::types::*;
 use chrono::Utc;
 
 #[test]

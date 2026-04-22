@@ -1,8 +1,8 @@
-use bb_core::types::{AgentMessage, ContentBlock};
+use kordi_core::types::{AgentMessage, ContentBlock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Hook events emitted by BB-Agent.
+/// Hook events emitted by Kordi.
 ///
 /// The variants in this enum are the stable entry points extensions can subscribe to.
 /// Payload-bearing variants use dedicated structs so event-specific data can evolve
@@ -376,7 +376,7 @@ impl ToolExecutionEndEvent {
 
 /// Conversation context snapshot sent to context hooks.
 ///
-/// The payload contains the full message list BB-Agent is about to send into the
+/// The payload contains the full message list Kordi is about to send into the
 /// provider pipeline. Extensions that replace `HookResult::messages` should preserve
 /// the order and JSON shape expected by `AgentMessage` deserialization.
 #[derive(Clone, Debug)]

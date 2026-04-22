@@ -125,7 +125,7 @@ fn build_reference_expansion(
 fn render_image_attachment_note(display_path: &str, path: &Path, byte_len: usize) -> String {
     let mime_type = image_mime_type(path).unwrap_or("application/octet-stream");
     format!(
-        "Attached image from {display_path}:\n- mime: {mime_type}\n- size: {byte_len} bytes\n- BB sent this file as an image attachment instead of inlining binary bytes"
+        "Attached image from {display_path}:\n- mime: {mime_type}\n- size: {byte_len} bytes\n- Kordi sent this file as an image attachment instead of inlining binary bytes"
     )
 }
 
@@ -271,7 +271,7 @@ fn render_large_file_outline(
 ) -> String {
     let outline = extract_outline_items(path, text);
     let mut out = format!(
-        "File outline for {display_path}:\n- size: {byte_len} bytes\n- lines: {line_count}\n- file is large, so BB inlined structure first instead of full contents\n"
+        "File outline for {display_path}:\n- size: {byte_len} bytes\n- lines: {line_count}\n- file is large, so Kordi inlined structure first instead of full contents\n"
     );
 
     if outline.is_empty() {

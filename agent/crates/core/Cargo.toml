@@ -1,5 +1,5 @@
 [package]
-name = "bb-core"
+name = "kordi-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,9 +7,9 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-description = "Core agent, session, and runtime types for BB-Agent."
-documentation = "https://docs.rs/bb-core"
-keywords = ["agent", "llm", "coding", "automation", "bb-agent"]
+description = "Core agent, session, and runtime types for Kordi."
+documentation = "https://docs.rs/kordi-core"
+keywords = ["agent", "llm", "coding", "automation", "kordi"]
 categories = ["development-tools", "asynchronous"]
 
 [dependencies]

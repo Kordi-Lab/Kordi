@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::{file_ops::extract_file_operations, serialize::serialize_conversation, types::*};
-use bb_core::types::{AgentMessage, SessionEntry};
-use bb_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent};
+use kordi_core::types::{AgentMessage, SessionEntry};
+use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent};
 use tokio_util::sync::CancellationToken;
 
 // =============================================================================
@@ -119,7 +119,7 @@ pub async fn compact(request: CompactionRequest<'_>) -> anyhow::Result<Compactio
 
     let options = RequestOptions {
         api_key: api_key.to_string(),
-        auth_mode: bb_provider::ProviderAuthMode::ApiKey,
+        auth_mode: kordi_provider::ProviderAuthMode::ApiKey,
         auth_account_id: None,
         base_url: base_url.to_string(),
         headers: headers.clone(),

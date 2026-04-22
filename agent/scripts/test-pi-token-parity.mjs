@@ -6,7 +6,7 @@ const pi = await import(piModulePath);
 
 const settings = { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 };
 
-function bbEstimateContextTokens(messages) {
+function kordiEstimateContextTokens(messages) {
   function calc(usage) {
     return usage.total_tokens > 0
       ? usage.total_tokens
@@ -56,7 +56,7 @@ function bbEstimateContextTokens(messages) {
   return { tokens: usageTokens + trailingTokens, usageTokens, trailingTokens, lastUsageIndex };
 }
 
-test('bb estimator matches installed pi on shared fixtures', () => {
+test('kordi estimator matches installed pi on shared fixtures', () => {
   const fixtures = [
     [
       {
@@ -117,7 +117,7 @@ test('bb estimator matches installed pi on shared fixtures', () => {
 
   for (const messages of fixtures) {
     const piEstimate = pi.estimateContextTokens(messages);
-    const bbEstimate = bbEstimateContextTokens(
+    const kordiEstimate = kordiEstimateContextTokens(
       JSON.parse(
         JSON.stringify(messages)
           .replace(/cacheRead/g, 'cache_read')
@@ -127,7 +127,7 @@ test('bb estimator matches installed pi on shared fixtures', () => {
       )
     );
 
-    assert.deepEqual(bbEstimate, {
+    assert.deepEqual(kordiEstimate, {
       tokens: piEstimate.tokens,
       usageTokens: piEstimate.usageTokens,
       trailingTokens: piEstimate.trailingTokens,
@@ -136,7 +136,7 @@ test('bb estimator matches installed pi on shared fixtures', () => {
 
     const contextWindow = 128000;
     assert.equal(
-      bbEstimate.tokens > contextWindow - settings.reserveTokens,
+      kordiEstimate.tokens > contextWindow - settings.reserveTokens,
       pi.shouldCompact(piEstimate.tokens, contextWindow, settings)
     );
   }

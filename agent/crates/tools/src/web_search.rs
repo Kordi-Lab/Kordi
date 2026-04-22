@@ -6,7 +6,7 @@ mod input;
 mod tests;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use regex::Regex;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -125,9 +125,9 @@ impl Tool for WebSearchTool {
         params: Value,
         ctx: &ToolContext,
         cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let input: WebSearchInput = serde_json::from_value(params)
-            .map_err(|e| BbError::Tool(format!("Invalid web_search parameters: {e}")))?;
+            .map_err(|e| KordiError::Tool(format!("Invalid web_search parameters: {e}")))?;
         validate_input(&input)?;
 
         let started = Instant::now();

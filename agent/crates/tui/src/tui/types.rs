@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use bb_core::types::ContentBlock;
-use bb_session::{store::EntryRow, tree::TreeNode};
+use kordi_core::types::ContentBlock;
+use kordi_session::{store::EntryRow, tree::TreeNode};
 
 use super::transcript::BlockId;
 
@@ -80,7 +80,7 @@ pub struct TuiAppConfig {
 impl Default for TuiAppConfig {
     fn default() -> Self {
         Self {
-            title: "BB-Agent TUI transcript".to_string(),
+            title: "Kordi TUI transcript".to_string(),
             input_placeholder: "Type a prompt…".to_string(),
             status_line: TUI_TOOL_STATUS_HINT.to_string(),
             footer: TuiFooterData::default(),

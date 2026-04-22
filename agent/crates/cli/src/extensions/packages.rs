@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use bb_core::config;
-use bb_core::settings::{PackageEntry, Settings};
+use kordi_core::config;
+use kordi_core::settings::{PackageEntry, Settings};
 use sha2::{Digest, Sha256};
 
 use super::ExtensionBootstrap;
@@ -294,12 +294,27 @@ fn package_identity(source: &str, cwd: &Path) -> Result<String> {
     PackageSource::parse(source).identity(cwd)
 }
 
-/// Scope-aware install root for npm/git packages.
+/// Scope-aware preferred install root for npm/git packages.
 ///
-/// - Global: `~/.bb-agent/<kind>/<hash>`
-/// - Project: `<project-root>/.bb-agent/<kind>/<hash>` when a project root is detected,
-///   otherwise `<cwd>/.bb-agent/<kind>/<hash>`
+/// - Global: `~/.kordi/<kind>/<hash>`
+/// - Project: `<project-root>/.kordi/<kind>/<hash>` when a project root is detected,
+///   otherwise `<cwd>/.kordi/<kind>/<hash>`
 pub(crate) fn package_install_root(
+    kind: &str,
+    spec: &str,
+    scope: SettingsScope,
+    cwd: &Path,
+) -> PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(spec.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    match scope {
+        SettingsScope::Global => config::preferred_global_resource_dir(kind).join(hash),
+        SettingsScope::Project => config::preferred_project_resource_dir(cwd, kind).join(hash),
+    }
+}
+
+fn legacy_package_install_root(
     kind: &str,
     spec: &str,
     scope: SettingsScope,
@@ -314,12 +329,21 @@ pub(crate) fn package_install_root(
     }
 }
 
-/// Resolve install root: check project-local first, then global.
+/// Resolve install root: check project-local first, then global, preferring
+/// Kordi-branded locations while still discovering legacy install roots.
 fn resolve_install_root(kind: &str, spec: &str, cwd: &Path) -> PathBuf {
-    let project = package_install_root(kind, spec, SettingsScope::Project, cwd);
-    if project.exists() {
-        return project;
+    for scope in [SettingsScope::Project, SettingsScope::Global] {
+        let preferred = package_install_root(kind, spec, scope, cwd);
+        if preferred.exists() {
+            return preferred;
+        }
+
+        let legacy = legacy_package_install_root(kind, spec, scope, cwd);
+        if legacy.exists() {
+            return legacy;
+        }
     }
+
     package_install_root(kind, spec, SettingsScope::Global, cwd)
 }
 

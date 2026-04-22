@@ -1,6 +1,8 @@
 # Extensions & Skills
 
-BB-Agent supports two extension mechanisms: **skills** (markdown instructions) and **extensions** (JS/TS plugins).
+Kordi supports two extension mechanisms: **skills** (markdown instructions) and **extensions** (JS/TS plugins).
+
+Kordi now prefers `.kordi` paths for project/global extension resources. Legacy agent paths are still discovered and are migrated when the new target does not already exist.
 
 ## Role in Kordi
 
@@ -22,7 +24,7 @@ Skills are markdown files that provide contextual instructions to the agent. The
 Create a directory with a `SKILL.md` file:
 
 ```
-~/.bb-agent/skills/my-skill/SKILL.md
+~/.kordi/skills/my-skill/SKILL.md
 ```
 
 Use YAML frontmatter for metadata:
@@ -48,8 +50,8 @@ Skills are auto-discovered from:
 
 | Location | Scope |
 |----------|-------|
-| `~/.bb-agent/skills/` | Global |
-| `<project>/.bb-agent/skills/` | Project-local |
+| `~/.kordi/skills/` | Global |
+| `<project>/.kordi/skills/` | Project-local |
 | `~/.agents/skills/` | Shared (pi-compatible) |
 | `<ancestors>/.agents/skills/` | Ancestor directories |
 | `settings.json` → `"skills": [...]` | Explicit paths |
@@ -59,17 +61,17 @@ Skills are auto-discovered from:
 Install skills from npm or git:
 
 ```bash
-bb install npm:some-skill-package     # Global install
-bb install --local npm:my-skill       # Project-local install
-bb install git:https://github.com/org/skills.git
+kordi install npm:some-skill-package     # Global install
+kordi install --local npm:my-skill       # Project-local install
+kordi install git:https://github.com/org/skills.git
 ```
 
-A skill package is an npm package with a `bb` field in `package.json`:
+A skill package is an npm package with a `kordi` field in `package.json`:
 
 ```json
 {
   "name": "my-skill-package",
-  "bb": {
+  "kordi": {
     "skills": ["skills/"],
     "extensions": ["extensions/"],
     "prompts": ["prompts/"]
@@ -87,14 +89,14 @@ Extensions are JavaScript or TypeScript files that can register custom tools, co
 
 | Location | Scope |
 |----------|-------|
-| `~/.bb-agent/extensions/` | Global |
-| `<project>/.bb-agent/extensions/` | Project-local |
+| `~/.kordi/extensions/` | Global |
+| `<project>/.kordi/extensions/` | Project-local |
 | `settings.json` → `"extensions": [...]` | Explicit paths |
-| CLI: `bb -e ./my-extension.ts` | Ad-hoc |
+| CLI: `kordi -e ./my-extension.ts` | Ad-hoc |
 
 ### Extension API
 
-Extensions communicate with BB-Agent via stdin/stdout JSON protocol. They can:
+Extensions communicate with Kordi via stdin/stdout JSON protocol. They can:
 
 - **Register tools** — custom tools the agent can call
 - **Register commands** — slash commands (e.g., `/mycommand`)
@@ -118,7 +120,7 @@ Reusable prompts invoked with `/name` in the input.
 Place `.md` files in the prompts directory:
 
 ```
-~/.bb-agent/prompts/review.md
+~/.kordi/prompts/review.md
 ```
 
 ```markdown
@@ -129,7 +131,7 @@ Review the code in the current directory for:
 Provide a structured report.
 ```
 
-Then use in BB-Agent:
+Then use in Kordi:
 ```
 /review
 ```
@@ -138,20 +140,20 @@ Then use in BB-Agent:
 
 | Location | Scope |
 |----------|-------|
-| `~/.bb-agent/prompts/` | Global |
-| `<project>/.bb-agent/prompts/` | Project-local |
+| `~/.kordi/prompts/` | Global |
+| `<project>/.kordi/prompts/` | Project-local |
 | `settings.json` → `"prompts": [...]` | Explicit paths |
 
 ## Package Management
 
 ```bash
-bb install <source>           # Install globally
-bb install --local <source>   # Install into project
-bb remove <source>            # Remove a package
-bb list                       # List all packages
-bb list --local               # List project packages
-bb list --global              # List global packages
-bb update                     # Update all packages
+kordi install <source>           # Install globally
+kordi install --local <source>   # Install into project
+kordi remove <source>            # Remove a package
+kordi list                       # List all packages
+kordi list --local               # List project packages
+kordi list --global              # List global packages
+kordi update                     # Update all packages
 ```
 
 ### Package Sources

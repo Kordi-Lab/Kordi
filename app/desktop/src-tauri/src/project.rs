@@ -1,4 +1,4 @@
-use bb_core::settings::{ProjectSharedSource, Settings};
+use kordi_core::settings::{ProjectSharedSource, Settings};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ fn resolve_project_root(project_root: Option<String>) -> Result<PathBuf, String>
     let base = project_root
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir().map_err(|err| err.to_string())?);
-    Ok(bb_core::config::project_root(&base).unwrap_or(base))
+    Ok(kordi_core::config::project_root(&base).unwrap_or(base))
 }
 
 fn load_project_settings_for_root(root: &std::path::Path) -> DesktopProjectSettings {

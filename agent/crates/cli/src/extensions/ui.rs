@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use bb_plugin_host::{UiHandler, UiRequest, UiResponse, default_ui_response};
+use kordi_plugin_host::{UiHandler, UiRequest, UiResponse, default_ui_response};
 use tokio::sync::Mutex;
 
 /// Print-mode UI handler: logs notifications to tracing, returns defaults for dialogs.

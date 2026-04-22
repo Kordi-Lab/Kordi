@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_core::types::{EntryId, SessionEntry};
+use kordi_core::types::{EntryId, SessionEntry};
 use rusqlite::Connection;
 use std::collections::HashSet;
 
@@ -36,7 +36,7 @@ pub(super) fn copy_branch_to_session(
                     target_id,
                     label,
                 } if copied_entry_ids.contains(target_id.as_str()) => Some(SessionEntry::Label {
-                    base: bb_core::types::EntryBase {
+                    base: kordi_core::types::EntryBase {
                         id: base.id,
                         parent_id: last_path_id.clone().map(EntryId),
                         timestamp: base.timestamp,
@@ -58,7 +58,7 @@ pub(super) fn copy_branch_to_session(
                 target_id,
                 label,
             } => SessionEntry::Label {
-                base: bb_core::types::EntryBase {
+                base: kordi_core::types::EntryBase {
                     id: base.id,
                     parent_id: label_parent_id.clone().map(EntryId),
                     timestamp: base.timestamp,
@@ -90,13 +90,13 @@ pub(super) fn fork_session_from_entry(
     let entry = parse_entry(&row)?;
     let selected_text = match entry {
         SessionEntry::Message {
-            message: bb_core::types::AgentMessage::User(user),
+            message: kordi_core::types::AgentMessage::User(user),
             ..
         } => user
             .content
             .iter()
             .filter_map(|block| match block {
-                bb_core::types::ContentBlock::Text { text } => Some(text.as_str()),
+                kordi_core::types::ContentBlock::Text { text } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()

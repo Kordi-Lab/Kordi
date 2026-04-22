@@ -1,13 +1,13 @@
-//! Legacy compatibility data types for the transitional `bb_core::agent` API.
+//! Legacy compatibility data types for the transitional `kordi_core::agent` API.
 //!
 //! These shapes are retained for older integrations, but they are not the
-//! canonical monitoring or persisted-usage vocabulary for modern BB-Agent
+//! canonical monitoring or persisted-usage vocabulary for modern Kordi
 //! surfaces.
 //!
 //! Prefer:
-//! - `bb_core::types::{Cost, Usage}` for persisted transcript/session usage
-//! - `bb_monitor::*` for derived monitor summaries and request metrics
-//! - `bb_core::agent_session_runtime::ContextUsage` for runtime context usage
+//! - `kordi_core::types::{Cost, Usage}` for persisted transcript/session usage
+//! - `kordi_monitor::*` for derived monitor summaries and request metrics
+//! - `kordi_core::agent_session_runtime::ContextUsage` for runtime context usage
 //!
 //! Keep this module compatibility-focused and avoid growing new monitor logic here.
 
@@ -28,7 +28,7 @@ pub struct AgentConfig {
     pub provider_name: String,
 }
 
-/// Legacy compatibility cost shape used by the transitional `bb_core::agent`
+/// Legacy compatibility cost shape used by the transitional `kordi_core::agent`
 /// surface. This is not the canonical persisted/session cost model.
 #[derive(Clone, Debug, Default)]
 pub struct UsageCost {
@@ -39,7 +39,7 @@ pub struct UsageCost {
     pub total: u64,
 }
 
-/// Legacy compatibility usage shape used by the transitional `bb_core::agent`
+/// Legacy compatibility usage shape used by the transitional `kordi_core::agent`
 /// surface. This is not the canonical persisted/session usage model.
 #[derive(Clone, Debug, Default)]
 pub struct Usage {

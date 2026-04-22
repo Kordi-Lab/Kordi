@@ -207,11 +207,11 @@ impl TuiController {
     pub(super) fn apply_setting_value(&mut self, setting_id: &str, value: &str) -> Result<()> {
         match setting_id {
             "color-theme" => {
-                if let Some(theme) = bb_tui::tui::spinner::ColorTheme::from_name(value) {
+                if let Some(theme) = kordi_tui::tui::spinner::ColorTheme::from_name(value) {
                     self.color_theme = theme;
                     self.send_command(TuiCommand::SetColorTheme(theme));
                     // Persist to settings
-                    let mut settings = bb_core::settings::Settings::load_global();
+                    let mut settings = kordi_core::settings::Settings::load_global();
                     settings.color_theme = Some(value.to_string());
                     let _ = settings.save_global();
                     self.mark_local_settings_saved();
@@ -243,7 +243,7 @@ impl TuiController {
                     _ => ExecutionMode::Safety,
                 };
                 self.session_setup.tool_ctx.execution_policy =
-                    bb_tools::ExecutionPolicy::from(mode);
+                    kordi_tools::ExecutionPolicy::from(mode);
                 persist_tui_execution_mode(mode)?;
                 self.mark_local_settings_saved();
                 self.send_command(TuiCommand::SetStatusLine(format!(

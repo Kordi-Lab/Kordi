@@ -1,18 +1,18 @@
 use anyhow::Result;
-use bb_core::agent_loop::is_context_overflow;
-use bb_core::agent_session::messages_to_provider;
-use bb_core::types::AgentMessage;
-use bb_hooks::Event;
-use bb_monitor::{
+use kordi_core::agent_loop::is_context_overflow;
+use kordi_core::agent_session::messages_to_provider;
+use kordi_core::types::AgentMessage;
+use kordi_hooks::Event;
+use kordi_monitor::{
     RequestMetricsIdentity, RequestMetricsSnapshot, RequestMetricsTiming, RequestMutationFlags,
     ResponseUsage, append_request_metrics_jsonl, build_final_request_metrics,
     prepare_request_metrics, resolve_cache_usage,
 };
-use bb_provider::{
+use kordi_provider::{
     CollectedResponse, CompletionRequest, ProviderAuthMode, ProviderRetryEvent, RequestOptions,
     RetryCallback, StreamEvent,
 };
-use bb_session::context;
+use kordi_session::context;
 use chrono::Utc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -39,13 +39,13 @@ async fn maybe_execute_auto_compaction(
     force: bool,
 ) -> Result<bool> {
     let conn = config.conn.lock().await;
-    let active_path = bb_session::tree::active_path(&conn, &config.session_id)?;
+    let active_path = kordi_session::tree::active_path(&conn, &config.session_id)?;
     let context_tokens = context::build_context_from_path(&active_path)
         .ok()
-        .map(|ctx| bb_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
+        .map(|ctx| kordi_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
         .unwrap_or(0);
     let should_run = force
-        || bb_session::compaction::should_compact(
+        || kordi_session::compaction::should_compact(
             context_tokens,
             config.model.context_window,
             &config.compaction_settings,
@@ -363,7 +363,7 @@ async fn apply_context_hook(
     let mut rewritten = false;
     if let Some(result) = send_extension_event_safe(
         &config.extensions,
-        Event::Context(bb_hooks::events::ContextEvent::new(messages.clone())),
+        Event::Context(kordi_hooks::events::ContextEvent::new(messages.clone())),
         event_tx,
         "Context",
     )
@@ -403,7 +403,7 @@ async fn collect_stream_events(
             }
             Err(message) => {
                 if !stream_cancel.is_cancelled() {
-                    Err(bb_core::error::BbError::Provider(format!(
+                    Err(kordi_core::error::KordiError::Provider(format!(
                         "provider stream panicked: {message}"
                     )))
                 } else {

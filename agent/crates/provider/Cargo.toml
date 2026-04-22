@@ -1,5 +1,5 @@
 [package]
-name = "bb-provider"
+name = "kordi-provider"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,13 +7,13 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-description = "Provider integrations and model resolution for BB-Agent."
-documentation = "https://docs.rs/bb-provider"
+description = "Provider integrations and model resolution for Kordi."
+documentation = "https://docs.rs/kordi-provider"
 keywords = ["agent", "llm", "providers", "openai", "anthropic"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
-bb-core.workspace = true
+kordi-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }

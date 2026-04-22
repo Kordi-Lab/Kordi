@@ -115,7 +115,7 @@ pub fn provider_auth_method(provider: &str) -> ProviderAuthMethod {
 
 /// Explain the non-obvious login behavior for a provider.
 ///
-/// This is intentionally shared between `bb login` and the TUI auth menus so
+/// This is intentionally shared between `kordi login` and the TUI auth menus so
 /// provider-specific caveats stay consistent in both entry points.
 pub fn provider_login_hint(provider: &str) -> String {
     match provider {

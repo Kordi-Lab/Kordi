@@ -3,7 +3,7 @@
 This app is the macOS desktop shell for three product layers:
 
 - `Kordi` UI — this repository
-- `bb-agent` — local agent runtime
+- `agent` — local agent runtime
 - `Bridges` — local bridge node, daemon, and network client
 
 ## Recommended repository model
@@ -12,7 +12,7 @@ Do **not** merge all three codebases into one source-of-truth monorepo yet.
 
 The cleaner setup is:
 
-1. keep `bb-agent` as its own runtime repository
+1. keep `agent` as its own runtime repository
 2. keep `Bridges` as its own network repository
 3. use this repository as the desktop product repository
 
@@ -30,7 +30,7 @@ For development, keep the three repositories as siblings:
 ```text
 Desktop/
   Kordi/
-  bb-agent/
+  agent/
   Bridges/
 ```
 
@@ -59,7 +59,7 @@ The desktop app should be the integration layer, not the new home for every back
 - sidecar preparation script
 - packaging, signing, and update flow
 
-### bb-agent repository
+### agent repository
 
 - local model execution
 - provider configuration
@@ -78,7 +78,7 @@ The desktop app should be the integration layer, not the new home for every back
 
 The current Tauri setup uses **sidecar binaries**:
 
-- `bb-agent` builds `bb`
+- `agent` builds `kordi`
 - `Bridges` builds `bridges`
 - `scripts/prepare-sidecars.mjs` builds both repos and copies the binaries into `src-tauri/binaries/`
 
@@ -88,11 +88,11 @@ This is the fastest route to a shippable macOS app.
 
 After the desktop product stabilizes, extract library-facing entry points:
 
-### bb-agent
+### agent
 
 Add a reusable service layer crate, for example:
 
-- `bb-service`
+- `kordi-service`
 
 That crate should expose:
 
@@ -123,6 +123,6 @@ Then the Tauri app can link directly to Rust crates instead of supervising sidec
 
 ### Do later
 
-- add service/library entry points to `bb-agent`
+- add service/library entry points to `agent`
 - add crate boundaries inside `Bridges`
 - reduce sidecar dependence once those APIs stabilize

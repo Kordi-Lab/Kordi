@@ -1,4 +1,4 @@
-//! BB-Agent TUI crate
+//! Kordi TUI crate
 //!
 //! Provides the terminal user interface components including
 //! the interactive TUI editor, chat view, and syntax highlighting.

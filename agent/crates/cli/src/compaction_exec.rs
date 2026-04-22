@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use bb_core::types::{CompactionSettings, EntryBase, EntryId, SessionEntry};
-use bb_provider::Provider;
-use bb_session::store::EntryRow;
+use kordi_core::types::{CompactionSettings, EntryBase, EntryId, SessionEntry};
+use kordi_provider::Provider;
+use kordi_session::store::EntryRow;
 use chrono::Utc;
 use tokio_util::sync::CancellationToken;
 
@@ -28,13 +28,13 @@ pub(crate) async fn execute_session_compaction(
     custom_instructions: Option<&str>,
     cancel: CancellationToken,
 ) -> Result<ExecutedCompaction> {
-    let prep = bb_session::compaction::prepare_compaction(&entries, settings)
+    let prep = kordi_session::compaction::prepare_compaction(&entries, settings)
         .ok_or_else(|| anyhow!("Nothing to compact"))?;
 
     let summarized_count = prep.messages_to_summarize.len();
     let kept_count = prep.kept_messages.len();
 
-    let result = bb_session::compaction::compact(bb_session::compaction::CompactionRequest {
+    let result = kordi_session::compaction::compact(kordi_session::compaction::CompactionRequest {
         preparation: &prep,
         provider: provider.as_ref(),
         model: model_id,
@@ -66,8 +66,8 @@ pub(crate) async fn execute_session_compaction(
         from_plugin: false,
     };
 
-    let append_conn = bb_session::store::open_db(&db_path)?;
-    bb_session::store::append_entry(&append_conn, session_id, &compaction_entry)?;
+    let append_conn = kordi_session::store::open_db(&db_path)?;
+    kordi_session::store::append_entry(&append_conn, session_id, &compaction_entry)?;
 
     Ok(ExecutedCompaction {
         tokens_before: result.tokens_before,

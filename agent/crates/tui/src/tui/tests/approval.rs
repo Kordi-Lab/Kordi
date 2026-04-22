@@ -10,20 +10,18 @@ fn approval_dialog_enter_submits_selected_decision() {
         },
     );
 
-    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(
-        TuiApprovalDialog {
-            title: "Approval required".to_string(),
-            command: "cargo check --workspace".to_string(),
-            reason: "Command is not in the read-only allowlist".to_string(),
-            lines: vec![],
-            allow_session: true,
-            session_scope_label: Some("commands that start with `cargo check`".to_string()),
-            deny_input: String::new(),
-            deny_cursor: 0,
-            deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-            selected: TuiApprovalChoice::ApproveOnce,
-        },
-    ));
+    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+        title: "Approval required".to_string(),
+        command: "cargo check --workspace".to_string(),
+        reason: "Command is not in the read-only allowlist".to_string(),
+        lines: vec![],
+        allow_session: true,
+        session_scope_label: Some("commands that start with `cargo check`".to_string()),
+        deny_input: String::new(),
+        deny_cursor: 0,
+        deny_input_placeholder: Some("Tell Kordi what to do differently".to_string()),
+        selected: TuiApprovalChoice::ApproveOnce,
+    }));
     state.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     state.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
@@ -46,20 +44,18 @@ fn approval_dialog_escape_denies_without_extra_navigation() {
         },
     );
 
-    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(
-        TuiApprovalDialog {
-            title: "Approval required".to_string(),
-            command: "git checkout -b feature".to_string(),
-            reason: "Command may change repository state".to_string(),
-            lines: vec![],
-            allow_session: true,
-            session_scope_label: Some("commands that start with `git checkout`".to_string()),
-            deny_input: String::new(),
-            deny_cursor: 0,
-            deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-            selected: TuiApprovalChoice::ApproveOnce,
-        },
-    ));
+    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+        title: "Approval required".to_string(),
+        command: "git checkout -b feature".to_string(),
+        reason: "Command may change repository state".to_string(),
+        lines: vec![],
+        allow_session: true,
+        session_scope_label: Some("commands that start with `git checkout`".to_string()),
+        deny_input: String::new(),
+        deny_cursor: 0,
+        deny_input_placeholder: Some("Tell Kordi what to do differently".to_string()),
+        selected: TuiApprovalChoice::ApproveOnce,
+    }));
     state.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     assert_eq!(
@@ -81,21 +77,18 @@ fn approval_dialog_deny_can_capture_steer_message() {
         },
     );
 
-    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(
-        TuiApprovalDialog {
-            title: "Approval required for bash command".to_string(),
-            command: "echo hi > /tmp/out.txt".to_string(),
-            reason: "Command uses shell control operators, redirection, or substitution"
-                .to_string(),
-            lines: vec![],
-            allow_session: true,
-            session_scope_label: Some("`echo hi > /tmp/out.txt`".to_string()),
-            deny_input: String::new(),
-            deny_cursor: 0,
-            deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-            selected: TuiApprovalChoice::ApproveOnce,
-        },
-    ));
+    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+        title: "Approval required for bash command".to_string(),
+        command: "echo hi > /tmp/out.txt".to_string(),
+        reason: "Command uses shell control operators, redirection, or substitution".to_string(),
+        lines: vec![],
+        allow_session: true,
+        session_scope_label: Some("`echo hi > /tmp/out.txt`".to_string()),
+        deny_input: String::new(),
+        deny_cursor: 0,
+        deny_input_placeholder: Some("Tell Kordi what to do differently".to_string()),
+        selected: TuiApprovalChoice::ApproveOnce,
+    }));
     state.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     state.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     for ch in "Use rg instead".chars() {
@@ -122,21 +115,18 @@ fn approval_dialog_renders_command_reason_and_buttons() {
         },
     );
 
-    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(
-        TuiApprovalDialog {
-            title: "Approval required for bash command".to_string(),
-            command: "echo hi > /tmp/out.txt".to_string(),
-            reason: "Command uses shell control operators, redirection, or substitution"
-                .to_string(),
-            lines: vec![],
-            allow_session: true,
-            session_scope_label: Some("`echo hi > /tmp/out.txt`".to_string()),
-            deny_input: String::new(),
-            deny_cursor: 0,
-            deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-            selected: TuiApprovalChoice::ApproveOnce,
-        },
-    ));
+    let _ = state.apply_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+        title: "Approval required for bash command".to_string(),
+        command: "echo hi > /tmp/out.txt".to_string(),
+        reason: "Command uses shell control operators, redirection, or substitution".to_string(),
+        lines: vec![],
+        allow_session: true,
+        session_scope_label: Some("`echo hi > /tmp/out.txt`".to_string()),
+        deny_input: String::new(),
+        deny_cursor: 0,
+        deny_input_placeholder: Some("Tell Kordi what to do differently".to_string()),
+        selected: TuiApprovalChoice::ApproveOnce,
+    }));
     state.prepare_for_render();
     let frame = build_frame(&state);
     let rendered = frame.lines.join("\n");
@@ -146,6 +136,6 @@ fn approval_dialog_renders_command_reason_and_buttons() {
     assert!(rendered.contains("Approval required for bash command"));
     assert!(rendered.contains("→ Yes, proceed [y]"));
     assert!(rendered.contains("don't ask again for `echo hi > /tmp/out.txt` in this session"));
-    assert!(rendered.contains("No, and tell BB what to do differently [n]"));
+    assert!(rendered.contains("No, and tell Kordi what to do differently [n]"));
     assert!(frame.cursor.is_none());
 }

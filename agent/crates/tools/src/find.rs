@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use std::path::Path;
 use tokio::process::Command;
@@ -51,11 +51,11 @@ impl Tool for FindTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let pattern = params
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'pattern' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'pattern' parameter".into()))?;
 
         let search_dir = params
             .get("path")
@@ -70,7 +70,7 @@ impl Tool for FindTool {
             .unwrap_or(DEFAULT_LIMIT);
 
         if !search_dir.exists() {
-            return Err(BbError::Tool(format!(
+            return Err(KordiError::Tool(format!(
                 "Directory not found: {}",
                 search_dir.display()
             )));
@@ -83,7 +83,7 @@ impl Tool for FindTool {
                 // Fall back to basic find command
                 match find_with_find_cmd(pattern, &search_dir, limit).await {
                     Ok(results) => format_results(results, limit),
-                    Err(e) => Err(BbError::Tool(format!("Find failed: {e}"))),
+                    Err(e) => Err(KordiError::Tool(format!("Find failed: {e}"))),
                 }
             }
         }
@@ -149,7 +149,7 @@ async fn find_with_find_cmd(
     Ok(results)
 }
 
-fn format_results(results: Vec<String>, limit: usize) -> BbResult<ToolResult> {
+fn format_results(results: Vec<String>, limit: usize) -> KordiResult<ToolResult> {
     let total = results.len();
     let (text, truncated) = format_limited_results(&results, "No files found.", limit);
 

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
-use bb_core::types::ContentBlock;
+use kordi_core::error::{KordiError, KordiResult};
+use kordi_core::types::ContentBlock;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
@@ -68,11 +68,11 @@ impl Tool for EditTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let path_str = params
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'path' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'path' parameter".into()))?;
 
         let path = resolve_path(&ctx.cwd, path_str);
         ensure_write_allowed(ctx, &path, "edit")?;
@@ -80,15 +80,15 @@ impl Tool for EditTool {
         let edits = params
             .get("edits")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| BbError::Tool("Missing 'edits' array".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'edits' array".into()))?;
 
         if edits.is_empty() {
-            return Err(BbError::Tool("Empty edits array".into()));
+            return Err(KordiError::Tool("Empty edits array".into()));
         }
 
         let old_content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| BbError::Tool(format!("Failed to read {}: {e}", path.display())))?;
+            .map_err(|e| KordiError::Tool(format!("Failed to read {}: {e}", path.display())))?;
 
         let mut errors = Vec::new();
         let mut planned = Vec::new();
@@ -155,7 +155,7 @@ impl Tool for EditTool {
         if applied > 0 {
             tokio::fs::write(&path, &content)
                 .await
-                .map_err(|e| BbError::Tool(format!("Failed to write {}: {e}", path.display())))?;
+                .map_err(|e| KordiError::Tool(format!("Failed to write {}: {e}", path.display())))?;
         }
 
         // Generate the diff once and reuse it

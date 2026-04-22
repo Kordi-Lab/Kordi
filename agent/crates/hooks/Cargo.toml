@@ -1,5 +1,5 @@
 [package]
-name = "bb-hooks"
+name = "kordi-hooks"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,13 +7,13 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
-description = "Hook event types and event bus for BB-Agent extensions."
-documentation = "https://docs.rs/bb-hooks"
-keywords = ["agent", "hooks", "events", "extensions", "bb-agent"]
+description = "Hook event types and event bus for Kordi extensions."
+documentation = "https://docs.rs/kordi-hooks"
+keywords = ["agent", "hooks", "events", "extensions", "kordi"]
 categories = ["development-tools", "asynchronous"]
 
 [dependencies]
-bb-core.workspace = true
+kordi-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

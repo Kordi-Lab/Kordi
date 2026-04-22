@@ -12,8 +12,9 @@ mod merge;
 #[cfg(test)]
 mod tests;
 
-/// Layered settings: global (`~/.bb-agent/settings.json`) merged with
-/// project (`.bb-agent/settings.json`).
+/// Layered settings: global (`~/.kordi/settings.json`, with legacy settings
+/// path fallback) merged with project (`.kordi/settings.json`, with legacy
+/// project settings fallback).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(
@@ -67,6 +68,8 @@ pub struct Settings {
     pub compatibility_mode: bool,
     #[serde(default, alias = "updateCheck")]
     pub update_check: UpdateCheckSettings,
+    #[serde(default)]
+    pub storage: StorageSettings,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +189,16 @@ pub struct ProjectSharedSource {
     pub detail: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StorageSettings {
+    #[serde(default, alias = "rootDir")]
+    pub root_dir: Option<String>,
+    #[serde(default, alias = "dbPath")]
+    pub db_path: Option<String>,
+    #[serde(default, alias = "artifactsDir")]
+    pub artifacts_dir: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderOverride {
     pub name: String,
@@ -224,6 +237,7 @@ impl Default for Settings {
             color_theme: None,
             compatibility_mode: false,
             update_check: UpdateCheckSettings::default(),
+            storage: StorageSettings::default(),
         }
     }
 }

@@ -88,7 +88,7 @@ fn preferred_model_for_provider(provider: &str) -> Option<String> {
 }
 
 pub fn preferred_startup_provider_and_model(
-    settings: &bb_core::settings::Settings,
+    settings: &kordi_core::settings::Settings,
 ) -> Option<(String, String)> {
     // If the user explicitly configured a default provider/model, honor that
     // before any heuristic startup preference.

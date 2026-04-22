@@ -1,6 +1,8 @@
 # Configuration
 
-BB-Agent uses a layered configuration system. Project settings override global settings.
+Kordi uses a layered configuration system. Project settings override global settings.
+
+Kordi now prefers `.kordi` paths for config/resources. Legacy agent paths are still read and are migrated when the new target does not already exist.
 
 ## Role in Kordi
 
@@ -19,16 +21,16 @@ For the broader agent development flow, see [development.md](development.md).
 
 | File | Purpose |
 |------|---------|
-| `~/.bb-agent/settings.json` | Global settings |
-| `<project>/.bb-agent/settings.json` | Project-local settings |
-| `~/.bb-agent/AGENTS.md` | Global system prompt additions |
+| `~/.kordi/settings.json` | Global settings |
+| `<project>/.kordi/settings.json` | Project-local settings |
+| `~/.kordi/AGENTS.md` | Global system prompt additions |
 | `<project>/AGENTS.md` | Project system prompt additions |
-| `~/.bb-agent/auth.json` | Stored API keys and OAuth tokens |
-| `~/.bb-agent/sessions.db` | Session database |
-| `~/.bb-agent/system-prompts/` | Named system prompt templates |
-| `~/.bb-agent/skills/` | Global skills |
-| `~/.bb-agent/extensions/` | Global extensions |
-| `~/.bb-agent/prompts/` | Global prompt templates |
+| `~/.kordi/auth.json` | Stored API keys and OAuth tokens |
+| `~/.kordi/sessions.db` | Session database |
+| `~/.kordi/system-prompts/` | Named system prompt templates |
+| `~/.kordi/skills/` | Global skills |
+| `~/.kordi/extensions/` | Global extensions |
+| `~/.kordi/prompts/` | Global prompt templates |
 
 Project root is detected by walking up from `cwd` looking for `.git`, `Cargo.toml`, `package.json`, `go.mod`, `pyproject.toml`, `.hg`, `AGENTS.md`, or `CLAUDE.md`.
 
@@ -94,6 +96,12 @@ Project root is detected by walking up from `cwd` looking for `.git`, `Cargo.tom
   "update_check": {
     "enabled": true,
     "ttl_hours": 24
+  },
+
+  "storage": {
+    "root_dir": "~/.kordi",
+    "db_path": "~/.kordi/sessions.db",
+    "artifacts_dir": "~/.kordi/artifacts"
   }
 }
 ```
@@ -110,7 +118,7 @@ Execution posture for built-in tools.
   - allows broader built-in file mutation behavior
   - skips the safer bash posture
 
-BB-Agent shows the active posture in `/session` and the TUI footer/settings UI so it stays visible during a run.
+Kordi shows the active posture in `/session` and the TUI footer/settings UI so it stays visible during a run.
 
 #### `default_provider`
 Default LLM provider. Values: `anthropic`, `openai`, `google`, `groq`, `xai`, `openrouter`, or a custom provider name.
@@ -146,7 +154,7 @@ Additional paths to scan for skill files.
 Additional paths to scan for prompt template files.
 
 #### `packages`
-Installed package sources. Managed via `bb install`, `bb remove`, `bb update`.
+Installed package sources. Managed via `kordi install`, `kordi remove`, `kordi update`.
 
 #### `models`
 Custom model definitions. Fields:
@@ -169,28 +177,42 @@ Custom provider overrides. Fields:
 #### `color_theme`
 TUI color theme. Currently supported: `lavender` (default), or custom.
 
-#### `compatibility_mode`
-Enable ASCII-safe fallback rendering for terminals/fonts that do not display BB-Agent's richer Unicode glyphs correctly.
+#### `storage`
+Optional storage path overrides.
 
-When enabled, BB-Agent uses safer fallback symbols for spinner frames, live tool markers, and some transcript decorations.
+- `root_dir` — shared base directory for Kordi-managed runtime data
+- `db_path` — explicit session database path override
+- `artifacts_dir` — explicit default artifacts directory override
+
+Defaults stay outside the repo by default. Project-local `.kordi/` paths are used for project-scoped settings/resources, not for the default global DB/artifact store unless you explicitly configure them.
+
+#### `compatibility_mode`
+Enable ASCII-safe fallback rendering for terminals/fonts that do not display Kordi's richer Unicode glyphs correctly.
+
+When enabled, Kordi uses safer fallback symbols for spinner frames, live tool markers, and some transcript decorations.
 
 Equivalent environment variable:
 
 ```bash
-BB_TUI_COMPAT=1
+KORDI_TUI_COMPAT=1
 ```
 
 ## Migration Notes
 
+- Kordi now prefers `~/.kordi/` and `<project>/.kordi/` for config/resources.
+- Legacy agent locations are still discovered.
+- When the new target does not already exist, Kordi migrates legacy settings and resource directories into the new location.
+- Global runtime/storage files such as `auth.json`, `sessions.db`, `artifacts/`, and caches are migrated into the resolved storage root derived from `storage` settings when applicable.
+- If both the new and legacy locations exist, Kordi prefers the new location and leaves the legacy copy untouched.
 - `execution_mode` now defaults to `yolo`.
 - Use `"execution_mode": "safety"` if you want built-in `write` or `edit` restricted to the current project directory.
 - In `safety` mode, non-read-only bash commands now go through the safer approval/sandboxed path instead of running freely.
 
 ## AGENTS.md
 
-`AGENTS.md` (or `CLAUDE.md` as fallback) files are appended to the system prompt. BB-Agent loads them from multiple levels and merges them:
+`AGENTS.md` (or `CLAUDE.md` as fallback) files are appended to the system prompt. Kordi loads them from multiple levels and merges them:
 
-1. `~/.bb-agent/AGENTS.md` — global rules
+1. `~/.kordi/AGENTS.md` — global rules
 2. From project root down to cwd, each `AGENTS.md` found — project rules
 
 Files are joined with `---` separators, global first.
@@ -206,10 +228,10 @@ Files are joined with `---` separators, global first.
 
 ## System Prompt Templates
 
-Save `.md` files in `~/.bb-agent/system-prompts/`:
+Save `.md` files in `~/.kordi/system-prompts/`:
 
 ```
-~/.bb-agent/system-prompts/
+~/.kordi/system-prompts/
 ├── coding.md
 ├── research.md
 └── review.md
@@ -217,8 +239,8 @@ Save `.md` files in `~/.bb-agent/system-prompts/`:
 
 Use with:
 ```bash
-bb -t coding       # Use the "coding" template
-bb --list-templates # List all available templates
+kordi -t coding       # Use the "coding" template
+kordi --list-templates # List all available templates
 ```
 
 Templates fully replace the default system prompt when used.
@@ -233,8 +255,8 @@ Templates fully replace the default system prompt when used.
 | `GROQ_API_KEY` | Groq API key |
 | `XAI_API_KEY` | xAI API key |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
-| `BB_BROWSER` | Path to Chrome/Chromium binary for `browser_fetch` |
-| `BB_TUI_COMPAT` | Enable ASCII-safe TUI compatibility mode |
+| `KORDI_BROWSER` | Path to Chrome/Chromium binary for `browser_fetch` |
+| `KORDI_TUI_COMPAT` | Enable ASCII-safe TUI compatibility mode |
 
 ## Related docs
 

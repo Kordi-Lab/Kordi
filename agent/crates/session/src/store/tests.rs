@@ -1,5 +1,5 @@
 use super::*;
-use bb_core::types::*;
+use kordi_core::types::*;
 use chrono::{TimeZone, Utc};
 
 fn make_user_entry(parent: Option<&str>) -> SessionEntry {

@@ -14,7 +14,7 @@ pub fn set_compatibility_mode(enabled: bool) {
 
 pub fn compatibility_mode_enabled() -> bool {
     COMPAT_MODE_OVERRIDE.load(Ordering::Relaxed)
-        || std::env::var("BB_TUI_COMPAT")
+        || std::env::var("KORDI_TUI_COMPAT")
             .ok()
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "on"))
             .unwrap_or(false)

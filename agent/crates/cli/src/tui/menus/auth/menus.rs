@@ -27,7 +27,7 @@ fn auth_option_label(option: &crate::login::ProviderAuthOptionSummary) -> String
             .as_ref()
             .map(|label| format!("API key (env) • {label}"))
             .unwrap_or_else(|| "API key (env)".to_string()),
-        (crate::login::ProviderAuthMethod::ApiKey, crate::login::AuthSource::BbAuth) => option
+        (crate::login::ProviderAuthMethod::ApiKey, crate::login::AuthSource::KordiAuth) => option
             .account_label
             .as_ref()
             .map(|label| format!("Saved API key • {label}"))
@@ -37,7 +37,7 @@ fn auth_option_label(option: &crate::login::ProviderAuthOptionSummary) -> String
             .as_ref()
             .map(|label| format!("OAuth (env) • {label}"))
             .unwrap_or_else(|| "OAuth (env)".to_string()),
-        (crate::login::ProviderAuthMethod::OAuth, crate::login::AuthSource::BbAuth) => option
+        (crate::login::ProviderAuthMethod::OAuth, crate::login::AuthSource::KordiAuth) => option
             .account_label
             .as_ref()
             .map(|label| format!("OAuth • {label}"))
@@ -66,7 +66,7 @@ fn auth_option_detail(option: &crate::login::ProviderAuthOptionSummary) -> Optio
     if option.active {
         parts.push("currently active".to_string());
     }
-    if matches!(option.source, crate::login::AuthSource::BbAuth)
+    if matches!(option.source, crate::login::AuthSource::KordiAuth)
         && matches!(option.method, crate::login::ProviderAuthMethod::ApiKey)
         && let Some(profile_id) = &option.profile_id
     {
@@ -362,12 +362,12 @@ impl TuiController {
 
 #[cfg(test)]
 mod tests {
-    use bb_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
-    use bb_provider::openai::OpenAiProvider;
-    use bb_provider::registry::{ApiType, CostConfig, Model, ModelInput};
-    use bb_session::store;
-    use bb_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
-    use bb_tui::tui::TuiCommand;
+    use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
+    use kordi_provider::openai::OpenAiProvider;
+    use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
+    use kordi_session::store;
+    use kordi_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
+    use kordi_tui::tui::TuiCommand;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
@@ -464,7 +464,7 @@ mod tests {
             retry_max_delay_ms: 1_000,
             session_created: true,
             request_metrics_tracker: Arc::new(tokio::sync::Mutex::new(
-                bb_monitor::RequestMetricsTracker::new(),
+                kordi_monitor::RequestMetricsTracker::new(),
             )),
             request_metrics_log_path: None,
             sibling_conn: None,

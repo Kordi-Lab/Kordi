@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bb_session::tree::TreeNode;
+use kordi_session::tree::TreeNode;
 
 use super::FlatNode;
 

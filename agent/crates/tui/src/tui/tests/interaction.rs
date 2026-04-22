@@ -64,7 +64,7 @@ fn paste_event_image_attach_arms_follow_up_paste_suppression() {
     state.on_image_attached("/tmp/demo.png".to_string(), 1024);
     state.suppress_next_paste_payload = true;
 
-    state.on_paste("true a prompt for BB-Agent...");
+    state.on_paste("true a prompt for Kordi...");
 
     assert_eq!(state.input, "");
     assert_eq!(state.pending_image_paths.len(), 1);
@@ -87,7 +87,7 @@ fn backspace_removes_last_attached_image_when_input_is_empty() {
 fn backspace_removes_managed_clipboard_temp_file_with_chip() {
     let (mut state, _, _, _) = sample_state();
     let path = std::env::temp_dir().join(format!(
-        "bb-clipboard-test-{}-{}.png",
+        "kordi-clipboard-test-{}-{}.png",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -185,7 +185,7 @@ fn cursor_is_only_visible_in_normal_mode() {
 #[test]
 fn empty_input_cursor_appears_after_attachment_chips() {
     let dir = std::env::temp_dir().join(format!(
-        "bb-tui-cursor-attachments-{}-{}",
+        "kordi-tui-cursor-attachments-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

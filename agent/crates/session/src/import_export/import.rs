@@ -1,12 +1,12 @@
 use anyhow::Result;
-use bb_core::types::SessionEntry;
+use kordi_core::types::SessionEntry;
 use rusqlite::Connection;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::store;
 
-/// Import a legacy BB-Agent JSONL session file into SQLite.
+/// Import a legacy Kordi JSONL session file into SQLite.
 pub(super) fn import_jsonl(path: &Path, conn: &Connection) -> Result<String> {
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);

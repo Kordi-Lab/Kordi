@@ -1,10 +1,10 @@
-// BB-Agent Plugin Host Runtime
+// Kordi Plugin Host Runtime
 // Loaded by Node.js, bridges JSON-RPC between Rust and TS plugins.
 //
-// Each plugin exports: default function(bb) { ... }
-// bb.on(event, handler)
-// bb.registerTool(def)
-// bb.registerCommand(name, def)
+// Each plugin exports: default function(kordi) { ... }
+// kordi.on(event, handler)
+// kordi.registerTool(def)
+// kordi.registerCommand(name, def)
 
 const readline = require('readline');
 const path = require('path');
@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 
 function resolveJiti() {
     const candidates = [];
-    if (process.env.BB_JITI_PATH) candidates.push(process.env.BB_JITI_PATH);
+    if (process.env.KORDI_JITI_PATH) candidates.push(process.env.KORDI_JITI_PATH);
 
     try {
         const globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
@@ -71,7 +71,7 @@ function fireAndForgetUI(method, params) {
     send({ jsonrpc: "2.0", method: "ui_request", params: { id, method, ...params } });
 }
 
-const bb = {
+const kordi = {
     on(event, handler) {
         if (!handlers[event]) handlers[event] = [];
         handlers[event].push(handler);
@@ -170,7 +170,7 @@ for (const pluginPath of process.argv.slice(2)) {
     try {
         const mod = loadPluginModule(pluginPath);
         const factory = mod.default || mod;
-        if (typeof factory === 'function') factory(bb);
+        if (typeof factory === 'function') factory(kordi);
     } catch (e) {
         send({ jsonrpc: "2.0", method: "plugin_error", params: { path: pluginPath, error: e.message } });
     }

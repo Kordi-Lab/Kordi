@@ -4,7 +4,7 @@ mod events;
 mod tests;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -43,7 +43,7 @@ impl Provider for GoogleProvider {
         &self,
         request: CompletionRequest,
         options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.stream(request, options, tx).await?;
 
@@ -59,7 +59,7 @@ impl Provider for GoogleProvider {
         request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let url = format!(
             "{}/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
             options.base_url.trim_end_matches('/'),
@@ -108,12 +108,12 @@ impl Provider for GoogleProvider {
                         .json(&body_clone)
                         .send()
                         .await
-                        .map_err(|e| BbError::Provider(format!("Request failed: {e}")))?;
+                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
 
                     if !response.status().is_success() {
                         let status = response.status();
                         let body = response.text().await.unwrap_or_default();
-                        return Err(BbError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
                     }
                     Ok(response)
                 }
@@ -132,7 +132,7 @@ impl Provider for GoogleProvider {
             }
 
             let chunk =
-                chunk_result.map_err(|e| BbError::Provider(format!("Stream error: {e}")))?;
+                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find("\n\n") {

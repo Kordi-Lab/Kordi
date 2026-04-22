@@ -96,7 +96,7 @@ pub fn render_cache_monitor_text(input: &CacheMonitorTextInput) -> Option<String
     Some(format!("{source_text} • {avg_text} • {latest_text}"))
 }
 
-/// Render the compact usage text currently used in BB-Agent footers and other
+/// Render the compact usage text currently used in Kordi footers and other
 /// monitor surfaces, without depending on TUI rendering code.
 pub fn render_footer_usage_text(
     usage: &UsageTotals,

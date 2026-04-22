@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
@@ -99,12 +99,12 @@ pub async fn with_retry<F, Fut, T>(
     cancel: CancellationToken,
     retry_callback: Option<RetryCallback>,
     f: F,
-) -> BbResult<T>
+) -> KordiResult<T>
 where
     F: Fn() -> Fut,
-    Fut: std::future::Future<Output = BbResult<T>>,
+    Fut: std::future::Future<Output = KordiResult<T>>,
 {
-    let mut last_err = BbError::Provider("No attempts made".into());
+    let mut last_err = KordiError::Provider("No attempts made".into());
     let mut used_attempts = 0_u32;
 
     for attempt in 0..max_retries {
@@ -148,7 +148,7 @@ where
                                 final_error: Some(final_error.clone()),
                             });
                         }
-                        return Err(BbError::Provider(final_error));
+                        return Err(KordiError::Provider(final_error));
                     }
                     let delay_ms = server_delay_ms
                         .unwrap_or_else(|| base_delay_ms.saturating_mul(2u64.pow(attempt)));
@@ -176,7 +176,7 @@ where
                                     final_error: Some("Retry cancelled".to_string()),
                                 });
                             }
-                            return Err(BbError::Provider("Retry cancelled".into()));
+                            return Err(KordiError::Provider("Retry cancelled".into()));
                         }
                     }
                 }
@@ -195,7 +195,7 @@ where
             final_error: Some(final_error.clone()),
         });
     }
-    Err(BbError::Provider(final_error))
+    Err(KordiError::Provider(final_error))
 }
 
 #[cfg(test)]
@@ -213,7 +213,7 @@ mod tests {
             async move {
                 let attempt = c.fetch_add(1, Ordering::SeqCst);
                 if attempt == 0 {
-                    Err(BbError::Provider("HTTP 429: temporary".into()))
+                    Err(KordiError::Provider("HTTP 429: temporary".into()))
                 } else {
                     Ok(42)
                 }
@@ -228,12 +228,12 @@ mod tests {
     async fn test_retry_all_fail() {
         let counter = Arc::new(AtomicU32::new(0));
         let c = counter.clone();
-        let result: BbResult<i32> =
+        let result: KordiResult<i32> =
             with_retry(3, 1_000, 60_000, CancellationToken::new(), None, || {
                 let c = c.clone();
                 async move {
                     c.fetch_add(1, Ordering::SeqCst);
-                    Err(BbError::Provider("HTTP 429: always fails".into()))
+                    Err(KordiError::Provider("HTTP 429: always fails".into()))
                 }
             })
             .await;
@@ -245,12 +245,12 @@ mod tests {
     async fn test_non_retryable_error_stops_immediately() {
         let counter = Arc::new(AtomicU32::new(0));
         let c = counter.clone();
-        let result: BbResult<i32> =
+        let result: KordiResult<i32> =
             with_retry(3, 1_000, 60_000, CancellationToken::new(), None, || {
                 let c = c.clone();
                 async move {
                     c.fetch_add(1, Ordering::SeqCst);
-                    Err(BbError::Provider("HTTP 401: unauthorized".into()))
+                    Err(KordiError::Provider("HTTP 401: unauthorized".into()))
                 }
             })
             .await;
@@ -261,7 +261,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_succeeds_first_try() {
         let result = with_retry(3, 1_000, 60_000, CancellationToken::new(), None, || async {
-            Ok::<_, BbError>(99)
+            Ok::<_, KordiError>(99)
         })
         .await;
         assert_eq!(result.unwrap(), 99);

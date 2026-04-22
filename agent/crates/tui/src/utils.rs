@@ -68,7 +68,7 @@ pub fn strip_ansi(s: &str) -> String {
     result
 }
 
-/// Sanitize text for terminal display while preserving BB's own ANSI styling.
+/// Sanitize text for terminal display while preserving Kordi's own ANSI styling.
 ///
 /// - normalizes CRLF/CR to LF
 /// - preserves valid ANSI escape sequences already embedded in the string

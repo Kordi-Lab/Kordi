@@ -33,7 +33,7 @@ fn typing_slash_in_normal_mode_shows_tui_command_menu() {
 
 fn make_at_menu_test_dir() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "bb-tui-at-menu-{}-{}",
+        "kordi-tui-at-menu-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

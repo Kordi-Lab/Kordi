@@ -1,7 +1,7 @@
 mod events;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -10,7 +10,7 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use bb_core::types::CacheMetricsSource;
+use kordi_core::types::CacheMetricsSource;
 use events::process_sse_event;
 
 /// Anthropic Messages API provider.
@@ -42,7 +42,7 @@ impl Provider for AnthropicProvider {
         &self,
         request: CompletionRequest,
         options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.stream(request, options, tx).await?;
 
@@ -58,7 +58,7 @@ impl Provider for AnthropicProvider {
         request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let url = format!("{}/v1/messages", options.base_url.trim_end_matches('/'));
         let is_oauth = matches!(options.auth_mode, ProviderAuthMode::OAuth);
 
@@ -177,11 +177,11 @@ impl Provider for AnthropicProvider {
                         .json(&body_clone)
                         .send()
                         .await
-                        .map_err(|e| BbError::Provider(format!("Request failed: {e}")))?;
+                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
                     if !resp.status().is_success() {
                         let status = resp.status();
                         let body = resp.text().await.unwrap_or_default();
-                        return Err(BbError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
                     }
                     Ok(resp)
                 }
@@ -200,7 +200,7 @@ impl Provider for AnthropicProvider {
             }
 
             let chunk =
-                chunk_result.map_err(|e| BbError::Provider(format!("Stream error: {e}")))?;
+                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find("\n\n") {

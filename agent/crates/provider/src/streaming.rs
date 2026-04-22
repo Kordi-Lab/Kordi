@@ -1,5 +1,5 @@
 /// Utility: collect streaming events into final text + tool calls.
-use bb_core::types::CacheMetricsSource;
+use kordi_core::types::CacheMetricsSource;
 
 use crate::StreamEvent;
 

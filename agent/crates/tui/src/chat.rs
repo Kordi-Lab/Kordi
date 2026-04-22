@@ -1,4 +1,4 @@
-use bb_core::types::*;
+use kordi_core::types::*;
 use crossterm::style::{Attribute, Color, Stylize};
 
 /// Render a message for terminal display.

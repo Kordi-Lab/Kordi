@@ -11,24 +11,24 @@ async fn test_load_plugins_with_sample() {
         return;
     }
 
-    let temp_dir = std::env::temp_dir().join("bb-test-plugins");
+    let temp_dir = std::env::temp_dir().join("kordi-test-plugins");
     std::fs::create_dir_all(&temp_dir).unwrap();
     let plugin_path = temp_dir.join("test-plugin.js");
     std::fs::write(
         &plugin_path,
         r#"
-            module.exports = function(bb) {
-                bb.on("session_start", (event, ctx) => {
+            module.exports = function(kordi) {
+                kordi.on("session_start", (event, ctx) => {
                     return { action: "started" };
                 });
 
-                bb.on("tool_call", (event, ctx) => {
+                kordi.on("tool_call", (event, ctx) => {
                     if (event.tool_name === "bash" && event.input.command && event.input.command.includes("rm -rf /")) {
                         return { block: true, reason: "Blocked dangerous command" };
                     }
                 });
 
-                bb.registerTool({
+                kordi.registerTool({
                     name: "greet",
                     description: "Greet someone",
                     parameters: { type: "object", properties: { name: { type: "string" } } },
@@ -37,7 +37,7 @@ async fn test_load_plugins_with_sample() {
                     },
                 });
 
-                bb.registerCommand("hello", {
+                kordi.registerCommand("hello", {
                     description: "Say hello",
                     handler: async (args, ctx) => ({
                         message: "Hello command " + (args || "world")
@@ -63,13 +63,13 @@ async fn test_load_plugins_with_sample() {
     assert_eq!(host.registered_commands().len(), 1);
     assert_eq!(host.registered_commands()[0].name(), "hello");
 
-    let result = host.send_event(&bb_hooks::Event::SessionStart).await;
+    let result = host.send_event(&kordi_hooks::Event::SessionStart).await;
     assert!(result.is_some());
     let hr = result.unwrap();
     assert_eq!(hr.action, Some("started".into()));
 
     let result = host
-        .send_event(&bb_hooks::Event::ToolCall(bb_hooks::ToolCallEvent::new(
+        .send_event(&kordi_hooks::Event::ToolCall(kordi_hooks::ToolCallEvent::new(
             "tc1",
             "bash",
             serde_json::json!({"command": "rm -rf /"}),
@@ -81,7 +81,7 @@ async fn test_load_plugins_with_sample() {
     assert_eq!(hr.reason, Some("Blocked dangerous command".into()));
 
     let result = host
-        .send_event(&bb_hooks::Event::ToolCall(bb_hooks::ToolCallEvent::new(
+        .send_event(&kordi_hooks::Event::ToolCall(kordi_hooks::ToolCallEvent::new(
             "tc2",
             "bash",
             serde_json::json!({"command": "ls"}),
@@ -149,14 +149,14 @@ async fn test_extension_ui_plumbing() {
         return;
     }
 
-    let temp_dir = std::env::temp_dir().join("bb-test-ui-ext");
+    let temp_dir = std::env::temp_dir().join("kordi-test-ui-ext");
     std::fs::create_dir_all(&temp_dir).unwrap();
     let plugin_path = temp_dir.join("ui-ext.js");
     std::fs::write(
         &plugin_path,
         r#"
-            module.exports = function(bb) {
-                bb.registerCommand('ui-test', {
+            module.exports = function(kordi) {
+                kordi.registerCommand('ui-test', {
                     description: 'Test UI methods',
                     handler: async (args, ctx) => {
                         ctx.ui.notify('hello from extension', 'info');
@@ -173,7 +173,7 @@ async fn test_extension_ui_plumbing() {
                     },
                 });
 
-                bb.on('session_start', async (_event, ctx) => {
+                kordi.on('session_start', async (_event, ctx) => {
                     ctx.ui.notify('session started!', 'info');
                     return {};
                 });
@@ -199,7 +199,7 @@ async fn test_extension_ui_plumbing() {
         "confirmed=false selected=undefined typed=undefined"
     );
 
-    let result = host.send_event(&bb_hooks::Event::SessionStart).await;
+    let result = host.send_event(&kordi_hooks::Event::SessionStart).await;
     assert!(result.is_none());
 
     host.kill().await;
@@ -226,15 +226,15 @@ async fn test_startup_ignores_invalid_json_lines_before_valid_registration() {
         return;
     }
 
-    let temp_dir = std::env::temp_dir().join("bb-test-invalid-startup-lines");
+    let temp_dir = std::env::temp_dir().join("kordi-test-invalid-startup-lines");
     std::fs::create_dir_all(&temp_dir).expect("create temp dir");
     let plugin_path = temp_dir.join("startup-invalid.js");
     std::fs::write(
         &plugin_path,
         r#"
             process.stdout.write('not-json\n');
-            module.exports = function(bb) {
-                bb.registerCommand('still-loads', {
+            module.exports = function(kordi) {
+                kordi.registerCommand('still-loads', {
                     description: 'Load despite junk stdout',
                     handler: async () => ({ message: 'ok' }),
                 });
@@ -266,14 +266,14 @@ async fn test_execute_command_ignores_invalid_stdout_notifications() {
         return;
     }
 
-    let temp_dir = std::env::temp_dir().join("bb-test-invalid-runtime-lines");
+    let temp_dir = std::env::temp_dir().join("kordi-test-invalid-runtime-lines");
     std::fs::create_dir_all(&temp_dir).expect("create temp dir");
     let plugin_path = temp_dir.join("runtime-invalid.js");
     std::fs::write(
         &plugin_path,
         r#"
-            module.exports = function(bb) {
-                bb.registerCommand('runtime-junk', {
+            module.exports = function(kordi) {
+                kordi.registerCommand('runtime-junk', {
                     description: 'Emit junk stdout before responding',
                     handler: async () => {
                         process.stdout.write('not-json\n');

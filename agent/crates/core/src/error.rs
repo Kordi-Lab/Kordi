@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum BbError {
+pub enum KordiError {
     #[error("Session error: {0}")]
     Session(String),
 
@@ -33,4 +33,4 @@ pub enum BbError {
     Aborted,
 }
 
-pub type BbResult<T> = Result<T, BbError>;
+pub type KordiResult<T> = Result<T, KordiError>;

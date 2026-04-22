@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_core::types::{AgentMessage, ContentBlock, SessionEntry};
+use kordi_core::types::{AgentMessage, ContentBlock, SessionEntry};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
@@ -282,7 +282,7 @@ fn text_from_blocks(blocks: &[ContentBlock]) -> String {
 mod tests {
     use super::*;
     use crate::store;
-    use bb_core::types::*;
+    use kordi_core::types::*;
     use chrono::Utc;
 
     fn make_user_entry(parent: Option<&str>, text: &str) -> SessionEntry {

@@ -1,6 +1,6 @@
 /// Serialize an Event into a JSON value suitable for the plugin host.
-pub(super) fn serialize_event(event: &bb_hooks::Event) -> serde_json::Value {
-    use bb_hooks::Event;
+pub(super) fn serialize_event(event: &kordi_hooks::Event) -> serde_json::Value {
+    use kordi_hooks::Event;
 
     let event_type = event.event_type();
     match event {
@@ -101,14 +101,14 @@ mod tests {
 
     #[test]
     fn test_serialize_event_session_start() {
-        let event = bb_hooks::Event::SessionStart;
+        let event = kordi_hooks::Event::SessionStart;
         let json = serialize_event(&event);
         assert_eq!(json["type"], "session_start");
     }
 
     #[test]
     fn test_serialize_event_tool_call() {
-        let event = bb_hooks::Event::ToolCall(bb_hooks::ToolCallEvent::new(
+        let event = kordi_hooks::Event::ToolCall(kordi_hooks::ToolCallEvent::new(
             "tc1",
             "bash",
             serde_json::json!({"command": "ls"}),
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn test_serialize_event_tool_execution_update() {
-        let event = bb_hooks::Event::ToolExecutionUpdate(bb_hooks::ToolExecutionUpdateEvent::new(
+        let event = kordi_hooks::Event::ToolExecutionUpdate(kordi_hooks::ToolExecutionUpdateEvent::new(
             "tc1",
             "bash",
             serde_json::json!({"command": "ls"}),
@@ -140,11 +140,11 @@ mod tests {
 
     #[test]
     fn test_serialize_event_tool_execution_end() {
-        let event = bb_hooks::Event::ToolExecutionEnd(bb_hooks::ToolExecutionEndEvent::new(
+        let event = kordi_hooks::Event::ToolExecutionEnd(kordi_hooks::ToolExecutionEndEvent::new(
             "tc1",
             "bash",
             serde_json::json!({"command": "ls"}),
-            vec![bb_core::types::ContentBlock::Text { text: "ok".into() }],
+            vec![kordi_core::types::ContentBlock::Text { text: "ok".into() }],
             Some(serde_json::json!({"durationMs": 1})),
             false,
         ));

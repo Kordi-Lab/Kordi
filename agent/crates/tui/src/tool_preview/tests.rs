@@ -1,7 +1,7 @@
 use super::{
     extract_tool_arg_string_relaxed, format_tool_call_content, format_tool_result_content,
 };
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 
 #[test]
 fn edit_results_keep_old_ui_wider_preview_limit() {

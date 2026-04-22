@@ -3,7 +3,7 @@ mod process;
 mod safety;
 
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use std::future;
 use tokio::io::AsyncReadExt;
@@ -67,17 +67,17 @@ impl Tool for BashTool {
         params: Value,
         ctx: &ToolContext,
         cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let command = params
             .get("command")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'command' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'command' parameter".into()))?;
 
         let timeout_raw = params.get("timeout").and_then(|v| v.as_f64());
         if let Some(timeout) = timeout_raw
             && (!timeout.is_finite() || timeout <= 0.0)
         {
-            return Err(BbError::Tool("bash timeout must be > 0".into()));
+            return Err(KordiError::Tool("bash timeout must be > 0".into()));
         }
         let timeout_secs = timeout_raw.map(std::time::Duration::from_secs_f64);
 
@@ -130,7 +130,7 @@ impl Tool for BashTool {
                         #[cfg(unix)]
                         process_group_id,
                     ).await;
-                    status = Some(child.wait().await.map_err(|e| BbError::Tool(format!("Failed while waiting for cancelled bash command: {e}")))?);
+                    status = Some(child.wait().await.map_err(|e| KordiError::Tool(format!("Failed while waiting for cancelled bash command: {e}")))?);
                 }
                 _ = async {
                     if let Some(timeout) = timeout.as_mut().as_pin_mut() {
@@ -145,10 +145,10 @@ impl Tool for BashTool {
                         #[cfg(unix)]
                         process_group_id,
                     ).await;
-                    status = Some(child.wait().await.map_err(|e| BbError::Tool(format!("Failed while waiting for timed out bash command: {e}")))?);
+                    status = Some(child.wait().await.map_err(|e| KordiError::Tool(format!("Failed while waiting for timed out bash command: {e}")))?);
                 }
                 result = child.wait() => {
-                    status = Some(result.map_err(|e| BbError::Tool(format!("Failed while waiting for bash command: {e}")))?);
+                    status = Some(result.map_err(|e| KordiError::Tool(format!("Failed while waiting for bash command: {e}")))?);
                 }
                 result = async {
                     if let Some(stdout) = stdout.as_mut() {
@@ -157,7 +157,7 @@ impl Tool for BashTool {
                         future::pending::<std::io::Result<usize>>().await
                     }
                 }, if stdout.is_some() => {
-                    let n = result.map_err(|e| BbError::Tool(format!("Failed reading bash stdout: {e}")))?;
+                    let n = result.map_err(|e| KordiError::Tool(format!("Failed reading bash stdout: {e}")))?;
                     if n == 0 {
                         stdout = None;
                     } else {
@@ -178,7 +178,7 @@ impl Tool for BashTool {
                         future::pending::<std::io::Result<usize>>().await
                     }
                 }, if stderr.is_some() => {
-                    let n = result.map_err(|e| BbError::Tool(format!("Failed reading bash stderr: {e}")))?;
+                    let n = result.map_err(|e| KordiError::Tool(format!("Failed reading bash stderr: {e}")))?;
                     if n == 0 {
                         stderr = None;
                     } else {
@@ -202,7 +202,7 @@ impl Tool for BashTool {
             stdout
                 .read_to_end(&mut stdout_buf)
                 .await
-                .map_err(|e| BbError::Tool(format!("Failed draining bash stdout: {e}")))?;
+                .map_err(|e| KordiError::Tool(format!("Failed draining bash stdout: {e}")))?;
             if let Some(ref on_output) = ctx.on_output {
                 let drained = String::from_utf8_lossy(&stdout_buf[drained_from..]);
                 let redacted = live_redactor.push(&drained);
@@ -216,7 +216,7 @@ impl Tool for BashTool {
             stderr
                 .read_to_end(&mut stderr_buf)
                 .await
-                .map_err(|e| BbError::Tool(format!("Failed draining bash stderr: {e}")))?;
+                .map_err(|e| KordiError::Tool(format!("Failed draining bash stderr: {e}")))?;
             if let Some(ref on_output) = ctx.on_output {
                 let drained = String::from_utf8_lossy(&stderr_buf[drained_from..]);
                 let redacted = live_redactor.push(&drained);
@@ -286,7 +286,7 @@ impl Tool for BashTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bb_core::types::ContentBlock;
+    use kordi_core::types::ContentBlock;
     use std::path::Path;
     use std::sync::{
         Arc, Mutex,

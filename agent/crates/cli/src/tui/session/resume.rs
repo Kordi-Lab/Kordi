@@ -1,11 +1,11 @@
 use anyhow::Result;
-use bb_core::agent_session::ModelRef;
-use bb_core::agent_session_runtime::RuntimeModelRef;
-use bb_core::settings::Settings;
-use bb_provider::registry::ModelRegistry;
-use bb_session::{context, store};
-use bb_tui::select_list::SelectItem;
-use bb_tui::tui::{Transcript, TuiCommand, TuiNoteLevel};
+use kordi_core::agent_session::ModelRef;
+use kordi_core::agent_session_runtime::RuntimeModelRef;
+use kordi_core::settings::Settings;
+use kordi_provider::registry::ModelRegistry;
+use kordi_session::{context, store};
+use kordi_tui::select_list::SelectItem;
+use kordi_tui::tui::{Transcript, TuiCommand, TuiNoteLevel};
 
 use super::super::RESUME_SESSION_MENU_ID;
 use super::super::controller::TuiController;
@@ -132,7 +132,7 @@ impl TuiController {
                         self.session_setup.api_key = runtime.api_key.clone();
                         self.session_setup.base_url = runtime.base_url.clone();
                         self.session_setup.headers = runtime.headers.clone();
-                        self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
+                        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
                             provider: self.session_setup.provider.clone(),
                             model: self.session_setup.model.clone(),
                             api_key: self.session_setup.api_key.clone(),
@@ -219,15 +219,15 @@ mod tests {
     use std::collections::{HashMap, VecDeque};
     use std::sync::Arc;
 
-    use bb_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
-    use bb_core::types::{
+    use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
+    use kordi_core::types::{
         AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage,
     };
-    use bb_provider::openai::OpenAiProvider;
-    use bb_provider::registry::{ApiType, CostConfig, Model, ModelInput};
-    use bb_session::store;
-    use bb_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
-    use bb_tui::tui::TuiCommand;
+    use kordi_provider::openai::OpenAiProvider;
+    use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
+    use kordi_session::store;
+    use kordi_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
+    use kordi_tui::tui::TuiCommand;
     use chrono::Utc;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
@@ -302,7 +302,7 @@ mod tests {
             retry_max_delay_ms: 1_000,
             session_created: true,
             request_metrics_tracker: Arc::new(tokio::sync::Mutex::new(
-                bb_monitor::RequestMetricsTracker::new(),
+                kordi_monitor::RequestMetricsTracker::new(),
             )),
             request_metrics_log_path: None,
             sibling_conn: None,

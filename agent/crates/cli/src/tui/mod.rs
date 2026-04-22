@@ -7,9 +7,9 @@ mod turns;
 use std::io::Write;
 
 use anyhow::Result;
-use bb_tools::{ToolApprovalOutcome, ToolApprovalRequest};
-use bb_tui::footer::detect_git_branch;
-use bb_tui::tui::{Transcript, TuiAppConfig, TuiCommand, TuiFooterData, TuiNoteLevel};
+use kordi_tools::{ToolApprovalOutcome, ToolApprovalRequest};
+use kordi_tui::footer::detect_git_branch;
+use kordi_tui::tui::{Transcript, TuiAppConfig, TuiCommand, TuiFooterData, TuiNoteLevel};
 use tokio::sync::mpsc;
 
 use crate::session_bootstrap::{
@@ -61,11 +61,11 @@ pub(crate) async fn run_tui_entry(entry: SessionBootstrapOptions) -> Result<()> 
                     .is_err()
                 {
                     return ToolApprovalOutcome {
-                        decision: bb_tools::ToolApprovalDecision::Denied,
+                        decision: kordi_tools::ToolApprovalDecision::Denied,
                     };
                 }
                 response_rx.await.unwrap_or(ToolApprovalOutcome {
-                    decision: bb_tools::ToolApprovalDecision::Denied,
+                    decision: kordi_tools::ToolApprovalDecision::Denied,
                 })
             })
         }));
@@ -89,7 +89,7 @@ pub(crate) async fn run_tui_entry(entry: SessionBootstrapOptions) -> Result<()> 
     };
 
     let (ui_result, controller_result) = tokio::join!(
-        bb_tui::tui::run_with_channels(config, command_rx, submission_tx),
+        kordi_tui::tui::run_with_channels(config, command_rx, submission_tx),
         controller_task,
     );
 
@@ -99,13 +99,13 @@ pub(crate) async fn run_tui_entry(entry: SessionBootstrapOptions) -> Result<()> 
 }
 
 pub(super) fn build_dynamic_slash_items(
-    runtime_host: &bb_core::agent_session_runtime::AgentSessionRuntimeHost,
-) -> Vec<bb_tui::select_list::SelectItem> {
+    runtime_host: &kordi_core::agent_session_runtime::AgentSessionRuntimeHost,
+) -> Vec<kordi_tui::select_list::SelectItem> {
     let mut items = Vec::new();
 
     // Skills
     for skill in &runtime_host.bootstrap().resource_bootstrap.skills {
-        items.push(bb_tui::select_list::SelectItem {
+        items.push(kordi_tui::select_list::SelectItem {
             label: format!("/skill:{}", skill.info.name),
             detail: None,
             value: format!("/skill:{}", skill.info.name),
@@ -114,7 +114,7 @@ pub(super) fn build_dynamic_slash_items(
 
     // Prompt templates
     for prompt in &runtime_host.bootstrap().resource_bootstrap.prompts {
-        items.push(bb_tui::select_list::SelectItem {
+        items.push(kordi_tui::select_list::SelectItem {
             label: format!("/{}", prompt.info.name),
             detail: Some(prompt.info.description.clone()),
             value: format!("/{}", prompt.info.name),
@@ -128,7 +128,7 @@ pub(super) fn build_dynamic_slash_items(
         .extensions
         .registered_commands
     {
-        items.push(bb_tui::select_list::SelectItem {
+        items.push(kordi_tui::select_list::SelectItem {
             label: format!("/{}", cmd.invocation_name),
             detail: Some(cmd.description.clone()),
             value: format!("/{}", cmd.invocation_name),
@@ -141,7 +141,7 @@ pub(super) fn build_dynamic_slash_items(
 fn build_tui_config(
     session_setup: &SessionRuntimeSetup,
     prompt_label: &str,
-    extra_slash_items: Vec<bb_tui::select_list::SelectItem>,
+    extra_slash_items: Vec<kordi_tui::select_list::SelectItem>,
 ) -> TuiAppConfig {
     let transcript = Transcript::new();
 

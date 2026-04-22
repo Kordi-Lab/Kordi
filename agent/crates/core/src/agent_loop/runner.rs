@@ -26,7 +26,7 @@ fn fallback_error_messages(
 
 /// Start an agent loop with newly-added prompt messages.
 #[doc(hidden)]
-#[deprecated(note = "legacy transitional agent_loop surface; prefer bb_core::agent::Agent")]
+#[deprecated(note = "legacy transitional agent_loop surface; prefer kordi_core::agent::Agent")]
 pub fn agent_loop(
     prompts: Vec<AgentMessage>,
     context: AgentContextSnapshot,
@@ -60,7 +60,7 @@ pub fn agent_loop(
 
 /// Continue an agent loop without appending a new prompt message first.
 #[doc(hidden)]
-#[deprecated(note = "legacy transitional agent_loop surface; prefer bb_core::agent::Agent")]
+#[deprecated(note = "legacy transitional agent_loop surface; prefer kordi_core::agent::Agent")]
 pub fn agent_loop_continue(
     context: AgentContextSnapshot,
     config: AgentLoopConfig,

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::*;
 
-const CLIPBOARD_IMAGE_PREFIX: &str = "bb-clipboard-";
+const CLIPBOARD_IMAGE_PREFIX: &str = "kordi-clipboard-";
 
 impl TuiState {
     /// Called when an image file is attached (via clipboard read or drag-and-drop).
@@ -460,17 +460,17 @@ mod tests {
 
     #[test]
     fn recognizes_managed_clipboard_temp_images() {
-        let path = std::env::temp_dir().join("bb-clipboard-123-456.png");
+        let path = std::env::temp_dir().join("kordi-clipboard-123-456.png");
         assert!(is_managed_clipboard_temp_image(&path));
 
-        let other = std::env::temp_dir().join("not-bb-clipboard.png");
+        let other = std::env::temp_dir().join("not-kordi-clipboard.png");
         assert!(!is_managed_clipboard_temp_image(&other));
     }
 
     #[test]
     fn cleanup_removes_managed_clipboard_temp_images() {
         let path = std::env::temp_dir().join(format!(
-            "bb-clipboard-test-{}-{}.png",
+            "kordi-clipboard-test-{}-{}.png",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -4,7 +4,7 @@ use crate::tui::format_tool_result_content;
 use crate::tui::layout::Size;
 use crate::tui::runtime::TuiState;
 use crate::tui::types::TuiCommand;
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 
 #[test]
 fn active_turn_status_uses_elapsed_progress_instead_of_static_status_line() {
@@ -558,7 +558,7 @@ fn bash_tool_call_body_renders_as_raw_fenced_lines_without_tool_prefixes() {
     });
     let _ = state.apply_command(TuiCommand::ToolCallDelta {
         id: "tool-1".into(),
-        args: serde_json::json!({"command":"./native/bb-dev --help\necho \"bash is working\""})
+        args: serde_json::json!({"command":"./native/kordi-dev --help\necho \"bash is working\""})
             .to_string(),
     });
     let _ = state.apply_command(TuiCommand::ToolExecuting {
@@ -587,7 +587,7 @@ fn bash_tool_call_body_renders_as_raw_fenced_lines_without_tool_prefixes() {
         .expect("opening fence");
     let cmd1 = plain_lines
         .iter()
-        .find(|line| line.trim() == "./native/bb-dev --help")
+        .find(|line| line.trim() == "./native/kordi-dev --help")
         .expect("first command line");
     let cmd2 = plain_lines
         .iter()

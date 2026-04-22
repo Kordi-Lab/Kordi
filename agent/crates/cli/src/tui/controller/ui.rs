@@ -1,14 +1,14 @@
 use std::collections::VecDeque;
 use std::path::Path;
 
-use bb_monitor::{
+use kordi_monitor::{
     CacheMonitorTextInput, ContextResolutionInput, RequestCacheMetrics, RuntimeContextUsage,
     SessionCacheMetricsSource, UsageTotals, latest_request_metrics_for_session,
     render_cache_monitor_text, render_footer_usage_text, resolve_context_window_status,
 };
-use bb_session::store;
-use bb_tui::footer::detect_git_branch;
-use bb_tui::tui::{TuiCommand, TuiFooterData};
+use kordi_session::store;
+use kordi_tui::footer::detect_git_branch;
+use kordi_tui::tui::{TuiCommand, TuiFooterData};
 
 use crate::session_info::{collect_session_info_summary, permission_posture_badge};
 
@@ -20,7 +20,7 @@ fn cleanup_managed_clipboard_temp_image(path: &Path) {
         return;
     };
     if path.parent() == Some(std::env::temp_dir().as_path())
-        && file_name.starts_with("bb-clipboard-")
+        && file_name.starts_with("kordi-clipboard-")
         && file_name.ends_with(".png")
     {
         let _ = std::fs::remove_file(path);
@@ -115,7 +115,7 @@ impl TuiController {
         }
 
         self.send_command(TuiCommand::PushNote {
-            level: bb_tui::tui::TuiNoteLevel::Status,
+            level: kordi_tui::tui::TuiNoteLevel::Status,
             text: sections.join("\n"),
         });
     }
@@ -261,9 +261,9 @@ impl TuiController {
         })
     }
 
-    fn current_context_status(&self) -> bb_monitor::ContextWindowStatus {
+    fn current_context_status(&self) -> kordi_monitor::ContextWindowStatus {
         let active_path =
-            bb_session::tree::active_path(&self.session_setup.conn, &self.session_setup.session_id)
+            kordi_session::tree::active_path(&self.session_setup.conn, &self.session_setup.session_id)
                 .ok();
         let latest_entry_is_compaction = active_path
             .as_ref()
@@ -283,7 +283,7 @@ impl TuiController {
             .filter(|window| *window > 0)
             .unwrap_or(self.session_setup.model.context_window);
         let compaction_enabled =
-            bb_core::settings::Settings::load_merged(&self.session_setup.tool_ctx.cwd)
+            kordi_core::settings::Settings::load_merged(&self.session_setup.tool_ctx.cwd)
                 .compaction
                 .enabled;
         let active_path_tokens = if suppress_runtime_usage {
@@ -434,7 +434,7 @@ fn footer_line1(cwd: &str, conn: &rusqlite::Connection, session_id: &str) -> Str
     line1
 }
 
-fn active_path_has_contextful_entries(path: &[bb_session::store::EntryRow]) -> bool {
+fn active_path_has_contextful_entries(path: &[kordi_session::store::EntryRow]) -> bool {
     path.iter().any(|row| row.entry_type == "message")
 }
 
@@ -442,21 +442,21 @@ fn active_path_has_contextful_entries(path: &[bb_session::store::EntryRow]) -> b
 // In particular, do not reuse stale pre-compaction assistant usage after the
 // latest compaction boundary; treat context usage as unknown until a fresh
 // post-compaction assistant usage record exists.
-fn estimate_active_path_context_tokens(path: &[bb_session::store::EntryRow]) -> Option<u64> {
+fn estimate_active_path_context_tokens(path: &[kordi_session::store::EntryRow]) -> Option<u64> {
     let latest_compaction_index = path.iter().rposition(|row| row.entry_type == "compaction");
     if let Some(compaction_index) = latest_compaction_index {
         let has_post_compaction_usage = path.iter().skip(compaction_index + 1).rev().any(|row| {
-            let Ok(entry) = bb_session::store::parse_entry(row) else {
+            let Ok(entry) = kordi_session::store::parse_entry(row) else {
                 return false;
             };
             match entry {
-                bb_core::types::SessionEntry::Message {
-                    message: bb_core::types::AgentMessage::Assistant(assistant),
+                kordi_core::types::SessionEntry::Message {
+                    message: kordi_core::types::AgentMessage::Assistant(assistant),
                     ..
                 } => {
-                    assistant.stop_reason != bb_core::types::StopReason::Aborted
-                        && assistant.stop_reason != bb_core::types::StopReason::Error
-                        && bb_session::compaction::calculate_context_tokens(&assistant.usage) > 0
+                    assistant.stop_reason != kordi_core::types::StopReason::Aborted
+                        && assistant.stop_reason != kordi_core::types::StopReason::Error
+                        && kordi_session::compaction::calculate_context_tokens(&assistant.usage) > 0
                 }
                 _ => false,
             }
@@ -466,9 +466,9 @@ fn estimate_active_path_context_tokens(path: &[bb_session::store::EntryRow]) -> 
         }
     }
 
-    bb_session::context::build_context_from_path(path)
+    kordi_session::context::build_context_from_path(path)
         .ok()
-        .map(|ctx| bb_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
+        .map(|ctx| kordi_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
 }
 
 #[cfg(test)]
@@ -480,17 +480,17 @@ mod tests {
         current_auth_cache_metrics_source, estimate_active_path_context_tokens,
         permission_posture_badge, request_matches_cache_domain,
     };
-    use bb_core::types::{
+    use kordi_core::types::{
         AgentMessage, AssistantContent, AssistantMessage, EntryBase, EntryId, SessionEntry,
         StopReason, Usage,
     };
-    use bb_monitor::{
+    use kordi_monitor::{
         CacheMetricsSource, ContextResolutionInput, RequestCacheMetrics, RuntimeContextUsage,
         SessionCacheMetricsSource, format_context_from_tokens, format_context_percent,
         format_unknown_context, render_context_window_status, resolve_context_window_status,
     };
-    use bb_session::{store, tree};
-    use bb_tools::ExecutionPolicy;
+    use kordi_session::{store, tree};
+    use kordi_tools::ExecutionPolicy;
     use chrono::Utc;
 
     #[test]
@@ -662,8 +662,8 @@ mod tests {
                 parent_id: Some(compaction.base().id.clone()),
                 timestamp: Utc::now(),
             },
-            message: AgentMessage::User(bb_core::types::UserMessage {
-                content: vec![bb_core::types::ContentBlock::Text {
+            message: AgentMessage::User(kordi_core::types::UserMessage {
+                content: vec![kordi_core::types::ContentBlock::Text {
                     text: "12345678".to_string(),
                 }],
                 timestamp: Utc::now().timestamp_millis(),
@@ -737,7 +737,7 @@ mod tests {
             request_rewritten: false,
         };
         let auth = crate::login::ResolvedProviderAuth {
-            source: crate::login::AuthSource::BbAuth,
+            source: crate::login::AuthSource::KordiAuth,
             credential_provider: "openai-codex".to_string(),
             method: crate::login::ProviderAuthMethod::OAuth,
             credential: "token".to_string(),
@@ -820,7 +820,7 @@ mod tests {
             request_rewritten: false,
         };
         let auth = crate::login::ResolvedProviderAuth {
-            source: crate::login::AuthSource::BbAuth,
+            source: crate::login::AuthSource::KordiAuth,
             credential_provider: "openai-codex".to_string(),
             method: crate::login::ProviderAuthMethod::OAuth,
             credential: "token".to_string(),
@@ -889,8 +889,8 @@ mod tests {
                 parent_id: Some(compaction.base().id.clone()),
                 timestamp: Utc::now(),
             },
-            message: AgentMessage::User(bb_core::types::UserMessage {
-                content: vec![bb_core::types::ContentBlock::Text {
+            message: AgentMessage::User(kordi_core::types::UserMessage {
+                content: vec![kordi_core::types::ContentBlock::Text {
                     text: "12345678".to_string(),
                 }],
                 timestamp: Utc::now().timestamp_millis(),

@@ -47,7 +47,7 @@ export function isBridgeAgentRuntime(runtime: string) {
     || value.includes('codex')
     || value.includes('openclaw')
     || value.includes('pi')
-    || value.includes('bb')
+    || value.includes('kordi')
     || value.includes('generic')
     || value.includes('bot');
 }

@@ -1,4 +1,4 @@
-use bb_session::store;
+use kordi_session::store;
 
 /// Export session entries to a JSONL file. Returns the absolute path.
 pub(super) fn export_session(

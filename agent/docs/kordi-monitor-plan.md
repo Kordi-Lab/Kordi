@@ -1,8 +1,8 @@
-# bb-monitor extraction plan
+# kordi-monitor extraction plan
 
 ## Goal
 
-`crates/bb-monitor` is the reusable backend home for BB-Agent monitoring logic that should not live in CLI/TUI controller code.
+`crates/kordi-monitor` is the reusable backend home for Kordi monitoring logic that should not live in CLI/TUI controller code.
 
 It should own:
 - derived usage/token/cost/cache summaries
@@ -20,29 +20,29 @@ It should **not** own:
 
 ## Dependency rule
 
-- `bb-monitor` **may depend on** `bb-core`
-- `bb-core` must **not depend on** `bb-monitor`
+- `kordi-monitor` **may depend on** `kordi-core`
+- `kordi-core` must **not depend on** `kordi-monitor`
 
 That means:
-- persisted/shared schema stays in `bb-core`
-- provider-native parsing stays in `bb-provider`
-- derived monitor logic lives in `bb-monitor`
+- persisted/shared schema stays in `kordi-core`
+- provider-native parsing stays in `kordi-provider`
+- derived monitor logic lives in `kordi-monitor`
 
 ## Ownership split
 
-### `bb-core`
+### `kordi-core`
 Owns:
 - canonical persisted message/usage/cost schema
 - minimal shared enums needed across persisted/runtime/provider surfaces
 - session/runtime base data
 
-### `bb-provider`
+### `kordi-provider`
 Owns:
 - provider-native stream/event parsing
 - raw provider usage extraction
 - provider-specific usage signals
 
-### `bb-monitor`
+### `kordi-monitor`
 Owns:
 - derived usage totals and summaries
 - token/cost/cache formatting helpers
@@ -51,7 +51,7 @@ Owns:
 - divergence/reuse estimation
 - request metrics sinks (for example JSONL)
 
-### `bb-cli` / `bb-tui`
+### `kordi-cli` / `kordi-tui`
 Own:
 - DB/runtime/auth input gathering
 - command routing
@@ -62,29 +62,29 @@ Own:
 
 ### Phase 0 — scaffold
 Landed in scaffold PR #118:
-- `crates/bb-monitor`
+- `crates/kordi-monitor`
 - initial shared crate exports
 - issue/plan alignment for #119
 
 ### Phase 1 — formatting/session/context isolation
 Landed in PR #120:
-- `bb-monitor::formatting`
-- `bb-monitor::session`
-- `bb-monitor::context`
-- CLI `/info` and footer/controller code now call reusable `bb-monitor` helpers instead of owning the pure monitor math directly
+- `kordi-monitor::formatting`
+- `kordi-monitor::session`
+- `kordi-monitor::context`
+- CLI `/info` and footer/controller code now call reusable `kordi-monitor` helpers instead of owning the pure monitor math directly
 
 ### Phase 2 — request-metrics engine extraction
 Landed in PR #121:
-- `bb-monitor::request_metrics::canonical`
-- `bb-monitor::request_metrics::divergence`
-- `bb-monitor::request_metrics::tracker`
-- `bb-monitor::request_metrics::sink`
+- `kordi-monitor::request_metrics::canonical`
+- `kordi-monitor::request_metrics::divergence`
+- `kordi-monitor::request_metrics::tracker`
+- `kordi-monitor::request_metrics::sink`
 - provider-agnostic request snapshot/state/timing/usage types
 
 ### Phase 3 — runtime wiring
 Landed in PR #122:
-- turn-runner prepare/finalize flow wired to `bb-monitor`
-- shared `CacheMetricsSource` moved into `bb-core`
+- turn-runner prepare/finalize flow wired to `kordi-monitor`
+- shared `CacheMetricsSource` moved into `kordi-core`
 - provider usage events and collected responses retain cache provenance
 - assistant persistence now uses resolved cache usage
 - request metrics JSONL emission is wired through explicit configured paths
@@ -92,7 +92,7 @@ Landed in PR #122:
 ## Current crate layout
 
 ```text
-crates/bb-monitor/
+crates/kordi-monitor/
   src/
     lib.rs
     cache_metrics.rs
@@ -110,34 +110,34 @@ crates/bb-monitor/
 
 ## Remaining cleanup work
 
-### 1. Legacy compatibility surface cleanup in `bb-core`
+### 1. Legacy compatibility surface cleanup in `kordi-core`
 Still remaining:
 - reduce or further isolate duplicate legacy monitor vocabulary in:
   - `crates/core/src/agent/data.rs`
   - `crates/core/src/agent_loop/types.rs`
 - keep those surfaces compatibility-focused and avoid growing new monitor logic there
-- prefer `bb-monitor` / `agent_session_runtime` for all new work
+- prefer `kordi-monitor` / `agent_session_runtime` for all new work
 
 ### 2. Docs/comments/examples alignment
 Still remaining:
-- point future contributors toward `bb-monitor` as the canonical derived-monitor home
+- point future contributors toward `kordi-monitor` as the canonical derived-monitor home
 - keep issue #119 as the live implementation tracker/checklist
 
 ## Non-goals
 
 - no TUI visual redesign here
-- no frontend color/styling logic in `bb-monitor`
-- no provider event parsing move into `bb-monitor`
-- no DB access move into `bb-monitor`
+- no frontend color/styling logic in `kordi-monitor`
+- no provider event parsing move into `kordi-monitor`
+- no DB access move into `kordi-monitor`
 
 ## Success criteria
 
 This work is successful when:
 - monitor computation is no longer primarily CLI-controller-owned
-- `bb-monitor` is the reusable backend home for derived monitor logic
-- `bb-core` still owns persisted canonical data types
-- provider parsing stays in `bb-provider`
-- future monitor/cache work naturally lands in `bb-monitor` instead of new CLI helper files
+- `kordi-monitor` is the reusable backend home for derived monitor logic
+- `kordi-core` still owns persisted canonical data types
+- provider parsing stays in `kordi-provider`
+- future monitor/cache work naturally lands in `kordi-monitor` instead of new CLI helper files
 
 ## Tracking
 

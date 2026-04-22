@@ -15,14 +15,14 @@ name = "kordi"
 path = "src/main.rs"
 
 [dependencies]
-bb-core.workspace = true
-bb-session.workspace = true
-bb-tools.workspace = true
-bb-provider.workspace = true
-bb-hooks.workspace = true
-bb-plugin-host.workspace = true
-bb-tui.workspace = true
-bb-monitor.workspace = true
+kordi-core.workspace = true
+kordi-session.workspace = true
+kordi-tools.workspace = true
+kordi-provider.workspace = true
+kordi-hooks.workspace = true
+kordi-plugin-host.workspace = true
+kordi-tui.workspace = true
+kordi-monitor.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }

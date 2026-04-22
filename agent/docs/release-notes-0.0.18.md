@@ -20,7 +20,7 @@ The TUI cache monitor now renders on the footer/path line and labels its provena
 - `cache hit (mixed)`
 - `cache hit (unknown)`
 
-This makes it much easier to tell whether you are looking at provider-reported cache data or BB's estimated reuse path.
+This makes it much easier to tell whether you are looking at provider-reported cache data or Kordi's estimated reuse path.
 
 ### Model/auth switching now resets stale latest-hit state
 When you switch models — or switch auth sources for the same model — the cache monitor now starts cold instead of showing the previous cache domain's latest-hit/source values.
@@ -53,7 +53,7 @@ The shared TUI slash-command registry now includes `/exit` as an alias for `/qui
 - If you are manually validating cache behavior, compare API-key sessions against OAuth sessions with the expectation that API-key paths are the ground-truth baseline.
 
 ## Suggested GitHub release summary
-BB-Agent v0.0.18 tightens the KV-cache validation loop: cache provenance now follows auth mode explicitly, estimated hit rates are better normalized, stale latest-hit state is reset on model/auth switches, the TUI cache monitor is clearer about what it is showing, and `/exit` is now available as a shared TUI slash-command alias.
+Kordi v0.0.18 tightens the KV-cache validation loop: cache provenance now follows auth mode explicitly, estimated hit rates are better normalized, stale latest-hit state is reset on model/auth switches, the TUI cache monitor is clearer about what it is showing, and `/exit` is now available as a shared TUI slash-command alias.
 
 ## Final clean build/test matrix
 
@@ -61,18 +61,18 @@ Performed from a clean `origin/master`-based worktree for `release/0.0.18` prep.
 
 | Area | Command | Result |
 | --- | --- | --- |
-| Build | `cargo +stable build -q -p bb-cli --bin bb` | Passed |
-| Slash-command alias tests | `cargo +stable test -q -p bb-tui slash_commands -- --nocapture` | Passed |
-| Provider cache source (OAuth) | `cargo +stable test -q -p bb-provider oauth_usage_is_marked_as_estimated -- --nocapture` | Passed |
-| Responses body conversion | `cargo +stable test -q -p bb-provider responses_body_converts_chat_style_tools_and_system_messages -- --nocapture` | Passed |
-| Anthropic usage provenance | `cargo +stable test -q -p bb-provider usage_events_preserve_requested_cache_metric_source -- --nocapture` | Passed |
-| Estimated normalization | `cargo +stable test -q -p bb-monitor normalized_estimate_does_not_peg_changed_prompts_to_hundred_percent -- --nocapture` | Passed |
-| Tracker reset | `cargo +stable test -q -p bb-monitor reset_history_clears_previous_prompt_and_bumps_epoch -- --nocapture` | Passed |
-| TUI stale latest-hit reset | `cargo +stable test -q -p bb-cli stale_request_metrics_do_not_match_new_cache_domain -- --nocapture` | Passed |
-| TUI model-switch stale latest-hit reset | `cargo +stable test -q -p bb-cli model_mismatch_uses_current_auth_source_and_zeroes_latest -- --nocapture` | Passed |
-| Release binary smoke test | `./target/debug/bb --help` | Passed |
+| Build | `cargo +stable build -q -p kordi-cli --bin kordi` | Passed |
+| Slash-command alias tests | `cargo +stable test -q -p kordi-tui slash_commands -- --nocapture` | Passed |
+| Provider cache source (OAuth) | `cargo +stable test -q -p kordi-provider oauth_usage_is_marked_as_estimated -- --nocapture` | Passed |
+| Responses body conversion | `cargo +stable test -q -p kordi-provider responses_body_converts_chat_style_tools_and_system_messages -- --nocapture` | Passed |
+| Anthropic usage provenance | `cargo +stable test -q -p kordi-provider usage_events_preserve_requested_cache_metric_source -- --nocapture` | Passed |
+| Estimated normalization | `cargo +stable test -q -p kordi-monitor normalized_estimate_does_not_peg_changed_prompts_to_hundred_percent -- --nocapture` | Passed |
+| Tracker reset | `cargo +stable test -q -p kordi-monitor reset_history_clears_previous_prompt_and_bumps_epoch -- --nocapture` | Passed |
+| TUI stale latest-hit reset | `cargo +stable test -q -p kordi-cli stale_request_metrics_do_not_match_new_cache_domain -- --nocapture` | Passed |
+| TUI model-switch stale latest-hit reset | `cargo +stable test -q -p kordi-cli model_mismatch_uses_current_auth_source_and_zeroes_latest -- --nocapture` | Passed |
+| Release binary smoke test | `./target/debug/kordi --help` | Passed |
 
 ### Notes
 - Validation was run with `CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`, and `RUSTFLAGS='-Cdebuginfo=0'` to reduce host-side Rust instability during release prep.
-- A tiny release-prep fix was included to unblock clean `bb-tui` test builds by narrowing a stale test-only `wrap_visual_line` re-export in `crates/tui/src/tui/projection.rs`.
+- A tiny release-prep fix was included to unblock clean `kordi-tui` test builds by narrowing a stale test-only `wrap_visual_line` re-export in `crates/tui/src/tui/projection.rs`.
 - Rebuild from the clean release worktree before tagging/publishing so the installed binary matches the exact merged release commit.

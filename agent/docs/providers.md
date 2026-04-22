@@ -1,6 +1,6 @@
 # Providers & Models
 
-BB-Agent supports multiple LLM providers out of the box.
+Kordi supports multiple LLM providers out of the box.
 
 ## Role in Kordi
 
@@ -31,12 +31,12 @@ It is the reference for:
 ### OAuth Login (Anthropic, OpenAI, GitHub Copilot)
 
 ```bash
-bb login anthropic        # Opens browser for OAuth
-bb login openai-codex     # Opens browser for OAuth
-bb login github-copilot   # GitHub device flow + Copilot token exchange
+kordi login anthropic        # Opens browser for OAuth
+kordi login openai-codex     # Opens browser for OAuth
+kordi login github-copilot   # GitHub device flow + Copilot token exchange
 ```
 
-For GitHub Copilot, `bb` now supports:
+For GitHub Copilot, `kordi` now supports:
 - stored authority-aware configuration (`github.com` or GitHub Enterprise Server domain)
 - GitHub device/browser auth flow
 - GitHub OAuth token persistence in `auth.json`
@@ -52,15 +52,15 @@ Current limitations:
 ### API Key Login
 
 ```bash
-bb login google         # Prompts for API key
-bb login groq
-bb login xai
-bb login openrouter
+kordi login google         # Prompts for API key
+kordi login groq
+kordi login xai
+kordi login openrouter
 ```
 
 ### Environment Variables
 
-Set directly without `bb login`:
+Set directly without `kordi login`:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -79,7 +79,7 @@ If you do not set `GITHUB_COPILOT_CLIENT_SECRET`, GitHub Copilot sign-in still w
 ### Check Status
 
 ```bash
-bb login    # Shows ✓/✗ for each provider
+kordi login    # Shows ✓/✗ for each provider
 ```
 
 ## Selecting a Model
@@ -87,11 +87,11 @@ bb login    # Shows ✓/✗ for each provider
 ### CLI Flags
 
 ```bash
-bb --model sonnet                                # Fuzzy match
-bb --model claude-sonnet-4-20250514              # Exact model ID
-bb --model anthropic/claude-sonnet-4-20250514    # Provider/model
-bb --model sonnet:high                           # Model with thinking level
-bb --provider google --model gemini-2.5-flash    # Explicit provider
+kordi --model sonnet                                # Fuzzy match
+kordi --model claude-sonnet-4-20250514              # Exact model ID
+kordi --model anthropic/claude-sonnet-4-20250514    # Provider/model
+kordi --model sonnet:high                           # Model with thinking level
+kordi --provider google --model gemini-2.5-flash    # Explicit provider
 ```
 
 ### Thinking Levels
@@ -99,19 +99,19 @@ bb --provider google --model gemini-2.5-flash    # Explicit provider
 For models that support extended thinking:
 
 ```bash
-bb --model sonnet:high      # High thinking budget
-bb --model sonnet:medium    # Medium (default)
-bb --model sonnet:low       # Low
-bb --model sonnet:off       # No extended thinking
-bb --thinking high          # Set thinking separately
+kordi --model sonnet:high      # High thinking budget
+kordi --model sonnet:medium    # Medium (default)
+kordi --model sonnet:low       # Low
+kordi --model sonnet:off       # No extended thinking
+kordi --thinking high          # Set thinking separately
 ```
 
 ### List Available Models
 
 ```bash
-bb --list-models            # List all models
-bb --list-models sonnet     # Search/filter
-bb --list-models groq       # Models from a provider
+kordi --list-models            # List all models
+kordi --list-models sonnet     # Search/filter
+kordi --list-models groq       # Models from a provider
 ```
 
 ### In-Session Model Switching
@@ -182,7 +182,7 @@ Define entirely new providers:
 
 Then use:
 ```bash
-bb --provider my-corp --model our-model
+kordi --provider my-corp --model our-model
 ```
 
 ## API Types

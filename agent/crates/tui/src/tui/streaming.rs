@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bb_core::types::ContentBlock;
+use kordi_core::types::ContentBlock;
 
 use crate::ui_hints::{
     NO_TEXT_OUTPUT, TOOL_COLLAPSE_HINT, TOOL_EXPAND_HINT, TOOL_FAILED_NO_TEXT_OUTPUT,

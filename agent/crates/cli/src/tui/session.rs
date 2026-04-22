@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bb_tui::tui::Transcript;
+use kordi_tui::tui::Transcript;
 
 mod compaction;
 mod db;
@@ -8,14 +8,14 @@ mod resume;
 mod transcript;
 mod tree_actions;
 
-const HIDDEN_DISPATCH_PREFIX: &str = "[[bb-hidden-dispatch]]\n";
+const HIDDEN_DISPATCH_PREFIX: &str = "[[kordi-hidden-dispatch]]\n";
 
 pub(super) fn build_tui_transcript(
     conn: &rusqlite::Connection,
     session_id: &str,
 ) -> Result<(
     Transcript,
-    std::collections::HashMap<String, bb_tui::tui::HistoricalToolState>,
+    std::collections::HashMap<String, kordi_tui::tui::HistoricalToolState>,
 )> {
     transcript::build_tui_transcript(conn, session_id)
 }

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -48,16 +48,16 @@ impl Tool for ReadTool {
         params: Value,
         ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let path_str = params
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| BbError::Tool("Missing 'path' parameter".into()))?;
+            .ok_or_else(|| KordiError::Tool("Missing 'path' parameter".into()))?;
 
         let path = resolve_path(&ctx.cwd, path_str);
 
         if !path.exists() {
-            return Err(BbError::Tool(format!("File not found: {}", path.display())));
+            return Err(KordiError::Tool(format!("File not found: {}", path.display())));
         }
 
         if is_image(&path) {

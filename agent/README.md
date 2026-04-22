@@ -1,12 +1,8 @@
-# BB-Agent
+# Kordi Agent Runtime
 
-![BB-Agent title figure](assets/title-figure.png)
-
-> BB means Bridge Baby in Death Stranding. I named this project that way because while building it, I was also enjoying Death Stranding and loved the idea of connecting everyone together.
+![Kordi agent runtime title figure](assets/title-figure.png)
 
 A Rust-native AI coding agent for the terminal — featuring a TUI, multi-provider support, tool use, session persistence, branching, extensions, and skills.
-
-> Note: this runtime is derived from BB-Agent. Inside the Kordi monorepo, the compiled CLI binary is `kordi`.
 
 ## Role in Kordi
 
@@ -49,7 +45,7 @@ Core workspace crates:
 | `crates/tools` | Built-in tool implementations |
 | `crates/provider` | Provider and model integrations |
 | `crates/tui` | Terminal user interface |
-| `crates/cli` | Main `bb` binary |
+| `crates/cli` | Main `kordi` binary |
 
 ## Validation in Kordi
 
@@ -64,30 +60,7 @@ For deeper agent-specific references, see [docs/README.md](docs/README.md).
 
 ## Install
 
-```bash
-npm install -g @shuyhere/bb-agent
-```
-
-### 1. Install with npm
-
-npm install downloads a small wrapper package first, then fetches the matching native BB-Agent binary from the GitHub release for your platform.
-
-What to expect:
-- first install can take a bit because npm downloads a compressed native binary, expands it locally, and verifies it
-- the installer now prints progress and retry information while downloading
-- after install, run `bb`
-
-Current GitHub release binaries are published for:
-- Linux x86_64
-- macOS x86_64
-- macOS arm64 (Apple Silicon)
-- Windows x86_64
-
-If no matching prebuilt binary is available, or the download fails, npm install will print source-build instructions instead.
-
-### 2. Build from source for development
-
-Use this if you want to develop BB-Agent itself, work on the Rust codebase, or install directly without the npm downloader.
+Build from source for development or local use.
 
 Requires [Rust](https://rustup.rs). Install Rust first if you don't have it:
 
@@ -104,14 +77,14 @@ cd kordi
 cargo install --path agent/crates/cli
 ```
 
-This compiles the `bb` binary and installs it to `~/.cargo/bin/bb` (which Rust adds to your PATH).
+This compiles the `kordi` binary and installs it to `~/.cargo/bin/kordi` (which Rust adds to your PATH).
 
 ## Getting Started
 
 ### 1. Start the TUI
 
 ```bash
-bb
+kordi
 ```
 
 That's the recommended way to get started.
@@ -129,27 +102,27 @@ This opens the provider picker and auth flow directly in the TUI.
 If you prefer, you can also log in from a normal terminal:
 
 ```bash
-bb login              # Interactive provider selection
-bb login anthropic    # Login to Anthropic (OAuth)
-bb login openai-codex # Login to OpenAI (OAuth)
-bb login google       # Login to Google (API key)
+kordi login              # Interactive provider selection
+kordi login anthropic    # Login to Anthropic (OAuth)
+kordi login openai-codex # Login to OpenAI (OAuth)
+kordi login google       # Login to Google (API key)
 ```
 
 Or set environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.
 
-That's it! Run `bb` to launch the interactive TUI. Type your prompt and press Enter.
+That's it! Run `kordi` to launch the interactive TUI. Type your prompt and press Enter.
 
-### More ways to use `bb`
+### More ways to use `kordi`
 
 ```bash
-bb                                    # Launch the TUI
-bb "Explain this codebase"            # TUI with an initial prompt
-bb -p "What is 2+2?"                  # Print mode (non-interactive, pipe-friendly)
-bb -c                                 # Continue your last session
-bb -r                                 # Resume: pick from previous sessions
-bb --model sonnet                     # Use a specific model
-bb --model sonnet:high                # Model with extended thinking
-bb --list-models                      # List all available models
+kordi                                    # Launch the TUI
+kordi "Explain this codebase"            # TUI with an initial prompt
+kordi -p "What is 2+2?"                  # Print mode (non-interactive, pipe-friendly)
+kordi -c                                 # Continue your last session
+kordi -r                                 # Resume: pick from previous sessions
+kordi --model sonnet                     # Use a specific model
+kordi --model sonnet:high                # Model with extended thinking
+kordi --list-models                      # List all available models
 ```
 
 ## Features
@@ -166,36 +139,38 @@ bb --list-models                      # List all available models
 
 ## System Prompt Templates
 
-Save prompt templates in `~/.bb-agent/system-prompts/` and switch between them:
+Save prompt templates in `~/.kordi/system-prompts/` and switch between them.
 
 ```bash
-bb --list-templates                   # List available templates
-bb -t coding                          # Start with "coding" template
-bb -t research                        # Start with "research" template
-bb --system-prompt @path/to/file.md   # Load prompt from any file
+kordi --list-templates                   # List available templates
+kordi -t coding                          # Start with "coding" template
+kordi -t research                        # Start with "research" template
+kordi --system-prompt @path/to/file.md   # Load prompt from any file
 ```
 
 ## Extensions & Skills
 
 ```bash
-bb install npm:some-skill             # Install a global package
-bb install --local ./my-skill         # Install project-local
-bb list                               # List installed packages
-bb update                             # Update packages
+kordi install npm:some-skill             # Install a global package
+kordi install --local ./my-skill         # Install project-local
+kordi list                               # List installed packages
+kordi update                             # Update packages
 ```
 
 ## Configuration
 
-BB-Agent uses layered configuration:
+Kordi uses layered configuration:
 
 | File | Scope |
 |------|-------|
-| `~/.bb-agent/settings.json` | Global settings |
-| `<project>/.bb-agent/settings.json` | Project settings (overrides global) |
-| `~/.bb-agent/AGENTS.md` or `AGENTS.md` | System prompt additions |
-| `~/.bb-agent/system-prompts/<name>.md` | Named prompt templates |
-| `~/.bb-agent/skills/` | Global skills |
-| `~/.bb-agent/extensions/` | Global extensions |
+| `~/.kordi/settings.json` | Global settings |
+| `<project>/.kordi/settings.json` | Project settings (overrides global) |
+| `~/.kordi/AGENTS.md` or `AGENTS.md` | System prompt additions |
+| `~/.kordi/system-prompts/<name>.md` | Named prompt templates |
+| `~/.kordi/skills/` | Global skills |
+| `~/.kordi/extensions/` | Global extensions |
+
+Legacy agent paths are still discovered and are migrated to `~/.kordi/...` / `.kordi/...` when the new target does not already exist.
 
 ### Example `settings.json`
 
@@ -221,7 +196,7 @@ BB-Agent uses layered configuration:
 
 ### Execution Modes
 
-BB-Agent exposes the active permission posture in the TUI and `/session`.
+Kordi exposes the active permission posture in the TUI and `/session`.
 
 - `safety` is the default. Built-in `write` and `edit` stay inside the current workspace, and bash commands use the safer approval/sandboxed posture.
 - `yolo` is the opt-in less-restrictive mode.
@@ -252,20 +227,20 @@ Example:
 
 | Crate | Description |
 |-------|-------------|
-| `bb-core` | Core agent, session, config, and runtime types |
-| `bb-session` | SQLite-backed session storage, branching, context building |
-| `bb-tools` | Built-in tool implementations |
-| `bb-provider` | Model/provider integrations and streaming |
-| `bb-hooks` | Hook event types for extensions |
-| `bb-plugin-host` | Plugin discovery and host runtime |
-| `bb-tui` | Terminal UI components and the interactive TUI experience |
+| `kordi-core` | Core agent, session, config, and runtime types |
+| `kordi-session` | SQLite-backed session storage, branching, context building |
+| `kordi-tools` | Built-in tool implementations |
+| `kordi-provider` | Model/provider integrations and streaming |
+| `kordi-hooks` | Hook event types for extensions |
+| `kordi-plugin-host` | Plugin discovery and host runtime |
+| `kordi-tui` | Terminal UI components and the interactive TUI experience |
 | `kordi-cli` | The `kordi` command-line application used in this monorepo |
 
 ## Troubleshooting
 
 ### Terminal & Font Compatibility
 
-BB-Agent uses Unicode glyphs and ANSI color in the TUI. For the best visual experience, use a modern terminal and a Unicode-capable monospace font such as:
+Kordi uses Unicode glyphs and ANSI color in the TUI. For the best visual experience, use a modern terminal and a Unicode-capable monospace font such as:
 
 - JetBrains Mono
 - SF Mono / Menlo
@@ -277,15 +252,15 @@ If some symbols look broken, missing, or too narrow in your terminal:
 
 1. switch to a Unicode-capable monospace font
 2. make sure your terminal uses UTF-8
-3. enable BB-Agent compatibility mode
+3. enable Kordi compatibility mode
 
 Compatibility mode uses safer ASCII-style fallback glyphs for spinner/status/tool markers:
 
 ```bash
-BB_TUI_COMPAT=1 bb
+KORDI_TUI_COMPAT=1 kordi
 ```
 
-Or set this in `~/.bb-agent/settings.json`:
+Or set this in `~/.kordi/settings.json`:
 
 ```json
 {
@@ -316,7 +291,7 @@ kordi                                   # Run it
 
 Dev cycle:
 ```bash
-cargo run --bin bb                   # Run without installing
+cargo run --bin kordi                   # Run without installing
 cargo test --workspace --release     # Run all 435 tests
 cargo fmt --all                      # Format
 cargo clippy --workspace             # Lint

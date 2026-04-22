@@ -1,4 +1,4 @@
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::json;
 use std::path::Path;
 
@@ -24,10 +24,10 @@ pub(super) fn safe_char_boundary_at_or_before(s: &str, max_bytes: usize) -> usiz
     last
 }
 
-pub(super) async fn read_text(path: &Path, offset: usize, limit: usize) -> BbResult<ToolResult> {
+pub(super) async fn read_text(path: &Path, offset: usize, limit: usize) -> KordiResult<ToolResult> {
     let content = tokio::fs::read_to_string(path)
         .await
-        .map_err(|e| BbError::Tool(format!("Failed to read {}: {e}", path.display())))?;
+        .map_err(|e| KordiError::Tool(format!("Failed to read {}: {e}", path.display())))?;
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();

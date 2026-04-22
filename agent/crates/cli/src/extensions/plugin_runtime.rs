@@ -132,17 +132,17 @@ impl Tool for PluginTool {
         params: Value,
         _ctx: &ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         let mut host = self.host.lock().await;
         let result = host
             .execute_tool(self.name(), self.name(), params)
             .await
-            .map_err(|err| BbError::Plugin(err.to_string()))?;
+            .map_err(|err| KordiError::Plugin(err.to_string()))?;
         map_tool_result(result)
     }
 }
 
-pub(super) fn map_tool_result(value: Value) -> BbResult<ToolResult> {
+pub(super) fn map_tool_result(value: Value) -> KordiResult<ToolResult> {
     let mut content = Vec::new();
 
     if let Some(blocks) = value.get("content").and_then(Value::as_array) {
@@ -180,7 +180,7 @@ pub(super) fn map_tool_result(value: Value) -> BbResult<ToolResult> {
             });
         } else {
             content.push(ContentBlock::Text {
-                text: serde_json::to_string_pretty(&value).map_err(BbError::Json)?,
+                text: serde_json::to_string_pretty(&value).map_err(KordiError::Json)?,
             });
         }
     }

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use bb_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry, StopReason};
-use bb_session::{store, tree};
-use bb_tui::tui::{BlockKind, NewBlock, Transcript};
+use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry, StopReason};
+use kordi_session::{store, tree};
+use kordi_tui::tui::{BlockKind, NewBlock, Transcript};
 
 use super::super::formatting::{format_assistant_text, format_user_text, text_from_blocks};
 use super::HIDDEN_DISPATCH_PREFIX;
@@ -24,15 +24,15 @@ pub(super) fn build_tui_transcript(
     session_id: &str,
 ) -> Result<(
     Transcript,
-    HashMap<String, bb_tui::tui::HistoricalToolState>,
+    HashMap<String, kordi_tui::tui::HistoricalToolState>,
 )> {
     let path = tree::active_path(conn, session_id)?;
     let entries: Vec<SessionEntry> = path.iter().map(store::parse_entry).collect::<Result<_>>()?;
 
     let mut transcript = Transcript::new();
-    let mut tool_map: HashMap<String, bb_tui::tui::BlockId> = HashMap::new();
-    let mut tool_states: HashMap<String, bb_tui::tui::HistoricalToolState> = HashMap::new();
-    let mut last_assistant_root: Option<bb_tui::tui::BlockId> = None;
+    let mut tool_map: HashMap<String, kordi_tui::tui::BlockId> = HashMap::new();
+    let mut tool_states: HashMap<String, kordi_tui::tui::HistoricalToolState> = HashMap::new();
+    let mut last_assistant_root: Option<kordi_tui::tui::BlockId> = None;
 
     let latest_compaction_idx = entries
         .iter()
@@ -98,9 +98,9 @@ pub(super) fn build_tui_transcript(
 fn append_entry_to_tui_transcript(
     entry: &SessionEntry,
     transcript: &mut Transcript,
-    tool_map: &mut HashMap<String, bb_tui::tui::BlockId>,
-    tool_states: &mut HashMap<String, bb_tui::tui::HistoricalToolState>,
-    last_assistant_root: &mut Option<bb_tui::tui::BlockId>,
+    tool_map: &mut HashMap<String, kordi_tui::tui::BlockId>,
+    tool_states: &mut HashMap<String, kordi_tui::tui::HistoricalToolState>,
+    last_assistant_root: &mut Option<kordi_tui::tui::BlockId>,
 ) -> Result<()> {
     match entry {
         SessionEntry::Message { message, .. } => match message {
@@ -147,9 +147,9 @@ fn append_entry_to_tui_transcript(
                                 root_id,
                                 NewBlock::new(
                                     BlockKind::ToolUse,
-                                    bb_tui::tui::format_tool_call_title(name, &raw_args),
+                                    kordi_tui::tui::format_tool_call_title(name, &raw_args),
                                 )
-                                .with_content(bb_tui::tui::format_tool_call_content(
+                                .with_content(kordi_tui::tui::format_tool_call_content(
                                     name, &raw_args, false,
                                 ))
                                 .with_expandable(true),
@@ -157,7 +157,7 @@ fn append_entry_to_tui_transcript(
                             tool_map.insert(id.clone(), tool_id);
                             tool_states.insert(
                                 id.clone(),
-                                bb_tui::tui::HistoricalToolState {
+                                kordi_tui::tui::HistoricalToolState {
                                     name: name.clone(),
                                     raw_args,
                                     tool_use_id: tool_id,
@@ -175,7 +175,7 @@ fn append_entry_to_tui_transcript(
                 *last_assistant_root = Some(root_id);
             }
             AgentMessage::ToolResult(result) => {
-                let body = bb_tui::tui::format_tool_result_content(
+                let body = kordi_tui::tui::format_tool_result_content(
                     &result.tool_name,
                     &result.content,
                     result.details.clone(),
@@ -227,9 +227,9 @@ fn append_entry_to_tui_transcript(
                 let tool_id = transcript.append_root_block(
                     NewBlock::new(
                         BlockKind::ToolUse,
-                        bb_tui::tui::format_tool_call_title("bash", &raw_args),
+                        kordi_tui::tui::format_tool_call_title("bash", &raw_args),
                     )
-                    .with_content(bb_tui::tui::format_tool_call_content(
+                    .with_content(kordi_tui::tui::format_tool_call_content(
                         "bash", &raw_args, false,
                     ))
                     .with_expandable(true),
@@ -254,7 +254,7 @@ fn append_entry_to_tui_transcript(
                 let historical_id = format!("bash-exec-{}", message.timestamp);
                 tool_states.insert(
                     historical_id,
-                    bb_tui::tui::HistoricalToolState {
+                    kordi_tui::tui::HistoricalToolState {
                         name: "bash".to_string(),
                         raw_args,
                         tool_use_id: tool_id,

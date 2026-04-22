@@ -4,23 +4,39 @@ use super::Settings;
 
 impl Settings {
     // IO boundary — should migrate to cli
-    /// Load the global settings from `~/.bb-agent/settings.json`.
+    /// Load global settings from `~/.kordi/settings.json`, with legacy
+    /// global settings fallback.
     pub fn load_global() -> Self {
-        let dir = crate::config::global_dir();
-        let path = dir.join("settings.json");
-        Self::load_from_file(&path)
+        let _ = crate::config::migrate_legacy_global_config();
+        let path = crate::config::global_settings_path();
+        match Self::load_from_file_result(&path) {
+            Ok(settings) => {
+                let _ = crate::config::migrate_legacy_global_storage(&settings.storage);
+                settings
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: failed to load settings from {}: {error}",
+                    path.display()
+                );
+                let settings = Self::default();
+                let _ = crate::config::migrate_legacy_global_storage(&settings.storage);
+                settings
+            }
+        }
     }
 
-    /// Save global settings to `~/.bb-agent/settings.json`.
+    /// Save global settings to `~/.kordi/settings.json`.
     pub fn save_global(&self) -> std::io::Result<()> {
-        let dir = crate::config::global_dir();
-        self.save_to_file(&dir.join("settings.json"))
+        let _ = crate::config::migrate_legacy_global_config();
+        self.save_to_file(&crate::config::preferred_global_settings_path())
     }
 
-    /// Save project settings to the detected project root's `.bb-agent/settings.json`.
-    /// Falls back to `<cwd>/.bb-agent/settings.json` when no project root markers are found.
+    /// Save project settings to the detected project root's `.kordi/settings.json`.
+    /// Falls back to `<cwd>/.kordi/settings.json` when no project root markers are found.
     pub fn save_project(&self, cwd: &Path) -> std::io::Result<()> {
-        self.save_to_file(&crate::config::project_dir(cwd).join("settings.json"))
+        let _ = crate::config::migrate_legacy_project_config(cwd);
+        self.save_to_file(&crate::config::preferred_project_settings_path(cwd))
     }
 
     /// Save settings to a specific file path.
@@ -34,10 +50,11 @@ impl Settings {
 
     // IO boundary — should migrate to cli
     /// Load project-local settings from the detected project root's
-    /// `.bb-agent/settings.json`.
-    /// Falls back to `<cwd>/.bb-agent/settings.json` when no project root markers are found.
+    /// `.kordi/settings.json`, with legacy project settings fallback.
+    /// Falls back to `<cwd>/.kordi/settings.json` when no project root markers are found.
     pub fn load_project(cwd: &Path) -> Self {
-        let path = crate::config::project_dir(cwd).join("settings.json");
+        let _ = crate::config::migrate_legacy_project_config(cwd);
+        let path = crate::config::project_settings_path(cwd);
         Self::load_from_file(&path)
     }
 

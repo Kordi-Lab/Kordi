@@ -1,10 +1,10 @@
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 
 use super::{WebSearchInput, normalize_domain};
 
-pub(super) fn validate_input(input: &WebSearchInput) -> BbResult<()> {
+pub(super) fn validate_input(input: &WebSearchInput) -> KordiResult<()> {
     if input.query.trim().is_empty() {
-        return Err(BbError::Tool("web_search query must be non-empty".into()));
+        return Err(KordiError::Tool("web_search query must be non-empty".into()));
     }
 
     let has_allowed = input
@@ -27,7 +27,7 @@ pub(super) fn validate_input(input: &WebSearchInput) -> BbResult<()> {
         .unwrap_or(false);
 
     if has_allowed && has_blocked {
-        return Err(BbError::Tool(
+        return Err(KordiError::Tool(
             "web_search cannot use both allowed_domains and blocked_domains".into(),
         ));
     }

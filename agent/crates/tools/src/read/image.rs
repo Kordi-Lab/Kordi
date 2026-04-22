@@ -1,4 +1,4 @@
-use bb_core::error::{BbError, BbResult};
+use kordi_core::error::{KordiError, KordiResult};
 use std::path::Path;
 
 use crate::{ToolResult, support::image_result};
@@ -12,10 +12,10 @@ pub(super) fn is_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-pub(super) async fn read_image(path: &Path) -> BbResult<ToolResult> {
+pub(super) async fn read_image(path: &Path) -> KordiResult<ToolResult> {
     let data = tokio::fs::read(path)
         .await
-        .map_err(|e| BbError::Tool(format!("Failed to read image: {e}")))?;
+        .map_err(|e| KordiError::Tool(format!("Failed to read image: {e}")))?;
 
     let ext = path
         .extension()

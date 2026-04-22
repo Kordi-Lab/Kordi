@@ -16,11 +16,11 @@ function isWindows() {
 }
 
 function candidateNames() {
-  return isWindows() ? ["bb.exe", "bb.cmd", "bb.ps1", "bb"] : ["bb"];
+  return isWindows() ? ["kordi.exe", "kordi.cmd", "kordi.ps1", "kordi"] : ["kordi"];
 }
 
 function bundledBinaryPath() {
-  return path.join(__dirname, "..", "native", isWindows() ? "bb.exe" : "bb");
+  return path.join(__dirname, "..", "native", isWindows() ? "kordi.exe" : "kordi");
 }
 
 function candidateReferencesCurrentPackage(candidate) {
@@ -75,20 +75,20 @@ var binary = findBinary();
 
 if (!binary) {
   console.error("");
-  console.error("BB-Agent native binary not found.");
+  console.error("Kordi native binary not found.");
   console.error("");
   console.error("This npm package is a small launcher and expects a matching native binary.");
   console.error("That binary may not have been downloaded yet for version " + packageJson.version + ".");
   console.error("");
   console.error("Try reinstalling after the GitHub release assets are available:");
-  console.error("  npm uninstall -g @shuyhere/bb-agent");
-  console.error("  npm install -g @shuyhere/bb-agent@" + packageJson.version);
+  console.error("  npm uninstall -g kordi");
+  console.error("  npm install -g kordi@" + packageJson.version);
   console.error("");
   console.error("Or build from source:");
-  console.error("  git clone https://github.com/shuyhere/bb-agent.git");
-  console.error("  cd bb-agent && cargo install --path crates/cli");
+  console.error("  git clone https://github.com/Kordi-AI/Kordi.git");
+  console.error("  cd kordi && cargo install --path crates/cli");
   console.error("");
-  console.error("If this npm launcher shadows a source-built bb on your PATH, uninstall the npm package first.");
+  console.error("If this npm launcher shadows a source-built kordi on your PATH, uninstall the npm package first.");
   console.error("");
   process.exit(1);
 }
@@ -96,7 +96,7 @@ if (!binary) {
 try {
   execFileSync(binary, process.argv.slice(2), {
     stdio: "inherit",
-    env: Object.assign({}, process.env, { BB_NPM_WRAPPER_ACTIVE: "1" })
+    env: Object.assign({}, process.env, { KORDI_NPM_WRAPPER_ACTIVE: "1" })
   });
 } catch (err) {
   process.exit(err.status || 1);

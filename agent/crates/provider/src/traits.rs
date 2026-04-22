@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb_core::error::BbResult;
+use kordi_core::error::KordiResult;
 use tokio::sync::mpsc;
 
 use crate::types::{CompletionRequest, RequestOptions, StreamEvent};
@@ -15,7 +15,7 @@ pub trait Provider: Send + Sync {
         &self,
         request: CompletionRequest,
         options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>>;
+    ) -> KordiResult<Vec<StreamEvent>>;
 
     /// Streaming: sends events to channel as they arrive.
     async fn stream(
@@ -23,5 +23,5 @@ pub trait Provider: Send + Sync {
         request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()>;
+    ) -> KordiResult<()>;
 }

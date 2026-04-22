@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use bb_core::types::{AgentMessage, AssistantContent};
+use kordi_core::types::{AgentMessage, AssistantContent};
 
 // =============================================================================
 // File operation tracking

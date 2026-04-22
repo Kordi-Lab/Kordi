@@ -1,4 +1,4 @@
-//! Core agent, session, configuration, and runtime types for BB-Agent.
+//! Core agent, session, configuration, and runtime types for Kordi.
 //!
 //! The primary stable runtime surface is [`agent::Agent`].
 //! The `agent_loop` module is retained only as a transitional compatibility
@@ -23,4 +23,4 @@ pub mod types;
 #[cfg(test)]
 mod tool_names_tests;
 
-// agent_session types are accessed via bb_core::agent_session::
+// agent_session types are accessed via kordi_core::agent_session::

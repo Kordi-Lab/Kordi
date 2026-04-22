@@ -1,4 +1,4 @@
-use bb_core::types::{AssistantContent, ContentBlock};
+use kordi_core::types::{AssistantContent, ContentBlock};
 
 pub(super) fn format_user_text(blocks: &[ContentBlock]) -> String {
     blocks
@@ -22,7 +22,7 @@ pub(super) fn text_from_blocks(blocks: &[ContentBlock], separator: &str) -> Stri
         .join(separator)
 }
 
-pub(super) fn format_assistant_text(message: &bb_core::types::AssistantMessage) -> String {
+pub(super) fn format_assistant_text(message: &kordi_core::types::AssistantMessage) -> String {
     message
         .content
         .iter()

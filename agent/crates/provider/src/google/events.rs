@@ -1,6 +1,6 @@
 use super::*;
 
-use bb_core::types::CacheMetricsSource;
+use kordi_core::types::CacheMetricsSource;
 
 use crate::UsageInfo;
 

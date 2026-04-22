@@ -1,23 +1,20 @@
 use anyhow::Result;
-use bb_session::store;
-use bb_tui::tui::{
-    TuiApprovalChoice, TuiApprovalDialog, TuiCommand, TuiNoteLevel,
-    TuiSubmission,
+use kordi_session::store;
+use kordi_tui::tui::{
+    TuiApprovalChoice, TuiApprovalDialog, TuiCommand, TuiNoteLevel, TuiSubmission,
 };
 use tokio::sync::mpsc;
 
-use super::{
-    TuiController, QueuedPrompt, SessionApprovalRule, derive_session_approval_rule,
-};
+use super::{QueuedPrompt, SessionApprovalRule, TuiController, derive_session_approval_rule};
 
 impl TuiController {
     pub(crate) async fn run(
         mut self,
         mut submission_rx: mpsc::UnboundedReceiver<TuiSubmission>,
     ) -> Result<()> {
-        let settings = bb_core::settings::Settings::load_global();
+        let settings = kordi_core::settings::Settings::load_global();
         if let Some(theme_name) = settings.color_theme.as_deref()
-            && let Some(theme) = bb_tui::tui::spinner::ColorTheme::from_name(theme_name)
+            && let Some(theme) = kordi_tui::tui::spinner::ColorTheme::from_name(theme_name)
         {
             self.color_theme = theme;
             self.send_command(TuiCommand::SetColorTheme(theme));
@@ -113,9 +110,7 @@ impl TuiController {
         }
 
         match submission {
-            TuiSubmission::Input(text) => {
-                self.handle_submitted_text(text, submission_rx).await
-            }
+            TuiSubmission::Input(text) => self.handle_submitted_text(text, submission_rx).await,
             TuiSubmission::InputWithImages { text, image_paths } => {
                 self.attach_images_from_paths(&image_paths);
                 self.handle_submitted_text(text, submission_rx).await
@@ -374,8 +369,8 @@ impl TuiController {
             .iter()
             .any(|rule| rule.matches(&request.command))
         {
-            let _ = approval.response_tx.send(bb_tools::ToolApprovalOutcome {
-                decision: bb_tools::ToolApprovalDecision::ApprovedForSession,
+            let _ = approval.response_tx.send(kordi_tools::ToolApprovalOutcome {
+                decision: kordi_tools::ToolApprovalDecision::ApprovedForSession,
             });
             self.send_command(TuiCommand::SetStatusLine(
                 "Approved bash command from session permission".to_string(),
@@ -384,8 +379,8 @@ impl TuiController {
         }
 
         if let Some(pending) = self.pending_approval.replace(approval) {
-            let _ = pending.response_tx.send(bb_tools::ToolApprovalOutcome {
-                decision: bb_tools::ToolApprovalDecision::Denied,
+            let _ = pending.response_tx.send(kordi_tools::ToolApprovalOutcome {
+                decision: kordi_tools::ToolApprovalDecision::Denied,
             });
         }
 
@@ -397,29 +392,24 @@ impl TuiController {
             .clone();
         let session_rule = derive_session_approval_rule(&request.command);
         self.send_command(TuiCommand::SetLocalActionActive(true));
-        self.send_command(TuiCommand::OpenApprovalDialog(
-            TuiApprovalDialog {
-                title: request.title,
-                command: request.command,
-                reason: request.reason,
-                lines: vec![],
-                allow_session: true,
-                session_scope_label: Some(session_rule.display_scope()),
-                deny_input: String::new(),
-                deny_cursor: 0,
-                deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-                selected: TuiApprovalChoice::ApproveOnce,
-            },
-        ));
+        self.send_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+            title: request.title,
+            command: request.command,
+            reason: request.reason,
+            lines: vec![],
+            allow_session: true,
+            session_scope_label: Some(session_rule.display_scope()),
+            deny_input: String::new(),
+            deny_cursor: 0,
+            deny_input_placeholder: Some("Tell Kordi what to do differently".to_string()),
+            selected: TuiApprovalChoice::ApproveOnce,
+        }));
         self.send_command(TuiCommand::SetStatusLine(
             "Approval required for bash command".to_string(),
         ));
     }
 
-    pub(crate) fn handle_approval_submission(
-        &mut self,
-        submission: TuiSubmission,
-    ) -> Result<()> {
+    pub(crate) fn handle_approval_submission(&mut self, submission: TuiSubmission) -> Result<()> {
         let (choice, steer_message) = match submission {
             TuiSubmission::ApprovalDecision {
                 choice,
@@ -430,8 +420,8 @@ impl TuiController {
         };
 
         let outcome = match choice {
-            TuiApprovalChoice::ApproveOnce => bb_tools::ToolApprovalOutcome {
-                decision: bb_tools::ToolApprovalDecision::ApprovedOnce,
+            TuiApprovalChoice::ApproveOnce => kordi_tools::ToolApprovalOutcome {
+                decision: kordi_tools::ToolApprovalDecision::ApprovedOnce,
             },
             TuiApprovalChoice::ApproveForSession => {
                 if let Some(pending) = self.pending_approval.as_ref() {
@@ -439,12 +429,12 @@ impl TuiController {
                         derive_session_approval_rule(&pending.request.command);
                     self.session_approval_rules.insert(rule);
                 }
-                bb_tools::ToolApprovalOutcome {
-                    decision: bb_tools::ToolApprovalDecision::ApprovedForSession,
+                kordi_tools::ToolApprovalOutcome {
+                    decision: kordi_tools::ToolApprovalDecision::ApprovedForSession,
                 }
             }
-            TuiApprovalChoice::Deny => bb_tools::ToolApprovalOutcome {
-                decision: bb_tools::ToolApprovalDecision::Denied,
+            TuiApprovalChoice::Deny => kordi_tools::ToolApprovalOutcome {
+                decision: kordi_tools::ToolApprovalDecision::Denied,
             },
         };
 
@@ -465,7 +455,7 @@ impl TuiController {
                     .as_ref()
                     .is_some_and(|message| !message.trim().is_empty())
                 {
-                    "Denied bash command with guidance for BB".to_string()
+                    "Denied bash command with guidance for Kordi".to_string()
                 } else {
                     "Denied bash command".to_string()
                 }

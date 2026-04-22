@@ -1,6 +1,6 @@
 # Built-in Tools
 
-BB-Agent comes with 10 built-in tools that the AI can use during conversations.
+Kordi comes with 10 built-in tools that the AI can use during conversations.
 
 ## Role in Kordi
 
@@ -117,14 +117,14 @@ Fetch a page using a real headless Chrome/Chromium browser. Use when `web_fetch`
 | `max_chars` | number | | Max characters (default: 20000) |
 | `timeout` | number | | Timeout in seconds (default: 25) |
 
-Requires Chrome or Chromium installed. Set `BB_BROWSER` env var to specify a custom binary path.
+Requires Chrome or Chromium installed. Set `KORDI_BROWSER` env var to specify a custom binary path.
 
 ## Restricting Tools
 
 ### Via CLI
 ```bash
-bb --tools read,bash,edit,write    # Only these tools
-bb --no-tools                       # Disable all tools
+kordi --tools read,bash,edit,write    # Only these tools
+kordi --no-tools                       # Disable all tools
 ```
 
 ### Via settings.json

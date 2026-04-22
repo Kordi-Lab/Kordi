@@ -1,7 +1,7 @@
 //! Transitional legacy agent loop compatibility surface.
 //!
 //! This module is retained for older integrations but is not the canonical
-//! stabilized runtime API for BB-Agent. Prefer `bb_core::agent::Agent`.
+//! stabilized runtime API for Kordi. Prefer `kordi_core::agent::Agent`.
 
 mod compat;
 mod runner;

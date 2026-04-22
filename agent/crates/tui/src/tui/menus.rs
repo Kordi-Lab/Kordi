@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bb_session::{store::EntryRow, tree::TreeNode};
+use kordi_session::{store::EntryRow, tree::TreeNode};
 
 use crate::select_list::{SelectItem, SelectList};
 use crate::slash_commands::shared_slash_command_select_items;
@@ -252,7 +252,7 @@ fn list_file_suggestions(query: &str, cwd: &Path, max: usize) -> Vec<SelectItem>
 }
 
 fn list_files_via_fd(query: &str, cwd: &Path, max: usize) -> Option<Vec<SelectItem>> {
-    let base = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let base = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     let is_project = base.join(".git").exists()
         || base.join("Cargo.toml").exists()
         || base.join("package.json").exists();
@@ -324,7 +324,7 @@ fn format_at_file_value(path: &str) -> String {
 }
 
 fn list_files_via_readdir(query: &str, cwd: &Path, max: usize) -> Vec<SelectItem> {
-    let base = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let base = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     // Determine which directory to list and what prefix to match
     let path_split = query.rsplit_once('/');
     let (dir, prefix) = if let Some((dir_part, file_part)) = path_split {

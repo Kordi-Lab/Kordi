@@ -1,4 +1,4 @@
-use bb_tools::{Tool, builtin_tools};
+use kordi_tools::{Tool, builtin_tools};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -297,9 +297,9 @@ mod tests {
         async fn execute(
             &self,
             _params: Value,
-            _ctx: &bb_tools::ToolContext,
+            _ctx: &kordi_tools::ToolContext,
             _cancel: CancellationToken,
-        ) -> bb_core::error::BbResult<bb_tools::ToolResult> {
+        ) -> kordi_core::error::KordiResult<kordi_tools::ToolResult> {
             unimplemented!("tool execution is not needed for registry tests")
         }
     }

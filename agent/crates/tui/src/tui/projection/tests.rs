@@ -350,7 +350,7 @@ fn wrap_visual_line_preserves_ansi_escape_sequences() {
     // sequence across wrapped lines, leaking `192;197;206m` and `0m` into
     // the rendered output as literal text.
     let line = format!(
-        "{red}use{reset} {blue}bb_core::agent_session{reset}::{green}ModelRef{reset};",
+        "{red}use{reset} {blue}kordi_core::agent_session{reset}::{green}ModelRef{reset};",
         red = "\x1b[38;2;192;197;206m",
         blue = "\x1b[38;2;102;153;204m",
         green = "\x1b[38;2;181;189;104m",
@@ -386,7 +386,7 @@ fn wrap_visual_line_preserves_ansi_escape_sequences() {
         .collect::<Vec<_>>()
         .join("");
     assert!(joined_visible.contains("use"));
-    assert!(joined_visible.contains("bb_core"));
+    assert!(joined_visible.contains("kordi_core"));
     assert!(joined_visible.contains("ModelRef"));
 
     // Every segment must respect the 20-column width budget.

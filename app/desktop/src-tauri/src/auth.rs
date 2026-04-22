@@ -105,7 +105,7 @@ fn auth_option_label(
         (kordi_cli::login::ProviderAuthMethod::ApiKey, kordi_cli::login::AuthSource::EnvVar) => {
             "Environment API key".to_string()
         }
-        (kordi_cli::login::ProviderAuthMethod::ApiKey, kordi_cli::login::AuthSource::BbAuth) => {
+        (kordi_cli::login::ProviderAuthMethod::ApiKey, kordi_cli::login::AuthSource::KordiAuth) => {
             option
                 .account_label
                 .clone()
@@ -114,7 +114,7 @@ fn auth_option_label(
         (kordi_cli::login::ProviderAuthMethod::OAuth, kordi_cli::login::AuthSource::EnvVar) => {
             "Environment OAuth".to_string()
         }
-        (kordi_cli::login::ProviderAuthMethod::OAuth, kordi_cli::login::AuthSource::BbAuth) => {
+        (kordi_cli::login::ProviderAuthMethod::OAuth, kordi_cli::login::AuthSource::KordiAuth) => {
             if provider == "anthropic" {
                 return "Claude subscription".to_string();
             }
@@ -143,7 +143,7 @@ fn auth_option_detail(
     if let Some(authority) = &option.authority {
         parts.push(authority.clone());
     }
-    if matches!(option.source, kordi_cli::login::AuthSource::BbAuth)
+    if matches!(option.source, kordi_cli::login::AuthSource::KordiAuth)
         && matches!(option.method, kordi_cli::login::ProviderAuthMethod::ApiKey)
     {
         if let Some(profile_id) = &option.profile_id {
@@ -160,7 +160,7 @@ fn auth_option_detail(
     }
     if provider == "anthropic"
         && matches!(option.method, kordi_cli::login::ProviderAuthMethod::OAuth)
-        && matches!(option.source, kordi_cli::login::AuthSource::BbAuth)
+        && matches!(option.source, kordi_cli::login::AuthSource::KordiAuth)
     {
         parts.push("claude.ai".to_string());
         if let Some(profile_id) = &option.profile_id {
@@ -179,7 +179,7 @@ fn auth_option_detail(
     }
     if matches!(provider, "openai" | "openai-codex")
         && matches!(option.method, kordi_cli::login::ProviderAuthMethod::OAuth)
-        && matches!(option.source, kordi_cli::login::AuthSource::BbAuth)
+        && matches!(option.source, kordi_cli::login::AuthSource::KordiAuth)
     {
         if let Some(account_label) = option.account_label.as_deref() {
             if looks_like_uuid(account_label) {

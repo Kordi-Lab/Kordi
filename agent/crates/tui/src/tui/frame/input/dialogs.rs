@@ -24,7 +24,7 @@ fn approval_options(dialog: &types::TuiApprovalDialog) -> Vec<(types::TuiApprova
     }
     options.push((
         types::TuiApprovalChoice::Deny,
-        "No, and tell BB what to do differently [n]".to_string(),
+        "No, and tell Kordi what to do differently [n]".to_string(),
     ));
     options
 }
@@ -290,7 +290,7 @@ fn approval_input_content(
         let placeholder = dialog
             .deny_input_placeholder
             .as_deref()
-            .unwrap_or("Tell BB what to do differently");
+            .unwrap_or("Tell Kordi what to do differently");
         let input_value = if dialog.deny_input.is_empty() {
             format!("{}{}{}", t.muted, placeholder, t.reset)
         } else {

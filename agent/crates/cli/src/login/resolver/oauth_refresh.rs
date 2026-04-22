@@ -16,7 +16,7 @@ impl ResolvedProviderAuth {
     pub fn footer_badge(&self, provider: &str) -> String {
         let method = self.method.footer_label();
         match self.source {
-            AuthSource::BbAuth => format!("{provider}/{method}"),
+            AuthSource::KordiAuth => format!("{provider}/{method}"),
             AuthSource::EnvVar => format!("{provider}/{method}(env)"),
         }
     }
@@ -39,7 +39,7 @@ fn resolve_stored_profile_auth(
     let normalized = normalize_provider_for_model_selection(provider);
     match &profile.entry {
         AuthEntry::ApiKey { key } => Some(ResolvedProviderAuth {
-            source: AuthSource::BbAuth,
+            source: AuthSource::KordiAuth,
             credential_provider: provider_storage_key(&normalized, profile.method),
             method: profile.method,
             credential: key.clone(),
@@ -78,7 +78,7 @@ fn resolve_stored_profile_auth(
                 access.clone()
             };
             Some(ResolvedProviderAuth {
-                source: AuthSource::BbAuth,
+                source: AuthSource::KordiAuth,
                 credential_provider,
                 method: profile.method,
                 credential,
@@ -291,7 +291,7 @@ fn resolve_github_copilot_profile_auth(profile: &AuthProfile) -> Option<Resolved
         && !token.trim().is_empty()
     {
         return Some(ResolvedProviderAuth {
-            source: AuthSource::BbAuth,
+            source: AuthSource::KordiAuth,
             credential_provider: "github-copilot".to_string(),
             method: ProviderAuthMethod::OAuth,
             credential: token.to_string(),
@@ -306,7 +306,7 @@ fn resolve_github_copilot_profile_auth(profile: &AuthProfile) -> Option<Resolved
         && let Some(token) = try_refresh_sync("github-copilot", &refresh)
     {
         return Some(ResolvedProviderAuth {
-            source: AuthSource::BbAuth,
+            source: AuthSource::KordiAuth,
             credential_provider: "github-copilot".to_string(),
             method: ProviderAuthMethod::OAuth,
             credential: token,
@@ -325,7 +325,7 @@ fn resolve_github_copilot_profile_auth(profile: &AuthProfile) -> Option<Resolved
     merge_github_copilot_runtime_extra(&mut extra, &authority, &refreshed);
     let _ = save_oauth_state("github-copilot", access, refresh, expires, extra);
     Some(ResolvedProviderAuth {
-        source: AuthSource::BbAuth,
+        source: AuthSource::KordiAuth,
         credential_provider: "github-copilot".to_string(),
         method: ProviderAuthMethod::OAuth,
         credential: refreshed.copilot_token,
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(
             resolved,
             ResolvedProviderAuth {
-                source: crate::login::resolver::AuthSource::BbAuth,
+                source: crate::login::resolver::AuthSource::KordiAuth,
                 credential_provider: "openai-codex".to_string(),
                 method: ProviderAuthMethod::OAuth,
                 credential: "oauth-access".to_string(),

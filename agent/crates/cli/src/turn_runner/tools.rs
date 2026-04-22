@@ -1,13 +1,13 @@
 use anyhow::Result;
-use bb_core::tool_names::normalize_requested_tool_name;
-use bb_core::types::*;
-use bb_hooks::events::{
+use kordi_core::tool_names::normalize_requested_tool_name;
+use kordi_core::types::*;
+use kordi_hooks::events::{
     ToolExecutionEndEvent, ToolExecutionStartEvent, ToolExecutionUpdateEvent, ToolResultEvent,
 };
-use bb_hooks::{Event, ToolCallEvent};
-use bb_provider::{CollectedResponse, CollectedToolCall};
-use bb_session::store;
-use bb_tools::{FileQueue, Tool, ToolContext, ToolScheduling, execute_reserved_tool_call};
+use kordi_hooks::{Event, ToolCallEvent};
+use kordi_provider::{CollectedResponse, CollectedToolCall};
+use kordi_session::store;
+use kordi_tools::{FileQueue, Tool, ToolContext, ToolScheduling, execute_reserved_tool_call};
 use chrono::Utc;
 use futures::future::join_all;
 use std::sync::Arc;
@@ -94,7 +94,7 @@ struct PreparedToolExecution {
 
 struct ExecutedToolCall {
     prepared: PreparedToolExecution,
-    result: bb_core::error::BbResult<bb_tools::ToolResult>,
+    result: kordi_core::error::KordiResult<kordi_tools::ToolResult>,
     duration_ms: u64,
     ran_execution: bool,
 }
@@ -177,7 +177,7 @@ async fn preflight_tool_call(
         finish_tool_call(
             ExecutedToolCall {
                 prepared,
-                result: Err(bb_core::error::BbError::Tool(block_reason.unwrap_or_else(
+                result: Err(kordi_core::error::KordiError::Tool(block_reason.unwrap_or_else(
                     || format!("Tool {} blocked by extension", tool_call.name),
                 ))),
                 duration_ms: 0,
@@ -485,14 +485,14 @@ async fn execute_tool(
     prepared: &mut PreparedToolExecution,
     env: &ToolExecutionEnv<'_>,
     file_queue: &FileQueue,
-) -> bb_core::error::BbResult<bb_tools::ToolResult> {
+) -> kordi_core::error::KordiResult<kordi_tools::ToolResult> {
     let normalized_name = normalize_requested_tool_name(&prepared.name);
     let Some(tool) = env
         .tools
         .iter()
         .find(|tool| tool.name() == normalized_name.as_ref())
     else {
-        return Err(bb_core::error::BbError::Tool(format!(
+        return Err(kordi_core::error::KordiError::Tool(format!(
             "Unknown tool: {}",
             prepared.name
         )));
@@ -548,7 +548,7 @@ async fn execute_tool(
     .await
     {
         Ok(result) => result,
-        Err(message) => Err(bb_core::error::BbError::Tool(format!(
+        Err(message) => Err(kordi_core::error::KordiError::Tool(format!(
             "Tool {} panicked: {message}",
             prepared.name
         ))),

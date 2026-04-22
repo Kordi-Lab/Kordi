@@ -466,7 +466,7 @@ mod tests {
         hydrate_request_metrics_state, normalized_estimated_cache_read_tokens,
         prepare_request_metrics, resolve_cache_usage,
     };
-    use bb_core::types::{AgentMessage, ContentBlock, UserMessage};
+    use kordi_core::types::{AgentMessage, ContentBlock, UserMessage};
     use serde_json::json;
 
     fn parity_test_snapshot(
@@ -735,7 +735,7 @@ mod tests {
             }],
             timestamp: 0,
         })];
-        let provider_messages = bb_core::agent_session::messages_to_provider(&session_messages);
+        let provider_messages = kordi_core::agent_session::messages_to_provider(&session_messages);
         let snapshot = RequestMetricsSnapshot {
             system_prompt: "system".to_string(),
             provider_messages,
@@ -769,7 +769,7 @@ mod tests {
             timestamp: 0,
         })];
         let snapshot = parity_test_snapshot(
-            bb_core::agent_session::messages_to_provider(&session_messages),
+            kordi_core::agent_session::messages_to_provider(&session_messages),
             vec![],
         );
         let mut state = RequestMetricsState::default();

@@ -1,4 +1,4 @@
-use bb_session::store::SessionRow;
+use kordi_session::store::SessionRow;
 use crossterm::event::KeyEvent;
 
 use crate::select_list::{SelectAction, SelectItem, SelectList};

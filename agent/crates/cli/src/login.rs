@@ -4,9 +4,9 @@ mod resolver;
 mod store;
 
 use anyhow::Result;
-use bb_core::config;
-use bb_core::settings::Settings;
-use bb_provider::registry::{Model, ModelRegistry};
+use kordi_core::config;
+use kordi_core::settings::Settings;
+use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

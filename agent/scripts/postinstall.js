@@ -13,7 +13,7 @@ const { pipeline } = require("stream/promises");
 
 const packageJson = require("../package.json");
 const BINARY_RELEASE_TAG = `v${packageJson.version}`;
-const REPO = "shuyhere/bb-agent";
+const REPO = "Kordi-AI/Kordi";
 const NATIVE_DIR = path.join(__dirname, "..", "native");
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 const DOWNLOAD_PROGRESS_INTERVAL_MS = 1_000;
@@ -25,7 +25,7 @@ function isWindows() {
 }
 
 function nativeBinaryName() {
-  return isWindows() ? "bb.exe" : "bb";
+  return isWindows() ? "kordi.exe" : "kordi";
 }
 
 function nativeBinaryPath() {
@@ -50,7 +50,7 @@ function getTarget() {
 }
 
 function assetNameForTarget(target) {
-  return isWindows() ? `bb-${target}.exe` : `bb-${target}`;
+  return isWindows() ? `kordi-${target}.exe` : `kordi-${target}`;
 }
 
 function assetCandidatesForTarget(target) {
@@ -139,21 +139,21 @@ function hasBundledNativeBinary() {
 }
 
 function cacheRootDir() {
-  if (process.env.BB_INSTALL_CACHE_DIR && process.env.BB_INSTALL_CACHE_DIR.trim()) {
-    return process.env.BB_INSTALL_CACHE_DIR;
+  if (process.env.KORDI_INSTALL_CACHE_DIR && process.env.KORDI_INSTALL_CACHE_DIR.trim()) {
+    return process.env.KORDI_INSTALL_CACHE_DIR;
   }
 
   const home = os.homedir();
   if (isWindows()) {
     return path.join(
       process.env.LOCALAPPDATA || process.env.APPDATA || path.join(home, "AppData", "Local"),
-      "bb-agent"
+      "kordi"
     );
   }
   if (os.platform() === "darwin") {
-    return path.join(home, "Library", "Caches", "bb-agent");
+    return path.join(home, "Library", "Caches", "kordi");
   }
-  return path.join(process.env.XDG_CACHE_HOME || path.join(home, ".cache"), "bb-agent");
+  return path.join(process.env.XDG_CACHE_HOME || path.join(home, ".cache"), "kordi");
 }
 
 function cacheBinaryPath(target) {
@@ -206,7 +206,7 @@ function installFromVerifiedCache(target) {
   const cached = cacheBinaryPath(target);
   const meta = loadCacheMetadata(target);
   if (!fs.existsSync(cached) || !meta) {
-    logLine(`No verified cached BB-Agent binary found for ${target} yet.`);
+    logLine(`No verified cached Kordi binary found for ${target} yet.`);
     return false;
   }
   if (meta.version !== packageJson.version || meta.target !== target) {
@@ -222,11 +222,11 @@ function installFromVerifiedCache(target) {
   }
   if (!stat.isFile() || stat.size <= 0) return false;
   if (meta.size && stat.size !== meta.size) {
-    logLine(`Cached BB-Agent binary for ${target} changed size; re-validating it.`);
+    logLine(`Cached Kordi binary for ${target} changed size; re-validating it.`);
     return false;
   }
 
-  logLine(`Using cached BB-Agent binary for ${target} (${formatBytes(stat.size)}).`);
+  logLine(`Using cached Kordi binary for ${target} (${formatBytes(stat.size)}).`);
   logLine(`Installing cached binary to ${nativeBinaryPath()}.`);
   copyBinary(cached, nativeBinaryPath());
   return true;
@@ -256,7 +256,7 @@ function maybeRepairCache(target) {
     }
   }
 
-  logLine(`Checking cached BB-Agent binary for ${target} at ${cached}...`);
+  logLine(`Checking cached Kordi binary for ${target} at ${cached}...`);
   if (!binaryMatchesCurrentVersion(cached)) {
     logLine(`Cached binary for ${target} is stale or invalid; removing cached copy.`);
     removeIfExists(cached);
@@ -265,7 +265,7 @@ function maybeRepairCache(target) {
   }
 
   storeCacheMetadata(target, cached);
-  logLine("Verified cached BB-Agent binary for reuse.");
+  logLine("Verified cached Kordi binary for reuse.");
   return true;
 }
 
@@ -415,7 +415,7 @@ function verifyBinary(binaryPath) {
 }
 
 async function expandCompressedBinary(src, dest) {
-  logLine(`Decompressing downloaded BB-Agent binary from ${path.basename(src)}...`);
+  logLine(`Decompressing downloaded Kordi binary from ${path.basename(src)}...`);
   ensureParentDir(dest);
   try {
     await pipeline(fs.createReadStream(src), zlib.createGunzip(), fs.createWriteStream(dest));
@@ -441,12 +441,12 @@ async function tryDownloadPrebuilt(target) {
   logLine(`Binary cache path: ${cachePath}`);
 
   if (installFromVerifiedCache(target)) {
-    logLine("✓ BB-Agent binary installed successfully from cache.");
+    logLine("✓ Kordi binary installed successfully from cache.");
     return { ok: true, source: "cache" };
   }
 
   if (maybeRepairCache(target) && installFromVerifiedCache(target)) {
-    logLine("✓ BB-Agent binary installed successfully from cache.");
+    logLine("✓ Kordi binary installed successfully from cache.");
     return { ok: true, source: "cache" };
   }
 
@@ -454,7 +454,7 @@ async function tryDownloadPrebuilt(target) {
   for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
     try {
       logLine(
-        `Downloading BB-Agent ${BINARY_RELEASE_TAG} for ${target} (attempt ${attempt}/${MAX_DOWNLOAD_ATTEMPTS})...`
+        `Downloading Kordi ${BINARY_RELEASE_TAG} for ${target} (attempt ${attempt}/${MAX_DOWNLOAD_ATTEMPTS})...`
       );
       logLine("This may take a little while on first install because npm downloads the native binary from the GitHub release.");
 
@@ -491,10 +491,10 @@ async function tryDownloadPrebuilt(target) {
           }
 
           fs.renameSync(tmpDest, dest);
-          logLine(`Installed BB-Agent binary to ${dest}.`);
+          logLine(`Installed Kordi binary to ${dest}.`);
           refreshCacheFromExistingBinary(target, dest);
-          logLine(`Cached verified BB-Agent binary for future installs at ${cachePath}.`);
-          logLine("✓ BB-Agent binary installed successfully.");
+          logLine(`Cached verified Kordi binary for future installs at ${cachePath}.`);
+          logLine("✓ Kordi binary installed successfully.");
           return { ok: true, source: "download" };
         } catch (err) {
           lastError = err;
@@ -538,17 +538,17 @@ async function tryDownloadPrebuilt(target) {
 function printFallbackHelp(platform, reason) {
   logLine("");
   if (reason && reason.kind === "not-found") {
-    logLine(`BB-Agent ${packageJson.version}: matching prebuilt binary is not published for ${platform}.`);
+    logLine(`Kordi ${packageJson.version}: matching prebuilt binary is not published for ${platform}.`);
   } else if (reason) {
-    logLine(`BB-Agent ${packageJson.version}: failed to download the prebuilt binary for ${platform}.`);
+    logLine(`Kordi ${packageJson.version}: failed to download the prebuilt binary for ${platform}.`);
     logLine(`Reason: ${reason.message}`);
   } else {
-    logLine(`BB-Agent ${packageJson.version}: matching prebuilt binary not available yet for ${platform}.`);
+    logLine(`Kordi ${packageJson.version}: matching prebuilt binary not available yet for ${platform}.`);
   }
   logLine("");
   logLine("╔══════════════════════════════════════════════════════════════╗");
   logLine(
-    "║  BB-Agent: npm could not install native binary for " +
+    "║  Kordi: npm could not install native binary for " +
       platform.padEnd(16) +
       "   ║"
   );
@@ -557,22 +557,22 @@ function printFallbackHelp(platform, reason) {
   logLine("║    https://rustup.rs                                         ║");
   logLine("║    Then install with rustup for your platform                ║");
   logLine("║                                                              ║");
-  logLine("║  Then build BB-Agent:                                        ║");
-  logLine("║    git clone https://github.com/shuyhere/bb-agent.git        ║");
-  logLine("║    cd bb-agent && cargo install --path crates/cli            ║");
+  logLine("║  Then build Kordi:                                        ║");
+  logLine("║    git clone https://github.com/Kordi-AI/Kordi.git        ║");
+  logLine("║    cd kordi && cargo install --path crates/cli            ║");
   logLine("║                                                              ║");
-  logLine("║  Then run:  bb                                               ║");
+  logLine("║  Then run:  kordi                                            ║");
   logLine("╚══════════════════════════════════════════════════════════════╝");
   logLine("");
 }
 
 async function main() {
-  if (process.env.BB_SKIP_POSTINSTALL) {
+  if (process.env.KORDI_SKIP_POSTINSTALL) {
     return;
   }
 
   if (hasBundledNativeBinary()) {
-    logLine(`BB-Agent ${packageJson.version} native binary already present; skipping download.`);
+    logLine(`Kordi ${packageJson.version} native binary already present; skipping download.`);
     return;
   }
 
@@ -598,9 +598,9 @@ async function main() {
 
 main()
   .catch((err) => {
-    logLine(`BB-Agent postinstall notice: ${err && err.message ? err.message : String(err)}`);
+    logLine(`Kordi postinstall notice: ${err && err.message ? err.message : String(err)}`);
     logLine(
-      "Install manually: git clone https://github.com/shuyhere/bb-agent.git && cd bb-agent && cargo install --path crates/cli"
+      "Install manually: git clone https://github.com/Kordi-AI/Kordi.git && cd kordi && cargo install --path crates/cli"
     );
   })
   .finally(() => {
