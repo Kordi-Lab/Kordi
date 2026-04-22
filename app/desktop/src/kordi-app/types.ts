@@ -30,6 +30,22 @@ export type SourcePreviewLine = {
   kind?: 'context' | 'add';
 };
 
+export type SessionArtifact = {
+  id: string;
+  path: string;
+  name: string;
+  kind: 'code' | 'document' | 'file';
+  summary: string;
+  timeLabel?: string;
+  live?: boolean;
+};
+
+export type DesktopArtifactPreview = {
+  path: string;
+  lines: SourcePreviewLine[];
+  truncated: boolean;
+};
+
 export type EditFilePreview = {
   path: string;
   additions: number;

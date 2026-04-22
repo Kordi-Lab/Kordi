@@ -20,6 +20,7 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
+import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import { useProjectSettingsState } from '@/features/projects/useProjectSettingsState';
@@ -35,6 +36,7 @@ export default function KordiApp() {
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const chatTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowChatRef = useRef(true);
+  const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
 
   const {
     contactsUi: {
@@ -72,6 +74,8 @@ export default function KordiApp() {
       setActiveSettingsSectionId,
       activeSourcePreview,
       setActiveSourcePreview,
+      activeArtifactId,
+      setActiveArtifactId,
       themeMode,
       setThemeMode,
     },
@@ -327,14 +331,24 @@ export default function KordiApp() {
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0];
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = activeConvId.startsWith('bridge:') ? null : (desktopLiveTurnsBySession[activeConvId] ?? null);
-  const activeProjectLiveTurn = activeProjectSessionId ? (desktopLiveTurnsBySession[activeProjectSessionId] ?? null) : null;
+  const activeChatLiveTurn = activeConversationIsBridge ? null : (desktopLiveTurnsBySession[activeConv.id] ?? null);
+  const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
-    : activeNav === 'chats' && activeConvId.startsWith('bridge:')
+    : activeNav === 'chats' && activeConversationIsBridge
       ? isDesktopBridgeSending
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
+  const activeChatArtifacts = useMemo(
+    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatLiveTurn),
+    [activeChatLiveTurn, activeConv.messages, activeConversationIsBridge],
+  );
+  const activeProjectArtifacts = useMemo(
+    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectLiveTurn),
+    [activeProjectLiveTurn, activeProjectSession.messages],
+  );
+  const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
+  const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;
   const totalUnreadMessages = useMemo(
     () => chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0),
     [chatConversations],
@@ -354,6 +368,28 @@ export default function KordiApp() {
     setVisibleLocalSessionId(visibleLocalSessionId);
   }, [activeConvId, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
+  useEffect(() => {
+    if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {
+      return;
+    }
+
+    const latestArtifact = activeArtifacts[0] ?? null;
+    const latestArtifactToken = latestArtifact
+      ? `${latestArtifact.id}:${latestArtifact.timeLabel ?? ''}:${latestArtifact.live ? 'live' : 'ready'}`
+      : null;
+    const previousArtifactToken = lastSeenArtifactByContextRef.current[artifactContextKey];
+    lastSeenArtifactByContextRef.current[artifactContextKey] = latestArtifactToken;
+
+    if (!latestArtifact?.id || previousArtifactToken === undefined || previousArtifactToken === latestArtifactToken) {
+      return;
+    }
+
+    setActiveSourcePreview(null);
+    setActiveArtifactId(latestArtifact.id);
+    setActiveDetailTab('artifacts');
+    setIsDetailPanelCollapsed(false);
+  }, [activeArtifacts, activeConversationIsBridge, activeNav, artifactContextKey, setActiveArtifactId, setActiveDetailTab, setActiveSourcePreview, setIsDetailPanelCollapsed]);
+
   useKordiUiEffects({
     isNativeShell,
     desktopChatState,
@@ -372,6 +408,7 @@ export default function KordiApp() {
     activeAgentId,
     setActiveAgentId,
     setActiveSourcePreview,
+    setActiveArtifactId,
     setOpenComposerSelector,
     setChatComposerAttachments,
     openComposerSelector,
@@ -685,6 +722,10 @@ export default function KordiApp() {
     onChatTranscriptScroll,
     activeSourcePreview,
     setActiveSourcePreview,
+    activeArtifactId,
+    setActiveArtifactId,
+    activeChatArtifacts,
+    activeProjectArtifacts,
     desktopLiveTurn: activeDesktopLiveTurn,
     filteredProjectSlashCommands,
     filteredChatSlashCommands,

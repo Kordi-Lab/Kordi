@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import type { DetailTab } from '@/kordi-app/types';
+import type { DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
+import { ArtifactInspector } from '@/pages/ArtifactInspector';
 
 type ActiveConversation = {
   name: string;
@@ -36,6 +37,7 @@ type BridgeConversation = {
 };
 
 type ChatDetailPanelProps = {
+  isNativeShell: boolean;
   activeDetailTab: DetailTab;
   activeConv: ActiveConversation;
   activeConvHasSubtitle: boolean;
@@ -48,6 +50,9 @@ type ChatDetailPanelProps = {
   isBridgePolling: boolean;
   lastBridgePollAtLabel?: string | null;
   activeSessionProject?: SessionProjectInfo | null;
+  artifacts: SessionArtifact[];
+  activeArtifactId: string | null;
+  onSelectArtifact: (artifactId: string | null) => void;
 };
 
 type MetaRowProps = {
@@ -75,6 +80,7 @@ function EmphasisBlock({ title, children, className = '' }: { title?: string; ch
 }
 
 export function ChatDetailPanel({
+  isNativeShell,
   activeDetailTab,
   activeConv,
   activeConvHasSubtitle,
@@ -87,6 +93,9 @@ export function ChatDetailPanel({
   isBridgePolling,
   lastBridgePollAtLabel,
   activeSessionProject,
+  artifacts,
+  activeArtifactId,
+  onSelectArtifact,
 }: ChatDetailPanelProps) {
   if (activeDetailTab === 'info') {
     return (
@@ -206,17 +215,13 @@ export function ChatDetailPanel({
   if (activeDetailTab === 'artifacts') {
     return (
       <div className="app-detail-sheet">
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Artifacts</div>
-          <div className="space-y-3">
-            <EmphasisBlock title="Concise literature summary">
-              One-page summary received from Alice’s Research Agent.
-            </EmphasisBlock>
-            <EmphasisBlock title="Thread trace">
-              Delegation history, route, and approval log.
-            </EmphasisBlock>
-          </div>
-        </section>
+        <ArtifactInspector
+          isNativeShell={isNativeShell}
+          artifacts={artifacts}
+          activeArtifactId={activeArtifactId}
+          onSelectArtifact={onSelectArtifact}
+          emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local generated artifacts yet.' : 'No generated code or docs in this session yet.'}
+        />
       </div>
     );
   }

@@ -66,6 +66,21 @@ pub struct DesktopChatTurnSnapshot {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatArtifactPreviewLine {
+    pub number: usize,
+    pub text: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatArtifactPreview {
+    pub path: String,
+    pub lines: Vec<DesktopChatArtifactPreviewLine>,
+    pub truncated: bool,
+}
+
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
 }
@@ -74,6 +89,20 @@ fn attachment_storage_dir() -> Result<PathBuf, String> {
     let dir = std::env::temp_dir().join("kordi-desktop-attachments");
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir)
+}
+
+fn resolve_artifact_preview_path(raw_path: &str) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("Artifact path is required".to_string());
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        Ok(candidate)
+    } else {
+        Ok(chat_cwd()?.join(candidate))
+    }
 }
 
 fn snapshot_turn(
@@ -116,7 +145,8 @@ async fn prune_finished_turns(manager: &DesktopChatManager) {
 
 async fn session_has_running_turn(manager: &DesktopChatManager, session_id: &str) -> bool {
     let turns = manager.turns.lock().await;
-    turns.values()
+    turns
+        .values()
         .any(|turn| turn_matches_running_session(&turn.snapshot, session_id))
 }
 
@@ -316,6 +346,51 @@ pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Resul
         attachment_storage_dir()?.join(format!("{}-{}{}", stem, uuid::Uuid::new_v4(), extension));
     std::fs::write(&path, data).map_err(|err| err.to_string())?;
     Ok(path.display().to_string())
+}
+
+#[tauri::command]
+pub async fn desktop_chat_artifact_preview(
+    path: String,
+) -> Result<DesktopChatArtifactPreview, String> {
+    const MAX_PREVIEW_BYTES: usize = 64 * 1024;
+    const MAX_PREVIEW_LINES: usize = 400;
+
+    let resolved_path = resolve_artifact_preview_path(&path)?;
+    let bytes = std::fs::read(&resolved_path).map_err(|err| err.to_string())?;
+    let mut truncated = bytes.len() > MAX_PREVIEW_BYTES;
+    let preview_bytes = if truncated {
+        &bytes[..MAX_PREVIEW_BYTES]
+    } else {
+        bytes.as_slice()
+    };
+    let preview_text = String::from_utf8_lossy(preview_bytes).into_owned();
+
+    if preview_text.contains('\u{0000}') {
+        return Err(
+            "This artifact looks like a binary file and can't be previewed here.".to_string(),
+        );
+    }
+
+    let mut lines = Vec::new();
+    if !preview_text.is_empty() {
+        for (index, line) in preview_text.split('\n').enumerate() {
+            if index >= MAX_PREVIEW_LINES {
+                truncated = true;
+                break;
+            }
+
+            lines.push(DesktopChatArtifactPreviewLine {
+                number: index + 1,
+                text: line.strip_suffix('\r').unwrap_or(line).to_string(),
+            });
+        }
+    }
+
+    Ok(DesktopChatArtifactPreview {
+        path: resolved_path.display().to_string(),
+        lines,
+        truncated,
+    })
 }
 
 #[tauri::command]

@@ -34,6 +34,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
     >
       {args.activeNav === 'projects' ? (
         <ProjectDetailPanel
+          isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}
           activeProject={args.activeProject}
           activeProjectSession={args.activeProjectSession}
@@ -49,9 +50,13 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           onOpenProjectSettings={args.openProjectSettings}
           onSetTasksTab={() => args.setActiveDetailTab('tasks')}
           getStatusBadgeClass={args.getStatusBadgeClass}
+          artifacts={args.activeProjectArtifacts}
+          activeArtifactId={args.activeArtifactId}
+          onSelectArtifact={args.setActiveArtifactId}
         />
       ) : (
         <ChatDetailPanel
+          isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}
           activeConv={args.activeConv}
           activeConvHasSubtitle={args.activeConvHasSubtitle}
@@ -64,6 +69,9 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           isBridgePolling={args.isBridgePolling}
           lastBridgePollAtLabel={args.lastBridgePollAtLabel}
           activeSessionProject={!args.activeConversationIsBridge ? args.activeSessionProject : null}
+          artifacts={args.activeChatArtifacts}
+          activeArtifactId={args.activeArtifactId}
+          onSelectArtifact={args.setActiveArtifactId}
         />
       )}
     </RightDetailRail>
