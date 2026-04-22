@@ -253,7 +253,7 @@ export function WorkspaceSidebar({
           )}
           style={{ width: `${LEFT_RAIL_WIDTH}px` }}
         >
-          <div className="flex w-full flex-col items-center gap-3">
+          <div className="flex w-full flex-col items-center gap-4">
             {!isNativeShell && (
               <div className="flex items-center justify-center gap-2 pt-1">
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
@@ -261,7 +261,7 @@ export function WorkspaceSidebar({
                 <span className="h-3 w-3 rounded-full bg-[#28c840] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
               </div>
             )}
-            <div className="flex w-full flex-col items-center gap-1.5">
+            <div className="flex w-full flex-col items-center gap-2.5">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = activeNav === item.id;
@@ -270,21 +270,20 @@ export function WorkspaceSidebar({
                     key={item.id}
                     onClick={() => setActiveNav(item.id)}
                     className={cn(
-                      'app-workspace-nav-button app-list-item relative mx-auto flex w-[68px] flex-col items-center gap-0.5 rounded-[16px] px-1 py-1.5 text-[9.5px] font-medium leading-none transition',
+                      'app-workspace-nav-button app-list-item relative mx-auto grid h-11 w-11 place-items-center rounded-[18px] p-0 transition',
                       active ? 'app-list-item-active text-white' : 'text-slate-300 hover:text-white',
                     )}
                     aria-label={item.label}
                     title={item.label}
                   >
-                    <span className="relative grid h-7 w-7 place-items-center rounded-[10px]">
-                      <Icon className={cn('h-4 w-4', active ? navAccentClasses[item.id] : 'text-slate-300')} />
+                    <span className="relative grid h-8 w-8 place-items-center rounded-[14px]">
+                      <Icon className={cn('h-[17px] w-[17px]', active ? navAccentClasses[item.id] : 'text-slate-300')} />
                       {item.id === 'chats' && totalUnread > 0 ? (
-                        <span className="absolute -right-1 -top-1 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
+                        <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
                           {formatUnreadCount(totalUnread)}
                         </span>
                       ) : null}
                     </span>
-                    <span className="max-w-full truncate">{item.label}</span>
                   </button>
                 );
               })}
@@ -292,11 +291,11 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            <Button size="icon" className="h-10 w-10 rounded-xl">
+            <Button size="icon" className="h-9 w-9 rounded-[14px]">
               <Plus className="h-4 w-4" />
             </Button>
-            <Avatar className="h-10 w-10 border border-white/10">
-              <AvatarFallback className="bg-slate-800 text-[12px] text-slate-100">CC</AvatarFallback>
+            <Avatar className="h-9 w-9 border border-white/10">
+              <AvatarFallback className="bg-slate-800 text-[11px] text-slate-100">CC</AvatarFallback>
             </Avatar>
           </div>
         </div>
