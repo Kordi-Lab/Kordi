@@ -42,8 +42,8 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     const methods: AuthDisplayMethod[] = [
       {
         mode: 'oauth',
-        title: 'Claude Pro/Max subscription',
-        detail: 'Use your Claude browser subscription for Claude Pro/Max OAuth sign-in and saved subscription sessions.',
+        title: 'Claude subscription',
+        detail: 'Use the Claude account you already pay for when you want subscription-based access instead of API billing.',
         providerId: 'anthropic',
         helpUrl: 'https://claude.ai/',
         envVar: anthropic.envVar,
@@ -51,8 +51,8 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       },
       {
         mode: 'api-key',
-        title: 'Anthropic Console API key',
-        detail: `Use ${anthropic.envVar || 'ANTHROPIC_API_KEY'} or save an Anthropic API key for platform usage, automation, and billing under your Anthropic account.`,
+        title: 'Anthropic API key',
+        detail: `Use ${anthropic.envVar || 'ANTHROPIC_API_KEY'} for billed API usage, automations, and scripting.`,
         providerId: 'anthropic',
         helpUrl: anthropic.helpUrl,
         envVar: anthropic.envVar,
@@ -67,7 +67,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       statusSummary: methods
         .map((method) => `${method.title}: ${method.options.length > 0 ? `${method.options.length} configured` : 'not configured'}`)
         .join(' • '),
-      loginHint: anthropic.loginHint,
+      loginHint: 'Choose Claude subscription access for everyday chat, or an API key for billed automation and tooling.',
       authority: anthropic.authority,
       methods,
     });
@@ -81,8 +81,8 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     if (openAiOauth) {
       methods.push({
         mode: 'oauth',
-        title: 'ChatGPT Plus/Pro (Codex)',
-        detail: 'OAuth subscription login for ChatGPT-based access.',
+        title: 'ChatGPT account',
+        detail: 'Use your ChatGPT subscription when you want ChatGPT or Codex-style access without managing an API key.',
         providerId: 'openai-codex',
         helpUrl: openAiOauth.helpUrl,
         envVar: openAiOauth.envVar,
@@ -94,7 +94,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       methods.push({
         mode: 'api-key',
         title: 'OpenAI API key',
-        detail: `Use ${openAiApi.envVar || 'OPENAI_API_KEY'} or save multiple keys and switch active profile later.`,
+        detail: `Use ${openAiApi.envVar || 'OPENAI_API_KEY'} for billed API usage, automation, and separate project keys.`,
         providerId: 'openai',
         helpUrl: openAiApi.helpUrl,
         envVar: openAiApi.envVar,
@@ -110,7 +110,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         .map((method) => `${method.title}: ${method.options.length > 0 ? `${method.options.length} configured` : 'not configured'}`)
         .join(' • '),
       loginHint:
-        'OpenAI supports both ChatGPT OAuth and platform API keys. You can keep either or both.',
+        'Pick a ChatGPT account for subscription access, an API key for billed automation, or keep both and switch later.',
       methods,
     });
   }
@@ -144,8 +144,8 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
                     : 'xAI API key',
           detail:
             mode === 'oauth'
-              ? 'OAuth or device login with support for multiple saved accounts.'
-              : `Use ${provider.envVar || 'API_KEY'} or save multiple keys and choose the active profile later.`,
+              ? 'Sign in with GitHub and keep multiple saved accounts if you need them.'
+              : `Use ${provider.envVar || 'API_KEY'} for direct API access, or save more than one key and switch later.`,
           providerId: provider.id,
           helpUrl: provider.helpUrl,
           envVar: provider.envVar,
@@ -161,9 +161,9 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
 export function providerListSubtitle(provider: AuthDisplayProvider) {
   const totalOptions = provider.methods.reduce((sum, method) => sum + method.options.length, 0);
 
-  if (!provider.configured) return 'Not configured';
-  if (provider.id === 'github-copilot' && provider.authority) return `Configured • ${provider.authority}`;
-  if (totalOptions === 1) return '1 saved option';
-  if (totalOptions > 1) return `${totalOptions} saved options`;
+  if (!provider.configured) return 'No saved accounts or keys yet';
+  if (provider.id === 'github-copilot' && provider.authority) return `Saved access • ${provider.authority}`;
+  if (totalOptions === 1) return '1 saved account or key';
+  if (totalOptions > 1) return `${totalOptions} saved accounts or keys`;
   return provider.statusSummary.replace(/^\[|\]$/g, '');
 }

@@ -108,7 +108,7 @@ export function ChatDetailPanel({
                 <div className="app-inspector-heading">{activeConv.name}</div>
                 {activeConvHasSubtitle ? <div className="mt-1 app-inspector-subtext">{activeConv.subtitle}</div> : null}
               </div>
-              <TypeBadge type={activeConv.type} />
+              <TypeBadge type={activeConv.type} compact />
             </div>
             <div className="app-inspector-meta-list">
               <MetaRow label="Last active" value={activeLastMessage?.time} />

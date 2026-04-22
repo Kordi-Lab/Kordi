@@ -136,10 +136,14 @@ function TimelineSection({
   );
 }
 
-export function TypeBadge({ type }: { type: ConversationType }) {
+export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {
+  const sizeClassName = compact
+    ? 'gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none [&_svg]:h-2.5 [&_svg]:w-2.5'
+    : 'gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-none';
+
   if (type === 'person') {
     return (
-      <Badge variant="secondary" className="app-badge-neutral gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-none">
+      <Badge variant="secondary" className={cn('app-badge-neutral', sizeClassName)}>
         <User className="h-3 w-3" />
         Human
       </Badge>
@@ -147,14 +151,14 @@ export function TypeBadge({ type }: { type: ConversationType }) {
   }
   if (type === 'owned-agent') {
     return (
-      <Badge className="app-badge-owned gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-none">
+      <Badge className={cn('app-badge-owned', sizeClassName)}>
         <Sparkles className="h-3 w-3" />
         My agent
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="app-badge-neutral gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-none">
+    <Badge variant="outline" className={cn('app-badge-neutral', sizeClassName)}>
       <Bot className="h-3 w-3" />
       External agent
     </Badge>
@@ -182,7 +186,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
 
   if (msg.role === 'action') {
     return (
-      <div className="my-2 max-w-xl rounded-2xl border bg-card p-4 shadow-sm">
+      <div className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
@@ -211,7 +215,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
-        <div className="app-detail-sheet w-full max-w-[680px]">
+        <div className="app-detail-sheet w-full max-w-[760px]">
           <div className="flex items-center justify-between px-3.5 py-3">
             <div className="text-[14px] font-medium text-white/92">{msg.text}</div>
             <button className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-400 transition hover:text-slate-200">
@@ -302,7 +306,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
 
   if (msg.turn) {
     return (
-      <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+      <div className="flex w-full max-w-[min(100%,66rem)] flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -316,11 +320,11 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const bubble = isUser ? 'app-chat-bubble-user' : msg.role === 'owned-agent' ? 'app-chat-bubble-peer' : 'app-chat-bubble-peer';
 
   return (
-    <div className={cn('flex flex-col gap-0.5 py-0.5', align, isUser ? '' : 'w-full max-w-[min(100%,58rem)]')}>
+    <div className={cn('flex flex-col gap-0.5 py-0.5', align, isUser ? '' : 'w-full max-w-[min(100%,66rem)]')}>
       <div className="app-message-meta">
         {msg.sender} • {msg.time}
       </div>
-      <div className={cn('min-w-0 overflow-hidden rounded-[18px] px-3.5 py-2.5 text-[13px] shadow-sm', isUser ? 'max-w-xl' : 'w-full max-w-none', bubble)}>
+      <div className={cn('min-w-0 overflow-hidden rounded-[18px] px-3.5 py-2.5 text-[13px] shadow-sm', isUser ? 'max-w-[42rem]' : 'w-full max-w-none', bubble)}>
         {isUser ? <div className="whitespace-pre-wrap break-words">{msg.text}</div> : <MarkdownContent text={msg.text} />}
         {(msg.statusChips?.length || msg.detail) ? (
           <div className="app-message-status-bar mt-2 border-t border-white/10 pt-2 text-[11px] text-slate-300">
@@ -384,7 +388,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
+    <div className="w-full max-w-[min(100%,66rem)] space-y-1.5 pb-1.5">
       {showLiveStatusHeader ? (
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" />

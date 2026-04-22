@@ -28,8 +28,11 @@ export function AuthProviderList({
     >
       <div className="mb-1.5 flex items-center justify-between gap-3 px-2.5 py-1.5">
         <div>
-          <div className="text-[13px] font-medium text-white">Providers</div>
-          <div className="mt-1 text-[11px] text-slate-400">{configuredCount} configured of {providers.length}</div>
+          <div className="text-[13px] font-medium text-white">Choose a provider</div>
+          <div className="mt-1 max-w-[42ch] text-[11px] leading-5 text-slate-400">
+            You only need one working provider to start chatting. Save more later if you want fallbacks or separate billing.
+          </div>
+          <div className="mt-1 text-[11px] text-slate-500">{configuredCount} ready of {providers.length}</div>
         </div>
         <Button
           type="button"
@@ -44,7 +47,7 @@ export function AuthProviderList({
       </div>
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="w-full overflow-hidden rounded-[18px] border border-white/7 bg-black/12 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <div className="w-full overflow-hidden rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
           {providers.map((provider, index) => {
             const selected = provider.id === selectedProviderId;
 
@@ -67,6 +70,7 @@ export function AuthProviderList({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-white/95">{provider.label}</div>
                   <div className="truncate text-[11px] text-slate-400">{providerListSubtitle(provider)}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-slate-500">{provider.loginHint}</div>
                 </div>
 
                 <ChevronRight className={cn('h-4 w-4 shrink-0 text-slate-500 transition', selected && 'text-slate-300')} />

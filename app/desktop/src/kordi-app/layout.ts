@@ -1,10 +1,10 @@
-export const LEFT_RAIL_WIDTH = 76;
+export const LEFT_RAIL_WIDTH = 72;
 export const WINDOW_MIN_WIDTH = 980;
 export const WINDOW_MIN_HEIGHT = 680;
 export const WINDOW_DEFAULT_WIDTH = 1460;
 export const WINDOW_DEFAULT_HEIGHT = 900;
-export const DETAIL_PANEL_MIN_WIDTH = 320;
-export const DETAIL_PANEL_MAX_WIDTH = 460;
+export const DETAIL_PANEL_MIN_WIDTH = 300;
+export const DETAIL_PANEL_MAX_WIDTH = 420;
 
 export function getViewportWindowBounds() {
   if (typeof window === 'undefined') {
@@ -60,12 +60,12 @@ export function getViewportFillSize() {
 }
 
 export function clampSessionPanelWidth(width: number, windowWidth: number, rightPanelVisible: boolean) {
-  const reservedRightPanel = rightPanelVisible ? 220 : 0;
-  const maxWidth = Math.max(220, windowWidth - LEFT_RAIL_WIDTH - reservedRightPanel - 360);
+  const reservedRightPanel = rightPanelVisible ? 200 : 0;
+  const maxWidth = Math.max(220, windowWidth - LEFT_RAIL_WIDTH - reservedRightPanel - 420);
   return Math.min(Math.max(width, 220), maxWidth);
 }
 
 export function clampDetailPanelWidth(width: number, windowWidth: number, leftWidth: number) {
-  const maxWidth = Math.max(DETAIL_PANEL_MIN_WIDTH, Math.min(DETAIL_PANEL_MAX_WIDTH, windowWidth - leftWidth - 360));
+  const maxWidth = Math.max(DETAIL_PANEL_MIN_WIDTH, Math.min(DETAIL_PANEL_MAX_WIDTH, windowWidth - leftWidth - 420));
   return Math.min(Math.max(width, DETAIL_PANEL_MIN_WIDTH), maxWidth);
 }

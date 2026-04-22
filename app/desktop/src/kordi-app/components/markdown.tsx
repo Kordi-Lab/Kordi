@@ -85,7 +85,7 @@ function renderInlineMarkdown(text: string, tone: 'default' | 'muted' = 'default
         <code
           key={`code-${index}`}
           className={cn(
-            'rounded bg-black/20 px-1.5 py-0.5 font-mono text-[0.92em]',
+            'rounded bg-[color:var(--app-control-bg)] px-1.5 py-0.5 font-mono text-[0.92em]',
             tone === 'muted' ? 'text-slate-200' : 'text-slate-100',
           )}
         >
@@ -406,7 +406,7 @@ function MarkdownCodeBlock({
   };
 
   return (
-    <div className="max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-black/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <div className="max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="flex items-center justify-between gap-3 border-b border-white/8 px-2.5 py-1.5">
         <div className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-400">{resolvedLanguage}</div>
         <div className="flex shrink-0 items-center gap-2">
@@ -463,7 +463,7 @@ function MarkdownListView({ list, depth = 0 }: { list: MarkdownList; depth?: num
               <span
                 className={cn(
                   'mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px]',
-                  item.checked ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200' : 'border-white/15 bg-white/5 text-slate-500',
+                  item.checked ? 'border-emerald-400/60 bg-[linear-gradient(180deg,rgba(16,185,129,0.18),rgba(6,95,70,0.16))] text-emerald-200' : 'border-white/15 bg-white/5 text-slate-300',
                 )}
               >
                 {item.checked ? '✓' : ''}
@@ -482,7 +482,7 @@ function MarkdownListView({ list, depth = 0 }: { list: MarkdownList; depth?: num
 
 function MarkdownTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-white/8 bg-black/10">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-white/8 bg-[color:var(--app-control-bg)]">
       <div className="overflow-x-auto overscroll-x-contain px-1 py-1">
         <table className="min-w-full w-max border-collapse text-left text-sm text-slate-100">
         <thead className="bg-white/[0.05] text-slate-300">

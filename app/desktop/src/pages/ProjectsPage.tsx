@@ -24,7 +24,6 @@ import {
   ComposerSlashMenu,
   LiveChatTurnCard,
   MessageBubble,
-  StatusPill,
   type ComposerAuthOption,
   type ComposerModelOption,
   type ComposerProviderOption,
@@ -230,34 +229,27 @@ export function ProjectsPage({
                 {activeProject.status}
               </Badge>
             </div>
-            <div className="mb-1.5 truncate text-[12px] text-slate-300">{activeProject.name}</div>
-            <div className="app-page-header-pills flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs text-slate-200">
-              <StatusPill className="shrink-0">
-                <Globe className="h-3 w-3" /> {activeProject.bridge}
-              </StatusPill>
-              <StatusPill className="shrink-0">
-                <Users className="h-3 w-3" /> {activeProject.people.length + activeProject.agents.length} members
-              </StatusPill>
-              <StatusPill className="shrink-0">
-                <Layers3 className="h-3 w-3" /> {activeProject.sessions.length} sessions
-              </StatusPill>
-              <StatusPill className="shrink-0">
-                <FolderOpen className="h-3 w-3" /> {activeProject.artifacts} artifacts
-              </StatusPill>
+            <div className="mb-1 truncate text-[12px] text-slate-300">{activeProject.name}</div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
+              <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {activeProject.bridge}</span>
+              <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> {activeProject.people.length + activeProject.agents.length} members</span>
+              <span className="inline-flex items-center gap-1"><Layers3 className="h-3 w-3" /> {activeProject.sessions.length} sessions</span>
+              <span className="inline-flex items-center gap-1"><FolderOpen className="h-3 w-3" /> {activeProject.artifacts} artifacts</span>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-start">
           {showRightDetailRail && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
-              className="app-icon-button app-utility-button mt-0.5 grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] text-slate-100 transition"
-              aria-label={isDetailPanelCollapsed ? 'Open project detail panel' : 'Close project detail panel'}
-              title={isDetailPanelCollapsed ? 'Open project detail panel' : 'Close project detail panel'}
+              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+              aria-label={isDetailPanelCollapsed ? 'Open project details' : 'Hide project details'}
+              title={isDetailPanelCollapsed ? 'Open project details' : 'Hide project details'}
             >
-              <span className="translate-y-[-1px] text-[16px] font-medium leading-none tracking-[0.08em]">...</span>
-            </button>
+              {isDetailPanelCollapsed ? 'Details' : 'Hide details'}
+            </Button>
           )}
         </div>
       </div>
@@ -265,7 +257,7 @@ export function ProjectsPage({
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea
           ref={chatTranscriptScrollRef}
-          className="h-full min-h-0 px-4 py-3"
+          className="h-full min-h-0 px-5 py-4"
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
@@ -281,7 +273,7 @@ export function ProjectsPage({
         </ScrollArea>
       </div>
 
-      <div className="shrink-0 px-4 pb-3">
+      <div className="shrink-0 px-5 pb-4 pt-3">
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
             {filteredProjectSlashCommands.length > 0 ? (

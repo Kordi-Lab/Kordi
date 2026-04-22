@@ -2,7 +2,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import {
   Activity,
   ChevronDown,
-  CircleDot,
   Copy,
   Plus,
   Search,
@@ -254,15 +253,15 @@ export function WorkspaceSidebar({
           )}
           style={{ width: `${LEFT_RAIL_WIDTH}px` }}
         >
-          <div className="flex w-full flex-col items-center gap-3">
+          <div className="flex w-full flex-col items-center gap-4">
             {!isNativeShell && (
-              <div className="flex items-center justify-center gap-2 pt-1">
+              <div className="flex w-full items-center justify-center gap-1.5 px-2.5 pt-1.5">
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
                 <span className="h-3 w-3 rounded-full bg-[#febc2e] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
                 <span className="h-3 w-3 rounded-full bg-[#28c840] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
               </div>
             )}
-            <div className="flex w-full flex-col items-center gap-1.5">
+            <div className="flex w-full flex-col items-center gap-2.5">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = activeNav === item.id;
@@ -270,18 +269,21 @@ export function WorkspaceSidebar({
                   <button
                     key={item.id}
                     onClick={() => setActiveNav(item.id)}
-                    className={`app-workspace-nav-button relative grid h-10 w-10 place-items-center rounded-full transition ${
-                      active
-                        ? 'bg-transparent shadow-none'
-                        : 'text-slate-300 hover:bg-transparent'
-                    }`}
+                    className={cn(
+                      'app-workspace-nav-button app-list-item relative mx-auto grid h-11 w-11 place-items-center rounded-[18px] p-0 transition',
+                      active ? 'app-list-item-active text-white' : 'text-slate-300 hover:text-white',
+                    )}
+                    aria-label={item.label}
+                    title={item.label}
                   >
-                    <Icon className={cn('h-[18px] w-[18px]', active ? navAccentClasses[item.id] : 'text-slate-300')} />
-                    {item.id === 'chats' && totalUnread > 0 ? (
-                      <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
-                        {formatUnreadCount(totalUnread)}
-                      </span>
-                    ) : null}
+                    <span className="relative grid h-8 w-8 place-items-center rounded-[14px]">
+                      <Icon className={cn('h-[17px] w-[17px]', active ? navAccentClasses[item.id] : 'text-slate-300')} />
+                      {item.id === 'chats' && totalUnread > 0 ? (
+                        <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
+                          {formatUnreadCount(totalUnread)}
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 );
               })}
@@ -289,11 +291,11 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            <Button size="icon" className="h-10 w-10 rounded-xl">
+            <Button size="icon" className="h-9 w-9 rounded-[14px]">
               <Plus className="h-4 w-4" />
             </Button>
-            <Avatar className="h-10 w-10 border border-white/10">
-              <AvatarFallback className="bg-slate-800 text-[12px] text-slate-100">CC</AvatarFallback>
+            <Avatar className="h-9 w-9 border border-white/10">
+              <AvatarFallback className="bg-slate-800 text-[11px] text-slate-100">CC</AvatarFallback>
             </Avatar>
           </div>
         </div>
@@ -306,11 +308,11 @@ export function WorkspaceSidebar({
             <div className="h-full overflow-hidden">
               {activeNav === 'chats' && (
                 <div className="flex h-full flex-col p-2.5">
-                  <div className="mb-2.5 flex items-start justify-between gap-2.5">
+                  <div className="mb-2 flex items-start justify-between gap-2.5">
                     <div>
-                      <div className="text-[15px] font-semibold text-white">{chatConversations.length} sessions</div>
+                      <div className="text-[15px] font-semibold text-white">Chats</div>
                       <div className="mt-0.5 text-[11px] text-slate-400">
-                        {totalUnread > 0 ? `${formatUnreadCount(totalUnread)} unread updates` : 'Everything read'}
+                        {chatConversations.length} total • {totalUnread > 0 ? `${formatUnreadCount(totalUnread)} unread` : 'all caught up'}
                       </div>
                     </div>
                     <button
@@ -324,12 +326,8 @@ export function WorkspaceSidebar({
                     </button>
                   </div>
 
-                  <div className="app-side-note app-workspace-note mb-2.5 rounded-[14px] p-2.5 text-[11px] text-slate-300">
-                    <div className="mb-1 flex items-center gap-1.5 font-medium text-slate-100">
-                      <CircleDot className="h-2.5 w-2.5" />
-                      All your sessions stay here
-                    </div>
-                    <div className="text-[11px] leading-4.5 text-slate-500">People, owned agents, and delegated agent sessions in one place.</div>
+                  <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
+                    People, owned agents, and delegated sessions all stay in one list.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -423,10 +421,10 @@ export function WorkspaceSidebar({
 
               {activeNav === 'projects' && (
                 <div className="flex h-full flex-col p-2.5 text-white">
-                  <div className="mb-2.5 flex items-start justify-between gap-2.5">
+                  <div className="mb-2 flex items-start justify-between gap-2.5">
                     <div>
-                      <div className="text-xs text-slate-400">Project spaces</div>
-                      <div className="text-[15px] font-semibold text-white">{runtimeProjects.length} projects</div>
+                      <div className="text-[15px] font-semibold text-white">Projects</div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">{runtimeProjects.length} workspaces with shared context and sessions</div>
                     </div>
                     <Button size="icon" variant="secondary" className="app-icon-button h-8 w-8 rounded-lg border-0">
                       <Plus className="h-3.5 w-3.5" />

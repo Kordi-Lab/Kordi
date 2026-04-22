@@ -97,7 +97,7 @@ export function BridgeConfigPage({
                 <div>
                   <CardTitle className="text-base">Bridge</CardTitle>
                   <div className="mt-1 text-[12px] leading-5 text-slate-400">
-                    Manage bridge servers first, then drill into the currently selected server only when you need identity, discovery, or advanced local file tools.
+                    Start by choosing a host, then drill in only when you need to adjust how you appear, which agents you use, or who you can reach.
                   </div>
                 </div>
                 <SectionNav activeSection={activeSection} setActiveSection={setActiveSection} activeBridgeHost={activeBridgeHost} />

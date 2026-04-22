@@ -52,88 +52,93 @@ function notifyAuthUpdated() {
 }
 
 function authPopupTitle(provider: DesktopAuthProvider | null, providerId: string, mode: 'oauth' | 'api-key') {
-  if (providerId === 'anthropic' && mode === 'oauth') return 'Claude Pro/Max subscription';
-  if (providerId === 'anthropic' && mode === 'api-key') return 'Anthropic Console API key';
-  if (providerId === 'openai-codex' && mode === 'oauth') return 'ChatGPT Plus/Pro (Codex) sign-in';
+  if (providerId === 'anthropic' && mode === 'oauth') return 'Claude subscription';
+  if (providerId === 'anthropic' && mode === 'api-key') return 'Anthropic API key';
+  if (providerId === 'openai-codex' && mode === 'oauth') return 'ChatGPT sign-in';
   if (providerId === 'openai' && mode === 'api-key') return 'OpenAI API key';
   return provider ? `${provider.label} ${mode === 'oauth' ? 'sign-in' : 'API key'}` : 'Authentication';
 }
 
 function authPopupDescription(providerId: string, mode: 'oauth' | 'api-key') {
   if (providerId === 'anthropic' && mode === 'oauth') {
-    return 'Sign in with your Claude Pro or Max subscription. Kordi will save the Claude subscription session in this settings page.';
+    return 'Sign in with the Claude subscription account you already use. Kordi will save it for both desktop and terminal sessions.';
   }
   if (providerId === 'anthropic' && mode === 'api-key') {
-    return 'Paste an Anthropic Console API key for direct API usage, automation, and saved runtime access.';
+    return 'Paste an Anthropic API key for billed API usage, scripting, and automation.';
   }
   if (providerId === 'openai-codex' && mode === 'oauth') {
-    return 'Complete browser sign-in here, then Kordi will update the current settings page automatically.';
+    return 'Sign in with your ChatGPT account here. Kordi will save it and refresh Settings automatically.';
   }
   if (providerId === 'openai' && mode === 'api-key') {
-    return 'Paste your OpenAI API key here and Kordi will save it to the shared runtime store used by desktop and terminal sessions.';
+    return 'Paste your OpenAI API key and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
   }
   return mode === 'oauth'
-    ? 'Complete browser sign-in here, then Kordi will update the current settings page automatically.'
-    : 'Paste the API key here and Kordi will save it to the shared runtime store used by desktop and terminal sessions.';
+    ? 'Finish browser sign-in here. Kordi will save the result and refresh Settings automatically.'
+    : 'Paste the API key here and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
 }
 
 function authPopupPrimaryActionLabel(providerId: string, mode: 'oauth' | 'api-key') {
-  if (providerId === 'anthropic' && mode === 'oauth') return 'Start Claude sign-in';
+  if (providerId === 'anthropic' && mode === 'oauth') return 'Open Claude sign-in';
   if (providerId === 'anthropic' && mode === 'api-key') return 'Save Anthropic key';
-  if (mode === 'oauth') return 'Start OAuth';
+  if (mode === 'oauth') return 'Open sign-in';
   return 'Save key';
 }
 
 function buildPopupSteps(authAttempt: DesktopAuthAttemptSnapshot | null): AuthFlowStep[] {
+  const openStep = 'Open the sign-in page';
+  const browserStep = 'Finish sign-in in your browser';
+  const returnStep = 'Return here if a code or callback is needed';
+  const saveStep = 'Save this account to Kordi';
+
   if (!authAttempt) {
     return [
-      { label: 'Open sign-in page', state: 'active' },
-      { label: 'Complete sign-in in your browser', state: 'pending' },
-      { label: 'Return callback or device verification', state: 'pending' },
-      { label: 'Save credentials', state: 'pending' },
+      { label: openStep, state: 'active' },
+      { label: browserStep, state: 'pending' },
+      { label: returnStep, state: 'pending' },
+      { label: saveStep, state: 'pending' },
     ];
   }
 
   switch (authAttempt.status) {
     case 'starting':
       return [
-        { label: 'Open sign-in page', state: 'active' },
-        { label: 'Complete sign-in in your browser', state: 'pending' },
-        { label: 'Return callback or device verification', state: 'pending' },
-        { label: 'Save credentials', state: 'pending' },
+        { label: openStep, state: 'active' },
+        { label: browserStep, state: 'pending' },
+        { label: returnStep, state: 'pending' },
+        { label: saveStep, state: 'pending' },
       ];
     case 'waiting_browser':
     case 'waiting_device':
     case 'waiting':
       return [
-        { label: 'Open sign-in page', state: 'done' },
-        { label: 'Complete sign-in in your browser', state: 'active' },
+        { label: openStep, state: 'done' },
+        { label: browserStep, state: 'active' },
         {
-          label: 'Return callback or device verification',
+          label: returnStep,
           state: authAttempt.canPasteCallback || authAttempt.userCode ? 'active' : 'pending',
         },
-        { label: 'Save credentials', state: 'pending' },
+        { label: saveStep, state: 'pending' },
       ];
     case 'exchanging':
       return [
-        { label: 'Open sign-in page', state: 'done' },
-        { label: 'Complete sign-in in your browser', state: 'done' },
-        { label: 'Return callback or device verification', state: 'done' },
-        { label: 'Save credentials', state: 'active' },
+        { label: openStep, state: 'done' },
+        { label: browserStep, state: 'done' },
+        { label: returnStep, state: 'done' },
+        { label: saveStep, state: 'active' },
       ];
     case 'succeeded':
       return [
-        { label: 'Open sign-in page', state: 'done' },
-        { label: 'Complete sign-in in your browser', state: 'done' },
-        { label: 'Return callback or device verification', state: 'done' },
-        { label: 'Save credentials', state: 'done' },
+        { label: openStep, state: 'done' },
+        { label: browserStep, state: 'done' },
+        { label: returnStep, state: 'done' },
+        { label: saveStep, state: 'done' },
       ];
     default:
       return [
-        { label: 'Open sign-in page', state: 'done' },
-        { label: 'Complete sign-in in your browser', state: 'active' },
-        { label: 'Return callback or device verification', state: 'pending' },
-        { label: 'Save credentials', state: 'pending' },
+        { label: openStep, state: 'done' },
+        { label: browserStep, state: 'active' },
+        { label: returnStep, state: 'pending' },
+        { label: saveStep, state: 'pending' },
       ];
   }
 }
@@ -367,12 +372,10 @@ export default function AuthPopup({
                 {embedded ? 'Authentication' : 'Authentication window'}
               </div>
               <div className={embedded ? 'text-[20px] font-semibold tracking-[-0.025em] text-white' : 'text-[24px] font-semibold tracking-[-0.03em] text-white'}>
-                {provider ? `${provider.label} ${mode === 'oauth' ? 'sign-in' : 'API key'}` : 'Authentication'}
+                {authPopupTitle(provider, providerId, mode)}
               </div>
               <div className={embedded ? 'mt-1.5 max-w-[42ch] text-[12px] leading-6 text-slate-400' : 'mt-1.5 max-w-[44ch] text-[12px] leading-6 text-slate-400'}>
-                {mode === 'oauth'
-                  ? 'Complete browser sign-in here, then Kordi will update the current settings page automatically.'
-                  : 'Paste the API key here and Kordi will save it to the shared runtime store used by desktop and terminal sessions.'}
+                {authPopupDescription(providerId, mode)}
               </div>
             </div>
             <button type="button" onClick={() => void handleClose()} className="app-icon-button rounded-full p-2 text-slate-300 transition hover:text-white">
@@ -394,7 +397,7 @@ export default function AuthPopup({
           <div className="space-y-3.5">
             {authAttempt?.succeeded && (
               <div className="rounded-[20px] border border-emerald-400/25 bg-emerald-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-emerald-100">
-                Authentication successful. Your account is now saved in Kordi. You can close this panel.
+                Authentication successful. This account is now saved in Kordi and ready to use.
               </div>
             )}
 
@@ -406,10 +409,10 @@ export default function AuthPopup({
 
             {mode === 'api-key' ? (
               <>
-                <div className="rounded-[20px] border border-white/8 bg-black/12 px-3.5 py-3 text-[12px] leading-5 text-slate-400">
+                <div className="rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3.5 py-3 text-[12px] leading-5 text-slate-400">
                   {providerId === 'anthropic'
-                    ? 'Existing Anthropic Console keys stay available in Settings. Use this panel only to add another Anthropic API key.'
-                    : 'Existing saved keys stay available in Settings. Use this panel only to add a new key cleanly.'}
+                    ? 'Existing Anthropic keys stay available in Settings. Use this panel when you want to add another billed API key.'
+                    : 'Saved keys stay available in Settings. Use this panel when you want to add another key without leaving the current flow.'}
                 </div>
                 <div className="app-input-shell rounded-[20px] px-3.5 py-3">
                   <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">{provider.envVar || 'API key'}</div>
@@ -436,7 +439,7 @@ export default function AuthPopup({
                 <AuthFlowSteps steps={steps} />
 
                 {provider.id === 'github-copilot' && (requireAuthority || provider.authority) && (
-                  <div className="rounded-[24px] border border-white/8 bg-black/12 px-4 py-4">
+                  <div className="rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-4 py-4">
                     <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">GitHub host</div>
                     <input
                       value={authorityDraft}
@@ -445,7 +448,7 @@ export default function AuthPopup({
                       className="w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-500"
                     />
                     <div className="mt-2 text-[12px] leading-5 text-slate-400">
-                      Use github.com or your GitHub Enterprise Server domain.
+                      Use github.com or the GitHub Enterprise domain your team signs in through.
                     </div>
                   </div>
                 )}
@@ -453,12 +456,12 @@ export default function AuthPopup({
                 <div className="rounded-[20px] border border-white/8 bg-[linear-gradient(155deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-3.5 py-3">
                   <div className="text-[13px] font-medium text-white">
                     {authAttempt?.message ?? (providerId === 'anthropic'
-                      ? 'Start Claude sign-in and Kordi will keep this panel updated while you complete your subscription login.'
-                      : 'Start the OAuth flow and Kordi will keep this panel updated while you authenticate.')}
+                      ? 'Open Claude sign-in and Kordi will keep this panel updated while you finish the subscription login.'
+                      : 'Open the provider sign-in page and Kordi will keep this panel updated while you authenticate.')}
                   </div>
 
                   {showInteractiveOAuthDetails && authAttempt?.authUrl && (
-                    <div className="mt-2.5 rounded-[18px] bg-black/16 px-3 py-2.5">
+                    <div className="mt-2.5 rounded-[18px] bg-[color:var(--app-control-bg)] px-3 py-2.5">
                       <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Sign-in URL</div>
                       <div className="break-all text-[11px] leading-5 text-slate-300">{authAttempt.authUrl}</div>
                       <div className="mt-3 flex justify-end">
@@ -471,7 +474,7 @@ export default function AuthPopup({
                   )}
 
                   {showInteractiveOAuthDetails && authAttempt?.userCode && (
-                    <div className="mt-2.5 rounded-[18px] bg-black/16 px-3 py-2.5">
+                    <div className="mt-2.5 rounded-[18px] bg-[color:var(--app-control-bg)] px-3 py-2.5">
                       <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Device code</div>
                       <div className="mt-1 text-[17px] font-semibold tracking-[0.16em] text-white">{authAttempt.userCode}</div>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -491,12 +494,12 @@ export default function AuthPopup({
 
                   {showInteractiveOAuthDetails && authAttempt?.canPasteCallback && (
                     <div className="mt-4">
-                      <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">Manual callback</div>
+                      <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">Paste a callback manually</div>
                       <div className="app-input-shell rounded-[20px] px-3 py-3">
                         <textarea
                           value={manualCallbackDraft}
                           onChange={(event) => setManualCallbackDraft(event.target.value)}
-                          placeholder="Paste the redirect URL or authorization code if the browser does not return automatically."
+                          placeholder="Paste the redirect URL or authorization code if the browser does not return to Kordi automatically."
                           className="min-h-[112px] w-full resize-none bg-transparent text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500"
                         />
                       </div>
@@ -507,8 +510,8 @@ export default function AuthPopup({
                 </div>
 
                 {!authAttempt?.succeeded && (
-                  <div className="rounded-[20px] bg-black/10 px-3.5 py-2.5 text-[11px] leading-5 text-slate-400">
-                    Same runtime path as TUI login, including manual callback fallback if browser return does not complete automatically.
+                  <div className="rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3.5 py-2.5 text-[11px] leading-5 text-slate-400">
+                    This uses the same shared sign-in flow as the terminal app, including a manual callback fallback if the browser does not return automatically.
                   </div>
                 )}
 
@@ -523,7 +526,7 @@ export default function AuthPopup({
 
                   {showInteractiveOAuthDetails && authAttempt?.canPasteCallback && (
                     <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" disabled={isSubmitting || !manualCallbackDraft.trim()} onClick={() => void handleSubmitManual()}>
-                      Submit callback
+                      Save pasted callback
                     </Button>
                   )}
 
@@ -553,7 +556,7 @@ export default function AuthPopup({
   if (embedded) {
     return (
       <div
-        className="absolute inset-0 z-[120] flex items-start justify-center bg-black/46 px-4 py-8 sm:items-center"
+        className="absolute inset-0 z-[120] flex items-start justify-center bg-[color:var(--app-overlay-bg)] px-4 py-8 sm:items-center"
         style={{ WebkitAppRegion: 'no-drag' as const }}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) {

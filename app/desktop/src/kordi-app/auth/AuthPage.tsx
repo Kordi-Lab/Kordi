@@ -146,7 +146,7 @@ export function AuthPage({
     if (showNativeNote) {
       return (
         <div className="app-surface-muted rounded-[28px] px-5 py-5 text-sm text-slate-300">
-          Native desktop auth appears here. Open `pnpm dev:desktop` to test provider login, saved auth, logout, and callback flows.
+          Native desktop sign-in appears here. Open `pnpm dev:desktop` to test provider login, saved accounts, logout, and browser callback flows.
         </div>
       );
     }
@@ -238,33 +238,33 @@ export function AuthPage({
                 Runtime access
               </div>
 
-              <h1 className="max-w-[12ch] text-[36px] font-semibold leading-[1.02] tracking-[-0.03em] text-white">
-                Configure auth before the first chat.
+              <h1 className="max-w-[13ch] text-[36px] font-semibold leading-[1.02] tracking-[-0.03em] text-white">
+                Connect one provider before your first chat.
               </h1>
 
               <p className="mt-4 max-w-[48ch] text-[15px] leading-7 text-slate-300">
-                Review supported providers, choose a sign-in method, and open a focused auth window only when you are ready.
+                Pick the provider you want to use, then choose browser sign-in or an API key. One working connection is enough to get started.
               </p>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 <div className="app-surface-muted rounded-[24px] px-4 py-4">
-                  <div className="text-sm font-medium text-white">Shared auth store</div>
-                  <div className="mt-2 break-all text-[13px] leading-6 text-slate-400">{authState?.authPath ?? 'Loading…'}</div>
+                  <div className="text-sm font-medium text-white">Shared sign-in store</div>
+                  <div className="mt-2 break-all text-[13px] leading-6 text-slate-400">Desktop and terminal sessions reuse this path: {authState?.authPath ?? 'Loading…'}</div>
                 </div>
                 <div className="app-surface-muted rounded-[24px] px-4 py-4">
-                  <div className="text-sm font-medium text-white">Available providers</div>
+                  <div className="text-sm font-medium text-white">Ready to use</div>
                   <div className="mt-2 text-[13px] leading-6 text-slate-400">
-                    {configuredCount} configured out of {visibleProviders.length}.
+                    {configuredCount} provider{configuredCount === 1 ? '' : 's'} ready out of {visibleProviders.length}.
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="text-[12px] text-slate-400">You can reopen this later in Settings → Authentication.</div>
+            <div className="text-[12px] text-slate-400">You can come back later from Settings → Authentication.</div>
           </div>
 
           <div
-            className="min-h-0 min-w-0 bg-[linear-gradient(180deg,rgba(18,18,16,0.96),rgba(10,11,12,0.98))] p-5"
+            className="min-h-0 min-w-0 border border-white/8 bg-[linear-gradient(180deg,rgba(33,31,34,0.92),rgba(24,23,25,0.96))] p-5"
             style={{ WebkitAppRegion: 'no-drag' as const }}
           >
             {detailHeader}
@@ -277,7 +277,7 @@ export function AuthPage({
             <div className="mb-5">
               <div className="text-[18px] font-semibold tracking-tight text-white">Authentication</div>
               <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">
-                Provider sign-in, saved credentials, and guided login flows for Kordi runtime access.
+                Connect Kordi to model providers, manage saved accounts and keys, and switch which access method is active.
               </div>
             </div>
           )}

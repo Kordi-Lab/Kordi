@@ -11,21 +11,21 @@ import type {
 } from './BridgeConfigPage.types';
 
 const DISCOVERY_OPTIONS: Array<{ value: DiscoveryMode; label: string; detail: string }> = [
-  { value: 'off', label: 'Off', detail: 'Do not appear in open host discovery.' },
-  { value: 'contacts', label: 'Contacts only', detail: 'Only contacts and shared projects can see you.' },
-  { value: 'open', label: 'Open on this host', detail: 'Let people on this host discover you.' },
+  { value: 'off', label: 'Hidden', detail: 'Only saved contacts and shared projects can reach you.' },
+  { value: 'contacts', label: 'Contacts + projects', detail: 'People you already know, plus shared projects, can find you.' },
+  { value: 'open', label: 'Visible on this host', detail: 'Anyone on this host can discover you.' },
 ];
 
 export function discoveryLabel(value?: string | null) {
   switch ((value ?? '').toLowerCase()) {
     case 'off':
-      return 'Off';
+      return 'Hidden';
     case 'contacts':
-      return 'Contacts only';
+      return 'Contacts + projects';
     case 'open':
-      return 'Open on this host';
+      return 'Visible on this host';
     default:
-      return 'Open on this host';
+      return 'Visible on this host';
   }
 }
 
@@ -39,9 +39,9 @@ export function SectionNav({
   activeBridgeHost: DesktopBridgeHost | null;
 }) {
   const sections: Array<{ id: BridgePageSection; title: string; detail: string; disabled?: boolean }> = [
-    { id: 'servers', title: 'Servers', detail: 'Configured bridge hosts and add/join flow.' },
-    { id: 'details', title: 'Server details', detail: 'Identity, discovery, and active bridge agents.', disabled: !activeBridgeHost },
-    { id: 'advanced', title: 'Advanced', detail: 'Local files, Finder tools, export, and import.' },
+    { id: 'servers', title: 'Hosts', detail: 'Add a host or choose where this desktop should collaborate.' },
+    { id: 'details', title: 'Identity & contacts', detail: 'Your name, visibility, agents, and direct contacts on the selected host.', disabled: !activeBridgeHost },
+    { id: 'advanced', title: 'Files & recovery', detail: 'Local storage, export/import, and Finder tools.' },
   ];
 
   return (
@@ -79,9 +79,9 @@ export function DetailNav({
   activeBridgeHost: DesktopBridgeHost | null;
 }) {
   const steps: Array<{ id: Exclude<BridgeStepId, 'setup'>; title: string; detail: string; disabled?: boolean }> = [
-    { id: 'identity', title: 'Identity', detail: 'Your bridge name and visibility.' },
-    { id: 'agents', title: 'Agents', detail: 'Active and default bridge agents.' },
-    { id: 'discover', title: 'Discover', detail: 'People, agents, and direct contact.', disabled: !activeBridgeHost?.registered },
+    { id: 'identity', title: 'How you appear', detail: 'Your name, share copy, and visibility on this host.' },
+    { id: 'agents', title: 'My agents', detail: 'Which agent is active and which one is the default.' },
+    { id: 'discover', title: 'People & agents', detail: 'Direct contacts, visible people, and visible agents.', disabled: !activeBridgeHost?.registered },
   ];
 
   return (
@@ -143,7 +143,7 @@ export function DiscoveryModeSelector({
 
 export function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="app-bridge-empty rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-[13px] text-slate-400">
+    <div className="app-bridge-empty rounded-2xl border border-white/10 bg-[color:var(--app-control-bg)] px-3 py-3 text-[13px] text-slate-400">
       <div className="app-bridge-empty-title">{title}</div>
       <div className="mt-1 text-[12px] leading-5 text-slate-400">{detail}</div>
     </div>

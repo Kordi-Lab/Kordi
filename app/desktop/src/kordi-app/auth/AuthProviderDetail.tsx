@@ -28,7 +28,7 @@ function signInMethodButtonLabel(providerId: string, mode: 'oauth' | 'api-key', 
     return hasOptions ? 'Add another API key' : 'Add API key';
   }
   if (hasOptions) {
-    return mode === 'oauth' ? 'Re-auth / add account' : 'Add another key';
+    return mode === 'oauth' ? 'Add another account' : 'Add another key';
   }
   return mode === 'oauth' ? 'Sign in' : 'Add key';
 }
@@ -41,7 +41,7 @@ function DetailSection({
   children: ReactNode;
 }) {
   return (
-    <section className="app-auth-detail-section overflow-hidden rounded-[20px] border border-white/8 bg-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <section className="app-auth-detail-section overflow-hidden rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="border-b border-white/8 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">{title}</div>
       <div>{children}</div>
     </section>
@@ -207,7 +207,7 @@ export function AuthProviderDetail({
   if (!provider) {
     return (
       <div className="app-surface-muted rounded-[24px] px-5 py-5 text-sm text-slate-300">
-        No provider selected yet.
+        Pick a provider to choose how Kordi should sign in.
       </div>
     );
   }
@@ -252,17 +252,19 @@ export function AuthProviderDetail({
         </div>
       )}
 
-      <DetailSection title="Overview">
-        <DetailRow title="Authentication status" detail={provider.statusSummary} />
+      <DetailSection title="What this provider is for">
+        <DetailRow title="Best for" detail={provider.loginHint} multiline />
+        <SectionDivider />
+        <DetailRow title="Saved access" detail={provider.statusSummary} multiline />
         {provider.id === 'github-copilot' && (
           <>
             <SectionDivider />
-            <DetailRow title="Current host" detail={provider.authority || 'github.com'} />
+            <DetailRow title="Current GitHub host" detail={provider.authority || 'github.com'} />
           </>
         )}
       </DetailSection>
 
-      <DetailSection title="Sign-in methods">
+      <DetailSection title="Ways to connect">
         {provider.id === 'github-copilot' ? (
           (() => {
             const raw = findRawProvider(rawProviders, 'github-copilot');
@@ -272,7 +274,7 @@ export function AuthProviderDetail({
               <>
                 <DetailRow
                   title="GitHub.com"
-                  detail="Use the standard GitHub Copilot sign-in flow."
+                  detail="Use the standard GitHub sign-in flow for personal or team accounts on github.com."
                   trailing={
                     <AuthActionButton
                       type="button"
@@ -285,8 +287,8 @@ export function AuthProviderDetail({
                 />
                 <SectionDivider />
                 <DetailRow
-                  title="GitHub Enterprise Server"
-                  detail={provider.authority ? `Current host: ${provider.authority}` : 'Choose your GitHub Enterprise host and start sign-in.'}
+                  title="GitHub Enterprise host"
+                  detail={provider.authority ? `Current host: ${provider.authority}` : 'Choose your GitHub Enterprise host, then start sign-in.'}
                   trailing={
                     <AuthActionButton
                       type="button"
@@ -298,7 +300,7 @@ export function AuthProviderDetail({
                         })
                       }
                     >
-                      Configure & sign in
+                      Choose host & sign in
                     </AuthActionButton>
                   }
                 />
@@ -332,7 +334,7 @@ export function AuthProviderDetail({
         )}
       </DetailSection>
 
-      <DetailSection title="Saved profiles">
+      <DetailSection title="Saved accounts and keys">
         {provider.methods.map((method, methodIndex) => (
           <div key={`profiles-${provider.id}-${method.mode}`}>
             {methodIndex > 0 && <SectionDivider />}
@@ -398,19 +400,19 @@ export function AuthProviderDetail({
               ))
             ) : (
               <div className="px-4 pb-3 pt-2 text-[11px] leading-5 text-slate-400">
-                No saved {method.mode === 'oauth' ? 'OAuth' : 'API key'} profiles yet.
+                No saved {method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.
               </div>
             )}
           </div>
         ))}
       </DetailSection>
 
-      <DetailSection title="Advanced">
-        <DetailRow title="Shared runtime path" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
+      <DetailSection title="Storage and cleanup">
+        <DetailRow title="Shared auth store" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
         <SectionDivider />
         <DetailRow
-          title="Remove saved authentication"
-          detail="Delete saved credentials for this provider from the shared auth store. Environment variables are not removed here."
+          title="Remove saved access"
+          detail="Delete saved accounts and keys for this provider from Kordi's shared auth store. Environment variables are not removed here."
           trailing={
             confirmRemoveAll ? (
               <>
@@ -440,7 +442,7 @@ export function AuthProviderDetail({
                 }}
                 disabled={!hasSavedProfiles}
               >
-                Remove all saved auth
+                Remove all saved access
               </AuthActionButton>
             )
           }
