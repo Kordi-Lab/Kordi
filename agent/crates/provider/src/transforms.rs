@@ -81,13 +81,17 @@ pub fn convert_messages_for_anthropic(messages: &[Value]) -> Vec<Value> {
                 "tool" => {
                     let tool_call_id =
                         normalize_tool_call_id(msg["tool_call_id"].as_str().unwrap_or(""));
+                    let mut tool_result = json!({
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": msg["content"],
+                    });
+                    if msg["is_error"].as_bool() == Some(true) {
+                        tool_result["is_error"] = json!(true);
+                    }
                     Some(json!({
                         "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": tool_call_id,
-                            "content": msg["content"],
-                        }],
+                        "content": [tool_result],
                     }))
                 }
                 "system" => None, // handled separately
@@ -203,8 +207,11 @@ pub fn convert_messages_for_openai(messages: &[Value]) -> Vec<Value> {
                 result.push(out);
             }
             "tool" => {
-                // Already in OpenAI format
-                result.push(msg.clone());
+                result.push(json!({
+                    "role": "tool",
+                    "tool_call_id": msg["tool_call_id"],
+                    "content": msg["content"],
+                }));
             }
             "system" => {
                 result.push(msg.clone());

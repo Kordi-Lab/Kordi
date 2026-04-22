@@ -226,6 +226,10 @@ impl Provider for OverflowProvider {
 
 struct MetricsProvider;
 
+struct ErrorAwareToolProvider {
+    call_count: AtomicUsize,
+}
+
 #[async_trait]
 impl Provider for MetricsProvider {
     fn name(&self) -> &str {
@@ -261,6 +265,62 @@ impl Provider for MetricsProvider {
     }
 }
 
+#[async_trait]
+impl Provider for ErrorAwareToolProvider {
+    fn name(&self) -> &str {
+        "error-aware-tool-provider"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> BbResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> BbResult<()> {
+        let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if call_index == 0 {
+            let _ = tx.send(StreamEvent::ToolCallStart {
+                id: "tool-timeout-1".to_string(),
+                name: "failing-tool".to_string(),
+            });
+            let _ = tx.send(StreamEvent::ToolCallDelta {
+                id: "tool-timeout-1".to_string(),
+                arguments_delta: "{}".to_string(),
+            });
+            let _ = tx.send(StreamEvent::Done);
+            return Ok(());
+        }
+
+        let saw_error_tool_result = request.messages.iter().any(|message| {
+            message.get("role").and_then(|value| value.as_str()) == Some("tool")
+                && message.get("tool_call_id").and_then(|value| value.as_str())
+                    == Some("tool-timeout-1")
+                && message.get("is_error").and_then(|value| value.as_bool()) == Some(true)
+        });
+
+        if saw_error_tool_result {
+            let _ = tx.send(StreamEvent::TextDelta {
+                text: "continued after timeout".to_string(),
+            });
+            let _ = tx.send(StreamEvent::Done);
+            Ok(())
+        } else {
+            let _ = tx.send(StreamEvent::Error {
+                message: "missing tool error flag".to_string(),
+            });
+            Ok(())
+        }
+    }
+}
+
 struct PanicTool;
 
 #[async_trait]
@@ -287,6 +347,44 @@ impl Tool for PanicTool {
         _cancel: CancellationToken,
     ) -> BbResult<ToolResult> {
         panic!("panic containment test marker");
+    }
+}
+
+struct FailingTool;
+
+#[async_trait]
+impl Tool for FailingTool {
+    fn name(&self) -> &str {
+        "failing-tool"
+    }
+
+    fn description(&self) -> &str {
+        "returns an errored tool result"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+        })
+    }
+
+    async fn execute(
+        &self,
+        _params: serde_json::Value,
+        _ctx: &bb_tools::ToolContext,
+        _cancel: CancellationToken,
+    ) -> BbResult<ToolResult> {
+        Ok(ToolResult {
+            content: vec![ContentBlock::Text {
+                text: "Error: command timed out".to_string(),
+            }],
+            details: Some(json!({
+                "timedOut": true,
+            })),
+            is_error: true,
+            artifact_path: None,
+        })
     }
 }
 
@@ -574,6 +672,80 @@ async fn run_turn_contains_tool_panics_without_aborting_the_turn() {
     assert!(
         saw_done,
         "turn should still complete after contained tool panic"
+    );
+}
+
+#[tokio::test]
+async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_flag() {
+    let conn = store::open_memory().expect("memory db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id,
+        system_prompt: "system".to_string(),
+        model: test_model(128_000),
+        provider: Arc::new(ErrorAwareToolProvider {
+            call_count: AtomicUsize::new(0),
+        }),
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: bb_core::types::CompactionSettings::default(),
+        tool_registry: ToolRegistry::from_tools(vec![Box::new(FailingTool)]),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(config, event_tx, "hi".to_string()).await;
+    result.expect("turn should continue after errored tool result");
+
+    let mut saw_timeout_tool_error = false;
+    let mut saw_done = false;
+    while let Ok(event) = event_rx.try_recv() {
+        match event {
+            TurnEvent::ToolResult {
+                is_error, content, ..
+            } => {
+                if is_error {
+                    let text = content
+                        .iter()
+                        .filter_map(|block| match block {
+                            ContentBlock::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if text.contains("timed out") {
+                        saw_timeout_tool_error = true;
+                    }
+                }
+            }
+            TurnEvent::Done { text } => {
+                saw_done = true;
+                assert_eq!(text, "continued after timeout");
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_timeout_tool_error,
+        "should persist the errored tool result"
+    );
+    assert!(
+        saw_done,
+        "turn should complete after the provider sees the error tool result"
     );
 }
 
