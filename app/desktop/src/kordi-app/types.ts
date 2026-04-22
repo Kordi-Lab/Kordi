@@ -51,12 +51,6 @@ export type Message = {
   };
 };
 
-export type SessionStatusIndicator = {
-  label: string;
-  tone: 'running' | 'ready' | 'draft' | 'error' | 'stopped';
-  live?: boolean;
-};
-
 export type Conversation = {
   id: string;
   name: string;
@@ -69,7 +63,6 @@ export type Conversation = {
   participants: string[];
   messages: Message[];
   updatedAtLabel?: string;
-  statusIndicator?: SessionStatusIndicator;
 };
 
 export type Contact = {
@@ -114,6 +107,13 @@ export type Agent = {
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
+  bridgeAgentId?: string;
+  bridgeServerUrl?: string;
+  bridgeOwnerName?: string;
+  isOwned?: boolean;
+  isBridgeDefault?: boolean;
+  isBridgeActive?: boolean;
+  isBridgeRegistered?: boolean;
 };
 
 export type ProjectSession = {
@@ -125,8 +125,7 @@ export type ProjectSession = {
   participants: string[];
   artifacts: number;
   tasks: number;
-  unread?: number;
-  statusIndicator?: SessionStatusIndicator;
+  unread: number;
   messages: Message[];
 };
 
@@ -269,12 +268,26 @@ export type DesktopBridgePeer = {
   ownerName?: string | null;
   createdAt?: string | null;
   sharedProjects: string[];
+  humanId?: string | null;
+  agentId?: string | null;
+  isDefaultAgent?: boolean;
+  discoveryMode?: string | null;
 };
 
 export type DesktopBridgeProject = {
   id: string;
   name: string;
   memberCount: number;
+};
+
+export type DesktopBridgeAgent = {
+  id: string;
+  label: string;
+  nodeId?: string | null;
+  runtime: string;
+  isDefault: boolean;
+  isActive: boolean;
+  registered: boolean;
 };
 
 export type DesktopBridgeHost = {
@@ -287,6 +300,10 @@ export type DesktopBridgeHost = {
   ownerName: string;
   endpoint: string;
   tokenPresent: boolean;
+  humanId: string;
+  discoveryMode: string;
+  activeAgentId?: string | null;
+  agents: DesktopBridgeAgent[];
   visiblePeers: DesktopBridgePeer[];
   visiblePeerCount: number;
   projects: DesktopBridgeProject[];

@@ -49,14 +49,14 @@ git --version
 ## 2. Pull bridges
 
 ```bash
-git clone https://github.com/shuyhere/Bridges.git ~/bridges
-cd ~/bridges
+git clone https://github.com/Kordi-AI/Kordi.git ~/kordi
+cd ~/kordi
 ```
 
 To update later:
 
 ```bash
-cd ~/bridges
+cd ~/kordi
 git pull --ff-only
 ```
 
@@ -65,9 +65,9 @@ git pull --ff-only
 ## 3. Build the CLI
 
 ```bash
-cd ~/bridges
-cargo build --release --manifest-path cli/Cargo.toml
-ln -sf ~/bridges/target/release/bridges ~/.local/bin/bridges
+cd ~/kordi
+cargo build --release --manifest-path bridges/cli/Cargo.toml
+ln -sf ~/kordi/target/release/bridges ~/.local/bin/bridges
 bridges --version
 ```
 
@@ -84,7 +84,7 @@ source ~/.zshrc
 
 ```bash
 mkdir -p ~/.agents/skills
-cp -r ~/bridges/skills/bridges ~/.agents/skills/bridges
+cp -r ~/kordi/bridges/skills/bridges ~/.agents/skills/bridges
 ```
 
 After that, Pi can use the Bridges skill to:

@@ -4,9 +4,16 @@ import type { Dispatch, SetStateAction } from 'react';
 import { findBridgeProjectForWorkspace } from '@/app/useWorkspaceViewModels';
 import type { DesktopBridgeProject, DesktopBridgeState, Project } from '@/kordi-app/types';
 import {
+  activateDesktopBridgeAgent,
+  addDesktopBridgeContact,
+  createDesktopBridgeAgent,
   createDesktopBridgeInvite,
   createDesktopBridgeProject,
   openDesktopBridgeConversation,
+  removeDesktopBridgeContact,
+  renameDesktopBridgeAgent,
+  setDesktopBridgeDefaultAgent,
+  setDesktopBridgeDiscoveryMode,
   startDesktopBridgeLocalServer,
   stopDesktopBridgeLocalServer,
 } from '@/lib/desktop';
@@ -116,6 +123,36 @@ export function useBridgeOrchestration({
     }
   }, [isNativeShell, setActiveConvId, setActiveNav, setDesktopBridgeState, setDesktopChatError]);
 
+  const handleAddBridgeContact = useCallback(async (hostId: string, peerNodeId: string) => {
+    if (!isNativeShell) return;
+    const trimmedNodeId = peerNodeId.trim();
+    if (!trimmedNodeId) {
+      setDesktopBridgeError('Enter a contact node ID first.');
+      return;
+    }
+
+    try {
+      const nextState = await addDesktopBridgeContact(hostId, trimmedNodeId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to add bridge contact');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleRemoveBridgeContact = useCallback(async (hostId: string, peerNodeId: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await removeDesktopBridgeContact(hostId, peerNodeId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to remove bridge contact');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
   const handleStartLocalBridgeHost = useCallback(() => {
     void startDesktopBridgeLocalServer(
       17080,
@@ -142,9 +179,76 @@ export function useBridgeOrchestration({
       });
   }, [setDesktopBridgeError, setDesktopBridgeState]);
 
+  const handleSetBridgeDiscoveryMode = useCallback(async (hostId: string, discoveryMode: 'off' | 'contacts' | 'open') => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await setDesktopBridgeDiscoveryMode(hostId, discoveryMode);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to update bridge discovery mode');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleCreateBridgeAgent = useCallback(async (hostId: string, label?: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await createDesktopBridgeAgent(hostId, label?.trim() || undefined);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to create bridge agent');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleActivateBridgeAgent = useCallback(async (hostId: string, agentId: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await activateDesktopBridgeAgent(hostId, agentId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to switch bridge agent');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleRenameBridgeAgent = useCallback(async (hostId: string, agentId: string, label: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await renameDesktopBridgeAgent(hostId, agentId, label);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to rename bridge agent');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleSetDefaultBridgeAgent = useCallback(async (hostId: string, agentId: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await setDesktopBridgeDefaultAgent(hostId, agentId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to set default bridge agent');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
   return {
+    handleAddBridgeContact,
+    handleActivateBridgeAgent,
+    handleCreateBridgeAgent,
     handleCreateProjectBridgeInvite,
     handleOpenBridgeConversation,
+    handleRemoveBridgeContact,
+    handleRenameBridgeAgent,
+    handleSetBridgeDiscoveryMode,
+    handleSetDefaultBridgeAgent,
     handleStartLocalBridgeHost,
     handleStopLocalBridgeHost,
   };

@@ -15,9 +15,9 @@ Use this guide to validate encrypted agent-to-agent communication between two ma
 Build from source for the current beta:
 
 ```bash
-git clone https://github.com/shuyhere/Bridges.git bridges
-cd bridges
-cargo build --release --manifest-path cli/Cargo.toml
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi
+cargo build --release --manifest-path bridges/cli/Cargo.toml
 ln -sf $(pwd)/target/release/bridges ~/.local/bin/bridges
 bridges --version
 ```

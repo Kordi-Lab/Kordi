@@ -15,6 +15,8 @@ Bridges is what you need!
 
 Inside the Kordi monorepo, this directory is the source-of-truth for the Bridges network layer.
 
+> Use the `Kordi-AI/Kordi` monorepo as the canonical source checkout. Do not follow older standalone Bridges clone instructions.
+
 It owns:
 
 - the local CLI and daemon
@@ -81,6 +83,18 @@ This public repo is currently set up to support:
 - future package/binary distribution when you explicitly choose to enable it
 
 > Binary and npm release are intentionally disabled for general users right now. Build from source and configure the agent runtime locally.
+
+## Deployment path comparison
+
+| Path | Best for | HTTPS story | Automation path | Notes |
+|------|----------|-------------|-----------------|-------|
+| **Caddy** | simplest self-hosted public or private deployment | automatic HTTPS for real hostnames | `bridges/scripts/install-bridges-linux-generic.sh` | easiest default for most teams |
+| **Nginx** | teams that already standardize on Nginx / certbot | certbot-managed Let's Encrypt | `bridges/scripts/install-bridges-linux-generic-nginx.sh` | better when you already have an Nginx ops stack |
+| **Tailscale private setup** | lab / internal teams on one tailnet | private hostname like `*.ts.net`, often with Tailscale certs | see `docs/self-host-guide.md` → Tailscale section | best when the server should stay inside a private network |
+
+See `docs/self-host-guide.md` for the full setup guide and deployment tradeoffs.
+
+If your users are connecting through **Kordi Desktop**, they do not need to manually install the Bridges CLI or local daemon just to join a hosted server. The desktop app bundles the local bridge sidecar it uses for connection and state management.
 
 ## Configure your agent runtime to use the bridge network
 

@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopBridgeInvite, DesktopBridgeState, NavId } from '@/kordi-app/types';
 import {
+  exportDesktopBridgeHostsConfig,
   fetchDesktopBridgeState,
+  importDesktopBridgeHostsConfig,
+  openDesktopBridgeConfigFolder,
   pollDesktopBridgeMailbox,
   removeDesktopBridgeHost,
+  revealDesktopBridgeStorageFile,
   saveDesktopBridgeHost,
   sendDesktopBridgePresence,
   setDesktopActiveBridgeHost,
-  startDesktopBridgeLocalServer,
 } from '@/lib/desktop';
 
 type UseBridgeStateArgs = {
@@ -19,6 +22,59 @@ type UseBridgeStateArgs = {
   composerChatText: string;
 };
 
+type BridgeSettingsDraft = {
+  hostId?: string | null;
+  serverUrl: string;
+  displayName: string;
+  ownerName: string;
+};
+
+function isBridgeSettingsDraft(value: unknown): value is BridgeSettingsDraft {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Record<string, unknown>;
+  return typeof draft.serverUrl === 'string'
+    && typeof draft.displayName === 'string'
+    && typeof draft.ownerName === 'string';
+}
+
+function applyBridgeSettingsDraft(
+  state: DesktopBridgeState | null,
+  draft: BridgeSettingsDraft,
+): DesktopBridgeState | null {
+  if (!state) return state;
+
+  const trimmedServerUrl = draft.serverUrl.trim();
+  const trimmedDisplayName = draft.displayName.trim();
+  const trimmedOwnerName = draft.ownerName.trim();
+  const targetHostId = draft.hostId
+    ?? state.activeHostId
+    ?? state.hosts.find((host) => host.serverUrl === trimmedServerUrl)?.id
+    ?? null;
+
+  if (!targetHostId) return state;
+
+  return {
+    ...state,
+    hosts: state.hosts.map((host) => {
+      if (host.id !== targetHostId) return host;
+
+      const activeAgentId = host.activeAgentId ?? host.agents.find((agent) => agent.isDefault)?.id ?? null;
+
+      return {
+        ...host,
+        serverUrl: trimmedServerUrl || host.serverUrl,
+        displayName: trimmedDisplayName || host.displayName,
+        ownerName: trimmedOwnerName || host.ownerName,
+        agents: host.agents.map((agent) => (
+          agent.id === activeAgentId && trimmedDisplayName
+            ? { ...agent, label: trimmedDisplayName }
+            : agent
+        )),
+      };
+    }),
+  };
+}
+
 export function useBridgeState({
   isNativeShell,
   activeNav,
@@ -27,7 +83,7 @@ export function useBridgeState({
   composerChatText,
 }: UseBridgeStateArgs) {
   const [desktopBridgeState, setDesktopBridgeState] = useState<DesktopBridgeState | null>(null);
-  const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<{ hostId?: string | null; serverUrl: string; displayName: string; ownerName: string } | null>(null);
+  const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<BridgeSettingsDraft | null>(null);
   const [isDesktopBridgeSaving, setIsDesktopBridgeSaving] = useState(false);
   const [desktopBridgeError, setDesktopBridgeError] = useState<string | null>(null);
   const [isBridgePolling, setIsBridgePolling] = useState(false);
@@ -37,7 +93,7 @@ export function useBridgeState({
   const [bridgeWizardOpen, setBridgeWizardOpen] = useState(false);
   const [bridgeWizardStep, setBridgeWizardStep] = useState<1 | 2 | 3>(1);
   const [bridgeWizardDraft, setBridgeWizardDraft] = useState({
-    mode: 'join' as 'join' | 'self-host' | 'public',
+    mode: 'have-url' as 'have-url' | 'need-host',
     serverUrl: '',
     displayName: '',
     ownerName: '',
@@ -48,6 +104,13 @@ export function useBridgeState({
     ?? desktopBridgeState?.hosts?.[0]
     ?? null;
 
+  const showBridgeNotice = useCallback((message: string) => {
+    setDesktopBridgeError(message);
+    window.setTimeout(() => {
+      setDesktopBridgeError((current) => (current === message ? null : current));
+    }, 2200);
+  }, []);
+
   const refreshDesktopBridge = useCallback(async () => {
     const nextState = await fetchDesktopBridgeState();
     if (nextState) {
@@ -56,21 +119,41 @@ export function useBridgeState({
     }
   }, []);
 
-  const handleSaveBridgeSettings = useCallback(async () => {
-    if (!isNativeShell || !bridgeSettingsDraft) return;
+  const handleSaveBridgeSettings = useCallback(async (draftOverride?: BridgeSettingsDraft) => {
+    const draft = isBridgeSettingsDraft(draftOverride)
+      ? draftOverride
+      : bridgeSettingsDraft;
+    if (!isNativeShell || !draft) return;
+
+    const normalizedDraft: BridgeSettingsDraft = {
+      hostId: draft.hostId ?? undefined,
+      serverUrl: draft.serverUrl.trim(),
+      displayName: draft.displayName.trim(),
+      ownerName: draft.ownerName.trim(),
+    };
 
     try {
       setIsDesktopBridgeSaving(true);
       setDesktopBridgeError(null);
+      setBridgeSettingsDraft((current) => (
+        current
+          ? { ...current, ...normalizedDraft }
+          : current
+      ));
+      setDesktopBridgeState((current) => applyBridgeSettingsDraft(current, normalizedDraft));
       const saved = await saveDesktopBridgeHost(
-        bridgeSettingsDraft.serverUrl,
-        bridgeSettingsDraft.displayName,
-        bridgeSettingsDraft.ownerName,
-        bridgeSettingsDraft.hostId ?? undefined,
+        normalizedDraft.serverUrl,
+        normalizedDraft.displayName,
+        normalizedDraft.ownerName,
+        normalizedDraft.hostId ?? undefined,
       );
       setDesktopBridgeState(saved);
       setDesktopBridgeError(null);
     } catch (error) {
+      const restoredState = await fetchDesktopBridgeState();
+      if (restoredState) {
+        setDesktopBridgeState(restoredState);
+      }
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to save bridge host');
     } finally {
       setIsDesktopBridgeSaving(false);
@@ -90,12 +173,35 @@ export function useBridgeState({
 
   const handleRemoveBridgeHost = useCallback(async (hostId: string) => {
     if (!isNativeShell) return;
+
+    setDesktopBridgeState((current) => {
+      if (!current) return current;
+      const nextHosts = current.hosts.filter((host) => host.id !== hostId);
+      const nextActiveHostId = current.activeHostId === hostId ? (nextHosts[0]?.id ?? null) : current.activeHostId;
+      return {
+        ...current,
+        activeHostId: nextActiveHostId,
+        hosts: nextHosts,
+        conversations: current.conversations.filter((conversation) => conversation.hostId !== hostId),
+      };
+    });
+
     try {
       const nextState = await removeDesktopBridgeHost(hostId);
       setDesktopBridgeState(nextState);
+      const refreshedState = await fetchDesktopBridgeState();
+      if (refreshedState) {
+        setDesktopBridgeState(refreshedState);
+      }
       setDesktopBridgeError(null);
     } catch (error) {
-      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to remove bridge host');
+      const message = error instanceof Error ? error.message : 'Unable to remove bridge host';
+      const restoredState = await fetchDesktopBridgeState();
+      if (restoredState) {
+        setDesktopBridgeState(restoredState);
+      }
+      setDesktopBridgeError(message);
+      throw error instanceof Error ? error : new Error(message);
     }
   }, [isNativeShell]);
 
@@ -103,22 +209,18 @@ export function useBridgeState({
     setBridgeSettingsDraft({
       hostId: null,
       serverUrl: '',
-      displayName: currentActiveHost?.displayName ?? '',
-      ownerName: currentActiveHost?.ownerName ?? '',
+      displayName: currentActiveHost?.displayName ?? 'Kordi',
+      ownerName: currentActiveHost?.ownerName ?? 'Kordi User',
     });
     setDesktopBridgeError(null);
   }, [currentActiveHost]);
 
-  const openBridgeWizard = useCallback((mode: 'join' | 'self-host' | 'public' = 'join') => {
+  const openBridgeWizard = useCallback((mode: 'have-url' | 'need-host' = 'have-url') => {
     setBridgeWizardDraft({
       mode,
-      serverUrl: mode === 'self-host'
-        ? (desktopBridgeState?.localServer.serverUrl || 'http://127.0.0.1:17080')
-        : mode === 'public'
-          ? 'https://coord.korde.ai'
-          : currentActiveHost?.serverUrl || '',
-      displayName: currentActiveHost?.displayName || '',
-      ownerName: currentActiveHost?.ownerName || '',
+      serverUrl: currentActiveHost?.serverUrl || '',
+      displayName: currentActiveHost?.displayName || 'Kordi',
+      ownerName: currentActiveHost?.ownerName || 'Kordi User',
     });
     setBridgeWizardStep(1);
     setBridgeWizardOpen(true);
@@ -129,28 +231,23 @@ export function useBridgeState({
     try {
       setDesktopBridgeError(null);
       if (bridgeWizardStep === 1) {
-        if (bridgeWizardDraft.mode === 'self-host') {
-          const state = await startDesktopBridgeLocalServer(17080, bridgeWizardDraft.displayName, bridgeWizardDraft.ownerName);
-          setDesktopBridgeState(state);
-          const host = state.hosts.find((item) => item.id === state.activeHostId) ?? state.hosts[0];
-          setBridgeWizardDraft((current) => ({
-            ...current,
-            serverUrl: host?.serverUrl || current.serverUrl,
-          }));
-        } else {
-          const state = await saveDesktopBridgeHost(
-            bridgeWizardDraft.serverUrl,
-            bridgeWizardDraft.displayName,
-            bridgeWizardDraft.ownerName,
-            bridgeSettingsDraft?.hostId ?? undefined,
-          );
-          setDesktopBridgeState(state);
-          const host = state.hosts.find((item) => item.id === state.activeHostId) ?? state.hosts[0];
-          setBridgeWizardDraft((current) => ({
-            ...current,
-            serverUrl: host?.serverUrl || current.serverUrl,
-          }));
+        if (bridgeWizardDraft.mode === 'need-host') {
+          setBridgeWizardStep(2);
+          return;
         }
+
+        const state = await saveDesktopBridgeHost(
+          bridgeWizardDraft.serverUrl,
+          bridgeWizardDraft.displayName,
+          bridgeWizardDraft.ownerName,
+          bridgeSettingsDraft?.hostId ?? undefined,
+        );
+        setDesktopBridgeState(state);
+        const host = state.hosts.find((item) => item.id === state.activeHostId) ?? state.hosts[0];
+        setBridgeWizardDraft((current) => ({
+          ...current,
+          serverUrl: host?.serverUrl || current.serverUrl,
+        }));
         setBridgeWizardStep(2);
         return;
       }
@@ -169,14 +266,56 @@ export function useBridgeState({
   const handleCopyBridgeText = useCallback(async (value: string, successMessage = 'Copied to clipboard') => {
     try {
       await navigator.clipboard.writeText(value);
-      setDesktopBridgeError(successMessage);
-      window.setTimeout(() => {
-        setDesktopBridgeError((current) => (current === successMessage ? null : current));
-      }, 1800);
+      showBridgeNotice(successMessage);
     } catch (error) {
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to copy bridge details');
     }
-  }, []);
+  }, [showBridgeNotice]);
+
+  const handleOpenBridgeConfigFolder = useCallback(async () => {
+    if (!isNativeShell) return;
+    try {
+      const path = await openDesktopBridgeConfigFolder();
+      showBridgeNotice(`Opened ${path}`);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to open bridge config folder');
+      throw error;
+    }
+  }, [isNativeShell, showBridgeNotice]);
+
+  const handleRevealBridgeStorageFile = useCallback(async (kind: 'config' | 'conversations' | 'legacy') => {
+    if (!isNativeShell) return;
+    try {
+      const path = await revealDesktopBridgeStorageFile(kind);
+      showBridgeNotice(`Revealed ${path}`);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to reveal bridge storage file');
+      throw error;
+    }
+  }, [isNativeShell, showBridgeNotice]);
+
+  const handleExportBridgeHostsConfig = useCallback(async () => {
+    if (!isNativeShell) return;
+    try {
+      const path = await exportDesktopBridgeHostsConfig();
+      showBridgeNotice(`Exported redacted bridge host config to ${path}`);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to export bridge host config');
+      throw error;
+    }
+  }, [isNativeShell, showBridgeNotice]);
+
+  const handleImportBridgeHostsConfig = useCallback(async (raw: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await importDesktopBridgeHostsConfig(raw);
+      setDesktopBridgeState(nextState);
+      showBridgeNotice(`Imported ${nextState.hosts.length} bridge server${nextState.hosts.length === 1 ? '' : 's'} from config metadata`);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to import bridge host config');
+      throw error;
+    }
+  }, [isNativeShell, showBridgeNotice]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -216,8 +355,8 @@ export function useBridgeState({
       return {
         hostId: null,
         serverUrl: '',
-        displayName: '',
-        ownerName: '',
+        displayName: 'Kordi',
+        ownerName: 'Kordi User',
       };
     });
   }, [currentActiveHost]);
@@ -313,5 +452,9 @@ export function useBridgeState({
     openBridgeWizard,
     handleBridgeWizardPrimary,
     handleCopyBridgeText,
+    handleOpenBridgeConfigFolder,
+    handleRevealBridgeStorageFile,
+    handleExportBridgeHostsConfig,
+    handleImportBridgeHostsConfig,
   };
 }
