@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 import { fetchDesktopChatState, fetchDesktopChatTurnState } from '@/lib/desktop';
+import { formatDesktopClockTime } from '@/lib/time';
 
 type UseDesktopChatStateArgs = {
   isNativeShell: boolean;
@@ -257,7 +258,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   }, [desktopChatState?.activeSession, desktopChatState?.activeSessionId, desktopLiveTurnsBySession, isNativeShell, mapDesktopMessages]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
-    const finishedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const finishedAt = formatDesktopClockTime(new Date());
     const visibleLocalSessionId = visibleLocalSessionIdRef.current;
     const shouldAppendAssistantMessage =
       turn.assistantText.trim().length > 0 || turn.thinkingText.trim().length > 0 || turn.tools.length > 0 || Boolean(turn.error);

@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { ComposerScope, DesktopChatState } from '@/kordi-app/types';
+import { formatDesktopClockTime } from '@/lib/time';
 
 type UseKordiShellViewModelArgs = {
   themeMode: 'dark' | 'light';
@@ -36,7 +37,7 @@ export function useKordiShellViewModel({
   handleSendChatMessage,
 }: UseKordiShellViewModelArgs) {
   const lastBridgePollAtLabel = useMemo(
-    () => (lastBridgePollAt ? new Date(lastBridgePollAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null),
+    () => (lastBridgePollAt ? formatDesktopClockTime(lastBridgePollAt, { includeSeconds: true }) : null),
     [lastBridgePollAt],
   );
 

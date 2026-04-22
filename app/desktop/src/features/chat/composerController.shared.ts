@@ -1,3 +1,5 @@
+import { formatDesktopClockTime } from '@/lib/time';
+
 const SHARED_LOCAL_SLASH_COMMANDS = new Set([
   '/settings',
   '/model',
@@ -62,7 +64,7 @@ export function desktopSlashHelpText() {
 }
 
 export function formatDesktopEventTime() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatDesktopClockTime(new Date());
 }
 
 export function formatThinkingSelectionLabel(value: string) {
