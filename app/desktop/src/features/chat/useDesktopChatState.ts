@@ -142,7 +142,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
     const activeLiveTurn = desktopLiveTurnsBySession[nextState.activeSessionId];
     setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
-    clearUnreadForSession(nextState.activeSessionId);
+    if (visibleLocalSessionIdRef.current === nextState.activeSessionId) {
+      clearUnreadForSession(nextState.activeSessionId);
+    }
     setDesktopChatError(null);
   }, [clearUnreadForSession, desktopLiveTurnsBySession]);
 
@@ -154,12 +156,15 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (!desktopChatState) return;
 
     const knownSessionIds = new Set(desktopChatState.sessions.map((session) => session.id));
+    // Keep unread counts until the user actually views the session, not merely because
+    // that session is the most recently loaded desktop transcript.
+    const visibleLocalSessionId = visibleLocalSessionIdRef.current;
     setLocalSessionUnreadCounts((current) => {
       let changed = false;
       const next: Record<string, number> = {};
 
       for (const [sessionId, unreadCount] of Object.entries(current)) {
-        if (!knownSessionIds.has(sessionId) || unreadCount <= 0 || sessionId === desktopChatState.activeSessionId) {
+        if (!knownSessionIds.has(sessionId) || unreadCount <= 0 || sessionId === visibleLocalSessionId) {
           if (unreadCount > 0) {
             changed = true;
           }
@@ -196,7 +201,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         if (cancelled || !state) return;
         const activeLiveTurn = desktopLiveTurnsBySession[state.activeSessionId];
         setDesktopChatState((current) => mergeLatestDesktopChatState(current, state, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
-        clearUnreadForSession(state.activeSessionId);
+        if (visibleLocalSessionIdRef.current === state.activeSessionId) {
+          clearUnreadForSession(state.activeSessionId);
+        }
         setDesktopChatError(null);
       })
       .catch((error) => {
