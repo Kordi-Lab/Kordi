@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, NavId } from '@/kordi-app/types';
+import type { ChatFilter, ContactClass, NavId, SessionStatusIndicator } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 import { cn } from '@/lib/utils';
 
@@ -26,13 +26,16 @@ type ConversationItem = {
   unread: number;
   messages: Array<{ time?: string }>;
   updatedAtLabel?: string;
+  statusIndicator?: SessionStatusIndicator;
 };
 
 type ProjectSessionItem = {
   id: string;
   name: string;
+  summary?: string;
   lastActive: string;
   unread?: number;
+  statusIndicator?: SessionStatusIndicator;
 };
 
 type ProjectItem = {
@@ -107,6 +110,95 @@ type WorkspaceSidebarProps = {
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
 };
+
+function SidebarSessionStatusIndicator({
+  indicator,
+  active = false,
+}: {
+  indicator?: SessionStatusIndicator;
+  active?: boolean;
+}) {
+  if (!indicator) return null;
+
+  const toneClasses =
+    indicator.tone === 'running'
+      ? {
+          root: 'app-session-status-light app-session-status-light-running',
+          glow: active ? 'bg-sky-400/45' : 'bg-sky-500/38',
+          dot: active ? 'bg-sky-500 ring-sky-500/40' : 'bg-sky-500 ring-sky-500/34',
+        }
+      : indicator.tone === 'draft'
+        ? {
+            root: 'app-session-status-light app-session-status-light-draft',
+            glow: active ? 'bg-amber-400/34' : 'bg-amber-500/26',
+            dot: active ? 'bg-amber-500 ring-amber-500/30' : 'bg-amber-500 ring-amber-500/24',
+          }
+        : indicator.tone === 'error'
+          ? {
+              root: 'app-session-status-light app-session-status-light-error',
+              glow: active ? 'bg-rose-400/34' : 'bg-rose-500/28',
+              dot: active ? 'bg-rose-500 ring-rose-500/32' : 'bg-rose-500 ring-rose-500/28',
+            }
+          : indicator.tone === 'stopped'
+            ? {
+                root: 'app-session-status-light app-session-status-light-stopped',
+                glow: active ? 'bg-slate-400/22' : 'bg-slate-400/18',
+                dot: active ? 'bg-slate-400 ring-slate-400/24' : 'bg-slate-400 ring-slate-400/20',
+              }
+            : {
+                root: 'app-session-status-light app-session-status-light-unread',
+                glow: active ? 'bg-emerald-400/38' : 'bg-emerald-500/32',
+                dot: active ? 'bg-emerald-500 ring-emerald-500/34' : 'bg-emerald-500 ring-emerald-500/28',
+              };
+
+  return (
+    <span
+      className={cn('relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center', toneClasses.root)}
+      title={indicator.label}
+      aria-label={indicator.label}
+    >
+      <span className={cn('absolute inset-[-4px] rounded-full blur-[4px]', toneClasses.glow)} />
+      {indicator.live ? (
+        <span className={cn('absolute inset-[-1px] rounded-full opacity-60 motion-safe:animate-ping motion-reduce:animate-none', toneClasses.glow)} />
+      ) : null}
+      <span className={cn('relative h-2.5 w-2.5 rounded-full ring-1', toneClasses.dot)} />
+    </span>
+  );
+}
+
+function SidebarUnreadBadge({ count }: { count?: number }) {
+  if (!count || count <= 0) return null;
+
+  return (
+    <span className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function SidebarSessionMetaColumn({
+  timeLabel,
+  unreadCount,
+  indicator,
+  active = false,
+}: {
+  timeLabel: string;
+  unreadCount?: number;
+  indicator?: SessionStatusIndicator;
+  active?: boolean;
+}) {
+  return (
+    <div className="flex w-[3.85rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
+      <span className={cn('block w-full text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
+        {timeLabel}
+      </span>
+      <div className="flex h-2.5 w-full items-center justify-end gap-1.5">
+        <SidebarUnreadBadge count={unreadCount} />
+        <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+      </div>
+    </div>
+  );
+}
 
 export function WorkspaceSidebar({
   isNativeShell,
@@ -292,33 +384,33 @@ export function WorkspaceSidebar({
                             key={conversation.id}
                             type="button"
                             onClick={() => onSelectChatSession(conversation.id)}
-                            className={`app-session-row w-full px-2.5 py-1.5 text-left ${
+                            className={`app-session-row w-full px-2.5 py-[0.3125rem] text-left ${
                               isActive ? 'app-session-row-active text-white' : 'text-white'
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              <Avatar className="h-7 w-7 border border-white/10">
+                              <Avatar className="mt-px h-7 w-7 border border-white/10">
                                 <AvatarFallback className={isActive ? 'bg-[#e7e1d8] text-[#201d1a]' : 'bg-white/[0.045] text-slate-200'}>
                                   {getInitials(conversation.name)}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
-                                  <div className="flex items-center gap-1.5">
-                                    {conversation.unread > 0 ? (
-                                      <span className="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                        {formatUnreadCount(conversation.unread)}
-                                      </span>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1 pr-1">
+                                    <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
+                                    {conversation.subtitle.trim().length > 0 ? (
+                                      <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                        {conversation.subtitle}
+                                      </div>
                                     ) : null}
-                                    <span className="w-[4.1rem] shrink-0 text-right text-[10px] tabular-nums text-slate-500">{rowTimeLabel}</span>
                                   </div>
+                                  <SidebarSessionMetaColumn
+                                    timeLabel={rowTimeLabel}
+                                    unreadCount={conversation.unread}
+                                    indicator={conversation.statusIndicator}
+                                    active={isActive}
+                                  />
                                 </div>
-                                {conversation.subtitle.trim().length > 0 ? (
-                                  <div className={`truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
-                                    {conversation.subtitle}
-                                  </div>
-                                ) : null}
                               </div>
                             </div>
                           </button>
@@ -397,21 +489,28 @@ export function WorkspaceSidebar({
                                         type="button"
                                         onClick={() => onSelectProjectSession(project.id, session.id)}
                                         className={cn(
-                                          'app-project-session-row w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-1.5 text-left transition',
+                                          'app-project-session-row w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-[0.3125rem] text-left transition',
                                           isActiveSession
                                             ? 'border-white/10 bg-white/[0.055] text-white'
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
                                         )}
                                       >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <div className="truncate text-[12px] font-medium">{session.name}</div>
-                                          {session.unread && session.unread > 0 ? (
-                                            <span className="inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                              {formatUnreadCount(session.unread)}
-                                            </span>
-                                          ) : null}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0 flex-1 pr-1">
+                                            <div className="truncate text-[12px] font-medium">{session.name}</div>
+                                            {session.summary?.trim().length ? (
+                                              <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                                {session.summary}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                          <SidebarSessionMetaColumn
+                                            timeLabel={session.lastActive}
+                                            unreadCount={session.unread}
+                                            indicator={session.statusIndicator}
+                                            active={isActiveSession}
+                                          />
                                         </div>
-                                        <div className="mt-0.5 truncate text-[11px] text-slate-400">{session.lastActive}</div>
                                       </button>
                                     );
                                   })}
