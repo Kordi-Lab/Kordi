@@ -61,7 +61,8 @@
 
 .app-left-glass {
   background:
-    radial-gradient(140px 120px at 50% 100%, rgba(214, 158, 46, 0.14), transparent 72%),
+    radial-gradient(164px 136px at 50% 104%, rgba(214, 158, 46, 0.24), transparent 68%),
+    radial-gradient(112px 88px at 50% 100%, rgba(255, 194, 84, 0.12), transparent 64%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 18%, rgba(0, 0, 0, 0.08) 100%),
     var(--app-left-glass-bg);
   box-shadow:
