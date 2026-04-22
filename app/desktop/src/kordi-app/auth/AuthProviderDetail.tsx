@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { formatDesktopDateTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { AuthDisplayProvider } from './model';
@@ -86,10 +87,7 @@ function formatAuthTimestamp(timestampMs?: number | null) {
   if (!timestampMs) return null;
 
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(timestampMs));
+    return formatDesktopDateTime(timestampMs);
   } catch {
     return null;
   }
