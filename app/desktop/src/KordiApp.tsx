@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   contactRequests,
   projects,
@@ -133,6 +133,7 @@ export default function KordiApp() {
     setPendingUserChatMessage,
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
+    localSessionUnreadCounts,
     refreshDesktopChat,
     watchDesktopLiveTurn,
   } = useDesktopChatState({
@@ -313,12 +314,22 @@ export default function KordiApp() {
     activeAgentId,
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
+    localSessionUnreadCounts,
     mapDesktopMessages,
   });
 
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0];
   const activeProjectBridgeHost = activeBridgeHost;
+  const totalUnreadMessages = useMemo(
+    () => chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0),
+    [chatConversations],
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) Kordi` : 'Kordi';
+  }, [totalUnreadMessages]);
 
   useKordiUiEffects({
     isNativeShell,
