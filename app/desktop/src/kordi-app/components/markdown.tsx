@@ -521,14 +521,14 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
           const headingClass =
             block.level === 1
               ? tone === 'muted'
-                ? 'text-[1.05rem] font-semibold text-slate-100'
+                ? 'text-[1.05rem] font-medium text-slate-300'
                 : 'text-[1.05rem] font-semibold text-white'
               : block.level === 2
                 ? tone === 'muted'
-                  ? 'text-[0.98rem] font-semibold text-slate-100'
+                  ? 'text-[0.98rem] font-medium text-slate-300'
                   : 'text-[0.98rem] font-semibold text-white'
                 : tone === 'muted'
-                  ? 'text-[0.92rem] font-semibold text-slate-200'
+                  ? 'text-[0.92rem] font-medium text-slate-400'
                   : 'text-[0.92rem] font-semibold text-slate-100';
           return (
             <div key={`heading-${index}`} className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
@@ -544,7 +544,7 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
         }
         if (block.type === 'blockquote') {
           return (
-            <blockquote key={`quote-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'border-slate-500/30 text-slate-400' : 'border-slate-500/40 text-slate-300')}>
+            <blockquote key={`quote-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
               {block.text.split('\n').map((line, lineIndex) => (
                 <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line, tone)}</p>
               ))}
@@ -555,7 +555,7 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
           return <MarkdownTable key={`table-${index}`} headers={block.headers} rows={block.rows} />;
         }
         return (
-          <p key={`paragraph-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'text-slate-300' : 'text-slate-100')}>
+          <p key={`paragraph-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'text-slate-400' : 'text-slate-100')}>
             {renderInlineMarkdown(block.text, tone)}
           </p>
         );
