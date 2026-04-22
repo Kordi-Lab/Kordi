@@ -21,6 +21,7 @@ type UseKordiUiEffectsArgs = {
   activeAgentId: string;
   setActiveAgentId: Dispatch<SetStateAction<string>>;
   setActiveSourcePreview: Dispatch<SetStateAction<EditFilePreview | null>>;
+  setActiveArtifactId: Dispatch<SetStateAction<string | null>>;
   setOpenComposerSelector: Dispatch<SetStateAction<{ scope: ComposerScope; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null>>;
   setChatComposerAttachments: Dispatch<SetStateAction<Array<{ id: string; name: string; path: string; kind: 'image' | 'file' }>>>;
   openComposerSelector: { scope: ComposerScope; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
@@ -64,6 +65,7 @@ export function useKordiUiEffects({
   activeAgentId,
   setActiveAgentId,
   setActiveSourcePreview,
+  setActiveArtifactId,
   setOpenComposerSelector,
   setChatComposerAttachments,
   openComposerSelector,
@@ -108,9 +110,10 @@ export function useKordiUiEffects({
 
   useEffect(() => {
     setActiveSourcePreview(null);
+    setActiveArtifactId(null);
     setOpenComposerSelector(null);
     setChatComposerAttachments([]);
-  }, [activeNav, activeConvId, activeProjectId, activeProjectSessionId, setActiveSourcePreview, setChatComposerAttachments, setOpenComposerSelector]);
+  }, [activeNav, activeConvId, activeProjectId, activeProjectSessionId, setActiveArtifactId, setActiveSourcePreview, setChatComposerAttachments, setOpenComposerSelector]);
 
   useEffect(() => {
     if (!openComposerSelector) return;

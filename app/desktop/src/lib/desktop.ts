@@ -1,4 +1,4 @@
-import type { DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
+import type { DesktopArtifactPreview, DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -257,6 +257,10 @@ export async function cancelDesktopChatTurn(turnId: string) {
 
 export async function fetchDesktopChatTurnState(turnId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_turn_state', { turnId });
+}
+
+export async function fetchDesktopChatArtifactPreview(path: string) {
+  return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path });
 }
 
 export type OpenDesktopAuthPopupOptions = {

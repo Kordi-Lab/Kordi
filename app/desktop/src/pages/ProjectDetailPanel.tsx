@@ -3,8 +3,9 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab } from '@/kordi-app/types';
+import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { ArtifactInspector } from '@/pages/ArtifactInspector';
 
 type ProjectSession = {
   id: string;
@@ -38,6 +39,7 @@ type ProjectWorkspace = {
 };
 
 type ProjectDetailPanelProps = {
+  isNativeShell: boolean;
   activeDetailTab: DetailTab;
   activeProject: ProjectWorkspace;
   activeProjectSession: ProjectSession;
@@ -51,6 +53,9 @@ type ProjectDetailPanelProps = {
   onOpenProjectSettings: () => void;
   onSetTasksTab: () => void;
   getStatusBadgeClass: (value: string) => string;
+  artifacts: SessionArtifact[];
+  activeArtifactId: string | null;
+  onSelectArtifact: (artifactId: string | null) => void;
 };
 
 type MetaRowProps = {
@@ -78,6 +83,7 @@ function EmphasisBlock({ title, children, className = '' }: { title?: string; ch
 }
 
 export function ProjectDetailPanel({
+  isNativeShell,
   activeDetailTab,
   activeProject,
   activeProjectSession,
@@ -91,6 +97,9 @@ export function ProjectDetailPanel({
   onOpenProjectSettings,
   onSetTasksTab,
   getStatusBadgeClass,
+  artifacts,
+  activeArtifactId,
+  onSelectArtifact,
 }: ProjectDetailPanelProps) {
   if (activeDetailTab === 'info') {
     return (
@@ -244,12 +253,15 @@ export function ProjectDetailPanel({
   if (activeDetailTab === 'artifacts') {
     return (
       <div className="app-detail-sheet">
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Artifacts</div>
-          <div className="space-y-3">
-            <EmphasisBlock title="Related project">{activeProject.root ?? activeProject.scope}</EmphasisBlock>
-            <section>
-              <div className="mb-2.5 app-inspector-heading">Shared information sources</div>
+        <ArtifactInspector
+          isNativeShell={isNativeShell}
+          artifacts={artifacts}
+          activeArtifactId={activeArtifactId}
+          onSelectArtifact={onSelectArtifact}
+          emptyMessage="No generated code or docs in this project session yet."
+          footer={
+            <section className="app-detail-section">
+              <div className="app-detail-kicker">Shared information sources</div>
               {(activeProject.sharedSources ?? []).length > 0 ? (
                 <div className="app-inspector-list">
                   {(activeProject.sharedSources ?? []).map((source, index) => (
@@ -264,8 +276,8 @@ export function ProjectDetailPanel({
                 <div className="app-inspector-empty">No shared project sources configured yet.</div>
               )}
             </section>
-          </div>
-        </section>
+          }
+        />
       </div>
     );
   }

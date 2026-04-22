@@ -27,6 +27,7 @@ export function useKordiLocalUiState() {
 
   const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<(typeof settingsSections)[number]['id']>('general');
   const [activeSourcePreview, setActiveSourcePreview] = useState<EditFilePreview | null>(null);
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
 
   const [desktopSessionRenameDraft, setDesktopSessionRenameDraft] = useState('');
@@ -83,6 +84,8 @@ export function useKordiLocalUiState() {
       setActiveSettingsSectionId,
       activeSourcePreview,
       setActiveSourcePreview,
+      activeArtifactId,
+      setActiveArtifactId,
       themeMode,
       setThemeMode,
     },

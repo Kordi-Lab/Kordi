@@ -24,6 +24,7 @@ import type {
   EditFilePreview,
   Message,
   Project,
+  SessionArtifact,
   ThemeMode,
 } from '@/kordi-app/types';
 
@@ -173,6 +174,10 @@ export type AssembleKordiShellSlotsArgs = {
   onChatTranscriptScroll: () => void;
   activeSourcePreview: EditFilePreview | null;
   setActiveSourcePreview: Dispatch<SetStateAction<EditFilePreview | null>>;
+  activeArtifactId: string | null;
+  setActiveArtifactId: Dispatch<SetStateAction<string | null>>;
+  activeChatArtifacts: SessionArtifact[];
+  activeProjectArtifacts: SessionArtifact[];
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
@@ -424,11 +429,16 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
 >;
 
 export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
+  | 'isNativeShell'
   | 'activeNav'
   | 'activeDetailTab'
   | 'setActiveDetailTab'
   | 'activeSourcePreview'
   | 'setActiveSourcePreview'
+  | 'activeArtifactId'
+  | 'setActiveArtifactId'
+  | 'activeChatArtifacts'
+  | 'activeProjectArtifacts'
   | 'activeProject'
   | 'activeProjectSession'
   | 'activeProjectLastMessage'
