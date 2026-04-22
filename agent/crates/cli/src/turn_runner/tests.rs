@@ -275,7 +275,7 @@ impl Provider for ErrorAwareToolProvider {
         &self,
         _request: CompletionRequest,
         _options: RequestOptions,
-    ) -> BbResult<Vec<StreamEvent>> {
+    ) -> KordiResult<Vec<StreamEvent>> {
         Ok(Vec::new())
     }
 
@@ -284,7 +284,7 @@ impl Provider for ErrorAwareToolProvider {
         request: CompletionRequest,
         _options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
-    ) -> BbResult<()> {
+    ) -> KordiResult<()> {
         let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
             let _ = tx.send(StreamEvent::ToolCallStart {
@@ -372,9 +372,9 @@ impl Tool for FailingTool {
     async fn execute(
         &self,
         _params: serde_json::Value,
-        _ctx: &bb_tools::ToolContext,
+        _ctx: &kordi_tools::ToolContext,
         _cancel: CancellationToken,
-    ) -> BbResult<ToolResult> {
+    ) -> KordiResult<ToolResult> {
         Ok(ToolResult {
             content: vec![ContentBlock::Text {
                 text: "Error: command timed out".to_string(),
@@ -693,7 +693,7 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
         api_key: "dummy".to_string(),
         base_url: "http://dummy.invalid".to_string(),
         headers: std::collections::HashMap::new(),
-        compaction_settings: bb_core::types::CompactionSettings::default(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
         tool_registry: ToolRegistry::from_tools(vec![Box::new(FailingTool)]),
         tool_ctx: test_tool_context(),
         thinking: None,
