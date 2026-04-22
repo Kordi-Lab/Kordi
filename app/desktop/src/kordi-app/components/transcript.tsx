@@ -72,7 +72,7 @@ function ToolTranscriptBlock({
   const [isWrapped, setIsWrapped] = useState(wrapLines ?? !preserveColumns);
 
   return (
-    <div className="px-3.5 py-2">
+    <div className="py-1.5">
       <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium text-slate-500">
         <Icon className="h-3.5 w-3.5" />
         <span>{label}</span>
@@ -117,11 +117,11 @@ function TimelineSection({
   const Icon = icon;
 
   return (
-    <div className="overflow-hidden rounded-[16px] border border-white/7 bg-white/[0.02]">
+    <div className="border-b border-white/7 py-1.5 last:border-b-0">
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-h-[34px] w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left transition hover:bg-white/[0.03]"
+        className="flex min-h-[30px] w-full items-center justify-between gap-2 rounded-lg px-0.5 py-1 text-left transition hover:bg-white/[0.02]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />}
@@ -131,7 +131,7 @@ function TimelineSection({
         </div>
         {badge ? <div className="shrink-0">{badge}</div> : null}
       </button>
-      {expanded ? <div className="border-t border-white/7 pb-1 pt-1">{children}</div> : null}
+      {expanded ? <div className="px-6 pb-0.5 pt-1">{children}</div> : null}
     </div>
   );
 }
