@@ -75,10 +75,12 @@ const targetTriple = detectTargetTriple();
 
 const kordiRuntimeRepo = ensureRepo(
   'Kordi runtime',
-  workspaceConfig.kordiRuntimePath,
+  workspaceConfig.kordiRuntimePath ?? workspaceConfig.bbAgentPath,
 );
 const kordiRuntimeManifestPath =
-  workspaceConfig.kordiRuntimeManifestPath ?? 'crates/cli/Cargo.toml';
+  workspaceConfig.kordiRuntimeManifestPath
+  ?? workspaceConfig.bbAgentManifestPath
+  ?? 'crates/cli/Cargo.toml';
 const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
 const bridgesManifestPath =
   workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
@@ -99,7 +101,10 @@ run(
 
 copyBinary(
   'Kordi runtime',
-  join(kordiRuntimeRepo, workspaceConfig.kordiRuntimeBinary),
+  join(
+    kordiRuntimeRepo,
+    workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary,
+  ),
   `kordi-${targetTriple}`
 );
 

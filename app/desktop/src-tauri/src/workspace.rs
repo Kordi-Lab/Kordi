@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceConfig {
+    #[serde(alias = "bbAgentPath")]
     pub kordi_runtime_path: String,
     pub bridges_path: String,
+    #[serde(alias = "bbAgentBinary")]
     pub kordi_runtime_binary: String,
     pub bridges_binary: String,
 }
@@ -56,9 +58,9 @@ fn source_root() -> PathBuf {
 
 fn default_config() -> WorkspaceConfig {
     WorkspaceConfig {
-        kordi_runtime_path: "../agent".into(),
-        bridges_path: "../Bridges".into(),
-        kordi_runtime_binary: "target/release/kordi".into(),
+        kordi_runtime_path: "../../agent".into(),
+        bridges_path: "../../bridges".into(),
+        kordi_runtime_binary: "../target/release/kordi".into(),
         bridges_binary: "target/release/bridges".into(),
     }
 }
