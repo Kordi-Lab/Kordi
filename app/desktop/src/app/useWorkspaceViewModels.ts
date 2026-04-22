@@ -9,10 +9,8 @@ import type {
   DesktopBridgeState,
   DesktopChatMessage,
   DesktopChatState,
-  DesktopChatTurnSnapshot,
   Message,
   Project,
-  SessionStatusIndicator,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 
@@ -23,7 +21,6 @@ type UseWorkspaceViewModelsArgs = {
   desktopBridgeState: DesktopBridgeState | null;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
-  activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
@@ -36,7 +33,6 @@ type UseWorkspaceViewModelsArgs = {
   cachedChatSessionMessages: Record<string, Message[]>;
   cachedProjectSessionMessages: Record<string, Message[]>;
   localSessionUnreadCounts: Record<string, number>;
-  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
 
@@ -56,48 +52,6 @@ function normalizeBridgeProjectKey(value?: string | null) {
   return (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function truncateInlineText(value: string, maxChars = 96) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxChars) return normalized;
-  return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
-}
-
-function buildConversationPreview(messages: Message[], fallback?: string) {
-  const latestMessage = [...messages]
-    .reverse()
-    .find((message) => message.role !== 'system' && message.text.trim().length > 0);
-
-  if (latestMessage) {
-    return truncateInlineText(latestMessage.text);
-  }
-
-  return truncateInlineText(fallback ?? '', 72);
-}
-
-function buildSessionStatusIndicator({
-  unreadCount,
-  showBackgroundActivity,
-  liveTurn,
-}: {
-  unreadCount: number;
-  showBackgroundActivity: boolean;
-  liveTurn?: DesktopChatTurnSnapshot;
-}): SessionStatusIndicator | undefined {
-  if (showBackgroundActivity && liveTurn && !liveTurn.completed) {
-    if (liveTurn.status === 'cancelling') {
-      return { label: 'Stopping', tone: 'stopped', live: true };
-    }
-
-    return { label: 'Running', tone: 'running', live: true };
-  }
-
-  if (unreadCount > 0) {
-    return { label: 'Unread', tone: 'ready' };
-  }
-
-  return undefined;
-}
-
 export function findBridgeProjectForWorkspace(host: DesktopBridgeHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
   if (!host) return null;
   const rootLeaf = (projectRoot ?? '').split(/[\\/]/).filter(Boolean).pop() ?? '';
@@ -115,7 +69,6 @@ export function useWorkspaceViewModels({
   desktopBridgeState,
   projectWorkspaces,
   projectSelectedSessionIds,
-  activeNav,
   activeConvId,
   activeProjectId,
   activeProjectSessionId,
@@ -128,7 +81,6 @@ export function useWorkspaceViewModels({
   cachedChatSessionMessages,
   cachedProjectSessionMessages,
   localSessionUnreadCounts,
-  desktopLiveTurnsBySession,
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
   const localChatConversations = useMemo(() => {
@@ -138,34 +90,26 @@ export function useWorkspaceViewModels({
 
     return desktopChatState.sessions.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
-      const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
         ? mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages)
-        : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
-      const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
-      const statusIndicator = buildSessionStatusIndicator({
-        unreadCount,
-        showBackgroundActivity: !isVisibleSession,
-        liveTurn: desktopLiveTurnsBySession[session.id],
-      });
+        : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.subtitle, time: session.updatedAtLabel }];
 
       return {
         id: session.id,
         name: session.title,
         type: 'owned-agent' as const,
-        subtitle: buildConversationPreview(activeMessages),
-        unread: unreadCount,
+        subtitle: session.subtitle,
+        unread: localSessionUnreadCounts[session.id] ?? 0,
         bridges: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
         participants: ['You', 'Kordi'],
         messages: activeMessages,
         updatedAtLabel: session.updatedAtLabel,
-        statusIndicator,
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
+  }, [cachedChatSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -174,35 +118,33 @@ export function useWorkspaceViewModels({
       const host = hostById.get(conversation.hostId);
       const hostLabel = host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
       const isAgent = isBridgeAgentRuntime(conversation.peerRuntime);
-      const mappedMessages = conversation.messages.map((message) => ({
-        role: (message.direction === 'outbound'
-          ? 'user'
-          : isAgent
-            ? 'external-agent'
-            : 'person') as Message['role'],
-        sender: message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title),
-        text: message.text,
-        time: message.timeLabel,
-        statusChips: message.direction === 'outbound'
-          ? [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')].filter(Boolean)
-          : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
-            ? ['typing']
-            : [],
-        detail: message.direction === 'outbound' && message.deliveryState === 'responded' ? 'Peer replied' : undefined,
-      }));
-
       return {
         id: conversation.id,
         name: conversation.title,
         type: (isAgent ? 'external-agent' : 'person') as const,
-        subtitle: buildConversationPreview(mappedMessages, conversation.subtitle),
+        subtitle: conversation.projectName ? `${conversation.projectName} • ${conversation.subtitle}` : conversation.subtitle,
         unread: conversation.unreadCount,
         bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
         trust: 'Bridge',
         directness: 'Bridge chat',
         participants: ['You', conversation.title],
         updatedAtLabel: conversation.updatedAtLabel,
-        messages: mappedMessages,
+        messages: conversation.messages.map((message) => ({
+          role: (message.direction === 'outbound'
+            ? 'user'
+            : isAgent
+              ? 'external-agent'
+              : 'person') as Message['role'],
+          sender: message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title),
+          text: message.text,
+          time: message.timeLabel,
+          statusChips: message.direction === 'outbound'
+            ? [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')].filter(Boolean)
+            : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
+              ? ['typing']
+              : [],
+          detail: message.direction === 'outbound' && message.deliveryState === 'responded' ? 'Peer replied' : undefined,
+        })),
         _updatedAtMs: conversation.updatedAtMs,
       };
     });
@@ -318,31 +260,86 @@ export function useWorkspaceViewModels({
 
   const displayedAgents = useMemo<Agent[]>(() => {
     if (!isNativeShell) return agents;
-    return displayedContacts
-      .filter((contact) => contact.classType === 'my-agents' || contact.classType === 'other-users-agents')
-      .map((contact) => ({
-        name: contact.name,
-        id: contact.bridgePeerNodeId || contact.id,
-        role: contact.classType === 'my-agents' ? 'Owned bridge identity' : 'External bridge agent',
-        messaging: 'Bridge mailbox relay',
-        status: contact.status,
-        tasks: 0,
-        defaultProvider: 'Bridge',
-        defaultModel: contact.bridgePeerRuntime || 'bridge-node',
-        bridgesConfig: contact.bridges.join(' • '),
-        contactId: contact.id,
-        systemPrompt: 'Bridge-discovered agent or owned bridge node identity.',
-        xMd: contact.detail,
-        lastActivities: [
-          `Discoverable on ${contact.discoverableOn.join(' • ') || 'this bridge'}`,
-          `Owner: ${contact.owner}`,
-          `Runtime: ${contact.bridgePeerRuntime || 'bridge-node'}`,
-        ],
-        bridgeHostId: contact.bridgeHostId,
-        bridgePeerNodeId: contact.bridgePeerNodeId,
-        bridgePeerRuntime: contact.bridgePeerRuntime,
-      }));
-  }, [displayedContacts, isNativeShell]);
+
+    const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
+    const items: Agent[] = [];
+    const seen = new Set<string>();
+
+    for (const host of desktopBridgeState?.hosts ?? []) {
+      const hostLabel = bridgeLabel(host.serverUrl);
+      for (const agent of host.agents) {
+        const key = `owned:${host.id}:${agent.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push({
+          name: agent.label,
+          id: agent.id,
+          role: 'Owned bridge agent',
+          messaging: `Hosted on ${hostLabel}`,
+          status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
+          tasks: 0,
+          defaultProvider: host.ownerName,
+          defaultModel: agent.runtime,
+          bridgesConfig: hostLabel,
+          contactId: `bridge-agent:${host.id}:${agent.id}`,
+          systemPrompt: 'Owned bridge agent identity for collaboration routing and direct bridge messaging.',
+          xMd: [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
+          lastActivities: [
+            `Human ID: ${host.humanId}`,
+            `Node ID: ${agent.nodeId || 'Pending registration'}`,
+            `Discovery: ${host.discoveryMode}`,
+          ],
+          bridgeHostId: host.id,
+          bridgePeerNodeId: agent.nodeId ?? undefined,
+          bridgePeerRuntime: agent.runtime,
+          bridgeAgentId: agent.id,
+          bridgeServerUrl: host.serverUrl,
+          bridgeOwnerName: host.ownerName,
+          isOwned: true,
+          isBridgeDefault: agent.isDefault,
+          isBridgeActive: agent.isActive,
+          isBridgeRegistered: agent.registered,
+        });
+      }
+
+      for (const peer of host.visiblePeers.filter((peer) => isBridgeAgentRuntime(peer.runtime))) {
+        const key = `external:${peer.agentId || peer.nodeId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push({
+          name: peer.displayName || peer.ownerName || peer.nodeId,
+          id: peer.agentId || peer.nodeId,
+          role: 'External bridge agent',
+          messaging: `Reachable on ${hostLabel}`,
+          status: host.connected ? 'Reachable' : 'Offline',
+          tasks: 0,
+          defaultProvider: peer.ownerName || 'Bridge peer',
+          defaultModel: peer.runtime || 'bridge-node',
+          bridgesConfig: hostLabel,
+          contactId: `bridge-peer:${peer.agentId || peer.nodeId}`,
+          systemPrompt: 'Bridge-discovered external agent identity.',
+          xMd: [peer.nodeId, peer.endpoint].filter(Boolean).join(' • '),
+          lastActivities: [
+            `Owner: ${peer.ownerName || 'Unknown'}`,
+            `Human ID: ${peer.humanId || 'Unavailable'}`,
+            `Runtime: ${peer.runtime}`,
+          ],
+          bridgeHostId: host.id,
+          bridgePeerNodeId: peer.nodeId,
+          bridgePeerRuntime: peer.runtime,
+          bridgeAgentId: peer.agentId ?? undefined,
+          bridgeServerUrl: host.serverUrl,
+          bridgeOwnerName: peer.ownerName || undefined,
+          isOwned: false,
+          isBridgeDefault: peer.isDefaultAgent ?? false,
+          isBridgeActive: false,
+          isBridgeRegistered: true,
+        });
+      }
+    }
+
+    return items;
+  }, [desktopBridgeState?.hosts, isNativeShell]);
 
   const groupedContacts = useMemo(
     () =>
@@ -393,35 +390,23 @@ export function useWorkspaceViewModels({
       sharedContext: project.summary,
       backgroundSystem: project.backgroundSystem ?? undefined,
       sharedSources: project.sharedSources,
-      sessions: project.sessions.map((session) => {
-        const messages =
+      sessions: project.sessions.map((session) => ({
+        id: session.id,
+        name: session.title,
+        summary: session.subtitle,
+        lastActive: session.updatedAtLabel,
+        status: session.draft ? 'Draft' : 'Active',
+        participants: ['You', 'Kordi'],
+        artifacts: project.sharedSources.length,
+        tasks: 0,
+        unread: localSessionUnreadCounts[session.id] ?? 0,
+        messages:
           desktopChatState.activeSessionId === session.id
             ? mapDesktopMessages(session.id, desktopChatState.activeSession.messages)
-            : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
-
-        const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
-        const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
-
-        return {
-          id: session.id,
-          name: session.title,
-          summary: buildConversationPreview(messages),
-          lastActive: session.updatedAtLabel,
-          status: session.draft ? 'Draft' : 'Active',
-          participants: ['You', 'Kordi'],
-          artifacts: project.sharedSources.length,
-          tasks: 0,
-          unread: unreadCount,
-          statusIndicator: buildSessionStatusIndicator({
-            unreadCount,
-            showBackgroundActivity: !isVisibleSession,
-            liveTurn: desktopLiveTurnsBySession[session.id],
-          }),
-          messages,
-        };
-      }),
+            : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.subtitle, time: session.updatedAtLabel }],
+      })),
     }));
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
+  }, [cachedProjectSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();

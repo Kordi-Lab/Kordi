@@ -14,12 +14,14 @@ The coordination server can route traffic and observe metadata, but encrypted me
 
 ## Part 1: Start the coordination server
 
+Use the Kordi monorepo checkout here. Bridges now lives inside `Kordi-AI/Kordi/bridges`, so you should not clone an older standalone Bridges repo.
+
 On the host that will run Bridges server:
 
 ```bash
-git clone https://github.com/shuyhere/Bridges.git ~/bridges
-cd ~/bridges
-cargo build --release --manifest-path cli/Cargo.toml
+git clone https://github.com/Kordi-AI/Kordi.git ~/kordi
+cd ~/kordi
+cargo build --release --manifest-path bridges/cli/Cargo.toml
 
 rm -f ./bridges-server.db
 ./target/release/bridges serve --port 17080 --db ./bridges-server.db
@@ -37,7 +39,7 @@ If the server is remote, allow inbound TCP on port `17080`.
 ### Optional local smoke test
 
 ```bash
-cd ~/bridges
+cd ~/kordi/bridges
 npm run build
 npm run smoke:tmux
 ```
@@ -55,11 +57,11 @@ That harness starts:
 ### Option A: build from source
 
 ```bash
-git clone https://github.com/shuyhere/Bridges.git ~/bridges
-cd ~/bridges
-npm run build
+git clone https://github.com/Kordi-AI/Kordi.git ~/kordi
+cd ~/kordi
+cargo build --release --manifest-path bridges/cli/Cargo.toml
 
-echo 'export PATH="$HOME/bridges/target/release:$PATH"' >> ~/.zshrc
+echo 'export PATH="$HOME/kordi/target/release:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 bridges --version
 ```

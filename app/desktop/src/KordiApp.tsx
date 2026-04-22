@@ -125,15 +125,15 @@ export default function KordiApp() {
     isDesktopChatLoading,
     desktopChatError,
     setDesktopChatError,
-    isDesktopChatSending: isDesktopBridgeSending,
-    setIsDesktopChatSending: setIsDesktopBridgeSending,
-    desktopLiveTurnsBySession,
+    isDesktopChatSending,
+    setIsDesktopChatSending,
+    desktopLiveTurn,
+    setDesktopLiveTurn,
     pendingUserChatMessage,
     setPendingUserChatMessage,
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
-    setVisibleLocalSessionId,
     refreshDesktopChat,
     watchDesktopLiveTurn,
   } = useDesktopChatState({
@@ -263,6 +263,10 @@ export default function KordiApp() {
     openBridgeWizard,
     handleBridgeWizardPrimary,
     handleCopyBridgeText,
+    handleOpenBridgeConfigFolder,
+    handleRevealBridgeStorageFile,
+    handleExportBridgeHostsConfig,
+    handleImportBridgeHostsConfig,
   } = useBridgeState({
     isNativeShell,
     activeNav,
@@ -303,7 +307,6 @@ export default function KordiApp() {
     desktopBridgeState,
     projectWorkspaces,
     projectSelectedSessionIds,
-    activeNav,
     activeConvId,
     activeProjectId,
     activeProjectSessionId,
@@ -316,21 +319,12 @@ export default function KordiApp() {
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
-    desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
 
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0];
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = activeConvId.startsWith('bridge:') ? null : (desktopLiveTurnsBySession[activeConvId] ?? null);
-  const activeProjectLiveTurn = activeProjectSessionId ? (desktopLiveTurnsBySession[activeProjectSessionId] ?? null) : null;
-  const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
-  const isDesktopChatSending = activeNav === 'projects'
-    ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
-    : activeNav === 'chats' && activeConvId.startsWith('bridge:')
-      ? isDesktopBridgeSending
-      : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
   const totalUnreadMessages = useMemo(
     () => chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0),
     [chatConversations],
@@ -340,15 +334,6 @@ export default function KordiApp() {
     if (typeof document === 'undefined') return;
     document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) Kordi` : 'Kordi';
   }, [totalUnreadMessages]);
-
-  useEffect(() => {
-    const visibleLocalSessionId = activeNav === 'projects'
-      ? (activeProjectSessionId || null)
-      : activeNav === 'chats' && !activeConvId.startsWith('bridge:')
-        ? activeConvId
-        : null;
-    setVisibleLocalSessionId(visibleLocalSessionId);
-  }, [activeConvId, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useKordiUiEffects({
     isNativeShell,
@@ -385,7 +370,7 @@ export default function KordiApp() {
     activeProjectSessionMessagesLength: activeProjectSession.messages.length,
     activeProjectLastMessageTime: activeProjectLastMessage?.time,
     pendingUserChatMessageText: pendingUserChatMessage?.text,
-    desktopLiveTurn: activeDesktopLiveTurn,
+    desktopLiveTurn,
     setChatSlashMenuIndex,
     chatSlashQuery,
     filteredChatSlashCommandsLength: filteredChatSlashCommands.length,
@@ -407,8 +392,15 @@ export default function KordiApp() {
   }, []);
 
   const {
+    handleAddBridgeContact,
+    handleActivateBridgeAgent,
+    handleCreateBridgeAgent,
     handleCreateProjectBridgeInvite,
     handleOpenBridgeConversation,
+    handleRemoveBridgeContact,
+    handleRenameBridgeAgent,
+    handleSetBridgeDiscoveryMode,
+    handleSetDefaultBridgeAgent,
     handleStartLocalBridgeHost,
     handleStopLocalBridgeHost,
   } = useBridgeOrchestration({
@@ -443,6 +435,7 @@ export default function KordiApp() {
     setActiveConvId,
     setPendingUserChatMessage,
     setChatComposerAttachments,
+    setDesktopLiveTurn,
     setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
@@ -475,7 +468,7 @@ export default function KordiApp() {
     activeProjectId,
     activeProjectSessionId,
     desktopChatState,
-    desktopLiveTurn: activeDesktopLiveTurn,
+    desktopLiveTurn,
     composerSelections,
     setComposerSelections,
     composerDrafts,
@@ -500,7 +493,8 @@ export default function KordiApp() {
     setIsEditingDesktopSessionTitle,
     setDesktopChatState,
     setDesktopChatError,
-    setIsDesktopChatSending: setIsDesktopBridgeSending,
+    setIsDesktopChatSending,
+    setDesktopLiveTurn,
     setPendingUserChatMessage,
     setDesktopBridgeState,
     watchDesktopLiveTurn,
@@ -596,7 +590,14 @@ export default function KordiApp() {
     activeContact,
     activeContactRequest,
     getStatusBadgeClass,
+    handleAddBridgeContact,
+    handleActivateBridgeAgent,
+    handleCreateBridgeAgent,
     handleOpenBridgeConversation,
+    handleRemoveBridgeContact,
+    handleRenameBridgeAgent,
+    handleSetBridgeDiscoveryMode,
+    handleSetDefaultBridgeAgent,
     activeAgentId,
     setActiveAgentId,
     activeAgent,
@@ -622,6 +623,10 @@ export default function KordiApp() {
     handleSaveBridgeSettings,
     handleRemoveBridgeHost,
     handleBridgeWizardPrimary,
+    handleOpenBridgeConfigFolder,
+    handleRevealBridgeStorageFile,
+    handleExportBridgeHostsConfig,
+    handleImportBridgeHostsConfig,
     settingsRailWidth,
     settingsContentRef,
     setActiveSettingsSectionId,
@@ -663,7 +668,7 @@ export default function KordiApp() {
     onChatTranscriptScroll,
     activeSourcePreview,
     setActiveSourcePreview,
-    desktopLiveTurn: activeDesktopLiveTurn,
+    desktopLiveTurn,
     filteredProjectSlashCommands,
     filteredChatSlashCommands,
     chatSlashMenuIndex,
@@ -707,7 +712,9 @@ export default function KordiApp() {
     activeProjectLastMessage,
     isProjectBridgeBusy,
     bridgeInvite,
+    handleAddBridgeContact,
     handleCreateProjectBridgeInvite,
+    handleRemoveBridgeContact,
     openProjectSettings,
     activeConv,
     activeConvHasSubtitle,

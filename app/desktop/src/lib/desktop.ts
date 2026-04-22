@@ -39,6 +39,14 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
   }
 }
 
+export async function openDesktopExternalUrl(url: string) {
+  if (isNativeDesktopShell()) {
+    return invokeDesktop<string>('desktop_open_external_url', { url });
+  }
+
+  return window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export async function fetchDesktopAuthState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopAuthState>('desktop_auth_state');
@@ -90,6 +98,22 @@ export async function fetchDesktopBridgeState() {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_state');
 }
 
+export async function openDesktopBridgeConfigFolder() {
+  return invokeDesktop<string>('desktop_bridge_open_config_folder');
+}
+
+export async function revealDesktopBridgeStorageFile(kind: 'config' | 'conversations' | 'legacy') {
+  return invokeDesktop<string>('desktop_bridge_reveal_storage_file', { kind });
+}
+
+export async function exportDesktopBridgeHostsConfig() {
+  return invokeDesktop<string>('desktop_bridge_export_hosts_config');
+}
+
+export async function importDesktopBridgeHostsConfig(raw: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_import_hosts_config', { raw });
+}
+
 export async function saveDesktopBridgeHost(serverUrl: string, displayName?: string, ownerName?: string, hostId?: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_save_bridge_host', { hostId, serverUrl, displayName, ownerName });
 }
@@ -100,6 +124,26 @@ export async function removeDesktopBridgeHost(hostId: string) {
 
 export async function setDesktopActiveBridgeHost(hostId: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_set_active_bridge_host', { hostId });
+}
+
+export async function setDesktopBridgeDiscoveryMode(hostId: string, discoveryMode: 'off' | 'contacts' | 'open') {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_discovery_mode', { hostId, discoveryMode });
+}
+
+export async function createDesktopBridgeAgent(hostId: string, label?: string, runtime?: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_create_agent', { hostId, label, runtime });
+}
+
+export async function activateDesktopBridgeAgent(hostId: string, agentId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_activate_agent', { hostId, agentId });
+}
+
+export async function renameDesktopBridgeAgent(hostId: string, agentId: string, label: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_rename_agent', { hostId, agentId, label });
+}
+
+export async function setDesktopBridgeDefaultAgent(hostId: string, agentId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_default_agent', { hostId, agentId });
 }
 
 export async function startDesktopBridgeLocalServer(port?: number, displayName?: string, ownerName?: string) {
@@ -120,6 +164,14 @@ export async function createDesktopBridgeInvite(hostId: string, projectId: strin
 
 export async function joinDesktopBridgeProject(hostId: string, projectId: string, inviteToken: string, agentRole?: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_join_project', { hostId, projectId, inviteToken, agentRole });
+}
+
+export async function addDesktopBridgeContact(hostId: string, peerNodeId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_add_contact', { hostId, peerNodeId });
+}
+
+export async function removeDesktopBridgeContact(hostId: string, peerNodeId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_remove_contact', { hostId, peerNodeId });
 }
 
 export async function openDesktopBridgeConversation(
