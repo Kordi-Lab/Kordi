@@ -1,4 +1,5 @@
 mod auth;
+#[path = "bridge/mod.rs"]
 mod bridge;
 mod chat;
 mod project;

@@ -7,13 +7,14 @@
     "dev": "vite",
     "dev:web": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
     "tauri:prepare-sidecars": "node scripts/prepare-sidecars.mjs",
-    "tauri:dev": "npm run tauri:prepare-sidecars && tauri dev",
+    "tauri:dev": "pnpm tauri:prepare-sidecars && tauri dev",
     "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
-    "tauri:build": "npm run tauri:prepare-sidecars && tauri build"
+    "tauri:build": "pnpm tauri:prepare-sidecars && tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

@@ -23,6 +23,7 @@ export const projects: Project[] = [
         participants: ['You', 'Diana', 'Research Agent'],
         artifacts: 4,
         tasks: 2,
+        unread: 0,
         messages: [
           { role: 'person', sender: 'Diana', text: 'The single-surface layout is working better. The project page should keep that same rhythm.', time: '10:04' },
           { role: 'owned-agent', sender: 'Research Agent', text: 'I grouped the strongest references around member rosters, invite trays, and nested session lists.', time: '10:06' },
@@ -37,6 +38,7 @@ export const projects: Project[] = [
         participants: ['You', 'Alice', 'Security Agent'],
         artifacts: 2,
         tasks: 3,
+        unread: 0,
         messages: [
           { role: 'person', sender: 'Alice', text: 'Project invites should support both human contacts and linked agents in the same flow.', time: '09:42' },
           { role: 'owned-agent', sender: 'Security Agent', text: 'Approval can stay project-scoped so later sessions inherit membership safely.', time: '09:46' },
@@ -51,6 +53,7 @@ export const projects: Project[] = [
         participants: ['You', 'Bob', 'Code Agent'],
         artifacts: 6,
         tasks: 2,
+        unread: 0,
         messages: [
           { role: 'person', sender: 'Bob', text: 'We should treat project sessions like topic rooms, not like contact threads.', time: '09:03' },
           { role: 'owned-agent', sender: 'Code Agent', text: 'I can keep sessions independent while still surfacing project-wide members and artifacts.', time: '09:08' },
@@ -80,6 +83,7 @@ export const projects: Project[] = [
         participants: ['You', 'Calendar Agent', 'Listing Agent'],
         artifacts: 1,
         tasks: 2,
+        unread: 0,
         messages: [
           { role: 'external-agent', sender: 'Listing Agent', text: 'The landlord can do Friday 18:00 if documents are ready beforehand.', time: '08:22' },
         ],
@@ -93,6 +97,7 @@ export const projects: Project[] = [
         participants: ['You', 'My Core Agent', 'Michael'],
         artifacts: 4,
         tasks: 2,
+        unread: 0,
         messages: [
           { role: 'owned-agent', sender: 'My Core Agent', text: 'I grouped the required documents and highlighted what is still missing.', time: 'Yesterday' },
         ],
@@ -121,6 +126,7 @@ export const projects: Project[] = [
         participants: ['You', 'Carol', 'Mercury Planner Agent'],
         artifacts: 7,
         tasks: 4,
+        unread: 0,
         messages: [
           { role: 'external-agent', sender: 'Mercury Planner Agent', text: 'The release plan is ready for milestone review and dependency cleanup.', time: '07:18' },
         ],
@@ -134,6 +140,7 @@ export const projects: Project[] = [
         participants: ['You', 'Code Agent', 'Delta Builder Agent'],
         artifacts: 5,
         tasks: 3,
+        unread: 0,
         messages: [
           { role: 'owned-agent', sender: 'Code Agent', text: 'The integration shape is ready once the project route model is finalized.', time: '05:42' },
         ],

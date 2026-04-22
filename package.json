@@ -20,12 +20,13 @@
     "check:bridges": "cargo check --manifest-path bridges/cli/Cargo.toml",
     "build:bridges": "cargo build --manifest-path bridges/cli/Cargo.toml --release",
     "lint:web": "pnpm --dir app/desktop lint",
+    "typecheck:web": "pnpm --dir app/desktop typecheck",
     "lint": "pnpm lint:web",
     "dev:registry": "pnpm --dir bridges/registry dev",
     "build:registry": "pnpm --dir bridges/registry build",
     "build:rust": "cargo build --workspace",
     "check:rust": "cargo check --workspace",
     "test:rust": "cargo test --workspace",
-    "check": "pnpm lint && pnpm check:rust"
+    "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust"
   }
 }

@@ -383,7 +383,7 @@ export function AuthProviderDetail({
                             <AuthActionButton
                               type="button"
                               className={authButtonDangerClass}
-                              onClick={() => requestDeleteProfile(option.providerId, option.profileId)}
+                              onClick={() => requestDeleteProfile(option.providerId, option.profileId!)}
                             >
                               Delete
                             </AuthActionButton>

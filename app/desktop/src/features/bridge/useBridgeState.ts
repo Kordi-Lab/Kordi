@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import {
+  DEFAULT_BRIDGE_DISPLAY_NAME,
+  DEFAULT_BRIDGE_OWNER_NAME,
+} from '@/features/bridge/constants';
 import type { DesktopBridgeInvite, DesktopBridgeState, NavId } from '@/kordi-app/types';
 import {
   exportDesktopBridgeHostsConfig,
@@ -28,6 +32,34 @@ type BridgeSettingsDraft = {
   displayName: string;
   ownerName: string;
 };
+
+type BridgeDraftHost = {
+  id?: string | null;
+  serverUrl?: string | null;
+  displayName?: string | null;
+  ownerName?: string | null;
+};
+
+function createBridgeSettingsDraft(host: BridgeDraftHost | null | undefined): BridgeSettingsDraft {
+  return {
+    hostId: host?.id ?? null,
+    serverUrl: host?.serverUrl ?? '',
+    displayName: host?.displayName ?? DEFAULT_BRIDGE_DISPLAY_NAME,
+    ownerName: host?.ownerName ?? DEFAULT_BRIDGE_OWNER_NAME,
+  };
+}
+
+function createBridgeWizardDraft(
+  host: BridgeDraftHost | null | undefined,
+  mode: 'have-url' | 'need-host' = 'have-url',
+) {
+  return {
+    mode,
+    serverUrl: host?.serverUrl ?? '',
+    displayName: host?.displayName ?? DEFAULT_BRIDGE_DISPLAY_NAME,
+    ownerName: host?.ownerName ?? DEFAULT_BRIDGE_OWNER_NAME,
+  };
+}
 
 function isBridgeSettingsDraft(value: unknown): value is BridgeSettingsDraft {
   if (!value || typeof value !== 'object') return false;
@@ -206,26 +238,21 @@ export function useBridgeState({
   }, [isNativeShell]);
 
   const handleCreateBridgeDraft = useCallback(() => {
+    const nextDraft = createBridgeSettingsDraft(currentActiveHost);
     setBridgeSettingsDraft({
+      ...nextDraft,
       hostId: null,
       serverUrl: '',
-      displayName: currentActiveHost?.displayName ?? 'Kordi',
-      ownerName: currentActiveHost?.ownerName ?? 'Kordi User',
     });
     setDesktopBridgeError(null);
   }, [currentActiveHost]);
 
   const openBridgeWizard = useCallback((mode: 'have-url' | 'need-host' = 'have-url') => {
-    setBridgeWizardDraft({
-      mode,
-      serverUrl: currentActiveHost?.serverUrl || '',
-      displayName: currentActiveHost?.displayName || 'Kordi',
-      ownerName: currentActiveHost?.ownerName || 'Kordi User',
-    });
+    setBridgeWizardDraft(createBridgeWizardDraft(currentActiveHost, mode));
     setBridgeWizardStep(1);
     setBridgeWizardOpen(true);
     setDesktopBridgeError(null);
-  }, [currentActiveHost, desktopBridgeState?.localServer.serverUrl]);
+  }, [currentActiveHost]);
 
   const handleBridgeWizardPrimary = useCallback(async () => {
     try {
@@ -341,23 +368,13 @@ export function useBridgeState({
     if (currentActiveHost) {
       setBridgeSettingsDraft((current) => {
         if (current?.hostId === currentActiveHost.id) return current;
-        return {
-          hostId: currentActiveHost.id,
-          serverUrl: currentActiveHost.serverUrl,
-          displayName: currentActiveHost.displayName,
-          ownerName: currentActiveHost.ownerName,
-        };
+        return createBridgeSettingsDraft(currentActiveHost);
       });
       return;
     }
     setBridgeSettingsDraft((current) => {
       if (current && !current.hostId) return current;
-      return {
-        hostId: null,
-        serverUrl: '',
-        displayName: 'Kordi',
-        ownerName: 'Kordi User',
-      };
+      return createBridgeSettingsDraft(null);
     });
   }, [currentActiveHost]);
 

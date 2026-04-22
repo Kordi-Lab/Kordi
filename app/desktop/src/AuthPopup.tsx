@@ -25,7 +25,7 @@ type AuthPopupProps = {
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
-  return '__TAURI_INTERNALS__' in (window as Window & Record<string, unknown>);
+  return typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
 
 async function closePopupWindow(embedded = false, onRequestClose?: () => void) {

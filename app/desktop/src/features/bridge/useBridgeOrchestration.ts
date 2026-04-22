@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import { findBridgeProjectForWorkspace } from '@/app/useWorkspaceViewModels';
-import type { DesktopBridgeProject, DesktopBridgeState, Project } from '@/kordi-app/types';
+import { DEFAULT_LOCAL_BRIDGE_SERVER_PORT } from '@/features/bridge/constants';
+import type { DesktopBridgeInvite, DesktopBridgeProject, DesktopBridgeState, NavId, Project } from '@/kordi-app/types';
 import {
   activateDesktopBridgeAgent,
   addDesktopBridgeContact,
@@ -28,12 +29,12 @@ type UseBridgeOrchestrationArgs = {
   activeProject: Project;
   activeProjectBridgeHost: DesktopBridgeState['hosts'][number] | null;
   activeBridgeHost: DesktopBridgeState['hosts'][number] | null;
-  bridgeSettingsDraft: { serverUrl: string; displayName: string; ownerName: string; endpoint: string } | null;
+  bridgeSettingsDraft: { serverUrl: string; displayName: string; ownerName: string } | null;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setDesktopBridgeError: Dispatch<SetStateAction<string | null>>;
-  setBridgeInvite: Dispatch<SetStateAction<any>>;
+  setBridgeInvite: Dispatch<SetStateAction<DesktopBridgeInvite | null>>;
   setIsProjectBridgeBusy: Dispatch<SetStateAction<boolean>>;
-  setActiveNav: (nav: string) => void;
+  setActiveNav: (nav: NavId) => void;
   setActiveConvId: Dispatch<SetStateAction<string>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
@@ -155,7 +156,7 @@ export function useBridgeOrchestration({
 
   const handleStartLocalBridgeHost = useCallback(() => {
     void startDesktopBridgeLocalServer(
-      17080,
+      DEFAULT_LOCAL_BRIDGE_SERVER_PORT,
       bridgeSettingsDraft?.displayName || activeBridgeHost?.displayName,
       bridgeSettingsDraft?.ownerName || activeBridgeHost?.ownerName,
     )
