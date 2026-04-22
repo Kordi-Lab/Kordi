@@ -117,7 +117,7 @@ function TimelineSection({
   const Icon = icon;
 
   return (
-    <div className="border-b border-white/7 py-1.5 last:border-b-0">
+    <div className="py-0.5">
       <button
         type="button"
         onClick={onToggle}
@@ -131,7 +131,7 @@ function TimelineSection({
         </div>
         {badge ? <div className="shrink-0">{badge}</div> : null}
       </button>
-      {expanded ? <div className="px-6 pb-0.5 pt-1">{children}</div> : null}
+      {expanded ? <div className="px-6 pb-0.5 pt-0.5">{children}</div> : null}
     </div>
   );
 }
@@ -384,7 +384,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="w-full max-w-[min(100%,58rem)] space-y-2.5 pb-1.5">
+    <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
       {showLiveStatusHeader ? (
         <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
