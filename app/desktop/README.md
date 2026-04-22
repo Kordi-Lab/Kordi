@@ -47,6 +47,19 @@ pnpm dev:web
 pnpm dev:desktop
 ```
 
+To run multiple desktop dev shells at the same time, use a unique port + profile for each instance:
+
+```bash
+pnpm dev:desktop:profile -- --port 1420 --profile main
+pnpm dev:desktop:profile -- --port 1422 --profile feature-b
+```
+
+The profile script generates a per-instance Tauri config so each desktop app can have its own:
+
+- Vite dev server port
+- app title
+- bundle identifier suffix
+
 ### Build the desktop app
 
 ```bash

@@ -6,6 +6,7 @@
     "dev": "bash -lc 'cargo run -p kordi-app-server -- & APP_SERVER_PID=$!; trap \"kill $APP_SERVER_PID\" EXIT; pnpm --dir app/desktop tauri:dev'",
     "dev:full": "pnpm dev",
     "dev:desktop": "pnpm --dir app/desktop tauri:dev",
+    "dev:desktop:profile": "pnpm --dir app/desktop tauri:dev:profile",
     "dev:web": "pnpm --dir app/desktop dev",
     "preview:web": "pnpm --dir app/desktop preview",
     "prepare:sidecars": "pnpm --dir app/desktop tauri:prepare-sidecars",
