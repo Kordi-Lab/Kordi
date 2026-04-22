@@ -73,10 +73,10 @@ function ToolTranscriptBlock({
 
   return (
     <div className="py-1.5">
-      <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium text-slate-500">
+      <div className="app-transcript-block-label mb-1.5 flex items-center gap-2 text-[10px] font-medium text-slate-500">
         <Icon className="h-3.5 w-3.5" />
         <span>{label}</span>
-        {preserveColumns ? <span className="rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-slate-400">column layout</span> : null}
+        {preserveColumns ? <span className="app-transcript-utility-chip rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-slate-400">column layout</span> : null}
       </div>
       <MarkdownCodeBlock
         code={text}
@@ -87,7 +87,7 @@ function ToolTranscriptBlock({
           <button
             type="button"
             onClick={() => setIsWrapped((current) => !current)}
-            className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="app-transcript-wrap-toggle rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             {isWrapped ? 'No wrap' : 'Wrap'}
           </button>
@@ -121,13 +121,13 @@ function TimelineSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-h-[30px] w-full items-center justify-between gap-2 rounded-lg px-0.5 py-1 text-left transition hover:bg-white/[0.02]"
+        className="app-transcript-section-button flex min-h-[30px] w-full items-center justify-between gap-2 rounded-lg px-0.5 py-1 text-left transition hover:bg-white/[0.02]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />}
           <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          <span className="truncate text-[13px] font-medium text-slate-100">{title}</span>
-          {meta ? <span className="truncate text-[10px] text-slate-400">{meta}</span> : null}
+          <span className="app-transcript-section-title truncate text-[13px] font-medium text-slate-100">{title}</span>
+          {meta ? <span className="app-transcript-section-meta truncate text-[10px] text-slate-400">{meta}</span> : null}
         </div>
         {badge ? <div className="shrink-0">{badge}</div> : null}
       </button>
@@ -386,7 +386,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
   return (
     <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
       {showLiveStatusHeader ? (
-        <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+        <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
           <span className="text-slate-300">{liveStatusText}</span>
         </div>
@@ -399,7 +399,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
           meta="Reasoning trace"
           expanded={expandedThinking}
           onToggle={() => setExpandedThinking((current) => !current)}
-          badge={<span className="text-[10px] text-slate-600">{expandedThinking ? 'Hide' : 'Show'}</span>}
+          badge={<span className="app-transcript-section-toggle text-[10px] text-slate-600">{expandedThinking ? 'Hide' : 'Show'}</span>}
         >
           <div className="pr-1">
             <MarkdownContent text={turn.thinkingText} tone="muted" className="text-[12.5px] leading-[1.55rem]" />
@@ -422,12 +422,12 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             badge={
               <div
                 className={cn(
-                  'rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-[0.08em] leading-none',
+                  'app-transcript-tool-badge rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-[0.08em] leading-none',
                   tool.status === 'error'
-                    ? 'border-rose-400/10 bg-rose-500/6 text-rose-300/75'
+                    ? 'app-transcript-tool-badge-error border-rose-400/10 bg-rose-500/6 text-rose-300/75'
                     : tool.status === 'done'
-                      ? 'border-emerald-400/10 bg-emerald-500/6 text-emerald-300/75'
-                      : 'border-white/8 bg-white/[0.03] text-slate-400',
+                      ? 'app-transcript-tool-badge-done border-emerald-400/10 bg-emerald-500/6 text-emerald-300/75'
+                      : 'app-transcript-tool-badge-neutral border-white/8 bg-white/[0.03] text-slate-400',
                 )}
               >
                 {tool.status}
