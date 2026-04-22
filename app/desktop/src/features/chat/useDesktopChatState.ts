@@ -43,16 +43,31 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
   const latestDesktopRefreshRequestRef = useRef(0);
   const sessionTitleByIdRef = useRef<Record<string, string>>({});
+  const visibleLocalSessionIdRef = useRef<string | null>(null);
 
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
   const [isDesktopChatLoading, setIsDesktopChatLoading] = useState(isNativeShell);
   const [desktopChatError, setDesktopChatError] = useState<string | null>(null);
   const [isDesktopChatSending, setIsDesktopChatSending] = useState(false);
-  const [desktopLiveTurn, setDesktopLiveTurn] = useState<DesktopChatTurnSnapshot | null>(null);
+  const [desktopLiveTurnsBySession, setDesktopLiveTurnsBySession] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [pendingUserChatMessage, setPendingUserChatMessage] = useState<{ text: string; time: string } | null>(null);
   const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
   const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
+
+  const clearUnreadForSession = useCallback((sessionId?: string | null) => {
+    if (!sessionId) return;
+    setLocalSessionUnreadCounts((current) => (
+      current[sessionId]
+        ? { ...current, [sessionId]: 0 }
+        : current
+    ));
+  }, []);
+
+  const setVisibleLocalSessionId = useCallback((sessionId?: string | null) => {
+    visibleLocalSessionIdRef.current = sessionId ?? null;
+    clearUnreadForSession(sessionId);
+  }, [clearUnreadForSession]);
 
   const refreshDesktopChat = useCallback(async (activeSessionId?: string) => {
     const targetSessionId = activeSessionId ?? latestDesktopSessionIdRef.current;
@@ -66,13 +81,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
     setDesktopChatState(nextState);
-    setLocalSessionUnreadCounts((current) => (
-      current[nextState.activeSessionId]
-        ? { ...current, [nextState.activeSessionId]: 0 }
-        : current
-    ));
+    clearUnreadForSession(nextState.activeSessionId);
     setDesktopChatError(null);
-  }, []);
+  }, [clearUnreadForSession]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -102,6 +113,20 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
       return changed ? next : current;
     });
+    setDesktopLiveTurnsBySession((current) => {
+      let changed = false;
+      const next: Record<string, DesktopChatTurnSnapshot> = {};
+
+      for (const [sessionId, turn] of Object.entries(current)) {
+        if (!knownSessionIds.has(sessionId) || turn.completed) {
+          changed = true;
+          continue;
+        }
+        next[sessionId] = turn;
+      }
+
+      return changed ? next : current;
+    });
   }, [desktopChatState]);
 
   useEffect(() => {
@@ -113,11 +138,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       .then((state) => {
         if (cancelled || !state) return;
         setDesktopChatState(state);
-        setLocalSessionUnreadCounts((current) => (
-          current[state.activeSessionId]
-            ? { ...current, [state.activeSessionId]: 0 }
-            : current
-        ));
+        clearUnreadForSession(state.activeSessionId);
         setDesktopChatError(null);
       })
       .catch((error) => {
@@ -133,7 +154,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     return () => {
       cancelled = true;
     };
-  }, [isNativeShell]);
+  }, [clearUnreadForSession, isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;
@@ -153,12 +174,19 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
     const finishedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const visibleLocalSessionId = visibleLocalSessionIdRef.current;
     const shouldAppendAssistantMessage =
       turn.assistantText.trim().length > 0 || turn.thinkingText.trim().length > 0 || turn.tools.length > 0 || Boolean(turn.error);
     const completedMessage = shouldAppendAssistantMessage
       ? buildCompletedDesktopAssistantMessage(turn, finishedAt)
       : null;
-    const isBackgroundSession = latestDesktopSessionIdRef.current !== turn.sessionId;
+    const isBackgroundSession = !visibleLocalSessionId || visibleLocalSessionId !== turn.sessionId;
+
+    setDesktopLiveTurnsBySession((current) => {
+      if (!current[turn.sessionId]) return current;
+      const { [turn.sessionId]: _removed, ...rest } = current;
+      return rest;
+    });
 
     setDesktopChatState((current) => {
       if (!current) return current;
@@ -195,7 +223,12 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       };
     });
 
-    if (!completedMessage) return;
+    if (!completedMessage) {
+      if (!isBackgroundSession) {
+        clearUnreadForSession(turn.sessionId);
+      }
+      return;
+    }
 
     const mappedMessage = mapDesktopMessages(turn.sessionId, [completedMessage])[0];
     if (!mappedMessage) return;
@@ -209,6 +242,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         sessionTitleByIdRef.current[turn.sessionId] ?? 'Kordi session',
         turn,
       );
+    } else {
+      clearUnreadForSession(turn.sessionId);
     }
 
     setCachedChatSessionMessages((current) => {
@@ -225,30 +260,46 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [turn.sessionId]: [...current[turn.sessionId], mappedMessage],
       };
     });
-  }, [mapDesktopMessages]);
+  }, [clearUnreadForSession, mapDesktopMessages]);
 
   const watchDesktopLiveTurn = useCallback(
-    async (turnId: string) => {
+    async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {
+      const initialTurn = typeof turnOrSnapshot === 'string' ? null : turnOrSnapshot;
+
       try {
-        let nextTurn = await fetchDesktopChatTurnState(turnId);
-        setDesktopLiveTurn(nextTurn);
+        let nextTurn = initialTurn ?? await fetchDesktopChatTurnState(
+          typeof turnOrSnapshot === 'string' ? turnOrSnapshot : turnOrSnapshot.id,
+        );
+        setDesktopLiveTurnsBySession((current) => ({
+          ...current,
+          [nextTurn.sessionId]: nextTurn,
+        }));
 
         while (!nextTurn.completed) {
           await new Promise((resolve) => window.setTimeout(resolve, 120));
-          nextTurn = await fetchDesktopChatTurnState(turnId);
-          setDesktopLiveTurn(nextTurn);
+          nextTurn = await fetchDesktopChatTurnState(nextTurn.id);
+          setDesktopLiveTurnsBySession((current) => ({
+            ...current,
+            [nextTurn.sessionId]: nextTurn,
+          }));
         }
 
         setPendingUserChatMessage(null);
         mergeCompletedDesktopTurn(nextTurn);
-        setDesktopLiveTurn(null);
-        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled') {
+        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && visibleLocalSessionIdRef.current === nextTurn.sessionId) {
           setDesktopChatError(nextTurn.error ?? nextTurn.message);
         }
       } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to stream chat turn');
-      } finally {
-        setIsDesktopChatSending(false);
+        if (initialTurn?.sessionId) {
+          setDesktopLiveTurnsBySession((current) => {
+            if (!current[initialTurn.sessionId]) return current;
+            const { [initialTurn.sessionId]: _removed, ...rest } = current;
+            return rest;
+          });
+        }
+        if (!initialTurn?.sessionId || visibleLocalSessionIdRef.current === initialTurn.sessionId) {
+          setDesktopChatError(error instanceof Error ? error.message : 'Unable to stream chat turn');
+        }
       }
     },
     [mergeCompletedDesktopTurn],
@@ -263,8 +314,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setDesktopChatError,
     isDesktopChatSending,
     setIsDesktopChatSending,
-    desktopLiveTurn,
-    setDesktopLiveTurn,
+    desktopLiveTurnsBySession,
+    setDesktopLiveTurnsBySession,
     pendingUserChatMessage,
     setPendingUserChatMessage,
     cachedChatSessionMessages,
@@ -273,6 +324,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setCachedProjectSessionMessages,
     localSessionUnreadCounts,
     setLocalSessionUnreadCounts,
+    setVisibleLocalSessionId,
     refreshDesktopChat,
     mergeCompletedDesktopTurn,
     watchDesktopLiveTurn,

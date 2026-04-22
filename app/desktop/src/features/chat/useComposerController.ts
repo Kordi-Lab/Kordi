@@ -115,10 +115,9 @@ type UseComposerControllerArgs = {
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setIsDesktopChatSending: Dispatch<SetStateAction<boolean>>;
-  setDesktopLiveTurn: Dispatch<SetStateAction<DesktopChatTurnSnapshot | null>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<PendingUserMessage>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  watchDesktopLiveTurn: (turnId: string) => Promise<void>;
+  watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
 };
 
@@ -156,7 +155,6 @@ export function useComposerController({
   setDesktopChatState,
   setDesktopChatError,
   setIsDesktopChatSending,
-  setDesktopLiveTurn,
   setPendingUserChatMessage,
   setDesktopBridgeState,
   watchDesktopLiveTurn,
@@ -442,6 +440,7 @@ export function useComposerController({
     }
 
     if (!desktopChatState?.activeSessionId) return;
+    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current) => ({ ...current, chat: '' }));
@@ -451,7 +450,6 @@ export function useComposerController({
 
     try {
       shouldAutoFollowChatRef.current = true;
-      setIsDesktopChatSending(true);
       setDesktopChatError(null);
       const sentAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
@@ -499,15 +497,12 @@ export function useComposerController({
         }
       });
       const turn = await startDesktopChatMessage(desktopChatState.activeSessionId, text, attachmentPaths);
-      setDesktopLiveTurn(turn);
-      void watchDesktopLiveTurn(turn.id);
+      void watchDesktopLiveTurn(turn);
     } catch (error) {
       setPendingUserChatMessage(null);
-      setDesktopLiveTurn(null);
-      setIsDesktopChatSending(false);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
     }
-  }, [activeConversationIsBridge, activeConvId, attachmentSummaryText, chatComposerAttachments, composerDrafts.chat, desktopChatState?.activeSessionId, handleLocalSlashCommand, isNativeShell, setChatComposerAttachments, setComposerDrafts, setDesktopBridgeState, setDesktopChatError, setDesktopChatState, setDesktopLiveTurn, setIsDesktopChatSending, setOpenComposerSelector, setPendingUserChatMessage, shouldAutoFollowChatRef, watchDesktopLiveTurn]);
+  }, [activeConversationIsBridge, activeConvId, attachmentSummaryText, chatComposerAttachments, composerDrafts.chat, desktopChatState?.activeSessionId, desktopLiveTurn, handleLocalSlashCommand, isNativeShell, setChatComposerAttachments, setComposerDrafts, setDesktopBridgeState, setDesktopChatError, setDesktopChatState, setIsDesktopChatSending, setOpenComposerSelector, setPendingUserChatMessage, shouldAutoFollowChatRef, watchDesktopLiveTurn]);
 
   const handleSendProjectMessage = useCallback(async () => {
     const text = composerDrafts.project.trim();
@@ -549,9 +544,10 @@ export function useComposerController({
       return;
     }
 
+    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
+
     try {
       shouldAutoFollowChatRef.current = true;
-      setIsDesktopChatSending(true);
       setDesktopChatError(null);
       const sentAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
@@ -598,14 +594,11 @@ export function useComposerController({
         }
       });
       const turn = await startDesktopChatMessage(activeProjectSessionId, text, attachmentPaths);
-      setDesktopLiveTurn(turn);
-      void watchDesktopLiveTurn(turn.id);
+      void watchDesktopLiveTurn(turn);
     } catch (error) {
-      setDesktopLiveTurn(null);
-      setIsDesktopChatSending(false);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send project message');
     }
-  }, [activeProjectId, activeProjectSessionId, attachmentSummaryText, chatComposerAttachments, composerDrafts.project, isNativeShell, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setDesktopLiveTurn, setIsDesktopChatSending, setProjectWorkspaces, shouldAutoFollowChatRef, watchDesktopLiveTurn]);
+  }, [activeProjectId, activeProjectSessionId, attachmentSummaryText, chatComposerAttachments, composerDrafts.project, desktopLiveTurn, isNativeShell, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setIsDesktopChatSending, setProjectWorkspaces, shouldAutoFollowChatRef, watchDesktopLiveTurn]);
 
   const handleStopDesktopChatTurn = useCallback(async () => {
     if (!desktopLiveTurn || desktopLiveTurn.completed) return;
@@ -613,11 +606,11 @@ export function useComposerController({
     try {
       setDesktopChatError(null);
       const nextTurn = await cancelDesktopChatTurn(desktopLiveTurn.id);
-      setDesktopLiveTurn(nextTurn);
+      void watchDesktopLiveTurn(nextTurn);
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
     }
-  }, [desktopLiveTurn, setDesktopChatError, setDesktopLiveTurn]);
+  }, [desktopLiveTurn, setDesktopChatError, watchDesktopLiveTurn]);
 
   return {
     toggleComposerSelector,
