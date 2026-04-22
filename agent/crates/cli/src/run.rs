@@ -11,10 +11,7 @@ use bb_core::agent_session_runtime::{
 };
 use bb_core::config;
 use bb_core::settings::Settings;
-use bb_provider::anthropic::AnthropicProvider;
-use bb_provider::google::GoogleProvider;
-use bb_provider::openai::OpenAiProvider;
-use bb_provider::registry::{ApiType, ModelRegistry};
+use bb_provider::registry::ModelRegistry;
 use bb_session::store;
 use bb_tools::{ExecutionPolicy, ToolContext};
 use std::sync::Arc;
@@ -27,7 +24,7 @@ use crate::extensions::{
     build_skill_system_prompt_section, load_runtime_extension_support,
 };
 use crate::login;
-use crate::session_bootstrap::{default_base_url_for_model, resolve_or_synthesize_model};
+use crate::runtime_model::{build_runtime_config, resolve_or_synthesize_model};
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
 use bb_monitor::RequestMetricsTracker;
@@ -87,19 +84,13 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     } else {
         login::resolve_provider_auth(&provider_name)
     };
-    let api_key = match &cli.api_key {
-        Some(key) => key.clone(),
-        None => auth
-            .as_ref()
-            .map(|auth| auth.credential.clone())
-            .unwrap_or_default(),
-    };
-    let base_url = default_base_url_for_model(&provider_name, &model);
-    let headers = if provider_name == "github-copilot" {
-        login::github_copilot_runtime_headers()
-    } else {
-        std::collections::HashMap::new()
-    };
+    let runtime = build_runtime_config(&model, auth.clone());
+    let api_key = cli
+        .api_key
+        .clone()
+        .unwrap_or_else(|| runtime.api_key.clone());
+    let base_url = runtime.base_url.clone();
+    let headers = runtime.headers.clone();
 
     auto_install_missing_packages(&cwd, &settings);
 
@@ -120,11 +111,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let system_prompt = format!("{system_prompt}{skill_section}");
 
-    let provider: Arc<dyn bb_provider::Provider> = match model.api {
-        ApiType::AnthropicMessages => Arc::new(AnthropicProvider::new()),
-        ApiType::GoogleGenerative => Arc::new(GoogleProvider::new()),
-        _ => Arc::new(OpenAiProvider::new()),
-    };
+    let provider: Arc<dyn bb_provider::Provider> = runtime.provider.clone();
 
     let tool_ctx = ToolContext {
         cwd: cwd.clone(),

@@ -1,3 +1,5 @@
+use bb_provider::registry::{Model, ModelRegistry};
+
 use super::*;
 
 #[derive(Default)]
@@ -265,31 +267,7 @@ impl TuiController {
         thinking_override: Option<ThinkingLevel>,
         auth: Option<crate::login::ResolvedProviderAuth>,
     ) {
-        let api_key = auth
-            .as_ref()
-            .map(|auth| auth.credential.clone())
-            .unwrap_or_default();
-        let base_url = if model.provider == "github-copilot" {
-            crate::login::github_copilot_api_base_url()
-        } else {
-            model.base_url.clone().unwrap_or_else(|| match model.api {
-                ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
-                ApiType::GoogleGenerative => {
-                    "https://generativelanguage.googleapis.com".to_string()
-                }
-                _ => "https://api.openai.com/v1".to_string(),
-            })
-        };
-        let headers = if model.provider == "github-copilot" {
-            crate::login::github_copilot_runtime_headers()
-        } else {
-            std::collections::HashMap::new()
-        };
-        let new_provider: std::sync::Arc<dyn bb_provider::Provider> = match model.api {
-            ApiType::AnthropicMessages => std::sync::Arc::new(AnthropicProvider::new()),
-            ApiType::GoogleGenerative => std::sync::Arc::new(GoogleProvider::new()),
-            _ => std::sync::Arc::new(OpenAiProvider::new()),
-        };
+        let runtime = crate::runtime_model::build_runtime_config(&model, auth.clone());
         let display = format!("{}/{}", model.provider, model.id);
 
         self.runtime_host.session_mut().set_model(ModelRef {
@@ -309,17 +287,17 @@ impl TuiController {
                 context_window: model.context_window as usize,
             }));
         self.session_setup.model = model;
-        self.session_setup.provider = new_provider;
-        self.session_setup.auth = auth;
-        self.session_setup.api_key = api_key;
-        self.session_setup.base_url = base_url;
-        self.session_setup.headers = headers.clone();
+        self.session_setup.provider = runtime.provider.clone();
+        self.session_setup.auth = runtime.auth;
+        self.session_setup.api_key = runtime.api_key.clone();
+        self.session_setup.base_url = runtime.base_url.clone();
+        self.session_setup.headers = runtime.headers.clone();
         self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: self.session_setup.api_key.clone(),
             base_url: self.session_setup.base_url.clone(),
-            headers,
+            headers: runtime.headers,
             enabled: true,
         });
         let status = if let Some(level) = thinking_override {

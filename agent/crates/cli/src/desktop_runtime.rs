@@ -1,32 +1,27 @@
 use anyhow::{Result, anyhow, bail};
 use bb_core::agent_session::{ImageContent, ThinkingLevel};
+use bb_core::settings::Settings;
+use bb_core::types::{
+    AgentMessage, AssistantContent, ContentBlock, EntryBase, EntryId, SessionEntry,
+};
 use bb_monitor::{
     CacheMonitorTextInput, ContextResolutionInput, ContextWindowStatus, RequestCacheMetrics,
     SessionCacheMetricsSource, latest_request_metrics_for_session, render_cache_monitor_text,
     render_context_window_status, resolve_context_window_status,
 };
-use bb_core::settings::Settings;
-use bb_core::types::{
-    AgentMessage, AssistantContent, ContentBlock, EntryBase, EntryId, SessionEntry,
-};
-use bb_provider::Provider;
-use bb_provider::anthropic::AnthropicProvider;
-use bb_provider::google::GoogleProvider;
-use bb_provider::openai::OpenAiProvider;
-use bb_provider::registry::{ApiType, Model, ModelRegistry};
+use bb_provider::registry::{Model, ModelRegistry};
 use chrono::{Local, TimeZone, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::login;
-use crate::session_info::collect_session_info_summary;
 use crate::session_bootstrap::{
     SessionBootstrapOptions, SessionRuntimeSetup, prepare_session_runtime_for_cwd,
 };
+use crate::session_info::collect_session_info_summary;
 use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -229,7 +224,9 @@ impl DesktopRuntimeSession {
                 let disable = true;
                 let normalized = name.trim().to_string();
                 if normalized.is_empty() {
-                    return Ok(Some("Missing skill name. See /skill for usage.".to_string()));
+                    return Ok(Some(
+                        "Missing skill name. See /skill for usage.".to_string(),
+                    ));
                 }
 
                 let mut settings = Settings::load_global();
@@ -260,7 +257,8 @@ impl DesktopRuntimeSession {
                     session: Some(session_id),
                     ..SessionBootstrapOptions::default()
                 };
-                let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+                let (_runtime_host, _ui, setup) =
+                    prepare_session_runtime_for_cwd(cwd, entry).await?;
                 self.setup = setup;
 
                 Ok(Some(if disable {
@@ -273,7 +271,9 @@ impl DesktopRuntimeSession {
                 let disable = false;
                 let normalized = name.trim().to_string();
                 if normalized.is_empty() {
-                    return Ok(Some("Missing skill name. See /skill for usage.".to_string()));
+                    return Ok(Some(
+                        "Missing skill name. See /skill for usage.".to_string(),
+                    ));
                 }
 
                 let mut settings = Settings::load_global();
@@ -304,7 +304,8 @@ impl DesktopRuntimeSession {
                     session: Some(session_id),
                     ..SessionBootstrapOptions::default()
                 };
-                let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+                let (_runtime_host, _ui, setup) =
+                    prepare_session_runtime_for_cwd(cwd, entry).await?;
                 self.setup = setup;
 
                 Ok(Some(if disable {
@@ -326,7 +327,8 @@ impl DesktopRuntimeSession {
 
     pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
         let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
-        let model = resolve_model_candidate(&settings, requested_model, Some(&self.setup.model.provider))?;
+        let model =
+            resolve_model_candidate(&settings, requested_model, Some(&self.setup.model.provider))?;
         self.setup.model = model;
         refresh_provider_runtime_fields(&mut self.setup);
         if self.setup.session_created {
@@ -384,7 +386,11 @@ impl DesktopRuntimeSession {
             bail!("Message cannot be empty");
         }
 
-        let expanded = expand_prompt_with_attachment_paths(&prompt, &attachment_paths, &self.setup.tool_ctx.cwd);
+        let expanded = expand_prompt_with_attachment_paths(
+            &prompt,
+            &attachment_paths,
+            &self.setup.tool_ctx.cwd,
+        );
         let prompt_text = expanded.text.trim().to_string();
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
@@ -408,7 +414,8 @@ impl DesktopRuntimeSession {
 
         let turn_config = build_turn_config(&mut self.setup, cancel)?;
         let (turn_event_tx, mut turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
-        let turn_handle = tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
+        let turn_handle =
+            tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
 
         let mut turn_error: Option<String> = None;
         while let Some(event) = turn_event_rx.recv().await {
@@ -454,9 +461,11 @@ fn session_last_assistant_response_ms(
     rows.into_iter()
         .filter_map(|row| bb_session::store::parse_entry(&row).ok())
         .filter_map(|entry| match entry {
-            SessionEntry::Message { base, message: AgentMessage::Assistant(_), .. } => {
-                Some(base.timestamp.timestamp_millis())
-            }
+            SessionEntry::Message {
+                base,
+                message: AgentMessage::Assistant(_),
+                ..
+            } => Some(base.timestamp.timestamp_millis()),
             _ => None,
         })
         .max()
@@ -520,7 +529,8 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
     std::fs::create_dir_all(&global_dir)?;
     let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
     let rows = bb_session::store::list_all_sessions(&conn)?;
-    let mut groups: std::collections::BTreeMap<String, DesktopChatProjectGroup> = std::collections::BTreeMap::new();
+    let mut groups: std::collections::BTreeMap<String, DesktopChatProjectGroup> =
+        std::collections::BTreeMap::new();
     let mut group_sort_keys = std::collections::HashMap::<String, i64>::new();
     let mut session_sort_keys = std::collections::HashMap::<String, i64>::new();
 
@@ -528,7 +538,8 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
         let sort_ts = session_sort_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
         let session_cwd = std::path::PathBuf::from(&row.cwd);
-        let project_root = bb_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
+        let project_root =
+            bb_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
         let group_id = format!("project:{}", project_root.display());
         let settings = Settings::load_project(&session_cwd);
         let project_name = settings
@@ -537,7 +548,12 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string)
-            .or_else(|| project_root.file_name().and_then(|value| value.to_str()).map(ToString::to_string))
+            .or_else(|| {
+                project_root
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(ToString::to_string)
+            })
             .unwrap_or_else(|| "Project".to_string());
         let summary = settings
             .project_context
@@ -556,15 +572,17 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
             .collect::<Vec<_>>();
         let summary_row = session_summary_from_row(&conn, row)?;
 
-        let entry = groups.entry(group_id.clone()).or_insert_with(|| DesktopChatProjectGroup {
-            id: group_id.clone(),
-            name: project_name,
-            root: project_root.display().to_string(),
-            summary,
-            background_system,
-            shared_sources,
-            sessions: Vec::new(),
-        });
+        let entry = groups
+            .entry(group_id.clone())
+            .or_insert_with(|| DesktopChatProjectGroup {
+                id: group_id.clone(),
+                name: project_name,
+                root: project_root.display().to_string(),
+                summary,
+                background_system,
+                shared_sources,
+                sessions: Vec::new(),
+            });
         entry.sessions.push(summary_row);
         session_sort_keys.insert(session_id, sort_ts);
         group_sort_keys
@@ -576,8 +594,13 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
     for group in groups.values_mut() {
         group.sessions.sort_by(|left, right| {
             let left_time = session_sort_keys.get(&left.id).copied().unwrap_or_default();
-            let right_time = session_sort_keys.get(&right.id).copied().unwrap_or_default();
-            right_time.cmp(&left_time).then_with(|| right.updated_at_label.cmp(&left.updated_at_label))
+            let right_time = session_sort_keys
+                .get(&right.id)
+                .copied()
+                .unwrap_or_default();
+            right_time
+                .cmp(&left_time)
+                .then_with(|| right.updated_at_label.cmp(&left.updated_at_label))
         });
     }
 
@@ -585,7 +608,9 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
     result.sort_by(|left, right| {
         let left_time = group_sort_keys.get(&left.id).copied().unwrap_or_default();
         let right_time = group_sort_keys.get(&right.id).copied().unwrap_or_default();
-        right_time.cmp(&left_time).then_with(|| left.name.cmp(&right.name))
+        right_time
+            .cmp(&left_time)
+            .then_with(|| left.name.cmp(&right.name))
     });
     Ok(result)
 }
@@ -603,24 +628,24 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
         provider_label: login::provider_display_name(&model.provider).into_owned(),
         value: format!("{}/{}", model.provider, model.id),
         label: model.id.clone(),
-        detail: format!("{} • {}", login::provider_display_name(&model.provider), model.name),
+        detail: format!(
+            "{} • {}",
+            login::provider_display_name(&model.provider),
+            model.name
+        ),
     }
 }
 
 fn model_source_label(provider: &str, auth: Option<&login::ResolvedProviderAuth>) -> String {
     match (provider, auth.map(|value| value.method)) {
         ("anthropic", Some(login::ProviderAuthMethod::OAuth)) => "Claude Pro/Max".to_string(),
-        ("anthropic", Some(login::ProviderAuthMethod::ApiKey)) => {
-            "Anthropic API key".to_string()
-        }
+        ("anthropic", Some(login::ProviderAuthMethod::ApiKey)) => "Anthropic API key".to_string(),
         ("openai", Some(login::ProviderAuthMethod::OAuth))
         | ("openai-codex", Some(login::ProviderAuthMethod::OAuth)) => {
             "ChatGPT Plus/Pro".to_string()
         }
         ("openai", Some(login::ProviderAuthMethod::ApiKey))
-        | ("openai-codex", Some(login::ProviderAuthMethod::ApiKey)) => {
-            "OpenAI API key".to_string()
-        }
+        | ("openai-codex", Some(login::ProviderAuthMethod::ApiKey)) => "OpenAI API key".to_string(),
         ("github-copilot", _) => "GitHub Copilot".to_string(),
         (_, Some(login::ProviderAuthMethod::ApiKey)) => {
             format!("{} API key", login::provider_display_name(provider))
@@ -644,11 +669,17 @@ fn desktop_model_option_from_live_id(
         provider_label: login::provider_display_name(provider).into_owned(),
         value: format!("{provider}/{model_id}"),
         label: model_id.clone(),
-        detail: format!("{} • live from official provider", model_source_label(provider, auth)),
+        detail: format!(
+            "{} • live from official provider",
+            model_source_label(provider, auth)
+        ),
     }
 }
 
-async fn fetch_openai_compatible_model_ids(base_url: &str, bearer_token: &str) -> Result<Vec<String>> {
+async fn fetch_openai_compatible_model_ids(
+    base_url: &str,
+    bearer_token: &str,
+) -> Result<Vec<String>> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
     let response = Client::new()
         .get(url)
@@ -705,9 +736,7 @@ async fn fetch_anthropic_model_ids(auth: &login::ResolvedProviderAuth) -> Result
 }
 
 async fn fetch_google_model_ids(api_key: &str) -> Result<Vec<String>> {
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    );
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models?key={api_key}");
     let response = Client::new().get(url).send().await?;
     if !response.status().is_success() {
         anyhow::bail!("HTTP {}", response.status());
@@ -745,10 +774,14 @@ async fn fetch_live_model_ids_for_provider(provider: &str) -> Option<Vec<String>
             fetch_openai_compatible_model_ids("https://api.openai.com/v1", &auth.credential).await
         }
         "google" => fetch_google_model_ids(&auth.credential).await,
-        "groq" => fetch_openai_compatible_model_ids("https://api.groq.com/openai/v1", &auth.credential).await,
+        "groq" => {
+            fetch_openai_compatible_model_ids("https://api.groq.com/openai/v1", &auth.credential)
+                .await
+        }
         "xai" => fetch_openai_compatible_model_ids("https://api.x.ai/v1", &auth.credential).await,
         "openrouter" => {
-            fetch_openai_compatible_model_ids("https://openrouter.ai/api/v1", &auth.credential).await
+            fetch_openai_compatible_model_ids("https://openrouter.ai/api/v1", &auth.credential)
+                .await
         }
         "github-copilot" => Ok(login::github_copilot_cached_models()),
         _ => return None,
@@ -783,23 +816,27 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
             .collect::<HashMap<_, _>>();
 
         let resolved_auth = login::resolve_provider_auth(provider);
-        let provider_options = if let Some(mut live_ids) = fetch_live_model_ids_for_provider(provider).await {
-            live_ids.sort();
-            live_ids.dedup();
-            live_ids
-                .into_iter()
-                .map(|model_id| {
-                    desktop_model_option_from_live_id(
-                        provider,
-                        model_id,
-                        &static_lookup,
-                        resolved_auth.as_ref(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        } else {
-            models.iter().map(desktop_model_option_from_model).collect::<Vec<_>>()
-        };
+        let provider_options =
+            if let Some(mut live_ids) = fetch_live_model_ids_for_provider(provider).await {
+                live_ids.sort();
+                live_ids.dedup();
+                live_ids
+                    .into_iter()
+                    .map(|model_id| {
+                        desktop_model_option_from_live_id(
+                            provider,
+                            model_id,
+                            &static_lookup,
+                            resolved_auth.as_ref(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                models
+                    .iter()
+                    .map(desktop_model_option_from_model)
+                    .collect::<Vec<_>>()
+            };
 
         options.extend(provider_options);
     }
@@ -864,54 +901,27 @@ fn resolve_model_candidate(
 
     candidates
         .iter()
-        .find(|model| model.id.eq_ignore_ascii_case(requested) || model.name.eq_ignore_ascii_case(requested))
+        .find(|model| {
+            model.id.eq_ignore_ascii_case(requested) || model.name.eq_ignore_ascii_case(requested)
+        })
         .cloned()
         .ok_or_else(|| anyhow!("Unknown model: {requested}"))
 }
 
-fn default_base_url(model: &Model) -> String {
-    if model.provider == "github-copilot" {
-        return login::github_copilot_api_base_url();
-    }
-
-    model.base_url.clone().unwrap_or_else(|| match model.api {
-        ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
-        ApiType::GoogleGenerative => "https://generativelanguage.googleapis.com".to_string(),
-        _ => "https://api.openai.com/v1".to_string(),
-    })
-}
-
-fn provider_for_model(model: &Model) -> Arc<dyn Provider> {
-    match model.api {
-        ApiType::AnthropicMessages => Arc::new(AnthropicProvider::new()),
-        ApiType::GoogleGenerative => Arc::new(GoogleProvider::new()),
-        _ => Arc::new(OpenAiProvider::new()),
-    }
-}
-
 fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
-    let auth = login::resolve_provider_auth(&setup.model.provider);
-    let api_key = auth
-        .as_ref()
-        .map(|value| value.credential.clone())
-        .unwrap_or_default();
-    let headers = if setup.model.provider == "github-copilot" {
-        login::github_copilot_runtime_headers()
-    } else {
-        std::collections::HashMap::new()
-    };
+    let runtime = crate::runtime_model::resolve_runtime_config(&setup.model);
 
-    setup.provider = provider_for_model(&setup.model);
-    setup.auth = auth;
-    setup.api_key = api_key;
-    setup.base_url = default_base_url(&setup.model);
-    setup.headers = headers.clone();
+    setup.provider = runtime.provider.clone();
+    setup.auth = runtime.auth;
+    setup.api_key = runtime.api_key.clone();
+    setup.base_url = runtime.base_url.clone();
+    setup.headers = runtime.headers.clone();
     setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
         provider: setup.provider.clone(),
         model: setup.model.clone(),
         api_key: setup.api_key.clone(),
         base_url: setup.base_url.clone(),
-        headers,
+        headers: runtime.headers,
         enabled: true,
     });
 }
@@ -924,13 +934,18 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     let cwd = setup.tool_ctx.cwd.display().to_string();
     bb_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
     append_model_change_entry(&setup.conn, &setup.session_id, &setup.model)?;
-    let initial_thinking = ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Medium);
+    let initial_thinking =
+        ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Medium);
     append_thinking_level_change_entry(&setup.conn, &setup.session_id, initial_thinking)?;
     setup.session_created = true;
     Ok(())
 }
 
-fn append_model_change_entry(conn: &rusqlite::Connection, session_id: &str, model: &Model) -> Result<()> {
+fn append_model_change_entry(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    model: &Model,
+) -> Result<()> {
     let entry = SessionEntry::ModelChange {
         base: EntryBase {
             id: EntryId::generate(),
@@ -961,11 +976,19 @@ fn append_thinking_level_change_entry(
     Ok(())
 }
 
-fn maybe_name_session_from_prompt(conn: &rusqlite::Connection, session_id: &str, prompt: &str) -> Result<()> {
+fn maybe_name_session_from_prompt(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    prompt: &str,
+) -> Result<()> {
     let Some(row) = bb_session::store::get_session(conn, session_id)? else {
         return Ok(());
     };
-    if row.name.as_deref().is_some_and(|value| !value.trim().is_empty()) {
+    if row
+        .name
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
         return Ok(());
     }
 
@@ -1162,7 +1185,9 @@ struct HistoricalTurnBuilder {
 
 impl HistoricalTurnBuilder {
     fn is_empty(&self) -> bool {
-        self.assistant_text_parts.is_empty() && self.thinking_parts.is_empty() && self.tools.is_empty()
+        self.assistant_text_parts.is_empty()
+            && self.thinking_parts.is_empty()
+            && self.tools.is_empty()
     }
 
     fn touch_timestamp(&mut self, timestamp_ms: i64) {
@@ -1170,7 +1195,10 @@ impl HistoricalTurnBuilder {
     }
 }
 
-fn flush_historical_turn(out: &mut Vec<DesktopChatMessage>, current_turn: &mut Option<HistoricalTurnBuilder>) {
+fn flush_historical_turn(
+    out: &mut Vec<DesktopChatMessage>,
+    current_turn: &mut Option<HistoricalTurnBuilder>,
+) {
     let Some(turn) = current_turn.take() else {
         return;
     };
@@ -1218,7 +1246,10 @@ fn tool_detail_label(details: &Option<serde_json::Value>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" • "))
 }
 
-fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Result<Vec<DesktopChatMessage>> {
+fn load_session_messages(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<Vec<DesktopChatMessage>> {
     let path = bb_session::tree::active_path(conn, session_id)?;
     let mut out = Vec::new();
     let mut current_turn: Option<HistoricalTurnBuilder> = None;
@@ -1269,7 +1300,11 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                                     turn.thinking_parts.push(thinking);
                                 }
                             }
-                            AssistantContent::ToolCall { id, name, arguments } => {
+                            AssistantContent::ToolCall {
+                                id,
+                                name,
+                                arguments,
+                            } => {
                                 let raw_args = arguments.to_string();
                                 let next_index = turn.tools.len();
                                 turn.tool_index_by_id.insert(id.clone(), next_index);
@@ -1290,15 +1325,22 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                 AgentMessage::ToolResult(message) => {
                     let turn = current_turn.get_or_insert_with(HistoricalTurnBuilder::default);
                     turn.touch_timestamp(message.timestamp);
-                    let tool_index = if let Some(index) = turn.tool_index_by_id.get(&message.tool_call_id).copied() {
+                    let tool_index = if let Some(index) =
+                        turn.tool_index_by_id.get(&message.tool_call_id).copied()
+                    {
                         index
                     } else {
                         let index = turn.tools.len();
-                        turn.tool_index_by_id.insert(message.tool_call_id.clone(), index);
+                        turn.tool_index_by_id
+                            .insert(message.tool_call_id.clone(), index);
                         turn.tools.push(DesktopChatStoredTool {
                             id: message.tool_call_id.clone(),
                             name: message.tool_name.clone(),
-                            status: if message.is_error { "error".to_string() } else { "done".to_string() },
+                            status: if message.is_error {
+                                "error".to_string()
+                            } else {
+                                "done".to_string()
+                            },
                             arguments: String::new(),
                             live_output: String::new(),
                             result_text: None,
@@ -1309,7 +1351,11 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                     };
 
                     if let Some(tool) = turn.tools.get_mut(tool_index) {
-                        tool.status = if message.is_error { "error".to_string() } else { "done".to_string() };
+                        tool.status = if message.is_error {
+                            "error".to_string()
+                        } else {
+                            "done".to_string()
+                        };
                         tool.result_text = Some(text_from_blocks(&message.content));
                         tool.detail = tool_detail_label(&message.details);
                         tool.is_error = message.is_error;
@@ -1341,7 +1387,8 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                             } else {
                                 "done".to_string()
                             },
-                            arguments: serde_json::json!({ "command": message.command }).to_string(),
+                            arguments: serde_json::json!({ "command": message.command })
+                                .to_string(),
                             live_output: String::new(),
                             result_text: Some(if message.output.trim().is_empty() {
                                 "(no output)".to_string()
@@ -1349,7 +1396,8 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                                 message.output
                             }),
                             detail,
-                            is_error: message.cancelled || message.exit_code.unwrap_or_default() != 0,
+                            is_error: message.cancelled
+                                || message.exit_code.unwrap_or_default() != 0,
                         }],
                         tool_index_by_id: HashMap::new(),
                         detail: Some("bash".to_string()),
@@ -1424,7 +1472,10 @@ fn load_session_messages(conn: &rusqlite::Connection, session_id: &str) -> Resul
                 out.push(DesktopChatMessage {
                     role: "system".to_string(),
                     sender: None,
-                    text: format!("Thinking set to {}", thinking_label(thinking_level.as_str())),
+                    text: format!(
+                        "Thinking set to {}",
+                        thinking_label(thinking_level.as_str())
+                    ),
                     detail: Some("Thinking updated".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
@@ -1663,10 +1714,11 @@ fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
     )
     .ok()?;
 
-    let latest_request = setup
-        .request_metrics_log_path
-        .as_ref()
-        .and_then(|path| latest_request_metrics_for_session(path, &setup.session_id).ok().flatten());
+    let latest_request = setup.request_metrics_log_path.as_ref().and_then(|path| {
+        latest_request_metrics_for_session(path, &setup.session_id)
+            .ok()
+            .flatten()
+    });
     let current_context_epoch = setup
         .request_metrics_tracker
         .try_lock()
@@ -1682,10 +1734,13 @@ fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
     });
     let source = if latest_matches_current_cache_domain {
         latest_request.as_ref().map(|metrics| {
-            SessionCacheMetricsSource::from_cache_metrics_source(Some(&metrics.cache_metrics_source))
+            SessionCacheMetricsSource::from_cache_metrics_source(Some(
+                &metrics.cache_metrics_source,
+            ))
         })
     } else {
-        current_auth_cache_metrics_source(setup.auth.as_ref()).or(summary.cache_metrics_source.clone())
+        current_auth_cache_metrics_source(setup.auth.as_ref())
+            .or(summary.cache_metrics_source.clone())
     };
     let latest_hit_rate_pct = if latest_matches_current_cache_domain {
         latest_request
@@ -1740,7 +1795,12 @@ fn session_focus_subtitle(messages: &[DesktopChatMessage]) -> Option<String> {
         .iter()
         .rev()
         .find(|message| message.role == "user")
-        .or_else(|| messages.iter().rev().find(|message| message.role == "assistant"))
+        .or_else(|| {
+            messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "assistant")
+        })
         .map(|message| truncate_chars(&message.text.replace('\n', " "), 96))
         .filter(|value| !value.trim().is_empty())
 }

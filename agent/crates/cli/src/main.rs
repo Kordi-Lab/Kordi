@@ -10,6 +10,7 @@ mod login;
 mod models;
 mod oauth;
 mod run;
+mod runtime_model;
 mod session_bootstrap;
 mod session_info;
 mod session_navigation;

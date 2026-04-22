@@ -11,10 +11,7 @@ use bb_core::agent_session_runtime::{
 use bb_core::config;
 use bb_core::settings::{ProjectSharedSource, Settings};
 use bb_provider::Provider;
-use bb_provider::anthropic::AnthropicProvider;
-use bb_provider::google::GoogleProvider;
-use bb_provider::openai::OpenAiProvider;
-use bb_provider::registry::{ApiType, Model, ModelInput, ModelRegistry};
+use bb_provider::registry::ModelRegistry;
 use bb_session::store;
 use bb_tools::{ExecutionPolicy, ToolContext};
 use std::sync::Arc;
@@ -311,79 +308,6 @@ pub(crate) fn resolve_thinking_level(
         .unwrap_or(ThinkingLevel::Medium)
 }
 
-pub(crate) fn fallback_api_type_for_provider(provider: &str) -> ApiType {
-    match login::normalize_provider_for_model_selection(provider).as_str() {
-        "anthropic" => ApiType::AnthropicMessages,
-        "google" => ApiType::GoogleGenerative,
-        _ => ApiType::OpenaiCompletions,
-    }
-}
-
-pub(crate) fn fallback_base_url_for_api(api: &ApiType) -> String {
-    match api {
-        ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
-        ApiType::GoogleGenerative => "https://generativelanguage.googleapis.com".to_string(),
-        _ => "https://api.openai.com/v1".to_string(),
-    }
-}
-
-pub(crate) fn synthesize_model_candidate(
-    registry: &ModelRegistry,
-    provider_name: &str,
-    model_id: &str,
-) -> Model {
-    if let Some(template) = registry
-        .list()
-        .iter()
-        .find(|model| model.provider == provider_name)
-        .cloned()
-    {
-        return Model {
-            id: model_id.to_string(),
-            name: model_id.to_string(),
-            ..template
-        };
-    }
-
-    let api = fallback_api_type_for_provider(provider_name);
-    Model {
-        id: model_id.to_string(),
-        name: model_id.to_string(),
-        provider: provider_name.to_string(),
-        api: api.clone(),
-        context_window: 128_000,
-        max_tokens: 16_384,
-        reasoning: false,
-        input: vec![ModelInput::Text],
-        base_url: Some(fallback_base_url_for_api(&api)),
-        cost: Default::default(),
-    }
-}
-
-pub(crate) fn resolve_or_synthesize_model(
-    registry: &ModelRegistry,
-    provider_name: &str,
-    model_id: &str,
-) -> Model {
-    registry
-        .find(provider_name, model_id)
-        .cloned()
-        .or_else(|| registry.find_fuzzy(model_id, Some(provider_name)).cloned())
-        .or_else(|| registry.find_fuzzy(model_id, None).cloned())
-        .unwrap_or_else(|| synthesize_model_candidate(registry, provider_name, model_id))
-}
-
-pub(crate) fn default_base_url_for_model(provider_name: &str, model: &Model) -> String {
-    if provider_name == "github-copilot" {
-        return crate::login::github_copilot_api_base_url();
-    }
-
-    model
-        .base_url
-        .clone()
-        .unwrap_or_else(|| fallback_base_url_for_api(&model.api))
-}
-
 pub(crate) async fn prepare_session_runtime(
     entry: SessionBootstrapOptions,
 ) -> Result<(
@@ -463,25 +387,15 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let mut registry = ModelRegistry::new();
     registry.load_custom_models(&settings);
     login::add_cached_github_copilot_models(&mut registry);
-    let model = resolve_or_synthesize_model(&registry, &provider_name, &model_id);
+    let model =
+        crate::runtime_model::resolve_or_synthesize_model(&registry, &provider_name, &model_id);
 
-    let auth = login::resolve_provider_auth(&provider_name);
-    let api_key = auth
-        .as_ref()
-        .map(|auth| auth.credential.clone())
-        .unwrap_or_default();
-    let base_url = default_base_url_for_model(&provider_name, &model);
-
-    let provider: Arc<dyn Provider> = match model.api {
-        ApiType::AnthropicMessages => Arc::new(AnthropicProvider::new()),
-        ApiType::GoogleGenerative => Arc::new(GoogleProvider::new()),
-        _ => Arc::new(OpenAiProvider::new()),
-    };
-    let headers = if provider_name == "github-copilot" {
-        login::github_copilot_runtime_headers()
-    } else {
-        std::collections::HashMap::new()
-    };
+    let runtime = crate::runtime_model::resolve_runtime_config(&model);
+    let provider = runtime.provider.clone();
+    let auth = runtime.auth;
+    let api_key = runtime.api_key.clone();
+    let base_url = runtime.base_url.clone();
+    let headers = runtime.headers.clone();
 
     auto_install_missing_packages(&effective_cwd, &settings);
 
@@ -634,14 +548,13 @@ fn resolve_startup_session_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionBootstrapOptions, default_base_url_for_model, prompt_label_for_cli,
-        resolve_or_synthesize_model, resolve_startup_session_id, resolve_thinking_level,
+        SessionBootstrapOptions, prompt_label_for_cli, resolve_startup_session_id,
+        resolve_thinking_level,
     };
     use crate::tool_registry::{ToolSelectionPreference, build_tool_defs};
     use async_trait::async_trait;
     use bb_core::agent_session::ThinkingLevel;
     use bb_core::error::BbResult;
-    use bb_provider::registry::{ApiType, ModelRegistry};
     use bb_tools::{Tool, ToolContext, ToolResult};
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -795,19 +708,6 @@ mod tests {
         assert_eq!(
             resolve_thinking_level(None, None, Some("high")),
             ThinkingLevel::High
-        );
-    }
-
-    #[test]
-    fn resolve_or_synthesize_model_preserves_provider_runtime_shape_for_unknown_live_models() {
-        let registry = ModelRegistry::new();
-        let model = resolve_or_synthesize_model(&registry, "anthropic", "claude-opus-4-7");
-
-        assert_eq!(model.provider, "anthropic");
-        assert!(matches!(model.api, ApiType::AnthropicMessages));
-        assert_eq!(
-            default_base_url_for_model("anthropic", &model),
-            "https://api.anthropic.com"
         );
     }
 
