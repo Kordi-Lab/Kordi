@@ -105,7 +105,6 @@ function TimelineSection({
   expanded,
   onToggle,
   children,
-  nodeClassName,
 }: {
   icon: ComponentType<{ className?: string }>;
   title: string;
@@ -114,34 +113,25 @@ function TimelineSection({
   expanded: boolean;
   onToggle: () => void;
   children?: ReactNode;
-  nodeClassName?: string;
 }) {
   const Icon = icon;
 
   return (
-    <div className="grid grid-cols-[16px_minmax(0,1fr)] gap-2">
-      <div className="flex h-full flex-col items-center">
-        <div className="flex min-h-[32px] items-center justify-center">
-          <div className={cn('h-2.5 w-2.5 rounded-full border border-white/15 bg-slate-500/70', nodeClassName)} />
+    <div className="overflow-hidden rounded-[16px] border border-white/7 bg-white/[0.02]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-h-[34px] w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left transition hover:bg-white/[0.03]"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />}
+          <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span className="truncate text-[13px] font-medium text-slate-100">{title}</span>
+          {meta ? <span className="truncate text-[10px] text-slate-400">{meta}</span> : null}
         </div>
-        <div className="w-px flex-1 bg-white/8" />
-      </div>
-      <div className="min-w-0">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex min-h-[32px] w-full items-center justify-between gap-2 rounded-xl px-0.5 py-1.5 text-left transition hover:bg-white/[0.02]"
-        >
-          <div className="flex min-w-0 items-center gap-1.5">
-            {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />}
-            <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-            <span className="truncate text-[13px] font-medium text-slate-100">{title}</span>
-            {meta ? <span className="truncate text-[10px] text-slate-400">{meta}</span> : null}
-          </div>
-          {badge ? <div className="shrink-0">{badge}</div> : null}
-        </button>
-        {expanded ? <div className="pb-0.5 pt-0.5">{children}</div> : null}
-      </div>
+        {badge ? <div className="shrink-0">{badge}</div> : null}
+      </button>
+      {expanded ? <div className="border-t border-white/7 pb-1 pt-1">{children}</div> : null}
     </div>
   );
 }
@@ -351,46 +341,54 @@ function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
 
   if (normalized.includes('web_fetch')) {
-    return { icon: Globe, nodeClassName: 'bg-emerald-400/80' };
+    return { icon: Globe };
   }
   if (normalized.includes('browser_fetch')) {
-    return { icon: Link2, nodeClassName: 'bg-rose-400/80' };
+    return { icon: Link2 };
   }
   if (normalized.includes('search') || normalized.includes('grep')) {
-    return { icon: Search, nodeClassName: 'bg-amber-400/80' };
+    return { icon: Search };
   }
   if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) {
-    return { icon: FileText, nodeClassName: 'bg-cyan-400/80' };
+    return { icon: FileText };
   }
   if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) {
-    return { icon: FolderOpen, nodeClassName: 'bg-sky-400/80' };
+    return { icon: FolderOpen };
   }
   if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
-    return { icon: TerminalSquare, nodeClassName: 'bg-violet-400/80' };
+    return { icon: TerminalSquare };
   }
   if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) {
-    return { icon: Pencil, nodeClassName: 'bg-orange-400/80' };
+    return { icon: Pencil };
   }
   if (normalized.includes('image')) {
-    return { icon: Image, nodeClassName: 'bg-fuchsia-400/80' };
+    return { icon: Image };
   }
 
-  return { icon: Wrench, nodeClassName: 'bg-slate-400/80' };
+  return { icon: Wrench };
 }
 
 export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
   const hasAssistant = turn.assistantText.trim().length > 0;
   const hasThinking = turn.thinkingText.trim().length > 0;
-  const showLiveStatusHeader = !historical && (!turn.completed || !turn.succeeded);
+  const showLiveStatusHeader = !historical && !turn.completed;
+  const liveStatusText =
+    turn.status === 'cancelling'
+      ? 'Stopping…'
+      : turn.status === 'retrying'
+        ? 'Retrying…'
+        : turn.status === 'compacting'
+          ? 'Compacting…'
+          : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
     <div className="w-full max-w-[min(100%,58rem)] space-y-2.5 pb-1.5">
       {showLiveStatusHeader ? (
-        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
-          <LoaderCircle className={cn('h-3.5 w-3.5', turn.completed ? '' : 'animate-spin')} />
-          <span className="normal-case tracking-normal text-slate-300">{turn.message}</span>
+        <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          <span className="text-slate-300">{liveStatusText}</span>
         </div>
       ) : null}
 
@@ -402,9 +400,8 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
           expanded={expandedThinking}
           onToggle={() => setExpandedThinking((current) => !current)}
           badge={<span className="text-[11px] text-slate-500">{expandedThinking ? 'Hide' : 'Show'}</span>}
-          nodeClassName="bg-violet-400/70"
         >
-          <div className="pl-4.5 pr-1">
+          <div className="pr-1">
             <MarkdownContent text={turn.thinkingText} tone="muted" className="text-[13px] leading-6" />
           </div>
         </TimelineSection>
@@ -422,7 +419,6 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             meta={tool.detail ?? tool.status}
             expanded={expanded}
             onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !expanded }))}
-            nodeClassName={tool.status === 'error' ? 'bg-rose-400/80' : tool.status === 'done' ? 'bg-emerald-400/80' : toolDisplay.nodeClassName}
             badge={
               <div
                 className={cn(
@@ -438,7 +434,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
               </div>
             }
           >
-            <div className="pl-4.5">
+            <div>
               {tool.arguments ? <ToolTranscriptBlock label="Arguments" icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
               {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
               {tool.resultText ? <ToolTranscriptBlock label="Result" icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
