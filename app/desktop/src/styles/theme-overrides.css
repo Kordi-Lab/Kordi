@@ -355,6 +355,65 @@
   background-color: rgba(251, 191, 36, 0.18) !important;
 }
 
+.bridge-app.theme-light .app-session-status-light-unread .bg-emerald-500\/32,
+.bridge-app.theme-light .app-session-status-light-unread .bg-emerald-400\/38,
+.bridge-app.theme-light .app-session-status-light-unread .bg-emerald-500\/28,
+.bridge-app.theme-light .app-session-status-light-unread .bg-emerald-500\/34 {
+  background-color: rgba(5, 150, 105, 0.42) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-unread .ring-emerald-500\/28,
+.bridge-app.theme-light .app-session-status-light-unread .ring-emerald-500\/34 {
+  --tw-ring-color: rgba(5, 150, 105, 0.34) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-running .bg-sky-500\/38,
+.bridge-app.theme-light .app-session-status-light-running .bg-sky-400\/45,
+.bridge-app.theme-light .app-session-status-light-running .bg-sky-500\/34,
+.bridge-app.theme-light .app-session-status-light-running .bg-sky-500\/40 {
+  background-color: rgba(14, 165, 233, 0.42) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-running .ring-sky-500\/34,
+.bridge-app.theme-light .app-session-status-light-running .ring-sky-500\/40 {
+  --tw-ring-color: rgba(14, 165, 233, 0.34) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-error .bg-rose-500\/28,
+.bridge-app.theme-light .app-session-status-light-error .bg-rose-400\/34,
+.bridge-app.theme-light .app-session-status-light-error .bg-rose-500\/32 {
+  background-color: rgba(225, 29, 72, 0.34) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-error .ring-rose-500\/28,
+.bridge-app.theme-light .app-session-status-light-error .ring-rose-500\/32 {
+  --tw-ring-color: rgba(225, 29, 72, 0.28) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-draft .bg-amber-500\/26,
+.bridge-app.theme-light .app-session-status-light-draft .bg-amber-400\/34,
+.bridge-app.theme-light .app-session-status-light-draft .bg-amber-500\/24,
+.bridge-app.theme-light .app-session-status-light-draft .bg-amber-500\/30 {
+  background-color: rgba(217, 119, 6, 0.34) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-draft .ring-amber-500\/24,
+.bridge-app.theme-light .app-session-status-light-draft .ring-amber-500\/30 {
+  --tw-ring-color: rgba(217, 119, 6, 0.28) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-stopped .bg-slate-400\/18,
+.bridge-app.theme-light .app-session-status-light-stopped .bg-slate-400\/22,
+.bridge-app.theme-light .app-session-status-light-stopped .bg-slate-400\/20,
+.bridge-app.theme-light .app-session-status-light-stopped .bg-slate-400\/24 {
+  background-color: rgba(100, 116, 139, 0.3) !important;
+}
+
+.bridge-app.theme-light .app-session-status-light-stopped .ring-slate-400\/20,
+.bridge-app.theme-light .app-session-status-light-stopped .ring-slate-400\/24 {
+  --tw-ring-color: rgba(100, 116, 139, 0.24) !important;
+}
+
 .bridge-app.theme-light .app-transcript-live-status {
   color: rgb(88 102 119) !important;
 }
