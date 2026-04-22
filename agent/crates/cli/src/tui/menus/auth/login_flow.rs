@@ -19,37 +19,18 @@ impl TuiController {
             return false;
         }
 
-        let api_key = auth.credential.clone();
-        let base_url = if target_provider == "github-copilot" {
-            crate::login::github_copilot_api_base_url()
-        } else {
-            self.session_setup
-                .model
-                .base_url
-                .clone()
-                .unwrap_or_else(|| match self.session_setup.model.api {
-                    ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
-                    ApiType::GoogleGenerative => {
-                        "https://generativelanguage.googleapis.com".to_string()
-                    }
-                    _ => "https://api.openai.com/v1".to_string(),
-                })
-        };
-        let headers = if target_provider == "github-copilot" {
-            crate::login::github_copilot_runtime_headers()
-        } else {
-            std::collections::HashMap::new()
-        };
-        self.session_setup.auth = Some(auth);
-        self.session_setup.api_key = api_key;
-        self.session_setup.base_url = base_url;
-        self.session_setup.headers = headers.clone();
+        let runtime =
+            crate::runtime_model::build_runtime_config(&self.session_setup.model, Some(auth));
+        self.session_setup.auth = runtime.auth;
+        self.session_setup.api_key = runtime.api_key.clone();
+        self.session_setup.base_url = runtime.base_url.clone();
+        self.session_setup.headers = runtime.headers.clone();
         self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: self.session_setup.api_key.clone(),
             base_url: self.session_setup.base_url.clone(),
-            headers,
+            headers: runtime.headers,
             enabled: true,
         });
         if let Ok(mut tracker) = self.session_setup.request_metrics_tracker.try_lock() {
@@ -68,32 +49,18 @@ impl TuiController {
             return false;
         }
 
-        let base_url = if target_provider == "github-copilot" {
-            crate::login::github_copilot_api_base_url()
-        } else {
-            self.session_setup
-                .model
-                .base_url
-                .clone()
-                .unwrap_or_else(|| match self.session_setup.model.api {
-                    ApiType::AnthropicMessages => "https://api.anthropic.com".to_string(),
-                    ApiType::GoogleGenerative => {
-                        "https://generativelanguage.googleapis.com".to_string()
-                    }
-                    _ => "https://api.openai.com/v1".to_string(),
-                })
-        };
+        let runtime = crate::runtime_model::build_runtime_config(&self.session_setup.model, None);
 
         self.session_setup.auth = None;
         self.session_setup.api_key.clear();
-        self.session_setup.base_url = base_url;
+        self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers.clear();
         self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
             api_key: String::new(),
             base_url: self.session_setup.base_url.clone(),
-            headers: std::collections::HashMap::new(),
+            headers: runtime.headers,
             enabled: false,
         });
         if let Ok(mut tracker) = self.session_setup.request_metrics_tracker.try_lock() {
@@ -159,8 +126,9 @@ impl TuiController {
                 move |device| {
                     if let Ok(mut shared) = dialog_shared.lock() {
                         shared.0 = Some(device.verification_uri.clone());
-                        shared.1 =
-                            Some("Kordi generated the device code shown on this screen.".to_string());
+                        shared.1 = Some(
+                            "Kordi generated the device code shown on this screen.".to_string(),
+                        );
                         shared.2 = Some(device.user_code.clone());
                     }
                     let _ = command_tx.send(TuiCommand::SetStatusLine(format!(

@@ -2,11 +2,7 @@ use anyhow::Result;
 use bb_core::agent_session::ModelRef;
 use bb_core::agent_session_runtime::RuntimeModelRef;
 use bb_core::settings::Settings;
-use bb_provider::Provider;
-use bb_provider::anthropic::AnthropicProvider;
-use bb_provider::google::GoogleProvider;
-use bb_provider::openai::OpenAiProvider;
-use bb_provider::registry::{ApiType, ModelRegistry};
+use bb_provider::registry::ModelRegistry;
 use bb_session::{context, store};
 use bb_tui::select_list::SelectItem;
 use bb_tui::tui::{Transcript, TuiCommand, TuiNoteLevel};
@@ -107,41 +103,13 @@ impl TuiController {
                     let mut registry = ModelRegistry::new();
                     registry.load_custom_models(&settings);
                     crate::login::add_cached_github_copilot_models(&mut registry);
-                    if let Some(model) = registry
-                        .find(&model_info.provider, &model_info.model_id)
-                        .cloned()
-                        .or_else(|| {
-                            registry
-                                .find_fuzzy(&model_info.model_id, Some(&model_info.provider))
-                                .cloned()
-                        })
-                        .or_else(|| registry.find_fuzzy(&model_info.model_id, None).cloned())
                     {
-                        let auth = crate::login::resolve_provider_auth(&model.provider);
-                        let api_key = auth
-                            .as_ref()
-                            .map(|auth| auth.credential.clone())
-                            .unwrap_or_default();
-                        let base_url = if model.provider == "github-copilot" {
-                            crate::login::github_copilot_api_base_url()
-                        } else {
-                            model
-                                .base_url
-                                .clone()
-                                .unwrap_or_else(|| "https://api.openai.com/v1".into())
-                        };
-                        let headers = if model.provider == "github-copilot" {
-                            crate::login::github_copilot_runtime_headers()
-                        } else {
-                            std::collections::HashMap::new()
-                        };
-                        let provider: std::sync::Arc<dyn Provider> = match model.api {
-                            ApiType::AnthropicMessages => {
-                                std::sync::Arc::new(AnthropicProvider::new())
-                            }
-                            ApiType::GoogleGenerative => std::sync::Arc::new(GoogleProvider::new()),
-                            _ => std::sync::Arc::new(OpenAiProvider::new()),
-                        };
+                        let model = crate::runtime_model::resolve_or_synthesize_model(
+                            &registry,
+                            &model_info.provider,
+                            &model_info.model_id,
+                        );
+                        let runtime = crate::runtime_model::resolve_runtime_config(&model);
 
                         self.runtime_host.session_mut().set_model(ModelRef {
                             provider: model.provider.clone(),
@@ -156,17 +124,17 @@ impl TuiController {
                                 context_window: model.context_window as usize,
                             }));
                         self.session_setup.model = model;
-                        self.session_setup.provider = provider;
-                        self.session_setup.auth = auth;
-                        self.session_setup.api_key = api_key;
-                        self.session_setup.base_url = base_url;
-                        self.session_setup.headers = headers.clone();
+                        self.session_setup.provider = runtime.provider.clone();
+                        self.session_setup.auth = runtime.auth;
+                        self.session_setup.api_key = runtime.api_key.clone();
+                        self.session_setup.base_url = runtime.base_url.clone();
+                        self.session_setup.headers = runtime.headers.clone();
                         self.session_setup.tool_ctx.web_search = Some(bb_tools::WebSearchRuntime {
                             provider: self.session_setup.provider.clone(),
                             model: self.session_setup.model.clone(),
                             api_key: self.session_setup.api_key.clone(),
                             base_url: self.session_setup.base_url.clone(),
-                            headers,
+                            headers: runtime.headers,
                             enabled: true,
                         });
                         self.options.model_display = Some(format!(
