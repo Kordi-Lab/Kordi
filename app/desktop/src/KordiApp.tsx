@@ -315,6 +315,7 @@ export default function KordiApp() {
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
+    desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
 
