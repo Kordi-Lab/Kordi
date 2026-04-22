@@ -303,6 +303,7 @@ export default function KordiApp() {
     desktopBridgeState,
     projectWorkspaces,
     projectSelectedSessionIds,
+    activeNav,
     activeConvId,
     activeProjectId,
     activeProjectSessionId,
