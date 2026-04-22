@@ -614,6 +614,7 @@ mod tests {
             sibling_conn: None,
             extension_commands: ExtensionCommandRegistry::default(),
             extension_bootstrap: ExtensionBootstrap::default(),
+            slash_command_items: Vec::new(),
         };
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let (_approval_tx, approval_rx) = mpsc::unbounded_channel();

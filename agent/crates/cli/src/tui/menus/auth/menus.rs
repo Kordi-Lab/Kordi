@@ -470,6 +470,7 @@ mod tests {
             sibling_conn: None,
             extension_commands: ExtensionCommandRegistry::default(),
             extension_bootstrap: ExtensionBootstrap::default(),
+            slash_command_items: Vec::new(),
         };
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let (_approval_tx, approval_rx) = mpsc::unbounded_channel();
@@ -638,8 +639,18 @@ mod tests {
             .iter()
             .find(|item| item.label == "Saved API key • ending in 1111")
             .expect("saved key 1111 option");
-        assert!(key_2222.detail.as_deref().is_some_and(|detail| detail.contains("profile ")));
-        assert!(key_1111.detail.as_deref().is_some_and(|detail| detail.contains("profile ")));
+        assert!(
+            key_2222
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("profile "))
+        );
+        assert!(
+            key_1111
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("profile "))
+        );
         assert!(
             menu.2
                 .iter()

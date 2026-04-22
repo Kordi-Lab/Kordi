@@ -27,6 +27,7 @@ use crate::extensions::{
     build_skill_system_prompt_section, load_runtime_extension_support,
 };
 use crate::login;
+use crate::session_bootstrap::{default_base_url_for_model, resolve_or_synthesize_model};
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
 use bb_monitor::RequestMetricsTracker;
@@ -79,27 +80,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let mut registry = ModelRegistry::new();
     registry.load_custom_models(&settings);
     login::add_cached_github_copilot_models(&mut registry);
-    let model = registry
-        .find(&provider_name, &model_id)
-        .cloned()
-        .or_else(|| {
-            registry
-                .find_fuzzy(&model_id, Some(&provider_name))
-                .cloned()
-        })
-        .or_else(|| registry.find_fuzzy(&model_id, None).cloned())
-        .unwrap_or_else(|| bb_provider::registry::Model {
-            id: model_id.clone(),
-            name: model_id.clone(),
-            provider: provider_name.clone(),
-            api: bb_provider::registry::ApiType::OpenaiCompletions,
-            context_window: 128_000,
-            max_tokens: 16_384,
-            reasoning: false,
-            input: vec![bb_provider::registry::ModelInput::Text],
-            base_url: None,
-            cost: Default::default(),
-        });
+    let model = resolve_or_synthesize_model(&registry, &provider_name, &model_id);
 
     let auth = if cli.api_key.is_some() {
         None
@@ -113,14 +94,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             .map(|auth| auth.credential.clone())
             .unwrap_or_default(),
     };
-    let base_url = if provider_name == "github-copilot" {
-        login::github_copilot_api_base_url()
-    } else {
-        model
-            .base_url
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1".into())
-    };
+    let base_url = default_base_url_for_model(&provider_name, &model);
     let headers = if provider_name == "github-copilot" {
         login::github_copilot_runtime_headers()
     } else {
