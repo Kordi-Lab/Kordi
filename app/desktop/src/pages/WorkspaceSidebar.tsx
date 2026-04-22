@@ -122,37 +122,41 @@ function SidebarSessionStatusIndicator({
   const toneClasses =
     indicator.tone === 'running'
       ? {
-          pill: active ? 'border-sky-300/35 bg-sky-400/14 text-sky-100' : 'border-sky-400/20 bg-sky-400/10 text-sky-200',
-          dot: 'bg-sky-300',
+          glow: active ? 'bg-sky-300/35' : 'bg-sky-400/26',
+          dot: active ? 'bg-sky-200 ring-sky-200/45' : 'bg-sky-300 ring-sky-300/35',
         }
       : indicator.tone === 'draft'
         ? {
-            pill: active ? 'border-amber-300/30 bg-amber-400/14 text-amber-100' : 'border-amber-400/18 bg-amber-400/10 text-amber-200',
-            dot: 'bg-amber-300',
+            glow: active ? 'bg-amber-300/28' : 'bg-amber-400/18',
+            dot: active ? 'bg-amber-200 ring-amber-200/35' : 'bg-amber-300 ring-amber-300/25',
           }
         : indicator.tone === 'error'
           ? {
-              pill: active ? 'border-rose-300/32 bg-rose-500/14 text-rose-100' : 'border-rose-400/20 bg-rose-500/10 text-rose-200',
-              dot: 'bg-rose-300',
+              glow: active ? 'bg-rose-300/30' : 'bg-rose-400/20',
+              dot: active ? 'bg-rose-200 ring-rose-200/40' : 'bg-rose-300 ring-rose-300/30',
             }
           : indicator.tone === 'stopped'
             ? {
-                pill: active ? 'border-slate-200/18 bg-white/[0.1] text-slate-100' : 'border-white/10 bg-white/[0.045] text-slate-300',
-                dot: 'bg-slate-300',
+                glow: active ? 'bg-slate-200/18' : 'bg-white/10',
+                dot: active ? 'bg-slate-200 ring-slate-200/30' : 'bg-slate-300 ring-slate-300/18',
               }
             : {
-                pill: active ? 'border-emerald-300/30 bg-emerald-400/14 text-emerald-100' : 'border-emerald-400/16 bg-emerald-400/10 text-emerald-200',
-                dot: 'bg-emerald-300',
+                glow: active ? 'bg-emerald-300/26' : 'bg-emerald-400/18',
+                dot: active ? 'bg-emerald-200 ring-emerald-200/38' : 'bg-emerald-300 ring-emerald-300/24',
               };
 
   return (
-    <div className={cn('inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-[0.22rem] text-[9.5px] font-medium leading-none', toneClasses.pill)}>
-      <span className="relative flex h-1.5 w-1.5 shrink-0 items-center justify-center">
-        {indicator.live ? <span className={cn('absolute inset-0 rounded-full opacity-65 motion-safe:animate-ping motion-reduce:animate-none', toneClasses.dot)} /> : null}
-        <span className={cn('relative h-1.5 w-1.5 rounded-full', toneClasses.dot)} />
-      </span>
-      <span className="truncate">{indicator.label}</span>
-    </div>
+    <span
+      className="relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center"
+      title={indicator.label}
+      aria-label={indicator.label}
+    >
+      <span className={cn('absolute inset-[-4px] rounded-full blur-[4px]', toneClasses.glow)} />
+      {indicator.live ? (
+        <span className={cn('absolute inset-[-1px] rounded-full opacity-60 motion-safe:animate-ping motion-reduce:animate-none', toneClasses.glow)} />
+      ) : null}
+      <span className={cn('relative h-2.5 w-2.5 rounded-full ring-1', toneClasses.dot)} />
+    </span>
   );
 }
 
@@ -357,16 +361,16 @@ export function WorkspaceSidebar({
                                     {rowTimeLabel}
                                   </span>
                                 </div>
-                                <div className="mt-1 flex items-center justify-between gap-2">
-                                  {conversation.statusIndicator ? (
-                                    <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
-                                  ) : conversation.subtitle.trim().length > 0 ? (
-                                    <div className={`min-w-0 truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
-                                      {conversation.subtitle}
-                                    </div>
-                                  ) : (
-                                    <div className="min-w-0" />
-                                  )}
+                                <div className="mt-1.5 flex min-h-[0.7rem] items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    {conversation.statusIndicator ? (
+                                      <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
+                                    ) : conversation.subtitle.trim().length > 0 ? (
+                                      <div className={`min-w-0 truncate text-[11px] ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                                        {conversation.subtitle}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                   {conversation.unread > 0 ? (
                                     <span className="inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
                                       {formatUnreadCount(conversation.unread)}
@@ -465,7 +469,7 @@ export function WorkspaceSidebar({
                                             </span>
                                           ) : null}
                                         </div>
-                                        <div className="mt-1 flex items-center justify-between gap-2">
+                                        <div className="mt-1.5 flex min-h-[0.7rem] items-center justify-between gap-2">
                                           <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActiveSession} />
                                           <div className={cn('shrink-0 text-[10px] tabular-nums', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
                                             {session.lastActive}

@@ -75,26 +75,11 @@ function buildConversationPreview(messages: Message[], fallback?: string) {
 
 function buildSessionStatusIndicator(draft: boolean, liveTurn?: DesktopChatTurnSnapshot): SessionStatusIndicator {
   if (liveTurn && !liveTurn.completed) {
-    switch (liveTurn.status) {
-      case 'starting':
-        return { label: 'Starting', tone: 'running', live: true };
-      case 'thinking':
-        return { label: 'Thinking', tone: 'running', live: true };
-      case 'tooling':
-        return { label: 'Using tools', tone: 'running', live: true };
-      case 'writing':
-        return { label: 'Writing', tone: 'running', live: true };
-      case 'finalizing':
-        return { label: 'Finishing', tone: 'running', live: true };
-      case 'retrying':
-        return { label: 'Retrying', tone: 'running', live: true };
-      case 'compacting':
-        return { label: 'Compacting', tone: 'running', live: true };
-      case 'cancelling':
-        return { label: 'Stopping', tone: 'stopped', live: true };
-      default:
-        return { label: 'Running', tone: 'running', live: true };
+    if (liveTurn.status === 'cancelling') {
+      return { label: 'Stopping', tone: 'stopped', live: true };
     }
+
+    return { label: 'Running', tone: 'running', live: true };
   }
 
   if (draft) {
