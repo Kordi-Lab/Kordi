@@ -32,6 +32,7 @@ type ConversationItem = {
 type ProjectSessionItem = {
   id: string;
   name: string;
+  summary: string;
   lastActive: string;
   unread?: number;
   statusIndicator?: SessionStatusIndicator;
@@ -157,6 +158,40 @@ function SidebarSessionStatusIndicator({
       ) : null}
       <span className={cn('relative h-2.5 w-2.5 rounded-full ring-1', toneClasses.dot)} />
     </span>
+  );
+}
+
+function SidebarUnreadBadge({ count }: { count?: number }) {
+  if (!count || count <= 0) return null;
+
+  return (
+    <span className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function SidebarSessionMetaColumn({
+  timeLabel,
+  unreadCount,
+  indicator,
+  active = false,
+}: {
+  timeLabel: string;
+  unreadCount?: number;
+  indicator?: SessionStatusIndicator;
+  active?: boolean;
+}) {
+  return (
+    <div className="flex w-[3.85rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
+      <span className={cn('block w-full text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
+        {timeLabel}
+      </span>
+      <div className="flex h-2.5 w-full items-center justify-end gap-1.5">
+        <SidebarUnreadBadge count={unreadCount} />
+        <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+      </div>
+    </div>
   );
 }
 
@@ -344,12 +379,12 @@ export function WorkspaceSidebar({
                             key={conversation.id}
                             type="button"
                             onClick={() => onSelectChatSession(conversation.id)}
-                            className={`app-session-row w-full px-2.5 py-1.5 text-left ${
+                            className={`app-session-row w-full px-2.5 py-[0.3125rem] text-left ${
                               isActive ? 'app-session-row-active text-white' : 'text-white'
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              <Avatar className="mt-0.5 h-7 w-7 border border-white/10">
+                              <Avatar className="mt-px h-7 w-7 border border-white/10">
                                 <AvatarFallback className={isActive ? 'bg-[#e7e1d8] text-[#201d1a]' : 'bg-white/[0.045] text-slate-200'}>
                                   {getInitials(conversation.name)}
                                 </AvatarFallback>
@@ -359,26 +394,17 @@ export function WorkspaceSidebar({
                                   <div className="min-w-0 flex-1 pr-1">
                                     <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
                                     {conversation.subtitle.trim().length > 0 ? (
-                                      <div className={cn('mt-0.5 truncate text-[11px] leading-4', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                      <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}>
                                         {conversation.subtitle}
                                       </div>
                                     ) : null}
                                   </div>
-                                  <div className="flex w-[4.1rem] shrink-0 flex-col items-end gap-1 pt-[1px]">
-                                    <span className={cn('text-right text-[10px] tabular-nums', isActive ? 'text-slate-300' : 'text-slate-500')}>
-                                      {rowTimeLabel}
-                                    </span>
-                                    <div className="flex min-h-[0.7rem] items-center justify-end gap-1.5">
-                                      {conversation.unread > 0 ? (
-                                        <span className="inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                          {formatUnreadCount(conversation.unread)}
-                                        </span>
-                                      ) : null}
-                                      {conversation.statusIndicator ? (
-                                        <SidebarSessionStatusIndicator indicator={conversation.statusIndicator} active={isActive} />
-                                      ) : null}
-                                    </div>
-                                  </div>
+                                  <SidebarSessionMetaColumn
+                                    timeLabel={rowTimeLabel}
+                                    unreadCount={conversation.unread}
+                                    indicator={conversation.statusIndicator}
+                                    active={isActive}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -458,7 +484,7 @@ export function WorkspaceSidebar({
                                         type="button"
                                         onClick={() => onSelectProjectSession(project.id, session.id)}
                                         className={cn(
-                                          'app-project-session-row w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-1.5 text-left transition',
+                                          'app-project-session-row w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-[0.3125rem] text-left transition',
                                           isActiveSession
                                             ? 'border-white/10 bg-white/[0.055] text-white'
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
@@ -468,24 +494,17 @@ export function WorkspaceSidebar({
                                           <div className="min-w-0 flex-1 pr-1">
                                             <div className="truncate text-[12px] font-medium">{session.name}</div>
                                             {session.summary.trim().length > 0 ? (
-                                              <div className={cn('mt-0.5 truncate text-[11px] leading-4', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                              <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
                                                 {session.summary}
                                               </div>
                                             ) : null}
                                           </div>
-                                          <div className="flex w-[4.1rem] shrink-0 flex-col items-end gap-1 pt-[1px]">
-                                            <div className={cn('text-right text-[10px] tabular-nums', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
-                                              {session.lastActive}
-                                            </div>
-                                            <div className="flex min-h-[0.7rem] items-center justify-end gap-1.5">
-                                              {session.unread && session.unread > 0 ? (
-                                                <span className="inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
-                                                  {formatUnreadCount(session.unread)}
-                                                </span>
-                                              ) : null}
-                                              <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActiveSession} />
-                                            </div>
-                                          </div>
+                                          <SidebarSessionMetaColumn
+                                            timeLabel={session.lastActive}
+                                            unreadCount={session.unread}
+                                            indicator={session.statusIndicator}
+                                            active={isActiveSession}
+                                          />
                                         </div>
                                       </button>
                                     );
