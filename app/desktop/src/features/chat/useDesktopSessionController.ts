@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import type { DesktopBridgeState, DesktopChatState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
   markDesktopBridgeConversationRead,
@@ -21,7 +21,6 @@ type UseDesktopSessionControllerArgs = {
   setActiveConvId: Dispatch<SetStateAction<string>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<{ text: string; time: string } | null>>;
   setChatComposerAttachments: Dispatch<SetStateAction<AttachmentItem[]>>;
-  setDesktopLiveTurn: Dispatch<SetStateAction<DesktopChatTurnSnapshot | null>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
@@ -42,7 +41,6 @@ export function useDesktopSessionController({
   setActiveConvId,
   setPendingUserChatMessage,
   setChatComposerAttachments,
-  setDesktopLiveTurn,
   setDesktopBridgeState,
   setDesktopChatError,
   setDesktopChatState,
@@ -56,7 +54,6 @@ export function useDesktopSessionController({
     setActiveConvId(sessionId);
     setPendingUserChatMessage(null);
     setChatComposerAttachments([]);
-    setDesktopLiveTurn((current) => (current?.sessionId === sessionId ? current : null));
     if (!isNativeShell) return;
 
     if (sessionId.startsWith('bridge:')) {
@@ -76,7 +73,7 @@ export function useDesktopSessionController({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
     }
-  }, [isNativeShell, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopBridgeState, setDesktopChatError, setDesktopLiveTurn, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isNativeShell, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopBridgeState, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;
@@ -85,7 +82,6 @@ export function useDesktopSessionController({
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
       setPendingUserChatMessage(null);
-      setDesktopLiveTurn(null);
       const nextState = await createDesktopChatSession();
       setDesktopChatState(nextState);
       setActiveConvId(nextState.activeSessionId);
@@ -94,7 +90,7 @@ export function useDesktopSessionController({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to create chat session');
     }
-  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setDesktopLiveTurn, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleSelectProjectSession = useCallback(async (projectId: string, sessionId: string) => {
     shouldAutoFollowChatRef.current = true;

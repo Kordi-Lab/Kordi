@@ -94,6 +94,32 @@ fn update_turn(
     }
 }
 
+fn turn_matches_running_session(
+    snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
+    session_id: &str,
+) -> bool {
+    snapshot
+        .lock()
+        .map(|turn| turn.session_id == session_id && !turn.completed)
+        .unwrap_or(false)
+}
+
+async fn prune_finished_turns(manager: &DesktopChatManager) {
+    let mut turns = manager.turns.lock().await;
+    turns.retain(|_, turn| {
+        turn.snapshot
+            .lock()
+            .map(|snapshot| !snapshot.completed)
+            .unwrap_or(false)
+    });
+}
+
+async fn session_has_running_turn(manager: &DesktopChatManager, session_id: &str) -> bool {
+    let turns = manager.turns.lock().await;
+    turns.values()
+        .any(|turn| turn_matches_running_session(&turn.snapshot, session_id))
+}
+
 fn content_blocks_to_text(content: &[bb_core::types::ContentBlock]) -> String {
     let text = content
         .iter()
@@ -402,6 +428,13 @@ pub async fn desktop_chat_start_message(
 ) -> Result<DesktopChatTurnSnapshot, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
+    prune_finished_turns(&manager).await;
+    if session_has_running_turn(&manager, &target_session_id).await {
+        return Err(
+            "This session already has a running task. Open another session to work concurrently."
+                .to_string(),
+        );
+    }
     let attachment_paths = attachment_paths.unwrap_or_default();
     let turn_id = uuid::Uuid::new_v4().to_string();
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
