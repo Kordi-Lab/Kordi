@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use uuid::Uuid;
 
+mod conversation_commands;
 mod conversations;
+mod host_commands;
 mod local_server;
 mod network;
+mod project_commands;
+mod server_commands;
 mod storage;
 
 use conversations::*;
@@ -400,7 +403,7 @@ async fn build_current_bridge_state(manager: &DesktopBridgeManager) -> DesktopBr
 pub async fn desktop_bridge_state(
     manager: State<'_, DesktopBridgeManager>,
 ) -> Result<DesktopBridgeState, String> {
-    Ok(build_current_bridge_state(&manager).await)
+    host_commands::desktop_bridge_state_impl(&manager).await
 }
 
 #[tauri::command]
@@ -411,121 +414,14 @@ pub async fn desktop_save_bridge_host(
     display_name: Option<String>,
     owner_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    let server_url = normalize_server_url(&server_url)?;
-    health_check(&server_url).await?;
-
-    let endpoint = default_endpoint();
-    let display_name = display_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(default_display_name);
-    let owner_name = owner_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(default_owner_name);
-
-    let mut store = load_bridge_store();
-    let existing_index = host_id
-        .as_deref()
-        .and_then(|id| store.hosts.iter().position(|host| host.id == id))
-        .or_else(|| {
-            store
-                .hosts
-                .iter()
-                .position(|host| host.coordination == server_url)
-        });
-
-    let saved_host = if let Some(index) = existing_index {
-        let existing = store.hosts[index].clone();
-        let (api_style, node_id, api_key) = if existing.api_style == "registry"
-            && existing.coordination == server_url
-            && !existing.api_key.trim().is_empty()
-            && !existing.node_id.trim().is_empty()
-        {
-            match update_registered_registry_node(
-                &server_url,
-                &existing.api_key,
-                &existing.node_id,
-                &display_name,
-                &endpoint,
-            )
-            .await
-            {
-                Ok(()) => (
-                    existing.api_style.clone(),
-                    existing.node_id.clone(),
-                    existing.api_key.clone(),
-                ),
-                Err(_) => {
-                    register_bridge_host(
-                        &server_url,
-                        &display_name,
-                        &owner_name,
-                        &endpoint,
-                        Some(existing.api_style.as_str()),
-                        Some(existing.node_id.as_str()),
-                    )
-                    .await?
-                }
-            }
-        } else {
-            register_bridge_host(
-                &server_url,
-                &display_name,
-                &owner_name,
-                &endpoint,
-                Some(existing.api_style.as_str()),
-                Some(existing.node_id.as_str()),
-            )
-            .await?
-        };
-
-        let next = DesktopBridgeHostConfig {
-            id: existing.id,
-            coordination: server_url,
-            node_id,
-            api_key,
-            display_name: Some(display_name),
-            owner: Some(owner_name),
-            api_style,
-        };
-        store.hosts[index] = next.clone();
-        next
-    } else {
-        let (api_style, node_id, api_key) = register_bridge_host(
-            &server_url,
-            &display_name,
-            &owner_name,
-            &endpoint,
-            None,
-            None,
-        )
-        .await?;
-        let next = DesktopBridgeHostConfig {
-            id: generate_host_id(),
-            coordination: server_url,
-            node_id,
-            api_key,
-            display_name: Some(display_name),
-            owner: Some(owner_name),
-            api_style,
-        };
-        store.hosts.push(next.clone());
-        next
-    };
-
-    store.active_host_id = Some(saved_host.id.clone());
-    save_bridge_store(&store)?;
-    Ok(build_bridge_state(
-        store,
-        load_conversation_store(),
-        current_local_server_status(&manager).await,
+    host_commands::desktop_save_bridge_host_impl(
+        &manager,
+        host_id,
+        server_url,
+        display_name,
+        owner_name,
     )
-    .await)
+    .await
 }
 
 #[tauri::command]
@@ -533,29 +429,7 @@ pub async fn desktop_remove_bridge_host(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,
 ) -> Result<DesktopBridgeState, String> {
-    let mut store = load_bridge_store();
-    let original_len = store.hosts.len();
-    store.hosts.retain(|host| host.id != host_id);
-    if store.hosts.len() == original_len {
-        return Err("Bridge host not found".to_string());
-    }
-    if store.active_host_id.as_deref() == Some(host_id.as_str()) {
-        store.active_host_id = store.hosts.first().map(|host| host.id.clone());
-    }
-    save_bridge_store(&store)?;
-
-    let mut conversations = load_conversation_store();
-    conversations
-        .conversations
-        .retain(|conversation| conversation.host_id != host_id);
-    save_conversation_store(&conversations)?;
-
-    Ok(build_bridge_state(
-        store,
-        conversations,
-        current_local_server_status(&manager).await,
-    )
-    .await)
+    host_commands::desktop_remove_bridge_host_impl(&manager, host_id).await
 }
 
 #[tauri::command]
@@ -563,18 +437,7 @@ pub async fn desktop_set_active_bridge_host(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,
 ) -> Result<DesktopBridgeState, String> {
-    let mut store = load_bridge_store();
-    if !store.hosts.iter().any(|host| host.id == host_id) {
-        return Err("Bridge host not found".to_string());
-    }
-    store.active_host_id = Some(host_id);
-    save_bridge_store(&store)?;
-    Ok(build_bridge_state(
-        store,
-        load_conversation_store(),
-        current_local_server_status(&manager).await,
-    )
-    .await)
+    host_commands::desktop_set_active_bridge_host_impl(&manager, host_id).await
 }
 
 #[tauri::command]
@@ -584,24 +447,20 @@ pub async fn desktop_bridge_start_local_server(
     display_name: Option<String>,
     owner_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    let port = port.unwrap_or(17080);
-    let status = start_local_server(&manager, port).await?;
-    let server_url = status
-        .server_url
-        .clone()
-        .ok_or_else(|| "Local bridge server URL is unavailable".to_string())?;
-
-    let state =
-        desktop_save_bridge_host(manager, None, server_url, display_name, owner_name).await?;
-    Ok(state)
+    server_commands::desktop_bridge_start_local_server_impl(
+        &manager,
+        port,
+        display_name,
+        owner_name,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn desktop_bridge_stop_local_server(
     manager: State<'_, DesktopBridgeManager>,
 ) -> Result<DesktopBridgeState, String> {
-    let _ = stop_local_server(&manager).await?;
-    Ok(build_current_bridge_state(&manager).await)
+    server_commands::desktop_bridge_stop_local_server_impl(&manager).await
 }
 
 #[tauri::command]
@@ -612,32 +471,14 @@ pub async fn desktop_bridge_create_project(
     display_name: Option<String>,
     description: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    let slug = slug.trim();
-    if slug.is_empty() {
-        return Err("Project slug cannot be empty".to_string());
-    }
-    let store = load_bridge_store();
-    let host = store
-        .hosts
-        .iter()
-        .find(|host| host.id == host_id)
-        .cloned()
-        .ok_or_else(|| "Bridge host not found".to_string())?;
-    if host.api_style != "serve" {
-        return Err(
-            "Project creation is currently supported on self-hosted Bridges serve hosts only"
-                .to_string(),
-        );
-    }
-    let _ = create_serve_project(
-        &host.coordination,
-        &host.api_key,
+    project_commands::desktop_bridge_create_project_impl(
+        &manager,
+        host_id,
         slug,
-        display_name.as_deref(),
-        description.as_deref(),
+        display_name,
+        description,
     )
-    .await?;
-    Ok(build_current_bridge_state(&manager).await)
+    .await
 }
 
 #[tauri::command]
@@ -647,33 +488,8 @@ pub async fn desktop_bridge_create_invite(
     project_id: String,
     max_uses: Option<i64>,
 ) -> Result<DesktopBridgeInvite, String> {
-    let store = load_bridge_store();
-    let host = store
-        .hosts
-        .iter()
-        .find(|host| host.id == host_id)
-        .cloned()
-        .ok_or_else(|| "Bridge host not found".to_string())?;
-    if host.api_style != "serve" {
-        return Err(
-            "Project invites are currently supported on self-hosted Bridges serve hosts only"
-                .to_string(),
-        );
-    }
-    let invite =
-        create_serve_invite(&host.coordination, &host.api_key, &project_id, max_uses).await?;
-    let share_text = format!(
-        "Join my bridge project:\nHost: {}\nProject: {}\nInvite token: {}",
-        host.coordination, invite.project_id, invite.invite_token
-    );
-    let _ = current_local_server_status(&manager).await;
-    Ok(DesktopBridgeInvite {
-        host_id,
-        project_id: invite.project_id,
-        invite_id: invite.invite_id,
-        invite_token: invite.invite_token,
-        share_text,
-    })
+    project_commands::desktop_bridge_create_invite_impl(&manager, host_id, project_id, max_uses)
+        .await
 }
 
 #[tauri::command]
@@ -684,28 +500,14 @@ pub async fn desktop_bridge_join_project(
     invite_token: String,
     agent_role: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    let store = load_bridge_store();
-    let host = store
-        .hosts
-        .iter()
-        .find(|host| host.id == host_id)
-        .cloned()
-        .ok_or_else(|| "Bridge host not found".to_string())?;
-    if host.api_style != "serve" {
-        return Err(
-            "Project joins are currently supported on self-hosted Bridges serve hosts only"
-                .to_string(),
-        );
-    }
-    join_serve_project(
-        &host.coordination,
-        &host.api_key,
-        &project_id,
-        invite_token.trim(),
-        agent_role.as_deref(),
+    project_commands::desktop_bridge_join_project_impl(
+        &manager,
+        host_id,
+        project_id,
+        invite_token,
+        agent_role,
     )
-    .await?;
-    Ok(build_current_bridge_state(&manager).await)
+    .await
 }
 
 #[tauri::command]
@@ -719,20 +521,17 @@ pub async fn desktop_bridge_open_conversation(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    let mut store = load_conversation_store();
-    let conversation = upsert_bridge_conversation(
-        &mut store,
-        &host_id,
-        &peer_node_id,
+    conversation_commands::desktop_bridge_open_conversation_impl(
+        &manager,
+        host_id,
+        peer_node_id,
         peer_display_name,
         peer_owner_name,
-        peer_runtime.unwrap_or_else(|| "bridge-node".to_string()),
+        peer_runtime,
         project_id,
         project_name,
-    );
-    conversation.unread_count = 0;
-    save_conversation_store(&store)?;
-    Ok(build_current_bridge_state(&manager).await)
+    )
+    .await
 }
 
 #[tauri::command]
@@ -740,16 +539,8 @@ pub async fn desktop_bridge_mark_conversation_read(
     manager: State<'_, DesktopBridgeManager>,
     conversation_id: String,
 ) -> Result<DesktopBridgeState, String> {
-    let mut store = load_conversation_store();
-    if let Some(conversation) = store
-        .conversations
-        .iter_mut()
-        .find(|conversation| conversation.id == conversation_id)
-    {
-        conversation.unread_count = 0;
-        save_conversation_store(&store)?;
-    }
-    Ok(build_current_bridge_state(&manager).await)
+    conversation_commands::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
+        .await
 }
 
 #[tauri::command]
@@ -758,46 +549,7 @@ pub async fn desktop_bridge_send_presence(
     conversation_id: String,
     kind: String,
 ) -> Result<DesktopBridgeState, String> {
-    let presence_kind = kind.trim().to_lowercase();
-    if presence_kind != "typing" && presence_kind != "heartbeat" {
-        return Err("Unsupported bridge presence event".to_string());
-    }
-
-    let store = load_bridge_store();
-    let conversations = load_conversation_store();
-    let conversation = conversations
-        .conversations
-        .iter()
-        .find(|conversation| conversation.id == conversation_id)
-        .cloned()
-        .ok_or_else(|| "Bridge conversation not found".to_string())?;
-    let host = store
-        .hosts
-        .iter()
-        .find(|host| host.id == conversation.host_id)
-        .cloned()
-        .ok_or_else(|| "Bridge host not found".to_string())?;
-
-    let payload = serde_json::json!({
-        "from": host.node_id,
-        "projectId": conversation.project_id,
-        "messageType": presence_kind,
-        "payload": { "at": now_ms() },
-    });
-    relay_plaintext_message(
-        &host.coordination,
-        &host.api_key,
-        &conversation.peer_node_id,
-        conversation.project_id.as_deref(),
-        &payload,
-    )
-    .await?;
-    Ok(build_bridge_state(
-        store,
-        conversations,
-        current_local_server_status(&manager).await,
-    )
-    .await)
+    conversation_commands::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
 }
 
 #[tauri::command]
@@ -806,252 +558,14 @@ pub async fn desktop_bridge_send_message(
     conversation_id: String,
     text: String,
 ) -> Result<DesktopBridgeState, String> {
-    let message = text.trim();
-    if message.is_empty() {
-        return Err("Bridge message cannot be empty".to_string());
-    }
-
-    let store = load_bridge_store();
-    let mut conversations = load_conversation_store();
-    let conversation = conversations
-        .conversations
-        .iter()
-        .find(|conversation| conversation.id == conversation_id)
-        .cloned()
-        .ok_or_else(|| "Bridge conversation not found".to_string())?;
-    let host = store
-        .hosts
-        .iter()
-        .find(|host| host.id == conversation.host_id)
-        .cloned()
-        .ok_or_else(|| "Bridge host not found".to_string())?;
-
-    let request_id = format!("bridge_req_{}", Uuid::new_v4().simple());
-    let message_type = if conversation.peer_runtime.to_lowercase().contains("agent")
-        || conversation.peer_runtime.to_lowercase().contains("claude")
-        || conversation.peer_runtime.to_lowercase().contains("codex")
-        || conversation
-            .peer_runtime
-            .to_lowercase()
-            .contains("openclaw")
-        || conversation.peer_runtime.to_lowercase().contains("pi")
-        || conversation.peer_runtime.to_lowercase().contains("bot")
-    {
-        "ask"
-    } else {
-        "raw"
-    };
-    let payload = if message_type == "ask" {
-        serde_json::json!({
-            "from": host.node_id,
-            "projectId": conversation.project_id,
-            "messageType": "ask",
-            "requestId": request_id,
-            "payload": { "question": message },
-        })
-    } else {
-        serde_json::json!({
-            "from": host.node_id,
-            "projectId": conversation.project_id,
-            "messageType": "raw",
-            "requestId": request_id,
-            "payload": { "message": message },
-        })
-    };
-
-    relay_plaintext_message(
-        &host.coordination,
-        &host.api_key,
-        &conversation.peer_node_id,
-        conversation.project_id.as_deref(),
-        &payload,
-    )
-    .await?;
-
-    append_conversation_message(
-        &mut conversations,
-        &conversation.host_id,
-        &conversation.peer_node_id,
-        conversation.peer_display_name.clone(),
-        conversation.peer_owner_name.clone(),
-        conversation.peer_runtime.clone(),
-        conversation.project_id.clone(),
-        conversation.project_name.clone(),
-        "outbound",
-        Some(
-            host.display_name
-                .clone()
-                .unwrap_or_else(default_display_name),
-        ),
-        message.to_string(),
-        Some(request_id),
-        Some("sent".to_string()),
-        false,
-    );
-    if let Some(record) = conversations
-        .conversations
-        .iter_mut()
-        .find(|record| record.id == conversation_id)
-    {
-        record.unread_count = 0;
-    }
-    save_conversation_store(&conversations)?;
-    Ok(build_bridge_state(
-        store,
-        conversations,
-        current_local_server_status(&manager).await,
-    )
-    .await)
+    conversation_commands::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
 }
 
 #[tauri::command]
 pub async fn desktop_bridge_poll_mailbox(
     manager: State<'_, DesktopBridgeManager>,
 ) -> Result<DesktopBridgeState, String> {
-    let store = load_bridge_store();
-    let mut conversations = load_conversation_store();
-
-    for host in &store.hosts {
-        if host.api_key.trim().is_empty() {
-            continue;
-        }
-        let mailbox = match fetch_mailbox(&host.coordination, &host.api_key).await {
-            Ok(mailbox) => mailbox,
-            Err(_) => continue,
-        };
-        if mailbox.is_empty() {
-            continue;
-        }
-
-        for item in mailbox {
-            let from_node_id = item
-                .get("from")
-                .and_then(|value| value.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            let blob = item
-                .get("blob")
-                .and_then(|value| value.as_str())
-                .unwrap_or("");
-            if from_node_id.is_empty() || blob.trim().is_empty() {
-                continue;
-            }
-            let Some(parsed) = parse_mailbox_payload(blob) else {
-                continue;
-            };
-            let message_type = parsed
-                .get("messageType")
-                .and_then(|value| value.as_str())
-                .unwrap_or("raw");
-            let payload = parsed
-                .get("payload")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            let request_id = parsed
-                .get("requestId")
-                .and_then(|value| value.as_str())
-                .map(ToString::to_string);
-            let parsed_project_id = parsed
-                .get("projectId")
-                .and_then(|value| value.as_str())
-                .map(ToString::to_string);
-
-            if message_type == "delivery_event" {
-                if let Some(target_request_id) =
-                    payload.get("requestId").and_then(|value| value.as_str())
-                {
-                    let state = payload
-                        .get("state")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("delivered");
-                    update_message_delivery_state(&mut conversations, target_request_id, state);
-                }
-                continue;
-            }
-            if message_type == "typing" {
-                note_peer_typing(
-                    &mut conversations,
-                    &host.id,
-                    &from_node_id,
-                    parsed_project_id.clone(),
-                    None,
-                );
-                continue;
-            }
-            if message_type == "heartbeat" {
-                note_peer_heartbeat(
-                    &mut conversations,
-                    &host.id,
-                    &from_node_id,
-                    parsed_project_id.clone(),
-                    None,
-                );
-                continue;
-            }
-
-            let text = payload
-                .get("message")
-                .and_then(|value| value.as_str())
-                .or_else(|| payload.get("question").and_then(|value| value.as_str()))
-                .or_else(|| payload.get("topic").and_then(|value| value.as_str()))
-                .or_else(|| payload.get("content").and_then(|value| value.as_str()))
-                .map(ToString::to_string)
-                .unwrap_or_else(|| payload.to_string());
-            if text.trim().is_empty() {
-                continue;
-            }
-
-            append_conversation_message(
-                &mut conversations,
-                &host.id,
-                &from_node_id,
-                None,
-                None,
-                "bridge-node".to_string(),
-                parsed_project_id.clone(),
-                None,
-                if message_type == "response" {
-                    "inbound-response"
-                } else {
-                    "inbound"
-                },
-                Some(from_node_id.clone()),
-                text,
-                request_id.clone(),
-                None,
-                true,
-            );
-
-            if message_type == "response" {
-                if let Some(request_id) = request_id.as_deref() {
-                    update_message_delivery_state(&mut conversations, request_id, "responded");
-                }
-            } else if let Some(request_id) = request_id.as_deref() {
-                let ack = serde_json::json!({
-                    "from": host.node_id,
-                    "messageType": "delivery_event",
-                    "payload": { "requestId": request_id, "state": "delivered" },
-                });
-                let _ = relay_plaintext_message(
-                    &host.coordination,
-                    &host.api_key,
-                    &from_node_id,
-                    parsed.get("projectId").and_then(|value| value.as_str()),
-                    &ack,
-                )
-                .await;
-            }
-        }
-    }
-
-    save_conversation_store(&conversations)?;
-    Ok(build_bridge_state(
-        store,
-        conversations,
-        current_local_server_status(&manager).await,
-    )
-    .await)
+    conversation_commands::desktop_bridge_poll_mailbox_impl(&manager).await
 }
 
 #[cfg(test)]
