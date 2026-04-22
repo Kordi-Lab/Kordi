@@ -26,7 +26,13 @@ type ComposerSelectionState = Record<ComposerScope, { mode: string; model: strin
 type ComposerDraftState = Record<ComposerScope, string>;
 type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelectorType } | null;
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
-type MinimalModelOption = { value: string; label: string; detail?: string | null; provider?: string | null };
+type MinimalModelOption = {
+  value: string;
+  label: string;
+  detail?: string | null;
+  provider?: string | null;
+  providerLabel?: string | null;
+};
 type MinimalProviderOption = { providerId: string; value: string };
 type PendingUserMessage = { text: string; time: string } | null;
 
@@ -80,6 +86,37 @@ const DESKTOP_SLASH_HELP_LINES = [
   '',
   'Skill, prompt, and extension slash commands also appear in the command menu.',
 ].join('\n');
+
+function formatDesktopEventTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatThinkingSelectionLabel(value: string) {
+  switch (value) {
+    case 'off':
+      return 'Off';
+    case 'minimal':
+      return 'Minimal';
+    case 'low':
+      return 'Low';
+    case 'medium':
+      return 'Medium';
+    case 'high':
+      return 'High';
+    case 'xhigh':
+      return 'Extra High';
+    default:
+      return value;
+  }
+}
+
+function parseModelSelection(value: string) {
+  const [provider, ...modelParts] = value.split('/');
+  return {
+    provider: provider?.trim() || '',
+    modelId: modelParts.join('/').trim() || value,
+  };
+}
 
 type UseComposerControllerArgs = {
   isNativeShell: boolean;
@@ -172,6 +209,11 @@ export function useComposerController({
       : type === 'model'
         ? value
         : null;
+    const nextModelValue = resolvedModelValue ?? (type === 'model' ? value : undefined);
+    const nextThinkingValue = type === 'thinking' ? value : undefined;
+    const currentSelection = composerSelections[scope];
+    const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
+    const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
 
     setComposerSelections((current) => ({
       ...current,
@@ -186,24 +228,89 @@ export function useComposerController({
               : { [type]: value }),
       },
     }));
+    setOpenComposerSelector(null);
 
     const targetSessionId = scope === 'project' ? activeProjectSessionId : desktopChatState?.activeSessionId;
     if (isNativeShell && targetSessionId) {
       try {
         setDesktopChatError(null);
+
+        if ((modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
+          shouldAutoFollowChatRef.current = true;
+          const timeLabel = formatDesktopEventTime();
+          const timestampMs = Date.now();
+
+          setDesktopChatState((current) => {
+            if (!current || current.activeSessionId !== targetSessionId) return current;
+
+            const selectedModelOption = nextModelValue
+              ? chatModelOptions.find((option) => option.value === nextModelValue)
+              : null;
+            const parsedModel = nextModelValue ? parseModelSelection(nextModelValue) : null;
+            const systemMessage = {
+              role: 'system',
+              text: modelChanged
+                ? `Switched model to ${nextModelValue}`
+                : `Thinking set to ${formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)}`,
+              detail: modelChanged ? 'Model updated' : 'Thinking updated',
+              timeLabel,
+              timestampMs,
+            };
+
+            return {
+              ...current,
+              sessions: current.sessions.map((session) => (
+                session.id === targetSessionId
+                  ? {
+                      ...session,
+                      updatedAtLabel: timeLabel,
+                      messageCount: session.messageCount + 1,
+                    }
+                  : session
+              )),
+              activeSession: {
+                ...current.activeSession,
+                provider: modelChanged
+                  ? (selectedModelOption?.provider ?? parsedModel?.provider ?? current.activeSession.provider)
+                  : current.activeSession.provider,
+                providerLabel: modelChanged
+                  ? (selectedModelOption?.providerLabel ?? current.activeSession.providerLabel)
+                  : current.activeSession.providerLabel,
+                model: modelChanged
+                  ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.model)
+                  : current.activeSession.model,
+                modelLabel: modelChanged
+                  ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.modelLabel)
+                  : current.activeSession.modelLabel,
+                thinking: thinkingChanged
+                  ? (nextThinkingValue ?? current.activeSession.thinking)
+                  : current.activeSession.thinking,
+                thinkingLabel: thinkingChanged
+                  ? formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)
+                  : current.activeSession.thinkingLabel,
+                updatedAtLabel: timeLabel,
+                messageCount: current.activeSession.messageCount + 1,
+                messages: [
+                  ...current.activeSession.messages,
+                  systemMessage,
+                ],
+              },
+            };
+          });
+        }
+
         const nextState = await updateDesktopChatSessionConfig(
           targetSessionId,
-          resolvedModelValue ?? (type === 'model' ? value : undefined),
-          type === 'thinking' ? value : undefined,
+          nextModelValue,
+          nextThinkingValue,
         );
         setDesktopChatState(nextState);
       } catch (error) {
+        await refreshDesktopChat(targetSessionId);
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
       }
     }
-
-    setOpenComposerSelector(null);
-  }, [activeProjectSessionId, desktopChatState?.activeSessionId, isNativeShell, preferredModelValueForProvider, setComposerSelections, setDesktopChatError, setDesktopChatState, setOpenComposerSelector]);
+  }, [activeProjectSessionId, chatModelOptions, composerSelections, desktopChatState?.activeSessionId, isNativeShell, preferredModelValueForProvider, refreshDesktopChat, setComposerSelections, setDesktopChatError, setDesktopChatState, setOpenComposerSelector, shouldAutoFollowChatRef]);
 
   const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string) => {
     await handleSelectAuthChoice(providerId, choice);
