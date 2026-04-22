@@ -63,6 +63,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           activeBridgeAwaitingReply={args.activeBridgeAwaitingReply}
           isBridgePolling={args.isBridgePolling}
           lastBridgePollAtLabel={args.lastBridgePollAtLabel}
+          activeSessionEnvironment={!args.activeConversationIsBridge ? args.activeSessionEnvironment : null}
           activeSessionProject={!args.activeConversationIsBridge ? args.activeSessionProject : null}
         />
       )}

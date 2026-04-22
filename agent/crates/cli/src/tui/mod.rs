@@ -167,13 +167,15 @@ fn build_tui_config(
 }
 
 fn build_footer_data(session_setup: &SessionRuntimeSetup) -> TuiFooterData {
-    let cwd_display = shorten_home_path(&session_setup.tool_ctx.cwd.display().to_string());
-    let line1 = if let Some(branch) =
-        detect_git_branch(&session_setup.tool_ctx.cwd.display().to_string())
-    {
-        format!("{cwd_display} ({branch})")
+    let line1 = if session_setup.is_remote_workspace() {
+        session_setup.workspace.display_footer_label()
     } else {
-        cwd_display
+        let cwd_display = shorten_home_path(&session_setup.tool_ctx.cwd.display().to_string());
+        if let Some(branch) = detect_git_branch(&session_setup.tool_ctx.cwd.display().to_string()) {
+            format!("{cwd_display} ({branch})")
+        } else {
+            cwd_display
+        }
     };
 
     let line2_left = format!(

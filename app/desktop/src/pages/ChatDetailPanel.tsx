@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import type { DetailTab } from '@/kordi-app/types';
+import type { DetailTab, DesktopChatEnvironmentSummary } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 
 type ActiveConversation = {
@@ -47,6 +47,7 @@ type ChatDetailPanelProps = {
   activeBridgeAwaitingReply: boolean;
   isBridgePolling: boolean;
   lastBridgePollAtLabel?: string | null;
+  activeSessionEnvironment?: DesktopChatEnvironmentSummary | null;
   activeSessionProject?: SessionProjectInfo | null;
 };
 
@@ -86,6 +87,7 @@ export function ChatDetailPanel({
   activeBridgeAwaitingReply,
   isBridgePolling,
   lastBridgePollAtLabel,
+  activeSessionEnvironment,
   activeSessionProject,
 }: ChatDetailPanelProps) {
   if (activeDetailTab === 'info') {
@@ -105,6 +107,28 @@ export function ChatDetailPanel({
               <MetaRow label="Last active" value={activeLastMessage?.time} />
               <MetaRow label="Trust" value={activeConv.trust} />
               <MetaRow label="Mode" value={activeConv.directness} />
+              {!activeConversationIsBridge && activeSessionEnvironment ? (
+                <>
+                  <MetaRow
+                    label="Environment"
+                    value={(
+                      <Badge
+                        variant={activeSessionEnvironment.remote ? 'secondary' : 'outline'}
+                        className={activeSessionEnvironment.remote
+                          ? 'app-badge-owned rounded-full px-2.5 py-1'
+                          : 'app-badge-neutral rounded-full px-2.5 py-1'}
+                      >
+                        {activeSessionEnvironment.label}
+                      </Badge>
+                    )}
+                  />
+                  <MetaRow
+                    label="Workspace root"
+                    value={activeSessionEnvironment.workspaceRoot}
+                    valueClassName="max-w-[11rem] break-all text-right"
+                  />
+                </>
+              ) : null}
             </div>
           </div>
         </section>
@@ -137,6 +161,27 @@ export function ChatDetailPanel({
               />
               <MetaRow label="Delivery state" value={activeBridgeAwaitingReply ? 'Awaiting reply' : 'Idle / replied'} />
               <MetaRow label="Mailbox polling" value={isBridgePolling ? 'Polling now' : (lastBridgePollAtLabel || 'Not polled yet')} />
+            </div>
+          </section>
+        ) : null}
+
+        {!activeConversationIsBridge && activeSessionEnvironment ? (
+          <section className="app-detail-section">
+            <div className="app-detail-kicker">Workspace</div>
+            <div className="space-y-3">
+              <EmphasisBlock>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={activeSessionEnvironment.remote ? 'secondary' : 'outline'}
+                    className={activeSessionEnvironment.remote
+                      ? 'app-badge-owned rounded-full px-2.5 py-1'
+                      : 'app-badge-neutral rounded-full px-2.5 py-1'}
+                  >
+                    {activeSessionEnvironment.label}
+                  </Badge>
+                </div>
+                <div className="mt-2 break-all app-inspector-subtext">{activeSessionEnvironment.workspaceRoot}</div>
+              </EmphasisBlock>
             </div>
           </section>
         ) : null}

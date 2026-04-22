@@ -43,6 +43,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleCopyBridgeText: args.handleCopyBridgeText,
       handleCreateBridgeDraft: args.handleCreateBridgeDraft,
       handleSelectProjectSession: args.handleSelectProjectSession,
+      desktopWorkspaceEnvironment: args.desktopWorkspaceEnvironment,
     },
     mainContent: {
       activeNav: args.activeNav,
@@ -183,6 +184,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeBridgeAwaitingReply: args.activeBridgeAwaitingReply,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       isBridgePolling: args.isBridgePolling,
+      desktopWorkspaceEnvironment: args.desktopWorkspaceEnvironment,
+      activeSessionEnvironment: args.activeSessionEnvironment,
     },
     rightDetail: {
       activeNav: args.activeNav,
@@ -210,6 +213,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeBridgeAwaitingReply: args.activeBridgeAwaitingReply,
       isBridgePolling: args.isBridgePolling,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
+      activeSessionEnvironment: args.activeSessionEnvironment,
       activeSessionProject: args.activeSessionProject,
     },
     overlay: {

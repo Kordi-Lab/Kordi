@@ -12,6 +12,7 @@ mod session_info;
 mod slash;
 mod tool_registry;
 pub mod turn_runner;
+mod workspace_context;
 
 pub mod desktop_runtime;
 pub mod login;

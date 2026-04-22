@@ -73,12 +73,7 @@ impl Tool for GrepTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| BbError::Tool("Missing 'pattern' parameter".into()))?;
 
-        let search_path = params
-            .get("path")
-            .and_then(|v| v.as_str())
-            .map(|p| resolve_path(&ctx.cwd, p))
-            .unwrap_or_else(|| ctx.cwd.clone());
-
+        let path_str = params.get("path").and_then(|v| v.as_str());
         let glob_filter = params.get("glob").and_then(|v| v.as_str());
         let ignore_case = params
             .get("ignoreCase")
@@ -98,6 +93,24 @@ impl Tool for GrepTool {
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_LIMIT);
+
+        if let Some(base_url) = ctx.workspace_api_base_url.as_deref() {
+            return crate::workspace_api::grep_result(
+                base_url,
+                pattern,
+                path_str,
+                glob_filter,
+                ignore_case,
+                literal,
+                context_lines,
+                limit,
+            )
+            .await;
+        }
+
+        let search_path = path_str
+            .map(|p| resolve_path(&ctx.cwd, p))
+            .unwrap_or_else(|| ctx.cwd.clone());
 
         if !search_path.exists() {
             return Err(BbError::Tool(format!(

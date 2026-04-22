@@ -57,17 +57,20 @@ impl Tool for FindTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| BbError::Tool("Missing 'pattern' parameter".into()))?;
 
-        let search_dir = params
-            .get("path")
-            .and_then(|v| v.as_str())
-            .map(|p| resolve_path(&ctx.cwd, p))
-            .unwrap_or_else(|| ctx.cwd.clone());
-
+        let path_str = params.get("path").and_then(|v| v.as_str());
         let limit = params
             .get("limit")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_LIMIT);
+
+        if let Some(base_url) = ctx.workspace_api_base_url.as_deref() {
+            return crate::workspace_api::find_result(base_url, pattern, path_str, limit).await;
+        }
+
+        let search_dir = path_str
+            .map(|p| resolve_path(&ctx.cwd, p))
+            .unwrap_or_else(|| ctx.cwd.clone());
 
         if !search_dir.exists() {
             return Err(BbError::Tool(format!(

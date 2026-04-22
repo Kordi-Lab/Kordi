@@ -20,6 +20,7 @@ mod types;
 pub(crate) mod web;
 pub mod web_fetch;
 pub mod web_search;
+pub mod workspace_api;
 pub mod write;
 
 pub use registry::builtin_tools;

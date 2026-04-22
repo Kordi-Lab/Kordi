@@ -29,14 +29,19 @@ struct ResourceWatchState {
 }
 
 impl ResourceWatchState {
-    fn capture(cwd: &std::path::Path) -> Self {
+    fn capture(session_setup: &SessionRuntimeSetup) -> Self {
         Self {
             global_settings_mtime: settings_mtime(
                 &bb_core::config::global_dir().join("settings.json"),
             ),
-            project_settings_mtime: settings_mtime(
-                &bb_core::config::project_dir(cwd).join("settings.json"),
-            ),
+            project_settings_mtime: if session_setup.is_remote_workspace() {
+                None
+            } else {
+                settings_mtime(
+                    &bb_core::config::project_dir(&session_setup.tool_ctx.cwd)
+                        .join("settings.json"),
+                )
+            },
         }
     }
 }
@@ -198,7 +203,7 @@ impl TuiController {
         command_tx: mpsc::UnboundedSender<bb_tui::tui::TuiCommand>,
         approval_rx: mpsc::UnboundedReceiver<PendingApprovalRequest>,
     ) -> Self {
-        let resource_watch = ResourceWatchState::capture(&session_setup.tool_ctx.cwd);
+        let resource_watch = ResourceWatchState::capture(&session_setup);
         let (manual_compaction_tx, manual_compaction_rx) = mpsc::unbounded_channel();
         Self {
             runtime_host,

@@ -500,6 +500,7 @@ fn test_tool_context() -> bb_tools::ToolContext {
         web_search: None,
         execution_mode: bb_tools::ToolExecutionMode::Interactive,
         request_approval: None,
+        workspace_api_base_url: None,
     }
 }
 

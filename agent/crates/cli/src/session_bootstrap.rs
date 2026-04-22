@@ -23,6 +23,7 @@ use crate::extensions::{
 };
 use crate::login;
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
+use crate::workspace_context::WorkspaceContext;
 use bb_monitor::RequestMetricsTracker;
 
 #[derive(Clone, Debug, Default)]
@@ -98,6 +99,7 @@ pub(crate) struct SessionRuntimeSetup {
     pub tool_registry: ToolRegistry,
     pub tool_selection: ToolSelection,
     pub tool_ctx: ToolContext,
+    pub workspace: WorkspaceContext,
     pub system_prompt: String,
     pub base_system_prompt: String,
     pub thinking_level: String,
@@ -118,6 +120,24 @@ pub(crate) struct SessionRuntimeSetup {
     pub slash_command_items: Vec<bb_tui::select_list::SelectItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
+}
+
+impl SessionRuntimeSetup {
+    pub(crate) fn session_scope_key(&self) -> &str {
+        self.workspace.session_scope_key()
+    }
+
+    pub(crate) fn is_remote_workspace(&self) -> bool {
+        self.workspace.is_remote()
+    }
+
+    pub(crate) fn load_merged_settings(&self) -> Settings {
+        self.workspace.load_merged_settings()
+    }
+
+    pub(crate) fn load_project_settings(&self) -> Option<Settings> {
+        self.workspace.load_project_settings()
+    }
 }
 
 fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> Option<String> {
@@ -150,7 +170,10 @@ fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> 
     Some(lines)
 }
 
-fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
+pub(crate) fn build_project_system_prompt_section(
+    settings: &Settings,
+    cwd: &std::path::Path,
+) -> String {
     let project_root = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     let project_name = settings
         .project_name
@@ -331,17 +354,24 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     std::fs::create_dir_all(&global_dir)?;
 
     let conn = store::open_db(&global_dir.join("sessions.db"))?;
-    let (session_id, session_created) = resolve_startup_session_id(&conn, &cwd, &entry)?;
-    let effective_cwd = if session_created {
-        store::get_session(&conn, &session_id)?
-            .map(|row| std::path::PathBuf::from(row.cwd))
-            .unwrap_or_else(|| cwd.clone())
+    let requested_workspace = WorkspaceContext::from_env(cwd.clone());
+    let (session_id, session_created) =
+        resolve_startup_session_id(&conn, &requested_workspace, &entry)?;
+    let workspace = if requested_workspace.is_remote() {
+        requested_workspace
     } else {
-        cwd.clone()
+        let effective_cwd = if session_created {
+            store::get_session(&conn, &session_id)?
+                .map(|row| std::path::PathBuf::from(row.cwd))
+                .unwrap_or_else(|| cwd.clone())
+        } else {
+            cwd.clone()
+        };
+        WorkspaceContext::from_env(effective_cwd)
     };
 
-    let settings = Settings::load_merged(&effective_cwd);
-    let project_settings = Settings::load_project(&effective_cwd);
+    let settings = workspace.load_merged_settings();
+    let project_settings = workspace.load_project_settings();
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let resumed_session_context = load_resumed_session_context(&conn, &session_id, session_created);
@@ -373,7 +403,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     );
     let thinking_str = thinking_level.as_str();
 
-    let agents_md = load_agents_md(&effective_cwd);
+    let agents_md = (!workspace.is_remote())
+        .then(|| load_agents_md(workspace.launch_cwd()))
+        .flatten();
 
     let base_prompt = entry
         .system_prompt
@@ -397,35 +429,48 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let base_url = runtime.base_url.clone();
     let headers = runtime.headers.clone();
 
-    auto_install_missing_packages(&effective_cwd, &settings);
+    if !workspace.disable_extensions() {
+        auto_install_missing_packages(workspace.launch_cwd(), &settings);
+    }
 
-    let extension_bootstrap =
-        ExtensionBootstrap::from_cli_values(&effective_cwd, &entry.extensions);
+    let extension_bootstrap = if workspace.disable_extensions() {
+        ExtensionBootstrap::default()
+    } else {
+        ExtensionBootstrap::from_cli_values(workspace.launch_cwd(), &entry.extensions)
+    };
     let RuntimeExtensionSupport {
         session_resources,
         tools,
         mut commands,
-    } = load_runtime_extension_support_with_ui(
-        &effective_cwd,
-        &settings,
-        &extension_bootstrap,
-        true,
-    )
-    .await?;
+    } = if workspace.disable_extensions() {
+        RuntimeExtensionSupport::default()
+    } else {
+        load_runtime_extension_support_with_ui(
+            workspace.launch_cwd(),
+            &settings,
+            &extension_bootstrap,
+            true,
+        )
+        .await?
+    };
     let sibling_conn = crate::turn_runner::open_sibling_conn(&conn)?;
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&bb_hooks::Event::SessionStart).await;
     let tool_selection = entry.tool_selection.resolve(settings.tools.as_deref());
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection.clone());
     let skill_section = build_skill_system_prompt_section(&session_resources);
-    let project_system_section =
-        build_project_system_prompt_section(&project_settings, &effective_cwd);
-    let system_prompt = format!("{base_system_prompt}{project_system_section}{skill_section}");
+    let project_system_section = project_settings
+        .as_ref()
+        .map(|settings| build_project_system_prompt_section(settings, workspace.launch_cwd()))
+        .unwrap_or_default();
+    let environment_section = workspace.environment_prompt_section();
+    let system_prompt =
+        format!("{base_system_prompt}{project_system_section}{environment_section}{skill_section}");
 
     let artifacts_dir = global_dir.join("artifacts");
     std::fs::create_dir_all(&artifacts_dir)?;
     let tool_ctx = ToolContext {
-        cwd: effective_cwd.clone(),
+        cwd: workspace.launch_cwd().to_path_buf(),
         artifacts_dir,
         execution_policy,
         on_output: None,
@@ -439,6 +484,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         }),
         execution_mode: bb_tools::ToolExecutionMode::Interactive,
         request_approval: None,
+        workspace_api_base_url: workspace.workspace_api_base_url_owned(),
     };
 
     let model_ref = ModelRef {
@@ -477,6 +523,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         tool_registry,
         tool_selection,
         tool_ctx,
+        workspace: workspace.clone(),
         system_prompt,
         base_system_prompt,
         thinking_level: thinking_str.to_string(),
@@ -499,7 +546,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     };
 
     let bootstrap = AgentSessionRuntimeBootstrap {
-        cwd: Some(cwd.clone()),
+        cwd: Some(workspace.launch_cwd().to_path_buf()),
         model: Some(model_ref),
         thinking_level: Some(thinking_level),
         resource_bootstrap: session_resources,
@@ -507,7 +554,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     };
     let runtime = create_agent_session_runtime(
         &bootstrap,
-        CreateAgentSessionRuntimeOptions::new(effective_cwd),
+        CreateAgentSessionRuntimeOptions::new(workspace.launch_cwd().to_path_buf()),
     );
     let mut runtime_host = AgentSessionRuntimeHost::new(bootstrap, runtime);
     runtime_host.runtime_mut().set_model(Some(runtime_model));
@@ -517,11 +564,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
 
 fn resolve_startup_session_id(
     conn: &rusqlite::Connection,
-    cwd: &std::path::Path,
+    workspace: &WorkspaceContext,
     entry: &SessionBootstrapOptions,
 ) -> Result<(String, bool)> {
-    let cwd_str = cwd.to_str().unwrap_or(".");
-
     if let Some(session_arg) = &entry.session {
         let all = store::list_all_sessions(conn)?;
         let matches: Vec<_> = all
@@ -536,7 +581,7 @@ fn resolve_startup_session_id(
     }
 
     if entry.continue_session || entry.resume {
-        let sessions = store::list_sessions(conn, cwd_str)?;
+        let sessions = store::list_sessions(conn, workspace.session_scope_key())?;
         if let Some(session) = sessions.first() {
             return Ok((session.session_id.clone(), true));
         }
@@ -552,6 +597,7 @@ mod tests {
         resolve_thinking_level,
     };
     use crate::tool_registry::{ToolSelectionPreference, build_tool_defs};
+    use crate::workspace_context::WorkspaceContext;
     use async_trait::async_trait;
     use bb_core::agent_session::ThinkingLevel;
     use bb_core::error::BbResult;
@@ -723,7 +769,12 @@ mod tests {
             ..Default::default()
         };
 
-        let resolved = resolve_startup_session_id(&conn, cwd.path(), &entry).expect("resolve");
+        let resolved = resolve_startup_session_id(
+            &conn,
+            &WorkspaceContext::local(cwd.path().to_path_buf()),
+            &entry,
+        )
+        .expect("resolve");
         assert_eq!(resolved, (session_id, true));
     }
 
@@ -739,7 +790,12 @@ mod tests {
             ..Default::default()
         };
 
-        let resolved = resolve_startup_session_id(&conn, cwd.path(), &entry).expect("resolve");
+        let resolved = resolve_startup_session_id(
+            &conn,
+            &WorkspaceContext::local(cwd.path().to_path_buf()),
+            &entry,
+        )
+        .expect("resolve");
         assert_eq!(resolved, (session_id, true));
     }
 
@@ -748,10 +804,44 @@ mod tests {
         let conn = bb_session::store::open_memory().expect("memory db");
         let cwd = tempdir().expect("tempdir");
 
-        let resolved =
-            resolve_startup_session_id(&conn, cwd.path(), &Default::default()).expect("resolve");
+        let resolved = resolve_startup_session_id(
+            &conn,
+            &WorkspaceContext::local(cwd.path().to_path_buf()),
+            &Default::default(),
+        )
+        .expect("resolve");
         assert!(!resolved.1);
         assert!(uuid::Uuid::parse_str(&resolved.0).is_ok());
+    }
+
+    #[test]
+    fn resolve_startup_session_id_uses_remote_workspace_scope_for_continue() {
+        let conn = bb_session::store::open_memory().expect("memory db");
+        let cwd = tempdir().expect("tempdir");
+        let remote_scope = "ssh:prod-kordi:/srv/prod/kordi";
+        let remote_session_id =
+            bb_session::store::create_session(&conn, remote_scope).expect("remote session");
+        let _local_session_id =
+            bb_session::store::create_session(&conn, &cwd.path().display().to_string())
+                .expect("local session");
+
+        let entry = SessionBootstrapOptions {
+            continue_session: true,
+            ..Default::default()
+        };
+
+        let resolved = resolve_startup_session_id(
+            &conn,
+            &WorkspaceContext::ssh(
+                cwd.path().to_path_buf(),
+                remote_scope,
+                "/srv/prod/kordi",
+                Some("http://127.0.0.1:7080".to_string()),
+            ),
+            &entry,
+        )
+        .expect("resolve remote scope");
+        assert_eq!(resolved, (remote_session_id, true));
     }
 
     #[test]

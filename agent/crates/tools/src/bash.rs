@@ -308,6 +308,7 @@ mod tests {
                     }
                 })
             })),
+            workspace_api_base_url: None,
         }
     }
 

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use bb_core::agent_session::ModelRef;
 use bb_core::agent_session_runtime::RuntimeModelRef;
-use bb_core::settings::Settings;
 use bb_provider::registry::ModelRegistry;
 use bb_session::{context, store};
 use bb_tui::select_list::SelectItem;
@@ -41,8 +40,10 @@ impl TuiController {
     }
 
     pub(in crate::tui) fn open_resume_menu(&mut self) -> Result<()> {
-        let cwd = self.session_setup.tool_ctx.cwd.display().to_string();
-        let sessions = store::list_sessions(&self.session_setup.conn, &cwd)?;
+        let sessions = store::list_sessions(
+            &self.session_setup.conn,
+            self.session_setup.session_scope_key(),
+        )?;
         if sessions.is_empty() {
             self.send_command(TuiCommand::SetStatusLine(
                 "No sessions found in this directory.".to_string(),
@@ -95,7 +96,7 @@ impl TuiController {
         tokio::task::yield_now().await;
 
         let result: Result<()> = (|| {
-            let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+            let settings = self.session_setup.load_merged_settings();
             if let Ok(session_context) =
                 context::build_context(&self.session_setup.conn, session_id)
             {
@@ -199,6 +200,7 @@ mod tests {
     use crate::session_bootstrap::{SessionRuntimeSetup, SessionUiOptions};
     use crate::tui::RESUME_SESSION_MENU_ID;
     use crate::tui::controller::{PendingImage, QueuedPrompt, TuiController};
+    use crate::workspace_context::WorkspaceContext;
 
     fn test_model() -> Model {
         Model {
@@ -232,9 +234,10 @@ mod tests {
             web_search: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
+            workspace_api_base_url: None,
         };
         let runtime_host = AgentSessionRuntimeHost::from_bootstrap(AgentSessionRuntimeBootstrap {
-            cwd: Some(cwd),
+            cwd: Some(cwd.clone()),
             ..AgentSessionRuntimeBootstrap::default()
         });
         let options = SessionUiOptions {
@@ -253,6 +256,7 @@ mod tests {
             tool_registry: crate::tool_registry::ToolRegistry::default(),
             tool_selection: crate::tool_registry::ToolSelection::All,
             tool_ctx,
+            workspace: WorkspaceContext::local(cwd.clone()),
             system_prompt: String::new(),
             base_system_prompt: String::new(),
             thinking_level: "medium".to_string(),
@@ -341,17 +345,22 @@ mod tests {
     #[test]
     fn open_resume_menu_lists_named_and_unnamed_sessions() {
         let (mut controller, mut command_rx, _tempdir) = build_test_controller();
-        let cwd = controller.session_setup.tool_ctx.cwd.display().to_string();
-        let named_session = store::create_session(&controller.session_setup.conn, &cwd)
-            .expect("create named session");
+        let named_session = store::create_session(
+            &controller.session_setup.conn,
+            controller.session_setup.session_scope_key(),
+        )
+        .expect("create named session");
         store::set_session_name(
             &controller.session_setup.conn,
             &named_session,
             Some("named session"),
         )
         .expect("name session");
-        let unnamed_session = store::create_session(&controller.session_setup.conn, &cwd)
-            .expect("create unnamed session");
+        let unnamed_session = store::create_session(
+            &controller.session_setup.conn,
+            controller.session_setup.session_scope_key(),
+        )
+        .expect("create unnamed session");
 
         controller.open_resume_menu().expect("open resume menu");
 
@@ -389,9 +398,11 @@ mod tests {
     #[tokio::test]
     async fn handle_resume_session_clears_stale_state_and_reports_success() {
         let (mut controller, mut command_rx, _tempdir) = build_test_controller();
-        let cwd = controller.session_setup.tool_ctx.cwd.display().to_string();
-        let session_id =
-            store::create_session(&controller.session_setup.conn, &cwd).expect("create session");
+        let session_id = store::create_session(
+            &controller.session_setup.conn,
+            controller.session_setup.session_scope_key(),
+        )
+        .expect("create session");
         let user_entry = SessionEntry::Message {
             base: EntryBase {
                 id: EntryId::generate(),

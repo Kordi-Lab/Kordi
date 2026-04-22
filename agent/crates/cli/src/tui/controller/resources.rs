@@ -8,6 +8,7 @@ use crate::extensions::{
     ExtensionCommandOutcome, RuntimeExtensionSupport, SettingsScope, auto_install_missing_packages,
     build_skill_system_prompt_section, install_package, load_runtime_extension_support_with_ui,
 };
+use crate::session_bootstrap::build_project_system_prompt_section;
 use crate::slash::{
     InstallSlashAction, SkillAdminAction, dispatch_local_slash_command, install_help_text,
     parse_install_command, skill_help_text,
@@ -105,6 +106,12 @@ impl TuiController {
             ));
             return Ok(());
         }
+        if self.session_setup.is_remote_workspace() {
+            self.send_command(TuiCommand::SetStatusLine(
+                "Update checks are unavailable for remote workspaces".to_string(),
+            ));
+            return Ok(());
+        }
 
         self.send_command(TuiCommand::SetStatusLine(
             "Checking for updates...".to_string(),
@@ -139,6 +146,12 @@ impl TuiController {
         if self.streaming {
             self.send_command(TuiCommand::SetStatusLine(
                 "Cannot install packages while a turn is running".to_string(),
+            ));
+            return Ok(());
+        }
+        if self.session_setup.workspace.disable_extensions() {
+            self.send_command(TuiCommand::SetStatusLine(
+                "Package installs are unavailable for remote workspaces".to_string(),
             ));
             return Ok(());
         }
@@ -290,12 +303,25 @@ impl TuiController {
             )
         })?;
 
-        let agents_md = load_agents_md(&self.session_setup.tool_ctx.cwd);
+        let agents_md = (!self.session_setup.is_remote_workspace())
+            .then(|| load_agents_md(&self.session_setup.tool_ctx.cwd))
+            .flatten();
         let base_prompt = bb_core::agent::build_system_prompt(&system_prompt, agents_md.as_deref());
         self.session_setup.base_system_prompt = base_prompt;
+        let project_system_section = self
+            .session_setup
+            .load_project_settings()
+            .as_ref()
+            .map(|settings| {
+                build_project_system_prompt_section(settings, &self.session_setup.tool_ctx.cwd)
+            })
+            .unwrap_or_default();
+        let environment_section = self.session_setup.workspace.environment_prompt_section();
         self.session_setup.system_prompt = format!(
-            "{}{}",
+            "{}{}{}{}",
             self.session_setup.base_system_prompt,
+            project_system_section,
+            environment_section,
             build_skill_system_prompt_section(&self.runtime_host.bootstrap().resource_bootstrap)
         );
 
@@ -401,7 +427,7 @@ impl TuiController {
                     .map(|skill| skill.info.name.clone())
                     .collect();
 
-                let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+                let settings = self.session_setup.load_merged_settings();
                 let disabled: Vec<String> = settings
                     .disabled_skills
                     .iter()
@@ -528,7 +554,12 @@ impl TuiController {
     }
 
     pub(crate) async fn maybe_auto_reload_resources(&mut self) -> Result<()> {
-        let next_watch = ResourceWatchState::capture(&self.session_setup.tool_ctx.cwd);
+        if self.session_setup.workspace.disable_extensions() {
+            self.resource_watch = ResourceWatchState::capture(&self.session_setup);
+            return Ok(());
+        }
+
+        let next_watch = ResourceWatchState::capture(&self.session_setup);
         if next_watch == self.resource_watch {
             return Ok(());
         }
@@ -555,13 +586,20 @@ impl TuiController {
             ));
             return Ok(());
         }
+        if self.session_setup.workspace.disable_extensions() {
+            self.resource_watch = ResourceWatchState::capture(&self.session_setup);
+            self.send_command(TuiCommand::SetStatusLine(
+                "Remote workspace resources stay in safe mode".to_string(),
+            ));
+            return Ok(());
+        }
 
         let cwd = self.session_setup.tool_ctx.cwd.clone();
         self.send_command(TuiCommand::SetStatusLine(
             "Reloading extensions, skills, and prompts...".to_string(),
         ));
 
-        let settings = Settings::load_merged(&cwd);
+        let settings = self.session_setup.load_merged_settings();
         auto_install_missing_packages(&cwd, &settings);
         let _ = self
             .session_setup
@@ -596,9 +634,18 @@ impl TuiController {
             self.session_setup.tool_selection.clone(),
         );
         self.session_setup.extension_commands = commands;
+        let project_system_section = self
+            .session_setup
+            .load_project_settings()
+            .as_ref()
+            .map(|settings| build_project_system_prompt_section(settings, &cwd))
+            .unwrap_or_default();
+        let environment_section = self.session_setup.workspace.environment_prompt_section();
         self.session_setup.system_prompt = format!(
-            "{}{}",
+            "{}{}{}{}",
             self.session_setup.base_system_prompt,
+            project_system_section,
+            environment_section,
             build_skill_system_prompt_section(&session_resources)
         );
 
@@ -610,7 +657,7 @@ impl TuiController {
                 id: self.session_setup.model.id.clone(),
                 context_window: self.session_setup.model.context_window as usize,
             }));
-        self.resource_watch = ResourceWatchState::capture(&self.session_setup.tool_ctx.cwd);
+        self.resource_watch = ResourceWatchState::capture(&self.session_setup);
         self.send_command(TuiCommand::SetExtraSlashItems(build_dynamic_slash_items(
             &self.runtime_host,
         )));

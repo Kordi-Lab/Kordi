@@ -4,8 +4,10 @@ import {
   ChevronDown,
   CircleDot,
   Copy,
+  FolderTree,
   Plus,
   Search,
+  Server,
 } from 'lucide-react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -13,9 +15,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { EnvironmentPopoverTrigger } from '@/kordi-app/components';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, NavId } from '@/kordi-app/types';
+import type { ChatFilter, ContactClass, DesktopChatEnvironmentSummary, NavId } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 import { cn } from '@/lib/utils';
 
@@ -106,7 +109,20 @@ type WorkspaceSidebarProps = {
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
+  desktopWorkspaceEnvironment?: DesktopChatEnvironmentSummary | null;
 };
+
+function workspaceRootLeaf(environment?: DesktopChatEnvironmentSummary | null) {
+  if (!environment?.workspaceRoot) return null;
+  return environment.workspaceRoot.split(/[\\/]/).filter(Boolean).pop() ?? environment.workspaceRoot;
+}
+
+function environmentShortLabel(environment?: DesktopChatEnvironmentSummary | null) {
+  if (!environment) return '';
+  if (environment.kind === 'ssh') return 'SSH';
+  if (!environment.remote) return 'Local';
+  return environment.label;
+}
 
 export function WorkspaceSidebar({
   isNativeShell,
@@ -147,9 +163,11 @@ export function WorkspaceSidebar({
   onRefreshBridge,
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
+  desktopWorkspaceEnvironment,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
+  const workspaceLeaf = workspaceRootLeaf(desktopWorkspaceEnvironment);
 
   return (
     <aside className={cn('app-side-shell app-workspace-sidebar overflow-hidden', isSingleWorkspacePage ? 'rounded-none' : 'rounded-bl-[22px] rounded-r-none')}>
@@ -197,6 +215,19 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
+            {isNativeShell && desktopWorkspaceEnvironment ? (
+              <EnvironmentPopoverTrigger
+                environment={desktopWorkspaceEnvironment}
+                placement="right-start"
+                className="w-full rounded-[16px] border border-white/10 bg-white/[0.035] px-1.5 py-2 text-center text-[10px] leading-tight text-slate-300 transition hover:bg-white/[0.055]"
+              >
+                <div className="mb-1 flex justify-center">
+                  <Server className="h-3.5 w-3.5 text-slate-200" />
+                </div>
+                <div className="truncate font-medium text-slate-100">{environmentShortLabel(desktopWorkspaceEnvironment)}</div>
+                <div className="mt-0.5 truncate text-[9px] text-slate-500">{workspaceLeaf}</div>
+              </EnvironmentPopoverTrigger>
+            ) : null}
             <Button size="icon" className="h-10 w-10 rounded-xl">
               <Plus className="h-4 w-4" />
             </Button>
@@ -319,6 +350,28 @@ export function WorkspaceSidebar({
                                     {conversation.subtitle}
                                   </div>
                                 ) : null}
+                                {!conversation.id.startsWith('bridge:') && desktopWorkspaceEnvironment ? (
+                                  <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                    <Badge
+                                      variant={desktopWorkspaceEnvironment.remote ? 'secondary' : 'outline'}
+                                      className={cn(
+                                        'shrink-0 rounded-full px-1.5 py-0 text-[9px] leading-4',
+                                        desktopWorkspaceEnvironment.remote
+                                          ? 'app-badge-owned border-0'
+                                          : 'app-badge-neutral border-white/15 text-slate-200',
+                                      )}
+                                    >
+                                      {environmentShortLabel(desktopWorkspaceEnvironment)}
+                                    </Badge>
+                                    <span
+                                      className={`inline-flex min-w-0 items-center gap-1 text-[10px] ${isActive ? 'text-slate-400' : 'text-slate-500'}`}
+                                      title={desktopWorkspaceEnvironment.workspaceRoot}
+                                    >
+                                      <FolderTree className="h-2.5 w-2.5 shrink-0" />
+                                      <span className="truncate">{workspaceLeaf}</span>
+                                    </span>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           </button>
@@ -412,6 +465,28 @@ export function WorkspaceSidebar({
                                           ) : null}
                                         </div>
                                         <div className="mt-0.5 truncate text-[11px] text-slate-400">{session.lastActive}</div>
+                                        {desktopWorkspaceEnvironment ? (
+                                          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                            <Badge
+                                              variant={desktopWorkspaceEnvironment.remote ? 'secondary' : 'outline'}
+                                              className={cn(
+                                                'shrink-0 rounded-full px-1.5 py-0 text-[9px] leading-4',
+                                                desktopWorkspaceEnvironment.remote
+                                                  ? 'app-badge-owned border-0'
+                                                  : 'app-badge-neutral border-white/15 text-slate-200',
+                                              )}
+                                            >
+                                              {environmentShortLabel(desktopWorkspaceEnvironment)}
+                                            </Badge>
+                                            <span
+                                              className="inline-flex min-w-0 items-center gap-1 truncate text-[10px] text-slate-500"
+                                              title={desktopWorkspaceEnvironment.workspaceRoot}
+                                            >
+                                              <FolderTree className="h-2.5 w-2.5 shrink-0" />
+                                              <span className="truncate">{workspaceLeaf}</span>
+                                            </span>
+                                          </div>
+                                        ) : null}
                                       </button>
                                     );
                                   })}

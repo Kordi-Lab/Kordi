@@ -3,13 +3,14 @@ import { motion } from 'framer-motion';
 import {
   FileText,
   FolderOpen,
-  Globe,
+  FolderTree,
   Image as ImageIcon,
   Layers3,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
+  Server,
   Square,
   Users,
   X,
@@ -22,6 +23,7 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
+  EnvironmentPopoverTrigger,
   LiveChatTurnCard,
   MessageBubble,
   StatusPill,
@@ -33,6 +35,7 @@ import type {
   DesktopBridgeHost,
   DesktopBridgeProject,
   DesktopChatContextWindowStatus,
+  DesktopChatEnvironmentSummary,
   DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
   EditFilePreview,
@@ -111,6 +114,7 @@ type ProjectsPageProps = {
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
   activeRuntimeCacheText?: string | null;
+  desktopWorkspaceEnvironment?: DesktopChatEnvironmentSummary | null;
   composerSelection: { mode: string; model: string; thinking: string };
   openComposerSelector: { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
@@ -159,6 +163,7 @@ export function ProjectsPage({
   activeRuntimeSessionId,
   activeRuntimeContextStatus,
   activeRuntimeCacheText,
+  desktopWorkspaceEnvironment,
   composerSelection,
   openComposerSelector,
   toggleComposerSelector,
@@ -233,7 +238,7 @@ export function ProjectsPage({
             <div className="mb-1.5 truncate text-[12px] text-slate-300">{activeProject.name}</div>
             <div className="app-page-header-pills flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs text-slate-200">
               <StatusPill className="shrink-0">
-                <Globe className="h-3 w-3" /> {activeProject.bridge}
+                <Server className="h-3 w-3" /> {activeProject.bridge}
               </StatusPill>
               <StatusPill className="shrink-0">
                 <Users className="h-3 w-3" /> {activeProject.people.length + activeProject.agents.length} members
@@ -245,6 +250,27 @@ export function ProjectsPage({
                 <FolderOpen className="h-3 w-3" /> {activeProject.artifacts} artifacts
               </StatusPill>
             </div>
+            {isNativeShell && desktopWorkspaceEnvironment ? (
+              <EnvironmentPopoverTrigger
+                environment={desktopWorkspaceEnvironment}
+                placement="bottom-start"
+                className="mt-1.5 flex min-w-0 max-w-full flex-wrap items-center gap-2"
+              >
+                <StatusPill className={cn(
+                  'gap-1.5 rounded-full px-2.5 py-1 text-[11px]',
+                  desktopWorkspaceEnvironment.remote ? 'app-badge-owned' : 'app-badge-neutral',
+                )}>
+                  <Server className="h-3 w-3" /> {desktopWorkspaceEnvironment.label}
+                </StatusPill>
+                <div
+                  className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300"
+                  title={desktopWorkspaceEnvironment.workspaceRoot}
+                >
+                  <FolderTree className="h-3 w-3 shrink-0 text-slate-400" />
+                  <span className="max-w-[30rem] truncate">{desktopWorkspaceEnvironment.workspaceRoot}</span>
+                </div>
+              </EnvironmentPopoverTrigger>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-start">

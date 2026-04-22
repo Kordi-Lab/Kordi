@@ -228,6 +228,8 @@ export type AssembleKordiShellSlotsArgs = {
   activeBridgeAwaitingReply: boolean;
   isBridgePolling: boolean;
   lastBridgePollAtLabel: string | null;
+  desktopWorkspaceEnvironment: DesktopChatState['environment'] | null;
+  activeSessionEnvironment: DesktopChatState['environment'] | null;
   activeSessionProject: DesktopChatProjectInfo | null;
   showAuthGate: boolean;
   inlineAuthDialog: {
@@ -279,6 +281,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'refreshDesktopBridge'
   | 'handleCopyBridgeText'
   | 'handleCreateBridgeDraft'
+  | 'desktopWorkspaceEnvironment'
 >;
 
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
@@ -421,6 +424,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'
   | 'isBridgePolling'
+  | 'desktopWorkspaceEnvironment'
+  | 'activeSessionEnvironment'
 >;
 
 export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
@@ -449,6 +454,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeBridgeAwaitingReply'
   | 'isBridgePolling'
   | 'lastBridgePollAtLabel'
+  | 'activeSessionEnvironment'
   | 'activeSessionProject'
 >;
 

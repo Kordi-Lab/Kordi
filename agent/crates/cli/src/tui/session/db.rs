@@ -14,11 +14,10 @@ impl TuiController {
             return Ok(());
         }
 
-        let cwd = self.session_setup.tool_ctx.cwd.display().to_string();
         store::create_session_with_id(
             &self.session_setup.conn,
             &self.session_setup.session_id,
-            &cwd,
+            self.session_setup.session_scope_key(),
         )?;
         // Persist the initial thinking level so later resume can distinguish an
         // explicit session setting from the absence of any recorded override.

@@ -88,6 +88,9 @@ export function useWorkspaceViewModels({
       return [];
     }
 
+    const workspaceLabel = desktopChatState.environment.label;
+    const remoteWorkspace = desktopChatState.environment.remote;
+
     return desktopChatState.sessions.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const activeMessages = isActiveSession
@@ -100,9 +103,11 @@ export function useWorkspaceViewModels({
         type: 'owned-agent' as const,
         subtitle: session.subtitle,
         unread: localSessionUnreadCounts[session.id] ?? 0,
-        bridges: ['Local'],
+        bridges: [workspaceLabel],
         trust: 'Owned',
-        directness: session.draft ? 'Draft session' : 'Direct chat',
+        directness: session.draft
+          ? (remoteWorkspace ? 'Remote draft' : 'Draft session')
+          : (remoteWorkspace ? 'Remote chat' : 'Direct chat'),
         participants: ['You', 'Kordi'],
         messages: activeMessages,
         updatedAtLabel: session.updatedAtLabel,
@@ -378,9 +383,9 @@ export function useWorkspaceViewModels({
       id: project.id,
       name: project.name,
       summary: project.summary,
-      bridge: 'Local',
+      bridge: desktopChatState.environment.label,
       scope: project.root,
-      status: project.backgroundSystem ? 'Configured' : 'Local',
+      status: project.backgroundSystem ? 'Configured' : (desktopChatState.environment.remote ? 'Remote' : 'Local'),
       people: [],
       agents: [],
       pendingInvites: [],

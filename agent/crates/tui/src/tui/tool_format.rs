@@ -60,8 +60,7 @@ fn secret_assignment_regex() -> &'static Regex {
 fn authorization_header_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?i)Authorization:\s*(Bearer|token)\s+[^\s"']+"#)
-            .expect("valid regex")
+        Regex::new(r#"(?i)Authorization:\s*(Bearer|token)\s+[^\s"']+"#).expect("valid regex")
     })
 }
 
@@ -72,16 +71,17 @@ fn bearer_token_regex() -> &'static Regex {
 
 fn redact_bash_title_line(line: &str) -> String {
     let stripped = strip_leading_env_assignments(line);
-    let redacted_assignments = secret_assignment_regex().replace_all(&stripped, |caps: &Captures| {
-        let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        if is_secret_env_name(name) {
-            format!("{name}=[REDACTED]")
-        } else {
-            caps.get(0)
-                .map(|m| m.as_str().to_string())
-                .unwrap_or_default()
-        }
-    });
+    let redacted_assignments =
+        secret_assignment_regex().replace_all(&stripped, |caps: &Captures| {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            if is_secret_env_name(name) {
+                format!("{name}=[REDACTED]")
+            } else {
+                caps.get(0)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default()
+            }
+        });
     let redacted_auth = authorization_header_regex().replace_all(
         redacted_assignments.as_ref(),
         |caps: &Captures| {

@@ -22,7 +22,9 @@ use crate::session_bootstrap::{
     SessionBootstrapOptions, SessionRuntimeSetup, prepare_session_runtime_for_cwd,
 };
 use crate::session_info::collect_session_info_summary;
+use crate::tool_registry::ToolSelection;
 use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
+use crate::workspace_context::WorkspaceContext;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +124,17 @@ pub struct DesktopChatProjectInfo {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopChatEnvironmentSummary {
+    pub kind: String,
+    pub label: String,
+    pub workspace_root: String,
+    pub session_scope_key: String,
+    pub remote: bool,
+    pub read_only_safe_mode: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopChatSessionDetail {
     pub id: String,
     pub title: String,
@@ -138,6 +151,7 @@ pub struct DesktopChatSessionDetail {
     pub cache_monitor_text: Option<String>,
     pub context_window_text: String,
     pub context_window_status: DesktopChatContextWindowStatus,
+    pub environment: DesktopChatEnvironmentSummary,
     pub project: Option<DesktopChatProjectInfo>,
     pub messages: Vec<DesktopChatMessage>,
 }
@@ -192,7 +206,7 @@ impl DesktopRuntimeSession {
                     .iter()
                     .filter_map(|item| item.value.strip_prefix("/skill:").map(ToString::to_string))
                     .collect();
-                let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
+                let settings = self.setup.load_merged_settings();
                 let disabled: Vec<String> = settings
                     .disabled_skills
                     .iter()
@@ -326,7 +340,7 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
-        let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
+        let settings = self.setup.load_merged_settings();
         let model =
             resolve_model_candidate(&settings, requested_model, Some(&self.setup.model.provider))?;
         self.setup.model = model;
@@ -386,11 +400,9 @@ impl DesktopRuntimeSession {
             bail!("Message cannot be empty");
         }
 
-        let expanded = expand_prompt_with_attachment_paths(
-            &prompt,
-            &attachment_paths,
-            &self.setup.tool_ctx.cwd,
-        );
+        let expanded =
+            expand_prompt_with_attachment_paths(&prompt, &attachment_paths, &self.setup.tool_ctx)
+                .await;
         let prompt_text = expanded.text.trim().to_string();
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
@@ -511,8 +523,8 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
     let global_dir = bb_core::config::global_dir();
     std::fs::create_dir_all(&global_dir)?;
     let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
-    let cwd_str = cwd.display().to_string();
-    let mut rows = bb_session::store::list_sessions(&conn, &cwd_str)?;
+    let workspace = WorkspaceContext::from_env(cwd.to_path_buf());
+    let mut rows = bb_session::store::list_sessions(&conn, workspace.session_scope_key())?;
     rows.sort_by(|left, right| {
         session_sort_timestamp_ms(&conn, right)
             .cmp(&session_sort_timestamp_ms(&conn, left))
@@ -524,7 +536,11 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
         .collect()
 }
 
-pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProjectGroup>> {
+pub fn list_project_groups(cwd: &std::path::Path) -> Result<Vec<DesktopChatProjectGroup>> {
+    if WorkspaceContext::from_env(cwd.to_path_buf()).is_remote() {
+        return Ok(Vec::new());
+    }
+
     let global_dir = bb_core::config::global_dir();
     std::fs::create_dir_all(&global_dir)?;
     let conn = bb_session::store::open_db(&global_dir.join("sessions.db"))?;
@@ -791,7 +807,7 @@ async fn fetch_live_model_ids_for_provider(provider: &str) -> Option<Vec<String>
 }
 
 pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopChatModelOption> {
-    let settings = Settings::load_merged(cwd);
+    let settings = WorkspaceContext::from_env(cwd.to_path_buf()).load_merged_settings();
     let mut static_models = login::authenticated_model_candidates(&settings);
     static_models.sort_by(|left, right| {
         left.provider
@@ -931,8 +947,11 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
         return Ok(());
     }
 
-    let cwd = setup.tool_ctx.cwd.display().to_string();
-    bb_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
+    bb_session::store::create_session_with_id(
+        &setup.conn,
+        &setup.session_id,
+        setup.session_scope_key(),
+    )?;
     append_model_change_entry(&setup.conn, &setup.session_id, &setup.model)?;
     let initial_thinking =
         ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Medium);
@@ -1043,6 +1062,7 @@ fn build_turn_config(
             web_search: setup.tool_ctx.web_search.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
+            workspace_api_base_url: setup.tool_ctx.workspace_api_base_url.clone(),
         },
         thinking: if setup.thinking_level == "off" {
             None
@@ -1072,9 +1092,14 @@ fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSe
     })
 }
 
-fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
+fn load_project_info(setup: &SessionRuntimeSetup) -> Option<DesktopChatProjectInfo> {
+    if setup.is_remote_workspace() {
+        return None;
+    }
+
+    let cwd = setup.tool_ctx.cwd.as_path();
     let project_root = bb_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let settings = Settings::load_project(cwd);
+    let settings = setup.load_project_settings()?;
     let name = settings
         .project_name
         .as_deref()
@@ -1114,6 +1139,32 @@ fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
         background_system,
         shared_sources,
     })
+}
+
+fn is_read_only_safe_tool_name(name: &str) -> bool {
+    matches!(name.trim(), "read" | "ls" | "grep" | "find" | "web_search")
+}
+
+fn tool_selection_is_read_only_safe(selection: &ToolSelection) -> bool {
+    match selection {
+        ToolSelection::All => false,
+        ToolSelection::None => true,
+        ToolSelection::Only(names) => names.iter().all(|name| is_read_only_safe_tool_name(name)),
+    }
+}
+
+fn environment_summary_from_workspace(
+    workspace: &WorkspaceContext,
+    tool_selection: &ToolSelection,
+) -> DesktopChatEnvironmentSummary {
+    DesktopChatEnvironmentSummary {
+        kind: workspace.environment_kind_key(),
+        label: workspace.environment_label(),
+        workspace_root: workspace.workspace_display_path().to_string(),
+        session_scope_key: workspace.session_scope_key().to_string(),
+        remote: workspace.is_remote(),
+        read_only_safe_mode: tool_selection_is_read_only_safe(tool_selection),
+    }
 }
 
 fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSessionDetail> {
@@ -1168,9 +1219,53 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
             used_percent: context_window_status.used_percent,
             auto_compaction: context_window_status.auto_compaction,
         },
-        project: load_project_info(&setup.tool_ctx.cwd),
+        environment: environment_summary_from_workspace(&setup.workspace, &setup.tool_selection),
+        project: load_project_info(setup),
         messages,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn environment_summary_from_workspace_reports_local_workspace() {
+        let workspace = WorkspaceContext::local(std::path::PathBuf::from("/tmp/kordi-local"));
+        let summary = environment_summary_from_workspace(&workspace, &ToolSelection::All);
+        assert_eq!(summary.kind, "local");
+        assert_eq!(summary.label, "Local");
+        assert_eq!(summary.workspace_root, "/tmp/kordi-local");
+        assert_eq!(summary.session_scope_key, "/tmp/kordi-local");
+        assert!(!summary.remote);
+        assert!(!summary.read_only_safe_mode);
+    }
+
+    #[test]
+    fn environment_summary_from_workspace_reports_ssh_workspace() {
+        let workspace = WorkspaceContext::ssh(
+            std::path::PathBuf::from("/tmp/kordi-launch"),
+            "ssh:prod:/srv/prod/kordi",
+            "/srv/prod/kordi",
+            Some("http://127.0.0.1:7080".to_string()),
+        );
+        let summary = environment_summary_from_workspace(
+            &workspace,
+            &ToolSelection::Only(vec![
+                "read".to_string(),
+                "ls".to_string(),
+                "grep".to_string(),
+                "find".to_string(),
+                "web_search".to_string(),
+            ]),
+        );
+        assert_eq!(summary.kind, "ssh");
+        assert_eq!(summary.label, "SSH remote");
+        assert_eq!(summary.workspace_root, "/srv/prod/kordi");
+        assert_eq!(summary.session_scope_key, "ssh:prod:/srv/prod/kordi");
+        assert!(summary.remote);
+        assert!(summary.read_only_safe_mode);
+    }
 }
 
 #[derive(Default)]
@@ -1600,23 +1695,56 @@ fn quote_attachment_path(path: &str) -> String {
     }
 }
 
-fn expand_prompt_with_attachment_paths(
+async fn expand_prompt_with_attachment_paths(
     prompt: &str,
     attachment_paths: &[String],
-    cwd: &std::path::Path,
+    tool_ctx: &bb_tools::ToolContext,
 ) -> crate::input_files::ExpandedInputFiles {
+    let prompt_expanded =
+        crate::input_files::expand_at_workspace_references(prompt, tool_ctx).await;
+
     let attachment_refs = attachment_paths
         .iter()
         .map(|path| format!("@{}", quote_attachment_path(path)))
         .collect::<Vec<_>>();
-    let combined = if attachment_refs.is_empty() {
-        prompt.trim().to_string()
-    } else if prompt.trim().is_empty() {
-        attachment_refs.join("\n")
+    let attachment_expanded = if attachment_refs.is_empty() {
+        crate::input_files::ExpandedInputFiles::default()
     } else {
-        format!("{}\n\n{}", prompt.trim(), attachment_refs.join("\n"))
+        crate::input_files::expand_at_file_references(&attachment_refs.join("\n"), &tool_ctx.cwd)
     };
-    crate::input_files::expand_at_file_references(&combined, cwd)
+
+    let text = match (
+        prompt_expanded.text.trim().is_empty(),
+        attachment_expanded.text.trim().is_empty(),
+    ) {
+        (true, true) => String::new(),
+        (false, true) => prompt_expanded.text,
+        (true, false) => attachment_expanded.text,
+        (false, false) => format!(
+            "{}\n\n{}",
+            prompt_expanded.text.trim(),
+            attachment_expanded.text.trim()
+        ),
+    };
+
+    crate::input_files::ExpandedInputFiles {
+        text,
+        expanded_paths: prompt_expanded
+            .expanded_paths
+            .into_iter()
+            .chain(attachment_expanded.expanded_paths)
+            .collect(),
+        image_paths: prompt_expanded
+            .image_paths
+            .into_iter()
+            .chain(attachment_expanded.image_paths)
+            .collect(),
+        warnings: prompt_expanded
+            .warnings
+            .into_iter()
+            .chain(attachment_expanded.warnings)
+            .collect(),
+    }
 }
 
 fn load_images_from_paths(paths: &[std::path::PathBuf]) -> Result<Vec<ImageContent>> {

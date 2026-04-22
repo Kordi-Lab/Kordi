@@ -60,8 +60,14 @@ fn test_settings_deserialize() {
         }"#;
     let s: Settings = serde_json::from_str(json).unwrap();
     assert_eq!(s.project_name.as_deref(), Some("Kordi Desktop"));
-    assert_eq!(s.project_context.as_deref(), Some("Shared context across project sessions."));
-    assert_eq!(s.project_system_prompt.as_deref(), Some("Always align answers with the desktop app scope."));
+    assert_eq!(
+        s.project_context.as_deref(),
+        Some("Shared context across project sessions.")
+    );
+    assert_eq!(
+        s.project_system_prompt.as_deref(),
+        Some("Always align answers with the desktop app scope.")
+    );
     assert_eq!(s.project_shared_sources.len(), 1);
     assert_eq!(s.project_shared_sources[0].label, "Product brief");
     assert_eq!(s.default_provider.as_deref(), Some("anthropic"));
@@ -151,8 +157,14 @@ fn test_settings_merge() {
 
     assert_eq!(merged.resolved_execution_mode(), ExecutionMode::Yolo);
     assert_eq!(merged.project_name.as_deref(), Some("Desktop"));
-    assert_eq!(merged.project_context.as_deref(), Some("Shared across project sessions"));
-    assert_eq!(merged.project_system_prompt.as_deref(), Some("Keep answers aligned with desktop work."));
+    assert_eq!(
+        merged.project_context.as_deref(),
+        Some("Shared across project sessions")
+    );
+    assert_eq!(
+        merged.project_system_prompt.as_deref(),
+        Some("Keep answers aligned with desktop work.")
+    );
     assert_eq!(merged.project_shared_sources.len(), 1);
     assert_eq!(merged.project_shared_sources[0].label, "Spec");
     assert_eq!(merged.default_provider.as_deref(), Some("anthropic"));

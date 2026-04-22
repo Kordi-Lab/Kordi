@@ -44,7 +44,11 @@ fn test_code_block() {
     assert_eq!(plain.first().map(|line| line.trim()), Some("```rust"));
     assert!(plain.iter().any(|line| line.contains("main")));
     assert_eq!(plain.last().map(|line| line.trim()), Some("```"));
-    assert!(!plain.iter().any(|line| line.contains('┌') || line.contains('└')));
+    assert!(
+        !plain
+            .iter()
+            .any(|line| line.contains('┌') || line.contains('└'))
+    );
 }
 
 #[test]

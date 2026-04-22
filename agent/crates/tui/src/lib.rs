@@ -10,7 +10,6 @@ pub mod editor;
 pub mod error;
 pub mod footer;
 pub mod footer_data;
-pub mod tui;
 pub mod fuzzy;
 pub mod kill_ring;
 pub mod markdown;
@@ -25,8 +24,9 @@ pub mod terminal;
 pub mod theme;
 pub mod tool_preview;
 pub mod tree_selector;
-pub(crate) mod ui_hints;
+pub mod tui;
 pub mod tui_core;
+pub(crate) mod ui_hints;
 pub mod undo_stack;
 pub mod utils;
 

@@ -184,6 +184,7 @@ impl TuiController {
                 web_search: self.session_setup.tool_ctx.web_search.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
+                workspace_api_base_url: self.session_setup.tool_ctx.workspace_api_base_url.clone(),
             },
             thinking: if self.session_setup.thinking_level == "off" {
                 None

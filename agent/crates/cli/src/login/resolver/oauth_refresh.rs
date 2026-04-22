@@ -211,10 +211,7 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
         .find_map(|method| resolve_env_provider_auth(&normalized, method))
 }
 
-pub fn resolve_provider_auth_choice(
-    provider: &str,
-    choice: &str,
-) -> Option<ResolvedProviderAuth> {
+pub fn resolve_provider_auth_choice(provider: &str, choice: &str) -> Option<ResolvedProviderAuth> {
     let normalized = normalize_provider_for_model_selection(provider);
     if let Some(profile_id) = choice.strip_prefix("profile:") {
         let store = load_auth();
