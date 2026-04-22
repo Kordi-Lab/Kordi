@@ -32,6 +32,7 @@ type ProjectSessionItem = {
   id: string;
   name: string;
   lastActive: string;
+  unread?: number;
 };
 
 type ProjectItem = {
@@ -147,6 +148,9 @@ export function WorkspaceSidebar({
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
+  const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
+  const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
+
   return (
     <aside className={cn('app-side-shell app-workspace-sidebar overflow-hidden', isSingleWorkspacePage ? 'rounded-none' : 'rounded-bl-[22px] rounded-r-none')}>
       <div className="flex h-full">
@@ -174,13 +178,18 @@ export function WorkspaceSidebar({
                   <button
                     key={item.id}
                     onClick={() => setActiveNav(item.id)}
-                    className={`app-workspace-nav-button grid h-10 w-10 place-items-center rounded-full transition ${
+                    className={`app-workspace-nav-button relative grid h-10 w-10 place-items-center rounded-full transition ${
                       active
                         ? 'bg-transparent shadow-none'
                         : 'text-slate-300 hover:bg-transparent'
                     }`}
                   >
                     <Icon className={cn('h-[18px] w-[18px]', active ? navAccentClasses[item.id] : 'text-slate-300')} />
+                    {item.id === 'chats' && totalUnread > 0 ? (
+                      <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
+                        {formatUnreadCount(totalUnread)}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -208,6 +217,9 @@ export function WorkspaceSidebar({
                   <div className="mb-2.5 flex items-start justify-between gap-2.5">
                     <div>
                       <div className="text-[15px] font-semibold text-white">{chatConversations.length} sessions</div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        {totalUnread > 0 ? `${formatUnreadCount(totalUnread)} unread updates` : 'Everything read'}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -294,7 +306,11 @@ export function WorkspaceSidebar({
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
                                   <div className="flex items-center gap-1.5">
-                                    {conversation.unread > 0 && <span className="h-1.5 w-1.5 rounded-full bg-slate-100/90" />}
+                                    {conversation.unread > 0 ? (
+                                      <span className="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
+                                        {formatUnreadCount(conversation.unread)}
+                                      </span>
+                                    ) : null}
                                     <span className="w-[4.1rem] shrink-0 text-right text-[10px] tabular-nums text-slate-500">{rowTimeLabel}</span>
                                   </div>
                                 </div>
@@ -387,7 +403,14 @@ export function WorkspaceSidebar({
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
                                         )}
                                       >
-                                        <div className="truncate text-[12px] font-medium">{session.name}</div>
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="truncate text-[12px] font-medium">{session.name}</div>
+                                          {session.unread && session.unread > 0 ? (
+                                            <span className="inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950">
+                                              {formatUnreadCount(session.unread)}
+                                            </span>
+                                          ) : null}
+                                        </div>
                                         <div className="mt-0.5 truncate text-[11px] text-slate-400">{session.lastActive}</div>
                                       </button>
                                     );

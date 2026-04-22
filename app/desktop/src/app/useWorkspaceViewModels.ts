@@ -32,6 +32,7 @@ type UseWorkspaceViewModelsArgs = {
   activeAgentId: string;
   cachedChatSessionMessages: Record<string, Message[]>;
   cachedProjectSessionMessages: Record<string, Message[]>;
+  localSessionUnreadCounts: Record<string, number>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
 
@@ -79,6 +80,7 @@ export function useWorkspaceViewModels({
   activeAgentId,
   cachedChatSessionMessages,
   cachedProjectSessionMessages,
+  localSessionUnreadCounts,
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
   const localChatConversations = useMemo(() => {
@@ -97,7 +99,7 @@ export function useWorkspaceViewModels({
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: session.subtitle,
-        unread: 0,
+        unread: localSessionUnreadCounts[session.id] ?? 0,
         bridges: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
@@ -107,7 +109,7 @@ export function useWorkspaceViewModels({
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [cachedChatSessionMessages, desktopChatState, isNativeShell, mapDesktopMessages]);
+  }, [cachedChatSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -342,13 +344,14 @@ export function useWorkspaceViewModels({
         participants: ['You', 'Kordi'],
         artifacts: project.sharedSources.length,
         tasks: 0,
+        unread: localSessionUnreadCounts[session.id] ?? 0,
         messages:
           desktopChatState.activeSessionId === session.id
             ? mapDesktopMessages(session.id, desktopChatState.activeSession.messages)
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.subtitle, time: session.updatedAtLabel }],
       })),
     }));
-  }, [cachedProjectSessionMessages, desktopChatState, isNativeShell, mapDesktopMessages, projectWorkspaces]);
+  }, [cachedProjectSessionMessages, desktopChatState, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();

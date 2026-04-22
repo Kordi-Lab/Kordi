@@ -11,6 +11,8 @@ use kordi_cli::desktop_runtime::{
 };
 use kordi_cli::turn_runner::TurnEvent;
 
+type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
+
 #[derive(Clone)]
 struct DesktopChatTurnHandle {
     snapshot: Arc<Mutex<DesktopChatTurnSnapshot>>,
@@ -19,7 +21,7 @@ struct DesktopChatTurnHandle {
 
 #[derive(Clone, Default)]
 pub struct DesktopChatManager {
-    sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopRuntimeSession>>>,
+    sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
 }
 
@@ -74,14 +76,19 @@ fn attachment_storage_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn snapshot_turn(snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>) -> Result<DesktopChatTurnSnapshot, String> {
+fn snapshot_turn(
+    snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
+) -> Result<DesktopChatTurnSnapshot, String> {
     snapshot
         .lock()
         .map(|value| value.clone())
         .map_err(|_| "Chat turn state is unavailable".to_string())
 }
 
-fn update_turn(snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>, apply: impl FnOnce(&mut DesktopChatTurnSnapshot)) {
+fn update_turn(
+    snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
+    apply: impl FnOnce(&mut DesktopChatTurnSnapshot),
+) {
     if let Ok(mut guard) = snapshot.lock() {
         apply(&mut guard);
     }
@@ -147,11 +154,16 @@ async fn ensure_loaded_session(
         if sessions.contains_key(&session_id) {
             return Ok(session_id);
         }
-        if persisted.iter().any(|session| session.id == session_id) || session_exists_globally(&session_id)? {
+        if persisted.iter().any(|session| session.id == session_id)
+            || session_exists_globally(&session_id)?
+        {
             let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
                 .await
                 .map_err(|err| err.to_string())?;
-            sessions.insert(session_id.clone(), runtime);
+            sessions.insert(
+                session_id.clone(),
+                Arc::new(tokio::sync::Mutex::new(runtime)),
+            );
             return Ok(session_id);
         }
     }
@@ -161,7 +173,10 @@ async fn ensure_loaded_session(
             let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
                 .await
                 .map_err(|err| err.to_string())?;
-            sessions.insert(session_id.clone(), runtime);
+            sessions.insert(
+                session_id.clone(),
+                Arc::new(tokio::sync::Mutex::new(runtime)),
+            );
         }
         return Ok(session_id);
     }
@@ -174,7 +189,10 @@ async fn ensure_loaded_session(
         .await
         .map_err(|err| err.to_string())?;
     let session_id = runtime.session_id().to_string();
-    sessions.insert(session_id.clone(), runtime);
+    sessions.insert(
+        session_id.clone(),
+        Arc::new(tokio::sync::Mutex::new(runtime)),
+    );
     Ok(session_id)
 }
 
@@ -186,39 +204,57 @@ async fn build_chat_state(
     let persisted =
         kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
     let model_options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
-    let projects = kordi_cli::desktop_runtime::list_project_groups(cwd).map_err(|err| err.to_string())?;
-    let mut sessions = manager.sessions.lock().await;
+    let projects =
+        kordi_cli::desktop_runtime::list_project_groups(cwd).map_err(|err| err.to_string())?;
+    let active_runtime = {
+        let mut sessions = manager.sessions.lock().await;
 
-    if !sessions.contains_key(&active_session_id) {
-        let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &active_session_id)
-            .await
-            .map_err(|err| err.to_string())?;
-        sessions.insert(active_session_id.clone(), runtime);
-    }
+        if !sessions.contains_key(&active_session_id) {
+            let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &active_session_id)
+                .await
+                .map_err(|err| err.to_string())?;
+            sessions.insert(
+                active_session_id.clone(),
+                Arc::new(tokio::sync::Mutex::new(runtime)),
+            );
+        }
 
-    let active_runtime = sessions
-        .get(&active_session_id)
-        .ok_or_else(|| "Active session is unavailable".to_string())?;
-    let active_session = active_runtime.detail().map_err(|err| err.to_string())?;
-    let slash_commands = active_runtime.slash_commands();
+        sessions
+            .get(&active_session_id)
+            .cloned()
+            .ok_or_else(|| "Active session is unavailable".to_string())?
+    };
+
+    let (active_session, slash_commands) = {
+        let active_runtime = active_runtime.lock().await;
+        (
+            active_runtime.detail().map_err(|err| err.to_string())?,
+            active_runtime.slash_commands(),
+        )
+    };
 
     let mut summaries = persisted;
-    let active_exists = summaries.iter().any(|session| session.id == active_session_id);
+    let active_exists = summaries
+        .iter()
+        .any(|session| session.id == active_session_id);
     if !active_exists {
-        summaries.insert(
-            0,
-            sessions
-                .get(&active_session_id)
-                .ok_or_else(|| "Active session is unavailable".to_string())?
-                .summary()
-                .map_err(|err| err.to_string())?,
-        );
+        let active_runtime = active_runtime.lock().await;
+        summaries.insert(0, active_runtime.summary().map_err(|err| err.to_string())?);
     }
 
-    for (session_id, runtime) in sessions.iter() {
-        if summaries.iter().any(|session| session.id == *session_id) {
+    let session_handles = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .iter()
+            .map(|(session_id, runtime)| (session_id.clone(), runtime.clone()))
+            .collect::<Vec<_>>()
+    };
+
+    for (session_id, runtime) in session_handles {
+        if summaries.iter().any(|session| session.id == session_id) {
             continue;
         }
+        let runtime = runtime.lock().await;
         summaries.push(runtime.summary().map_err(|err| err.to_string())?);
     }
 
@@ -250,7 +286,8 @@ pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Resul
         .and_then(|value| value.to_str())
         .map(|value| format!(".{value}"))
         .unwrap_or_default();
-    let path = attachment_storage_dir()?.join(format!("{}-{}{}", stem, uuid::Uuid::new_v4(), extension));
+    let path =
+        attachment_storage_dir()?.join(format!("{}-{}{}", stem, uuid::Uuid::new_v4(), extension));
     std::fs::write(&path, data).map_err(|err| err.to_string())?;
     Ok(path.display().to_string())
 }
@@ -274,7 +311,10 @@ pub async fn desktop_chat_new_session(
         .await
         .map_err(|err| err.to_string())?;
     let session_id = runtime.session_id().to_string();
-    manager.sessions.lock().await.insert(session_id.clone(), runtime);
+    manager.sessions.lock().await.insert(
+        session_id.clone(),
+        Arc::new(tokio::sync::Mutex::new(runtime)),
+    );
     build_chat_state(&manager, &cwd, session_id).await
 }
 
@@ -287,10 +327,14 @@ pub async fn desktop_chat_update_session_config(
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let mut sessions = manager.sessions.lock().await;
-    let session = sessions
-        .get_mut(&target_session_id)
-        .ok_or_else(|| "Session is unavailable".to_string())?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+    let mut session = session.lock().await;
 
     if let Some(model) = model.as_deref() {
         session.set_model(model).map_err(|err| err.to_string())?;
@@ -300,7 +344,6 @@ pub async fn desktop_chat_update_session_config(
             .set_thinking(thinking)
             .map_err(|err| err.to_string())?;
     }
-    drop(sessions);
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -313,12 +356,15 @@ pub async fn desktop_chat_rename_session(
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let mut sessions = manager.sessions.lock().await;
-    let session = sessions
-        .get_mut(&target_session_id)
-        .ok_or_else(|| "Session is unavailable".to_string())?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+    let mut session = session.lock().await;
     session.set_name(&name).map_err(|err| err.to_string())?;
-    drop(sessions);
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -331,12 +377,18 @@ pub async fn desktop_chat_send_message(
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let mut sessions = manager.sessions.lock().await;
-    let session = sessions
-        .get_mut(&target_session_id)
-        .ok_or_else(|| "Session is unavailable".to_string())?;
-    session.send_message(text, Vec::new()).await.map_err(|err| err.to_string())?;
-    drop(sessions);
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+    let mut session = session.lock().await;
+    session
+        .send_message(text, Vec::new())
+        .await
+        .map_err(|err| err.to_string())?;
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -379,124 +431,129 @@ pub async fn desktop_chat_start_message(
         );
     }
 
-    let manager_state = manager.inner().clone();
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+
     let snapshot_for_task = snapshot.clone();
     tokio::spawn(async move {
-        let mut sessions = manager_state.sessions.lock().await;
-        let Some(session) = sessions.get_mut(&target_session_id) else {
-            update_turn(&snapshot_for_task, |state| {
-                state.status = "failed".to_string();
-                state.message = "Session is unavailable".to_string();
-                state.error = Some("Session is unavailable".to_string());
-                state.completed = true;
-                state.succeeded = false;
-            });
-            return;
-        };
+        let mut session = session.lock().await;
 
-        let result = session
-            .send_message_streaming(text, attachment_paths, cancel.clone(), |event| match event {
-                TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
-                    state.status = "streaming".to_string();
-                    state.message = "Streaming response…".to_string();
-                }),
-                TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
-                    state.status = "writing".to_string();
-                    state.message = "Writing response…".to_string();
-                    state.assistant_text.push_str(text);
-                }),
-                TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
-                    state.status = "thinking".to_string();
-                    state.message = "Thinking…".to_string();
-                    state.thinking_text.push_str(text);
-                }),
-                TurnEvent::ToolCallStart { id, name } => update_turn(&snapshot_for_task, |state| {
-                    state.status = "tooling".to_string();
-                    state.message = format!("Preparing {name}…");
-                    state.tools.push(DesktopChatToolSnapshot {
-                        id: id.clone(),
-                        name: name.clone(),
-                        status: "preparing".to_string(),
-                        arguments: String::new(),
-                        live_output: String::new(),
-                        result_text: None,
-                        detail: None,
-                        is_error: false,
-                    });
-                }),
-                TurnEvent::ToolCallDelta { id, args } => update_turn(&snapshot_for_task, |state| {
-                    if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                        tool.arguments.push_str(args);
+        let result =
+            session
+                .send_message_streaming(text, attachment_paths, cancel.clone(), |event| match event
+                {
+                    TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
+                        state.status = "streaming".to_string();
+                        state.message = "Streaming response…".to_string();
+                    }),
+                    TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
+                        state.status = "writing".to_string();
+                        state.message = "Writing response…".to_string();
+                        state.assistant_text.push_str(text);
+                    }),
+                    TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
+                        state.status = "thinking".to_string();
+                        state.message = "Thinking…".to_string();
+                        state.thinking_text.push_str(text);
+                    }),
+                    TurnEvent::ToolCallStart { id, name } => {
+                        update_turn(&snapshot_for_task, |state| {
+                            state.status = "tooling".to_string();
+                            state.message = format!("Preparing {name}…");
+                            state.tools.push(DesktopChatToolSnapshot {
+                                id: id.clone(),
+                                name: name.clone(),
+                                status: "preparing".to_string(),
+                                arguments: String::new(),
+                                live_output: String::new(),
+                                result_text: None,
+                                detail: None,
+                                is_error: false,
+                            });
+                        })
                     }
-                }),
-                TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
-                    state.status = "tooling".to_string();
-                    state.message = "Running tool…".to_string();
-                    if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                        tool.status = "running".to_string();
+                    TurnEvent::ToolCallDelta { id, args } => {
+                        update_turn(&snapshot_for_task, |state| {
+                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                tool.arguments.push_str(args);
+                            }
+                        })
                     }
-                }),
-                TurnEvent::ToolOutputDelta { id, chunk } => update_turn(&snapshot_for_task, |state| {
-                    if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                        tool.status = "running".to_string();
-                        tool.live_output.push_str(chunk);
+                    TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
+                        state.status = "tooling".to_string();
+                        state.message = "Running tool…".to_string();
+                        if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                            tool.status = "running".to_string();
+                        }
+                    }),
+                    TurnEvent::ToolOutputDelta { id, chunk } => {
+                        update_turn(&snapshot_for_task, |state| {
+                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                tool.status = "running".to_string();
+                                tool.live_output.push_str(chunk);
+                            }
+                        })
                     }
-                }),
-                TurnEvent::ToolResult {
-                    id,
-                    content,
-                    details,
-                    is_error,
-                    ..
-                } => update_turn(&snapshot_for_task, |state| {
-                    state.status = "tooling".to_string();
-                    state.message = if *is_error {
-                        "Tool failed".to_string()
-                    } else {
-                        "Tool finished".to_string()
-                    };
-                    if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                        tool.status = if *is_error {
-                            "error".to_string()
+                    TurnEvent::ToolResult {
+                        id,
+                        content,
+                        details,
+                        is_error,
+                        ..
+                    } => update_turn(&snapshot_for_task, |state| {
+                        state.status = "tooling".to_string();
+                        state.message = if *is_error {
+                            "Tool failed".to_string()
                         } else {
-                            "done".to_string()
+                            "Tool finished".to_string()
                         };
-                        tool.result_text = Some(content_blocks_to_text(content));
-                        tool.detail = tool_detail(details);
-                        tool.is_error = *is_error;
-                        tool.live_output.clear();
+                        if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                            tool.status = if *is_error {
+                                "error".to_string()
+                            } else {
+                                "done".to_string()
+                            };
+                            tool.result_text = Some(content_blocks_to_text(content));
+                            tool.detail = tool_detail(details);
+                            tool.is_error = *is_error;
+                            tool.live_output.clear();
+                        }
+                    }),
+                    TurnEvent::TurnEnd => update_turn(&snapshot_for_task, |state| {
+                        state.status = "finalizing".to_string();
+                        state.message = "Finalizing response…".to_string();
+                    }),
+                    TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
+                        update_turn(&snapshot_for_task, |state| {
+                            state.status = "failed".to_string();
+                            state.message = message.clone();
+                            state.error = Some(message.clone());
+                        })
                     }
-                }),
-                TurnEvent::TurnEnd => update_turn(&snapshot_for_task, |state| {
-                    state.status = "finalizing".to_string();
-                    state.message = "Finalizing response…".to_string();
-                }),
-                TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
-                    update_turn(&snapshot_for_task, |state| {
-                        state.status = "failed".to_string();
-                        state.message = message.clone();
-                        state.error = Some(message.clone());
-                    })
-                }
-                TurnEvent::AutoRetryStart {
-                    attempt,
-                    max_attempts,
-                    ..
-                } => update_turn(&snapshot_for_task, |state| {
-                    state.status = "retrying".to_string();
-                    state.message = format!("Retrying request ({attempt}/{max_attempts})…");
-                }),
-                TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
-                    state.status = "streaming".to_string();
-                    state.message = "Retry complete. Continuing…".to_string();
-                }),
-                TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
-                    state.status = "compacting".to_string();
-                    state.message = "Auto-compacting session…".to_string();
-                }),
-                TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
-            })
-            .await;
+                    TurnEvent::AutoRetryStart {
+                        attempt,
+                        max_attempts,
+                        ..
+                    } => update_turn(&snapshot_for_task, |state| {
+                        state.status = "retrying".to_string();
+                        state.message = format!("Retrying request ({attempt}/{max_attempts})…");
+                    }),
+                    TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
+                        state.status = "streaming".to_string();
+                        state.message = "Retry complete. Continuing…".to_string();
+                    }),
+                    TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
+                        state.status = "compacting".to_string();
+                        state.message = "Auto-compacting session…".to_string();
+                    }),
+                    TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
+                })
+                .await;
 
         match result {
             Ok(_) if cancel.is_cancelled() => update_turn(&snapshot_for_task, |state| {
@@ -541,10 +598,14 @@ pub async fn desktop_chat_run_skill_command(
 ) -> Result<String, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let mut sessions = manager.sessions.lock().await;
-    let session = sessions
-        .get_mut(&target_session_id)
-        .ok_or_else(|| "Session is unavailable".to_string())?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+    let mut session = session.lock().await;
     session
         .run_skill_command(&text)
         .await

@@ -118,6 +118,7 @@ export type ProjectSession = {
   participants: string[];
   artifacts: number;
   tasks: number;
+  unread?: number;
   messages: Message[];
 };
 
