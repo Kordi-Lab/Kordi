@@ -1,6 +1,12 @@
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::constants::{
+    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
+    BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT,
+    BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING,
+    BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+};
 use super::{
     append_conversation_message, build_bridge_state, build_current_bridge_state,
     current_local_server_status, default_display_name, fetch_mailbox, load_bridge_store,
@@ -9,17 +15,6 @@ use super::{
     upsert_bridge_conversation, DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
     DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
-
-const ASK_MESSAGE_TYPE: &str = "ask";
-const RAW_MESSAGE_TYPE: &str = "raw";
-const RESPONSE_MESSAGE_TYPE: &str = "response";
-const DELIVERY_EVENT_MESSAGE_TYPE: &str = "delivery_event";
-const TYPING_MESSAGE_TYPE: &str = "typing";
-const HEARTBEAT_MESSAGE_TYPE: &str = "heartbeat";
-const DEFAULT_BRIDGE_RUNTIME: &str = "bridge-node";
-const SENT_DELIVERY_STATE: &str = "sent";
-const RESPONDED_DELIVERY_STATE: &str = "responded";
-const DELIVERED_DELIVERY_STATE: &str = "delivered";
 
 #[derive(Clone)]
 struct ConversationContext {
@@ -44,9 +39,9 @@ fn outbound_message_type(peer_runtime: &str) -> &'static str {
         || runtime.contains("pi")
         || runtime.contains("bot")
     {
-        ASK_MESSAGE_TYPE
+        BRIDGE_MESSAGE_TYPE_ASK
     } else {
-        RAW_MESSAGE_TYPE
+        BRIDGE_MESSAGE_TYPE_RAW
     }
 }
 
@@ -112,11 +107,11 @@ async fn rebuild_state(
 
 fn outbound_payload(context: &ConversationContext, request_id: &str, message: &str) -> Value {
     let message_type = outbound_message_type(&context.conversation.peer_runtime);
-    if message_type == ASK_MESSAGE_TYPE {
+    if message_type == BRIDGE_MESSAGE_TYPE_ASK {
         serde_json::json!({
             "from": context.host.node_id,
             "projectId": context.conversation.project_id,
-            "messageType": ASK_MESSAGE_TYPE,
+            "messageType": BRIDGE_MESSAGE_TYPE_ASK,
             "requestId": request_id,
             "payload": { "question": message },
         })
@@ -124,7 +119,7 @@ fn outbound_payload(context: &ConversationContext, request_id: &str, message: &s
         serde_json::json!({
             "from": context.host.node_id,
             "projectId": context.conversation.project_id,
-            "messageType": RAW_MESSAGE_TYPE,
+            "messageType": BRIDGE_MESSAGE_TYPE_RAW,
             "requestId": request_id,
             "payload": { "message": message },
         })
@@ -152,7 +147,7 @@ fn parse_mailbox_event(item: &Value) -> Option<ParsedMailboxEvent> {
         message_type: parsed
             .get("messageType")
             .and_then(|value| value.as_str())
-            .unwrap_or(RAW_MESSAGE_TYPE)
+            .unwrap_or(BRIDGE_MESSAGE_TYPE_RAW)
             .to_string(),
         payload: parsed.get("payload").cloned().unwrap_or(Value::Null),
         request_id: parsed
@@ -179,7 +174,7 @@ fn apply_delivery_event(
             .payload
             .get("state")
             .and_then(|value| value.as_str())
-            .unwrap_or(DELIVERED_DELIVERY_STATE);
+            .unwrap_or(BRIDGE_DELIVERY_STATE_DELIVERED);
         update_message_delivery_state(conversations, target_request_id, state);
     }
 }
@@ -190,7 +185,7 @@ fn apply_presence_event(
     event: &ParsedMailboxEvent,
 ) -> bool {
     match event.message_type.as_str() {
-        TYPING_MESSAGE_TYPE => {
+        BRIDGE_MESSAGE_TYPE_TYPING => {
             note_peer_typing(
                 conversations,
                 &host.id,
@@ -200,7 +195,7 @@ fn apply_presence_event(
             );
             true
         }
-        HEARTBEAT_MESSAGE_TYPE => {
+        BRIDGE_MESSAGE_TYPE_HEARTBEAT => {
             note_peer_heartbeat(
                 conversations,
                 &host.id,
@@ -233,7 +228,7 @@ fn append_inbound_event_message(
         DEFAULT_BRIDGE_RUNTIME.to_string(),
         event.project_id.clone(),
         None,
-        if event.message_type == RESPONSE_MESSAGE_TYPE {
+        if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
             "inbound-response"
         } else {
             "inbound"
@@ -251,8 +246,8 @@ async fn acknowledge_inbound_delivery(host: &DesktopBridgeHostConfig, event: &Pa
     if let Some(request_id) = event.request_id.as_deref() {
         let ack = serde_json::json!({
             "from": host.node_id,
-            "messageType": DELIVERY_EVENT_MESSAGE_TYPE,
-            "payload": { "requestId": request_id, "state": DELIVERED_DELIVERY_STATE },
+            "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+            "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_DELIVERED },
         });
         let _ = relay_plaintext_message(
             &host.coordination,
@@ -270,7 +265,7 @@ async fn apply_mailbox_event(
     conversations: &mut DesktopBridgeConversationStore,
     event: ParsedMailboxEvent,
 ) {
-    if event.message_type == DELIVERY_EVENT_MESSAGE_TYPE {
+    if event.message_type == BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT {
         apply_delivery_event(conversations, &event);
         return;
     }
@@ -281,9 +276,13 @@ async fn apply_mailbox_event(
         return;
     }
 
-    if event.message_type == RESPONSE_MESSAGE_TYPE {
+    if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
         if let Some(request_id) = event.request_id.as_deref() {
-            update_message_delivery_state(conversations, request_id, RESPONDED_DELIVERY_STATE);
+            update_message_delivery_state(
+                conversations,
+                request_id,
+                BRIDGE_DELIVERY_STATE_RESPONDED,
+            );
         }
     } else {
         acknowledge_inbound_delivery(host, &event).await;
@@ -338,7 +337,8 @@ pub(super) async fn desktop_bridge_send_presence_impl(
     kind: String,
 ) -> Result<DesktopBridgeState, String> {
     let presence_kind = kind.trim().to_lowercase();
-    if presence_kind != TYPING_MESSAGE_TYPE && presence_kind != HEARTBEAT_MESSAGE_TYPE {
+    if presence_kind != BRIDGE_MESSAGE_TYPE_TYPING && presence_kind != BRIDGE_MESSAGE_TYPE_HEARTBEAT
+    {
         return Err("Unsupported bridge presence event".to_string());
     }
 
@@ -371,7 +371,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
     }
 
     let (store, mut conversations, context) = load_conversation_context(&conversation_id)?;
-    let request_id = format!("bridge_req_{}", Uuid::new_v4().simple());
+    let request_id = format!("{}{}", BRIDGE_REQUEST_ID_PREFIX, Uuid::new_v4().simple());
     let payload = outbound_payload(&context, &request_id, message);
 
     relay_plaintext_message(
@@ -402,7 +402,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         ),
         message.to_string(),
         Some(request_id),
-        Some(SENT_DELIVERY_STATE.to_string()),
+        Some(BRIDGE_DELIVERY_STATE_SENT.to_string()),
         false,
     );
     if let Some(record) = conversations
@@ -454,15 +454,21 @@ mod tests {
 
     #[test]
     fn outbound_message_type_uses_ask_for_agent_like_runtimes() {
-        assert_eq!(outbound_message_type("claude-code"), ASK_MESSAGE_TYPE);
-        assert_eq!(outbound_message_type("codex"), ASK_MESSAGE_TYPE);
-        assert_eq!(outbound_message_type("plain-terminal"), RAW_MESSAGE_TYPE);
+        assert_eq!(
+            outbound_message_type("claude-code"),
+            BRIDGE_MESSAGE_TYPE_ASK
+        );
+        assert_eq!(outbound_message_type("codex"), BRIDGE_MESSAGE_TYPE_ASK);
+        assert_eq!(
+            outbound_message_type("plain-terminal"),
+            BRIDGE_MESSAGE_TYPE_RAW
+        );
     }
 
     #[test]
     fn parse_mailbox_event_decodes_valid_payload() {
         let payload = serde_json::json!({
-            "messageType": RESPONSE_MESSAGE_TYPE,
+            "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
             "requestId": "req-1",
             "projectId": "proj-1",
             "payload": { "message": "hello" },
@@ -477,7 +483,7 @@ mod tests {
         let event = parse_mailbox_event(&item).expect("parse mailbox event");
 
         assert_eq!(event.from_node_id, "kd_peer");
-        assert_eq!(event.message_type, RESPONSE_MESSAGE_TYPE);
+        assert_eq!(event.message_type, BRIDGE_MESSAGE_TYPE_RESPONSE);
         assert_eq!(event.request_id.as_deref(), Some("req-1"));
         assert_eq!(event.project_id.as_deref(), Some("proj-1"));
         assert_eq!(mailbox_payload_text(&event.payload), "hello");

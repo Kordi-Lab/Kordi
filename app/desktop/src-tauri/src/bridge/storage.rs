@@ -7,13 +7,20 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+use super::constants::{
+    API_STYLE_REGISTRY, BRIDGE_CONVERSATION_ID_PREFIX, BRIDGE_HOST_ID_PREFIX,
+    BRIDGE_NODE_ID_PREFIX, DEFAULT_DISPLAY_NAME, DEFAULT_ENDPOINT, DEFAULT_OWNER_NAME,
+    DESKTOP_BRIDGE_CONFIG_FILE_NAME, DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME,
+    DESKTOP_BRIDGE_IDENTITY_FILE_NAME, DESKTOP_BRIDGE_SECRETS_FILE_NAME, HOSTED_BRIDGE_DIR_NAME,
+    KORDE_DIR_NAME, LEGACY_BRIDGE_CONFIG_FILE_NAME,
+};
 use super::{
     DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeIdentity,
     DesktopBridgeSecretsStore, DesktopBridgeStore, LegacyBridgeClientConfig,
 };
 
 pub(super) fn default_bridge_api_style() -> String {
-    "registry".to_string()
+    API_STYLE_REGISTRY.to_string()
 }
 
 pub(super) fn now_ms() -> i64 {
@@ -42,31 +49,31 @@ pub(super) fn format_time_label_with_seconds(timestamp_ms: i64) -> String {
 pub(super) fn korde_dir() -> Result<PathBuf, String> {
     let home =
         std::env::var("HOME").map_err(|_| "Unable to determine home directory".to_string())?;
-    Ok(PathBuf::from(home).join(".korde"))
+    Ok(PathBuf::from(home).join(KORDE_DIR_NAME))
 }
 
 pub(super) fn desktop_bridge_config_path() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("desktop-bridges.json"))
+    Ok(korde_dir()?.join(DESKTOP_BRIDGE_CONFIG_FILE_NAME))
 }
 
 pub(super) fn desktop_bridge_conversations_path() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("desktop-bridge-conversations.json"))
+    Ok(korde_dir()?.join(DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME))
 }
 
 pub(super) fn desktop_bridge_secrets_path() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("desktop-bridge-secrets.json"))
+    Ok(korde_dir()?.join(DESKTOP_BRIDGE_SECRETS_FILE_NAME))
 }
 
 pub(super) fn legacy_bridge_config_path() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("config.json"))
+    Ok(korde_dir()?.join(LEGACY_BRIDGE_CONFIG_FILE_NAME))
 }
 
 pub(super) fn desktop_bridge_identity_path() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("desktop-bridge-identity.json"))
+    Ok(korde_dir()?.join(DESKTOP_BRIDGE_IDENTITY_FILE_NAME))
 }
 
 pub(super) fn hosted_bridge_dir() -> Result<PathBuf, String> {
-    Ok(korde_dir()?.join("hosted-bridge"))
+    Ok(korde_dir()?.join(HOSTED_BRIDGE_DIR_NAME))
 }
 
 pub(super) fn load_legacy_bridge_config() -> Option<LegacyBridgeClientConfig> {
@@ -166,7 +173,7 @@ pub(super) fn load_bridge_store() -> DesktopBridgeStore {
 
     if let Some(legacy) = load_legacy_bridge_config() {
         let host = DesktopBridgeHostConfig {
-            id: format!("bridge_{}", Uuid::new_v4().simple()),
+            id: format!("{}{}", BRIDGE_HOST_ID_PREFIX, Uuid::new_v4().simple()),
             coordination: legacy.coordination,
             node_id: legacy.node_id,
             api_key: legacy.api_key,
@@ -225,27 +232,27 @@ pub(super) fn default_display_name() -> String {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map(|value| format!("Kordi on {value}"))
-        .unwrap_or_else(|| "Kordi Desktop".to_string())
+        .unwrap_or_else(|| DEFAULT_DISPLAY_NAME.to_string())
 }
 
 pub(super) fn default_owner_name() -> String {
     std::env::var("USER")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Kordi User".to_string())
+        .unwrap_or_else(|| DEFAULT_OWNER_NAME.to_string())
 }
 
 pub(super) fn default_endpoint() -> String {
-    "http://127.0.0.1:39221/kordi-desktop".to_string()
+    DEFAULT_ENDPOINT.to_string()
 }
 
 pub(super) fn generate_registry_node_id() -> String {
     let raw = Uuid::new_v4().simple().to_string();
-    format!("kd_{}", &raw[..12])
+    format!("{}{}", BRIDGE_NODE_ID_PREFIX, &raw[..12])
 }
 
 pub(super) fn generate_host_id() -> String {
-    format!("bridge_{}", Uuid::new_v4().simple())
+    format!("{}{}", BRIDGE_HOST_ID_PREFIX, Uuid::new_v4().simple())
 }
 
 pub(super) fn bridge_conversation_id(
@@ -254,8 +261,10 @@ pub(super) fn bridge_conversation_id(
     project_id: Option<&str>,
 ) -> String {
     match project_id.filter(|value| !value.trim().is_empty()) {
-        Some(project_id) => format!("bridge:{host_id}:{peer_node_id}:{project_id}"),
-        None => format!("bridge:{host_id}:{peer_node_id}"),
+        Some(project_id) => {
+            format!("{BRIDGE_CONVERSATION_ID_PREFIX}{host_id}:{peer_node_id}:{project_id}")
+        }
+        None => format!("{BRIDGE_CONVERSATION_ID_PREFIX}{host_id}:{peer_node_id}"),
     }
 }
 
@@ -263,7 +272,11 @@ pub(super) fn derive_node_id(public_key: &VerifyingKey) -> String {
     let mut hasher = Sha256::new();
     hasher.update(public_key.as_bytes());
     let hash = hasher.finalize();
-    format!("kd_{}", bs58::encode(&hash[..20]).into_string())
+    format!(
+        "{}{}",
+        BRIDGE_NODE_ID_PREFIX,
+        bs58::encode(&hash[..20]).into_string()
+    )
 }
 
 pub(super) fn ed25519_to_x25519_public(ed_pub: &[u8; 32]) -> Result<[u8; 32], String> {

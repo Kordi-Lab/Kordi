@@ -1,3 +1,4 @@
+use super::constants::API_STYLE_SERVE;
 use super::{
     build_current_bridge_state, create_serve_invite, create_serve_project,
     current_local_server_status, join_serve_project, load_bridge_store, DesktopBridgeHostConfig,
@@ -26,7 +27,7 @@ fn require_serve_host(
     unsupported_message: &str,
 ) -> Result<DesktopBridgeHostConfig, String> {
     let host = find_host(store, host_id)?;
-    if host.api_style != "serve" {
+    if host.api_style != API_STYLE_SERVE {
         return Err(unsupported_message.to_string());
     }
     Ok(host)
