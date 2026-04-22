@@ -69,6 +69,17 @@ export function SettingsPage({
   themeMode,
   setThemeMode,
 }: SettingsPageProps) {
+  const sectionGuide =
+    activeSettingsSection.id === 'auth'
+      ? 'Start with one provider. Save more later only if you want fallbacks, different billing, or separate accounts.'
+      : activeSettingsSection.id === 'projects'
+        ? 'Put reusable team context here so you do not have to repeat it in every project session.'
+        : activeSettingsSection.id === 'configuration'
+          ? 'These defaults apply before per-chat or per-project overrides, so choose the safest common starting point.'
+          : activeSettingsSection.id === 'appearance'
+            ? 'If the shell feels too heavy or too dense, start here before changing anything else.'
+            : null;
+
   return (
     <div className="app-settings-page h-full" style={{ WebkitAppRegion: 'no-drag' as const }}>
       <div
@@ -106,9 +117,16 @@ export function SettingsPage({
             style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
           >
             {activeSettingsSection.id !== 'auth' && (
-              <div className="mb-5">
-                <div className="text-[18px] font-semibold tracking-tight text-white">{activeSettingsSection.title}</div>
-                <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">{activeSettingsSection.description}</div>
+              <div className="mb-5 space-y-3">
+                <div>
+                  <div className="text-[18px] font-semibold tracking-tight text-white">{activeSettingsSection.title}</div>
+                  <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">{activeSettingsSection.description}</div>
+                </div>
+                {sectionGuide ? (
+                  <div className="app-surface-muted rounded-[18px] px-4 py-3 text-[12px] leading-5 text-slate-300">
+                    {sectionGuide}
+                  </div>
+                ) : null}
               </div>
             )}
             {activeSettingsSection.id === 'auth' ? (
@@ -142,7 +160,7 @@ export function SettingsPage({
                     <div>
                       <div className="text-[15px] font-medium text-white">Project memory</div>
                       <div className="mt-1 text-[13px] leading-5 text-slate-400">
-                        Shared project context, background instructions, and information sources reused by every session in this project.
+                        Save the context every session in this project should inherit: project background, standing instructions, and trusted reference sources.
                       </div>
                     </div>
                     <Button
@@ -173,30 +191,30 @@ export function SettingsPage({
                         />
                       </div>
                       <div>
-                        <div className="mb-1.5 text-[12px] font-medium text-white">Shared context</div>
+                        <div className="mb-1.5 text-[12px] font-medium text-white">Project background</div>
                         <textarea
                           rows={4}
                           value={projectSettingsDraft.context}
                           onChange={(event) => updateProjectSettingsDraft((current) => ({ ...current, context: event.target.value }))}
                           className="app-input-shell app-settings-field min-h-[104px] w-full rounded-[14px] px-3 py-2 text-[13px] text-white outline-none"
-                          placeholder="Context shared by all sessions in this project"
+                          placeholder="What everyone working in this project should know"
                         />
                       </div>
                       <div>
-                        <div className="mb-1.5 text-[12px] font-medium text-white">Background system</div>
+                        <div className="mb-1.5 text-[12px] font-medium text-white">Standing instruction</div>
                         <textarea
                           rows={4}
                           value={projectSettingsDraft.systemPrompt}
                           onChange={(event) => updateProjectSettingsDraft((current) => ({ ...current, systemPrompt: event.target.value }))}
                           className="app-input-shell app-settings-field min-h-[104px] w-full rounded-[14px] px-3 py-2 text-[13px] text-white outline-none"
-                          placeholder="Persistent project-level instruction appended to system prompt"
+                          placeholder="A standing instruction Kordi should keep applying in this project"
                         />
                       </div>
                       <div>
                         <div className="mb-2 flex items-center justify-between gap-3">
                           <div>
-                            <div className="text-[12px] font-medium text-white">Shared information sources</div>
-                            <div className="mt-1 text-[11px] leading-5 text-slate-400">These sources appear across sessions under the same project.</div>
+                            <div className="text-[12px] font-medium text-white">Reference sources</div>
+                            <div className="mt-1 text-[11px] leading-5 text-slate-400">These links, docs, and files stay visible across sessions in the same project.</div>
                           </div>
                           <Button
                             variant="secondary"
@@ -253,14 +271,14 @@ export function SettingsPage({
                                     sharedSources: current.sharedSources.map((entry, currentIndex) => currentIndex === index ? { ...entry, detail: event.target.value } : entry),
                                   }))}
                                   className="app-input-shell app-settings-field w-full rounded-[13px] px-3 py-2 text-[12px] text-white outline-none"
-                                  placeholder="What this source is for"
+                                  placeholder="Why this source matters"
                                 />
                               </div>
                             </div>
                           ))}
                           {projectSettingsDraft.sharedSources.length === 0 ? (
                             <div className="app-inspector-empty py-3">
-                              No shared sources configured yet.
+                              No reference sources added yet.
                             </div>
                           ) : null}
                         </div>

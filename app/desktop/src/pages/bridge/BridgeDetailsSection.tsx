@@ -37,7 +37,7 @@ export function BridgeDetailsSection({
   setIdentityOwnerName,
 }: BridgeDetailsSectionProps) {
   if (!activeBridgeHost) {
-    return <EmptyState title="Select a bridge server first" detail="Choose a configured server to manage identity, discovery, and bridge agents." />;
+    return <EmptyState title="Select a host first" detail="Choose one of your saved hosts to adjust how you appear, which agents you use, and who you can reach." />;
   }
 
   const activeDefaultAgent = activeBridgeHost.agents.find((agent) => agent.isDefault) ?? activeBridgeHost.agents[0] ?? null;
@@ -50,25 +50,25 @@ export function BridgeDetailsSection({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-base">Server details</CardTitle>
+              <CardTitle className="text-base">Host identity and reachability</CardTitle>
               <div className="mt-1 break-all text-[12px] leading-5 text-slate-400">{activeBridgeHost.serverUrl}</div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveSection('servers')}>
-                Back to servers
+                Back to hosts
               </Button>
               <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveSection('advanced')}>
-                Advanced
+                Files & recovery
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-slate-300">
           <div className="app-bridge-overview-grid grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <OverviewStat title="Connection" value={activeBridgeHost.connected ? 'Connected' : 'Offline'} detail={`${activeBridgeHost.visiblePeerCount} visible on this host`} />
+            <OverviewStat title="Status" value={activeBridgeHost.connected ? 'Connected' : 'Offline'} detail={`${activeBridgeHost.visiblePeerCount} visible on this host`} />
             <OverviewStat title="Your name" value={activeBridgeHost.ownerName} detail={`Human ID: ${activeBridgeHost.humanId}`} breakAll />
-            <OverviewStat title="Primary agent" value={activeDefaultAgent?.label || activeBridgeHost.displayName} detail={`Agent ID: ${activeDefaultAgent?.id || 'pending'}`} breakAll />
-            <OverviewStat title="Discovery" value={discoveryLabel(activeBridgeHost.discoveryMode)} detail={`Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
+            <OverviewStat title="Default agent" value={activeDefaultAgent?.label || activeBridgeHost.displayName} detail={`Agent ID: ${activeDefaultAgent?.id || 'pending'}`} breakAll />
+            <OverviewStat title="Visibility" value={discoveryLabel(activeBridgeHost.discoveryMode)} detail={`Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
           </div>
           <div className="app-bridge-toolbar flex flex-wrap gap-2">
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => onCopyBridgeText(activeBridgeHost.serverUrl, 'Bridge host URL copied')}>
@@ -77,12 +77,12 @@ export function BridgeDetailsSection({
             <Button
               variant="secondary"
               className="rounded-[14px] text-[12px]"
-              onClick={() => onCopyBridgeText(`Join my Kordi bridge host:\n${activeBridgeHost.serverUrl}\nHuman ID: ${activeBridgeHost.humanId}\nDefault agent ID: ${activeDefaultAgent?.id ?? 'pending agent'}\nNode: ${activeBridgeHost.nodeId ?? 'pending registration'}`, 'Bridge share text copied')}
+              onClick={() => onCopyBridgeText(`Join my Kordi bridge host:\n${activeBridgeHost.serverUrl}\nHuman ID: ${activeBridgeHost.humanId}\nDefault agent ID: ${activeDefaultAgent?.id ?? 'pending agent'}\nNode: ${activeBridgeHost.nodeId ?? 'pending registration'}`, 'Bridge invite text copied')}
             >
-              <Link2 className="mr-2 h-4 w-4" /> Copy share text
+              <Link2 className="mr-2 h-4 w-4" /> Copy invite text
             </Button>
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('discover')} disabled={!activeBridgeHost.registered}>
-              Open discover
+              Open people & agents
             </Button>
           </div>
           <DetailNav activeStep={activeStep} setActiveStep={setActiveStep} activeBridgeHost={activeBridgeHost} />
@@ -163,7 +163,7 @@ function BridgeIdentityStep({
   return (
     <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
-        <CardTitle className="text-base">My identity on this host</CardTitle>
+        <CardTitle className="text-base">How you appear on this host</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm text-slate-300">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -181,7 +181,7 @@ function BridgeIdentityStep({
             placeholder="Your name"
           />
           <div className="mt-2 text-[11px] leading-5 text-slate-500">
-            Agent names are managed from the <span className="text-slate-300">Agents</span> page.
+            People on this host will see this human name first. Agent names are managed separately on the <span className="text-slate-300">Agents</span> page.
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button
@@ -206,7 +206,7 @@ function BridgeIdentityStep({
         </div>
 
         <div className="app-bridge-meta-block rounded-[18px] px-3 py-3">
-          <div className="mb-2 text-[12px] font-medium text-white">How visible should I be?</div>
+          <div className="mb-2 text-[12px] font-medium text-white">Who should be able to find me?</div>
           <DiscoveryModeSelector activeBridgeHost={activeBridgeHost} onSetBridgeDiscoveryMode={onSetBridgeDiscoveryMode} />
         </div>
 
@@ -217,12 +217,12 @@ function BridgeIdentityStep({
           <Button
             variant="secondary"
             className="rounded-[14px] text-[12px]"
-            onClick={() => onCopyBridgeText(`Join my Kordi bridge host:\n${activeBridgeHost.serverUrl}\nHuman ID: ${activeBridgeHost.humanId}\nDefault agent ID: ${activeDefaultAgent?.id ?? 'pending agent'}\nNode: ${activeBridgeHost.nodeId ?? 'pending registration'}`, 'Bridge share text copied')}
+            onClick={() => onCopyBridgeText(`Join my Kordi bridge host:\n${activeBridgeHost.serverUrl}\nHuman ID: ${activeBridgeHost.humanId}\nDefault agent ID: ${activeDefaultAgent?.id ?? 'pending agent'}\nNode: ${activeBridgeHost.nodeId ?? 'pending registration'}`, 'Bridge invite text copied')}
           >
-            <Link2 className="mr-2 h-4 w-4" /> Copy share text
+            <Link2 className="mr-2 h-4 w-4" /> Copy invite text
           </Button>
           <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('agents')}>
-            Next: My agents <ChevronRight className="ml-2 h-4 w-4" />
+            Next: choose an agent <ChevronRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
       </CardContent>
@@ -247,11 +247,11 @@ function BridgeAgentsStep({
     <div className="w-full space-y-4">
       <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">My agents</CardTitle>
+          <CardTitle className="text-base">My bridge agents</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3.5 text-sm text-slate-300">
           <div className="text-[12px] leading-5 text-slate-400">
-            Bridge decides which agent is active and which one is the default identity for this host. Agent naming belongs in the <span className="text-slate-200">Agents</span> page.
+            Pick which agent is active right now and which one should be the default identity for this host. Rename agents later from the <span className="text-slate-200">Agents</span> page.
           </div>
           <div className="space-y-2">
             {activeBridgeHost.agents.map((agent) => (
@@ -272,7 +272,7 @@ function BridgeAgentsStep({
                     <div className="mt-2 flex flex-wrap gap-2">
                       {!agent.isActive ? (
                         <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onActivateBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
-                          Use this agent
+                          Make active
                         </Button>
                       ) : null}
                       {!agent.isDefault ? (
@@ -299,12 +299,12 @@ function BridgeAgentsStep({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button className="rounded-[14px] text-[12px]" onClick={() => { void onCreateBridgeAgent(activeBridgeHost.id).catch(() => {}); }}>
-              <Plus className="mr-2 h-4 w-4" /> Add agent
+              <Plus className="mr-2 h-4 w-4" /> Create agent
             </Button>
           </div>
           <div className="flex justify-end">
             <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('discover')} disabled={!activeBridgeHost.registered}>
-              Next: Discover <ChevronRight className="ml-2 h-4 w-4" />
+              Next: people & agents <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </CardContent>
@@ -333,17 +333,17 @@ function BridgeDiscoverStep({
   onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
 }) {
   if (!activeBridgeHost.registered) {
-    return <EmptyState title="Finish setup first" detail="Once your current host is registered, discovery and direct chat will appear here." />;
+    return <EmptyState title="Finish setup first" detail="Once this host finishes registering, direct contacts and discovery will appear here." />;
   }
 
   return (
     <div className="w-full space-y-4">
       <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Direct contact by node ID</CardTitle>
+          <CardTitle className="text-base">Add someone by node ID</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-slate-300">
-          <div className="text-[12px] leading-5 text-slate-400">Know someone’s node ID already? Add them directly, then open a chat immediately.</div>
+          <div className="text-[12px] leading-5 text-slate-400">Already have someone’s node ID? Save it here and open a chat right away.</div>
           <div className="flex flex-col gap-2 md:flex-row">
             <input
               value={contactNodeId}
@@ -383,14 +383,14 @@ function BridgeDiscoverStep({
             </Button>
           </div>
           <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-            Current visibility: <span className="text-slate-200">{discoveryLabel(activeBridgeHost.discoveryMode)}</span>. Contacts and shared projects still work even when open discovery is off.
+            Current visibility: <span className="text-slate-200">{discoveryLabel(activeBridgeHost.discoveryMode)}</span>. Saved contacts and shared projects still work even when open discovery is off.
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-3.5 lg:grid-cols-2">
         <BridgePeerListCard
-          title="People on this host"
+          title="Visible people"
           emptyTitle="No people visible yet"
           emptyDetail="People appear here from contacts, shared projects, or open same-host discovery."
           peers={activeBridgePeople}
@@ -400,7 +400,7 @@ function BridgeDiscoverStep({
           onOpenBridgeConversation={onOpenBridgeConversation}
         />
         <BridgePeerListCard
-          title="Agents on this host"
+          title="Visible agents"
           emptyTitle="No agents visible yet"
           emptyDetail="Agents appear here from contacts, shared projects, or open same-host discovery."
           peers={activeBridgeAgents}
@@ -486,7 +486,7 @@ function BridgePeerCard({
           {peer.sharedProjects.length > 0 ? <div className="mt-1 text-[12px] text-slate-500">Shared projects: {peer.sharedProjects.join(' • ')}</div> : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => onOpenBridgeConversation(activeBridgeHostId, peer.nodeId, peer.displayName, peer.ownerName, peer.runtime)}>
-              Message
+              Open chat
             </Button>
             <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onRemoveBridgeContact(activeBridgeHostId, peer.nodeId).catch(() => {}); }}>
               Remove contact

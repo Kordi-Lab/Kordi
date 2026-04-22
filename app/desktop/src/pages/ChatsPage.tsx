@@ -23,7 +23,6 @@ import {
   ComposerSlashMenu,
   LiveChatTurnCard,
   MessageBubble,
-  StatusPill,
   TypeBadge,
   type ComposerAuthOption,
   type ComposerModelOption,
@@ -200,20 +199,14 @@ export function ChatsPage({
               ) : (
                 <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold">{activeConv.name}</h2>
               )}
-              <TypeBadge type={activeConv.type} />
+              <TypeBadge type={activeConv.type} compact />
             </div>
-            <div className="app-page-header-pills flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs text-slate-200">
-              <StatusPill>
-                <Shield className="h-3 w-3" /> {activeConv.trust}
-              </StatusPill>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
+              <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {activeConv.trust}</span>
               {activeConv.bridges.map((bridge) => (
-                <StatusPill key={bridge}>
-                  <Globe className="h-3 w-3" /> {bridge}
-                </StatusPill>
+                <span key={bridge} className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {bridge}</span>
               ))}
-              <StatusPill>
-                <ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}
-              </StatusPill>
+              <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}</span>
             </div>
             {activeConversationIsBridge ? (
               <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-400">
@@ -224,22 +217,23 @@ export function ChatsPage({
           </div>
         </div>
         {showRightDetailRail && (
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
-            className="app-icon-button app-utility-button mt-0.5 grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] text-slate-100 transition"
-            aria-label={isDetailPanelCollapsed ? 'Open session detail panel' : 'Close session detail panel'}
-            title={isDetailPanelCollapsed ? 'Open session detail panel' : 'Close session detail panel'}
+            className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+            aria-label={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
+            title={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
           >
-            <span className="translate-y-[-1px] text-[16px] font-medium leading-none tracking-[0.08em]">...</span>
-          </button>
+            {isDetailPanelCollapsed ? 'Details' : 'Hide details'}
+          </Button>
         )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea
           ref={chatTranscriptScrollRef}
-          className="h-full min-h-0 px-4 py-3"
+          className="h-full min-h-0 px-5 py-4"
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
@@ -255,7 +249,7 @@ export function ChatsPage({
         </ScrollArea>
       </div>
 
-      <div className="shrink-0 p-3">
+      <div className="shrink-0 px-5 pb-4 pt-3">
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
             {filteredChatSlashCommands.length > 0 ? (

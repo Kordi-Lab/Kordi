@@ -74,6 +74,11 @@ function buildConversationPreview(messages: Message[], fallback?: string) {
   return truncateInlineText(fallback ?? '', 72);
 }
 
+function preferLatestMessages(mappedMessages: Message[], cachedMessages?: Message[]) {
+  if (!cachedMessages) return mappedMessages;
+  return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
+}
+
 function buildSessionStatusIndicator({
   unreadCount,
   showBackgroundActivity,
@@ -140,7 +145,10 @@ export function useWorkspaceViewModels({
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
-        ? mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages)
+        ? preferLatestMessages(
+            mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
+            cachedChatSessionMessages[session.id],
+          )
         : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
       const statusIndicator = buildSessionStatusIndicator({
@@ -449,7 +457,10 @@ export function useWorkspaceViewModels({
       sessions: project.sessions.map((session) => {
         const messages =
           desktopChatState.activeSessionId === session.id
-            ? mapDesktopMessages(session.id, desktopChatState.activeSession.messages)
+            ? preferLatestMessages(
+                mapDesktopMessages(session.id, desktopChatState.activeSession.messages),
+                cachedProjectSessionMessages[session.id],
+              )
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
 
         const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;

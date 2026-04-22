@@ -60,13 +60,12 @@
 }
 
 .app-left-glass {
-  background: var(--app-left-glass-bg);
+  background: var(--app-side-bg);
   box-shadow:
     inset -1px 0 0 var(--app-left-glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 10px 22px rgba(2, 6, 23, 0.08);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-session-panel {
@@ -389,9 +388,9 @@
 }
 
 .app-composer-shell {
-  border: 1px solid var(--app-divider);
-  background: color-mix(in oklab, var(--app-card-bg) 84%, transparent);
-  box-shadow: var(--app-shadow-soft);
+  border: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);
+  background: color-mix(in oklab, var(--app-main-bg) 70%, transparent);
+  box-shadow: none;
 }
 
 .app-composer-input {
@@ -458,17 +457,17 @@
 }
 
 .app-chat-bubble-user {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
+  border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
   background: var(--app-chat-bubble-user-bg);
   color: var(--app-chat-bubble-user-text);
-  box-shadow: var(--app-shadow-soft);
+  box-shadow: none;
 }
 
 .app-chat-bubble-peer {
-  border: 1px solid var(--app-chat-bubble-peer-border);
+  border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent);
   background: var(--app-chat-bubble-peer-bg);
   color: var(--utility-foreground);
-  box-shadow: var(--app-shadow-soft);
+  box-shadow: none;
 }
 
 .app-badge-neutral,
@@ -498,14 +497,10 @@
 
 .app-detail-sheet {
   overflow: hidden;
-  border: 1px solid var(--app-divider);
-  border-radius: 24px;
-  background: color-mix(in oklab, var(--app-card-bg) 82%, transparent);
-  box-shadow:
-    0 10px 24px rgba(3, 8, 20, 0.09),
-    0 -4px 10px rgba(255, 255, 255, 0.01),
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+  border: 1px solid color-mix(in oklab, var(--app-divider) 66%, transparent);
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--app-card-bg) 70%, transparent);
+  box-shadow: none;
 }
 
 .app-detail-section {
@@ -551,7 +546,7 @@
 }
 
 .app-right-detail-rail {
-  background: transparent;
+  background: color-mix(in oklab, var(--app-main-bg) 26%, transparent);
 }
 
 .app-right-detail-rail .app-inspector-tabs {
@@ -698,8 +693,9 @@
 }
 
 .app-page-header {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: color-mix(in oklab, var(--app-main-bg) 78%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .app-page-header-title-row {
@@ -715,7 +711,10 @@
 }
 
 .app-workspace-sidebar .app-workspace-nav-button {
+  min-height: 48px;
   color: var(--utility-muted-text);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-workspace-note {
@@ -730,11 +729,11 @@
 }
 
 .app-workspace-sidebar .app-workspace-search {
-  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
 }
 
 .app-workspace-sidebar .app-filter-tabs {
-  background: color-mix(in oklab, var(--app-control-bg) 30%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
 }
 
 .app-workspace-sidebar .app-session-row {
@@ -746,8 +745,9 @@
 }
 
 .app-workspace-sidebar .app-session-row-active {
+  border-color: transparent;
   box-shadow: none;
-  background: color-mix(in oklab, var(--app-control-active) 54%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 40%, transparent);
 }
 
 .app-workspace-sidebar .app-project-group {

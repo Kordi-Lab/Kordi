@@ -34,10 +34,10 @@ export function BridgeSetupModeCards({
         )}
       >
         <div className="text-[12px] font-medium text-white">
-          I have a bridge host URL
+          I already have a host URL
         </div>
         <div className="mt-1 text-[11px] leading-5 text-slate-400">
-          Paste the hosted service URL and connect this desktop to it.
+          Paste the reachable URL and connect this desktop to that host.
         </div>
       </button>
       <button
@@ -51,10 +51,10 @@ export function BridgeSetupModeCards({
         )}
       >
         <div className="text-[12px] font-medium text-white">
-          I need to start a new host
+          I need to set up a host
         </div>
         <div className="mt-1 text-[11px] leading-5 text-slate-400">
-          Use the Kordi guide to host the server, then come back with the final hosted URL.
+          Open the Kordi guide, finish the hosted setup, then come back with the final URL.
         </div>
       </button>
     </div>
@@ -83,7 +83,7 @@ export function BridgeHostFields({
   return (
     <>
       <div>
-        <div className="mb-1.5 text-[12px] font-medium text-white">Bridge host URL</div>
+        <div className="mb-1.5 text-[12px] font-medium text-white">Host URL</div>
         <input
           value={serverUrl}
           onChange={(event) => onServerUrlChange(event.target.value)}
@@ -96,14 +96,14 @@ export function BridgeHostFields({
         <div className="mt-2 text-[11px] leading-5 text-slate-500">
           {serverUrlHint ?? (
             <>
-              Use the final public hosted URL here. Remote bridge hosts should use{' '}
+              Paste the final URL people should actually connect to. Hosted bridge URLs should usually use{' '}
               <span className="text-slate-300">https://</span>.
             </>
           )}
         </div>
       </div>
       <div>
-        <div className="mb-1.5 text-[12px] font-medium text-white">Your name</div>
+        <div className="mb-1.5 text-[12px] font-medium text-white">Name people will see</div>
         <input
           value={ownerName}
           onChange={(event) => onOwnerNameChange(event.target.value)}
@@ -114,7 +114,7 @@ export function BridgeHostFields({
           placeholder="Your name"
         />
         <div className="mt-2 text-[11px] leading-5 text-slate-500">
-          {ownerNameHint}
+          {ownerNameHint ?? 'This is the human name other people on the host will see first.'}
         </div>
       </div>
     </>
@@ -131,7 +131,7 @@ type BridgeDocsActionsProps = {
 export function BridgeDocsActions({
   className,
   buttonClassName,
-  guideLabel = 'Open server setup guide',
+  guideLabel = 'Open host setup guide',
   sourceLabel = 'Open Kordi Bridges source',
 }: BridgeDocsActionsProps) {
   return (

@@ -46,7 +46,7 @@ export function BridgeStorageInfoCard({
           <div>
             <div className="text-[12px] font-medium text-white">Stored on this desktop</div>
             <div className="mt-1 text-[11px] leading-5 text-slate-400">
-              Bridge host metadata is stored locally so you can reconnect quickly and inspect the desktop files. Exported JSON is redacted by default, so local bridge credentials stay on this desktop.
+              Kordi keeps host metadata locally so reconnecting is fast and the files stay inspectable. Exported JSON is redacted by default, so local bridge credentials stay on this desktop.
             </div>
           </div>
           <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => void onOpenBridgeConfigFolder()}>
@@ -204,9 +204,9 @@ export function BridgeSetupSection({
               <div className="app-bridge-empty-host-icon grid h-12 w-12 place-items-center rounded-full border border-white/12 bg-white/[0.06]">
                 <Plus className="h-5 w-5" />
               </div>
-              <div className="text-[15px] font-medium">Add bridge host</div>
+              <div className="text-[15px] font-medium">Add your first host</div>
               <div className="mx-auto max-w-[280px] text-[12px] leading-5 text-slate-400">
-                Connect your first hosted bridge server to start collaborating with other people and agents.
+                Paste a reachable host URL to start chatting and collaborating with people and agents on that bridge.
               </div>
             </div>
           </button>
@@ -219,7 +219,7 @@ export function BridgeSetupSection({
         <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-base">Configured bridge servers</CardTitle>
+              <CardTitle className="text-base">Your bridge hosts</CardTitle>
               <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={onRefreshBridge}>
                 Refresh
               </Button>
@@ -250,9 +250,9 @@ export function BridgeSetupSection({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-white">{host.serverUrl}</div>
-                    <div className="mt-1 text-[12px] text-slate-400">{host.connected ? 'Connected' : 'Offline'} • {host.visiblePeerCount} visible • {host.ownerName}</div>
+                    <div className="mt-1 text-[12px] text-slate-400">{host.connected ? 'Connected' : 'Offline'} • {host.visiblePeerCount} visible • shown as {host.ownerName}</div>
                     <div className="mt-1 break-all text-[12px] text-slate-500">Human ID: {host.humanId}</div>
-                    <div className="mt-1 break-all text-[12px] text-slate-500">Primary agent: {host.agents.find((agent) => agent.isDefault)?.label || host.displayName}</div>
+                    <div className="mt-1 break-all text-[12px] text-slate-500">Default agent: {host.agents.find((agent) => agent.isDefault)?.label || host.displayName}</div>
                   </div>
                   <div className="flex shrink-0 items-start gap-2">
                     <Button
@@ -283,7 +283,7 @@ export function BridgeSetupSection({
               setShowSetupComposer(true);
             }}
           >
-            <Plus className="mr-2 h-4 w-4" /> Add new server
+            <Plus className="mr-2 h-4 w-4" /> Add another host
           </Button>
         </div>
       </div>
@@ -295,15 +295,15 @@ export function BridgeSetupSection({
       <Card className="app-bridge-card app-bridge-panel app-bridge-setup-card rounded-[26px] border-white/10 bg-white/5 shadow-none">
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-base">Add or join bridge host</CardTitle>
+            <CardTitle className="text-base">Connect a bridge host</CardTitle>
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={closeSetupComposer}>
-              Back to servers
+              Back to hosts
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3.5 text-sm text-slate-300">
           <div className="text-[13px] leading-5 text-slate-400">
-            Choose whether you already have a hosted Bridges server URL, or whether you need to create one.
+            If someone already gave you a host URL, paste it here. If not, open the setup guide and come back when the host is ready.
           </div>
           {desktopBridgeError ? (
             <div className={cn(
@@ -326,21 +326,21 @@ export function BridgeSetupSection({
                 inputClassName="app-bridge-field"
                 ownerNameHint={(
                   <>
-                    Your primary agent name is managed from the <span className="text-slate-300">Agents</span> page.
+                    Agent naming happens later from the <span className="text-slate-300">Agents</span> page.
                   </>
                 )}
               />
               <div className="flex flex-wrap items-center gap-1.5">
                 <Button className="rounded-[14px] text-[12px]" onClick={() => onSaveBridgeSettings()} disabled={isDesktopBridgeSaving || !bridgeSettingsDraft.serverUrl.trim()}>
                   {isDesktopBridgeSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {bridgeSettingsDraft.hostId ? 'Save host' : 'Join host'}
+                  {bridgeSettingsDraft.hostId ? 'Save changes' : 'Connect host'}
                 </Button>
               </div>
             </>
           ) : (
             <NeedHostedBridgeNotice
-              callout="Bridges is for real collaboration, so you need a hosted bridge server URL that your teammates can actually reach."
-              detail="The Kordi server setup guide walks through running Bridges from this Kordi repo on your own VM, cloud machine, or always-on lab machine. Kordi Desktop already bundles the local bridge tooling, so teammates only need the final hosted URL here."
+              callout="You need a hosted bridge URL before this desktop can join a shared collaboration space."
+              detail="The Kordi setup guide walks through hosting Bridges on your own machine or server. Kordi Desktop already bundles the local bridge tooling, so once the host exists you only need the final URL here."
             />
           ) : null}
         </CardContent>
@@ -381,20 +381,20 @@ export function BridgeAdvancedSection({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-base">Advanced</CardTitle>
+              <CardTitle className="text-base">Files & recovery</CardTitle>
               <div className="mt-1 text-[12px] leading-5 text-slate-400">
-                Local storage, Finder tools, and bridge host config import/export live here so the main bridge flow stays focused on collaboration.
+                Local storage, Finder tools, and import/export live here so the main bridge flow can stay focused on people, agents, and chats.
               </div>
             </div>
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveSection('servers')}>
-              Back to servers
+              Back to hosts
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-slate-300">
           {activeBridgeHost ? (
             <div className="app-bridge-meta-block rounded-[18px] px-3 py-3">
-              <div className="text-[12px] font-medium text-white">Current server</div>
+              <div className="text-[12px] font-medium text-white">Current host</div>
               <div className="mt-1 break-all text-[12px] text-slate-300">{activeBridgeHost.serverUrl}</div>
               <div className="mt-1 text-[12px] text-slate-500">{activeBridgeHost.ownerName} • {activeBridgeHost.connected ? 'Connected' : 'Offline'}</div>
             </div>

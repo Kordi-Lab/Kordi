@@ -35,12 +35,14 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const rightDetailVisibleRef = useRef(false);
 
   const [isSessionPanelCollapsed, setIsSessionPanelCollapsed] = useState(false);
-  const [isDetailPanelCollapsed, setIsDetailPanelCollapsed] = useState(false);
+  const [isDetailPanelCollapsed, setIsDetailPanelCollapsed] = useState(
+    () => activeNav === 'chats' || activeNav === 'projects',
+  );
   const [windowSize, setWindowSize] = useState(() =>
     isNativeShell ? getViewportFillSize() : getInitialWindowSize(),
   );
-  const [sessionRailUserWidth, setSessionRailUserWidth] = useState(272);
-  const [detailRailUserWidth, setDetailRailUserWidth] = useState(388);
+  const [sessionRailUserWidth, setSessionRailUserWidth] = useState(248);
+  const [detailRailUserWidth, setDetailRailUserWidth] = useState(344);
   const [settingsMeasuredWidth, setSettingsMeasuredWidth] = useState<number | null>(null);
   const [isLayoutResizing, setIsLayoutResizing] = useState(false);
 

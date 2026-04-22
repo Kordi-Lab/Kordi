@@ -33,15 +33,15 @@ export function BridgeRemoveHostModal({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color:var(--app-overlay-bg)] px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
       <div className="app-modal-panel w-full max-w-[420px] rounded-[24px] border border-white/10 p-[18px] text-white shadow-[var(--app-shadow-float)]">
         <div className="mb-3">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Remove bridge server</div>
-          <div className="mt-1 text-[18px] font-semibold">Are you sure?</div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Remove host</div>
+          <div className="mt-1 text-[18px] font-semibold">Remove this host from this Mac?</div>
           <div className="mt-2 break-all text-[12px] leading-5 text-slate-400">{pendingRemoveHost.serverUrl}</div>
         </div>
         <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-[12px] leading-5 text-rose-100">
-          This removes the bridge host from this desktop and clears its local bridge conversations.
+          This removes the host from this desktop and clears the local bridge conversations saved for it.
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">
           <Button
@@ -110,12 +110,12 @@ export function BridgeWizardModal({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color:var(--app-overlay-bg)] px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
       <div className="app-modal-panel app-bridge-wizard-panel w-full max-w-[620px] rounded-[24px] border border-white/10 p-[18px] text-white shadow-[var(--app-shadow-float)]">
         <div className="mb-3.5 flex items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Bridge onboarding</div>
-            <div className="mt-1 text-[19px] font-semibold">Set up a bridge host</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Bridge setup</div>
+            <div className="mt-1 text-[19px] font-semibold">Connect a host in three steps</div>
           </div>
           <button type="button" className="app-icon-button rounded-full p-2 text-slate-300 transition hover:text-white" onClick={() => setBridgeWizardOpen(false)}>
             <X className="h-4 w-4" />
@@ -146,14 +146,14 @@ export function BridgeWizardModal({
                   onOwnerNameChange={(ownerName) => setBridgeWizardDraft((current) => ({ ...current, ownerName }))}
                   ownerNameHint={(
                     <>
-                      Primary agent naming is managed later from the <span className="text-slate-300">Agents</span> page.
+                      Agent naming happens later from the <span className="text-slate-300">Agents</span> page.
                     </>
                   )}
                 />
               ) : (
                 <NeedHostedBridgeNotice
-                  callout="You need a hosted bridge service URL before this desktop can join a collaboration host."
-                  detail="Start with the Kordi server setup guide if you want to configure the server stack yourself. Kordi Desktop already bundles the local bridge tooling, so after the server exists you only come back here with the final hosted URL."
+                  callout="You need a hosted bridge URL before this desktop can join a shared host."
+                  detail="Start with the Kordi host setup guide if you want to configure the stack yourself. Kordi Desktop already bundles the local bridge tooling, so once the host exists you only come back here with the final URL."
                 />
               )}
             </>
@@ -184,12 +184,12 @@ export function BridgeWizardModal({
             ) : (
               <div className="space-y-3">
                 <div className="app-bridge-meta-block rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[12px] leading-5 text-slate-300">
-                  Next step: finish configuring your hosted bridge from the Kordi repo, then return here with the final service URL. Kordi Desktop already includes the local bridge sidecar, so no separate client install is required just to connect.
+                  Next step: finish setting up the hosted bridge, then return here with the final URL. Kordi Desktop already includes the local bridge sidecar, so no extra client install is required just to connect.
                 </div>
                 <BridgeDocsActions
                   className="grid gap-2.5 md:grid-cols-2"
                   buttonClassName="justify-center"
-                  guideLabel="Server setup guide"
+                  guideLabel="Host setup guide"
                 />
               </div>
             )
@@ -202,11 +202,11 @@ export function BridgeWizardModal({
                   ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
                   : 'border border-white/10 bg-white/[0.04] text-slate-300',
               )}>
-                {bridgeWizardDraft.mode === 'have-url' ? 'Bridge setup is complete.' : 'Once your hosted bridge is ready, come back and connect it here.'}
+                {bridgeWizardDraft.mode === 'have-url' ? 'This host is ready to use.' : 'Once your hosted bridge is ready, come back and connect it here.'}
               </div>
               <div className="app-bridge-meta-block rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[12px] leading-5 text-slate-300">
                 {bridgeWizardDraft.mode === 'have-url'
-                  ? 'Next: confirm your identity, pick your default agent, then start discovering people and agents on this host.'
+                  ? 'Next: confirm how you appear, choose a default agent, then start discovering people and agents on this host.'
                   : 'You do not need to enter a URL in this wizard yet. Finish the hosting flow first, then return with the final hosted service URL.'}
               </div>
             </div>
