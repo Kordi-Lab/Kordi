@@ -399,10 +399,10 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
           meta="Reasoning trace"
           expanded={expandedThinking}
           onToggle={() => setExpandedThinking((current) => !current)}
-          badge={<span className="text-[11px] text-slate-500">{expandedThinking ? 'Hide' : 'Show'}</span>}
+          badge={<span className="text-[10px] text-slate-600">{expandedThinking ? 'Hide' : 'Show'}</span>}
         >
           <div className="pr-1">
-            <MarkdownContent text={turn.thinkingText} tone="muted" className="text-[13px] leading-6" />
+            <MarkdownContent text={turn.thinkingText} tone="muted" className="text-[12.5px] leading-[1.55rem]" />
           </div>
         </TimelineSection>
       ) : null}
@@ -422,12 +422,12 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             badge={
               <div
                 className={cn(
-                  'rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] leading-none',
+                  'rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-[0.08em] leading-none',
                   tool.status === 'error'
-                    ? 'bg-rose-500/15 text-rose-200'
+                    ? 'border-rose-400/10 bg-rose-500/6 text-rose-300/75'
                     : tool.status === 'done'
-                      ? 'bg-emerald-500/15 text-emerald-200'
-                      : 'bg-slate-500/15 text-slate-300',
+                      ? 'border-emerald-400/10 bg-emerald-500/6 text-emerald-300/75'
+                      : 'border-white/8 bg-white/[0.03] text-slate-400',
                 )}
               >
                 {tool.status}
