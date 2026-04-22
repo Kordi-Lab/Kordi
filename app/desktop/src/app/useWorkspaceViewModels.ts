@@ -74,8 +74,8 @@ function buildConversationPreview(messages: Message[], fallback?: string) {
   return truncateInlineText(fallback ?? '', 72);
 }
 
-function preferLatestMessages(mappedMessages: Message[], cachedMessages?: Message[]) {
-  if (!cachedMessages) return mappedMessages;
+function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message[] | undefined, preserveCachedMessages: boolean) {
+  if (!cachedMessages || !preserveCachedMessages) return mappedMessages;
   return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
 }
 
@@ -148,6 +148,7 @@ export function useWorkspaceViewModels({
         ? preferLatestMessages(
             mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
             cachedChatSessionMessages[session.id],
+            Boolean(desktopLiveTurnsBySession[session.id] && !desktopLiveTurnsBySession[session.id].completed),
           )
         : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
@@ -460,6 +461,7 @@ export function useWorkspaceViewModels({
             ? preferLatestMessages(
                 mapDesktopMessages(session.id, desktopChatState.activeSession.messages),
                 cachedProjectSessionMessages[session.id],
+                Boolean(desktopLiveTurnsBySession[session.id] && !desktopLiveTurnsBySession[session.id].completed),
               )
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
 

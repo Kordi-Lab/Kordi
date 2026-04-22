@@ -41,15 +41,20 @@ function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
   });
 }
 
-function mergeLatestDesktopChatState(current: DesktopChatState | null, nextState: DesktopChatState) {
+function mergeLatestDesktopChatState(
+  current: DesktopChatState | null,
+  nextState: DesktopChatState,
+  preserveActiveTranscript: boolean,
+) {
   if (!current) return nextState;
   if (current.activeSessionId !== nextState.activeSessionId || current.activeSession.id !== nextState.activeSession.id) {
     return nextState;
   }
 
-  const shouldPreserveActiveTranscript =
+  const shouldPreserveActiveTranscript = preserveActiveTranscript && (
     current.activeSession.messageCount > nextState.activeSession.messageCount
-    || current.activeSession.messages.length > nextState.activeSession.messages.length;
+    || current.activeSession.messages.length > nextState.activeSession.messages.length
+  );
 
   if (!shouldPreserveActiveTranscript) {
     return nextState;
@@ -134,10 +139,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (targetSessionId && nextState.activeSessionId !== targetSessionId) return;
 
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
-    setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState));
+    const activeLiveTurn = desktopLiveTurnsBySession[nextState.activeSessionId];
+    setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
     clearUnreadForSession(nextState.activeSessionId);
     setDesktopChatError(null);
-  }, [clearUnreadForSession]);
+  }, [clearUnreadForSession, desktopLiveTurnsBySession]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -187,7 +193,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     fetchDesktopChatState()
       .then((state) => {
         if (cancelled || !state) return;
-        setDesktopChatState((current) => mergeLatestDesktopChatState(current, state));
+        const activeLiveTurn = desktopLiveTurnsBySession[state.activeSessionId];
+        setDesktopChatState((current) => mergeLatestDesktopChatState(current, state, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
         clearUnreadForSession(state.activeSessionId);
         setDesktopChatError(null);
       })
@@ -204,7 +211,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     return () => {
       cancelled = true;
     };
-  }, [clearUnreadForSession, isNativeShell]);
+  }, [clearUnreadForSession, desktopLiveTurnsBySession, isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;
@@ -212,9 +219,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       desktopChatState.activeSessionId,
       desktopChatState.activeSession.messages,
     );
+    const activeLiveTurn = desktopLiveTurnsBySession[desktopChatState.activeSessionId];
+    const preserveExistingMessages = Boolean(activeLiveTurn && !activeLiveTurn.completed);
     setCachedChatSessionMessages((current) => {
       const existingMessages = current[desktopChatState.activeSessionId];
-      const nextMessages = existingMessages && existingMessages.length > mappedMessages.length
+      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length > mappedMessages.length
         ? existingMessages
         : mappedMessages;
       if (existingMessages === nextMessages) {
@@ -227,7 +236,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     });
     setCachedProjectSessionMessages((current) => {
       const existingMessages = current[desktopChatState.activeSessionId];
-      const nextMessages = existingMessages && existingMessages.length > mappedMessages.length
+      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length > mappedMessages.length
         ? existingMessages
         : mappedMessages;
       if (existingMessages === nextMessages) {
@@ -238,7 +247,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [desktopChatState.activeSessionId]: nextMessages,
       };
     });
-  }, [desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
+  }, [desktopChatState?.activeSession, desktopChatState?.activeSessionId, desktopLiveTurnsBySession, isNativeShell, mapDesktopMessages]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
     const finishedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
