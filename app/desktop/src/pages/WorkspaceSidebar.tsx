@@ -123,32 +123,37 @@ function SidebarSessionStatusIndicator({
   const toneClasses =
     indicator.tone === 'running'
       ? {
-          glow: active ? 'bg-sky-300/35' : 'bg-sky-400/26',
-          dot: active ? 'bg-sky-200 ring-sky-200/45' : 'bg-sky-300 ring-sky-300/35',
+          root: 'app-session-status-light app-session-status-light-running',
+          glow: active ? 'bg-sky-400/45' : 'bg-sky-500/38',
+          dot: active ? 'bg-sky-500 ring-sky-500/40' : 'bg-sky-500 ring-sky-500/34',
         }
       : indicator.tone === 'draft'
         ? {
-            glow: active ? 'bg-amber-300/28' : 'bg-amber-400/18',
-            dot: active ? 'bg-amber-200 ring-amber-200/35' : 'bg-amber-300 ring-amber-300/25',
+            root: 'app-session-status-light app-session-status-light-draft',
+            glow: active ? 'bg-amber-400/34' : 'bg-amber-500/26',
+            dot: active ? 'bg-amber-500 ring-amber-500/30' : 'bg-amber-500 ring-amber-500/24',
           }
         : indicator.tone === 'error'
           ? {
-              glow: active ? 'bg-rose-300/30' : 'bg-rose-400/20',
-              dot: active ? 'bg-rose-200 ring-rose-200/40' : 'bg-rose-300 ring-rose-300/30',
+              root: 'app-session-status-light app-session-status-light-error',
+              glow: active ? 'bg-rose-400/34' : 'bg-rose-500/28',
+              dot: active ? 'bg-rose-500 ring-rose-500/32' : 'bg-rose-500 ring-rose-500/28',
             }
           : indicator.tone === 'stopped'
             ? {
-                glow: active ? 'bg-slate-200/18' : 'bg-white/10',
-                dot: active ? 'bg-slate-200 ring-slate-200/30' : 'bg-slate-300 ring-slate-300/18',
+                root: 'app-session-status-light app-session-status-light-stopped',
+                glow: active ? 'bg-slate-400/22' : 'bg-slate-400/18',
+                dot: active ? 'bg-slate-400 ring-slate-400/24' : 'bg-slate-400 ring-slate-400/20',
               }
             : {
-                glow: active ? 'bg-emerald-300/26' : 'bg-emerald-400/18',
-                dot: active ? 'bg-emerald-200 ring-emerald-200/38' : 'bg-emerald-300 ring-emerald-300/24',
+                root: 'app-session-status-light app-session-status-light-unread',
+                glow: active ? 'bg-emerald-400/38' : 'bg-emerald-500/32',
+                dot: active ? 'bg-emerald-500 ring-emerald-500/34' : 'bg-emerald-500 ring-emerald-500/28',
               };
 
   return (
     <span
-      className="relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center"
+      className={cn('relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center', toneClasses.root)}
       title={indicator.label}
       aria-label={indicator.label}
     >
