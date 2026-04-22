@@ -60,7 +60,9 @@ fn load_project_settings_for_root(root: &std::path::Path) -> DesktopProjectSetti
 }
 
 #[tauri::command]
-pub fn desktop_project_settings(project_root: Option<String>) -> Result<DesktopProjectSettings, String> {
+pub fn desktop_project_settings(
+    project_root: Option<String>,
+) -> Result<DesktopProjectSettings, String> {
     let root = resolve_project_root(project_root)?;
     Ok(load_project_settings_for_root(&root))
 }
@@ -78,7 +80,8 @@ pub fn desktop_save_project_settings(
 
     settings.project_name = Some(name.trim().to_string()).filter(|value| !value.is_empty());
     settings.project_context = Some(context.trim().to_string()).filter(|value| !value.is_empty());
-    settings.project_system_prompt = Some(system_prompt.trim().to_string()).filter(|value| !value.is_empty());
+    settings.project_system_prompt =
+        Some(system_prompt.trim().to_string()).filter(|value| !value.is_empty());
     settings.project_shared_sources = shared_sources
         .into_iter()
         .filter_map(|source| {
@@ -95,7 +98,11 @@ pub fn desktop_save_project_settings(
                 None
             } else {
                 Some(ProjectSharedSource {
-                    label: if label.is_empty() { "Source".to_string() } else { label },
+                    label: if label.is_empty() {
+                        "Source".to_string()
+                    } else {
+                        label
+                    },
                     path,
                     detail,
                 })
@@ -103,6 +110,8 @@ pub fn desktop_save_project_settings(
         })
         .collect();
 
-    settings.save_project(&root).map_err(|err| err.to_string())?;
+    settings
+        .save_project(&root)
+        .map_err(|err| err.to_string())?;
     Ok(load_project_settings_for_root(&root))
 }

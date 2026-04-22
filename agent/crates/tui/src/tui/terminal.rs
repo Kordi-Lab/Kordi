@@ -128,10 +128,7 @@ pub fn spawn_event_reader() -> mpsc::UnboundedReceiver<TuiEvent> {
                                     latest_drag = next_mouse;
                                 }
                                 Ok(other) => {
-                                    if !send_tui_event(
-                                        &tx,
-                                        TuiEvent::Mouse(latest_drag),
-                                    ) {
+                                    if !send_tui_event(&tx, TuiEvent::Mouse(latest_drag)) {
                                         return;
                                     }
                                     if !forward_event(&tx, other) {
@@ -142,8 +139,7 @@ pub fn spawn_event_reader() -> mpsc::UnboundedReceiver<TuiEvent> {
                                 Err(_) => return,
                             },
                             Ok(false) => {
-                                if !send_tui_event(&tx, TuiEvent::Mouse(latest_drag))
-                                {
+                                if !send_tui_event(&tx, TuiEvent::Mouse(latest_drag)) {
                                     return;
                                 }
                                 break;
@@ -173,18 +169,13 @@ fn forward_event(tx: &mpsc::UnboundedSender<TuiEvent>, event: Event) -> bool {
     match event {
         Event::Key(key) => send_tui_event(tx, TuiEvent::Key(key)),
         Event::Mouse(mouse) => send_tui_event(tx, TuiEvent::Mouse(mouse)),
-        Event::Resize(width, height) => {
-            send_tui_event(tx, TuiEvent::Resize(width, height))
-        }
+        Event::Resize(width, height) => send_tui_event(tx, TuiEvent::Resize(width, height)),
         Event::Paste(text) => send_tui_event(tx, TuiEvent::Paste(text)),
         _ => true,
     }
 }
 
-fn send_tui_event(
-    tx: &mpsc::UnboundedSender<TuiEvent>,
-    event: TuiEvent,
-) -> bool {
+fn send_tui_event(tx: &mpsc::UnboundedSender<TuiEvent>, event: TuiEvent) -> bool {
     tx.send(event).is_ok()
 }
 

@@ -385,10 +385,7 @@ impl TuiState {
                     .as_ref()
                     .is_some_and(|dialog| dialog.allow_session)
                 {
-                    self.submit_approval_decision(
-                        TuiApprovalChoice::ApproveForSession,
-                        None,
-                    );
+                    self.submit_approval_decision(TuiApprovalChoice::ApproveForSession, None);
                 }
             }
             KeyCode::Char('d' | 'D' | 'n' | 'N') if !deny_selected => {
@@ -418,10 +415,7 @@ impl TuiState {
         let Some(dialog) = self.approval_dialog.as_ref() else {
             return;
         };
-        let mut options = vec![
-            TuiApprovalChoice::ApproveOnce,
-            TuiApprovalChoice::Deny,
-        ];
+        let mut options = vec![TuiApprovalChoice::ApproveOnce, TuiApprovalChoice::Deny];
         if dialog.allow_session {
             options.insert(1, TuiApprovalChoice::ApproveForSession);
         }
@@ -474,9 +468,7 @@ impl TuiState {
                 steer_message,
             });
         self.status_line = match choice {
-            super::super::types::TuiApprovalChoice::ApproveOnce => {
-                "Approval submitted".to_string()
-            }
+            super::super::types::TuiApprovalChoice::ApproveOnce => "Approval submitted".to_string(),
             super::super::types::TuiApprovalChoice::ApproveForSession => {
                 "Approved for this session".to_string()
             }

@@ -149,11 +149,115 @@ pub struct ServerMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentKind {
+    Local,
+    Ssh,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentConnectionState {
+    Connected,
+    Connecting,
+    Disconnected,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SshEnvironmentSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    pub host: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    pub remote_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnvironmentSummary {
+    pub environment_id: String,
+    pub kind: EnvironmentKind,
+    pub display_name: String,
+    pub connection_state: EnvironmentConnectionState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<SshEnvironmentSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceSummary {
     pub cwd: String,
     pub root_name: String,
     pub platform: String,
     pub execution_mode: String,
+    pub environment: EnvironmentSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceEntryKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceEntrySummary {
+    pub path: String,
+    pub name: String,
+    pub kind: WorkspaceEntryKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceEntriesSnapshot {
+    pub workspace_root: String,
+    pub path: String,
+    pub items: Vec<WorkspaceEntrySummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFileTextSnapshot {
+    pub workspace_root: String,
+    pub path: String,
+    pub text: String,
+    pub truncated: bool,
+    pub byte_size: u64,
+    pub line_count: u64,
+    pub start_line: u64,
+    pub end_line: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceGrepSnapshot {
+    pub workspace_root: String,
+    pub path: String,
+    pub items: Vec<String>,
+    pub match_count: u64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFindSnapshot {
+    pub workspace_root: String,
+    pub path: String,
+    pub items: Vec<String>,
+    pub match_count: u64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExpandWorkspaceInputRequest {
+    pub input: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExpandedWorkspaceInputSnapshot {
+    pub text: String,
+    pub expanded_paths: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

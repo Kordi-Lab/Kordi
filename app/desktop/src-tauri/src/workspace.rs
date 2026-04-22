@@ -104,13 +104,23 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
         sidecars: vec![
             SidecarStatus {
                 label: "Kordi runtime".into(),
-                bundled_path: sidecar_dir.join(format!("kordi-{}", target_triple)).display().to_string(),
-                exists: sidecar_dir.join(format!("kordi-{}", target_triple)).exists(),
+                bundled_path: sidecar_dir
+                    .join(format!("kordi-{}", target_triple))
+                    .display()
+                    .to_string(),
+                exists: sidecar_dir
+                    .join(format!("kordi-{}", target_triple))
+                    .exists(),
             },
             SidecarStatus {
                 label: "Bridges".into(),
-                bundled_path: sidecar_dir.join(format!("bridges-{}", target_triple)).display().to_string(),
-                exists: sidecar_dir.join(format!("bridges-{}", target_triple)).exists(),
+                bundled_path: sidecar_dir
+                    .join(format!("bridges-{}", target_triple))
+                    .display()
+                    .to_string(),
+                exists: sidecar_dir
+                    .join(format!("bridges-{}", target_triple))
+                    .exists(),
             },
         ],
     }

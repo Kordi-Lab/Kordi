@@ -54,16 +54,6 @@ impl Tool for ReadTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| BbError::Tool("Missing 'path' parameter".into()))?;
 
-        let path = resolve_path(&ctx.cwd, path_str);
-
-        if !path.exists() {
-            return Err(BbError::Tool(format!("File not found: {}", path.display())));
-        }
-
-        if is_image(&path) {
-            return read_image(&path).await;
-        }
-
         let offset = params
             .get("offset")
             .and_then(|v| v.as_u64())
@@ -74,6 +64,20 @@ impl Tool for ReadTool {
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_LIMIT);
+
+        if let Some(base_url) = ctx.workspace_api_base_url.as_deref() {
+            return crate::workspace_api::read_file_result(base_url, path_str, offset, limit).await;
+        }
+
+        let path = resolve_path(&ctx.cwd, path_str);
+
+        if !path.exists() {
+            return Err(BbError::Tool(format!("File not found: {}", path.display())));
+        }
+
+        if is_image(&path) {
+            return read_image(&path).await;
+        }
 
         read_text(&path, offset, limit).await
     }

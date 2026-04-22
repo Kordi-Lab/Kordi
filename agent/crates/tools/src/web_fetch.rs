@@ -189,14 +189,11 @@ mod tests {
             web_search: None,
             execution_mode: crate::ToolExecutionMode::Interactive,
             request_approval: None,
+            workspace_api_base_url: None,
         }
     }
 
-    fn spawn_single_response_server(
-        status_line: &str,
-        content_type: &str,
-        body: &str,
-    ) -> String {
+    fn spawn_single_response_server(status_line: &str, content_type: &str, body: &str) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test server");
         let addr = listener.local_addr().expect("local addr");
         let body = body.to_string();

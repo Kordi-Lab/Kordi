@@ -15,8 +15,8 @@ use super::{
     tool_format::{format_tool_call_content, format_tool_call_title, format_tool_result_content},
     transcript::{BlockId, BlockKind, NewBlock, Transcript},
     types::{
-        TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiCommand,
-        TuiMode, TuiSubmission, HistoricalToolState,
+        HistoricalToolState, TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiCommand,
+        TuiMode, TuiSubmission,
     },
 };
 

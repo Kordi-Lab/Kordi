@@ -27,6 +27,7 @@ use crate::login;
 use crate::runtime_model::{build_runtime_config, resolve_or_synthesize_model};
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
+use crate::workspace_context::WorkspaceContext;
 use bb_monitor::RequestMetricsTracker;
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,7 @@ struct PreparedPrintPrompt {
 
 pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let cwd = std::fs::canonicalize(cli.cwd.as_deref().unwrap_or("."))?;
+    let workspace_context = WorkspaceContext::from_env(cwd.clone());
 
     let global_dir = config::global_dir();
     std::fs::create_dir_all(&global_dir)?;
@@ -44,9 +46,9 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     std::fs::create_dir_all(&artifacts_dir)?;
 
     let conn = store::open_db(&global_dir.join("sessions.db"))?;
-    let session_id = resolve_session_id(&conn, &cwd, &cli)?;
+    let session_id = resolve_session_id(&conn, &cwd, &cli, &workspace_context)?;
 
-    let settings = Settings::load_merged(&cwd);
+    let settings = workspace_context.load_merged_settings();
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let model_input = cli
@@ -64,7 +66,9 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let (provider_name, model_id, _thinking_override) =
         parse_model_arg(provider_input, model_input);
 
-    let agents_md = load_agents_md(&cwd);
+    let agents_md = (!workspace_context.is_remote())
+        .then(|| load_agents_md(&cwd))
+        .flatten();
     let base_prompt = cli
         .system_prompt
         .as_deref()
@@ -92,14 +96,24 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let base_url = runtime.base_url.clone();
     let headers = runtime.headers.clone();
 
-    auto_install_missing_packages(&cwd, &settings);
+    if !workspace_context.disable_extensions() {
+        auto_install_missing_packages(&cwd, &settings);
+    }
 
-    let extension_bootstrap = ExtensionBootstrap::from_cli_values(&cwd, &cli.extensions);
+    let extension_bootstrap = if workspace_context.disable_extensions() {
+        ExtensionBootstrap::default()
+    } else {
+        ExtensionBootstrap::from_cli_values(&cwd, &cli.extensions)
+    };
     let RuntimeExtensionSupport {
         session_resources,
         tools,
         mut commands,
-    } = load_runtime_extension_support(&cwd, &settings, &extension_bootstrap).await?;
+    } = if workspace_context.disable_extensions() {
+        RuntimeExtensionSupport::default()
+    } else {
+        load_runtime_extension_support(&cwd, &settings, &extension_bootstrap).await?
+    };
     commands.bind_session_context(
         turn_runner::open_sibling_conn(&conn)?,
         session_id.clone(),
@@ -109,7 +123,8 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings);
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
     let skill_section = build_skill_system_prompt_section(&session_resources);
-    let system_prompt = format!("{system_prompt}{skill_section}");
+    let environment_section = workspace_context.environment_prompt_section();
+    let system_prompt = format!("{system_prompt}{environment_section}{skill_section}");
 
     let provider: Arc<dyn bb_provider::Provider> = runtime.provider.clone();
 
@@ -128,6 +143,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         }),
         execution_mode: bb_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
+        workspace_api_base_url: workspace_context.workspace_api_base_url_owned(),
     };
 
     let bootstrap = bb_core::agent_session_runtime::AgentSessionRuntimeBootstrap {
@@ -164,7 +180,8 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
 
         if let Some(text) = input.text {
             let expanded_text = runtime_handle.session().expand_input_text(text);
-            let expanded = crate::input_files::expand_at_file_references(&expanded_text, &cwd);
+            let expanded =
+                crate::input_files::expand_at_workspace_references(&expanded_text, &tool_ctx).await;
             for warning in expanded.warnings {
                 eprintln!("Warning: {warning}");
             }
@@ -236,12 +253,13 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
 
 fn resolve_session_id(
     conn: &rusqlite::Connection,
-    cwd: &std::path::Path,
+    _cwd: &std::path::Path,
     cli: &Cli,
+    workspace_context: &WorkspaceContext,
 ) -> Result<String> {
-    let cwd_str = cwd.to_str().unwrap_or(".");
+    let session_scope_key = workspace_context.session_scope_key();
     if let Some(session_arg) = &cli.session {
-        let all = store::list_sessions(conn, cwd_str)?;
+        let all = store::list_all_sessions(conn)?;
         let matches: Vec<_> = all
             .iter()
             .filter(|s| s.session_id.starts_with(session_arg.as_str()))
@@ -253,13 +271,13 @@ fn resolve_session_id(
         };
     }
     if cli.r#continue {
-        let sessions = store::list_sessions(conn, cwd_str)?;
+        let sessions = store::list_sessions(conn, &session_scope_key)?;
         if let Some(s) = sessions.first() {
             tracing::info!("Continuing session {}", s.session_id);
             return Ok(s.session_id.clone());
         }
     }
-    store::create_session(conn, cwd_str)
+    store::create_session(conn, &session_scope_key)
 }
 
 fn tool_selection_from_cli_and_settings(cli: &Cli, settings: &Settings) -> ToolSelection {
@@ -365,5 +383,102 @@ async fn run_print_turn(
             stop_reason: PrintTurnStopReason::Completed,
             error_message: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_cli() -> Cli {
+        Cli {
+            command: None,
+            cwd: None,
+            provider: None,
+            model: None,
+            api_key: None,
+            system_prompt: None,
+            append_system_prompt: None,
+            system_prompt_template: None,
+            list_templates: false,
+            thinking: None,
+            print: true,
+            r#continue: false,
+            resume: false,
+            no_session: false,
+            session: None,
+            tools: None,
+            no_tools: false,
+            list_models: None,
+            models: None,
+            extensions: Vec::new(),
+            verbose: false,
+            messages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_session_id_matches_explicit_session_across_scopes() {
+        let temp = tempdir().expect("tempdir");
+        let conn = store::open_db(&temp.path().join("sessions.db")).expect("open db");
+        let remote_session_id = store::create_session(&conn, "ssh:prod:/srv/prod/kordi")
+            .expect("create remote session");
+
+        let mut cli = test_cli();
+        cli.session = Some(remote_session_id.chars().take(8).collect());
+
+        let resolved = resolve_session_id(
+            &conn,
+            temp.path(),
+            &cli,
+            &WorkspaceContext::local(temp.path().to_path_buf()),
+        )
+        .expect("resolve session");
+
+        assert_eq!(resolved, remote_session_id);
+    }
+
+    #[test]
+    fn resolve_session_id_uses_workspace_scope_override_for_continue() {
+        let temp = tempdir().expect("tempdir");
+        let conn = store::open_db(&temp.path().join("sessions.db")).expect("open db");
+        let remote_scope = "ssh:prod-kordi:/srv/prod/kordi";
+        let remote_session_id =
+            store::create_session(&conn, remote_scope).expect("create remote session");
+
+        let mut cli = test_cli();
+        cli.r#continue = true;
+
+        let resolved = resolve_session_id(
+            &conn,
+            temp.path(),
+            &cli,
+            &WorkspaceContext::ssh(
+                temp.path().to_path_buf(),
+                remote_scope,
+                "/srv/prod/kordi",
+                Some("http://127.0.0.1:7080".to_string()),
+            ),
+        )
+        .expect("resolve continued session");
+
+        assert_eq!(resolved, remote_session_id);
+    }
+
+    #[test]
+    fn remote_environment_prompt_section_mentions_relative_paths() {
+        let context = WorkspaceContext::ssh(
+            std::path::PathBuf::from("/tmp/kordi-launch"),
+            "ssh:prod-kordi:/srv/prod/kordi",
+            "/srv/prod/kordi",
+            Some("http://127.0.0.1:7080".to_string()),
+        );
+
+        let section = context.environment_prompt_section();
+        assert!(section.contains("Environment: SSH remote"));
+        assert!(section.contains("Workspace root: /srv/prod/kordi"));
+        assert!(section.contains("workspace-relative paths"));
+        assert!(section.contains("workspace API"));
     }
 }

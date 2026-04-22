@@ -20,6 +20,30 @@ pub(crate) struct ExpandedInputFiles {
     pub warnings: Vec<String>,
 }
 
+pub(crate) async fn expand_at_workspace_references(
+    text: &str,
+    tool_ctx: &bb_tools::ToolContext,
+) -> ExpandedInputFiles {
+    let Some(base_url) = tool_ctx.workspace_api_base_url.as_deref() else {
+        return expand_at_file_references(text, &tool_ctx.cwd);
+    };
+
+    match bb_tools::workspace_api::expand_input(base_url, text).await {
+        Ok(snapshot) => ExpandedInputFiles {
+            text: snapshot.text,
+            expanded_paths: snapshot.expanded_paths,
+            image_paths: Vec::new(),
+            warnings: snapshot.warnings,
+        },
+        Err(error) => ExpandedInputFiles {
+            text: text.to_string(),
+            expanded_paths: Vec::new(),
+            image_paths: Vec::new(),
+            warnings: vec![error.to_string()],
+        },
+    }
+}
+
 pub(crate) fn expand_at_file_references(text: &str, cwd: &Path) -> ExpandedInputFiles {
     let mut out = String::new();
     let mut warnings = Vec::new();

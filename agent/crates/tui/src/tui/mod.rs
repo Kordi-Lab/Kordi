@@ -33,7 +33,7 @@ pub use tool_format::{
 };
 pub use transcript::{BlockId, BlockKind, NewBlock, Transcript, TranscriptBlock, TranscriptError};
 pub use types::{
-    TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiAuthDialog,
-    TuiAuthStep, TuiAuthStepState, TuiCommand, TuiFooterData,
-    TuiNoteLevel, TuiOutcome, TuiSubmission, HistoricalToolState,
+    HistoricalToolState, TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiAuthDialog,
+    TuiAuthStep, TuiAuthStepState, TuiCommand, TuiFooterData, TuiNoteLevel, TuiOutcome,
+    TuiSubmission,
 };

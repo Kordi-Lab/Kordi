@@ -43,7 +43,8 @@ pub fn compute_layout_with_footer(
     let max_footer_height = size.height.saturating_sub(header_height + 1);
     let footer_height = requested_footer_lines.min(max_footer_height);
     let requested_status_height = if size.height >= 16 { 2 } else { 1 };
-    let status_height = requested_status_height.min(size.height.saturating_sub(header_height + footer_height));
+    let status_height =
+        requested_status_height.min(size.height.saturating_sub(header_height + footer_height));
     let available_for_input = size
         .height
         .saturating_sub(header_height + status_height + footer_height);

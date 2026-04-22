@@ -19,6 +19,7 @@ mod tool_registry;
 mod tui;
 mod turn_runner;
 mod update_check;
+mod workspace_context;
 
 #[derive(Parser)]
 #[command(

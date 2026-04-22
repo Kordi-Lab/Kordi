@@ -376,6 +376,7 @@ mod tests {
     use crate::session_bootstrap::{SessionRuntimeSetup, SessionUiOptions};
     use crate::tui::controller::TuiController;
     use crate::tui::{LOGIN_AUTH_OPTION_MENU_ID, LOGIN_METHOD_MENU_ID};
+    use crate::workspace_context::WorkspaceContext;
 
     fn env_lock() -> &'static Mutex<()> {
         crate::login::auth_test_env_lock()
@@ -434,9 +435,10 @@ mod tests {
             web_search: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
+            workspace_api_base_url: None,
         };
         let runtime_host = AgentSessionRuntimeHost::from_bootstrap(AgentSessionRuntimeBootstrap {
-            cwd: Some(cwd),
+            cwd: Some(cwd.clone()),
             ..AgentSessionRuntimeBootstrap::default()
         });
         let options = SessionUiOptions::default();
@@ -452,6 +454,7 @@ mod tests {
             tool_registry: crate::tool_registry::ToolRegistry::default(),
             tool_selection: crate::tool_registry::ToolSelection::All,
             tool_ctx,
+            workspace: WorkspaceContext::local(cwd.clone()),
             system_prompt: String::new(),
             base_system_prompt: String::new(),
             thinking_level: "medium".to_string(),

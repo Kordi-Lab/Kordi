@@ -410,6 +410,7 @@ fn tool_context_with_output_forwarding(
         web_search: env.tool_ctx.web_search.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
+        workspace_api_base_url: env.tool_ctx.workspace_api_base_url.clone(),
     }
 }
 

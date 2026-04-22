@@ -383,6 +383,15 @@ export type DesktopChatProjectInfo = {
   sharedSources: DesktopChatProjectSource[];
 };
 
+export type DesktopChatEnvironmentSummary = {
+  kind: string;
+  label: string;
+  workspaceRoot: string;
+  sessionScopeKey: string;
+  remote: boolean;
+  readOnlySafeMode: boolean;
+};
+
 export type DesktopChatSessionDetail = {
   id: string;
   title: string;
@@ -399,12 +408,14 @@ export type DesktopChatSessionDetail = {
   cacheMonitorText?: string | null;
   contextWindowText: string;
   contextWindowStatus: DesktopChatContextWindowStatus;
+  environment: DesktopChatEnvironmentSummary;
   project?: DesktopChatProjectInfo | null;
   messages: DesktopChatMessage[];
 };
 
 export type DesktopChatState = {
   cwd: string;
+  environment: DesktopChatEnvironmentSummary;
   activeSessionId: string;
   sessions: DesktopChatSessionSummary[];
   projects: DesktopChatProjectGroup[];

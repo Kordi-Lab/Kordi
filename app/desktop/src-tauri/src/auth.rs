@@ -217,7 +217,8 @@ fn build_auth_state() -> DesktopAuthState {
                     updated_at_ms: option.updated_at_ms,
                 })
                 .collect::<Vec<_>>();
-            let copilot_status = (*provider == "github-copilot").then(kordi_cli::login::github_copilot_status);
+            let copilot_status =
+                (*provider == "github-copilot").then(kordi_cli::login::github_copilot_status);
             DesktopAuthProvider {
                 id: (*provider).to_string(),
                 label: kordi_cli::login::provider_display_name(provider).into_owned(),
@@ -236,7 +237,9 @@ fn build_auth_state() -> DesktopAuthState {
 
     DesktopAuthState {
         auth_path: kordi_cli::login::auth_path().display().to_string(),
-        has_any_auth: providers.iter().any(|provider| !provider.options.is_empty()),
+        has_any_auth: providers
+            .iter()
+            .any(|provider| !provider.options.is_empty()),
         providers,
     }
 }
@@ -270,7 +273,8 @@ pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuth
     if key.trim().is_empty() {
         return Err("API key cannot be empty".to_string());
     }
-    kordi_cli::login::save_api_key(provider, key.trim().to_string()).map_err(|err| err.to_string())?;
+    kordi_cli::login::save_api_key(provider, key.trim().to_string())
+        .map_err(|err| err.to_string())?;
     Ok(build_auth_state())
 }
 
@@ -328,14 +332,18 @@ pub async fn desktop_start_oauth_login(
     let provider = kordi_cli::login::provider_oauth_variant(&provider)
         .unwrap_or(&provider)
         .to_string();
-    if kordi_cli::login::provider_oauth_variant(&provider).is_none() && provider != "github-copilot" && provider != "anthropic" && provider != "openai-codex" {
+    if kordi_cli::login::provider_oauth_variant(&provider).is_none()
+        && provider != "github-copilot"
+        && provider != "anthropic"
+        && provider != "openai-codex"
+    {
         return Err(format!("OAuth is not available for {provider}"));
     }
 
     if provider == "github-copilot" {
         if let Some(authority) = authority {
-            let authority =
-                kordi_cli::login::normalize_github_domain(&authority).map_err(|err| err.to_string())?;
+            let authority = kordi_cli::login::normalize_github_domain(&authority)
+                .map_err(|err| err.to_string())?;
             kordi_cli::login::save_github_copilot_config(&authority)
                 .map_err(|err| err.to_string())?;
         }
@@ -347,7 +355,10 @@ pub async fn desktop_start_oauth_login(
         id: attempt_id.clone(),
         provider: provider.clone(),
         status: "starting".to_string(),
-        message: format!("Starting {} sign-in…", kordi_cli::login::provider_display_name(&provider)),
+        message: format!(
+            "Starting {} sign-in…",
+            kordi_cli::login::provider_display_name(&provider)
+        ),
         auth_url: None,
         browser_opened: false,
         verification_url: None,
@@ -383,7 +394,8 @@ pub async fn desktop_start_oauth_login(
                             state.message = if opened {
                                 "A browser should open locally. Finish sign-in there, then come back if we need the callback URL.".to_string()
                             } else {
-                                "Open the sign-in URL in your browser, then come back here.".to_string()
+                                "Open the sign-in URL in your browser, then come back here."
+                                    .to_string()
                             };
                             state.auth_url = Some(url);
                             state.browser_opened = opened;
@@ -395,7 +407,10 @@ pub async fn desktop_start_oauth_login(
                     move |device| {
                         update_attempt(&snapshot, |state| {
                             state.status = "waiting_device".to_string();
-                            state.message = format!("Open {} and enter code {}", device.verification_uri, device.user_code);
+                            state.message = format!(
+                                "Open {} and enter code {}",
+                                device.verification_uri, device.user_code
+                            );
                             state.verification_url = Some(device.verification_uri);
                             state.user_code = Some(device.user_code);
                         });
@@ -421,7 +436,10 @@ pub async fn desktop_start_oauth_login(
             match result {
                 Ok(()) => update_attempt(&snapshot, |state| {
                     state.status = "succeeded".to_string();
-                    state.message = format!("Logged in to {}", kordi_cli::login::provider_display_name(&provider));
+                    state.message = format!(
+                        "Logged in to {}",
+                        kordi_cli::login::provider_display_name(&provider)
+                    );
                     state.completed = true;
                     state.succeeded = true;
                     state.error = None;

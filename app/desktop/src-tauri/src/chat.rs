@@ -6,8 +6,9 @@ use serde::Serialize;
 use tauri::State;
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatModelOption, DesktopChatProjectGroup, DesktopChatSessionDetail,
-    DesktopChatSessionSummary, DesktopChatSlashCommand, DesktopRuntimeSession,
+    DesktopChatEnvironmentSummary, DesktopChatModelOption, DesktopChatProjectGroup,
+    DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
+    DesktopRuntimeSession,
 };
 use kordi_cli::turn_runner::TurnEvent;
 
@@ -29,6 +30,7 @@ pub struct DesktopChatManager {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatState {
     pub cwd: String,
+    pub environment: DesktopChatEnvironmentSummary,
     pub active_session_id: String,
     pub sessions: Vec<DesktopChatSessionSummary>,
     pub projects: Vec<DesktopChatProjectGroup>,
@@ -116,7 +118,8 @@ async fn prune_finished_turns(manager: &DesktopChatManager) {
 
 async fn session_has_running_turn(manager: &DesktopChatManager, session_id: &str) -> bool {
     let turns = manager.turns.lock().await;
-    turns.values()
+    turns
+        .values()
         .any(|turn| turn_matches_running_session(&turn.snapshot, session_id))
 }
 
@@ -284,8 +287,11 @@ async fn build_chat_state(
         summaries.push(runtime.summary().map_err(|err| err.to_string())?);
     }
 
+    let environment = active_session.environment.clone();
+
     Ok(DesktopChatState {
-        cwd: cwd.display().to_string(),
+        cwd: environment.workspace_root.clone(),
+        environment,
         active_session_id,
         sessions: summaries,
         projects,

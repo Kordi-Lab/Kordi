@@ -55,6 +55,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         }
       }}
       onCreateBridgeDraft={args.handleCreateBridgeDraft}
+      desktopWorkspaceEnvironment={args.desktopWorkspaceEnvironment}
     />
   );
 }

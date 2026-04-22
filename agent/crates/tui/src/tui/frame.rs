@@ -6,9 +6,9 @@ mod transcript;
 mod tests;
 
 use super::{renderer::FrameBuffer, runtime::TuiState};
-use chrome::{render_footer, render_header, render_status_lines};
 #[cfg(test)]
 pub(crate) use chrome::render_status;
+use chrome::{render_footer, render_header, render_status_lines};
 pub(crate) use input::{
     attachment_chip_label, attachment_line_count, measure_approval_input, measure_input,
     visible_input_text,
@@ -51,14 +51,18 @@ pub(crate) fn build_frame(state: &TuiState) -> FrameBuffer {
     });
 
     if layout.status.height > 0 {
-        render_status_lines(state, layout.status.width as usize, layout.status.height as usize)
-            .into_iter()
-            .enumerate()
-            .for_each(|(offset, line)| {
-                if let Some(slot) = lines.get_mut(layout.status.y as usize + offset) {
-                    *slot = line;
-                }
-            });
+        render_status_lines(
+            state,
+            layout.status.width as usize,
+            layout.status.height as usize,
+        )
+        .into_iter()
+        .enumerate()
+        .for_each(|(offset, line)| {
+            if let Some(slot) = lines.get_mut(layout.status.y as usize + offset) {
+                *slot = line;
+            }
+        });
     }
 
     let (input_lines, mut cursor) = if state.auth_dialog.is_some() {

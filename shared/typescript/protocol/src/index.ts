@@ -34,11 +34,83 @@ export type ServerMetadata = {
   transport: 'http+sse';
 };
 
+export type EnvironmentKind = 'local' | 'ssh';
+export type EnvironmentConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error';
+
+export type SshEnvironmentSummary = {
+  alias?: string;
+  host: string;
+  port?: number;
+  user?: string;
+  remote_root: string;
+};
+
+export type EnvironmentSummary = {
+  environment_id: string;
+  kind: EnvironmentKind;
+  display_name: string;
+  connection_state: EnvironmentConnectionState;
+  ssh?: SshEnvironmentSummary;
+};
+
 export type WorkspaceSummary = {
   cwd: string;
   root_name: string;
   platform: string;
   execution_mode: string;
+  environment: EnvironmentSummary;
+};
+
+export type WorkspaceEntryKind = 'file' | 'directory';
+
+export type WorkspaceEntrySummary = {
+  path: string;
+  name: string;
+  kind: WorkspaceEntryKind;
+  size?: number;
+};
+
+export type WorkspaceEntriesSnapshot = {
+  workspace_root: string;
+  path: string;
+  items: WorkspaceEntrySummary[];
+};
+
+export type WorkspaceFileTextSnapshot = {
+  workspace_root: string;
+  path: string;
+  text: string;
+  truncated: boolean;
+  byte_size: number;
+  line_count: number;
+  start_line: number;
+  end_line: number;
+};
+
+export type WorkspaceGrepSnapshot = {
+  workspace_root: string;
+  path: string;
+  items: string[];
+  match_count: number;
+  truncated: boolean;
+};
+
+export type WorkspaceFindSnapshot = {
+  workspace_root: string;
+  path: string;
+  items: string[];
+  match_count: number;
+  truncated: boolean;
+};
+
+export type ExpandWorkspaceInputRequest = {
+  input: string;
+};
+
+export type ExpandedWorkspaceInputSnapshot = {
+  text: string;
+  expanded_paths: string[];
+  warnings: string[];
 };
 
 export type ServiceStatusSummary = {

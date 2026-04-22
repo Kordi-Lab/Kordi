@@ -7,6 +7,8 @@ import {
   Image as ImageIcon,
   LoaderCircle,
   Paperclip,
+  FolderTree,
+  Server,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
@@ -21,6 +23,7 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
+  EnvironmentPopoverTrigger,
   LiveChatTurnCard,
   MessageBubble,
   StatusPill,
@@ -32,6 +35,7 @@ import {
 import type {
   Conversation,
   DesktopChatContextWindowStatus,
+  DesktopChatEnvironmentSummary,
   DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
   EditFilePreview,
@@ -93,6 +97,7 @@ type ChatsPageProps = {
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
   onSendChatMessage: () => void;
+  activeSessionEnvironment?: DesktopChatEnvironmentSummary | null;
 };
 
 export function ChatsPage({
@@ -143,6 +148,7 @@ export function ChatsPage({
   isDesktopChatSending,
   onStopDesktopChatTurn,
   onSendChatMessage,
+  activeSessionEnvironment,
 }: ChatsPageProps) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -220,6 +226,21 @@ export function ChatsPage({
                 {bridgeStatusLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
                 <span className="truncate">{bridgeStatusText}</span>
               </div>
+            ) : null}
+            {!activeConversationIsBridge && activeSessionEnvironment?.remote ? (
+              <EnvironmentPopoverTrigger
+                environment={activeSessionEnvironment}
+                placement="bottom-start"
+                className="mt-1.5 flex min-w-0 max-w-full flex-wrap items-center gap-2"
+              >
+                <StatusPill className="app-badge-owned gap-1.5 rounded-full px-2.5 py-1 text-[11px]">
+                  <Server className="h-3 w-3" /> {activeSessionEnvironment.label}
+                </StatusPill>
+                <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300">
+                  <FolderTree className="h-3 w-3 shrink-0 text-slate-400" />
+                  <span className="max-w-[28rem] truncate">{activeSessionEnvironment.workspaceRoot}</span>
+                </div>
+              </EnvironmentPopoverTrigger>
             ) : null}
           </div>
         </div>

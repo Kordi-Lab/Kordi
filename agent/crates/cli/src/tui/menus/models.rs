@@ -219,7 +219,7 @@ impl TuiController {
         &mut self,
         provider: &str,
     ) -> Option<String> {
-        let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+        let settings = self.session_setup.load_merged_settings();
         let preferred_provider = match provider {
             "openai-codex" => "openai",
             other => other,
@@ -314,7 +314,7 @@ impl TuiController {
     }
 
     pub(super) fn get_model_candidates(&self) -> Vec<Model> {
-        let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+        let settings = self.session_setup.load_merged_settings();
         crate::login::authenticated_model_candidates(&settings)
     }
 
@@ -491,6 +491,7 @@ mod tests {
     use crate::session_bootstrap::{SessionRuntimeSetup, SessionUiOptions};
     use crate::tui::controller::TuiController;
     use crate::tui::{MODEL_AUTH_MENU_ID, MODEL_PROVIDER_MENU_ID};
+    use crate::workspace_context::WorkspaceContext;
 
     fn env_lock() -> &'static Mutex<()> {
         crate::login::auth_test_env_lock()
@@ -553,9 +554,10 @@ mod tests {
             web_search: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
+            workspace_api_base_url: None,
         };
         let runtime_host = AgentSessionRuntimeHost::from_bootstrap(AgentSessionRuntimeBootstrap {
-            cwd: Some(cwd),
+            cwd: Some(cwd.clone()),
             ..AgentSessionRuntimeBootstrap::default()
         });
         let options = SessionUiOptions {
@@ -574,6 +576,7 @@ mod tests {
             tool_registry: crate::tool_registry::ToolRegistry::default(),
             tool_selection: crate::tool_registry::ToolSelection::All,
             tool_ctx,
+            workspace: WorkspaceContext::local(cwd.clone()),
             system_prompt: String::new(),
             base_system_prompt: String::new(),
             thinking_level: "medium".to_string(),

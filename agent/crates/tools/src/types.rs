@@ -127,6 +127,7 @@ pub struct ToolContext {
     pub web_search: Option<WebSearchRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
+    pub workspace_api_base_url: Option<String>,
 }
 
 /// Trait for built-in and custom tools.

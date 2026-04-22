@@ -183,6 +183,7 @@ mod tests {
             web_search: None,
             execution_mode: crate::ToolExecutionMode::Interactive,
             request_approval: None,
+            workspace_api_base_url: None,
         }
     }
 

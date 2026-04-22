@@ -45,17 +45,25 @@ impl Tool for LsTool {
         ctx: &ToolContext,
         _cancel: CancellationToken,
     ) -> BbResult<ToolResult> {
-        let dir = params
-            .get("path")
-            .and_then(|v| v.as_str())
-            .map(|p| resolve_path(&ctx.cwd, p))
-            .unwrap_or_else(|| ctx.cwd.clone());
-
         let limit = params
             .get("limit")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_LIMIT);
+        let path_str = params.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+
+        if let Some(base_url) = ctx.workspace_api_base_url.as_deref() {
+            return crate::workspace_api::list_directory_result(
+                base_url, path_str, limit, MAX_DEPTH,
+            )
+            .await;
+        }
+
+        let dir = params
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(|p| resolve_path(&ctx.cwd, p))
+            .unwrap_or_else(|| ctx.cwd.clone());
 
         if !dir.exists() {
             return Err(BbError::Tool(format!(

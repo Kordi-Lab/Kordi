@@ -1,14 +1,9 @@
 use anyhow::Result;
 use bb_session::store;
-use bb_tui::tui::{
-    TuiApprovalChoice, TuiApprovalDialog, TuiCommand, TuiNoteLevel,
-    TuiSubmission,
-};
+use bb_tui::tui::{TuiApprovalChoice, TuiApprovalDialog, TuiCommand, TuiNoteLevel, TuiSubmission};
 use tokio::sync::mpsc;
 
-use super::{
-    TuiController, QueuedPrompt, SessionApprovalRule, derive_session_approval_rule,
-};
+use super::{QueuedPrompt, SessionApprovalRule, TuiController, derive_session_approval_rule};
 
 impl TuiController {
     pub(crate) async fn run(
@@ -32,10 +27,12 @@ impl TuiController {
         if show_startup_resources {
             self.show_startup_resources();
         }
-        crate::update_check::spawn_update_check_notice_task(
-            self.command_tx.clone(),
-            self.session_setup.tool_ctx.cwd.clone(),
-        );
+        if !self.session_setup.is_remote_workspace() {
+            crate::update_check::spawn_update_check_notice_task(
+                self.command_tx.clone(),
+                self.session_setup.tool_ctx.cwd.clone(),
+            );
+        }
 
         if let Some(initial_message) = self.options.initial_message.take() {
             self.submit_initial_message(initial_message, &mut submission_rx)
@@ -113,9 +110,7 @@ impl TuiController {
         }
 
         match submission {
-            TuiSubmission::Input(text) => {
-                self.handle_submitted_text(text, submission_rx).await
-            }
+            TuiSubmission::Input(text) => self.handle_submitted_text(text, submission_rx).await,
             TuiSubmission::InputWithImages { text, image_paths } => {
                 self.attach_images_from_paths(&image_paths);
                 self.handle_submitted_text(text, submission_rx).await
@@ -329,7 +324,8 @@ impl TuiController {
         }
 
         let expanded =
-            crate::input_files::expand_at_file_references(&text, &self.session_setup.tool_ctx.cwd);
+            crate::input_files::expand_at_workspace_references(&text, &self.session_setup.tool_ctx)
+                .await;
         for warning in expanded.warnings {
             self.send_command(TuiCommand::PushNote {
                 level: TuiNoteLevel::Warning,
@@ -397,29 +393,24 @@ impl TuiController {
             .clone();
         let session_rule = derive_session_approval_rule(&request.command);
         self.send_command(TuiCommand::SetLocalActionActive(true));
-        self.send_command(TuiCommand::OpenApprovalDialog(
-            TuiApprovalDialog {
-                title: request.title,
-                command: request.command,
-                reason: request.reason,
-                lines: vec![],
-                allow_session: true,
-                session_scope_label: Some(session_rule.display_scope()),
-                deny_input: String::new(),
-                deny_cursor: 0,
-                deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
-                selected: TuiApprovalChoice::ApproveOnce,
-            },
-        ));
+        self.send_command(TuiCommand::OpenApprovalDialog(TuiApprovalDialog {
+            title: request.title,
+            command: request.command,
+            reason: request.reason,
+            lines: vec![],
+            allow_session: true,
+            session_scope_label: Some(session_rule.display_scope()),
+            deny_input: String::new(),
+            deny_cursor: 0,
+            deny_input_placeholder: Some("Tell BB what to do differently".to_string()),
+            selected: TuiApprovalChoice::ApproveOnce,
+        }));
         self.send_command(TuiCommand::SetStatusLine(
             "Approval required for bash command".to_string(),
         ));
     }
 
-    pub(crate) fn handle_approval_submission(
-        &mut self,
-        submission: TuiSubmission,
-    ) -> Result<()> {
+    pub(crate) fn handle_approval_submission(&mut self, submission: TuiSubmission) -> Result<()> {
         let (choice, steer_message) = match submission {
             TuiSubmission::ApprovalDecision {
                 choice,

@@ -208,7 +208,10 @@ fn write_and_edit_call_content_use_interactive_style_previews() {
     assert!(write.contains("one"));
     assert!(write.contains("three"));
     assert!(!write.contains("five"));
-    assert!(write.contains(&format!("more lines; {}", crate::ui_hints::TOOL_EXPAND_HINT)));
+    assert!(write.contains(&format!(
+        "more lines; {}",
+        crate::ui_hints::TOOL_EXPAND_HINT
+    )));
     assert!(!write.contains("\"content\""));
 
     let edit = format_tool_call_content(
@@ -248,7 +251,10 @@ fn tool_result_previews_use_interactive_limits_and_truncation() {
     );
     assert!(bash.contains("line   10"));
     assert!(bash.contains("line   14"));
-    assert!(bash.contains(&format!("earlier lines; {}", crate::ui_hints::TOOL_EXPAND_HINT)));
+    assert!(bash.contains(&format!(
+        "earlier lines; {}",
+        crate::ui_hints::TOOL_EXPAND_HINT
+    )));
     assert!(!bash.contains("line   9"));
 
     let grep_lines = (1..=16)
@@ -267,7 +273,10 @@ fn tool_result_previews_use_interactive_limits_and_truncation() {
     );
     assert!(grep.contains("match 1"));
     assert!(grep.contains("match 3"));
-    assert!(grep.contains(&format!("more lines; {}", crate::ui_hints::TOOL_EXPAND_HINT)));
+    assert!(grep.contains(&format!(
+        "more lines; {}",
+        crate::ui_hints::TOOL_EXPAND_HINT
+    )));
     assert!(!grep.contains("match 4"));
 
     let expanded = format_tool_result_content(
@@ -279,9 +288,7 @@ fn tool_result_previews_use_interactive_limits_and_truncation() {
         true,
     );
     assert!(expanded.contains("line   14"));
-    assert!(
-        !expanded.contains(&crate::ui_hints::more_lines_expand_hint(2))
-    );
+    assert!(!expanded.contains(&crate::ui_hints::more_lines_expand_hint(2)));
 
     let long_lines = (1..=140)
         .map(|i| format!("tail {i}"))

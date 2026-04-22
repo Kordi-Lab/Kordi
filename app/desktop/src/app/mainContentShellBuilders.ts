@@ -89,6 +89,7 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     activeRuntimeSessionId: args.activeRuntimeSessionId,
     activeRuntimeContextStatus: args.activeRuntimeContextStatus,
     activeRuntimeCacheText: args.activeRuntimeCacheText,
+    desktopWorkspaceEnvironment: args.desktopWorkspaceEnvironment,
     composerSelection: args.composerSelectionProject,
     openComposerSelector: args.openComposerSelector,
     toggleComposerSelector: args.toggleComposerSelector,
@@ -164,5 +165,6 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onSendChatMessage: args.handleSendChatMessage,
+    activeSessionEnvironment: args.activeSessionEnvironment,
   };
 }

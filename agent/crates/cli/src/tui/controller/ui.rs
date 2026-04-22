@@ -126,7 +126,7 @@ impl TuiController {
     }
 
     pub(crate) fn mark_local_settings_saved(&mut self) {
-        self.resource_watch = super::ResourceWatchState::capture(&self.session_setup.tool_ctx.cwd);
+        self.resource_watch = super::ResourceWatchState::capture(&self.session_setup);
         self.suppress_next_resource_watch_reload = true;
     }
 
@@ -140,9 +140,8 @@ impl TuiController {
     }
 
     fn current_footer_data(&self) -> TuiFooterData {
-        let cwd = self.session_setup.tool_ctx.cwd.display().to_string();
         let mut line1 = footer_line1(
-            &cwd,
+            &self.session_setup,
             &self.session_setup.conn,
             &self.session_setup.session_id,
         );
@@ -282,10 +281,7 @@ impl TuiController {
             .map(|usage| usage.context_window as u64)
             .filter(|window| *window > 0)
             .unwrap_or(self.session_setup.model.context_window);
-        let compaction_enabled =
-            bb_core::settings::Settings::load_merged(&self.session_setup.tool_ctx.cwd)
-                .compaction
-                .enabled;
+        let compaction_enabled = self.session_setup.load_merged_settings().compaction.enabled;
         let active_path_tokens = if suppress_runtime_usage {
             None
         } else {
@@ -416,11 +412,20 @@ fn request_matches_cache_domain(
         && current_context_epoch.is_none_or(|epoch| metrics.context_epoch == epoch)
 }
 
-fn footer_line1(cwd: &str, conn: &rusqlite::Connection, session_id: &str) -> String {
-    let mut line1 = if let Some(branch) = detect_git_branch(cwd) {
-        format!("{} ({branch})", shorten_home_path(cwd))
+fn footer_line1(
+    session_setup: &crate::session_bootstrap::SessionRuntimeSetup,
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> String {
+    let mut line1 = if session_setup.is_remote_workspace() {
+        session_setup.workspace.display_footer_label()
     } else {
-        shorten_home_path(cwd)
+        let cwd = session_setup.tool_ctx.cwd.display().to_string();
+        if let Some(branch) = detect_git_branch(&cwd) {
+            format!("{} ({branch})", shorten_home_path(&cwd))
+        } else {
+            shorten_home_path(&cwd)
+        }
     };
 
     if let Ok(Some(row)) = store::get_session(conn, session_id)
