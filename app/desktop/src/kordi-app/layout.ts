@@ -1,4 +1,4 @@
-export const LEFT_RAIL_WIDTH = 78;
+export const LEFT_RAIL_WIDTH = 72;
 export const WINDOW_MIN_WIDTH = 980;
 export const WINDOW_MIN_HEIGHT = 680;
 export const WINDOW_DEFAULT_WIDTH = 1460;
