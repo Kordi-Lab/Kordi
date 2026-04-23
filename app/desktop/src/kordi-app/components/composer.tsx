@@ -187,11 +187,11 @@ export function ComposerModelControls({
   const selectedModel = selectedModelOption?.label ?? selection.model;
 
   return (
-    <div className="relative flex min-w-0 flex-wrap items-center gap-1.5">
+    <div className="relative flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'provider')}
-        className="inline-flex min-w-0 max-w-[10.5rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        className="inline-flex w-[8.75rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
       >
         <span className="truncate text-left">{selectedProviderLabel || 'Provider'}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'provider' ? 'rotate-180 text-slate-300' : '')} />
@@ -199,7 +199,7 @@ export function ComposerModelControls({
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'model')}
-        className="inline-flex min-w-0 max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        className="inline-flex w-[8.5rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
       >
         <span className="truncate text-left">{selectedModel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
@@ -207,7 +207,7 @@ export function ComposerModelControls({
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'thinking')}
-        className="inline-flex min-w-0 max-w-[6rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        className="inline-flex w-[6.5rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
       >
         <span className="truncate text-left">{selection.thinking}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
@@ -367,11 +367,11 @@ export function ComposerRuntimeStatus({
       };
 
   if (!contextStatus) {
-    return null;
+    return <div className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />;
   }
 
   return (
-    <div className="flex min-w-0 items-center overflow-visible text-[11px] text-[color:var(--utility-muted-text)]">
+    <div className="flex shrink-0 items-center overflow-visible text-[11px] text-[color:var(--utility-muted-text)]">
       <div className="group relative shrink-0">
         <button
           type="button"
