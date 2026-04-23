@@ -6,8 +6,11 @@ import {
   clampWindowSize,
   getViewportFillSize,
   getInitialWindowSize,
+  getWorkspaceWindowMinWidth,
   LEFT_RAIL_WIDTH,
   WINDOW_DEFAULT_WIDTH,
+  WINDOW_MIN_HEIGHT,
+  WINDOW_MIN_WIDTH,
 } from '@/kordi-app/layout';
 import type { NavId, PanelResizeTarget, ResizeDirection } from '@/kordi-app/types';
 
@@ -38,9 +41,6 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const [isDetailPanelCollapsed, setIsDetailPanelCollapsed] = useState(
     () => activeNav === 'chats' || activeNav === 'projects',
   );
-  const [windowSize, setWindowSize] = useState(() =>
-    isNativeShell ? getViewportFillSize() : getInitialWindowSize(),
-  );
   const [sessionRailUserWidth, setSessionRailUserWidth] = useState(248);
   const [detailRailUserWidth, setDetailRailUserWidth] = useState(344);
   const [settingsMeasuredWidth, setSettingsMeasuredWidth] = useState<number | null>(null);
@@ -48,6 +48,20 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
 
   const showSessionRail = activeNav === 'chats' || activeNav === 'projects';
   const showRightDetailRail = activeNav === 'chats' || activeNav === 'projects';
+  const initialMinWindowWidth = Math.max(
+    WINDOW_MIN_WIDTH,
+    getWorkspaceWindowMinWidth({
+      showSessionRail,
+      collapseChatSessions: false,
+      showRightDetailRail,
+      isDetailPanelCollapsed: activeNav === 'chats' || activeNav === 'projects',
+    }),
+  );
+  const [windowSize, setWindowSize] = useState(() =>
+    isNativeShell
+      ? getViewportFillSize(initialMinWindowWidth, WINDOW_MIN_HEIGHT)
+      : getInitialWindowSize({ minWidth: initialMinWindowWidth, minHeight: WINDOW_MIN_HEIGHT }),
+  );
   const showChatDetailRail = activeNav === 'chats';
   const collapseChatSessions = showSessionRail && isSessionPanelCollapsed;
   const isSingleWorkspacePage = activeNav !== 'chats' && activeNav !== 'projects';
@@ -63,6 +77,15 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     showRightDetailRail && !isDetailPanelCollapsed
       ? clampDetailPanelWidth(detailRailUserWidth, windowSize.width, leftWorkspaceWidth)
       : 0;
+  const minWindowWidth = Math.max(
+    WINDOW_MIN_WIDTH,
+    getWorkspaceWindowMinWidth({
+      showSessionRail,
+      collapseChatSessions,
+      showRightDetailRail,
+      isDetailPanelCollapsed,
+    }),
+  );
   const settingsRailWidth = Math.max(240, Math.min(272, Math.round(windowSize.width * 0.18)));
   const settingsContentWidth = Math.max(420, windowSize.width - LEFT_RAIL_WIDTH - settingsRailWidth - 48);
   const authSettingsLayoutWidth = Math.max(320, settingsMeasuredWidth ?? settingsContentWidth);
@@ -72,6 +95,40 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     leftWorkspaceWidthRef.current = leftWorkspaceWidth;
     rightDetailVisibleRef.current = showRightDetailRail && !isDetailPanelCollapsed;
   }, [windowSize.width, leftWorkspaceWidth, showRightDetailRail, isDetailPanelCollapsed]);
+
+  useEffect(() => {
+    if (!isNativeShell) {
+      setWindowSize((current) => clampWindowSize(current.width, current.height, { minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT }));
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const [{ getCurrentWindow }, { LogicalSize }] = await Promise.all([
+        import('@tauri-apps/api/window'),
+        import('@tauri-apps/api/dpi'),
+      ]);
+      const currentWindow = getCurrentWindow();
+
+      await currentWindow.setMinSize(new LogicalSize(minWindowWidth, WINDOW_MIN_HEIGHT));
+
+      const nextWidth = Math.max(window.innerWidth, minWindowWidth);
+      const nextHeight = Math.max(window.innerHeight, WINDOW_MIN_HEIGHT);
+
+      if (window.innerWidth < minWindowWidth || window.innerHeight < WINDOW_MIN_HEIGHT) {
+        await currentWindow.setSize(new LogicalSize(nextWidth, nextHeight));
+      }
+
+      if (!cancelled) {
+        setWindowSize({ width: nextWidth, height: nextHeight });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativeShell, minWindowWidth]);
 
   useEffect(() => {
     const element = settingsContentRef.current;
@@ -99,8 +156,8 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     const handleWindowResize = () => {
       setWindowSize((current) =>
         isNativeShell
-          ? getViewportFillSize()
-          : clampWindowSize(current.width, current.height),
+          ? getViewportFillSize(minWindowWidth, WINDOW_MIN_HEIGHT)
+          : clampWindowSize(current.width, current.height, { minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT }),
       );
     };
 
@@ -128,7 +185,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
           nextHeight = resizeState.startHeight - deltaY;
         }
 
-        setWindowSize(clampWindowSize(nextWidth, nextHeight));
+        setWindowSize(clampWindowSize(nextWidth, nextHeight, { minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT }));
       }
 
       const panelResizeState = panelResizeStateRef.current;
@@ -174,7 +231,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isNativeShell]);
+  }, [isNativeShell, minWindowWidth]);
 
   const startWindowResize =
     (direction: ResizeDirection) => (event: ReactMouseEvent<HTMLDivElement | HTMLButtonElement>) => {
