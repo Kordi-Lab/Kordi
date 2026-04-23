@@ -72,6 +72,10 @@ export function AgentDetailPane({
 
   const activeConfigPath = getAgentConfigPath(activeAgent);
   const isEditable = Boolean(activeConfigPath);
+  const promptSectionTitle = isEditable ? 'System prompt' : 'Full runtime prompt';
+  const promptSectionDetail = isEditable
+    ? 'Keep this short, explicit, and identity-specific.'
+    : 'Exact prompt currently running in the desktop agent, including runtime-added project and skill context.';
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-[rgba(20,20,24,0.42)] text-white">
@@ -116,9 +120,9 @@ export function AgentDetailPane({
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-5 px-5 py-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <AgentInspectorSection title="System prompt" detail="Keep this short, explicit, and identity-specific.">
+            <AgentInspectorSection title={promptSectionTitle} detail={promptSectionDetail}>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? 'current runtime'}</div>
+                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? 'exact current runtime'}</div>
                 {isEditable ? (
                   activeEditingSection === 'prompt' ? (
                     <div className="flex items-center gap-2">
