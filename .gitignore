@@ -18,6 +18,5 @@ tmp-chrome-profile.*
 logo.png
 scripts/dev-desktop-safe.sh
 app/desktop/scripts/reshape-mac-icon.swift
-app/desktop/src-tauri/icons/icon.icns
 app/desktop/src-tauri/icons/icon.iconset/
 app/desktop/src-tauri/icons/source-square.png
