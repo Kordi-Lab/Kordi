@@ -753,10 +753,25 @@
 }
 
 .app-workspace-sidebar .app-filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
   background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
 }
 
+.app-workspace-sidebar .app-filter-tab {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-workspace-sidebar .app-workspace-session-scroll {
+  scrollbar-gutter: auto;
+}
+
 .app-workspace-sidebar .app-session-row {
+  display: block;
   border-radius: 14px;
 }
 

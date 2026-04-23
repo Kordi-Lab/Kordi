@@ -340,7 +340,7 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 space-y-1.5">
-                    <div className="app-filter-tabs">
+                    <div className="app-filter-tabs w-full">
                       {[
                         { id: 'all', label: 'All' },
                         { id: 'people', label: 'People' },
@@ -364,8 +364,8 @@ export function WorkspaceSidebar({
                     </div>
                   ) : null}
 
-                  <ScrollArea className="min-h-0 flex-1 pr-1">
-                    <div className="space-y-1">
+                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
+                    <div className="w-full space-y-1">
                       {filteredConversations.map((conversation) => {
                         const lastMessage = conversation.messages[conversation.messages.length - 1];
                         const isActive = activeConvId === conversation.id;
@@ -376,7 +376,7 @@ export function WorkspaceSidebar({
                             key={conversation.id}
                             type="button"
                             onClick={() => onSelectChatSession(conversation.id)}
-                            className={`app-session-row w-full px-2.5 py-[0.3125rem] text-left ${
+                            className={`app-session-row block w-full px-2.5 py-[0.3125rem] text-left ${
                               isActive ? 'app-session-row-active text-white' : 'text-white'
                             }`}
                           >
@@ -435,8 +435,8 @@ export function WorkspaceSidebar({
                     />
                   </div>
 
-                  <ScrollArea className="min-h-0 flex-1 pr-1">
-                    <div className="space-y-1.5">
+                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
+                    <div className="w-full space-y-1.5">
                       {filteredProjects.map((project) => {
                         const isExpanded = expandedProjectIds[project.id] ?? false;
 
@@ -481,7 +481,7 @@ export function WorkspaceSidebar({
                                         type="button"
                                         onClick={() => onSelectProjectSession(project.id, session.id)}
                                         className={cn(
-                                          'app-project-session-row w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-[0.3125rem] text-left transition',
+                                          'app-project-session-row block w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-[0.3125rem] text-left transition',
                                           isActiveSession
                                             ? 'border-white/10 bg-white/[0.055] text-white'
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
