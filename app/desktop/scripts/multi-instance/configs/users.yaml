@@ -1,0 +1,23 @@
+defaults:
+  host: 127.0.0.1
+  titlePrefix: Kordi
+  dataRoot: ../../../.multi-instance-data
+  logsRoot: ../../../.multi-instance-logs
+  runtimeRoot: ../../../.multi-instance-runtime
+
+users:
+  - id: user1
+    port: 1482
+    title: Kordi (user1)
+
+  - id: user2
+    port: 1484
+    title: Kordi (user2)
+
+  - id: user3
+    port: 1486
+    title: Kordi (user3)
+
+  - id: user4
+    port: 1488
+    title: Kordi (user4)

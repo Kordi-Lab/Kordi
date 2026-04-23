@@ -15,12 +15,15 @@
     "tauri:dev": "pnpm tauri:prepare-sidecars && tauri dev",
     "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
     "tauri:dev:instance": "node scripts/tauri-dev-instance.mjs",
+    "tauri:dev:multi": "node scripts/multi-instance/launch.mjs",
+    "tauri:dev:multi:prepare": "node scripts/multi-instance/prepare-env.mjs",
+    "tauri:dev:multi:reset": "node scripts/multi-instance/reset.mjs",
     "tauri:build": "pnpm tauri:prepare-sidecars && tauri build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
     "@radix-ui/react-tabs": "^1.1.13",
     "@tailwindcss/vite": "^4.2.2",
+    "@tauri-apps/api": "^2.8.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",
@@ -31,8 +34,8 @@
     "typescript": "^6.0.2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.8.0",
     "@eslint/js": "^9.39.4",
+    "@tauri-apps/cli": "^2.8.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -40,6 +43,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "yaml": "^2.8.3"
   }
 }

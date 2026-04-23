@@ -7,6 +7,8 @@
     "dev:full": "pnpm dev",
     "dev:desktop": "pnpm --dir app/desktop tauri:dev",
     "dev:desktop:profile": "pnpm --dir app/desktop tauri:dev:profile",
+    "dev:desktop:multi": "pnpm --dir app/desktop tauri:dev:multi",
+    "reset:desktop:multi": "pnpm --dir app/desktop tauri:dev:multi:reset",
     "dev:web": "pnpm --dir app/desktop dev",
     "preview:web": "pnpm --dir app/desktop preview",
     "prepare:sidecars": "pnpm --dir app/desktop tauri:prepare-sidecars",
