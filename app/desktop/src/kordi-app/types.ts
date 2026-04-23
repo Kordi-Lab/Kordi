@@ -135,6 +135,10 @@ export type Agent = {
   contactId: string;
   systemPrompt: string;
   xMd: string;
+  identityFiles: string[];
+  loadedTools: string[];
+  loadedSkills: string[];
+  loadedPlugins: string[];
   lastActivities: string[];
   bridgeHostId?: string;
   bridgePeerNodeId?: string;

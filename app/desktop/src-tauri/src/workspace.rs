@@ -49,10 +49,18 @@ fn current_target_triple() -> String {
         .to_string()
 }
 
-fn source_root() -> PathBuf {
+pub(crate) fn source_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri should always have a parent directory")
+        .to_path_buf()
+}
+
+pub(crate) fn repo_root() -> PathBuf {
+    source_root()
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("app/desktop should always live under the repo root")
         .to_path_buf()
 }
 
@@ -87,6 +95,50 @@ fn build_repo_status(label: &str, repo_path: &Path, binary_relative_path: &str) 
         expected_binary_path: expected_binary.display().to_string(),
         binary_exists: expected_binary.exists(),
     }
+}
+
+fn resolve_repo_relative_path(raw_path: &str) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".to_string());
+    }
+
+    let root = repo_root();
+    let candidate = root.join(trimmed);
+
+    if candidate.exists() {
+        let canonical = candidate.canonicalize().map_err(|err| err.to_string())?;
+        if !canonical.starts_with(&root) {
+            return Err("Path must stay inside the repo".to_string());
+        }
+        return Ok(canonical);
+    }
+
+    let parent = candidate
+        .parent()
+        .ok_or_else(|| "Path must have a parent directory".to_string())?;
+    let canonical_parent = parent.canonicalize().map_err(|err| err.to_string())?;
+    if !canonical_parent.starts_with(&root) {
+        return Err("Path must stay inside the repo".to_string());
+    }
+
+    Ok(candidate)
+}
+
+pub fn desktop_read_workspace_text_file(path: String) -> Result<String, String> {
+    let resolved = resolve_repo_relative_path(&path)?;
+    fs::read_to_string(&resolved).map_err(|err| err.to_string())
+}
+
+pub fn desktop_write_workspace_text_file(path: String, contents: String) -> Result<String, String> {
+    let resolved = resolve_repo_relative_path(&path)?;
+
+    if let Some(parent) = resolved.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+
+    fs::write(&resolved, contents).map_err(|err| err.to_string())?;
+    Ok(resolved.display().to_string())
 }
 
 pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {

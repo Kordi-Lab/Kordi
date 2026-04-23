@@ -353,13 +353,15 @@ export function useWorkspaceViewModels({
     if (!isNativeShell) return agents;
 
     const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
-    const items: Agent[] = [];
-    const seen = new Set<string>();
+    const items: Agent[] = [...agents];
+    const seen = new Set<string>(agents.map((agent) => `static:${agent.id}`));
 
     for (const host of desktopBridgeState?.hosts ?? []) {
       const hostLabel = bridgeLabel(host.serverUrl);
       for (const agent of host.agents) {
         const key = `owned:${host.id}:${agent.id}`;
+         if (seen.has(key)) continue;
+         seen.add(key);
         if (seen.has(key)) continue;
         seen.add(key);
         items.push({
@@ -375,6 +377,14 @@ export function useWorkspaceViewModels({
           contactId: `bridge-agent:${host.id}:${agent.id}`,
           systemPrompt: 'Owned bridge agent identity for collaboration routing and direct bridge messaging.',
           xMd: [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
+          identityFiles: [
+            `${host.serverUrl}/agents/${agent.id}/identity.md`,
+            `${host.serverUrl}/agents/${agent.id}/system.md`,
+            `${host.serverUrl}/agents/${agent.id}/skills.json`,
+          ],
+          loadedTools: ['read', 'bash', 'write', 'bridge_fetch'],
+          loadedSkills: ['clarify', 'layout', 'polish'],
+          loadedPlugins: ['bridge-runtime', 'presence-sync'],
           lastActivities: [
             `Human ID: ${host.humanId}`,
             `Node ID: ${agent.nodeId || 'Pending registration'}`,
@@ -395,6 +405,8 @@ export function useWorkspaceViewModels({
 
       for (const peer of host.visiblePeers.filter((peer) => isBridgeAgentRuntime(peer.runtime))) {
         const key = `external:${peer.agentId || peer.nodeId}`;
+         if (seen.has(key)) continue;
+         seen.add(key);
         if (seen.has(key)) continue;
         seen.add(key);
         items.push({
@@ -410,6 +422,13 @@ export function useWorkspaceViewModels({
           contactId: `bridge-peer:${peer.agentId || peer.nodeId}`,
           systemPrompt: 'Bridge-discovered external agent identity.',
           xMd: [peer.nodeId, peer.endpoint].filter(Boolean).join(' • '),
+          identityFiles: [
+            [peer.endpoint, 'identity'].filter(Boolean).join(' • '),
+            [peer.nodeId, 'runtime profile'].filter(Boolean).join(' • '),
+          ],
+          loadedTools: ['bridge_fetch'],
+          loadedSkills: ['clarify'],
+          loadedPlugins: ['bridge-runtime'],
           lastActivities: [
             `Owner: ${peer.ownerName || 'Unknown'}`,
             `Human ID: ${peer.humanId || 'Unavailable'}`,

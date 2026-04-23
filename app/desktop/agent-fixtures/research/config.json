@@ -1,0 +1,18 @@
+{
+  "systemPrompt": "Focuses on literature collection, source comparison, and concise research synthesis.",
+  "loadedSkills": ["audit", "distill", "typeset"],
+  "loadedTools": ["read", "bash", "write", "web_search"],
+  "loadedPlugins": ["citation-index", "web-cache"],
+  "editHistory": [
+    {
+      "path": "app/desktop/agent-fixtures/research/config.json",
+      "action": "Seeded research agent configuration",
+      "timestamp": "2026-04-23 16:40"
+    },
+    {
+      "path": "app/desktop/agent-fixtures/research/identity.md",
+      "action": "Loaded identity profile",
+      "timestamp": "2026-04-23 16:38"
+    }
+  ]
+}
