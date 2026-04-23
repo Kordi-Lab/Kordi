@@ -31,7 +31,7 @@ type UseKordiDesktopActivityArgs = {
   setActiveSourcePreview: (value: EditFilePreview | null) => void;
   setActiveArtifactId: (value: string | null) => void;
   setActiveDetailTab: (tab: DetailTab) => void;
-  setIsDetailPanelCollapsed: (value: boolean) => void;
+  isDetailPanelCollapsed: boolean;
   lastSeenArtifactByContextRef: MutableRefObject<Record<string, string | null>>;
 };
 
@@ -52,7 +52,7 @@ export function useKordiDesktopActivity({
   setActiveSourcePreview,
   setActiveArtifactId,
   setActiveDetailTab,
-  setIsDetailPanelCollapsed,
+  isDetailPanelCollapsed,
   lastSeenArtifactByContextRef,
 }: UseKordiDesktopActivityArgs) {
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
@@ -108,24 +108,28 @@ export function useKordiDesktopActivity({
     const previousArtifactToken = lastSeenArtifactByContextRef.current[artifactContextKey];
     lastSeenArtifactByContextRef.current[artifactContextKey] = latestArtifactToken;
 
-    if (!latestArtifact?.id || previousArtifactToken === undefined || previousArtifactToken === latestArtifactToken) {
+    if (
+      !latestArtifact?.id
+      || previousArtifactToken === undefined
+      || previousArtifactToken === latestArtifactToken
+      || isDetailPanelCollapsed
+    ) {
       return;
     }
 
     setActiveSourcePreview(null);
     setActiveArtifactId(latestArtifact.id);
     setActiveDetailTab('artifacts');
-    setIsDetailPanelCollapsed(false);
   }, [
     activeArtifacts,
     activeConversationIsBridge,
     activeNav,
     artifactContextKey,
+    isDetailPanelCollapsed,
     lastSeenArtifactByContextRef,
     setActiveArtifactId,
     setActiveDetailTab,
     setActiveSourcePreview,
-    setIsDetailPanelCollapsed,
   ]);
 
   return {

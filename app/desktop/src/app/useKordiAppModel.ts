@@ -293,7 +293,7 @@ export function useKordiAppModel() {
     setActiveSourcePreview: settingsUi.setActiveSourcePreview,
     setActiveArtifactId: settingsUi.setActiveArtifactId,
     setActiveDetailTab,
-    setIsDetailPanelCollapsed,
+    isDetailPanelCollapsed,
     lastSeenArtifactByContextRef,
   });
 
