@@ -54,6 +54,14 @@ export type EditFilePreview = {
   sourceLines?: SourcePreviewLine[];
 };
 
+export type MessageAttachment = {
+  kind: 'image' | 'file';
+  name: string;
+  formatLabel?: string | null;
+  previewUrl?: string | null;
+  mimeType?: string | null;
+};
+
 export type Message = {
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
@@ -61,6 +69,7 @@ export type Message = {
   time: string;
   detail?: string;
   statusChips?: string[];
+  attachments?: MessageAttachment[];
   turn?: DesktopChatTurnSnapshot;
   edit?: {
     files: EditFilePreview[];
@@ -241,6 +250,13 @@ export type DesktopChatSlashCommand = {
   value: string;
 };
 
+export type DesktopChatAttachment = {
+  kind: 'image' | 'file';
+  name: string;
+  formatLabel?: string | null;
+  previewUrl?: string | null;
+};
+
 export type DesktopChatMessage = {
   role: string;
   sender?: string | null;
@@ -248,6 +264,7 @@ export type DesktopChatMessage = {
   detail?: string | null;
   timeLabel: string;
   timestampMs: number;
+  attachments?: DesktopChatAttachment[];
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
 };
