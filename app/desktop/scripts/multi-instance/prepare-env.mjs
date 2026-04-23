@@ -1,4 +1,5 @@
 import {
+  applyBootstrap,
   ensureMultiInstanceDirs,
   loadMultiInstanceConfig,
   parseCommonArgs,
@@ -29,6 +30,7 @@ if (options.reset) {
   }
 }
 
+const bootstrapResults = [];
 for (const instance of config.users) {
   ensureMultiInstanceDirs({
     ...config,
@@ -36,10 +38,12 @@ for (const instance of config.users) {
     logsRoot: instance.logDir,
     runtimeRoot: config.runtimeRoot,
   });
+  bootstrapResults.push(applyBootstrap(instance, { force: options.reset }));
 }
 
 console.log(JSON.stringify({
   reset: options.reset,
   dryRun: false,
+  bootstrapResults,
   ...summarizeConfig(config),
 }, null, 2));

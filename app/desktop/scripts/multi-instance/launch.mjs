@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 
 import {
   appRoot,
+  applyBootstrap,
   assertPortsAvailable,
   ensureMultiInstanceDirs,
   loadMultiInstanceConfig,
@@ -20,6 +21,16 @@ const options = parseCommonArgs(process.argv.slice(2), {
 });
 
 const config = loadMultiInstanceConfig(options.configPath, options.userIds);
+
+if (options.dryRun) {
+  console.log(JSON.stringify({
+    reset: options.reset,
+    command: tauriDevInstanceScript,
+    ...summarizeConfig(config),
+  }, null, 2));
+  process.exit(0);
+}
+
 ensureMultiInstanceDirs(config);
 
 if (options.reset) {
@@ -38,15 +49,10 @@ for (const instance of config.users) {
     logsRoot: instance.logDir,
     runtimeRoot: config.runtimeRoot,
   });
-}
-
-if (options.dryRun) {
-  console.log(JSON.stringify({
-    reset: options.reset,
-    command: tauriDevInstanceScript,
-    ...summarizeConfig(config),
-  }, null, 2));
-  process.exit(0);
+  const bootstrap = applyBootstrap(instance, { force: options.reset });
+  if (bootstrap.seeded) {
+    console.log(`[kordi] ${instance.id}: bootstrapped auth fixture -> ${bootstrap.authTargetPath}`);
+  }
 }
 
 await assertPortsAvailable(config.users);
@@ -72,7 +78,7 @@ for (const instance of config.users) {
     instance.dataDir,
   ];
 
-  if (options.reset || instance.cleanOnLaunch) {
+  if (!options.reset && instance.cleanOnLaunch) {
     args.push('--clean');
   }
 
@@ -94,6 +100,9 @@ for (const instance of config.users) {
   console.log(`         title: ${instance.title}`);
   console.log(`         data:  ${instance.dataDir}`);
   console.log(`         log:   ${instance.logFile}`);
+  if (instance.bootstrap?.authSummary) {
+    console.log(`         auth:  source=${instance.bootstrap.authSource} providers=${instance.bootstrap.authSummary.providerIds.join(',') || 'none'} mode=${instance.bootstrap.authMode}`);
+  }
 
   await sleep(750);
 }

@@ -114,6 +114,7 @@ The launcher will:
 - prepare per-user data roots
 - assign configured ports/titles/profiles
 - write per-user logs
+- optionally seed deterministic per-user auth fixtures
 - start one isolated desktop instance per configured user
 
 Launch from clean state:
@@ -140,6 +141,25 @@ Artifacts are written to deterministic paths:
 app/desktop/.multi-instance-data/<instance>/
 app/desktop/.multi-instance-logs/<instance>/dev-<port>.log
 app/desktop/.multi-instance-runtime/<instance>.pid
+```
+
+For Phase 3 deterministic bootstrap, multi-instance users now default to:
+
+```yaml
+defaults:
+  bootstrap:
+    authSource: shared
+    authMode: if-missing
+```
+
+That copies your existing shared auth store from `~/.kordi/auth.json` (or legacy `~/.bb-agent/auth.json`) into each isolated instance before launch, so the app opens already authenticated without manual UI login.
+
+You can still override a specific user with a local fixture:
+
+```yaml
+bootstrap:
+  authFile: ./local/user1-auth.json
+  authMode: always
 ```
 
 ### Build the desktop app
