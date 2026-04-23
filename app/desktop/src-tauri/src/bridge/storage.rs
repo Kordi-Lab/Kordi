@@ -15,9 +15,9 @@ use super::constants::{
     LEGACY_BRIDGE_CONFIG_FILE_NAME,
 };
 use super::{
-    default_bridge_api_style, default_display_name, default_owner_name, ensure_host_bootstrap,
-    stable_host_id, DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeStore,
-    LegacyBridgeClientConfig,
+    DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeStore,
+    LegacyBridgeClientConfig, default_bridge_api_style, default_display_name, default_owner_name,
+    ensure_host_bootstrap, stable_host_id,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -65,7 +65,34 @@ pub(super) fn format_time_label_with_seconds(timestamp_ms: i64) -> String {
         .unwrap_or_else(|| "--:--:--".to_string())
 }
 
+fn bridge_instance_id() -> Option<String> {
+    std::env::var("APP_INSTANCE_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var_os("APP_DATA_DIR").map(|value| {
+                let mut hasher = Sha256::new();
+                hasher.update(value.to_string_lossy().as_bytes());
+                hasher.finalize()[..8]
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            })
+        })
+}
+
+fn bridge_keychain_service_name() -> String {
+    bridge_instance_id()
+        .map(|instance_id| format!("{BRIDGE_KEYCHAIN_SERVICE_NAME}.{instance_id}"))
+        .unwrap_or_else(|| BRIDGE_KEYCHAIN_SERVICE_NAME.to_string())
+}
+
 pub(super) fn korde_dir() -> Result<PathBuf, String> {
+    if let Some(data_dir) = std::env::var_os("APP_DATA_DIR") {
+        return Ok(PathBuf::from(data_dir).join(KORDE_DIR_NAME.trim_start_matches('.')));
+    }
+
     let home =
         std::env::var("HOME").map_err(|_| "Unable to determine home directory".to_string())?;
     Ok(PathBuf::from(home).join(KORDE_DIR_NAME))
@@ -152,7 +179,9 @@ fn load_legacy_desktop_bridge_secrets_store() -> DesktopBridgeSecretsStore {
 
 #[cfg(target_os = "macos")]
 fn keychain_account(prefix: &str, id: &str) -> String {
-    format!("{prefix}{id}")
+    bridge_instance_id()
+        .map(|instance_id| format!("{instance_id}:{prefix}{id}"))
+        .unwrap_or_else(|| format!("{prefix}{id}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -171,6 +200,7 @@ fn command_output_error(prefix: &str, output: &std::process::Output) -> String {
 
 #[cfg(target_os = "macos")]
 fn macos_keychain_set_secret(account: &str, secret: &str) -> Result<(), String> {
+    let service_name = bridge_keychain_service_name();
     let output = std::process::Command::new("security")
         .args([
             "add-generic-password",
@@ -178,7 +208,7 @@ fn macos_keychain_set_secret(account: &str, secret: &str) -> Result<(), String> 
             "-a",
             account,
             "-s",
-            BRIDGE_KEYCHAIN_SERVICE_NAME,
+            &service_name,
             "-w",
             secret,
         ])
@@ -196,13 +226,14 @@ fn macos_keychain_set_secret(account: &str, secret: &str) -> Result<(), String> 
 
 #[cfg(target_os = "macos")]
 fn macos_keychain_get_secret(account: &str) -> Result<Option<String>, String> {
+    let service_name = bridge_keychain_service_name();
     let output = std::process::Command::new("security")
         .args([
             "find-generic-password",
             "-a",
             account,
             "-s",
-            BRIDGE_KEYCHAIN_SERVICE_NAME,
+            &service_name,
             "-w",
         ])
         .output()
@@ -230,13 +261,14 @@ fn macos_keychain_get_secret(account: &str) -> Result<Option<String>, String> {
 
 #[cfg(target_os = "macos")]
 fn macos_keychain_delete_secret(account: &str) -> Result<(), String> {
+    let service_name = bridge_keychain_service_name();
     let output = std::process::Command::new("security")
         .args([
             "delete-generic-password",
             "-a",
             account,
             "-s",
-            BRIDGE_KEYCHAIN_SERVICE_NAME,
+            &service_name,
         ])
         .output()
         .map_err(|err| format!("Unable to delete bridge secret from macOS Keychain: {err}"))?;

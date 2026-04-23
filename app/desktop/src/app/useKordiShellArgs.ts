@@ -115,6 +115,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       desktopAuthError: args.desktopAuthError,
       activeLoginProviderId: args.activeLoginProviderId,
       selectAuthProvider: args.selectAuthProvider,
+      openAuthSettings: args.openAuthSettings,
       openLoginFlow: args.openLoginFlow,
       refreshDesktopAuth: args.refreshDesktopAuth,
       handleSelectAuthChoice: args.handleSelectAuthChoice,
@@ -226,6 +227,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
     },
     overlay: {
       showAuthGate: args.showAuthGate,
+      dismissAuthGate: args.dismissAuthGate,
       windowWidth: args.windowWidth,
       isNativeShell: args.isNativeShell,
       desktopAuthState: args.desktopAuthState,

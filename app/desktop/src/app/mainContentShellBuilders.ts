@@ -105,6 +105,8 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onSendProjectMessage: args.handleSendProjectMessage,
+    hasAnyAuth: args.desktopAuthState?.hasAnyAuth ?? false,
+    onOpenAuthSettings: args.openAuthSettings,
   };
 }
 
@@ -167,5 +169,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onSendChatMessage: args.handleSendChatMessage,
+    hasAnyAuth: args.desktopAuthState?.hasAnyAuth ?? false,
+    onOpenAuthSettings: args.openAuthSettings,
   };
 }

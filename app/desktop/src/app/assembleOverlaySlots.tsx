@@ -7,7 +7,10 @@ import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {
   const authGate = args.showAuthGate ? (
-    <div className="absolute inset-0 z-50 overflow-hidden" style={{ WebkitAppRegion: 'no-drag' as const }}>
+    <div
+      className="app-overlay absolute inset-0 z-50 overflow-hidden p-3 backdrop-blur-[12px] sm:p-4"
+      style={{ WebkitAppRegion: 'no-drag' as const }}
+    >
       <AuthPage
         variant="gate"
         layoutWidth={args.windowWidth}
@@ -30,6 +33,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
         onLogoutProvider={(providerId) => {
           void args.handleLogoutProvider(providerId);
         }}
+        onDismissGate={args.dismissAuthGate}
       />
     </div>
   ) : null;

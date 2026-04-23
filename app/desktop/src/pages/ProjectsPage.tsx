@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -123,6 +124,8 @@ type ProjectsPageProps = {
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
   onSendProjectMessage: () => void;
+  hasAnyAuth: boolean;
+  onOpenAuthSettings: () => void;
 };
 
 export function ProjectsPage({
@@ -171,6 +174,8 @@ export function ProjectsPage({
   isDesktopChatSending,
   onStopDesktopChatTurn,
   onSendProjectMessage,
+  hasAnyAuth,
+  onOpenAuthSettings,
 }: ProjectsPageProps) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -253,6 +258,14 @@ export function ProjectsPage({
           )}
         </div>
       </div>
+
+      {!hasAnyAuth ? (
+        <AuthNoticeBanner
+          title="No provider connected yet"
+          description="Connect a provider before running project conversations. Open Authentication to sign in or save an API key."
+          onAction={onOpenAuthSettings}
+        />
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea

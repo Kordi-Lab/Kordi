@@ -143,6 +143,28 @@ export function ComposerSlashMenu({
   );
 }
 
+function providerDisplayLabel(providerId: string) {
+  switch (providerId) {
+    case 'anthropic':
+      return 'Claude';
+    case 'openai':
+    case 'openai-codex':
+      return 'OpenAI';
+    case 'google':
+      return 'Google Gemini';
+    case 'github-copilot':
+      return 'GitHub Copilot';
+    case 'groq':
+      return 'Groq';
+    case 'openrouter':
+      return 'OpenRouter';
+    case 'xai':
+      return 'xAI';
+    default:
+      return providerId;
+  }
+}
+
 export function ComposerModelControls({
   scope,
   selection,
@@ -170,13 +192,17 @@ export function ComposerModelControls({
 }) {
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
   const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
-  const selectedProviderValue = selectedModelOption?.provider ?? selection.model.split('/')[0] ?? '';
+  const parsedSelection = selection.model.split('/');
+  const fallbackProviderValue = parsedSelection[0] ?? '';
+  const fallbackModelLabel = parsedSelection.slice(1).join('/').trim() || selection.model;
+  const selectedProviderValue = selectedModelOption?.provider ?? fallbackProviderValue;
   const selectedProviderOption = providerOptions.find(
     (option) => option.providerId === selectedProviderValue && option.active,
   ) ?? providerOptions.find((option) => option.providerId === selectedProviderValue) ?? null;
-  const selectedProviderLabel = selectedProviderOption?.selectionLabel
+  const selectedProviderLabel = selectedModelOption?.providerLabel
+    ?? providerDisplayLabel(selectedProviderValue)
+    ?? selectedProviderOption?.selectionLabel
     ?? selectedProviderOption?.label
-    ?? selectedModelOption?.providerLabel
     ?? selectedProviderValue;
   const filteredModelOptions = modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue);
   const activeOptions = activeSelector === 'provider'
@@ -184,7 +210,7 @@ export function ComposerModelControls({
     : activeSelector === 'model'
       ? filteredModelOptions
       : composerThinkingOptions.map((option) => ({ value: option, label: option, detail: null }));
-  const selectedModel = selectedModelOption?.label ?? selection.model;
+  const selectedModel = selectedModelOption?.label ?? fallbackModelLabel;
 
   return (
     <div className="relative flex shrink-0 items-center gap-1.5">

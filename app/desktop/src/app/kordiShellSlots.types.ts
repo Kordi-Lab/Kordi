@@ -160,6 +160,7 @@ export type AssembleKordiShellSlotsArgs = {
   desktopAuthError: string | null;
   activeLoginProviderId: string | null;
   selectAuthProvider: (providerId: string) => void;
+  openAuthSettings: () => void;
   openLoginFlow: (provider: DesktopAuthProvider, mode: 'oauth' | 'api-key', options?: { authority?: string; requireAuthority?: boolean }) => void;
   refreshDesktopAuth: () => Promise<void>;
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
@@ -252,6 +253,7 @@ export type AssembleKordiShellSlotsArgs = {
   lastBridgePollAtLabel: string | null;
   activeSessionProject: DesktopChatProjectInfo | null;
   showAuthGate: boolean;
+  dismissAuthGate: () => void;
   inlineAuthDialog: {
     providerId: string;
     mode: 'oauth' | 'api-key';
@@ -374,6 +376,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'desktopAuthError'
   | 'activeLoginProviderId'
   | 'selectAuthProvider'
+  | 'openAuthSettings'
   | 'openLoginFlow'
   | 'refreshDesktopAuth'
   | 'handleSelectAuthChoice'
@@ -488,6 +491,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showAuthGate'
+  | 'dismissAuthGate'
   | 'windowWidth'
   | 'isNativeShell'
   | 'desktopAuthState'

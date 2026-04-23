@@ -30,12 +30,18 @@ const PROMPTS_DIRNAME: &str = "prompts";
 const AGENTS_DIRNAME: &str = "agents";
 const NPM_PACKAGES_DIRNAME: &str = "npm";
 const GIT_PACKAGES_DIRNAME: &str = "git";
+const APP_DATA_DIR_ENV_VAR: &str = "APP_DATA_DIR";
+const KORDI_STORAGE_ROOT_ENV_VAR: &str = "KORDI_STORAGE_ROOT";
 
 /// Resolve the legacy global agent resource directory.
 ///
 /// This remains the default root for older prompt/package/extension lookup
 /// call sites until those are migrated to explicit Kordi-branded helpers.
 pub fn global_dir() -> PathBuf {
+    if let Some(root) = process_storage_root() {
+        return root.join(LEGACY_PROJECT_CONFIG_DIRNAME);
+    }
+
     if let Some(home) = home_dir() {
         home.join(LEGACY_PROJECT_CONFIG_DIRNAME)
     } else {
@@ -45,6 +51,10 @@ pub fn global_dir() -> PathBuf {
 
 /// Resolve the preferred Kordi global settings/storage directory.
 pub fn preferred_global_settings_dir() -> PathBuf {
+    if let Some(root) = process_storage_root() {
+        return root;
+    }
+
     if let Some(home) = home_dir() {
         home.join(PRIMARY_PROJECT_SETTINGS_DIRNAME)
     } else {
@@ -348,6 +358,10 @@ pub fn tui_debug_log_path(storage: &StorageSettings) -> PathBuf {
 }
 
 fn preferred_session_db_path(storage: &StorageSettings) -> PathBuf {
+    if let Some(root) = process_storage_root() {
+        return root.join(SESSIONS_DB_FILENAME);
+    }
+
     storage
         .db_path
         .as_deref()
@@ -356,6 +370,10 @@ fn preferred_session_db_path(storage: &StorageSettings) -> PathBuf {
 }
 
 fn preferred_artifacts_dir(storage: &StorageSettings) -> PathBuf {
+    if let Some(root) = process_storage_root() {
+        return root.join(ARTIFACTS_DIRNAME);
+    }
+
     storage
         .artifacts_dir
         .as_deref()
@@ -380,11 +398,21 @@ fn preferred_tui_debug_log_path(storage: &StorageSettings) -> PathBuf {
 }
 
 fn configured_storage_root(storage: &StorageSettings) -> Option<PathBuf> {
-    storage.root_dir.as_deref().map(expand_user_path)
+    process_storage_root().or_else(|| storage.root_dir.as_deref().map(expand_user_path))
 }
 
 fn preferred_storage_root(storage: &StorageSettings) -> PathBuf {
     configured_storage_root(storage).unwrap_or_else(preferred_global_settings_dir)
+}
+
+fn process_storage_root() -> Option<PathBuf> {
+    std::env::var_os(KORDI_STORAGE_ROOT_ENV_VAR)
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os(APP_DATA_DIR_ENV_VAR)
+                .map(PathBuf::from)
+                .map(|path| path.join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.')))
+        })
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -659,6 +687,64 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn app_data_dir_override_is_used_for_global_storage() {
+        let _lock = env_lock().lock().unwrap();
+        let home = make_temp_dir();
+        let app_data_dir = make_temp_dir();
+        let _home = EnvGuard::set("HOME", home.to_str().unwrap());
+        let _app_data_dir = EnvGuard::set(APP_DATA_DIR_ENV_VAR, app_data_dir.to_str().unwrap());
+
+        assert_eq!(
+            preferred_global_settings_dir(),
+            app_data_dir.join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.'))
+        );
+        assert_eq!(
+            global_settings_path(),
+            app_data_dir
+                .join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.'))
+                .join(SETTINGS_FILENAME)
+        );
+        assert_eq!(
+            global_dir(),
+            app_data_dir
+                .join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.'))
+                .join(LEGACY_PROJECT_CONFIG_DIRNAME)
+        );
+
+        let _ = fs::remove_dir_all(home);
+        let _ = fs::remove_dir_all(app_data_dir);
+    }
+
+    #[test]
+    fn app_data_dir_override_wins_over_explicit_storage_paths() {
+        let _lock = env_lock().lock().unwrap();
+        let home = make_temp_dir();
+        let app_data_dir = make_temp_dir();
+        let _home = EnvGuard::set("HOME", home.to_str().unwrap());
+        let _app_data_dir = EnvGuard::set(APP_DATA_DIR_ENV_VAR, app_data_dir.to_str().unwrap());
+        let storage = StorageSettings {
+            root_dir: Some("~/custom-kordi".to_string()),
+            db_path: Some("~/custom-kordi/db.sqlite".to_string()),
+            artifacts_dir: Some("~/custom-kordi/artifacts-out".to_string()),
+        };
+
+        let expected_root =
+            app_data_dir.join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.'));
+        assert_eq!(
+            session_db_path(&storage),
+            expected_root.join(SESSIONS_DB_FILENAME)
+        );
+        assert_eq!(
+            artifacts_dir(&storage),
+            expected_root.join(ARTIFACTS_DIRNAME)
+        );
+        assert_eq!(auth_path(&storage), expected_root.join(AUTH_FILENAME));
+
+        let _ = fs::remove_dir_all(home);
+        let _ = fs::remove_dir_all(app_data_dir);
     }
 
     #[test]

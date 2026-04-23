@@ -2,11 +2,12 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 
 use crate::error::DbError;
+use crate::paths::bridges_home_dir;
 
 /// Default database path: ~/.bridges/bridges.db
 pub fn default_db_path() -> Result<PathBuf, DbError> {
-    let base = directories::BaseDirs::new().ok_or(DbError::HomeDirUnavailable)?;
-    Ok(base.home_dir().join(".bridges").join("bridges.db"))
+    let base = bridges_home_dir().ok_or(DbError::HomeDirUnavailable)?;
+    Ok(base.join("bridges.db"))
 }
 
 /// Open (or create) the database at the default path.

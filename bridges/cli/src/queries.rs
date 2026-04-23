@@ -1,10 +1,10 @@
 use crate::models::*;
-use rusqlite::{params, Connection};
+use crate::paths::bridges_projects_root;
+use rusqlite::{Connection, params};
 
 /// Default projects root: ~/bridges-projects/
 pub fn projects_root() -> std::path::PathBuf {
-    let base = directories::BaseDirs::new().expect("cannot determine home dir");
-    base.home_dir().join("bridges-projects")
+    bridges_projects_root().expect("cannot determine bridges projects root")
 }
 
 /// Get or create the project directory path for a slug.

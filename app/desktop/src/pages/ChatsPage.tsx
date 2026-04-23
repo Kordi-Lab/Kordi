@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -92,6 +93,8 @@ type ChatsPageProps = {
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
   onSendChatMessage: () => void;
+  hasAnyAuth: boolean;
+  onOpenAuthSettings: () => void;
 };
 
 export function ChatsPage({
@@ -142,6 +145,8 @@ export function ChatsPage({
   isDesktopChatSending,
   onStopDesktopChatTurn,
   onSendChatMessage,
+  hasAnyAuth,
+  onOpenAuthSettings,
 }: ChatsPageProps) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -229,6 +234,14 @@ export function ChatsPage({
           </Button>
         )}
       </div>
+
+      {!hasAnyAuth && !activeConversationIsBridge ? (
+        <AuthNoticeBanner
+          title="No provider connected yet"
+          description="Connect a provider before starting AI chats. You can add browser sign-in or an API key in Authentication."
+          onAction={onOpenAuthSettings}
+        />
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea

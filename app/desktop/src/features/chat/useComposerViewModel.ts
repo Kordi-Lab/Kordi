@@ -117,12 +117,27 @@ export function useComposerViewModel({
     const option = desktopChatState?.modelOptions.find((candidate) => candidate.value === modelLabel);
     if (option) return option.provider;
 
+    const explicitProvider = modelLabel.split('/')[0]?.trim();
+    if (explicitProvider && [
+      'anthropic',
+      'google',
+      'groq',
+      'openai',
+      'openai-codex',
+      'openrouter',
+      'xai',
+      'github-copilot',
+    ].includes(explicitProvider)) {
+      return explicitProvider;
+    }
+
     const normalized = modelLabel.toLowerCase();
     if (normalized.includes('claude')) return 'anthropic';
     if (normalized.includes('gemini')) return 'google';
     if (normalized.includes('groq')) return 'groq';
     if (normalized.includes('openrouter')) return 'openrouter';
     if (normalized.includes('xai') || normalized.includes('grok')) return 'xai';
+    if (normalized.includes('copilot')) return 'github-copilot';
     return 'openai';
   }, [desktopChatState?.modelOptions]);
 

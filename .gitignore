@@ -8,6 +8,7 @@ target
 app/desktop/src-tauri/target
 app/desktop/src-tauri/binaries
 app/desktop/src-tauri/gen
+app/desktop/.multi-instance-data
 
 .env
 .env.local

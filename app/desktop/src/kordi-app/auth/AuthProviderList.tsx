@@ -23,21 +23,25 @@ export function AuthProviderList({
 }: AuthProviderListProps) {
   return (
     <div
-      className="app-surface-muted app-auth-provider-list block w-full min-w-0 max-w-none flex-1 self-stretch rounded-[22px] border border-white/6 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      className="app-surface-muted app-auth-provider-list block w-full min-w-0 max-w-none flex-1 self-stretch rounded-[24px] border border-white/6 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="mb-1.5 flex items-center justify-between gap-3 px-2.5 py-1.5">
-        <div>
-          <div className="text-[13px] font-medium text-white">Choose a provider</div>
-          <div className="mt-1 max-w-[42ch] text-[11px] leading-5 text-slate-400">
-            You only need one working provider to start chatting. Save more later if you want fallbacks or separate billing.
+      <div className="mb-2 flex items-start justify-between gap-3 px-2 py-1">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[13px] font-medium text-white">Choose a provider</div>
+            <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-300">
+              {configuredCount} ready of {providers.length}
+            </div>
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">{configuredCount} ready of {providers.length}</div>
+          <div className="mt-1 max-w-[40ch] text-[11px] leading-5 text-slate-400">
+            Pick one provider to unlock chat now. You can save more later for fallbacks or separate billing.
+          </div>
         </div>
         <Button
           type="button"
           variant="secondary"
-          className="app-control-chip rounded-xl border-0 px-3 text-[12px]"
+          className="app-control-chip h-9 shrink-0 rounded-full border-0 px-3.5 text-[12px]"
           onClick={onRefresh}
           style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
         >
@@ -47,7 +51,7 @@ export function AuthProviderList({
       </div>
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="w-full overflow-hidden rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <div className="w-full overflow-hidden rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
           {providers.map((provider, index) => {
             const selected = provider.id === selectedProviderId;
 
@@ -57,9 +61,9 @@ export function AuthProviderList({
                 type="button"
                 onClick={() => onSelectProvider(provider.id)}
                 className={cn(
-                  'app-auth-provider-row flex w-full cursor-pointer items-center gap-3 px-3.5 py-3 text-left transition',
+                  'app-auth-provider-row flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition',
                   selected
-                    ? 'bg-white/[0.065] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                    ? 'bg-white/[0.07] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
                     : 'hover:bg-white/[0.035]',
                   index > 0 && 'border-t border-white/8',
                 )}
@@ -69,8 +73,8 @@ export function AuthProviderList({
 
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-white/95">{provider.label}</div>
-                  <div className="truncate text-[11px] text-slate-400">{providerListSubtitle(provider)}</div>
-                  <div className="mt-0.5 truncate text-[11px] text-slate-500">{provider.loginHint}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-slate-400">{providerListSubtitle(provider)}</div>
+                  <div className="mt-1 truncate text-[11px] text-slate-500">{provider.loginHint}</div>
                 </div>
 
                 <ChevronRight className={cn('h-4 w-4 shrink-0 text-slate-500 transition', selected && 'text-slate-300')} />
