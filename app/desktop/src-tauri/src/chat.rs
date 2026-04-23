@@ -6,8 +6,9 @@ use serde::Serialize;
 use tauri::State;
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatModelOption, DesktopChatProjectGroup, DesktopChatSessionDetail,
-    DesktopChatSessionSummary, DesktopChatSlashCommand, DesktopRuntimeSession,
+    DesktopChatAgentProfile, DesktopChatModelOption, DesktopChatProjectGroup,
+    DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
+    DesktopRuntimeSession,
 };
 use kordi_cli::turn_runner::TurnEvent;
 
@@ -33,6 +34,7 @@ pub struct DesktopChatState {
     pub sessions: Vec<DesktopChatSessionSummary>,
     pub projects: Vec<DesktopChatProjectGroup>,
     pub active_session: DesktopChatSessionDetail,
+    pub local_agent: DesktopChatAgentProfile,
     pub model_options: Vec<DesktopChatModelOption>,
     pub slash_commands: Vec<DesktopChatSlashCommand>,
 }
@@ -281,10 +283,11 @@ async fn build_chat_state(
             .ok_or_else(|| "Active session is unavailable".to_string())?
     };
 
-    let (active_session, slash_commands) = {
+    let (active_session, local_agent, slash_commands) = {
         let active_runtime = active_runtime.lock().await;
         (
             active_runtime.detail().map_err(|err| err.to_string())?,
+            active_runtime.agent_profile(),
             active_runtime.slash_commands(),
         )
     };
@@ -320,6 +323,7 @@ async fn build_chat_state(
         sessions: summaries,
         projects,
         active_session,
+        local_agent,
         model_options,
         slash_commands,
     })

@@ -138,6 +138,21 @@ pub struct DesktopChatProjectInfo {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopChatAgentProfile {
+    pub label: String,
+    pub system_prompt: String,
+    pub loaded_skills: Vec<String>,
+    pub loaded_tools: Vec<String>,
+    pub loaded_plugins: Vec<String>,
+    pub identity_files: Vec<String>,
+    pub default_provider: String,
+    pub default_model: String,
+    pub workspace_root: String,
+    pub last_activities: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopChatSessionDetail {
     pub id: String,
     pub title: String,
@@ -339,6 +354,10 @@ impl DesktopRuntimeSession {
 
     pub fn detail(&self) -> Result<DesktopChatSessionDetail> {
         build_detail_from_setup(&self.setup)
+    }
+
+    pub fn agent_profile(&self) -> DesktopChatAgentProfile {
+        build_agent_profile_from_setup(&self.setup)
     }
 
     pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
@@ -1135,6 +1154,90 @@ fn build_turn_config(
         request_metrics_tracker: setup.request_metrics_tracker.clone(),
         request_metrics_log_path: setup.request_metrics_log_path.clone(),
     })
+}
+
+fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
+    let mut files = Vec::new();
+
+    let global_agents = kordi_core::config::global_agents_md_path();
+    if global_agents.exists() {
+        files.push(global_agents.display().to_string());
+    }
+
+    let project_settings = kordi_core::config::project_settings_path(cwd);
+    if project_settings.exists() {
+        files.push(project_settings.display().to_string());
+    }
+
+    let mut dir = cwd.to_path_buf();
+    let mut scanned = Vec::new();
+    loop {
+        let agents = dir.join("AGENTS.md");
+        if agents.exists() {
+            scanned.push(agents);
+        } else {
+            let claude = dir.join("CLAUDE.md");
+            if claude.exists() {
+                scanned.push(claude);
+            }
+        }
+
+        if dir.join(".git").exists() {
+            break;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+
+    scanned.reverse();
+    files.extend(scanned.into_iter().map(|path| path.display().to_string()));
+    files.dedup();
+    files
+}
+
+fn build_agent_profile_from_setup(setup: &SessionRuntimeSetup) -> DesktopChatAgentProfile {
+    let loaded_skills = setup
+        .slash_command_items
+        .iter()
+        .filter_map(|item| item.value.strip_prefix("/skill:").map(ToString::to_string))
+        .collect::<Vec<_>>();
+    let loaded_tools = setup
+        .tool_registry
+        .active_tools()
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect::<Vec<_>>();
+    let loaded_plugins = setup
+        .extension_bootstrap
+        .package_sources
+        .iter()
+        .cloned()
+        .chain(
+            setup
+                .extension_bootstrap
+                .paths
+                .iter()
+                .map(|path| path.display().to_string()),
+        )
+        .collect::<Vec<_>>();
+
+    DesktopChatAgentProfile {
+        label: "Kordi".to_string(),
+        system_prompt: setup.system_prompt.clone(),
+        loaded_skills,
+        loaded_tools,
+        loaded_plugins,
+        identity_files: collect_agent_identity_files(&setup.tool_ctx.cwd),
+        default_provider: setup.model.provider.clone(),
+        default_model: setup.model.id.clone(),
+        workspace_root: setup.tool_ctx.cwd.display().to_string(),
+        last_activities: vec![
+            format!("Workspace: {}", setup.tool_ctx.cwd.display()),
+            format!("Model: {}/{}", setup.model.provider, setup.model.id),
+            format!("Thinking: {}", setup.thinking_level),
+        ],
+    }
 }
 
 fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSessionSummary> {

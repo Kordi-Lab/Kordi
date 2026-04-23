@@ -56,7 +56,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     : null;
   const activeConfigPath = activeAgent ? getAgentConfigPath(activeAgent) : null;
   const activeSaveFeedback = activeAgent
-    ? saveFeedbackByAgentId[activeAgent.id] ?? { tone: 'idle' as const, text: activeConfigPath ? `Loaded from ${activeConfigPath}` : 'Using preview data' }
+    ? saveFeedbackByAgentId[activeAgent.id] ?? { tone: 'idle' as const, text: activeConfigPath ? `Loaded from ${activeConfigPath}` : 'Loaded from current runtime' }
     : null;
   const activeEditingSection = activeAgent ? editingSectionByAgentId[activeAgent.id] ?? null : null;
 

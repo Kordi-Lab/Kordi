@@ -71,6 +71,7 @@ export function AgentDetailPane({
   }
 
   const activeConfigPath = getAgentConfigPath(activeAgent);
+  const isEditable = Boolean(activeConfigPath);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-[rgba(20,20,24,0.42)] text-white">
@@ -96,9 +97,11 @@ export function AgentDetailPane({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
-              Reset
-            </Button>
+            {isEditable ? (
+              <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
+                Reset
+              </Button>
+            ) : null}
             <Button
               className="rounded-xl text-[12px]"
               onClick={() => onMessage?.()}
@@ -115,23 +118,27 @@ export function AgentDetailPane({
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <AgentInspectorSection title="System prompt" detail="Keep this short, explicit, and identity-specific.">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? 'draft only'}</div>
-                {activeEditingSection === 'prompt' ? (
-                  <div className="flex items-center gap-2">
-                    <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
-                      Cancel
+                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? 'current runtime'}</div>
+                {isEditable ? (
+                  activeEditingSection === 'prompt' ? (
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
+                        Cancel
+                      </Button>
+                      <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSave(activeAgent, 'prompt')}>
+                        Save
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'prompt')}>
+                      Edit
                     </Button>
-                    <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSave(activeAgent, 'prompt')}>
-                      Save
-                    </Button>
-                  </div>
+                  )
                 ) : (
-                  <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'prompt')}>
-                    Edit
-                  </Button>
+                  <div className="text-[11px] text-slate-500">Runtime-managed</div>
                 )}
               </div>
-              {activeEditingSection === 'prompt' ? (
+              {isEditable && activeEditingSection === 'prompt' ? (
                 <textarea
                   rows={9}
                   value={activeAgentConfig.systemPrompt}
@@ -148,20 +155,24 @@ export function AgentDetailPane({
 
             <AgentInspectorSection title="Loaded skills" detail="Toggle the skills this agent should carry.">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-500">Persisted in {activeConfigPath ?? 'draft only'}</div>
-                {activeEditingSection === 'skills' ? (
-                  <div className="flex items-center gap-2">
-                    <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
-                      Cancel
+                <div className="text-[11px] text-slate-500">Persisted in {activeConfigPath ?? 'current runtime'}</div>
+                {isEditable ? (
+                  activeEditingSection === 'skills' ? (
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
+                        Cancel
+                      </Button>
+                      <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSave(activeAgent, 'skills')}>
+                        Save
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'skills')}>
+                      Edit
                     </Button>
-                    <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSave(activeAgent, 'skills')}>
-                      Save
-                    </Button>
-                  </div>
+                  )
                 ) : (
-                  <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'skills')}>
-                    Edit
-                  </Button>
+                  <div className="text-[11px] text-slate-500">Runtime-managed</div>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -171,14 +182,14 @@ export function AgentDetailPane({
                     <button
                       key={skill}
                       type="button"
-                      disabled={activeEditingSection !== 'skills'}
+                      disabled={!isEditable || activeEditingSection !== 'skills'}
                       onClick={() => onToggleSkill(activeAgent.id, skill, selected)}
                       className={cn(
                         'rounded-full border px-3 py-1.5 text-[12px] transition',
                         selected
                           ? 'border-white/14 bg-white/[0.08] text-white'
                           : 'border-white/8 bg-transparent text-slate-400',
-                        activeEditingSection === 'skills'
+                        isEditable && activeEditingSection === 'skills'
                           ? 'hover:border-white/12 hover:text-slate-200'
                           : 'cursor-default opacity-80',
                       )}

@@ -353,43 +353,42 @@ export function useWorkspaceViewModels({
     if (!isNativeShell) return agents;
 
     const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
-    const items: Agent[] = [...agents];
-    const seen = new Set<string>(agents.map((agent) => `static:${agent.id}`));
+    const localAgent = desktopChatState?.localAgent;
+    const items: Agent[] = [];
+    const seen = new Set<string>();
 
     for (const host of desktopBridgeState?.hosts ?? []) {
       const hostLabel = bridgeLabel(host.serverUrl);
       for (const agent of host.agents) {
         const key = `owned:${host.id}:${agent.id}`;
-         if (seen.has(key)) continue;
-         seen.add(key);
         if (seen.has(key)) continue;
         seen.add(key);
+
+        const runtimeBacked = agent.isActive && localAgent;
         items.push({
-          name: agent.label,
+          name: runtimeBacked ? localAgent.label : agent.label,
           id: agent.id,
           role: 'Owned bridge agent',
           messaging: `Hosted on ${hostLabel}`,
           status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
           tasks: 0,
-          defaultProvider: host.ownerName,
-          defaultModel: agent.runtime,
+          defaultProvider: runtimeBacked ? localAgent.defaultProvider : host.ownerName,
+          defaultModel: runtimeBacked ? localAgent.defaultModel : agent.runtime,
           bridgesConfig: hostLabel,
           contactId: `bridge-agent:${host.id}:${agent.id}`,
-          systemPrompt: 'Owned bridge agent identity for collaboration routing and direct bridge messaging.',
-          xMd: [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
-          identityFiles: [
-            `${host.serverUrl}/agents/${agent.id}/identity.md`,
-            `${host.serverUrl}/agents/${agent.id}/system.md`,
-            `${host.serverUrl}/agents/${agent.id}/skills.json`,
-          ],
-          loadedTools: ['read', 'bash', 'write', 'bridge_fetch'],
-          loadedSkills: ['clarify', 'layout', 'polish'],
-          loadedPlugins: ['bridge-runtime', 'presence-sync'],
-          lastActivities: [
-            `Human ID: ${host.humanId}`,
-            `Node ID: ${agent.nodeId || 'Pending registration'}`,
-            `Discovery: ${host.discoveryMode}`,
-          ],
+          systemPrompt: runtimeBacked ? localAgent.systemPrompt : '',
+          xMd: runtimeBacked ? localAgent.workspaceRoot : [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
+          identityFiles: runtimeBacked ? localAgent.identityFiles : [],
+          loadedTools: runtimeBacked ? localAgent.loadedTools : [],
+          loadedSkills: runtimeBacked ? localAgent.loadedSkills : [],
+          loadedPlugins: runtimeBacked ? localAgent.loadedPlugins : [],
+          lastActivities: runtimeBacked
+            ? localAgent.lastActivities
+            : [
+                `Human ID: ${host.humanId}`,
+                `Node ID: ${agent.nodeId || 'Pending registration'}`,
+                `Discovery: ${host.discoveryMode}`,
+              ],
           bridgeHostId: host.id,
           bridgePeerNodeId: agent.nodeId ?? undefined,
           bridgePeerRuntime: agent.runtime,
@@ -405,8 +404,6 @@ export function useWorkspaceViewModels({
 
       for (const peer of host.visiblePeers.filter((peer) => isBridgeAgentRuntime(peer.runtime))) {
         const key = `external:${peer.agentId || peer.nodeId}`;
-         if (seen.has(key)) continue;
-         seen.add(key);
         if (seen.has(key)) continue;
         seen.add(key);
         items.push({
@@ -416,19 +413,16 @@ export function useWorkspaceViewModels({
           messaging: `Reachable on ${hostLabel}`,
           status: host.connected ? 'Reachable' : 'Offline',
           tasks: 0,
-          defaultProvider: peer.ownerName || 'Bridge peer',
-          defaultModel: peer.runtime || 'bridge-node',
+          defaultProvider: peer.ownerName || '',
+          defaultModel: peer.runtime || '',
           bridgesConfig: hostLabel,
           contactId: `bridge-peer:${peer.agentId || peer.nodeId}`,
-          systemPrompt: 'Bridge-discovered external agent identity.',
+          systemPrompt: '',
           xMd: [peer.nodeId, peer.endpoint].filter(Boolean).join(' • '),
-          identityFiles: [
-            [peer.endpoint, 'identity'].filter(Boolean).join(' • '),
-            [peer.nodeId, 'runtime profile'].filter(Boolean).join(' • '),
-          ],
-          loadedTools: ['bridge_fetch'],
-          loadedSkills: ['clarify'],
-          loadedPlugins: ['bridge-runtime'],
+          identityFiles: [],
+          loadedTools: [],
+          loadedSkills: [],
+          loadedPlugins: [],
           lastActivities: [
             `Owner: ${peer.ownerName || 'Unknown'}`,
             `Human ID: ${peer.humanId || 'Unavailable'}`,
@@ -448,8 +442,32 @@ export function useWorkspaceViewModels({
       }
     }
 
+    if (items.length === 0 && localAgent) {
+      items.push({
+        name: localAgent.label,
+        id: 'desktop:local-agent',
+        role: 'Local desktop agent',
+        messaging: 'Local runtime',
+        status: 'Active',
+        tasks: 0,
+        defaultProvider: localAgent.defaultProvider,
+        defaultModel: localAgent.defaultModel,
+        bridgesConfig: 'Local runtime',
+        contactId: 'desktop:local-agent',
+        systemPrompt: localAgent.systemPrompt,
+        xMd: localAgent.workspaceRoot,
+        identityFiles: localAgent.identityFiles,
+        loadedTools: localAgent.loadedTools,
+        loadedSkills: localAgent.loadedSkills,
+        loadedPlugins: localAgent.loadedPlugins,
+        lastActivities: localAgent.lastActivities,
+        isOwned: true,
+        isBridgeActive: true,
+      });
+    }
+
     return items;
-  }, [desktopBridgeState?.hosts, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
 
   const groupedContacts = useMemo(
     () =>
