@@ -4,7 +4,7 @@ import type { Agent } from '../types';
 import {
   AGENT_CONFIG_STORAGE_KEY,
   buildAgentDraft,
-  buildIdentityFilePreview,
+  buildUnavailableFilePreview,
   buildPersistedAgentConfig,
   getAgentConfigPath,
   isRepoFilePath,
@@ -56,7 +56,14 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     : null;
   const activeConfigPath = activeAgent ? getAgentConfigPath(activeAgent) : null;
   const activeSaveFeedback = activeAgent
-    ? saveFeedbackByAgentId[activeAgent.id] ?? { tone: 'idle' as const, text: activeConfigPath ? `Loaded from ${activeConfigPath}` : 'Loaded from current runtime' }
+    ? saveFeedbackByAgentId[activeAgent.id] ?? {
+        tone: 'idle' as const,
+        text: activeConfigPath
+          ? `Loaded from ${activeConfigPath}`
+          : activeAgent.systemPrompt.trim().length > 0
+            ? 'Loaded from exact current runtime'
+            : 'No real prompt/config exposed by this bridge agent',
+      }
     : null;
   const activeEditingSection = activeAgent ? editingSectionByAgentId[activeAgent.id] ?? null : null;
 
@@ -100,8 +107,18 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     let cancelled = false;
 
     const loadActiveFilePreview = async () => {
-      if (!activeAgent || !activeAgentConfig || !activeIdentityFile) {
+      if (!activeAgent || !activeAgentConfig) {
         if (!cancelled) setActiveFilePreview(EMPTY_FILE_PREVIEW);
+        return;
+      }
+
+      if (!activeIdentityFile) {
+        if (!cancelled) {
+          setActiveFilePreview({
+            status: 'ready',
+            text: buildUnavailableFilePreview(activeAgent),
+          });
+        }
         return;
       }
 
@@ -115,7 +132,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
           if (!cancelled) {
             setActiveFilePreview({
               status: 'error',
-              text: buildIdentityFilePreview(activeAgent, activeAgentConfig, activeIdentityFile),
+              text: buildUnavailableFilePreview(activeAgent, activeIdentityFile),
               error: error instanceof Error ? error.message : 'Unable to load file preview',
             });
           }
@@ -126,7 +143,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       if (!cancelled) {
         setActiveFilePreview({
           status: 'ready',
-          text: buildIdentityFilePreview(activeAgent, activeAgentConfig, activeIdentityFile),
+          text: buildUnavailableFilePreview(activeAgent, activeIdentityFile),
         });
       }
     };

@@ -70,52 +70,13 @@ export function getAgentInitials(name: string) {
     .join('');
 }
 
-export function buildIdentityFilePreview(agent: Agent, config: AgentConfigDraft, file: string) {
-  if (file.endsWith('.json')) {
-    return JSON.stringify(
-      {
-        id: agent.id,
-        name: agent.name,
-        role: agent.role,
-        loadedSkills: config.loadedSkills,
-        loadedTools: agent.loadedTools,
-        loadedPlugins: agent.loadedPlugins,
-      },
-      null,
-      2,
-    );
-  }
-
-  if (file.endsWith('identity.md')) {
-    return [
-      `# ${agent.name}`,
-      '',
-      `- id: ${agent.id}`,
-      `- role: ${agent.role}`,
-      `- contact: ${agent.contactId}`,
-      `- messaging: ${agent.messaging}`,
-      `- bridge: ${agent.bridgesConfig}`,
-    ].join('\n');
-  }
-
-  if (file.endsWith('.toml')) {
-    return [
-      `agent_id = "${agent.id}"`,
-      `model = "${agent.defaultModel}"`,
-      `provider = "${agent.defaultProvider}"`,
-      `scope = "private"`,
-      `skills = [${config.loadedSkills.map((skill) => `"${skill}"`).join(', ')}]`,
-    ].join('\n');
-  }
-
+export function buildUnavailableFilePreview(agent: Agent, file?: string | null) {
   return [
-    `# ${file.split('/').pop()}`,
+    `# ${agent.name}`,
     '',
-    '## System prompt',
-    config.systemPrompt,
+    file ? `No real file contents are available for: ${file}` : 'No real identity files are exposed for this agent.',
     '',
-    '## Loaded skills',
-    ...(config.loadedSkills.length > 0 ? config.loadedSkills.map((skill) => `- ${skill}`) : ['- none']),
+    'The desktop UI is intentionally avoiding generated placeholder content here.',
   ].join('\n');
 }
 

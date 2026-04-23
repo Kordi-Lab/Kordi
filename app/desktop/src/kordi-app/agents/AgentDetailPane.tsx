@@ -72,10 +72,13 @@ export function AgentDetailPane({
 
   const activeConfigPath = getAgentConfigPath(activeAgent);
   const isEditable = Boolean(activeConfigPath);
-  const promptSectionTitle = isEditable ? 'System prompt' : 'Full runtime prompt';
+  const hasRuntimePrompt = activeAgentConfig.systemPrompt.trim().length > 0;
+  const promptSectionTitle = isEditable ? 'System prompt' : hasRuntimePrompt ? 'Full runtime prompt' : 'System prompt';
   const promptSectionDetail = isEditable
     ? 'Keep this short, explicit, and identity-specific.'
-    : 'Exact prompt currently running in the desktop agent, including runtime-added project and skill context.';
+    : hasRuntimePrompt
+      ? 'Exact prompt currently running in the desktop agent, including runtime-added project and skill context.'
+      : 'This bridge agent does not expose a real prompt payload to the desktop app.';
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-[rgba(20,20,24,0.42)] text-white">
@@ -122,7 +125,7 @@ export function AgentDetailPane({
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <AgentInspectorSection title={promptSectionTitle} detail={promptSectionDetail}>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? 'exact current runtime'}</div>
+                <div className="text-[11px] text-slate-500">Source: {activeConfigPath ?? (hasRuntimePrompt ? 'exact current runtime' : 'not exposed by bridge agent')}</div>
                 {isEditable ? (
                   activeEditingSection === 'prompt' ? (
                     <div className="flex items-center gap-2">
@@ -159,7 +162,7 @@ export function AgentDetailPane({
 
             <AgentInspectorSection title="Loaded skills" detail="Toggle the skills this agent should carry.">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-500">Persisted in {activeConfigPath ?? 'current runtime'}</div>
+                <div className="text-[11px] text-slate-500">Persisted in {activeConfigPath ?? (hasRuntimePrompt ? 'current runtime' : 'not exposed by bridge agent')}</div>
                 {isEditable ? (
                   activeEditingSection === 'skills' ? (
                     <div className="flex items-center gap-2">
