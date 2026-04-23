@@ -1,8 +1,8 @@
 import {
-  applyBootstrap,
   ensureMultiInstanceDirs,
   loadMultiInstanceConfig,
   parseCommonArgs,
+  prepareInstanceEnvironment,
   removeInstanceArtifacts,
   summarizeConfig,
 } from './shared.mjs';
@@ -32,13 +32,7 @@ if (options.reset) {
 
 const bootstrapResults = [];
 for (const instance of config.users) {
-  ensureMultiInstanceDirs({
-    ...config,
-    dataRoot: instance.dataDir,
-    logsRoot: instance.logDir,
-    runtimeRoot: config.runtimeRoot,
-  });
-  bootstrapResults.push(applyBootstrap(instance, { force: options.reset }));
+  bootstrapResults.push(prepareInstanceEnvironment(config, instance, { forceBootstrap: options.reset }));
 }
 
 console.log(JSON.stringify({

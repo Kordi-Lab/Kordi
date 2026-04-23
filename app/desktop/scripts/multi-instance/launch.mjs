@@ -1,19 +1,15 @@
-import { openSync, writeSync } from 'node:fs';
-import { spawn } from 'node:child_process';
-
 import {
-  appRoot,
-  applyBootstrap,
   assertPortsAvailable,
   ensureMultiInstanceDirs,
+  launchDetachedInstance,
   loadMultiInstanceConfig,
   parseCommonArgs,
+  prepareInstanceEnvironment,
   removeInstanceArtifacts,
   sleep,
   stopInstance,
   summarizeConfig,
   tauriDevInstanceScript,
-  writeInstanceMetadata,
 } from './shared.mjs';
 
 const options = parseCommonArgs(process.argv.slice(2), {
@@ -43,13 +39,7 @@ if (options.reset) {
 }
 
 for (const instance of config.users) {
-  ensureMultiInstanceDirs({
-    ...config,
-    dataRoot: instance.dataDir,
-    logsRoot: instance.logDir,
-    runtimeRoot: config.runtimeRoot,
-  });
-  const bootstrap = applyBootstrap(instance, { force: options.reset });
+  const bootstrap = prepareInstanceEnvironment(config, instance, { forceBootstrap: options.reset });
   if (bootstrap.seeded) {
     console.log(`[kordi] ${instance.id}: bootstrapped auth fixture -> ${bootstrap.authTargetPath}`);
   }
@@ -59,41 +49,9 @@ await assertPortsAvailable(config.users);
 
 console.log(`[kordi] Launching ${config.users.length} isolated desktop instance(s)...`);
 for (const instance of config.users) {
-  const logFd = openSync(instance.logFile, 'a');
-  writeSync(logFd, `\n=== ${new Date().toISOString()} launching ${instance.id} on port ${instance.port} ===\n`);
-
-  const args = [
-    tauriDevInstanceScript,
-    '--instance',
-    instance.id,
-    '--port',
-    `${instance.port}`,
-    '--host',
-    instance.host,
-    '--profile',
-    instance.profile,
-    '--title',
-    instance.title,
-    '--data-dir',
-    instance.dataDir,
-  ];
-
-  if (!options.reset && instance.cleanOnLaunch) {
-    args.push('--clean');
-  }
-
-  const child = spawn(process.execPath, args, {
-    cwd: appRoot,
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-    env: process.env,
-  });
-
-  child.unref();
-
-  writeInstanceMetadata(instance, {
-    pid: child.pid,
-    startedAt: new Date().toISOString(),
+  launchDetachedInstance(instance, {
+    inheritedEnv: process.env,
+    clean: !options.reset && instance.cleanOnLaunch,
   });
 
   console.log(`[kordi] ${instance.id} -> port ${instance.port}`);

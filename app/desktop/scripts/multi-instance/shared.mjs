@@ -2,10 +2,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import net from 'node:net';
@@ -105,16 +109,16 @@ function ensureIntegerPort(value, label) {
   return port;
 }
 
-function parseAuthFixtureSummary(authFile) {
+export function parseAuthStoreSummary(authFile) {
   if (!existsSync(authFile)) {
-    throw new Error(`Missing bootstrap auth file at ${authFile}`);
+    throw new Error(`Missing auth store at ${authFile}`);
   }
 
   let raw;
   try {
     raw = JSON.parse(readFileSync(authFile, 'utf8'));
   } catch (error) {
-    throw new Error(`Invalid bootstrap auth JSON at ${authFile}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Invalid auth JSON at ${authFile}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const profiles = raw?.profiles && typeof raw.profiles === 'object' ? raw.profiles : {};
@@ -187,7 +191,7 @@ function resolveBootstrap(configDir, defaultsBootstrap, userBootstrap, dataDir) 
     authFile,
     authMode,
     authTargetPath: resolve(dataDir, 'kordi', 'auth.json'),
-    authSummary: parseAuthFixtureSummary(authFile),
+    authSummary: parseAuthStoreSummary(authFile),
   };
 }
 
@@ -320,6 +324,16 @@ export function applyBootstrap(instance, { force = false } = {}) {
   };
 }
 
+export function prepareInstanceEnvironment(config, instance, { forceBootstrap = false } = {}) {
+  ensureMultiInstanceDirs({
+    ...config,
+    dataRoot: instance.dataDir,
+    logsRoot: instance.logDir,
+    runtimeRoot: config.runtimeRoot,
+  });
+  return applyBootstrap(instance, { force: forceBootstrap });
+}
+
 export function writeInstanceMetadata(instance, extra = {}) {
   writeFileSync(instance.pidFile, `${extra.pid ?? ''}\n`);
   writeFileSync(instance.metaFile, `${JSON.stringify({
@@ -422,6 +436,116 @@ function isPortAvailable(port, host) {
 
     server.listen(port, host);
   });
+}
+
+export function launchDetachedInstance(instance, { inheritedEnv = process.env, clean = instance.cleanOnLaunch } = {}) {
+  const logFd = openSync(instance.logFile, 'a');
+  const startedAt = new Date().toISOString();
+  writeSync(logFd, `\n=== ${startedAt} launching ${instance.id} on port ${instance.port} ===\n`);
+
+  const args = [
+    tauriDevInstanceScript,
+    '--instance',
+    instance.id,
+    '--port',
+    `${instance.port}`,
+    '--host',
+    instance.host,
+    '--profile',
+    instance.profile,
+    '--title',
+    instance.title,
+    '--data-dir',
+    instance.dataDir,
+  ];
+
+  if (clean) {
+    args.push('--clean');
+  }
+
+  const child = spawn(process.execPath, args, {
+    cwd: appRoot,
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+    env: inheritedEnv,
+  });
+
+  child.unref();
+
+  writeInstanceMetadata(instance, {
+    pid: child.pid,
+    startedAt,
+  });
+
+  return {
+    id: instance.id,
+    pid: child.pid,
+    startedAt,
+    logFile: instance.logFile,
+  };
+}
+
+export function readJsonFile(path) {
+  if (!existsSync(path)) {
+    return null;
+  }
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+export function logFileSize(path) {
+  if (!existsSync(path)) {
+    return 0;
+  }
+  return statSync(path).size;
+}
+
+export function readAuthSummaryFromPath(path) {
+  if (!existsSync(path)) {
+    return null;
+  }
+  return parseAuthStoreSummary(path);
+}
+
+export function currentInstanceSmokeState(instance) {
+  const authPath = instance.bootstrap?.authTargetPath ?? resolve(instance.dataDir, 'kordi', 'auth.json');
+  const pid = readInstancePid(instance);
+  const meta = readJsonFile(instance.metaFile);
+  const authSummary = readAuthSummaryFromPath(authPath);
+  const logSize = logFileSize(instance.logFile);
+  const logText = existsSync(instance.logFile) ? readFileSync(instance.logFile, 'utf8') : '';
+
+  return {
+    id: instance.id,
+    pid,
+    pidRunning: isPidRunning(pid),
+    metaExists: Boolean(meta),
+    metaMatches: Boolean(meta && meta.id === instance.id && meta.port === instance.port),
+    authPath,
+    authExists: existsSync(authPath),
+    authSummary,
+    logFile: instance.logFile,
+    logExists: existsSync(instance.logFile),
+    logSize,
+    logHasProfileStart: logText.includes('[kordi] Starting profile'),
+    logHasGeneratedConfig: logText.includes('[kordi] Generated config:'),
+  };
+}
+
+export async function waitFor(check, { timeoutMs = 30_000, intervalMs = 500, description = 'condition' } = {}) {
+  const startedAt = Date.now();
+  let lastResult = null;
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    lastResult = await check();
+    if (lastResult) {
+      return lastResult;
+    }
+    await sleep(intervalMs);
+  }
+
+  const error = new Error(`Timed out waiting for ${description} after ${timeoutMs}ms`);
+  error.lastResult = lastResult;
+  throw error;
 }
 
 export function summarizeConfig(config) {
