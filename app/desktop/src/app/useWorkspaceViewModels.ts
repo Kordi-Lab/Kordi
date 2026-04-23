@@ -62,13 +62,31 @@ function truncateInlineText(value: string, maxChars = 96) {
   return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
+function buildMessagePreview(message: Message) {
+  const text = message.text.trim();
+  if (text.length > 0) {
+    return text;
+  }
+
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) {
+    return '';
+  }
+
+  if (attachments.length === 1) {
+    return `Attached ${attachments[0].name}`;
+  }
+
+  return `${attachments.length} attachments`;
+}
+
 function buildConversationPreview(messages: Message[], fallback?: string) {
   const latestMessage = [...messages]
     .reverse()
-    .find((message) => message.role !== 'system' && message.text.trim().length > 0);
+    .find((message) => message.role !== 'system' && buildMessagePreview(message).trim().length > 0);
 
   if (latestMessage) {
-    return truncateInlineText(latestMessage.text);
+    return truncateInlineText(buildMessagePreview(latestMessage));
   }
 
   return truncateInlineText(fallback ?? '', 72);
