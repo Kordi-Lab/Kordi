@@ -367,12 +367,12 @@ export function ProjectsPage({
               />
             </div>
           </div>
-          <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-3 pt-2.5">
-            <div className="flex min-w-0 items-center gap-2">
+          <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
+            <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
               <Button
                 size="icon"
                 variant="secondary"
-                className="app-icon-button h-9 w-9 rounded-full border-0"
+                className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
                 onClick={() => chatAttachmentInputRef.current?.click()}
                 title="Add attachment"
                 aria-label="Add attachment"
@@ -380,7 +380,7 @@ export function ProjectsPage({
                 <Paperclip className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex min-w-0 items-center gap-2 overflow-visible">
+            <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
               {isNativeShell && activeRuntimeSessionId === activeProjectSession.id ? (
                 <ComposerRuntimeStatus
                   contextStatus={activeRuntimeContextStatus}
@@ -408,7 +408,7 @@ export function ProjectsPage({
               />
               <Button
                 className={cn(
-                  'app-composer-send h-10 w-10 rounded-full p-0',
+                  'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
                   isDesktopChatSending && desktopLiveTurn?.sessionId === activeProjectSession.id ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
                 )}
                 onClick={() => {
