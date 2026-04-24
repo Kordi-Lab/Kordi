@@ -2,8 +2,9 @@ use base64::Engine as _;
 use uuid::Uuid;
 
 use super::constants::{
-    is_agent_like_runtime, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_ID_PREFIX,
-    DEFAULT_BRIDGE_RUNTIME, PEER_TYPING_WINDOW_MS,
+    is_agent_like_runtime, is_inbound_message_direction, BRIDGE_DELIVERY_STATE_RESPONDED,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+    PEER_TYPING_WINDOW_MS,
 };
 use super::{
     bridge_conversation_id, format_time_label, format_time_label_with_seconds, now_ms,
@@ -178,7 +179,7 @@ pub(super) fn append_conversation_message(
                 existing_message.delivery_state = delivery_state;
             }
             conversation.updated_at_ms = timestamp_ms;
-            if direction == "inbound" || direction == "inbound-response" {
+            if is_inbound_message_direction(direction) {
                 conversation.peer_last_typing_at_ms = None;
             }
             return;
@@ -186,7 +187,7 @@ pub(super) fn append_conversation_message(
     }
 
     conversation.updated_at_ms = timestamp_ms;
-    if direction == "inbound" || direction == "inbound-response" {
+    if is_inbound_message_direction(direction) {
         conversation.peer_last_typing_at_ms = None;
     }
     if increment_unread {
@@ -352,7 +353,7 @@ pub(super) fn build_conversation_state(
         .messages
         .iter()
         .rev()
-        .find(|message| message.direction == "outbound")
+        .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
         .and_then(|message| message.delivery_state.clone())
         .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
         .unwrap_or(false);

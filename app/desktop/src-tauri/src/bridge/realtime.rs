@@ -14,7 +14,8 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
 
 use super::constants::{
-    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_TYPE_ASK,
+    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_RESPONSE,
 };
 use super::conversation_commands::{
@@ -223,7 +224,7 @@ fn append_local_agent_inbound_message(
         peer_runtime,
         event.project_id.clone(),
         None,
-        "inbound",
+        BRIDGE_MESSAGE_DIRECTION_INBOUND,
         Some(sender_name),
         text,
         event.request_id.clone(),
@@ -269,7 +270,7 @@ fn append_local_agent_outbound_response(
         peer_runtime,
         event.project_id.clone(),
         None,
-        "outbound-response",
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
         Some(sender_name),
         response_text,
         event.request_id.clone(),

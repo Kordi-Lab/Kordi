@@ -4,8 +4,11 @@ use uuid::Uuid;
 use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
 
 use super::constants::{
-    is_agent_like_runtime, API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_DELIVERED,
-    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
+    is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
+    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ,
+    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
     BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
     BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE,
     BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
@@ -510,9 +513,9 @@ fn append_inbound_event_message(
         event.project_id.clone(),
         None,
         if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
-            "inbound-response"
+            BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
         } else {
-            "inbound"
+            BRIDGE_MESSAGE_DIRECTION_INBOUND
         },
         Some(sender_name),
         text.clone(),
@@ -682,7 +685,7 @@ pub(super) async fn desktop_bridge_mark_conversation_read_impl(
                     .messages
                     .iter()
                     .filter(|message| {
-                        (message.direction == "inbound" || message.direction == "inbound-response")
+                        is_inbound_message_direction(&message.direction)
                             && message.request_id.is_some()
                     })
                     .filter_map(|message| message.request_id.clone())
@@ -787,7 +790,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         context.conversation.peer_runtime.clone(),
         context.conversation.project_id.clone(),
         context.conversation.project_name.clone(),
-        "outbound",
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
         Some(sender_name),
         message.to_string(),
         Some(request_id),
@@ -855,7 +858,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     peer_runtime.clone(),
                     event.project_id.clone(),
                     None,
-                    "inbound",
+                    BRIDGE_MESSAGE_DIRECTION_INBOUND,
                     Some(sender_name),
                     text.clone(),
                     event.request_id.clone(),
@@ -918,7 +921,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 peer_runtime.clone(),
                                 event.project_id.clone(),
                                 None,
-                                "outbound-response",
+                                BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
                                 Some(sender_name.clone()),
                                 snapshot.assistant_text.clone(),
                                 event.request_id.clone(),
