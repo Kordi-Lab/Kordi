@@ -1,6 +1,5 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Agent } from '../types';
@@ -22,22 +21,21 @@ export function AgentsSidebar({
   return (
     <aside className="flex min-h-0 flex-col bg-white/[0.02] text-white">
       <div className="border-b border-white/6 px-4 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[14px] font-medium text-white">Agents</div>
-            <div className="mt-1 text-[12px] leading-5 text-slate-400">{agents.length} visible identities • isolated configuration</div>
-          </div>
-          <Button className="app-control-chip h-9 w-9 rounded-[12px] border-0 p-0">
-            <span className="text-lg leading-none">+</span>
-          </Button>
+        <div>
+          <div className="text-[14px] font-medium text-white">Agents</div>
+          <div className="mt-1 text-[12px] leading-5 text-slate-400">{agents.length} visible identities • choose one to inspect in the middle and edit files on the right</div>
         </div>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
+          {agents.length === 0 ? <div className="px-3 py-4 text-[13px] text-slate-500">No visible agents in this runtime yet.</div> : null}
           {agents.map((agent) => {
             const config = agentConfigs[agent.id];
             const isSelected = activeAgentId === agent.id;
+            const fileSummary = agent.exposesIdentityFiles === false ? 'Files unavailable' : `${agent.identityFiles.length} files`;
+            const skillSummary = agent.exposesLoadedSkills === false ? 'Skills unavailable' : `${config.loadedSkills.length} skills`;
+            const pluginSummary = agent.exposesLoadedPlugins === false ? 'Plugins unavailable' : `${agent.loadedPlugins.length} plugins`;
 
             return (
               <button
@@ -68,10 +66,10 @@ export function AgentsSidebar({
                       </Badge>
                     </div>
                     <div className="mt-2 line-clamp-2 text-[12px] leading-5 text-slate-300">{config.systemPrompt}</div>
-                    <div className="mt-3 flex items-center gap-3 text-[11px] text-slate-500">
-                      <span>{agent.identityFiles.length} files</span>
-                      <span>{config.loadedSkills.length} skills</span>
-                      <span>{agent.loadedPlugins.length} plugins</span>
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                      <span>{fileSummary}</span>
+                      <span>{skillSummary}</span>
+                      <span>{pluginSummary}</span>
                     </div>
                   </div>
                 </div>

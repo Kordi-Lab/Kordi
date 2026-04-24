@@ -1156,17 +1156,49 @@ fn build_turn_config(
     })
 }
 
-fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
-    let mut files = Vec::new();
-
-    let global_agents = kordi_core::config::global_agents_md_path();
-    if global_agents.exists() {
-        files.push(global_agents.display().to_string());
+fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
+    let mut dir = cwd.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return dir;
+        }
+        if !dir.pop() {
+            return cwd.to_path_buf();
+        }
     }
+}
+
+fn repo_relative_display_path(root: &std::path::Path, path: &std::path::Path) -> Option<String> {
+    path.strip_prefix(root)
+        .ok()
+        .map(|relative| relative.display().to_string())
+}
+
+fn infer_agent_label(cwd: &std::path::Path) -> String {
+    Settings::load_project(cwd)
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            discover_workspace_root(cwd)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Local agent".to_string())
+}
+
+fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
+    let workspace_root = discover_workspace_root(cwd);
+    let mut files = Vec::new();
 
     let project_settings = kordi_core::config::project_settings_path(cwd);
     if project_settings.exists() {
-        files.push(project_settings.display().to_string());
+        if let Some(relative) = repo_relative_display_path(&workspace_root, &project_settings) {
+            files.push(relative);
+        }
     }
 
     let mut dir = cwd.to_path_buf();
@@ -1182,7 +1214,7 @@ fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
             }
         }
 
-        if dir.join(".git").exists() {
+        if dir == workspace_root {
             break;
         }
         if !dir.pop() {
@@ -1191,7 +1223,11 @@ fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
     }
 
     scanned.reverse();
-    files.extend(scanned.into_iter().map(|path| path.display().to_string()));
+    files.extend(
+        scanned
+            .into_iter()
+            .filter_map(|path| repo_relative_display_path(&workspace_root, &path)),
+    );
     files.dedup();
     files
 }
@@ -1223,7 +1259,7 @@ fn build_agent_profile_from_setup(setup: &SessionRuntimeSetup) -> DesktopChatAge
         .collect::<Vec<_>>();
 
     DesktopChatAgentProfile {
-        label: "Kordi".to_string(),
+        label: infer_agent_label(&setup.tool_ctx.cwd),
         system_prompt: setup.system_prompt.clone(),
         loaded_skills,
         loaded_tools,

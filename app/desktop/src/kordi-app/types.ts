@@ -140,6 +140,10 @@ export type Agent = {
   loadedSkills: string[];
   loadedPlugins: string[];
   lastActivities: string[];
+  exposesIdentityFiles?: boolean;
+  exposesLoadedSkills?: boolean;
+  exposesLoadedTools?: boolean;
+  exposesLoadedPlugins?: boolean;
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;

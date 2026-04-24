@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { agents, contactGroups, contacts, conversations } from '@/kordi-app/data';
+import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   Contact,
@@ -350,7 +350,7 @@ export function useWorkspaceViewModels({
   }, [desktopBridgeState?.hosts, isNativeShell]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
-    if (!isNativeShell) return agents;
+    if (!isNativeShell) return [];
 
     const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
     const localAgent = desktopChatState?.localAgent;
@@ -364,31 +364,35 @@ export function useWorkspaceViewModels({
         if (seen.has(key)) continue;
         seen.add(key);
 
-        const runtimeBacked = agent.isActive && localAgent;
+        const runtimeAgent = agent.isActive ? localAgent : undefined;
         items.push({
-          name: runtimeBacked ? localAgent.label : agent.label,
+          name: runtimeAgent?.label ?? agent.label,
           id: agent.id,
           role: 'Owned bridge agent',
           messaging: `Hosted on ${hostLabel}`,
           status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
           tasks: 0,
-          defaultProvider: runtimeBacked ? localAgent.defaultProvider : host.ownerName,
-          defaultModel: runtimeBacked ? localAgent.defaultModel : agent.runtime,
+          defaultProvider: runtimeAgent?.defaultProvider ?? host.ownerName,
+          defaultModel: runtimeAgent?.defaultModel ?? agent.runtime,
           bridgesConfig: hostLabel,
           contactId: `bridge-agent:${host.id}:${agent.id}`,
-          systemPrompt: runtimeBacked ? localAgent.systemPrompt : '',
-          xMd: runtimeBacked ? localAgent.workspaceRoot : [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
-          identityFiles: runtimeBacked ? localAgent.identityFiles : [],
-          loadedTools: runtimeBacked ? localAgent.loadedTools : [],
-          loadedSkills: runtimeBacked ? localAgent.loadedSkills : [],
-          loadedPlugins: runtimeBacked ? localAgent.loadedPlugins : [],
-          lastActivities: runtimeBacked
-            ? localAgent.lastActivities
+          systemPrompt: runtimeAgent?.systemPrompt ?? '',
+          xMd: runtimeAgent?.workspaceRoot ?? [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
+          identityFiles: runtimeAgent?.identityFiles ?? [],
+          loadedTools: runtimeAgent?.loadedTools ?? [],
+          loadedSkills: runtimeAgent?.loadedSkills ?? [],
+          loadedPlugins: runtimeAgent?.loadedPlugins ?? [],
+          lastActivities: runtimeAgent
+            ? runtimeAgent.lastActivities
             : [
                 `Human ID: ${host.humanId}`,
                 `Node ID: ${agent.nodeId || 'Pending registration'}`,
                 `Discovery: ${host.discoveryMode}`,
               ],
+          exposesIdentityFiles: Boolean(runtimeAgent),
+          exposesLoadedSkills: Boolean(runtimeAgent),
+          exposesLoadedTools: Boolean(runtimeAgent),
+          exposesLoadedPlugins: Boolean(runtimeAgent),
           bridgeHostId: host.id,
           bridgePeerNodeId: agent.nodeId ?? undefined,
           bridgePeerRuntime: agent.runtime,
@@ -428,6 +432,10 @@ export function useWorkspaceViewModels({
             `Human ID: ${peer.humanId || 'Unavailable'}`,
             `Runtime: ${peer.runtime}`,
           ],
+          exposesIdentityFiles: false,
+          exposesLoadedSkills: false,
+          exposesLoadedTools: false,
+          exposesLoadedPlugins: false,
           bridgeHostId: host.id,
           bridgePeerNodeId: peer.nodeId,
           bridgePeerRuntime: peer.runtime,
@@ -461,6 +469,10 @@ export function useWorkspaceViewModels({
         loadedSkills: localAgent.loadedSkills,
         loadedPlugins: localAgent.loadedPlugins,
         lastActivities: localAgent.lastActivities,
+        exposesIdentityFiles: true,
+        exposesLoadedSkills: true,
+        exposesLoadedTools: true,
+        exposesLoadedPlugins: true,
         isOwned: true,
         isBridgeActive: true,
       });
@@ -495,7 +507,7 @@ export function useWorkspaceViewModels({
   }, [contactSearch, groupedContacts]);
 
   const activeContact = displayedContacts.find((contact) => contact.id === activeContactId) ?? displayedContacts[0] ?? contacts[0];
-  const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0] ?? agents[0];
+  const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
   const runtimeProjects = useMemo(() => {
     if (!isNativeShell || !desktopChatState?.projects?.length) {

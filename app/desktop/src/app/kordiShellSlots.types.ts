@@ -114,7 +114,7 @@ export type AssembleKordiShellSlotsArgs = {
 
   activeAgentId: string;
   setActiveAgentId: Dispatch<SetStateAction<string>>;
-  activeAgent: Agent;
+  activeAgent?: Agent;
   isAgentOverlayOpen: boolean;
   setIsAgentOverlayOpen: Dispatch<SetStateAction<boolean>>;
 

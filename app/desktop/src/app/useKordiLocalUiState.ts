@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { agents, contactRequests, projects, settingsSections } from '@/kordi-app/data';
+import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
 import type { ChatFilter, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ThemeMode } from '@/kordi-app/types';
 
 export function useKordiLocalUiState() {
@@ -16,7 +16,7 @@ export function useKordiLocalUiState() {
     'other-users': false,
   });
 
-  const [activeAgentId, setActiveAgentId] = useState(agents[0]?.id ?? '');
+  const [activeAgentId, setActiveAgentId] = useState('');
   const [isAgentOverlayOpen, setIsAgentOverlayOpen] = useState(false);
 
   const [projectWorkspaces, setProjectWorkspaces] = useState(projects);

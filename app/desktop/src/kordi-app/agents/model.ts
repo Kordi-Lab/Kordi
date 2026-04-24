@@ -54,7 +54,13 @@ export function getAgentConfigPath(agent: Agent) {
 }
 
 export function isRepoFilePath(path: string) {
-  return !path.includes('://') && !path.includes(' • ');
+  return path.trim().length > 0 && !path.startsWith('/') && !path.includes('://') && !path.includes(' • ');
+}
+
+export function isEditableWorkspaceTextFile(path: string) {
+  if (!isRepoFilePath(path)) return false;
+  const name = path.split('/').pop();
+  return name === 'AGENTS.md' || name === 'CLAUDE.md' || name === 'identity.md' || name === 'config.json' || name === 'settings.json';
 }
 
 export function formatHistoryPath(path: string) {

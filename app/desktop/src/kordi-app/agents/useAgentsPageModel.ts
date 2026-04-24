@@ -7,6 +7,7 @@ import {
   buildUnavailableFilePreview,
   buildPersistedAgentConfig,
   getAgentConfigPath,
+  isEditableWorkspaceTextFile,
   isRepoFilePath,
   parsePersistedAgentConfig,
   readStoredAgentDrafts,
@@ -17,20 +18,22 @@ import {
 
 const EMPTY_FILE_PREVIEW = { status: 'idle' as const, text: '' };
 
+type AgentDetailTarget =
+  | { kind: 'prompt' }
+  | { kind: 'file'; path: string };
+
 export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
   const [agentDrafts, setAgentDrafts] = useState<Record<string, AgentConfigDraft>>(() => readStoredAgentDrafts());
   const [persistedAgentConfigs, setPersistedAgentConfigs] = useState<Record<string, PersistedAgentConfig>>({});
-  const [selectedIdentityFileByAgentId, setSelectedIdentityFileByAgentId] = useState<Record<string, string>>({});
+  const [selectedDetailByAgentId, setSelectedDetailByAgentId] = useState<Record<string, AgentDetailTarget>>({});
   const [editingSectionByAgentId, setEditingSectionByAgentId] = useState<Record<string, 'prompt' | 'skills' | null>>({});
   const [saveFeedbackByAgentId, setSaveFeedbackByAgentId] = useState<Record<string, AgentSaveFeedback>>({});
   const [activeFilePreview, setActiveFilePreview] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string }>(EMPTY_FILE_PREVIEW);
+  const [fileDraftsByPath, setFileDraftsByPath] = useState<Record<string, string>>({});
+  const [fileSaveFeedbackByPath, setFileSaveFeedbackByPath] = useState<Record<string, AgentSaveFeedback>>({});
+  const [editingFilePath, setEditingFilePath] = useState<string | null>(null);
 
   const canUseNativeFileAccess = typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
-
-  const availableSkills = useMemo(
-    () => Array.from(new Set(agents.flatMap((agent) => agent.loadedSkills))).sort((left, right) => left.localeCompare(right)),
-    [agents],
-  );
 
   const agentConfigs = useMemo(
     () =>
@@ -51,9 +54,18 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
 
   const activeAgentConfig = activeAgent ? agentConfigs[activeAgent.id] ?? buildAgentDraft(activeAgent) : null;
   const activePersistedConfig = activeAgent ? persistedAgentConfigs[activeAgent.id] ?? buildPersistedAgentConfig(activeAgent) : null;
-  const activeIdentityFile = activeAgent
-    ? selectedIdentityFileByAgentId[activeAgent.id] ?? activeAgent.identityFiles[0] ?? null
-    : null;
+  const availableSkills = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(activePersistedConfig?.loadedSkills ?? []),
+          ...(activeAgentConfig?.loadedSkills ?? []),
+        ]),
+      ).sort((left, right) => left.localeCompare(right)),
+    [activeAgentConfig?.loadedSkills, activePersistedConfig?.loadedSkills],
+  );
+  const activeDetail = activeAgent ? selectedDetailByAgentId[activeAgent.id] ?? { kind: 'prompt' as const } : null;
+  const activeIdentityFile = activeDetail?.kind === 'file' ? activeDetail.path : null;
   const activeConfigPath = activeAgent ? getAgentConfigPath(activeAgent) : null;
   const activeSaveFeedback = activeAgent
     ? saveFeedbackByAgentId[activeAgent.id] ?? {
@@ -66,6 +78,15 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       }
     : null;
   const activeEditingSection = activeAgent ? editingSectionByAgentId[activeAgent.id] ?? null : null;
+  const activeFileCanEdit = Boolean(activeIdentityFile && canUseNativeFileAccess && isEditableWorkspaceTextFile(activeIdentityFile));
+  const activeFileIsEditing = Boolean(activeIdentityFile && editingFilePath === activeIdentityFile && activeFileCanEdit);
+  const activeFileDraft = activeIdentityFile ? fileDraftsByPath[activeIdentityFile] ?? activeFilePreview.text : '';
+  const activeFileSaveFeedback = activeIdentityFile
+    ? fileSaveFeedbackByPath[activeIdentityFile] ?? {
+        tone: 'idle' as const,
+        text: activeFileCanEdit ? 'Repo-relative file ready to preview or edit' : 'Read-only preview',
+      }
+    : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -107,18 +128,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     let cancelled = false;
 
     const loadActiveFilePreview = async () => {
-      if (!activeAgent || !activeAgentConfig) {
+      if (!activeAgent || !activeAgentConfig || !activeIdentityFile) {
         if (!cancelled) setActiveFilePreview(EMPTY_FILE_PREVIEW);
-        return;
-      }
-
-      if (!activeIdentityFile) {
-        if (!cancelled) {
-          setActiveFilePreview({
-            status: 'ready',
-            text: buildUnavailableFilePreview(activeAgent),
-          });
-        }
         return;
       }
 
@@ -157,6 +168,9 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
   const updateAgentDraft = (agentId: string, apply: (current: AgentConfigDraft) => AgentConfigDraft) => {
     setAgentDrafts((current) => {
       const fallbackAgent = agents.find((agent) => agent.id === agentId) ?? activeAgent ?? agents[0];
+      if (!fallbackAgent) {
+        return current;
+      }
       const baseline = current[agentId] ?? buildAgentDraft(fallbackAgent);
       return {
         ...current,
@@ -220,9 +234,10 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         ...persisted.editHistory,
       ].slice(0, 12),
     };
+    const nextRaw = `${JSON.stringify(nextPersisted, null, 2)}\n`;
 
     try {
-      await writeDesktopWorkspaceTextFile(configPath, `${JSON.stringify(nextPersisted, null, 2)}\n`);
+      await writeDesktopWorkspaceTextFile(configPath, nextRaw);
       setPersistedAgentConfigs((current) => ({ ...current, [agent.id]: nextPersisted }));
       setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
       setSaveFeedbackByAgentId((current) => ({
@@ -230,7 +245,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         [agent.id]: { tone: 'success', text: `${section === 'prompt' ? 'System prompt' : 'Skills'} saved to ${configPath}` },
       }));
       if (activeIdentityFile === configPath) {
-        setActiveFilePreview({ status: 'ready', text: `${JSON.stringify(nextPersisted, null, 2)}\n` });
+        setActiveFilePreview({ status: 'ready', text: nextRaw });
+        setFileDraftsByPath((current) => (current[configPath] ? { ...current, [configPath]: nextRaw } : current));
       }
     } catch (error) {
       setSaveFeedbackByAgentId((current) => ({
@@ -240,20 +256,117 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     }
   };
 
+  const startFileEditing = () => {
+    if (!activeIdentityFile || !activeFileCanEdit) return;
+    setFileDraftsByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: current[activeIdentityFile] ?? activeFilePreview.text,
+    }));
+    setEditingFilePath(activeIdentityFile);
+    setFileSaveFeedbackByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: { tone: 'info', text: 'Editing file contents' },
+    }));
+  };
+
+  const cancelFileEditing = () => {
+    if (!activeIdentityFile) return;
+    setEditingFilePath((current) => (current === activeIdentityFile ? null : current));
+    setFileDraftsByPath((current) => {
+      const next = { ...current };
+      delete next[activeIdentityFile];
+      return next;
+    });
+    setFileSaveFeedbackByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: { tone: 'info', text: 'Reverted file draft' },
+    }));
+  };
+
+  const updateActiveFileDraft = (value: string) => {
+    if (!activeIdentityFile) return;
+    setFileDraftsByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: value,
+    }));
+    setFileSaveFeedbackByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: { tone: 'info', text: 'Unsaved file changes' },
+    }));
+  };
+
+  const saveActiveFile = async () => {
+    if (!activeAgent || !activeIdentityFile || !activeFileCanEdit) return;
+
+    const nextRaw = fileDraftsByPath[activeIdentityFile] ?? activeFilePreview.text;
+    setFileSaveFeedbackByPath((current) => ({
+      ...current,
+      [activeIdentityFile]: { tone: 'info', text: `Saving to ${activeIdentityFile}…` },
+    }));
+
+    try {
+      await writeDesktopWorkspaceTextFile(activeIdentityFile, nextRaw);
+      setActiveFilePreview({ status: 'ready', text: nextRaw });
+      setEditingFilePath(null);
+      setFileSaveFeedbackByPath((current) => ({
+        ...current,
+        [activeIdentityFile]: { tone: 'success', text: `Saved ${activeIdentityFile}` },
+      }));
+
+      if (activeIdentityFile === activeConfigPath) {
+        const nextPersisted = parsePersistedAgentConfig(nextRaw, activeAgent);
+        setPersistedAgentConfigs((current) => ({
+          ...current,
+          [activeAgent.id]: nextPersisted,
+        }));
+        setAgentDrafts((current) => ({
+          ...current,
+          [activeAgent.id]: {
+            systemPrompt: nextPersisted.systemPrompt,
+            loadedSkills: nextPersisted.loadedSkills,
+          },
+        }));
+        setSaveFeedbackByAgentId((current) => ({
+          ...current,
+          [activeAgent.id]: { tone: 'success', text: `Loaded updated config from ${activeIdentityFile}` },
+        }));
+      }
+    } catch (error) {
+      setFileSaveFeedbackByPath((current) => ({
+        ...current,
+        [activeIdentityFile]: { tone: 'error', text: error instanceof Error ? error.message : 'Unable to save file' },
+      }));
+    }
+  };
+
   return {
     agentConfigs,
     activeAgentConfig,
     activePersistedConfig,
+    activeDetail,
     activeIdentityFile,
     activeSaveFeedback,
     activeEditingSection,
     activeFilePreview,
+    activeFileDraft,
+    activeFileCanEdit,
+    activeFileIsEditing,
+    activeFileSaveFeedback,
     availableSkills,
     resetAgentDraft,
     saveAgentConfig,
+    saveActiveFile,
     startEditing: (agentId: string, section: 'prompt' | 'skills') => setEditingSectionByAgentId((current) => ({ ...current, [agentId]: section })),
-    selectIdentityFile: (agentId: string, file: string) => setSelectedIdentityFileByAgentId((current) => ({ ...current, [agentId]: file })),
+    startFileEditing,
+    cancelFileEditing,
+    openPromptDetail: (agentId: string) => setSelectedDetailByAgentId((current) => ({ ...current, [agentId]: { kind: 'prompt' } })),
+    selectIdentityFile: (agentId: string, file: string) =>
+      setSelectedDetailByAgentId((current) => ({
+        ...current,
+        [agentId]: { kind: 'file', path: file },
+      })),
     updatePrompt: (agentId: string, value: string) => updateAgentDraft(agentId, (current) => ({ ...current, systemPrompt: value })),
+    updateActiveFileDraft,
     toggleSkill: (agentId: string, skill: string, selected: boolean) =>
       updateAgentDraft(agentId, (current) => ({
         ...current,
