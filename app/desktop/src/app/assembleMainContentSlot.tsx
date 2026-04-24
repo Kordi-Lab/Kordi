@@ -41,12 +41,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         agents: args.displayedAgents,
         activeAgentId: args.activeAgentId,
         activeAgent: args.activeAgent,
-        isAgentOverlayOpen: args.isAgentOverlayOpen,
         onOpenAgent: (agentId) => {
           args.setActiveAgentId(agentId);
-          args.setIsAgentOverlayOpen(true);
+          args.setIsAgentOverlayOpen(false);
         },
-        onCloseOverlay: () => args.setIsAgentOverlayOpen(false),
         getStatusBadgeClass: args.getStatusBadgeClass,
         onMessageAgent: (agent) => {
           if (!agent.bridgeHostId || !agent.bridgePeerNodeId) return;

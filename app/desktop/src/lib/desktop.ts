@@ -47,6 +47,14 @@ export async function openDesktopExternalUrl(url: string) {
   return window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+export async function readDesktopWorkspaceTextFile(path: string) {
+  return invokeDesktop<string>('desktop_read_workspace_text_file', { path });
+}
+
+export async function writeDesktopWorkspaceTextFile(path: string, contents: string) {
+  return invokeDesktop<string>('desktop_write_workspace_text_file', { path, contents });
+}
+
 export async function fetchDesktopAuthState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopAuthState>('desktop_auth_state');

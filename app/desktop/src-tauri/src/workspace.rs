@@ -49,10 +49,18 @@ fn current_target_triple() -> String {
         .to_string()
 }
 
-fn source_root() -> PathBuf {
+pub(crate) fn source_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri should always have a parent directory")
+        .to_path_buf()
+}
+
+pub(crate) fn repo_root() -> PathBuf {
+    source_root()
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("app/desktop should always live under the repo root")
         .to_path_buf()
 }
 
@@ -87,6 +95,77 @@ fn build_repo_status(label: &str, repo_path: &Path, binary_relative_path: &str) 
         expected_binary_path: expected_binary.display().to_string(),
         binary_exists: expected_binary.exists(),
     }
+}
+
+fn allowed_workspace_text_read_target(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|value| value.to_str()),
+        Some("AGENTS.md" | "CLAUDE.md" | "identity.md" | "config.json" | "settings.json")
+    )
+}
+
+fn allowed_workspace_text_write_target(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|value| value.to_str()),
+        Some("AGENTS.md" | "CLAUDE.md" | "identity.md" | "config.json" | "settings.json")
+    )
+}
+
+fn resolve_allowed_workspace_text_path(raw_path: &str, allow_write: bool) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".to_string());
+    }
+
+    let relative = Path::new(trimmed);
+    if relative.is_absolute() {
+        return Err("Path must be repo-relative".to_string());
+    }
+
+    let root = repo_root();
+    let candidate = root.join(relative);
+
+    if allow_write {
+        if !allowed_workspace_text_write_target(relative) {
+            return Err("Writing is only allowed for repo-relative agent identity and config files".to_string());
+        }
+    } else if !allowed_workspace_text_read_target(relative) {
+        return Err("Reading is only allowed for agent identity and config files".to_string());
+    }
+
+    if candidate.exists() {
+        let canonical = candidate.canonicalize().map_err(|err| err.to_string())?;
+        if !canonical.starts_with(&root) {
+            return Err("Path must stay inside the repo".to_string());
+        }
+        return Ok(canonical);
+    }
+
+    let parent = candidate
+        .parent()
+        .ok_or_else(|| "Path must have a parent directory".to_string())?;
+    let canonical_parent = parent.canonicalize().map_err(|err| err.to_string())?;
+    if !canonical_parent.starts_with(&root) {
+        return Err("Path must stay inside the repo".to_string());
+    }
+
+    Ok(candidate)
+}
+
+pub fn desktop_read_workspace_text_file(path: String) -> Result<String, String> {
+    let resolved = resolve_allowed_workspace_text_path(&path, false)?;
+    fs::read_to_string(&resolved).map_err(|err| err.to_string())
+}
+
+pub fn desktop_write_workspace_text_file(path: String, contents: String) -> Result<String, String> {
+    let resolved = resolve_allowed_workspace_text_path(&path, true)?;
+
+    if let Some(parent) = resolved.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+
+    fs::write(&resolved, contents).map_err(|err| err.to_string())?;
+    Ok(resolved.display().to_string())
 }
 
 pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {

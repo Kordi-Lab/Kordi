@@ -135,7 +135,15 @@ export type Agent = {
   contactId: string;
   systemPrompt: string;
   xMd: string;
+  identityFiles: string[];
+  loadedTools: string[];
+  loadedSkills: string[];
+  loadedPlugins: string[];
   lastActivities: string[];
+  exposesIdentityFiles?: boolean;
+  exposesLoadedSkills?: boolean;
+  exposesLoadedTools?: boolean;
+  exposesLoadedPlugins?: boolean;
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
@@ -444,12 +452,26 @@ export type DesktopChatSessionDetail = {
   messages: DesktopChatMessage[];
 };
 
+export type DesktopChatAgentProfile = {
+  label: string;
+  systemPrompt: string;
+  loadedSkills: string[];
+  loadedTools: string[];
+  loadedPlugins: string[];
+  identityFiles: string[];
+  defaultProvider: string;
+  defaultModel: string;
+  workspaceRoot: string;
+  lastActivities: string[];
+};
+
 export type DesktopChatState = {
   cwd: string;
   activeSessionId: string;
   sessions: DesktopChatSessionSummary[];
   projects: DesktopChatProjectGroup[];
   activeSession: DesktopChatSessionDetail;
+  localAgent: DesktopChatAgentProfile;
   modelOptions: DesktopChatModelOption[];
   slashCommands: DesktopChatSlashCommand[];
 };

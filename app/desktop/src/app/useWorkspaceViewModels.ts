@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { agents, contactGroups, contacts, conversations } from '@/kordi-app/data';
+import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   Contact,
@@ -350,9 +350,10 @@ export function useWorkspaceViewModels({
   }, [desktopBridgeState?.hosts, isNativeShell]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
-    if (!isNativeShell) return agents;
+    if (!isNativeShell) return [];
 
     const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
+    const localAgent = desktopChatState?.localAgent;
     const items: Agent[] = [];
     const seen = new Set<string>();
 
@@ -362,24 +363,36 @@ export function useWorkspaceViewModels({
         const key = `owned:${host.id}:${agent.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
+
+        const runtimeAgent = agent.isActive ? localAgent : undefined;
         items.push({
-          name: agent.label,
+          name: runtimeAgent?.label ?? agent.label,
           id: agent.id,
           role: 'Owned bridge agent',
           messaging: `Hosted on ${hostLabel}`,
           status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
           tasks: 0,
-          defaultProvider: host.ownerName,
-          defaultModel: agent.runtime,
+          defaultProvider: runtimeAgent?.defaultProvider ?? host.ownerName,
+          defaultModel: runtimeAgent?.defaultModel ?? agent.runtime,
           bridgesConfig: hostLabel,
           contactId: `bridge-agent:${host.id}:${agent.id}`,
-          systemPrompt: 'Owned bridge agent identity for collaboration routing and direct bridge messaging.',
-          xMd: [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
-          lastActivities: [
-            `Human ID: ${host.humanId}`,
-            `Node ID: ${agent.nodeId || 'Pending registration'}`,
-            `Discovery: ${host.discoveryMode}`,
-          ],
+          systemPrompt: runtimeAgent?.systemPrompt ?? '',
+          xMd: runtimeAgent?.workspaceRoot ?? [host.serverUrl, agent.nodeId || 'Pending node'].filter(Boolean).join(' • '),
+          identityFiles: runtimeAgent?.identityFiles ?? [],
+          loadedTools: runtimeAgent?.loadedTools ?? [],
+          loadedSkills: runtimeAgent?.loadedSkills ?? [],
+          loadedPlugins: runtimeAgent?.loadedPlugins ?? [],
+          lastActivities: runtimeAgent
+            ? runtimeAgent.lastActivities
+            : [
+                `Human ID: ${host.humanId}`,
+                `Node ID: ${agent.nodeId || 'Pending registration'}`,
+                `Discovery: ${host.discoveryMode}`,
+              ],
+          exposesIdentityFiles: Boolean(runtimeAgent),
+          exposesLoadedSkills: Boolean(runtimeAgent),
+          exposesLoadedTools: Boolean(runtimeAgent),
+          exposesLoadedPlugins: Boolean(runtimeAgent),
           bridgeHostId: host.id,
           bridgePeerNodeId: agent.nodeId ?? undefined,
           bridgePeerRuntime: agent.runtime,
@@ -404,17 +417,25 @@ export function useWorkspaceViewModels({
           messaging: `Reachable on ${hostLabel}`,
           status: host.connected ? 'Reachable' : 'Offline',
           tasks: 0,
-          defaultProvider: peer.ownerName || 'Bridge peer',
-          defaultModel: peer.runtime || 'bridge-node',
+          defaultProvider: peer.ownerName || '',
+          defaultModel: peer.runtime || '',
           bridgesConfig: hostLabel,
           contactId: `bridge-peer:${peer.agentId || peer.nodeId}`,
-          systemPrompt: 'Bridge-discovered external agent identity.',
+          systemPrompt: '',
           xMd: [peer.nodeId, peer.endpoint].filter(Boolean).join(' • '),
+          identityFiles: [],
+          loadedTools: [],
+          loadedSkills: [],
+          loadedPlugins: [],
           lastActivities: [
             `Owner: ${peer.ownerName || 'Unknown'}`,
             `Human ID: ${peer.humanId || 'Unavailable'}`,
             `Runtime: ${peer.runtime}`,
           ],
+          exposesIdentityFiles: false,
+          exposesLoadedSkills: false,
+          exposesLoadedTools: false,
+          exposesLoadedPlugins: false,
           bridgeHostId: host.id,
           bridgePeerNodeId: peer.nodeId,
           bridgePeerRuntime: peer.runtime,
@@ -429,8 +450,36 @@ export function useWorkspaceViewModels({
       }
     }
 
+    if (items.length === 0 && localAgent) {
+      items.push({
+        name: localAgent.label,
+        id: 'desktop:local-agent',
+        role: 'Local desktop agent',
+        messaging: 'Local runtime',
+        status: 'Active',
+        tasks: 0,
+        defaultProvider: localAgent.defaultProvider,
+        defaultModel: localAgent.defaultModel,
+        bridgesConfig: 'Local runtime',
+        contactId: 'desktop:local-agent',
+        systemPrompt: localAgent.systemPrompt,
+        xMd: localAgent.workspaceRoot,
+        identityFiles: localAgent.identityFiles,
+        loadedTools: localAgent.loadedTools,
+        loadedSkills: localAgent.loadedSkills,
+        loadedPlugins: localAgent.loadedPlugins,
+        lastActivities: localAgent.lastActivities,
+        exposesIdentityFiles: true,
+        exposesLoadedSkills: true,
+        exposesLoadedTools: true,
+        exposesLoadedPlugins: true,
+        isOwned: true,
+        isBridgeActive: true,
+      });
+    }
+
     return items;
-  }, [desktopBridgeState?.hosts, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
 
   const groupedContacts = useMemo(
     () =>
@@ -458,7 +507,7 @@ export function useWorkspaceViewModels({
   }, [contactSearch, groupedContacts]);
 
   const activeContact = displayedContacts.find((contact) => contact.id === activeContactId) ?? displayedContacts[0] ?? contacts[0];
-  const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0] ?? agents[0];
+  const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
   const runtimeProjects = useMemo(() => {
     if (!isNativeShell || !desktopChatState?.projects?.length) {
