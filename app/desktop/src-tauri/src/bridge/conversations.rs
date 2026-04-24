@@ -287,7 +287,51 @@ pub(super) fn parse_mailbox_payload(blob: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&decoded).ok()
 }
 
+fn is_agent_like_runtime(runtime: &str) -> bool {
+    let runtime = runtime.trim().to_lowercase();
+    runtime.contains("agent")
+        || runtime.contains("claude")
+        || runtime.contains("codex")
+        || runtime.contains("openclaw")
+        || runtime.contains("pi")
+        || runtime.contains("bot")
+        || runtime.contains("kordi")
+}
+
+fn labels_match(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
+}
+
 pub(super) fn conversation_title(record: &DesktopBridgeConversationRecord) -> String {
+    if record.peer_runtime.trim().eq_ignore_ascii_case("person") {
+        return record
+            .peer_owner_name
+            .clone()
+            .or_else(|| record.peer_display_name.clone())
+            .unwrap_or_else(|| record.peer_node_id.clone());
+    }
+
+    if is_agent_like_runtime(&record.peer_runtime) {
+        let owner = record
+            .peer_owner_name
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+        let agent = record
+            .peer_display_name
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+
+        return match (owner, agent) {
+            (Some(owner), Some(agent)) if !labels_match(&owner, &agent) => {
+                format!("{owner} · {agent}")
+            }
+            (Some(owner), Some(_agent)) => owner,
+            (Some(owner), None) => owner,
+            (None, Some(agent)) => agent,
+            (None, None) => record.peer_node_id.clone(),
+        };
+    }
+
     record
         .peer_display_name
         .clone()

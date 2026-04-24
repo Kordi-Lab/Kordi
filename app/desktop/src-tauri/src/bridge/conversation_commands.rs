@@ -12,7 +12,8 @@ use super::constants::{
 };
 use super::{
     add_serve_contact, append_conversation_message, bridge_conversation_id,
-    build_conversation_only_bridge_state, current_local_server_status, default_display_name,
+    build_conversation_only_bridge_state, build_current_bridge_state,
+    current_local_server_status, default_display_name,
     fetch_mailbox, load_bridge_store,
     load_conversation_store, note_peer_heartbeat, note_peer_typing, now_ms,
     parse_mailbox_payload, relay_plaintext_message, save_conversation_store,
@@ -614,14 +615,50 @@ pub(super) async fn desktop_bridge_open_conversation_impl(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
+    let has_display_name = peer_display_name
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_owner_name = peer_owner_name
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_runtime = peer_runtime
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    let inferred_peer = if has_display_name && has_owner_name && has_runtime {
+        None
+    } else {
+        let current_state = build_current_bridge_state(manager).await;
+        current_state
+            .hosts
+            .iter()
+            .find(|host| host.id == host_id)
+            .and_then(|host| host.visible_peers.iter().find(|peer| peer.node_id == peer_node_id))
+            .cloned()
+    };
+
+    let resolved_peer_display_name = peer_display_name
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| inferred_peer.as_ref().and_then(|peer| peer.display_name.clone()));
+    let resolved_peer_owner_name = peer_owner_name
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| inferred_peer.as_ref().and_then(|peer| peer.owner_name.clone()));
+    let resolved_peer_runtime = peer_runtime
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| inferred_peer.as_ref().map(|peer| peer.runtime.clone()))
+        .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
+
     let mut store = load_conversation_store();
     let conversation = upsert_bridge_conversation(
         &mut store,
         &host_id,
         &peer_node_id,
-        peer_display_name,
-        peer_owner_name,
-        peer_runtime.unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string()),
+        resolved_peer_display_name,
+        resolved_peer_owner_name,
+        resolved_peer_runtime,
         project_id,
         project_name,
     );
@@ -892,7 +929,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 peer_runtime.clone(),
                                 event.project_id.clone(),
                                 None,
-                                "outbound",
+                                "outbound-response",
                                 Some(sender_name.clone()),
                                 snapshot.assistant_text.clone(),
                                 event.request_id.clone(),
