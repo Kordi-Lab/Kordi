@@ -192,7 +192,7 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
     return <Clock3 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />;
   }
   if (normalized === 'processing' || normalized === 'awaiting reply') {
-    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-rose-400" aria-hidden="true" />;
+    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />;
   }
   if (normalized === 'handed_off_direct' || normalized === 'handed_off_mailbox') {
     return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />;
@@ -230,6 +230,65 @@ function MessageFooter({
       <span className="inline-flex w-4 justify-center" title={status ?? undefined}>
         {glyph}
       </span>
+    </div>
+  );
+}
+
+function AttachmentPreview({ msg }: { msg: Message }) {
+  const attachments = msg.attachments ?? [];
+  const imageAttachments = attachments.filter((attachment) => attachment.kind === 'image');
+  const fileAttachments = attachments.filter((attachment) => attachment.kind !== 'image');
+
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {imageAttachments.length > 0 ? (
+        <div className={cn('grid gap-2', imageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+          {imageAttachments.map((attachment, index) => (
+            <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+              {attachment.previewUrl ? (
+                <img
+                  src={attachment.previewUrl}
+                  alt={attachment.name || 'Attached image'}
+                  className="block max-h-[320px] w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-28 items-center justify-center bg-white/5 text-slate-400">
+                  <Image className="h-5 w-5" />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
+                <span className="truncate">{attachment.name || 'Image attachment'}</span>
+                {attachment.formatLabel ? (
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                    {attachment.formatLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {fileAttachments.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {fileAttachments.map((attachment, index) => (
+            <div key={`${attachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
+                <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                  {attachment.formatLabel || 'FILE'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -383,6 +442,8 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const deliveryStatus = primaryMessageStatus(msg);
   const showCompactFooter = isUser || isDirectPersonMessage;
   const showHeaderMeta = !showCompactFooter || Boolean(msg.sender && msg.role === 'external-agent');
+  const hasText = msg.text.trim().length > 0;
+  const hasAttachments = (msg.attachments?.length ?? 0) > 0;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, !isUser && !isDirectPersonMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -400,34 +461,28 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
             : 'w-full max-w-none rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
         bubble,
       )}>
+        <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
+          {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
+          {hasText ? (isUser ? <div className="whitespace-pre-wrap break-words">{msg.text}</div> : <MarkdownContent text={msg.text} />) : null}
+        </div>
         {showCompactFooter ? (
-          <div className="flex items-end justify-between gap-2">
-            <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-              {msg.text}
-            </div>
-            <MessageFooter
-              time={msg.time}
-              status={isUser ? deliveryStatus : undefined}
-              detail={msg.detail}
-              isUser={isUser}
-              compact
-            />
+          <MessageFooter
+            time={msg.time}
+            status={isUser ? deliveryStatus : undefined}
+            detail={msg.detail}
+            isUser={isUser}
+            compact={false}
+          />
+        ) : (msg.statusChips?.length || msg.detail) ? (
+          <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
+            {msg.statusChips?.map((chip) => (
+              <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
+                {chip}
+              </span>
+            ))}
+            {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
           </div>
-        ) : (
-          <>
-            <MarkdownContent text={msg.text} />
-            {(msg.statusChips?.length || msg.detail) ? (
-              <div className="app-message-status-bar mt-2 border-t border-white/10 pt-2 text-[11px] text-slate-300">
-                {msg.statusChips?.map((chip) => (
-                  <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
-                    {chip}
-                  </span>
-                ))}
-                {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
-              </div>
-            ) : null}
-          </>
-        )}
+        ) : null}
       </div>
     </div>
   );

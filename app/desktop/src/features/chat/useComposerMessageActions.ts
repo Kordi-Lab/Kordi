@@ -16,7 +16,7 @@ import {
   isSharedLocalSlashCommand,
   resizeComposerTextarea,
 } from './composerController.shared';
-import type { UseComposerControllerArgs } from './composerController.types';
+import type { AttachmentItem, UseComposerControllerArgs } from './composerController.types';
 
 type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
@@ -59,16 +59,28 @@ type UseComposerMessageActionsArgs = Pick<
   appendChatDraft: (value: string) => void;
 };
 
+function toOptimisticAttachments(attachments: AttachmentItem[]) {
+  return attachments.map((attachment) => ({
+    kind: attachment.kind,
+    name: attachment.name,
+    formatLabel: attachment.formatLabel,
+    previewUrl: attachment.previewUrl,
+  }));
+}
+
 function appendOptimisticOutboundMessage(
   current: DesktopChatState,
   targetSessionId: string,
-  displayText: string,
+  previewText: string,
+  messageText: string,
+  attachments: AttachmentItem[],
   sentAt: string,
 ) {
   const optimisticMessage = {
     role: 'user' as const,
     sender: 'You',
-    text: displayText,
+    text: messageText,
+    attachments: toOptimisticAttachments(attachments),
     timeLabel: sentAt,
     timestampMs: Date.now(),
   };
@@ -79,7 +91,7 @@ function appendOptimisticOutboundMessage(
       session.id === targetSessionId
         ? {
             ...session,
-            subtitle: displayText,
+            subtitle: previewText,
             updatedAtLabel: sentAt,
             messageCount: session.messageCount + 1,
           }
@@ -89,7 +101,7 @@ function appendOptimisticOutboundMessage(
       current.activeSession.id === targetSessionId
         ? {
             ...current.activeSession,
-            subtitle: displayText,
+            subtitle: previewText,
             updatedAtLabel: sentAt,
             messageCount: current.activeSession.messageCount + 1,
             messages: [...current.activeSession.messages, optimisticMessage],
@@ -375,10 +387,12 @@ export function useComposerMessageActions({
 
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
-      const displayText = attachmentSummaryText(text);
+      const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       setDesktopChatState((current) => (
-        current ? appendOptimisticOutboundMessage(current, targetSessionId, displayText, sentAt) : current
+        current
+          ? appendOptimisticOutboundMessage(current, targetSessionId, previewText, text, chatComposerAttachments, sentAt)
+          : current
       ));
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       setChatComposerAttachments([]);
@@ -418,7 +432,6 @@ export function useComposerMessageActions({
     if (!isNativeShell) {
       shouldAutoFollowChatRef.current = true;
       const sentAt = formatDesktopEventTime();
-      const displayText = attachmentSummaryText(text);
 
       setProjectWorkspaces((current: Project[]) =>
         current.map((project) =>
@@ -437,7 +450,8 @@ export function useComposerMessageActions({
                           {
                             role: 'user',
                             sender: 'You',
-                            text: displayText,
+                            text,
+                            attachments: toOptimisticAttachments(chatComposerAttachments),
                             time: sentAt,
                           },
                         ],
@@ -458,10 +472,10 @@ export function useComposerMessageActions({
       setDesktopChatError(null);
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
-      const displayText = attachmentSummaryText(text);
+      const previewText = attachmentSummaryText(text);
       setDesktopChatState((current) => {
         if (!current || current.activeSessionId !== activeProjectSessionId) return current;
-        return appendOptimisticOutboundMessage(current, activeProjectSessionId, displayText, sentAt);
+        return appendOptimisticOutboundMessage(current, activeProjectSessionId, previewText, text, chatComposerAttachments, sentAt);
       });
       appendProjectDraft('');
       setChatComposerAttachments([]);

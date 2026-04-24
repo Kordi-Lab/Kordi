@@ -187,11 +187,11 @@ function SidebarSessionMetaColumn({
   active?: boolean;
 }) {
   return (
-    <div className="flex w-[3.85rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
-      <span className={cn('block w-full text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
+    <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
+      <span className={cn('whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
         {timeLabel}
       </span>
-      <div className="flex h-2.5 w-full items-center justify-end gap-1.5">
+      <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
         <SidebarUnreadBadge count={unreadCount} />
         <SidebarSessionStatusIndicator indicator={indicator} active={active} />
       </div>
@@ -387,14 +387,9 @@ export function WorkspaceSidebar({
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1 pr-1">
+                                <div className="flex items-start gap-2.5">
+                                  <div className="min-w-0 flex-1">
                                     <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
-                                    {conversation.subtitle.trim().length > 0 ? (
-                                      <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}>
-                                        {conversation.subtitle}
-                                      </div>
-                                    ) : null}
                                   </div>
                                   <SidebarSessionMetaColumn
                                     timeLabel={rowTimeLabel}
@@ -403,6 +398,11 @@ export function WorkspaceSidebar({
                                     active={isActive}
                                   />
                                 </div>
+                                {conversation.subtitle.trim().length > 0 ? (
+                                  <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                    {conversation.subtitle}
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           </button>
@@ -487,21 +487,23 @@ export function WorkspaceSidebar({
                                             : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
                                         )}
                                       >
-                                        <div className="flex items-start justify-between gap-3">
-                                          <div className="min-w-0 flex-1 pr-1">
-                                            <div className="truncate text-[12px] font-medium">{session.name}</div>
-                                            {session.summary?.trim().length ? (
-                                              <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
-                                                {session.summary}
-                                              </div>
-                                            ) : null}
+                                        <div className="min-w-0">
+                                          <div className="flex items-start gap-2.5">
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-[12px] font-medium">{session.name}</div>
+                                            </div>
+                                            <SidebarSessionMetaColumn
+                                              timeLabel={session.lastActive}
+                                              unreadCount={session.unread}
+                                              indicator={session.statusIndicator}
+                                              active={isActiveSession}
+                                            />
                                           </div>
-                                          <SidebarSessionMetaColumn
-                                            timeLabel={session.lastActive}
-                                            unreadCount={session.unread}
-                                            indicator={session.statusIndicator}
-                                            active={isActiveSession}
-                                          />
+                                          {session.summary?.trim().length ? (
+                                            <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
+                                              {session.summary}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       </button>
                                     );

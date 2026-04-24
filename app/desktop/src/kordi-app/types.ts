@@ -54,6 +54,14 @@ export type EditFilePreview = {
   sourceLines?: SourcePreviewLine[];
 };
 
+export type MessageAttachment = {
+  kind: 'image' | 'file';
+  name: string;
+  formatLabel?: string | null;
+  previewUrl?: string | null;
+  mimeType?: string | null;
+};
+
 export type Message = {
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
@@ -61,6 +69,7 @@ export type Message = {
   time: string;
   detail?: string;
   statusChips?: string[];
+  attachments?: MessageAttachment[];
   turn?: DesktopChatTurnSnapshot;
   edit?: {
     files: EditFilePreview[];
@@ -126,7 +135,15 @@ export type Agent = {
   contactId: string;
   systemPrompt: string;
   xMd: string;
+  identityFiles: string[];
+  loadedTools: string[];
+  loadedSkills: string[];
+  loadedPlugins: string[];
   lastActivities: string[];
+  exposesIdentityFiles?: boolean;
+  exposesLoadedSkills?: boolean;
+  exposesLoadedTools?: boolean;
+  exposesLoadedPlugins?: boolean;
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
@@ -241,6 +258,13 @@ export type DesktopChatSlashCommand = {
   value: string;
 };
 
+export type DesktopChatAttachment = {
+  kind: 'image' | 'file';
+  name: string;
+  formatLabel?: string | null;
+  previewUrl?: string | null;
+};
+
 export type DesktopChatMessage = {
   role: string;
   sender?: string | null;
@@ -248,6 +272,7 @@ export type DesktopChatMessage = {
   detail?: string | null;
   timeLabel: string;
   timestampMs: number;
+  attachments?: DesktopChatAttachment[];
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
 };
@@ -430,6 +455,10 @@ export type DesktopChatSessionDetail = {
 export type DesktopChatAgentProfile = {
   label: string;
   systemPrompt: string;
+  loadedSkills: string[];
+  loadedTools: string[];
+  loadedPlugins: string[];
+  identityFiles: string[];
   defaultProvider: string;
   defaultModel: string;
   workspaceRoot: string;

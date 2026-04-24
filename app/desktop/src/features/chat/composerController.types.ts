@@ -9,6 +9,7 @@ import type {
   DesktopChatTurnSnapshot,
   DetailTab,
   Message,
+  MessageAttachment,
   NavId,
   Project,
 } from '@/kordi-app/types';
@@ -16,7 +17,7 @@ import type {
 export type ComposerSelectionState = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 export type ComposerDraftState = Record<ComposerScope, string>;
 export type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelectorType } | null;
-export type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
+export type AttachmentItem = MessageAttachment & { id: string; path: string };
 export type MinimalModelOption = {
   value: string;
   label: string;

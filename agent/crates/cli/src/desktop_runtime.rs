@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow, bail};
+use chrono::{Local, TimeZone, Utc};
 use kordi_core::agent_session::{ImageContent, ThinkingLevel};
 use kordi_core::settings::Settings;
 use kordi_core::types::{
@@ -10,11 +11,11 @@ use kordi_monitor::{
     render_context_window_status, resolve_context_window_status,
 };
 use kordi_provider::registry::{Model, ModelRegistry};
-use chrono::{Local, TimeZone, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::login;
@@ -55,6 +56,19 @@ pub struct DesktopChatStoredTool {
     pub is_error: bool,
 }
 
+const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatAttachment {
+    pub kind: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_url: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatMessage {
@@ -64,6 +78,8 @@ pub struct DesktopChatMessage {
     pub detail: Option<String>,
     pub time_label: String,
     pub timestamp_ms: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<DesktopChatAttachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_text: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -125,6 +141,10 @@ pub struct DesktopChatProjectInfo {
 pub struct DesktopChatAgentProfile {
     pub label: String,
     pub system_prompt: String,
+    pub loaded_skills: Vec<String>,
+    pub loaded_tools: Vec<String>,
+    pub loaded_plugins: Vec<String>,
+    pub identity_files: Vec<String>,
     pub default_provider: String,
     pub default_model: String,
     pub workspace_root: String,
@@ -368,7 +388,11 @@ impl DesktopRuntimeSession {
             bail!("Session name cannot be empty");
         }
         ensure_session_row_created(&mut self.setup)?;
-        kordi_session::store::set_session_name(&self.setup.conn, &self.setup.session_id, Some(name))?;
+        kordi_session::store::set_session_name(
+            &self.setup.conn,
+            &self.setup.session_id,
+            Some(name),
+        )?;
         Ok(())
     }
 
@@ -410,19 +434,68 @@ impl DesktopRuntimeSession {
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
         }
-        let images = load_images_from_paths(&expanded.image_paths)?;
+        let image_attachment_paths = attachment_paths
+            .iter()
+            .filter(|path| attachment_is_image(path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let non_image_attachment_paths = attachment_paths
+            .iter()
+            .filter(|path| !attachment_is_image(path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let images = load_images_from_paths(
+            &image_attachment_paths
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect::<Vec<_>>(),
+        )?;
+        let attachment_metadata = attachment_paths
+            .iter()
+            .map(|path| attachment_metadata_from_path(path))
+            .collect::<Vec<_>>();
+        let attachment_context_text = if non_image_attachment_paths.is_empty() {
+            String::new()
+        } else {
+            expand_prompt_with_attachment_paths(
+                "",
+                &non_image_attachment_paths,
+                &self.setup.tool_ctx.cwd,
+            )
+            .text
+            .trim()
+            .to_string()
+        };
 
         ensure_session_row_created(&mut self.setup)?;
-        maybe_name_session_from_prompt(&self.setup.conn, &self.setup.session_id, &prompt_text)?;
-        turn_runner::append_user_message_with_images(
-            &self
-                .setup
-                .sibling_conn
-                .clone()
-                .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?,
+        let session_title_seed = if prompt.is_empty() {
+            attachment_summary_from_metadata(&attachment_metadata)
+                .unwrap_or_else(|| prompt_text.clone())
+        } else {
+            prompt.clone()
+        };
+        maybe_name_session_from_prompt(
+            &self.setup.conn,
             &self.setup.session_id,
-            &prompt_text,
+            &session_title_seed,
+        )?;
+        let sibling_conn = self
+            .setup
+            .sibling_conn
+            .clone()
+            .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?;
+        turn_runner::append_user_message_with_images(
+            &sibling_conn,
+            &self.setup.session_id,
+            &prompt,
             &images,
+        )
+        .await?;
+        append_attachment_context_message(
+            &sibling_conn,
+            &self.setup.session_id,
+            &attachment_context_text,
+            &attachment_metadata,
         )
         .await?;
         refresh_provider_runtime_fields(&mut self.setup);
@@ -453,49 +526,6 @@ impl DesktopRuntimeSession {
         }
 
         self.detail()
-    }
-}
-
-fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
-    let mut dir = cwd.to_path_buf();
-    loop {
-        if dir.join(".git").exists() {
-            return dir;
-        }
-        if !dir.pop() {
-            return cwd.to_path_buf();
-        }
-    }
-}
-
-fn infer_agent_label(cwd: &std::path::Path) -> String {
-    Settings::load_project(cwd)
-        .project_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| {
-            discover_workspace_root(cwd)
-                .file_name()
-                .and_then(|value| value.to_str())
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| "Local agent".to_string())
-}
-
-fn build_agent_profile_from_setup(setup: &SessionRuntimeSetup) -> DesktopChatAgentProfile {
-    DesktopChatAgentProfile {
-        label: infer_agent_label(&setup.tool_ctx.cwd),
-        system_prompt: setup.system_prompt.clone(),
-        default_provider: setup.model.provider.clone(),
-        default_model: setup.model.id.clone(),
-        workspace_root: setup.tool_ctx.cwd.display().to_string(),
-        last_activities: vec![
-            format!("Workspace: {}", setup.tool_ctx.cwd.display()),
-            format!("Model: {}/{}", setup.model.provider, setup.model.id),
-            format!("Thinking: {}", setup.thinking_level),
-        ],
     }
 }
 
@@ -574,7 +604,9 @@ fn session_summary_from_row(
 
 fn open_sessions_db() -> Result<rusqlite::Connection> {
     let global_settings = Settings::load_global();
-    kordi_session::store::open_db(&kordi_core::config::session_db_path(&global_settings.storage))
+    kordi_session::store::open_db(&kordi_core::config::session_db_path(
+        &global_settings.storage,
+    ))
 }
 
 pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSessionSummary>> {
@@ -1124,6 +1156,126 @@ fn build_turn_config(
     })
 }
 
+fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
+    let mut dir = cwd.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return dir;
+        }
+        if !dir.pop() {
+            return cwd.to_path_buf();
+        }
+    }
+}
+
+fn repo_relative_display_path(root: &std::path::Path, path: &std::path::Path) -> Option<String> {
+    path.strip_prefix(root)
+        .ok()
+        .map(|relative| relative.display().to_string())
+}
+
+fn infer_agent_label(cwd: &std::path::Path) -> String {
+    Settings::load_project(cwd)
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            discover_workspace_root(cwd)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Local agent".to_string())
+}
+
+fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
+    let workspace_root = discover_workspace_root(cwd);
+    let mut files = Vec::new();
+
+    let project_settings = kordi_core::config::project_settings_path(cwd);
+    if project_settings.exists() {
+        if let Some(relative) = repo_relative_display_path(&workspace_root, &project_settings) {
+            files.push(relative);
+        }
+    }
+
+    let mut dir = cwd.to_path_buf();
+    let mut scanned = Vec::new();
+    loop {
+        let agents = dir.join("AGENTS.md");
+        if agents.exists() {
+            scanned.push(agents);
+        } else {
+            let claude = dir.join("CLAUDE.md");
+            if claude.exists() {
+                scanned.push(claude);
+            }
+        }
+
+        if dir == workspace_root {
+            break;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+
+    scanned.reverse();
+    files.extend(
+        scanned
+            .into_iter()
+            .filter_map(|path| repo_relative_display_path(&workspace_root, &path)),
+    );
+    files.dedup();
+    files
+}
+
+fn build_agent_profile_from_setup(setup: &SessionRuntimeSetup) -> DesktopChatAgentProfile {
+    let loaded_skills = setup
+        .slash_command_items
+        .iter()
+        .filter_map(|item| item.value.strip_prefix("/skill:").map(ToString::to_string))
+        .collect::<Vec<_>>();
+    let loaded_tools = setup
+        .tool_registry
+        .active_tools()
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect::<Vec<_>>();
+    let loaded_plugins = setup
+        .extension_bootstrap
+        .package_sources
+        .iter()
+        .cloned()
+        .chain(
+            setup
+                .extension_bootstrap
+                .paths
+                .iter()
+                .map(|path| path.display().to_string()),
+        )
+        .collect::<Vec<_>>();
+
+    DesktopChatAgentProfile {
+        label: infer_agent_label(&setup.tool_ctx.cwd),
+        system_prompt: setup.system_prompt.clone(),
+        loaded_skills,
+        loaded_tools,
+        loaded_plugins,
+        identity_files: collect_agent_identity_files(&setup.tool_ctx.cwd),
+        default_provider: setup.model.provider.clone(),
+        default_model: setup.model.id.clone(),
+        workspace_root: setup.tool_ctx.cwd.display().to_string(),
+        last_activities: vec![
+            format!("Workspace: {}", setup.tool_ctx.cwd.display()),
+            format!("Model: {}/{}", setup.model.provider, setup.model.id),
+            format!("Thinking: {}", setup.thinking_level),
+        ],
+    }
+}
+
 fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSessionSummary> {
     let detail = build_detail_from_setup(setup)?;
     Ok(DesktopChatSessionSummary {
@@ -1279,6 +1431,7 @@ fn flush_historical_turn(
         detail: turn.detail,
         time_label: format_message_timestamp(turn.timestamp_ms),
         timestamp_ms: turn.timestamp_ms,
+        attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
         tools: turn.tools,
     });
@@ -1310,6 +1463,161 @@ fn tool_detail_label(details: &Option<serde_json::Value>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" • "))
 }
 
+fn attachment_is_image(path: &str) -> bool {
+    matches!(
+        std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref(),
+        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp")
+    )
+}
+
+fn attachment_format_label_from_path(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+}
+
+fn attachment_name_from_path(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn attachment_metadata_from_path(path: &str) -> DesktopChatAttachment {
+    DesktopChatAttachment {
+        kind: if attachment_is_image(path) {
+            "image".to_string()
+        } else {
+            "file".to_string()
+        },
+        name: attachment_name_from_path(path),
+        format_label: attachment_format_label_from_path(path),
+        preview_url: None,
+    }
+}
+
+fn attachment_summary_from_metadata(attachments: &[DesktopChatAttachment]) -> Option<String> {
+    match attachments {
+        [] => None,
+        [attachment] => Some(format!("Attached {}", attachment.name)),
+        _ => Some(format!("{} attachments", attachments.len())),
+    }
+}
+
+async fn append_attachment_context_message(
+    conn: &Arc<tokio::sync::Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    attachment_context_text: &str,
+    attachments: &[DesktopChatAttachment],
+) -> Result<()> {
+    if attachments.is_empty() {
+        return Ok(());
+    }
+
+    let conn = conn.lock().await;
+    let content = if attachment_context_text.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![ContentBlock::Text {
+            text: attachment_context_text.to_string(),
+        }]
+    };
+    let entry = SessionEntry::CustomMessage {
+        base: EntryBase {
+            id: EntryId::generate(),
+            parent_id: turn_runner::get_leaf_raw(&conn, session_id),
+            timestamp: Utc::now(),
+        },
+        custom_type: ATTACHMENT_CONTEXT_CUSTOM_TYPE.to_string(),
+        content,
+        display: false,
+        details: Some(serde_json::json!({ "attachments": attachments })),
+    };
+    kordi_session::store::append_entry(&conn, session_id, &entry)?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct AttachmentContextDetails {
+    #[serde(default)]
+    attachments: Vec<DesktopChatAttachment>,
+}
+
+fn attachments_from_details(details: &Option<serde_json::Value>) -> Vec<DesktopChatAttachment> {
+    details
+        .clone()
+        .and_then(|value| serde_json::from_value::<AttachmentContextDetails>(value).ok())
+        .map(|value| value.attachments)
+        .unwrap_or_default()
+}
+
+fn image_attachments_from_blocks(blocks: &[ContentBlock]) -> Vec<DesktopChatAttachment> {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Image { data, mime_type } => Some(DesktopChatAttachment {
+                kind: "image".to_string(),
+                name: "Image attachment".to_string(),
+                format_label: mime_type
+                    .split('/')
+                    .nth(1)
+                    .map(|value| value.trim().to_ascii_uppercase())
+                    .filter(|value| !value.is_empty()),
+                preview_url: Some(format!("data:{mime_type};base64,{data}")),
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+fn merge_attachment_metadata(
+    existing: Vec<DesktopChatAttachment>,
+    metadata: Vec<DesktopChatAttachment>,
+) -> Vec<DesktopChatAttachment> {
+    if metadata.is_empty() {
+        return existing;
+    }
+
+    let mut remaining_images = existing
+        .into_iter()
+        .filter(|attachment| attachment.kind == "image")
+        .collect::<Vec<_>>()
+        .into_iter();
+    let mut merged = Vec::new();
+
+    for attachment in metadata {
+        if attachment.kind == "image" {
+            if let Some(preview) = remaining_images.next() {
+                merged.push(DesktopChatAttachment {
+                    kind: "image".to_string(),
+                    name: if attachment.name.trim().is_empty() {
+                        preview.name
+                    } else {
+                        attachment.name
+                    },
+                    format_label: attachment.format_label.or(preview.format_label),
+                    preview_url: preview.preview_url,
+                });
+            } else {
+                merged.push(attachment);
+            }
+        } else {
+            merged.push(attachment);
+        }
+    }
+
+    merged.extend(remaining_images);
+    merged
+}
+
 fn load_session_messages(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -1327,10 +1635,11 @@ fn load_session_messages(
                     out.push(DesktopChatMessage {
                         role: "user".to_string(),
                         sender: Some("You".to_string()),
-                        text: text_from_blocks(&user.content),
+                        text: user_visible_text_from_blocks(&user.content),
                         detail: None,
                         time_label: format_message_timestamp(user.timestamp),
                         timestamp_ms: user.timestamp,
+                        attachments: image_attachments_from_blocks(&user.content),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1479,6 +1788,7 @@ fn load_session_messages(
                             detail: Some(message.custom_type),
                             time_label: format_message_timestamp(message.timestamp),
                             timestamp_ms: message.timestamp,
+                            attachments: Vec::new(),
                             thinking_text: None,
                             tools: Vec::new(),
                         });
@@ -1493,6 +1803,7 @@ fn load_session_messages(
                         detail: Some("Branch summary".to_string()),
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
+                        attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1506,6 +1817,7 @@ fn load_session_messages(
                         detail: Some(format!("Compaction • {} tokens", message.tokens_before)),
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
+                        attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1524,6 +1836,7 @@ fn load_session_messages(
                     detail: Some("Model updated".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
                 })
@@ -1543,6 +1856,7 @@ fn load_session_messages(
                     detail: Some("Thinking updated".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
                 })
@@ -1551,10 +1865,21 @@ fn load_session_messages(
                 custom_type,
                 content,
                 display,
+                details,
                 base,
-                ..
             } => {
                 flush_historical_turn(&mut out, &mut current_turn);
+                if custom_type == ATTACHMENT_CONTEXT_CUSTOM_TYPE {
+                    if let Some(last_user_message) =
+                        out.iter_mut().rev().find(|message| message.role == "user")
+                    {
+                        last_user_message.attachments = merge_attachment_metadata(
+                            std::mem::take(&mut last_user_message.attachments),
+                            attachments_from_details(&details),
+                        );
+                    }
+                    continue;
+                }
                 if display {
                     out.push(DesktopChatMessage {
                         role: "system".to_string(),
@@ -1563,6 +1888,7 @@ fn load_session_messages(
                         detail: Some(custom_type),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1582,6 +1908,7 @@ fn load_session_messages(
                     detail: Some(format!("Compaction • {} tokens", tokens_before)),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
                 })
@@ -1595,6 +1922,7 @@ fn load_session_messages(
                     detail: Some("Branch summary".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
                 })
@@ -1609,6 +1937,7 @@ fn load_session_messages(
                         detail: Some("Session updated".to_string()),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1624,6 +1953,7 @@ fn load_session_messages(
                         detail: Some("Label updated".to_string()),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
                     });
@@ -1639,15 +1969,19 @@ fn load_session_messages(
     Ok(out)
 }
 
-fn text_from_blocks(blocks: &[ContentBlock]) -> String {
-    let joined = blocks
+fn user_visible_text_from_blocks(blocks: &[ContentBlock]) -> String {
+    blocks
         .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             ContentBlock::Image { .. } => None,
         })
         .collect::<Vec<_>>()
-        .join("\n\n");
+        .join("\n\n")
+}
+
+fn text_from_blocks(blocks: &[ContentBlock]) -> String {
+    let joined = user_visible_text_from_blocks(blocks);
 
     if joined.trim().is_empty() {
         "(non-text content)".to_string()
@@ -1865,7 +2199,14 @@ fn session_focus_subtitle(messages: &[DesktopChatMessage]) -> Option<String> {
                 .rev()
                 .find(|message| message.role == "assistant")
         })
-        .map(|message| truncate_chars(&message.text.replace('\n', " "), 96))
+        .and_then(|message| {
+            let text = message.text.replace('\n', " ").trim().to_string();
+            if !text.is_empty() {
+                return Some(text);
+            }
+            attachment_summary_from_metadata(&message.attachments)
+        })
+        .map(|value| truncate_chars(&value, 96))
         .filter(|value| !value.trim().is_empty())
 }
 

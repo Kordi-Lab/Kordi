@@ -18,6 +18,16 @@ fn desktop_workspace_status() -> DesktopWorkspaceStatus {
     workspace::desktop_workspace_status()
 }
 
+#[tauri::command]
+fn desktop_read_workspace_text_file(path: String) -> Result<String, String> {
+    workspace::desktop_read_workspace_text_file(path)
+}
+
+#[tauri::command]
+fn desktop_write_workspace_text_file(path: String, contents: String) -> Result<String, String> {
+    workspace::desktop_write_workspace_text_file(path, contents)
+}
+
 fn run_external_command(command: &mut Command) -> Result<(), String> {
     let status = command.status().map_err(|err| err.to_string())?;
     if status.success() {
@@ -61,6 +71,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop_workspace_status,
+            desktop_read_workspace_text_file,
+            desktop_write_workspace_text_file,
             desktop_open_external_url,
             project::desktop_project_settings,
             project::desktop_save_project_settings,

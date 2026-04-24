@@ -1,4 +1,4 @@
-import type { Agent, Contact, ContactClass, ContactRequest } from '../types';
+import type { Contact, ContactClass, ContactRequest } from '../types';
 
 export const contacts: Contact[] = [
   {
@@ -484,68 +484,6 @@ export const contacts: Contact[] = [
   },
 ];
 
-export const agents: Agent[] = [
-  {
-    name: 'My Core Agent',
-    id: 'agent_core_01',
-    role: 'General assistant',
-    messaging: 'Trusted contacts',
-    status: 'Idle',
-    tasks: 1,
-    defaultProvider: 'OpenAI',
-    defaultModel: 'gpt-5.4-mini',
-    bridgesConfig: 'Alpha direct enabled, Beta relay fallback',
-    contactId: 'contact://my-core-agent',
-    systemPrompt: 'Acts as the default assistant for routing, summaries, and daily collaboration decisions.',
-    xMd: 'agents/core/x.md',
-    lastActivities: ['Summarized a partner reply 12m ago', 'Prepared meeting notes this morning', 'Reviewed two bridge approvals yesterday'],
-  },
-  {
-    name: 'Research Agent',
-    id: 'agent_research_01',
-    role: 'Literature and synthesis',
-    messaging: 'External allowed',
-    status: 'Running',
-    tasks: 3,
-    defaultProvider: 'Anthropic',
-    defaultModel: 'claude-sonnet-4',
-    bridgesConfig: 'Alpha and Gamma open, external direct reach enabled',
-    contactId: 'contact://research-agent',
-    systemPrompt: 'Focuses on literature collection, source comparison, and concise research synthesis.',
-    xMd: 'agents/research/x.md',
-    lastActivities: ['Requested a remote summary from Alice’s agent', 'Updated notes for the literature relay', 'Queued a follow-up source scan'],
-  },
-  {
-    name: 'Code Agent',
-    id: 'agent_code_01',
-    role: 'Build and debug',
-    messaging: 'Approval required',
-    status: 'Needs approval',
-    tasks: 2,
-    defaultProvider: 'OpenAI',
-    defaultModel: 'gpt-5.4',
-    bridgesConfig: 'Alpha internal only, restricted outbound bridge actions',
-    contactId: 'contact://code-agent',
-    systemPrompt: 'Specializes in implementation, debugging, and safe code changes with review-first behavior.',
-    xMd: 'agents/code/x.md',
-    lastActivities: ['Prepared a patch for the contact directory UI', 'Waiting for approval on a bridge-facing code review', 'Ran a local build 5m ago'],
-  },
-  {
-    name: 'Private Memory Agent',
-    id: 'agent_memory_01',
-    role: 'Notes and recall',
-    messaging: 'Disabled',
-    status: 'Private',
-    tasks: 0,
-    defaultProvider: 'Local runtime',
-    defaultModel: 'qwen3-32b-local',
-    bridgesConfig: 'No bridge exposure, local-only memory vault',
-    contactId: 'contact://memory-agent',
-    systemPrompt: 'Stores personal notes, reusable facts, and recall context with a strict private boundary.',
-    xMd: 'agents/memory/x.md',
-    lastActivities: ['Compacted a long-running note thread yesterday', 'Indexed a new archive file', 'No outbound activity in the last 24h'],
-  },
-];
 export const contactGroups: Array<{ id: ContactClass; label: string }> = [
   { id: 'my-agents', label: 'My agents' },
   { id: 'other-users-agents', label: 'Other users’ agents' },

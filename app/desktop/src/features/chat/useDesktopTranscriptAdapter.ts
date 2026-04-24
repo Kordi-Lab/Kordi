@@ -32,6 +32,12 @@ export function useDesktopTranscriptAdapter() {
         text: message.text,
         time: message.timeLabel,
         detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),
+        attachments: message.attachments?.map((attachment) => ({
+          kind: attachment.kind,
+          name: attachment.name,
+          formatLabel: attachment.formatLabel,
+          previewUrl: attachment.previewUrl,
+        })),
         turn:
           hasHistoricalTurn
             ? {

@@ -2,11 +2,10 @@ import { ChevronDown, ChevronRight, Eye, Plus, Search, X } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { BridgeChip, ContactRequestRow, ContactRow } from './components';
-import type { Agent, Contact, ContactClass, ContactRequest } from './types';
+import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
 
 type ContactsPageProps = {
@@ -256,145 +255,5 @@ export function ContactsPage({
   );
 }
 
-type AgentsPageProps = {
-  agents: Agent[];
-  activeAgentId: string;
-  activeAgent?: Agent;
-  isAgentOverlayOpen: boolean;
-  onOpenAgent: (agentId: string) => void;
-  onCloseOverlay: () => void;
-  getStatusBadgeClass: (value: string) => string;
-  onMessageAgent?: (agent: Agent) => void;
-};
-
-export function AgentsPage({
-  agents,
-  activeAgentId,
-  activeAgent,
-  isAgentOverlayOpen,
-  onOpenAgent,
-  onCloseOverlay,
-  getStatusBadgeClass,
-  onMessageAgent,
-}: AgentsPageProps) {
-  return (
-    <div className="relative flex h-full min-h-0 min-w-0 flex-1 p-4">
-      <div className="h-full w-full">
-        <ScrollArea className="h-full pr-2">
-          <div className="w-full">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-sm text-slate-400">Agents</div>
-                <div className="text-xl font-semibold text-white">{agents.length} visible identities</div>
-              </div>
-              <Button className="app-control-chip rounded-xl border-0">
-                <Plus className="mr-2 h-4 w-4" />
-                New
-              </Button>
-            </div>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {agents.map((agent) => (
-                <Card
-                  key={agent.id}
-                  className="app-surface-card rounded-3xl text-white transition hover:-translate-y-[1px]"
-                  onClick={() => onOpenAgent(agent.id)}
-                >
-                  <CardContent className="p-4">
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{agent.name}</div>
-                        <div className="text-xs text-slate-400">{agent.id}</div>
-                      </div>
-                      <Badge variant="outline" className={cn('rounded-full px-2.5 py-1', getStatusBadgeClass(agent.status))}>
-                        {agent.status}
-                      </Badge>
-                    </div>
-                    <div className="mb-2 text-sm text-slate-300">{agent.role}</div>
-                    <div className="mb-3 text-xs text-slate-400">Messaging: {agent.messaging}</div>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>{agent.tasks} active tasks</span>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-xl"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onOpenAgent(agent.id);
-                        }}
-                      >
-                        Open
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
-      {isAgentOverlayOpen && activeAgent && (
-        <div className="app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
-          <div className="app-modal-panel w-full max-w-[520px] rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Agent settings</div>
-                <div className="mt-1 text-2xl font-semibold">{activeAgent.name}</div>
-                <div className="mt-1 text-sm text-slate-400">{activeAgent.id}</div>
-              </div>
-              <button
-                type="button"
-                onClick={onCloseOverlay}
-                className="app-icon-button rounded-full p-2 text-slate-300 transition hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="app-detail-block rounded-2xl p-3">
-                <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Default provider</div>
-                <div className="text-sm font-medium">{activeAgent.defaultProvider}</div>
-              </div>
-              <div className="app-detail-block rounded-2xl p-3">
-                <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Default model</div>
-                <div className="text-sm font-medium">{activeAgent.defaultModel}</div>
-              </div>
-              <div className="app-detail-block rounded-2xl p-3">
-                <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Bridge config</div>
-                <div className="text-sm font-medium">{activeAgent.bridgesConfig}</div>
-              </div>
-              <div className="app-detail-block rounded-2xl p-3">
-                <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Contact ID</div>
-                <div className="text-sm font-medium">{activeAgent.contactId}</div>
-              </div>
-            </div>
-            <div className="app-detail-block mb-4 rounded-2xl p-3">
-              <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">System prompt</div>
-              <div className="text-sm text-slate-200">{activeAgent.systemPrompt}</div>
-            </div>
-            <div className="app-detail-block mb-4 rounded-2xl p-3">
-              <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">x.md</div>
-              <div className="text-sm font-medium text-slate-200">{activeAgent.xMd}</div>
-            </div>
-            <div className="app-detail-block rounded-2xl p-3">
-              <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">Last activities</div>
-              <div className="space-y-2">
-                {activeAgent.lastActivities.map((activity) => (
-                  <div key={activity} className="app-surface-muted rounded-xl px-3 py-2 text-sm text-slate-200">
-                    {activity}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2">
-              <Button className="rounded-xl" onClick={() => onMessageAgent?.(activeAgent)} disabled={!onMessageAgent || !activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId}>
-                Message
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
+export { AgentsPage } from './agents/AgentsPage';
 export { AuthPage } from './auth/AuthPage';

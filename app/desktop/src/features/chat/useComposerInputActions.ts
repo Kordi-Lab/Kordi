@@ -113,6 +113,37 @@ function appendOptimisticSessionConfigMessage({
   };
 }
 
+function attachmentFormatLabel(name: string, mimeType?: string) {
+  const extension = name.split('.').pop()?.trim();
+  if (extension) {
+    return extension.toUpperCase();
+  }
+
+  const subtype = mimeType?.split('/').pop()?.trim();
+  if (subtype) {
+    return subtype.toUpperCase();
+  }
+
+  return 'FILE';
+}
+
+function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[]) {
+  const trimmedText = text.trim();
+  if (trimmedText.length > 0) {
+    return text;
+  }
+
+  if (attachments.length === 0) {
+    return text;
+  }
+
+  if (attachments.length === 1) {
+    return `Attached ${attachments[0].name}`;
+  }
+
+  return `${attachments.length} attachments`;
+}
+
 export function useComposerInputActions({
   isNativeShell,
   activeProjectSessionId,
@@ -245,11 +276,9 @@ export function useComposerInputActions({
     target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, [setComposerDrafts]);
 
-  const attachmentSummaryText = useCallback((text: string) => {
-    if (chatComposerAttachments.length === 0) return text;
-    const summary = chatComposerAttachments.map((item) => item.name).join(', ');
-    return text.trim().length > 0 ? `${text}\n\nAttached: ${summary}` : `Attached: ${summary}`;
-  }, [chatComposerAttachments]);
+  const attachmentSummaryText = useCallback((text: string) => (
+    attachmentSummaryTextValue(text, chatComposerAttachments)
+  ), [chatComposerAttachments]);
 
   const saveDesktopAttachments = useCallback(async (files: File[]) => {
     if (!isNativeShell || files.length === 0) {
@@ -260,11 +289,16 @@ export function useComposerInputActions({
       files.map(async (file) => {
         const data = Array.from(new Uint8Array(await file.arrayBuffer()));
         const path = await storeDesktopChatAttachment(file.name || 'attachment.bin', data);
+        const mimeType = file.type || undefined;
+        const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
         return {
           id: `${file.name}-${path}`,
           name: file.name || 'attachment',
           path,
-          kind: file.type.startsWith('image/') ? ('image' as const) : ('file' as const),
+          kind,
+          mimeType,
+          formatLabel: attachmentFormatLabel(file.name || 'attachment', mimeType),
+          previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
         };
       }),
     );
@@ -277,7 +311,13 @@ export function useComposerInputActions({
   }, [isNativeShell, setChatComposerAttachments]);
 
   const removeChatComposerAttachment = useCallback((id: string) => {
-    setChatComposerAttachments((current) => current.filter((item) => item.id !== id));
+    setChatComposerAttachments((current) => {
+      const removed = current.find((item) => item.id === id);
+      if (removed?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return current.filter((item) => item.id !== id);
+    });
   }, [setChatComposerAttachments]);
 
   const setChatComposerText = useCallback((value: string) => {
