@@ -50,3 +50,12 @@ pub(super) const PEER_TYPING_WINDOW_MS: i64 = 6_000;
 pub(super) const BRIDGE_KEYCHAIN_SERVICE_NAME: &str = "app.kordi.desktop.bridge";
 pub(super) const BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX: &str = "host:";
 pub(super) const BRIDGE_KEYCHAIN_AGENT_ACCOUNT_PREFIX: &str = "agent:";
+
+const AGENT_LIKE_RUNTIME_TOKENS: &[&str] = &["agent", "claude", "codex", "openclaw", "pi", "bot", "kordi"];
+
+pub(super) fn is_agent_like_runtime(runtime: &str) -> bool {
+    let normalized = runtime.trim().to_lowercase();
+    AGENT_LIKE_RUNTIME_TOKENS
+        .iter()
+        .any(|token| normalized.contains(token))
+}

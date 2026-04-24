@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 
+import { isBridgeAgentRuntime, isBridgePersonRuntime } from '@/features/bridge/runtime';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
@@ -40,18 +41,6 @@ type UseWorkspaceViewModelsArgs = {
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
-
-export function isBridgeAgentRuntime(runtime: string) {
-  const value = runtime.trim().toLowerCase();
-  return value.includes('agent')
-    || value.includes('claude')
-    || value.includes('codex')
-    || value.includes('openclaw')
-    || value.includes('pi')
-    || value.includes('kordi')
-    || value.includes('generic')
-    || value.includes('bot');
-}
 
 function canExposeBridgePerson(peer: DesktopBridgePeer) {
   return Boolean(
@@ -244,7 +233,7 @@ export function useWorkspaceViewModels({
     return (desktopBridgeState?.conversations ?? []).map((conversation) => {
       const host = hostById.get(conversation.hostId);
       const hostLabel = host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
-      const isPersonChat = conversation.peerRuntime.trim().toLowerCase() === 'person'
+      const isPersonChat = isBridgePersonRuntime(conversation.peerRuntime)
         || Boolean(
           conversation.peerOwnerName
             && conversation.peerDisplayName
