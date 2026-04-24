@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
+
+import { listen } from '@tauri-apps/api/event';
 
 import {
   DEFAULT_BRIDGE_DISPLAY_NAME,
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
-import type { DesktopBridgeInvite, DesktopBridgeState, NavId } from '@/kordi-app/types';
+import type {
+  DesktopBridgeConversation,
+  DesktopBridgeConversationMessage,
+  DesktopBridgeInvite,
+  DesktopBridgeState,
+  NavId,
+} from '@/kordi-app/types';
 import {
   exportDesktopBridgeHostsConfig,
   fetchDesktopBridgeState,
   importDesktopBridgeHostsConfig,
+  markDesktopBridgeConversationRead,
   openDesktopBridgeConfigFolder,
   pollDesktopBridgeMailbox,
   removeDesktopBridgeHost,
@@ -24,6 +34,7 @@ type UseBridgeStateArgs = {
   activeConvId: string;
   activeConversationIsBridge: boolean;
   composerChatText: string;
+  shouldAutoFollowChatRef: MutableRefObject<boolean>;
 };
 
 type BridgeSettingsDraft = {
@@ -67,6 +78,64 @@ function isBridgeSettingsDraft(value: unknown): value is BridgeSettingsDraft {
   return typeof draft.serverUrl === 'string'
     && typeof draft.displayName === 'string'
     && typeof draft.ownerName === 'string';
+}
+
+function mergeConversationMessages(
+  current: DesktopBridgeConversationMessage[],
+  next: DesktopBridgeConversationMessage[],
+) {
+  if (next.length >= current.length) {
+    return next;
+  }
+
+  const nextById = new Map(next.map((message) => [message.id, message]));
+  return current.map((message) => nextById.get(message.id) ?? message);
+}
+
+function mergeBridgeConversation(
+  current: DesktopBridgeConversation,
+  next: DesktopBridgeConversation,
+): DesktopBridgeConversation {
+  return {
+    ...next,
+    subtitle: next.subtitle || current.subtitle,
+    unreadCount: next.unreadCount,
+    updatedAtMs: Math.max(current.updatedAtMs, next.updatedAtMs),
+    updatedAtLabel: next.updatedAtMs >= current.updatedAtMs ? next.updatedAtLabel : current.updatedAtLabel,
+    awaitingReply: next.awaitingReply,
+    peerTyping: next.peerTyping,
+    peerLastHeartbeatLabel: next.peerLastHeartbeatLabel ?? current.peerLastHeartbeatLabel,
+    messages: mergeConversationMessages(current.messages, next.messages),
+  };
+}
+
+export function mergeDesktopBridgeState(
+  current: DesktopBridgeState | null,
+  next: DesktopBridgeState | null,
+): DesktopBridgeState | null {
+  if (!next) return current;
+  if (!current) return next;
+
+  const mergedHosts = next.hosts.length > 0 ? next.hosts : current.hosts;
+  const hostIds = new Set(mergedHosts.map((host) => host.id));
+  const conversations = new Map(current.conversations.map((conversation) => [conversation.id, conversation]));
+  for (const conversation of next.conversations) {
+    conversations.set(
+      conversation.id,
+      conversations.has(conversation.id)
+        ? mergeBridgeConversation(conversations.get(conversation.id)!, conversation)
+        : conversation,
+    );
+  }
+
+  return {
+    ...next,
+    activeHostId: next.activeHostId ?? current.activeHostId,
+    hosts: mergedHosts,
+    conversations: Array.from(conversations.values())
+      .filter((conversation) => hostIds.has(conversation.hostId))
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs),
+  };
 }
 
 function applyBridgeSettingsDraft(
@@ -113,6 +182,7 @@ export function useBridgeState({
   activeConvId,
   activeConversationIsBridge,
   composerChatText,
+  shouldAutoFollowChatRef,
 }: UseBridgeStateArgs) {
   const [desktopBridgeState, setDesktopBridgeState] = useState<DesktopBridgeState | null>(null);
   const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<BridgeSettingsDraft | null>(null);
@@ -132,6 +202,7 @@ export function useBridgeState({
   });
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
+  const activeBridgeReadRequestRef = useRef<string | null>(null);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
     ?? desktopBridgeState?.hosts?.[0]
     ?? null;
@@ -146,7 +217,7 @@ export function useBridgeState({
   const refreshDesktopBridge = useCallback(async () => {
     const nextState = await fetchDesktopBridgeState();
     if (nextState) {
-      setDesktopBridgeState(nextState);
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
       setDesktopBridgeError(null);
     }
   }, []);
@@ -336,7 +407,7 @@ export function useBridgeState({
     if (!isNativeShell) return;
     try {
       const nextState = await importDesktopBridgeHostsConfig(raw);
-      setDesktopBridgeState(nextState);
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
       showBridgeNotice(`Imported ${nextState.hosts.length} bridge server${nextState.hosts.length === 1 ? '' : 's'} from config metadata`);
     } catch (error) {
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to import bridge host config');
@@ -351,7 +422,7 @@ export function useBridgeState({
     fetchDesktopBridgeState()
       .then((state) => {
         if (cancelled || !state) return;
-        setDesktopBridgeState(state);
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
         setDesktopBridgeError(null);
       })
       .catch((error) => {
@@ -397,7 +468,7 @@ export function useBridgeState({
       setIsBridgePolling(true);
       pollDesktopBridgeMailbox()
         .then((state) => {
-          setDesktopBridgeState(state);
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
           setLastBridgePollAt(Date.now());
         })
         .catch(() => {
@@ -414,6 +485,21 @@ export function useBridgeState({
       window.removeEventListener('focus', poll);
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    let unlisten: (() => void) | null = null;
+    void listen<DesktopBridgeState>('desktop-bridge-state', (event) => {
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, event.payload));
+      setLastBridgePollAt(Date.now());
+    }).then((dispose) => {
+      unlisten = dispose;
+    }).catch(() => {});
+
+    return () => {
+      unlisten?.();
+    };
+  }, [isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell || !activeConversationIsBridge) return;
@@ -440,6 +526,40 @@ export function useBridgeState({
     const interval = window.setInterval(sendHeartbeat, 12000);
     return () => window.clearInterval(interval);
   }, [activeConvId, activeConversationIsBridge, desktopBridgeState?.conversations, isNativeShell]);
+
+  useEffect(() => {
+    if (!isNativeShell || activeNav !== 'chats' || !activeConversationIsBridge) {
+      activeBridgeReadRequestRef.current = null;
+      return;
+    }
+
+    const activeConversation = (desktopBridgeState?.conversations ?? []).find((conversation) => conversation.id === activeConvId);
+    if (!activeConversation) return;
+    if (activeConversation.unreadCount <= 0) {
+      activeBridgeReadRequestRef.current = null;
+      return;
+    }
+
+    const canAutoMarkRead = document.visibilityState === 'visible'
+      && document.hasFocus()
+      && shouldAutoFollowChatRef.current;
+    if (!canAutoMarkRead) {
+      activeBridgeReadRequestRef.current = null;
+      return;
+    }
+    if (activeBridgeReadRequestRef.current === activeConversation.id) return;
+
+    activeBridgeReadRequestRef.current = activeConversation.id;
+    markDesktopBridgeConversationRead(activeConversation.id)
+      .then((state) => {
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+        setDesktopBridgeError(null);
+      })
+      .catch((error) => {
+        activeBridgeReadRequestRef.current = null;
+        setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to mark bridge chat as read');
+      });
+  }, [activeConvId, activeConversationIsBridge, activeNav, desktopBridgeState?.conversations, isNativeShell, shouldAutoFollowChatRef]);
 
   return {
     desktopBridgeState,

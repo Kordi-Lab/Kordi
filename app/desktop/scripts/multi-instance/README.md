@@ -56,6 +56,25 @@ pnpm dev:desktop:multi -- --reset --users user1,user2
 pnpm reset:desktop:multi -- --users user1,user2
 ```
 
+## Run the two-user smoke test
+
+```bash
+pnpm smoke:desktop:multi -- --users user1,user2
+```
+
+By default this will:
+- reset both users
+- re-seed auth from shared bootstrap
+- launch both instances
+- wait for redacted readiness signals from auth/runtime/log artifacts
+- stop the instances again while preserving logs and data
+
+Keep the instances running after verification:
+
+```bash
+pnpm smoke:desktop:multi -- --users user1,user2 --leave-running
+```
+
 ## Inspect config resolution
 
 ```bash
@@ -82,3 +101,13 @@ This happens:
 - or after `--reset`, which clears the instance first and then reapplies bootstrap
 
 The launcher prints only redacted provider summaries, not credential values.
+
+## Smoke test readiness checks
+
+The smoke test currently verifies, for each user:
+- the isolated auth store exists and contains at least one provider
+- runtime metadata exists and matches the configured user/port
+- the detached process is alive
+- the per-user log contains the expected profile startup markers
+
+If verification fails, it prints the affected auth/log/runtime paths so you can inspect the preserved artifacts directly.

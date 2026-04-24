@@ -393,12 +393,14 @@
 }
 
 .app-composer-shell {
+  min-height: 7.25rem;
   border: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);
   background: color-mix(in oklab, var(--app-main-bg) 70%, transparent);
   box-shadow: none;
 }
 
 .app-composer-input {
+  min-height: 3.25rem;
   border: 0;
   background: transparent;
   box-shadow: none;

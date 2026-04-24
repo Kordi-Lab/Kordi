@@ -213,7 +213,7 @@ export function ChatsPage({
               ))}
               <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}</span>
             </div>
-            {activeConversationIsBridge ? (
+            {activeConversationIsBridge && bridgeStatusText ? (
               <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-400">
                 {bridgeStatusLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
                 <span className="truncate">{bridgeStatusText}</span>
@@ -246,7 +246,7 @@ export function ChatsPage({
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea
           ref={chatTranscriptScrollRef}
-          className="h-full min-h-0 px-5 py-4"
+          className="h-full min-h-0 px-3.5 py-3 sm:px-4 sm:py-3.5"
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
@@ -353,7 +353,7 @@ export function ChatsPage({
                     onSendChatMessage();
                   }
                 }}
-                className="max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                 placeholder="Message a person, an agent, or delegate a task…"
               />
             </div>

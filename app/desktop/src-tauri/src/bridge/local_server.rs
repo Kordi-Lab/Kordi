@@ -76,12 +76,18 @@ pub(super) async fn refresh_local_server_runtime(runtime: &mut LocalBridgeServer
     }
 }
 
+pub(super) async fn current_local_server_status_for_runtime(
+    runtime: &tokio::sync::Mutex<LocalBridgeServerRuntime>,
+) -> DesktopBridgeLocalServerStatus {
+    let mut runtime = runtime.lock().await;
+    refresh_local_server_runtime(&mut runtime).await;
+    runtime.status.clone()
+}
+
 pub(super) async fn current_local_server_status(
     manager: &DesktopBridgeManager,
 ) -> DesktopBridgeLocalServerStatus {
-    let mut runtime = manager.local_server.lock().await;
-    refresh_local_server_runtime(&mut runtime).await;
-    runtime.status.clone()
+    current_local_server_status_for_runtime(&manager.local_server).await
 }
 
 pub(super) async fn start_local_server(

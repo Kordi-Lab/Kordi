@@ -2358,6 +2358,7 @@ dependencies = [
  "chrono",
  "curve25519-dalek",
  "ed25519-dalek",
+ "futures-util",
  "hex",
  "kordi-cli",
  "kordi-core",
@@ -2370,6 +2371,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "uuid",
 ]

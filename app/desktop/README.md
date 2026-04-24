@@ -129,6 +129,14 @@ Reset without relaunching:
 pnpm reset:desktop:multi -- --users user1,user2
 ```
 
+Run the two-user smoke test:
+
+```bash
+pnpm smoke:desktop:multi -- --users user1,user2
+```
+
+This performs a deterministic reset + shared-auth bootstrap + launch + readiness verification cycle for two users, then stops the instances while preserving logs and isolated data for inspection.
+
 Inspect the resolved config without launching:
 
 ```bash

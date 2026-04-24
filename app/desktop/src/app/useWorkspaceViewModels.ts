@@ -5,6 +5,7 @@ import type {
   Agent,
   Contact,
   DesktopBridgeHost,
+  DesktopBridgePeer,
   DesktopBridgeProject,
   DesktopBridgeState,
   DesktopChatMessage,
@@ -50,6 +51,48 @@ export function isBridgeAgentRuntime(runtime: string) {
     || value.includes('kordi')
     || value.includes('generic')
     || value.includes('bot');
+}
+
+function canExposeBridgePerson(peer: DesktopBridgePeer) {
+  return Boolean(
+    isBridgeAgentRuntime(peer.runtime)
+      && peer.isDefaultAgent
+      && peer.ownerName?.trim()
+      && peer.humanId?.trim(),
+  );
+}
+
+function toBridgePersonPeer(peer: DesktopBridgePeer): DesktopBridgePeer {
+  return {
+    ...peer,
+    displayName: peer.ownerName?.trim() || peer.displayName,
+    runtime: 'person',
+    agentId: undefined,
+    isDefaultAgent: false,
+  };
+}
+
+function visibleBridgePeople(peers: DesktopBridgePeer[]) {
+  const people: DesktopBridgePeer[] = [];
+  const seen = new Set<string>();
+
+  for (const peer of peers) {
+    if (!isBridgeAgentRuntime(peer.runtime)) {
+      if (seen.has(peer.nodeId)) continue;
+      seen.add(peer.nodeId);
+      people.push(peer);
+      continue;
+    }
+
+    if (!canExposeBridgePerson(peer)) continue;
+
+    const key = peer.humanId?.trim() || peer.ownerName?.trim() || peer.nodeId;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    people.push(toBridgePersonPeer(peer));
+  }
+
+  return people;
 }
 
 function normalizeBridgeProjectKey(value?: string | null) {
@@ -200,34 +243,110 @@ export function useWorkspaceViewModels({
     return (desktopBridgeState?.conversations ?? []).map((conversation) => {
       const host = hostById.get(conversation.hostId);
       const hostLabel = host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
-      const isAgent = isBridgeAgentRuntime(conversation.peerRuntime);
-      return {
-        id: conversation.id,
-        name: conversation.title,
-        type: isAgent ? ('external-agent' as const) : ('person' as const),
-        subtitle: conversation.projectName ? `${conversation.projectName} • ${conversation.subtitle}` : conversation.subtitle,
-        unread: conversation.unreadCount,
-        bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
-        trust: 'Bridge',
-        directness: 'Bridge chat',
-        participants: ['You', conversation.title],
-        updatedAtLabel: conversation.updatedAtLabel,
-        messages: conversation.messages.map((message) => ({
+      const isPersonChat = conversation.peerRuntime.trim().toLowerCase() === 'person'
+        || Boolean(
+          conversation.peerOwnerName
+            && conversation.peerDisplayName
+            && conversation.peerOwnerName.trim() === conversation.peerDisplayName.trim(),
+        );
+      const isAgent = !isPersonChat && isBridgeAgentRuntime(conversation.peerRuntime);
+      const activeAgentReplyMessage = isAgent && conversation.awaitingReply
+        ? [...conversation.messages].reverse().find((message) => (
+            message.direction === 'inbound-response' && message.deliveryState === 'processing'
+          ))
+        : undefined;
+      const showRemoteAgentLiveTurn = Boolean(activeAgentReplyMessage) || (isAgent && conversation.awaitingReply && conversation.peerTyping);
+      const messages: Message[] = conversation.messages.map((message) => {
+        const sender = isPersonChat
+          ? (message.direction === 'outbound'
+              ? (host?.ownerName || message.sender || 'You')
+              : (conversation.peerOwnerName || message.sender || conversation.title))
+          : (message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title));
+        const outboundStatus = [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')]
+          .filter(Boolean);
+        const suppressOutboundLiveStatus = message.direction === 'outbound'
+          && isAgent
+          && ['processing', 'awaiting reply'].includes((outboundStatus[0] ?? '').toLowerCase());
+        const isLiveInboundAgentReply = isAgent
+          && message.direction === 'inbound-response'
+          && message.deliveryState === 'processing';
+
+        if (isLiveInboundAgentReply) {
+          return {
+            role: 'external-agent' as const,
+            sender,
+            text: message.text,
+            time: message.timeLabel,
+            turn: {
+              id: `bridge-live-turn:${conversation.id}:${message.id}`,
+              sessionId: conversation.id,
+              prompt: '',
+              status: message.text.trim() ? 'writing' : 'typing',
+              message: message.text.trim() ? 'Replying…' : 'Typing…',
+              assistantText: message.text,
+              thinkingText: '',
+              tools: [],
+              completed: false,
+              succeeded: false,
+              error: null,
+            },
+          };
+        }
+
+        return {
           role: (message.direction === 'outbound'
             ? 'user'
             : isAgent
               ? 'external-agent'
               : 'person') as Message['role'],
-          sender: message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title),
+          sender,
           text: message.text,
           time: message.timeLabel,
           statusChips: message.direction === 'outbound'
-            ? [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')].filter(Boolean)
+            ? (suppressOutboundLiveStatus ? [] : outboundStatus)
             : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
               ? ['typing']
               : [],
-          detail: message.direction === 'outbound' && message.deliveryState === 'responded' ? 'Peer replied' : undefined,
-        })),
+          detail: undefined,
+        };
+      });
+
+      if (isAgent && conversation.awaitingReply && conversation.peerTyping && !activeAgentReplyMessage) {
+        messages.push({
+          role: 'external-agent',
+          sender: conversation.title,
+          text: '',
+          time: conversation.updatedAtLabel,
+          turn: {
+            id: `bridge-live-turn:${conversation.id}:typing`,
+            sessionId: conversation.id,
+            prompt: '',
+            status: 'typing',
+            message: 'Typing…',
+            assistantText: '',
+            thinkingText: '',
+            tools: [],
+            completed: false,
+            succeeded: false,
+            error: null,
+          },
+        });
+      }
+
+      return {
+        id: conversation.id,
+        name: conversation.title,
+        type: isAgent ? ('external-agent' as const) : ('person' as const),
+        subtitle: conversation.projectName
+          ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
+          : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
+        unread: conversation.unreadCount,
+        bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
+        trust: 'Bridge',
+        directness: isPersonChat ? 'Direct person chat' : 'Agent thread',
+        participants: ['You', isPersonChat ? (conversation.peerOwnerName || conversation.title) : conversation.title],
+        updatedAtLabel: conversation.updatedAtLabel,
+        messages,
         _updatedAtMs: conversation.updatedAtMs,
       };
     });
@@ -302,6 +421,7 @@ export function useWorkspaceViewModels({
     if (!isNativeShell) return contacts;
     const byId = new Map<string, Contact>();
     const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
+    const localAgent = desktopChatState?.localAgent;
 
     for (const host of desktopBridgeState?.hosts ?? []) {
       const label = bridgeLabel(host.serverUrl);
@@ -310,12 +430,12 @@ export function useWorkspaceViewModels({
         name: host.displayName,
         initials: getInitials(host.displayName),
         classType: 'my-agents',
-        entityType: 'Owned bridge node',
-        subtitle: label,
+        entityType: 'My agent',
+        subtitle: 'Direct local chat',
         bridges: [label],
         status: host.connected ? 'Owned' : 'Offline',
         discoverableOn: [label],
-        detail: `${host.nodeId ?? 'Pending node'} • ${host.connected ? 'connected' : 'offline'} • ${host.visiblePeerCount} visible peer${host.visiblePeerCount === 1 ? '' : 's'}`,
+        detail: `Chat directly with your local Kordi agent. Bridge host: ${label}${host.nodeId ? ` • ${host.nodeId}` : ''}`,
         owner: 'You',
         bridgeHostId: host.id,
         bridgePeerNodeId: host.nodeId ?? undefined,
@@ -346,8 +466,24 @@ export function useWorkspaceViewModels({
       }
     }
 
+    if (localAgent && !Array.from(byId.values()).some((contact) => contact.classType === 'my-agents')) {
+      byId.set('local-agent', {
+        id: 'local-agent',
+        name: localAgent.label,
+        initials: getInitials(localAgent.label),
+        classType: 'my-agents',
+        entityType: 'My agent',
+        subtitle: 'Direct local chat',
+        bridges: ['Local'],
+        status: 'Owned',
+        discoverableOn: ['Local'],
+        detail: `Chat directly with your local Kordi agent • ${localAgent.workspaceRoot}`,
+        owner: 'You',
+      });
+    }
+
     return Array.from(byId.values());
-  }, [desktopBridgeState?.hosts, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
     if (!isNativeShell) return [];
@@ -368,8 +504,8 @@ export function useWorkspaceViewModels({
         items.push({
           name: runtimeAgent?.label ?? agent.label,
           id: agent.id,
-          role: 'Owned bridge agent',
-          messaging: `Hosted on ${hostLabel}`,
+          role: 'My agent',
+          messaging: 'Direct local chat',
           status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
           tasks: 0,
           defaultProvider: runtimeAgent?.defaultProvider ?? host.ownerName,
@@ -403,49 +539,6 @@ export function useWorkspaceViewModels({
           isBridgeDefault: agent.isDefault,
           isBridgeActive: agent.isActive,
           isBridgeRegistered: agent.registered,
-        });
-      }
-
-      for (const peer of host.visiblePeers.filter((peer) => isBridgeAgentRuntime(peer.runtime))) {
-        const key = `external:${peer.agentId || peer.nodeId}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        items.push({
-          name: peer.displayName || peer.ownerName || peer.nodeId,
-          id: peer.agentId || peer.nodeId,
-          role: 'External bridge agent',
-          messaging: `Reachable on ${hostLabel}`,
-          status: host.connected ? 'Reachable' : 'Offline',
-          tasks: 0,
-          defaultProvider: peer.ownerName || '',
-          defaultModel: peer.runtime || '',
-          bridgesConfig: hostLabel,
-          contactId: `bridge-peer:${peer.agentId || peer.nodeId}`,
-          systemPrompt: '',
-          xMd: [peer.nodeId, peer.endpoint].filter(Boolean).join(' • '),
-          identityFiles: [],
-          loadedTools: [],
-          loadedSkills: [],
-          loadedPlugins: [],
-          lastActivities: [
-            `Owner: ${peer.ownerName || 'Unknown'}`,
-            `Human ID: ${peer.humanId || 'Unavailable'}`,
-            `Runtime: ${peer.runtime}`,
-          ],
-          exposesIdentityFiles: false,
-          exposesLoadedSkills: false,
-          exposesLoadedTools: false,
-          exposesLoadedPlugins: false,
-          bridgeHostId: host.id,
-          bridgePeerNodeId: peer.nodeId,
-          bridgePeerRuntime: peer.runtime,
-          bridgeAgentId: peer.agentId ?? undefined,
-          bridgeServerUrl: host.serverUrl,
-          bridgeOwnerName: peer.ownerName || undefined,
-          isOwned: false,
-          isBridgeDefault: peer.isDefaultAgent ?? false,
-          isBridgeActive: false,
-          isBridgeRegistered: true,
         });
       }
     }
@@ -605,7 +698,7 @@ export function useWorkspaceViewModels({
   );
 
   const activeBridgePeople = useMemo(
-    () => (activeBridgeHost?.visiblePeers ?? []).filter((peer) => !isBridgeAgentRuntime(peer.runtime)),
+    () => visibleBridgePeople(activeBridgeHost?.visiblePeers ?? []),
     [activeBridgeHost],
   );
   const activeBridgeAgents = useMemo(

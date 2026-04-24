@@ -52,8 +52,8 @@
   --app-button-primary-text: rgb(31 28 27);
   --app-badge-primary-bg: rgba(214, 209, 201, 0.78);
   --app-badge-primary-text: rgb(37 34 32);
-  --app-chat-bubble-user-bg: rgba(220, 215, 208, 0.86);
-  --app-chat-bubble-user-text: rgb(31 28 27);
+  --app-chat-bubble-user-bg: rgba(224, 218, 210, 0.9);
+  --app-chat-bubble-user-text: rgb(29 26 24);
   --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.06);
   --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.16);
 }
@@ -112,8 +112,8 @@
   --app-button-primary-text: rgb(246 242 237);
   --app-badge-primary-bg: rgba(47, 41, 37, 0.88);
   --app-badge-primary-text: rgb(245 240 234);
-  --app-chat-bubble-user-bg: rgba(60, 53, 49, 0.14);
-  --app-chat-bubble-user-text: rgb(31 27 25);
+  --app-chat-bubble-user-bg: rgba(214, 208, 199, 0.88);
+  --app-chat-bubble-user-text: rgb(30 27 25);
   --app-chat-bubble-peer-bg: rgba(43, 35, 32, 0.04);
   --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.12);
 }

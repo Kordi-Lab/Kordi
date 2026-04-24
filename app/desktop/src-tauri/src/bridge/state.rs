@@ -6,10 +6,10 @@ use super::{
     augment_peers_with_project_membership, build_conversation_state, build_public_bridge_agents,
     current_local_server_status, default_display_name, default_endpoint, default_owner_name,
     fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery, health_check,
-    load_bridge_store, load_conversation_store, DesktopBridgeConversation,
-    DesktopBridgeConversationStore, DesktopBridgeHost, DesktopBridgeHostConfig,
-    DesktopBridgeLocalServerStatus, DesktopBridgeManager, DesktopBridgePeer, DesktopBridgeProject,
-    DesktopBridgeState, DesktopBridgeStore,
+    load_bridge_store, load_conversation_store, sync_realtime_connections,
+    DesktopBridgeConversation, DesktopBridgeConversationStore, DesktopBridgeHost,
+    DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus, DesktopBridgeManager,
+    DesktopBridgePeer, DesktopBridgeProject, DesktopBridgeState, DesktopBridgeStore,
 };
 use super::{
     desktop_bridge_config_path, desktop_bridge_conversations_path, generate_human_id,
@@ -130,17 +130,26 @@ pub(super) async fn build_bridge_state(
         .iter()
         .map(|record| {
             let mut record = record.clone();
+            let is_person_conversation = record.peer_runtime.trim().eq_ignore_ascii_case("person");
             if let Some(peer) =
                 peer_index.get(&(record.host_id.clone(), record.peer_node_id.clone()))
             {
-                if peer.display_name.is_some() {
-                    record.peer_display_name = peer.display_name.clone();
-                }
-                if peer.owner_name.is_some() {
-                    record.peer_owner_name = peer.owner_name.clone();
-                }
-                if !peer.runtime.trim().is_empty() {
-                    record.peer_runtime = peer.runtime.clone();
+                if is_person_conversation {
+                    if let Some(owner_name) = peer.owner_name.clone() {
+                        record.peer_owner_name = Some(owner_name.clone());
+                        record.peer_display_name = Some(owner_name);
+                    }
+                    record.peer_runtime = "person".to_string();
+                } else {
+                    if peer.display_name.is_some() {
+                        record.peer_display_name = peer.display_name.clone();
+                    }
+                    if peer.owner_name.is_some() {
+                        record.peer_owner_name = peer.owner_name.clone();
+                    }
+                    if !peer.runtime.trim().is_empty() {
+                        record.peer_runtime = peer.runtime.clone();
+                    }
                 }
             }
             build_conversation_state(&record)
@@ -174,10 +183,40 @@ pub(super) async fn build_bridge_state(
     }
 }
 
+pub(super) fn build_conversation_only_bridge_state(
+    store: DesktopBridgeStore,
+    conversation_store: DesktopBridgeConversationStore,
+    local_server: DesktopBridgeLocalServerStatus,
+) -> DesktopBridgeState {
+    let mut conversations: Vec<DesktopBridgeConversation> = conversation_store
+        .conversations
+        .iter()
+        .map(build_conversation_state)
+        .collect();
+    conversations.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+
+    DesktopBridgeState {
+        config_path: desktop_bridge_config_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
+        legacy_config_path: legacy_bridge_config_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| LEGACY_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
+        conversations_path: desktop_bridge_conversations_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONVERSATIONS_FALLBACK_PATH.to_string()),
+        active_host_id: store.active_host_id,
+        hosts: Vec::new(),
+        conversations,
+        local_server,
+    }
+}
+
 pub(super) async fn build_current_bridge_state(
     manager: &DesktopBridgeManager,
 ) -> DesktopBridgeState {
     let store = load_bridge_store();
+    sync_realtime_connections(manager, &store).await;
     let conversations = load_conversation_store();
     let local_server = current_local_server_status(manager).await;
     build_bridge_state(store, conversations, local_server).await

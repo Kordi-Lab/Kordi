@@ -5,12 +5,14 @@ mod host_commands;
 mod local_server;
 mod network;
 mod project_commands;
+mod realtime;
 mod server_commands;
 mod state;
 mod storage;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use tauri::State;
 use uuid::Uuid;
 
@@ -33,7 +35,9 @@ use self::network::{
     update_serve_discovery_mode,
 };
 #[allow(unused_imports)]
-use self::state::{build_bridge_state, build_current_bridge_state};
+use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
+#[allow(unused_imports)]
+use self::state::{build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state};
 #[allow(unused_imports)]
 use self::storage::{
     bridge_conversation_id, bridge_hosts_match, delete_bridge_host_secrets,
@@ -285,9 +289,28 @@ pub struct DesktopBridgeInvite {
     pub share_text: String,
 }
 
-#[derive(Default)]
+#[derive(Clone)]
 pub struct DesktopBridgeManager {
-    local_server: tokio::sync::Mutex<LocalBridgeServerRuntime>,
+    local_server: Arc<tokio::sync::Mutex<LocalBridgeServerRuntime>>,
+    realtime: Arc<tokio::sync::Mutex<realtime::RealtimeBridgeRuntime>>,
+    app_handle: Arc<tokio::sync::RwLock<Option<tauri::AppHandle>>>,
+}
+
+impl Default for DesktopBridgeManager {
+    fn default() -> Self {
+        Self {
+            local_server: Arc::new(tokio::sync::Mutex::new(LocalBridgeServerRuntime::default())),
+            realtime: Arc::new(tokio::sync::Mutex::new(realtime::RealtimeBridgeRuntime::default())),
+            app_handle: Arc::new(tokio::sync::RwLock::new(None)),
+        }
+    }
+}
+
+pub(crate) async fn set_bridge_app_handle(
+    manager: &DesktopBridgeManager,
+    app: tauri::AppHandle,
+) {
+    realtime::set_bridge_app_handle(manager, app).await;
 }
 
 fn default_bridge_api_style() -> String {
@@ -308,6 +331,18 @@ fn default_display_name() -> String {
 
 fn default_owner_name() -> String {
     constants::DEFAULT_OWNER_NAME.to_string()
+}
+
+fn default_bridge_agent_label(owner_name: &str) -> String {
+    let trimmed = owner_name.trim();
+    if trimmed.is_empty() {
+        return default_display_name();
+    }
+    if trimmed.ends_with('s') || trimmed.ends_with('S') {
+        format!("{trimmed}' Kordi")
+    } else {
+        format!("{trimmed}'s Kordi")
+    }
 }
 
 fn default_endpoint() -> String {
@@ -414,7 +449,7 @@ fn ensure_host_bootstrap(
                     generate_agent_id()
                 }
             }),
-            label: display_name.to_string(),
+            label: default_bridge_agent_label(owner_name),
             node_id: host.node_id.clone(),
             api_key: host.api_key.clone(),
             runtime: default_bridge_agent_runtime(),
@@ -432,12 +467,15 @@ fn ensure_host_bootstrap(
             if agent.id.trim().is_empty() {
                 agent.id = generate_agent_id();
             }
-            if agent.label.trim().is_empty() {
-                agent.label = if index == default_index {
-                    display_name.to_string()
-                } else {
-                    format!("{} {}", owner_name, index + 1)
-                };
+            if index == default_index {
+                if agent.label.trim().is_empty()
+                    || agent.label == default_display_name()
+                    || agent.label == display_name
+                {
+                    agent.label = default_bridge_agent_label(owner_name);
+                }
+            } else if agent.label.trim().is_empty() {
+                agent.label = format!("{} {}", owner_name, index + 1);
             }
             if agent.runtime.trim().is_empty() {
                 agent.runtime = default_bridge_agent_runtime();
@@ -725,6 +763,7 @@ pub async fn desktop_bridge_send_presence(
 #[tauri::command]
 pub async fn desktop_bridge_poll_mailbox(
     manager: State<'_, DesktopBridgeManager>,
+    chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_poll_mailbox_impl(&manager).await
+    conversation_commands::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
 }
