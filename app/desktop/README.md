@@ -60,6 +60,41 @@ The profile script generates a per-instance Tauri config so each desktop app can
 - app title
 - bundle identifier suffix
 
+### Verify isolated instance storage locally
+
+For Phase 1 multi-instance verification, use the isolated instance helper:
+
+```bash
+pnpm --dir app/desktop tauri:dev:instance -- --instance user1 --port 1426
+pnpm --dir app/desktop tauri:dev:instance -- --instance user2 --port 1428
+```
+
+This wraps the profile launcher and injects per-instance env vars such as:
+
+- `APP_INSTANCE_ID`
+- `APP_DATA_DIR`
+- `KORDI_STORAGE_ROOT`
+- `BRIDGES_HOME`
+- `BRIDGES_PROJECTS_DIR`
+
+By default, isolated state is written under:
+
+```text
+app/desktop/.multi-instance-data/<instance>/
+```
+
+You can reset an instance before launch:
+
+```bash
+pnpm --dir app/desktop tauri:dev:instance -- --instance user1 --port 1426 --clean
+```
+
+You can inspect the generated config/env without launching:
+
+```bash
+pnpm --dir app/desktop tauri:dev:instance -- --instance user1 --port 1426 --dry-run
+```
+
 ### Build the desktop app
 
 ```bash

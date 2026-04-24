@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::crypto;
 use crate::error::IdentityError;
+use crate::paths::bridges_home_dir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredKeypair {
@@ -27,8 +28,8 @@ pub fn x25519_private_key(keypair: &NodeKeypair) -> [u8; 32] {
 
 /// Directory where identity files live: ~/.bridges/identity/
 fn identity_dir() -> Result<PathBuf, IdentityError> {
-    let base = directories::BaseDirs::new().ok_or(IdentityError::HomeDirUnavailable)?;
-    Ok(base.home_dir().join(".bridges").join("identity"))
+    let base = bridges_home_dir().ok_or(IdentityError::HomeDirUnavailable)?;
+    Ok(base.join("identity"))
 }
 
 fn keypair_path() -> Result<PathBuf, IdentityError> {

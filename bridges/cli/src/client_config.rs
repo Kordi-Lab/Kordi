@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::error::ClientConfigError;
+use crate::paths::bridges_home_dir;
 
 /// Client config stored at ~/.bridges/config.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,8 +19,8 @@ pub struct ClientConfig {
 }
 
 fn config_path() -> Result<PathBuf, ClientConfigError> {
-    let base = directories::BaseDirs::new().ok_or(ClientConfigError::HomeDirUnavailable)?;
-    Ok(base.home_dir().join(".bridges").join("config.json"))
+    let base = bridges_home_dir().ok_or(ClientConfigError::HomeDirUnavailable)?;
+    Ok(base.join("config.json"))
 }
 
 impl ClientConfig {

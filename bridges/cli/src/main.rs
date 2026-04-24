@@ -15,6 +15,7 @@ mod local_api;
 mod mdns;
 mod models;
 mod noise;
+mod paths;
 mod permissions;
 mod presence;
 mod queries;
@@ -643,7 +644,9 @@ fn cmd_status(node_id: &str, verifying_key: &ed25519_dalek::VerifyingKey) {
         }
         Ok(Some(_)) => {
             println!("  registered:   no");
-            println!("  lifecycle:    local API key is empty (node likely revoked or not fully configured)");
+            println!(
+                "  lifecycle:    local API key is empty (node likely revoked or not fully configured)"
+            );
         }
         Ok(None) => {
             println!("  registered:   no");

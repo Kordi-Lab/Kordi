@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import { AuthProviderDetail } from './AuthProviderDetail';
@@ -9,6 +10,14 @@ import { buildAuthDisplayProviders, normalizeSelectedProviderId } from './model'
 type AuthRoute =
   | { type: 'list' }
   | { type: 'detail'; providerId: string };
+
+function authPathPreview(authPath?: string) {
+  if (!authPath) return 'Loading…';
+
+  const segments = authPath.split('/').filter(Boolean);
+  if (segments.length <= 4) return authPath;
+  return `…/${segments.slice(-4).join('/')}`;
+}
 
 export type AuthPageProps = {
   variant: 'settings' | 'gate';
@@ -28,6 +37,7 @@ export type AuthPageProps = {
   onSelectAuthChoice: (providerId: string, choice: string) => void;
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
+  onDismissGate?: () => void;
 };
 
 function AuthNavigationControls({
@@ -86,12 +96,14 @@ export function AuthPage({
   onSelectAuthChoice,
   onRemoveAuthProfile,
   onLogoutProvider,
+  onDismissGate,
 }: AuthPageProps) {
   const showHero = variant === 'gate';
   const showNativeNote = !isNativeShell && variant === 'settings';
   const visibleProviders = buildAuthDisplayProviders(authState);
   const configuredCount = visibleProviders.filter((item) => item.configured).length;
   const useSplitHero = showHero ? layoutWidth >= 1180 : layoutWidth >= 1120;
+  const sharedAuthPathPreview = authPathPreview(authState?.authPath);
 
   const [routeState, setRouteState] = useState<{ history: AuthRoute[]; index: number }>({
     history: [{ type: 'list' }],
@@ -225,50 +237,77 @@ export function AuthPage({
       }
     >
       {showHero ? (
-        <div className={cn('grid h-full min-h-0 w-full', useSplitHero ? 'grid-cols-[minmax(0,1.02fr)_minmax(420px,640px)]' : 'gap-4')}>
-          <div
-            className={cn(
-              'flex min-h-0 flex-col justify-between bg-[linear-gradient(150deg,rgba(126,111,64,0.14),rgba(24,26,20,0.18)_52%,rgba(12,13,14,0.08))] px-8 py-10 text-white',
-              useSplitHero ? 'border-r border-white/8' : 'rounded-[28px] border border-white/8',
-            )}
-          >
-            <div className="max-w-[560px]">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-300">
-                <Shield className="h-3.5 w-3.5" />
-                Runtime access
+        <div className="app-modal-panel h-full min-h-0 w-full overflow-hidden rounded-[30px] border border-white/10 shadow-[var(--app-shadow-float)]">
+          <div className={cn('grid h-full min-h-0 w-full', useSplitHero ? 'grid-cols-[minmax(320px,0.86fr)_minmax(460px,1.08fr)]' : 'grid-rows-[auto_minmax(0,1fr)]')}>
+            <div
+              className={cn(
+                'flex min-h-0 flex-col bg-[linear-gradient(150deg,rgba(126,111,64,0.14),rgba(24,26,20,0.24)_52%,rgba(12,13,14,0.18))] px-8 py-8 text-white',
+                useSplitHero ? 'border-r border-white/8' : 'border-b border-white/8',
+              )}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="max-w-[31rem]">
+                  <h1 className="max-w-[11ch] text-[38px] font-semibold leading-[0.98] tracking-[-0.04em] text-white">
+                    Connect one provider before your first chat.
+                  </h1>
+
+                  <p className="mt-5 max-w-[45ch] text-[15px] leading-7 text-slate-300">
+                    Choose a provider on the right, then sign in with your browser or save an API key. One working connection is enough to get started.
+                  </p>
+                </div>
+
+                {onDismissGate ? (
+                  <Button
+                    variant="secondary"
+                    className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
+                    onClick={onDismissGate}
+                  >
+                    Do this later
+                  </Button>
+                ) : null}
               </div>
 
-              <h1 className="max-w-[13ch] text-[36px] font-semibold leading-[1.02] tracking-[-0.03em] text-white">
-                Connect one provider before your first chat.
-              </h1>
-
-              <p className="mt-4 max-w-[48ch] text-[15px] leading-7 text-slate-300">
-                Pick the provider you want to use, then choose browser sign-in or an API key. One working connection is enough to get started.
-              </p>
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="mt-8 grid gap-4">
                 <div className="app-surface-muted rounded-[24px] px-4 py-4">
-                  <div className="text-sm font-medium text-white">Shared sign-in store</div>
-                  <div className="mt-2 break-all text-[13px] leading-6 text-slate-400">Desktop and terminal sessions reuse this path: {authState?.authPath ?? 'Loading…'}</div>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-white">Shared sign-in store</div>
+                      <div className="mt-1 text-[12px] leading-5 text-slate-400">Desktop and terminal sessions reuse the same auth file for this instance.</div>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300">
+                      {configuredCount} of {visibleProviders.length} ready
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-[18px] border border-white/8 bg-black/10 px-3 py-2.5 text-[12px] font-medium tracking-[-0.01em] text-slate-200">
+                    {sharedAuthPathPreview}
+                  </div>
                 </div>
-                <div className="app-surface-muted rounded-[24px] px-4 py-4">
-                  <div className="text-sm font-medium text-white">Ready to use</div>
-                  <div className="mt-2 text-[13px] leading-6 text-slate-400">
-                    {configuredCount} provider{configuredCount === 1 ? '' : 's'} ready out of {visibleProviders.length}.
+
+                <div className="grid gap-2.5 text-[13px] text-slate-300">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-medium text-slate-200">1</div>
+                    <div>
+                      <div className="font-medium text-white">Pick a provider</div>
+                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">Start with whichever account or billing path you already use.</div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-medium text-slate-200">2</div>
+                    <div>
+                      <div className="font-medium text-white">Choose browser sign-in or API key</div>
+                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">You can add more providers later if you want fallbacks or separate billing.</div>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <div className="mt-6 text-[12px] text-slate-400">You can always come back from Settings → Authentication.</div>
             </div>
 
-            <div className="text-[12px] text-slate-400">You can come back later from Settings → Authentication.</div>
-          </div>
-
-          <div
-            className="min-h-0 min-w-0 border border-white/8 bg-[linear-gradient(180deg,rgba(33,31,34,0.92),rgba(24,23,25,0.96))] p-5"
-            style={{ WebkitAppRegion: 'no-drag' as const }}
-          >
-            {detailHeader}
-            <div className="flex min-h-0 min-w-0 w-full max-w-none flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+            <div className="min-h-0 min-w-0 p-5" style={{ WebkitAppRegion: 'no-drag' as const }}>
+              {detailHeader}
+              <div className="flex min-h-0 min-w-0 w-full max-w-none flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+            </div>
           </div>
         </div>
       ) : (

@@ -88,7 +88,10 @@ fn chat_cwd() -> Result<PathBuf, String> {
 }
 
 fn attachment_storage_dir() -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("kordi-desktop-attachments");
+    let dir = std::env::var_os("APP_DATA_DIR")
+        .map(PathBuf::from)
+        .map(|path| path.join("tmp").join("attachments"))
+        .unwrap_or_else(|| std::env::temp_dir().join("kordi-desktop-attachments"));
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir)
 }

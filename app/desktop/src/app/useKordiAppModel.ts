@@ -1,5 +1,6 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
+import { buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -33,6 +34,7 @@ export function useKordiAppModel() {
   const chatTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowChatRef = useRef(true);
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
+  const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
 
   const localUi = useKordiLocalUiState();
   const {
@@ -105,8 +107,10 @@ export function useKordiAppModel() {
 
   const {
     inlineAuthDialog,
+    openAuthSettings,
     openLoginFlow,
     handleCloseInlineAuthDialog,
+    dismissAuthGate,
     showAuthGate,
   } = useDesktopAuthUiState({
     isNativeShell,
@@ -461,6 +465,60 @@ export function useKordiAppModel() {
     shouldAutoFollowChatRef,
   });
 
+  useEffect(() => {
+    if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
+
+    const configuredProviders = buildAuthDisplayProviders(desktopAuthState)
+      .filter((provider) => provider.methods.some((method) => method.options.length > 0));
+
+    if (configuredProviders.length === 0) {
+      lastAutoAuthProviderSwitchRef.current = null;
+      return;
+    }
+
+    const normalizedCurrentProvider =
+      normalizeSelectedProviderId(desktopChatState.activeSession.provider) ?? desktopChatState.activeSession.provider;
+    const currentProviderIsConfigured = configuredProviders.some((provider) => provider.id === normalizedCurrentProvider);
+
+    if (currentProviderIsConfigured) {
+      lastAutoAuthProviderSwitchRef.current = null;
+      return;
+    }
+
+    const normalizedActiveLoginProviderId = normalizeSelectedProviderId(activeLoginProviderId);
+    const preferredConfiguredProvider =
+      configuredProviders.find((provider) => provider.id === normalizedActiveLoginProviderId)
+      ?? configuredProviders.find((provider) => provider.methods.some((method) => method.options.some((option) => option.active)))
+      ?? configuredProviders[0];
+
+    if (!preferredConfiguredProvider) return;
+
+    const nextModelValue = preferredModelValueForProvider(preferredConfiguredProvider.id);
+    if (!nextModelValue) return;
+
+    const signature = [
+      desktopChatState.activeSessionId,
+      normalizedCurrentProvider,
+      preferredConfiguredProvider.id,
+      nextModelValue,
+    ].join(':');
+
+    if (lastAutoAuthProviderSwitchRef.current === signature) return;
+    lastAutoAuthProviderSwitchRef.current = signature;
+
+    const scope = desktopChatState.activeSessionId === activeProjectSessionId ? 'project' : 'chat';
+    void selectComposerValue(scope, 'provider', preferredConfiguredProvider.id);
+  }, [
+    activeLoginProviderId,
+    activeProjectSessionId,
+    desktopAuthState,
+    desktopChatState?.activeSession.provider,
+    desktopChatState?.activeSessionId,
+    isNativeShell,
+    preferredModelValueForProvider,
+    selectComposerValue,
+  ]);
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -597,6 +655,7 @@ export function useKordiAppModel() {
     desktopAuthError,
     activeLoginProviderId,
     selectAuthProvider,
+    openAuthSettings,
     openLoginFlow,
     refreshDesktopAuth,
     handleSelectAuthChoice,
@@ -688,6 +747,7 @@ export function useKordiAppModel() {
     lastBridgePollAtLabel,
     activeSessionProject,
     showAuthGate,
+    dismissAuthGate,
     inlineAuthDialog,
     handleCloseInlineAuthDialog,
     startWindowResize,

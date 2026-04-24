@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, NavId } from '@/kordi-app/types';
@@ -32,27 +32,43 @@ export function useDesktopAuthUiState({
     authority?: string;
     requireAuthority?: boolean;
   } | null>(null);
+  const [isAuthGateDismissed, setIsAuthGateDismissed] = useState(false);
+
+  const openAuthSettings = useCallback(() => {
+    setIsAuthGateDismissed(true);
+    setActiveNav('settings');
+    setActiveSettingsSectionId('auth');
+    clearDesktopAuthError();
+  }, [clearDesktopAuthError, setActiveNav, setActiveSettingsSectionId]);
 
   const openLoginFlow = useCallback((
     provider: DesktopAuthProvider,
     mode: 'oauth' | 'api-key',
     options?: { authority?: string; requireAuthority?: boolean },
   ) => {
-    setActiveNav('settings');
-    setActiveSettingsSectionId('auth');
+    openAuthSettings();
     setActiveLoginProviderId(provider.id);
-    clearDesktopAuthError();
     setInlineAuthDialog({
       providerId: provider.id,
       mode,
       authority: options?.authority,
       requireAuthority: options?.requireAuthority,
     });
-  }, [clearDesktopAuthError, setActiveLoginProviderId, setActiveNav, setActiveSettingsSectionId]);
+  }, [openAuthSettings, setActiveLoginProviderId]);
 
   const handleCloseInlineAuthDialog = useCallback(() => {
     setInlineAuthDialog(null);
   }, []);
+
+  const dismissAuthGate = useCallback(() => {
+    setIsAuthGateDismissed(true);
+  }, []);
+
+  useEffect(() => {
+    if (desktopAuthState?.hasAnyAuth) {
+      setIsAuthGateDismissed(false);
+    }
+  }, [desktopAuthState?.hasAnyAuth]);
 
   const showAuthGate = useMemo(() => (
     isNativeShell
@@ -61,12 +77,15 @@ export function useDesktopAuthUiState({
       && !desktopAuthState.hasAnyAuth
       && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
       && !inlineAuthDialog
-  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isDesktopAuthLoading, isNativeShell]);
+      && !isAuthGateDismissed
+  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell]);
 
   return {
     inlineAuthDialog,
+    openAuthSettings,
     openLoginFlow,
     handleCloseInlineAuthDialog,
+    dismissAuthGate,
     showAuthGate,
   };
 }

@@ -146,7 +146,7 @@ export function useKordiUiEffects({
         (option) =>
           option.provider === desktopChatState.activeSession.provider
           && option.label === desktopChatState.activeSession.model,
-      )?.value ?? desktopChatState.activeSession.model;
+      )?.value ?? `${desktopChatState.activeSession.provider}/${desktopChatState.activeSession.model}`;
 
     if (!activeConversationIsBridge) {
       setDesktopSessionRenameDraft(desktopChatState.activeSession.title);

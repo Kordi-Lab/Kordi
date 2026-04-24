@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 
 use crate::error::DaemonConfigError;
+use crate::paths::bridges_home_dir;
 
 /// Daemon-specific configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,8 +45,8 @@ fn default_derp_enabled() -> bool {
 
 impl DaemonConfig {
     fn config_path() -> Result<std::path::PathBuf, DaemonConfigError> {
-        let base = directories::BaseDirs::new().ok_or(DaemonConfigError::HomeDirUnavailable)?;
-        Ok(base.home_dir().join(".bridges").join("daemon.json"))
+        let base = bridges_home_dir().ok_or(DaemonConfigError::HomeDirUnavailable)?;
+        Ok(base.join("daemon.json"))
     }
 
     /// Load daemon config from ~/.bridges/daemon.json, with defaults when missing.
@@ -54,7 +55,7 @@ impl DaemonConfig {
         let data = match fs::read_to_string(&path) {
             Ok(data) => data,
             Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::default())
+                return Ok(Self::default());
             }
             Err(source) => return Err(DaemonConfigError::Read { path, source }),
         };

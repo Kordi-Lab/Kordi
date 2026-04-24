@@ -14,6 +14,7 @@
     "tauri:prepare-sidecars": "node scripts/prepare-sidecars.mjs",
     "tauri:dev": "pnpm tauri:prepare-sidecars && tauri dev",
     "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
+    "tauri:dev:instance": "node scripts/tauri-dev-instance.mjs",
     "tauri:build": "pnpm tauri:prepare-sidecars && tauri build"
   },
   "dependencies": {
