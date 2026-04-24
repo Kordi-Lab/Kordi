@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
-import type { ComposerScope, DesktopChatState, Project } from '@/kordi-app/types';
+import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
+import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project } from '@/kordi-app/types';
 import {
   cancelDesktopChatTurn,
   runDesktopChatSkillCommand,
@@ -94,6 +95,69 @@ function appendOptimisticOutboundMessage(
             messages: [...current.activeSession.messages, optimisticMessage],
           }
         : current.activeSession,
+  };
+}
+
+function appendOptimisticBridgeMessage(
+  current: DesktopBridgeState | null,
+  conversationId: string,
+  text: string,
+  sentAt: string,
+  optimisticMessageId: string,
+): DesktopBridgeState | null {
+  if (!current) return current;
+
+  const timestampMs = Date.now();
+  const nextConversations = current.conversations.map((conversation) => {
+    if (conversation.id !== conversationId) return conversation;
+    return {
+      ...conversation,
+      subtitle: text,
+      updatedAtMs: timestampMs,
+      updatedAtLabel: sentAt,
+      awaitingReply: true,
+      messages: [
+        ...conversation.messages,
+        {
+          id: optimisticMessageId,
+          direction: 'outbound',
+          sender: 'You',
+          text,
+          timeLabel: sentAt,
+          timestampMs,
+          deliveryState: 'sending',
+        },
+      ],
+    };
+  }).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+
+  return {
+    ...current,
+    conversations: nextConversations,
+  };
+}
+
+function markOptimisticBridgeMessageFailed(
+  current: DesktopBridgeState | null,
+  conversationId: string,
+  optimisticMessageId: string,
+): DesktopBridgeState | null {
+  if (!current) return current;
+
+  return {
+    ...current,
+    conversations: current.conversations.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      return {
+        ...conversation,
+        awaitingReply: false,
+        messages: conversation.messages.map((message) => (
+          message.id === optimisticMessageId
+            ? { ...message, deliveryState: 'failed' }
+            : message
+        )),
+      };
+    }),
   };
 }
 
@@ -268,14 +332,19 @@ export function useComposerMessageActions({
         setDesktopChatError('Bridge chats do not support attachments yet.');
         return;
       }
+      const sentAt = formatDesktopEventTime();
+      const optimisticMessageId = `bridge-pending-${Date.now()}`;
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
-        const nextState = await sendDesktopBridgeMessage(activeConvId, text);
-        setDesktopBridgeState(nextState);
+        setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId));
         setComposerDrafts((current) => ({ ...current, chat: '' }));
+        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        const nextState = await sendDesktopBridgeMessage(activeConvId, text);
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
       } catch (error) {
+        setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId));
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
       } finally {
         setIsDesktopChatSending(false);
@@ -292,6 +361,7 @@ export function useComposerMessageActions({
 
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current) => ({ ...current, chat: '' }));
+      resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       setOpenComposerSelector(null);
       return;
     }

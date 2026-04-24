@@ -6,8 +6,9 @@ use serde::Serialize;
 use tauri::State;
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatModelOption, DesktopChatProjectGroup, DesktopChatSessionDetail,
-    DesktopChatSessionSummary, DesktopChatSlashCommand, DesktopRuntimeSession,
+    DesktopChatAgentProfile, DesktopChatModelOption, DesktopChatProjectGroup,
+    DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
+    DesktopRuntimeSession,
 };
 use kordi_cli::turn_runner::TurnEvent;
 
@@ -33,6 +34,7 @@ pub struct DesktopChatState {
     pub sessions: Vec<DesktopChatSessionSummary>,
     pub projects: Vec<DesktopChatProjectGroup>,
     pub active_session: DesktopChatSessionDetail,
+    pub local_agent: DesktopChatAgentProfile,
     pub model_options: Vec<DesktopChatModelOption>,
     pub slash_commands: Vec<DesktopChatSlashCommand>,
 }
@@ -66,6 +68,11 @@ pub struct DesktopChatTurnSnapshot {
     pub error: Option<String>,
 }
 
+pub(crate) struct BridgeAgentPromptStream {
+    pub updates: tokio::sync::mpsc::UnboundedReceiver<DesktopChatTurnSnapshot>,
+    pub completion: tokio::task::JoinHandle<Result<DesktopChatTurnSnapshot, String>>,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatArtifactPreviewLine {
@@ -83,6 +90,32 @@ pub struct DesktopChatArtifactPreview {
 
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
+}
+
+fn sanitize_bridge_segment(value: &str) -> String {
+    let sanitized: String = value
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .collect();
+    if sanitized.is_empty() {
+        "unknown".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn bridge_agent_session_cwd(local_agent_node_id: &str, peer_node_id: &str) -> Result<PathBuf, String> {
+    let root = std::env::var_os("APP_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or(chat_cwd()?);
+    let dir = root
+        .join("korde")
+        .join("bridge-agent-sessions")
+        .join(sanitize_bridge_segment(local_agent_node_id))
+        .join(sanitize_bridge_segment(peer_node_id));
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    Ok(dir)
 }
 
 fn attachment_storage_dir() -> Result<PathBuf, String> {
@@ -284,10 +317,11 @@ async fn build_chat_state(
             .ok_or_else(|| "Active session is unavailable".to_string())?
     };
 
-    let (active_session, slash_commands) = {
+    let (active_session, local_agent, slash_commands) = {
         let active_runtime = active_runtime.lock().await;
         (
             active_runtime.detail().map_err(|err| err.to_string())?,
+            active_runtime.agent_profile(),
             active_runtime.slash_commands(),
         )
     };
@@ -323,6 +357,7 @@ async fn build_chat_state(
         sessions: summaries,
         projects,
         active_session,
+        local_agent,
         model_options,
         slash_commands,
     })
@@ -495,6 +530,212 @@ pub async fn desktop_chat_send_message(
         .map_err(|err| err.to_string())?;
 
     build_chat_state(&manager, &cwd, target_session_id).await
+}
+
+fn publish_bridge_agent_snapshot(
+    snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
+    updates_tx: &tokio::sync::mpsc::UnboundedSender<DesktopChatTurnSnapshot>,
+) {
+    if let Ok(next) = snapshot_turn(snapshot) {
+        let _ = updates_tx.send(next);
+    }
+}
+
+pub(crate) async fn start_bridge_agent_prompt_stream(
+    manager: &DesktopChatManager,
+    local_agent_node_id: &str,
+    peer_node_id: &str,
+    prompt: String,
+) -> Result<BridgeAgentPromptStream, String> {
+    let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
+    let target_session_id = ensure_loaded_session(manager, &cwd, None).await?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Bridge agent session is unavailable".to_string())?
+    };
+
+    let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+        id: uuid::Uuid::new_v4().to_string(),
+        session_id: target_session_id,
+        prompt: prompt.trim().to_string(),
+        status: "starting".to_string(),
+        message: "Working…".to_string(),
+        assistant_text: String::new(),
+        thinking_text: String::new(),
+        tools: Vec::new(),
+        completed: false,
+        succeeded: false,
+        error: None,
+    }));
+    let (updates_tx, updates_rx) = tokio::sync::mpsc::unbounded_channel();
+    publish_bridge_agent_snapshot(&snapshot, &updates_tx);
+
+    let snapshot_for_task = snapshot.clone();
+    let completion = tokio::spawn(async move {
+        let mut session = session.lock().await;
+        let updates_tx_for_task = updates_tx.clone();
+        let result = session
+            .send_message_streaming(
+                prompt,
+                Vec::new(),
+                tokio_util::sync::CancellationToken::new(),
+                |event| {
+                    match event {
+                        TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
+                            state.status = "streaming".to_string();
+                            state.message = "Working…".to_string();
+                        }),
+                        TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
+                            state.status = "writing".to_string();
+                            state.message = "Writing response…".to_string();
+                            state.assistant_text.push_str(text);
+                        }),
+                        TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
+                            state.status = "thinking".to_string();
+                            state.message = "Thinking…".to_string();
+                            state.thinking_text.push_str(text);
+                        }),
+                        TurnEvent::ToolCallStart { id, name } => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "tooling".to_string();
+                                state.message = "Working…".to_string();
+                                state.tools.push(DesktopChatToolSnapshot {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    status: "preparing".to_string(),
+                                    arguments: String::new(),
+                                    live_output: String::new(),
+                                    result_text: None,
+                                    detail: None,
+                                    is_error: false,
+                                });
+                            })
+                        }
+                        TurnEvent::ToolCallDelta { id, args } => {
+                            update_turn(&snapshot_for_task, |state| {
+                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                    tool.arguments.push_str(args);
+                                }
+                            })
+                        }
+                        TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
+                            state.status = "tooling".to_string();
+                            state.message = "Running tool…".to_string();
+                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                tool.status = "running".to_string();
+                            }
+                        }),
+                        TurnEvent::ToolOutputDelta { id, chunk } => {
+                            update_turn(&snapshot_for_task, |state| {
+                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                    tool.status = "running".to_string();
+                                    tool.live_output.push_str(chunk);
+                                }
+                            })
+                        }
+                        TurnEvent::ToolResult {
+                            id,
+                            content,
+                            details,
+                            is_error,
+                            ..
+                        } => update_turn(&snapshot_for_task, |state| {
+                            state.status = "tooling".to_string();
+                            state.message = if *is_error {
+                                "Tool failed".to_string()
+                            } else {
+                                "Tool finished".to_string()
+                            };
+                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                tool.status = if *is_error {
+                                    "error".to_string()
+                                } else {
+                                    "done".to_string()
+                                };
+                                tool.result_text = Some(content_blocks_to_text(content));
+                                tool.detail = tool_detail(details);
+                                tool.is_error = *is_error;
+                                tool.live_output.clear();
+                            }
+                        }),
+                        TurnEvent::TurnEnd => update_turn(&snapshot_for_task, |state| {
+                            state.status = "finalizing".to_string();
+                            state.message = "Finalizing response…".to_string();
+                        }),
+                        TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "failed".to_string();
+                                state.message = message.clone();
+                                state.error = Some(message.clone());
+                            })
+                        }
+                        TurnEvent::AutoRetryStart {
+                            attempt,
+                            max_attempts,
+                            ..
+                        } => update_turn(&snapshot_for_task, |state| {
+                            state.status = "retrying".to_string();
+                            state.message = format!("Retrying request ({attempt}/{max_attempts})…");
+                        }),
+                        TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
+                            state.status = "streaming".to_string();
+                            state.message = "Retry complete. Continuing…".to_string();
+                        }),
+                        TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
+                            state.status = "compacting".to_string();
+                            state.message = "Auto-compacting session…".to_string();
+                        }),
+                        TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
+                    }
+                    publish_bridge_agent_snapshot(&snapshot_for_task, &updates_tx_for_task);
+                },
+            )
+            .await;
+
+        match result {
+            Ok(detail) => {
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "complete".to_string();
+                    state.message = "Response complete".to_string();
+                    state.completed = true;
+                    state.succeeded = true;
+                    if state.assistant_text.trim().is_empty() {
+                        if let Some(text) = detail
+                            .messages
+                            .iter()
+                            .rev()
+                            .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+                            .map(|message| message.text.clone())
+                        {
+                            state.assistant_text = text;
+                        }
+                    }
+                });
+            }
+            Err(error) => {
+                let message = error.to_string();
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "failed".to_string();
+                    state.message = message.clone();
+                    state.completed = true;
+                    state.succeeded = false;
+                    state.error = Some(message.clone());
+                });
+            }
+        }
+
+        let final_snapshot = snapshot_turn(&snapshot_for_task)?;
+        let _ = updates_tx.send(final_snapshot.clone());
+        Ok(final_snapshot)
+    });
+
+    Ok(BridgeAgentPromptStream {
+        updates: updates_rx,
+        completion,
+    })
 }
 
 #[tauri::command]
@@ -741,6 +982,37 @@ pub async fn desktop_chat_cancel_turn(
         }
     });
     snapshot_turn(&turn.snapshot)
+}
+
+#[allow(dead_code)]
+pub(crate) async fn run_bridge_agent_prompt(
+    manager: &DesktopChatManager,
+    local_agent_node_id: &str,
+    peer_node_id: &str,
+    prompt: String,
+) -> Result<String, String> {
+    let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
+    let target_session_id = ensure_loaded_session(manager, &cwd, None).await?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Bridge agent session is unavailable".to_string())?
+    };
+    let mut session = session.lock().await;
+    let detail = session
+        .send_message(prompt, Vec::new())
+        .await
+        .map_err(|err| err.to_string())?;
+
+    detail
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+        .map(|message| message.text.clone())
+        .ok_or_else(|| "Bridge agent returned no text response".to_string())
 }
 
 #[tauri::command]

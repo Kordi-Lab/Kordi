@@ -3,10 +3,12 @@ import {
   ArrowRightLeft,
   Bot,
   Braces,
+  CheckCheck,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  CircleAlert,
   Clock3,
   FileText,
   FolderOpen,
@@ -173,6 +175,65 @@ export function StatusPill({ children, className }: { children: ReactNode; class
   );
 }
 
+function primaryMessageStatus(msg: Message) {
+  return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
+}
+
+function MessageDeliveryGlyph({ status }: { status: string }) {
+  const normalized = status.trim().toLowerCase();
+
+  if (normalized === 'read' || normalized === 'responded') {
+    return <CheckCheck className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" />;
+  }
+  if (normalized === 'delivered' || normalized === 'sent') {
+    return <CheckCheck className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />;
+  }
+  if (normalized === 'sending' || normalized === 'pending_send') {
+    return <Clock3 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />;
+  }
+  if (normalized === 'processing' || normalized === 'awaiting reply') {
+    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-rose-400" aria-hidden="true" />;
+  }
+  if (normalized === 'handed_off_direct' || normalized === 'handed_off_mailbox') {
+    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />;
+  }
+  if (normalized === 'failed' || normalized === 'processing_failed') {
+    return <CircleAlert className="h-3.5 w-3.5 text-rose-400" aria-hidden="true" />;
+  }
+  return null;
+}
+
+function MessageFooter({
+  time,
+  status,
+  detail,
+  isUser,
+  compact = false,
+}: {
+  time: string;
+  status?: string | null;
+  detail?: string;
+  isUser?: boolean;
+  compact?: boolean;
+}) {
+  const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
+  const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
+
+  return (
+    <div className={cn(
+      'flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
+      compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'mt-2 justify-end',
+      isUser ? 'text-black/58' : 'text-slate-500',
+    )}>
+      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
+      <span className="inline-flex w-4 justify-center" title={status ?? undefined}>
+        {glyph}
+      </span>
+    </div>
+  );
+}
+
 export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
 
@@ -310,32 +371,63 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
-        <LiveChatTurnCard turn={msg.turn} historical />
+        <LiveChatTurnCard turn={msg.turn} historical={msg.turn.completed} />
       </div>
     );
   }
 
   const isUser = msg.role === 'user';
+  const isDirectPersonMessage = msg.role === 'person';
   const align = isUser ? 'items-end' : 'items-start';
-  const bubble = isUser ? 'app-chat-bubble-user' : msg.role === 'owned-agent' ? 'app-chat-bubble-peer' : 'app-chat-bubble-peer';
+  const bubble = isUser ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
+  const deliveryStatus = primaryMessageStatus(msg);
+  const showCompactFooter = isUser || isDirectPersonMessage;
+  const showHeaderMeta = !showCompactFooter || Boolean(msg.sender && msg.role === 'external-agent');
 
   return (
-    <div className={cn('flex flex-col gap-0.5 py-0.5', align, isUser ? '' : 'w-full max-w-[min(100%,66rem)]')}>
-      <div className="app-message-meta">
-        {msg.sender} • {msg.time}
-      </div>
-      <div className={cn('min-w-0 overflow-hidden rounded-[18px] px-3.5 py-2.5 text-[13px] shadow-sm', isUser ? 'max-w-[42rem]' : 'w-full max-w-none', bubble)}>
-        {isUser ? <div className="whitespace-pre-wrap break-words">{msg.text}</div> : <MarkdownContent text={msg.text} />}
-        {(msg.statusChips?.length || msg.detail) ? (
-          <div className="app-message-status-bar mt-2 border-t border-white/10 pt-2 text-[11px] text-slate-300">
-            {msg.statusChips?.map((chip) => (
-              <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
-                {chip}
-              </span>
-            ))}
-            {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
+    <div className={cn('flex flex-col gap-1 py-1', align, !isUser && !isDirectPersonMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
+      {showHeaderMeta ? (
+        <div className="app-message-meta px-1">
+          {msg.sender} • {msg.time}
+        </div>
+      ) : null}
+      <div className={cn(
+        'min-w-0 overflow-hidden text-[13px] shadow-sm',
+        isUser
+          ? 'max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
+          : isDirectPersonMessage
+            ? 'max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
+            : 'w-full max-w-none rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
+        bubble,
+      )}>
+        {showCompactFooter ? (
+          <div className="flex items-end justify-between gap-2">
+            <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+              {msg.text}
+            </div>
+            <MessageFooter
+              time={msg.time}
+              status={isUser ? deliveryStatus : undefined}
+              detail={msg.detail}
+              isUser={isUser}
+              compact
+            />
           </div>
-        ) : null}
+        ) : (
+          <>
+            <MarkdownContent text={msg.text} />
+            {(msg.statusChips?.length || msg.detail) ? (
+              <div className="app-message-status-bar mt-2 border-t border-white/10 pt-2 text-[11px] text-slate-300">
+                {msg.statusChips?.map((chip) => (
+                  <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
+                    {chip}
+                  </span>
+                ))}
+                {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -383,7 +475,11 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
         ? 'Retrying…'
         : turn.status === 'compacting'
           ? 'Compacting…'
-          : 'Working…';
+          : turn.status === 'typing'
+            ? 'Typing…'
+            : turn.status === 'writing'
+              ? 'Replying…'
+              : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 

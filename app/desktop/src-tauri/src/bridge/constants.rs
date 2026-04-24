@@ -15,6 +15,7 @@ pub(super) const BRIDGE_MESSAGE_TYPE_HEARTBEAT: &str = "heartbeat";
 pub(super) const BRIDGE_DELIVERY_STATE_SENT: &str = "sent";
 pub(super) const BRIDGE_DELIVERY_STATE_RESPONDED: &str = "responded";
 pub(super) const BRIDGE_DELIVERY_STATE_DELIVERED: &str = "delivered";
+pub(super) const BRIDGE_DELIVERY_STATE_READ: &str = "read";
 
 pub(super) const BRIDGE_HOST_ID_PREFIX: &str = "bridge_";
 pub(super) const BRIDGE_NODE_ID_PREFIX: &str = "kd_";

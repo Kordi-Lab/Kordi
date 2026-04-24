@@ -5,15 +5,16 @@ use std::process::Command;
 use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE};
 use super::{
     add_serve_contact, bridge_hosts_match, build_bridge_state, build_current_bridge_state,
-    current_local_server_status, default_bridge_agent_runtime, default_bridge_api_style,
-    default_display_name, default_endpoint, default_owner_name, delete_bridge_host_secrets,
-    ensure_host_bootstrap, generate_agent_id, health_check, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
-    normalize_imported_bridge_host, normalize_server_url, parse_imported_bridge_store,
-    register_bridge_host, remove_serve_contact, save_bridge_store, save_conversation_store,
-    sync_host_active_agent_fields, update_registered_registry_node, update_serve_discovery_mode,
-    write_bridge_store_export, DesktopBridgeAgentConfig, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    current_local_server_status, default_bridge_agent_label, default_bridge_agent_runtime,
+    default_bridge_api_style, default_display_name, default_endpoint, default_owner_name,
+    delete_bridge_host_secrets, ensure_host_bootstrap, generate_agent_id, health_check,
+    legacy_bridge_config_path, load_bridge_store, load_conversation_store,
+    load_legacy_bridge_config, normalize_imported_bridge_host, normalize_server_url,
+    parse_imported_bridge_store, register_bridge_host, remove_serve_contact,
+    save_bridge_store, save_conversation_store, sync_host_active_agent_fields,
+    update_registered_registry_node, update_serve_discovery_mode, write_bridge_store_export,
+    DesktopBridgeAgentConfig, DesktopBridgeHostConfig, DesktopBridgeManager,
+    DesktopBridgeState, DesktopBridgeStore,
 };
 use super::{desktop_bridge_config_path, desktop_bridge_conversations_path, korde_dir};
 
@@ -313,7 +314,11 @@ pub(super) async fn desktop_save_bridge_host_impl(
         .and_then(|active_id| next.agents.iter().position(|agent| agent.id == active_id))
         .or_else(|| next.agents.iter().position(|agent| agent.is_default))
         .unwrap_or(0);
-    next.agents[active_agent_index].label = display_name.clone();
+    next.agents[active_agent_index].label = if next.agents[active_agent_index].is_default {
+        default_bridge_agent_label(&owner_name)
+    } else {
+        display_name.clone()
+    };
     let agent = next.agents[active_agent_index].clone();
 
     let (api_style, node_id, api_key) = if next.api_style == API_STYLE_REGISTRY

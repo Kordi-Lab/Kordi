@@ -122,6 +122,17 @@ pub struct DesktopChatProjectInfo {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopChatAgentProfile {
+    pub label: String,
+    pub system_prompt: String,
+    pub default_provider: String,
+    pub default_model: String,
+    pub workspace_root: String,
+    pub last_activities: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopChatSessionDetail {
     pub id: String,
     pub title: String,
@@ -325,6 +336,10 @@ impl DesktopRuntimeSession {
         build_detail_from_setup(&self.setup)
     }
 
+    pub fn agent_profile(&self) -> DesktopChatAgentProfile {
+        build_agent_profile_from_setup(&self.setup)
+    }
+
     pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
         let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
         let model =
@@ -438,6 +453,49 @@ impl DesktopRuntimeSession {
         }
 
         self.detail()
+    }
+}
+
+fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
+    let mut dir = cwd.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return dir;
+        }
+        if !dir.pop() {
+            return cwd.to_path_buf();
+        }
+    }
+}
+
+fn infer_agent_label(cwd: &std::path::Path) -> String {
+    Settings::load_project(cwd)
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            discover_workspace_root(cwd)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Local agent".to_string())
+}
+
+fn build_agent_profile_from_setup(setup: &SessionRuntimeSetup) -> DesktopChatAgentProfile {
+    DesktopChatAgentProfile {
+        label: infer_agent_label(&setup.tool_ctx.cwd),
+        system_prompt: setup.system_prompt.clone(),
+        default_provider: setup.model.provider.clone(),
+        default_model: setup.model.id.clone(),
+        workspace_root: setup.tool_ctx.cwd.display().to_string(),
+        last_activities: vec![
+            format!("Workspace: {}", setup.tool_ctx.cwd.display()),
+            format!("Model: {}/{}", setup.model.provider, setup.model.id),
+            format!("Thinking: {}", setup.thinking_level),
+        ],
     }
 }
 

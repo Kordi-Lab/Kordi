@@ -144,8 +144,7 @@ export function ChatDetailPanel({
                 value={activeBridgeConversation.projectName || activeBridgeConversation.projectId || 'Direct bridge chat'}
                 valueClassName="max-w-[11rem] truncate"
               />
-              <MetaRow label="Delivery state" value={activeBridgeAwaitingReply ? 'Awaiting reply' : 'Idle / replied'} />
-              <MetaRow label="Mailbox polling" value={isBridgePolling ? 'Polling now' : (lastBridgePollAtLabel || 'Not polled yet')} />
+              {activeBridgeConversation.peerTyping ? <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} /> : null}
             </div>
           </section>
         ) : null}
@@ -202,9 +201,9 @@ export function ChatDetailPanel({
           <div className="app-inspector-meta-list">
             <MetaRow label="Bridges" value={activeConv.bridges.join(' • ')} />
             <MetaRow label="Source" value={activeConversationIsBridge ? (activeBridgeConversationHostNodeId || 'desktop node') : 'cc_node_01'} />
-            <MetaRow label="Transport" value={activeConversationIsBridge ? 'Mailbox relay' : 'Encrypted'} />
-            {activeConversationIsBridge ? (
-              <MetaRow label="Live status" value={isBridgePolling ? 'Polling…' : (activeBridgeAwaitingReply ? 'Waiting for reply' : 'Up to date')} />
+            <MetaRow label="Transport" value={activeConversationIsBridge ? (activeBridgeConversation?.peerRuntime === 'person' ? 'Direct realtime' : 'Bridge relay') : 'Encrypted'} />
+            {activeConversationIsBridge && activeBridgeConversation?.peerTyping ? (
+              <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} />
             ) : null}
           </div>
         </section>

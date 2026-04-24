@@ -12,6 +12,67 @@ use super::{
     DesktopBridgeConversationStore,
 };
 
+fn is_person_runtime(runtime: &str) -> bool {
+    runtime.trim().eq_ignore_ascii_case("person")
+}
+
+fn scoped_conversation_id(
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<&str>,
+    peer_runtime: &str,
+) -> String {
+    let base = bridge_conversation_id(host_id, peer_node_id, project_id);
+    if is_person_runtime(peer_runtime) {
+        format!("{base}:person")
+    } else {
+        base
+    }
+}
+
+fn conversation_matches(
+    conversation: &DesktopBridgeConversationRecord,
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<&str>,
+    peer_runtime: Option<&str>,
+) -> bool {
+    conversation.host_id == host_id
+        && conversation.peer_node_id == peer_node_id
+        && conversation.project_id.as_deref() == project_id
+        && peer_runtime
+            .map(|runtime| is_person_runtime(&conversation.peer_runtime) == is_person_runtime(runtime))
+            .unwrap_or(true)
+}
+
+fn existing_runtime_for(
+    store: &DesktopBridgeConversationStore,
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<&str>,
+    preferred_runtime: Option<&str>,
+) -> Option<String> {
+    store
+        .conversations
+        .iter()
+        .find(|conversation| {
+            conversation_matches(
+                conversation,
+                host_id,
+                peer_node_id,
+                project_id,
+                preferred_runtime,
+            )
+        })
+        .or_else(|| {
+            store.conversations.iter().find(|conversation| {
+                conversation_matches(conversation, host_id, peer_node_id, project_id, None)
+            })
+        })
+        .map(|conversation| conversation.peer_runtime.clone())
+        .filter(|runtime| !runtime.trim().is_empty())
+}
+
 pub(super) fn upsert_bridge_conversation<'a>(
     store: &'a mut DesktopBridgeConversationStore,
     host_id: &str,
@@ -22,11 +83,22 @@ pub(super) fn upsert_bridge_conversation<'a>(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> &'a mut DesktopBridgeConversationRecord {
-    let conversation_id = bridge_conversation_id(host_id, peer_node_id, project_id.as_deref());
-    let maybe_index = store
-        .conversations
-        .iter()
-        .position(|conversation| conversation.id == conversation_id);
+    let conversation_id = scoped_conversation_id(
+        host_id,
+        peer_node_id,
+        project_id.as_deref(),
+        &peer_runtime,
+    );
+    let maybe_index = store.conversations.iter().position(|conversation| {
+        conversation.id == conversation_id
+            || conversation_matches(
+                conversation,
+                host_id,
+                peer_node_id,
+                project_id.as_deref(),
+                Some(&peer_runtime),
+            )
+    });
     let index = if let Some(index) = maybe_index {
         index
     } else {
@@ -94,6 +166,25 @@ pub(super) fn append_conversation_message(
         project_id,
         project_name,
     );
+    if let Some(existing_request_id) = request_id.as_deref() {
+        if let Some(existing_message) = conversation.messages.iter_mut().find(|message| {
+            message.request_id.as_deref() == Some(existing_request_id)
+                && message.direction == direction
+        }) {
+            existing_message.sender = sender.or_else(|| existing_message.sender.clone());
+            existing_message.text = text;
+            existing_message.timestamp_ms = timestamp_ms;
+            if delivery_state.is_some() {
+                existing_message.delivery_state = delivery_state;
+            }
+            conversation.updated_at_ms = timestamp_ms;
+            if direction == "inbound" || direction == "inbound-response" {
+                conversation.peer_last_typing_at_ms = None;
+            }
+            return;
+        }
+    }
+
     conversation.updated_at_ms = timestamp_ms;
     if direction == "inbound" || direction == "inbound-response" {
         conversation.peer_last_typing_at_ms = None;
@@ -120,14 +211,15 @@ pub(super) fn update_message_delivery_state(
     delivery_state: &str,
 ) {
     for conversation in &mut store.conversations {
-        if let Some(message) = conversation
-            .messages
-            .iter_mut()
-            .find(|message| message.request_id.as_deref() == Some(request_id))
-        {
-            message.delivery_state = Some(delivery_state.to_string());
+        let mut updated_any = false;
+        for message in &mut conversation.messages {
+            if message.request_id.as_deref() == Some(request_id) {
+                message.delivery_state = Some(delivery_state.to_string());
+                updated_any = true;
+            }
+        }
+        if updated_any {
             conversation.updated_at_ms = now_ms();
-            break;
         }
     }
 }
@@ -139,13 +231,21 @@ pub(super) fn note_peer_typing(
     project_id: Option<String>,
     project_name: Option<String>,
 ) {
+    let peer_runtime = existing_runtime_for(
+        store,
+        host_id,
+        peer_node_id,
+        project_id.as_deref(),
+        Some("person"),
+    )
+    .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
     let conversation = upsert_bridge_conversation(
         store,
         host_id,
         peer_node_id,
         None,
         None,
-        DEFAULT_BRIDGE_RUNTIME.to_string(),
+        peer_runtime,
         project_id,
         project_name,
     );
@@ -159,13 +259,21 @@ pub(super) fn note_peer_heartbeat(
     project_id: Option<String>,
     project_name: Option<String>,
 ) {
+    let peer_runtime = existing_runtime_for(
+        store,
+        host_id,
+        peer_node_id,
+        project_id.as_deref(),
+        Some("person"),
+    )
+    .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
     let conversation = upsert_bridge_conversation(
         store,
         host_id,
         peer_node_id,
         None,
         None,
-        DEFAULT_BRIDGE_RUNTIME.to_string(),
+        peer_runtime,
         project_id,
         project_name,
     );

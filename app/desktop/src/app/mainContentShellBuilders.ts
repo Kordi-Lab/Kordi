@@ -126,15 +126,10 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     desktopSessionRenameDraft: args.desktopSessionRenameDraft,
     setDesktopSessionRenameDraft: args.setDesktopSessionRenameDraft,
     onRenameDesktopSession: args.handleRenameDesktopSession,
-    bridgeStatusText:
-      args.isBridgePolling
-        ? 'Checking bridge mailbox for replies…'
-        : args.activeBridgeConversation?.peerTyping
-          ? `${args.activeBridgeConversation.title} is typing…`
-          : args.activeBridgeAwaitingReply
-            ? `Waiting for ${args.activeBridgeConversation?.title || 'reply'} • next poll soon`
-            : `Bridge synced${args.lastBridgePollAtLabel ? ` • last poll ${args.lastBridgePollAtLabel}` : ''}`,
-    bridgeStatusLoading: args.isBridgePolling,
+    bridgeStatusText: args.activeBridgeConversation?.peerTyping
+      ? `${args.activeBridgeConversation.title} is typing…`
+      : null,
+    bridgeStatusLoading: false,
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     onTranscriptScroll: args.onChatTranscriptScroll,
     onOpenSource: (file) => {

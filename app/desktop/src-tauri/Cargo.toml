@@ -27,6 +27,8 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 bs58 = "0.5"
 hex = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }

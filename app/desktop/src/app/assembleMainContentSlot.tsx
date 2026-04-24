@@ -4,6 +4,18 @@ import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } fro
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
+  const openLocalAgentChat = async () => {
+    args.setActiveNav('chats');
+    const existingLocalConversation = args.chatConversations.find(
+      (conversation) => conversation.type === 'owned-agent' && !conversation.id.startsWith('bridge:'),
+    );
+    if (existingLocalConversation) {
+      await args.handleSelectChatSession(existingLocalConversation.id);
+      return;
+    }
+    await args.handleCreateChatSession();
+  };
+
   return (
     <MainContentSwitch
       activeNav={args.activeNav}
@@ -33,6 +45,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onCloseOverlay: () => args.setContactOverlayMode(null),
         getStatusBadgeClass: args.getStatusBadgeClass,
         onMessageContact: (contact) => {
+          if (contact.id.startsWith('bridge-self:') || contact.classType === 'my-agents') {
+            void openLocalAgentChat();
+            return;
+          }
           if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(contact.bridgeHostId, contact.bridgePeerNodeId, contact.name, contact.owner, contact.bridgePeerRuntime);
         },
@@ -49,6 +65,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onCloseOverlay: () => args.setIsAgentOverlayOpen(false),
         getStatusBadgeClass: args.getStatusBadgeClass,
         onMessageAgent: (agent) => {
+          if (agent.isOwned) {
+            void openLocalAgentChat();
+            return;
+          }
           if (!agent.bridgeHostId || !agent.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
         },

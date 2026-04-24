@@ -427,12 +427,22 @@ export type DesktopChatSessionDetail = {
   messages: DesktopChatMessage[];
 };
 
+export type DesktopChatAgentProfile = {
+  label: string;
+  systemPrompt: string;
+  defaultProvider: string;
+  defaultModel: string;
+  workspaceRoot: string;
+  lastActivities: string[];
+};
+
 export type DesktopChatState = {
   cwd: string;
   activeSessionId: string;
   sessions: DesktopChatSessionSummary[];
   projects: DesktopChatProjectGroup[];
   activeSession: DesktopChatSessionDetail;
+  localAgent: DesktopChatAgentProfile;
   modelOptions: DesktopChatModelOption[];
   slashCommands: DesktopChatSlashCommand[];
 };

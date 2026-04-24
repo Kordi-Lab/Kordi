@@ -3,7 +3,15 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import { findBridgeProjectForWorkspace } from '@/app/useWorkspaceViewModels';
 import { DEFAULT_LOCAL_BRIDGE_SERVER_PORT } from '@/features/bridge/constants';
-import type { DesktopBridgeInvite, DesktopBridgeProject, DesktopBridgeState, NavId, Project } from '@/kordi-app/types';
+import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
+import type {
+  DesktopBridgeConversation,
+  DesktopBridgeInvite,
+  DesktopBridgeProject,
+  DesktopBridgeState,
+  NavId,
+  Project,
+} from '@/kordi-app/types';
 import {
   activateDesktopBridgeAgent,
   addDesktopBridgeContact,
@@ -22,6 +30,76 @@ import {
 function slugifyBridgeProjectName(value?: string | null) {
   const normalized = (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return normalized || `project-${Date.now()}`;
+}
+
+function buildBridgeConversationId(hostId: string, peerNodeId: string, peerRuntime?: string | null, projectId?: string | null) {
+  return `bridge:${hostId}:${peerNodeId}${projectId ? `:${projectId}` : ''}${peerRuntime?.trim().toLowerCase() === 'person' ? ':person' : ''}`;
+}
+
+function optimisticBridgeConversation({
+  hostId,
+  peerNodeId,
+  peerDisplayName,
+  peerOwnerName,
+  peerRuntime,
+  project,
+}: {
+  hostId: string;
+  peerNodeId: string;
+  peerDisplayName?: string | null;
+  peerOwnerName?: string | null;
+  peerRuntime?: string | null;
+  project?: DesktopBridgeProject | null;
+}): DesktopBridgeConversation {
+  const timestampMs = Date.now();
+  const isPerson = peerRuntime?.trim().toLowerCase() === 'person';
+  const title = (isPerson ? peerOwnerName : peerDisplayName) || peerOwnerName || peerDisplayName || peerNodeId;
+  const subtitle = project?.name
+    ? `Shared in ${project.name}`
+    : isPerson
+      ? 'Direct human chat'
+      : 'Remote agent thread';
+  const updatedAtLabel = new Intl.DateTimeFormat([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(timestampMs));
+
+  return {
+    id: buildBridgeConversationId(hostId, peerNodeId, peerRuntime, project?.id),
+    hostId,
+    peerNodeId,
+    peerDisplayName: peerDisplayName ?? null,
+    peerOwnerName: peerOwnerName ?? null,
+    peerRuntime: peerRuntime?.trim() || 'person',
+    projectId: project?.id ?? null,
+    projectName: project?.name ?? null,
+    title,
+    subtitle,
+    unreadCount: 0,
+    updatedAtMs: timestampMs,
+    updatedAtLabel,
+    awaitingReply: false,
+    peerTyping: false,
+    peerLastHeartbeatLabel: null,
+    messages: [],
+  };
+}
+
+function upsertOptimisticBridgeConversation(
+  current: DesktopBridgeState | null,
+  conversation: DesktopBridgeConversation,
+): DesktopBridgeState | null {
+  if (!current) return current;
+
+  const conversations = [
+    conversation,
+    ...current.conversations.filter((item) => item.id !== conversation.id),
+  ].sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+
+  return {
+    ...current,
+    conversations,
+  };
 }
 
 type UseBridgeOrchestrationArgs = {
@@ -104,6 +182,28 @@ export function useBridgeOrchestration({
     project?: DesktopBridgeProject | null,
   ) => {
     if (!isNativeShell) return;
+
+    const conversationId = buildBridgeConversationId(hostId, peerNodeId, peerRuntime, project?.id);
+    setActiveNav('chats');
+    setActiveConvId(conversationId);
+    setDesktopChatError(null);
+    setDesktopBridgeState((current) => upsertOptimisticBridgeConversation(current, optimisticBridgeConversation({
+      hostId,
+      peerNodeId,
+      peerDisplayName,
+      peerOwnerName,
+      peerRuntime,
+      project,
+    })));
+
+    if (!project?.id && peerRuntime?.trim().toLowerCase() === 'person') {
+      void addDesktopBridgeContact(hostId, peerNodeId)
+        .then((state) => {
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+        })
+        .catch(() => {});
+    }
+
     try {
       const nextState = await openDesktopBridgeConversation(
         hostId,
@@ -114,11 +214,7 @@ export function useBridgeOrchestration({
         project?.id,
         project?.name,
       );
-      setDesktopBridgeState(nextState);
-      setActiveNav('chats');
-      const conversationId = `bridge:${hostId}:${peerNodeId}${project?.id ? `:${project.id}` : ''}`;
-      setActiveConvId(conversationId);
-      setDesktopChatError(null);
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open bridge conversation');
     }

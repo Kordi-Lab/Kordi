@@ -414,6 +414,13 @@ function BridgeDiscoverStep({
   );
 }
 
+function compactBridgeId(value?: string | null) {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  if (normalized.length <= 18) return normalized;
+  return `${normalized.slice(0, 8)}…${normalized.slice(-6)}`;
+}
+
 function BridgePeerListCard({
   title,
   emptyTitle,
@@ -436,9 +443,14 @@ function BridgePeerListCard({
   return (
     <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-400">
+            {peers.length}
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm text-slate-300">
+      <CardContent className="space-y-2.5 text-sm text-slate-300">
         {peers.length
           ? peers.map((peer) => (
             <BridgePeerCard
@@ -469,29 +481,48 @@ function BridgePeerCard({
   onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
   onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
 }) {
+  const title = peer.displayName || peer.ownerName || peer.nodeId;
+  const compactHumanId = compactBridgeId(peer.humanId);
+  const compactAgentId = compactBridgeId(peer.agentId);
+
   return (
-    <div className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/5 px-3 py-2.5">
+    <div className="app-bridge-list-item rounded-[20px] border border-white/10 bg-white/[0.035] px-3 py-3 transition hover:bg-white/[0.055]">
       <div className="flex items-start gap-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200">
           {kind === 'person' ? <UserRound className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[13px] font-medium text-white">{peer.displayName || peer.ownerName || peer.nodeId}</div>
+            <div className="truncate text-[13px] font-medium text-white">{title}</div>
+            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+              {kind === 'person' ? 'Person' : 'Agent'}
+            </span>
             {kind === 'agent' && peer.isDefaultAgent ? <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-1 text-[11px] leading-none text-slate-200">Default</span> : null}
           </div>
-          <div className="mt-1 text-[12px] text-slate-400">{peer.ownerName || peer.runtime} • {peer.runtime}</div>
-          {peer.humanId ? <div className="mt-1 break-all text-[12px] text-slate-500">Human ID: {peer.humanId}</div> : null}
-          {peer.agentId ? <div className="mt-1 break-all text-[12px] text-slate-500">Agent ID: {peer.agentId}</div> : null}
-          {peer.sharedProjects.length > 0 ? <div className="mt-1 text-[12px] text-slate-500">Shared projects: {peer.sharedProjects.join(' • ')}</div> : null}
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => onOpenBridgeConversation(activeBridgeHostId, peer.nodeId, peer.displayName, peer.ownerName, peer.runtime)}>
-              Open chat
-            </Button>
-            <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onRemoveBridgeContact(activeBridgeHostId, peer.nodeId).catch(() => {}); }}>
-              Remove contact
-            </Button>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+            <span>{kind === 'person' ? 'Direct human chat' : `${peer.ownerName || 'Remote'} • ${peer.runtime}`}</span>
+            {peer.sharedProjects.length > 0 ? <span className="text-slate-500">Shared: {peer.sharedProjects.join(' • ')}</span> : null}
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+            {compactHumanId ? (
+              <span className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-1 font-mono" title={peer.humanId || undefined}>
+                human {compactHumanId}
+              </span>
+            ) : null}
+            {compactAgentId ? (
+              <span className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-1 font-mono" title={peer.agentId || undefined}>
+                agent {compactAgentId}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={() => onOpenBridgeConversation(activeBridgeHostId, peer.nodeId, peer.displayName, peer.ownerName, kind === 'person' ? 'person' : peer.runtime)}>
+            Chat
+          </Button>
+          <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px] text-slate-400" onClick={() => { void onRemoveBridgeContact(activeBridgeHostId, peer.nodeId).catch(() => {}); }}>
+            Remove
+          </Button>
         </div>
       </div>
     </div>

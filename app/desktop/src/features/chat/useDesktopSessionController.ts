@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
@@ -59,7 +60,7 @@ export function useDesktopSessionController({
     if (sessionId.startsWith('bridge:')) {
       try {
         const nextState = await markDesktopBridgeConversationRead(sessionId);
-        setDesktopBridgeState(nextState);
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
         setDesktopChatError(null);
       } catch (error) {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to open bridge chat');

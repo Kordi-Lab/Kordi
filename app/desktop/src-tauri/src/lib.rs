@@ -55,6 +55,8 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("main window should exist");
             window.set_title("Kordi")?;
+            let bridge_manager = app.state::<DesktopBridgeManager>();
+            tauri::async_runtime::block_on(bridge::set_bridge_app_handle(&bridge_manager, app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

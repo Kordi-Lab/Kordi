@@ -68,6 +68,26 @@ struct DerpFrame {
     data: Vec<u8>,
 }
 
+fn maybe_delivery_event_frame(
+    from_node_id: &str,
+    request_bytes: &[u8],
+    state: &str,
+) -> Option<Message> {
+    let parsed: serde_json::Value = serde_json::from_slice(request_bytes).ok()?;
+    let request_id = parsed.get("requestId")?.as_str()?;
+    let payload = serde_json::json!({
+        "from": from_node_id,
+        "messageType": "delivery_event",
+        "payload": { "requestId": request_id, "state": state },
+    });
+    let frame = DerpFrame {
+        src: Some(from_node_id.to_string()),
+        dst: None,
+        data: serde_json::to_vec(&payload).ok()?,
+    };
+    Some(Message::Text(serde_json::to_string(&frame).ok()?))
+}
+
 mod base64_serde {
     use base64::Engine;
     use serde::{Deserialize, Deserializer, Serializer};
@@ -253,6 +273,7 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                 let Some(dst_node_id) = frame.dst else {
                     continue;
                 };
+                let request_bytes = frame.data.clone();
                 let outbound = DerpFrame {
                     src: Some(node_id.clone()),
                     dst: None,
@@ -272,6 +293,11 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                 };
                 if let Some(peer_tx) = peer_tx {
                     let _ = peer_tx.send(Message::Text(json));
+                    if let Some(ack) = maybe_delivery_event_frame(&dst_node_id, &request_bytes, "delivered") {
+                        let _ = tx.send(ack);
+                    }
+                } else if let Some(ack) = maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed") {
+                    let _ = tx.send(ack);
                 }
             }
             Message::Ping(payload) => {

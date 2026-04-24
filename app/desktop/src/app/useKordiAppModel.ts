@@ -221,6 +221,7 @@ export function useKordiAppModel() {
     activeConvId,
     activeConversationIsBridge: isNativeShell && activeConvId.startsWith('bridge:'),
     composerChatText: composerUi.composerDrafts.chat,
+    shouldAutoFollowChatRef,
   });
 
   const {
