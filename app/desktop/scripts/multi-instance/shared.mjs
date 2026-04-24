@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +105,92 @@ function ensureIntegerPort(value, label) {
   return port;
 }
 
+function parseAuthFixtureSummary(authFile) {
+  if (!existsSync(authFile)) {
+    throw new Error(`Missing bootstrap auth file at ${authFile}`);
+  }
+
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(authFile, 'utf8'));
+  } catch (error) {
+    throw new Error(`Invalid bootstrap auth JSON at ${authFile}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const profiles = raw?.profiles && typeof raw.profiles === 'object' ? raw.profiles : {};
+  const activeAuthMethods = raw?.active_auth_methods && typeof raw.active_auth_methods === 'object'
+    ? raw.active_auth_methods
+    : {};
+
+  return {
+    providerIds: Object.keys(profiles).sort(),
+    profileCounts: Object.fromEntries(
+      Object.entries(profiles)
+        .map(([providerId, entries]) => [providerId, Array.isArray(entries) ? entries.length : 0])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ),
+    activeMethodProviders: Object.keys(activeAuthMethods).sort(),
+  };
+}
+
+function findSharedAuthFile() {
+  const home = homedir();
+  if (!home) {
+    throw new Error('Unable to resolve home directory for shared auth bootstrap');
+  }
+
+  const candidates = [
+    resolve(home, '.kordi', 'auth.json'),
+    resolve(home, '.bb-agent', 'auth.json'),
+  ];
+
+  const match = candidates.find((candidate) => existsSync(candidate));
+  if (!match) {
+    throw new Error(`Shared auth store not found. Checked: ${candidates.join(', ')}`);
+  }
+
+  return match;
+}
+
+function resolveBootstrap(configDir, defaultsBootstrap, userBootstrap, dataDir) {
+  const bootstrap = {
+    ...(defaultsBootstrap && typeof defaultsBootstrap === 'object' ? defaultsBootstrap : {}),
+    ...(userBootstrap && typeof userBootstrap === 'object' ? userBootstrap : {}),
+  };
+
+  const authMode = `${bootstrap.authMode ?? bootstrap.mode ?? 'if-missing'}`;
+  if (!['if-missing', 'always'].includes(authMode)) {
+    throw new Error(`Invalid bootstrap authMode: ${authMode}`);
+  }
+
+  if (bootstrap.authFile && bootstrap.authSource) {
+    throw new Error('Configure only one of bootstrap.authFile or bootstrap.authSource');
+  }
+
+  const authSource = bootstrap.authSource ? `${bootstrap.authSource}`.trim().toLowerCase() : '';
+  const authFile = bootstrap.authFile
+    ? resolveMaybeRelative(configDir, bootstrap.authFile)
+    : authSource === 'shared'
+      ? findSharedAuthFile()
+      : null;
+
+  if (authSource && authSource !== 'shared') {
+    throw new Error(`Invalid bootstrap authSource: ${bootstrap.authSource}`);
+  }
+
+  if (!authFile) {
+    return null;
+  }
+
+  return {
+    authSource: authSource || 'file',
+    authFile,
+    authMode,
+    authTargetPath: resolve(dataDir, 'kordi', 'auth.json'),
+    authSummary: parseAuthFixtureSummary(authFile),
+  };
+}
+
 export function loadMultiInstanceConfig(configPath, selectedUserIds = []) {
   if (!existsSync(configPath)) {
     throw new Error(`Missing multi-instance config at ${configPath}`);
@@ -120,6 +214,7 @@ export function loadMultiInstanceConfig(configPath, selectedUserIds = []) {
   const runtimeRoot = resolveMaybeRelative(configDir, defaults.runtimeRoot) ?? resolve(appRoot, '.multi-instance-runtime');
   const defaultHost = `${defaults.host ?? '127.0.0.1'}`;
   const defaultTitlePrefix = `${defaults.titlePrefix ?? 'Kordi'}`;
+  const defaultsBootstrap = defaults.bootstrap && typeof defaults.bootstrap === 'object' ? defaults.bootstrap : null;
 
   const resolvedUsers = users.map((user, index) => {
     if (!user || typeof user !== 'object') {
@@ -140,6 +235,7 @@ export function loadMultiInstanceConfig(configPath, selectedUserIds = []) {
     const logFile = resolve(logDir, `dev-${port}.log`);
     const pidFile = resolve(runtimeRoot, `${id}.pid`);
     const metaFile = resolve(runtimeRoot, `${id}.json`);
+    const bootstrap = resolveBootstrap(configDir, defaultsBootstrap, user.bootstrap, dataDir);
 
     return {
       id,
@@ -153,6 +249,7 @@ export function loadMultiInstanceConfig(configPath, selectedUserIds = []) {
       pidFile,
       metaFile,
       cleanOnLaunch: Boolean(user.cleanOnLaunch),
+      bootstrap,
     };
   });
 
@@ -199,6 +296,30 @@ export function removeInstanceArtifacts(instance) {
   rmSync(instance.metaFile, { force: true });
 }
 
+export function applyBootstrap(instance, { force = false } = {}) {
+  if (!instance.bootstrap?.authFile) {
+    return { id: instance.id, seeded: false, reason: 'no-bootstrap-configured' };
+  }
+
+  const authTargetPath = instance.bootstrap.authTargetPath;
+  const shouldSeed = force || instance.bootstrap.authMode === 'always' || !existsSync(authTargetPath);
+
+  if (!shouldSeed) {
+    return { id: instance.id, seeded: false, reason: 'existing-auth-preserved' };
+  }
+
+  mkdirSync(dirname(authTargetPath), { recursive: true });
+  copyFileSync(instance.bootstrap.authFile, authTargetPath);
+
+  return {
+    id: instance.id,
+    seeded: true,
+    reason: force ? 'forced-bootstrap' : instance.bootstrap.authMode,
+    authTargetPath,
+    authSummary: instance.bootstrap.authSummary,
+  };
+}
+
 export function writeInstanceMetadata(instance, extra = {}) {
   writeFileSync(instance.pidFile, `${extra.pid ?? ''}\n`);
   writeFileSync(instance.metaFile, `${JSON.stringify({
@@ -209,6 +330,15 @@ export function writeInstanceMetadata(instance, extra = {}) {
     title: instance.title,
     dataDir: instance.dataDir,
     logFile: instance.logFile,
+    bootstrap: instance.bootstrap
+      ? {
+          authSource: instance.bootstrap.authSource,
+          authFile: instance.bootstrap.authFile,
+          authMode: instance.bootstrap.authMode,
+          authTargetPath: instance.bootstrap.authTargetPath,
+          authSummary: instance.bootstrap.authSummary,
+        }
+      : null,
     pid: extra.pid ?? null,
     startedAt: extra.startedAt ?? null,
   }, null, 2)}\n`);
@@ -310,6 +440,14 @@ export function summarizeConfig(config) {
       logFile: user.logFile,
       pidFile: user.pidFile,
       cleanOnLaunch: user.cleanOnLaunch,
+      bootstrap: user.bootstrap
+        ? {
+            authSource: user.bootstrap.authSource,
+            authFile: user.bootstrap.authFile,
+            authMode: user.bootstrap.authMode,
+            authSummary: user.bootstrap.authSummary,
+          }
+        : null,
     })),
   };
 }

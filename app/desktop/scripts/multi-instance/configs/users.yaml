@@ -4,6 +4,9 @@ defaults:
   dataRoot: ../../../.multi-instance-data
   logsRoot: ../../../.multi-instance-logs
   runtimeRoot: ../../../.multi-instance-runtime
+  bootstrap:
+    authSource: shared
+    authMode: if-missing
 
 users:
   - id: user1

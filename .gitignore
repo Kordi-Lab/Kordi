@@ -11,6 +11,7 @@ app/desktop/src-tauri/gen
 app/desktop/.multi-instance-data
 app/desktop/.multi-instance-logs
 app/desktop/.multi-instance-runtime
+app/desktop/scripts/multi-instance/configs/local/
 
 .env
 .env.local
