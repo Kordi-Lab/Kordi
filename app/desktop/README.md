@@ -95,6 +95,53 @@ You can inspect the generated config/env without launching:
 pnpm --dir app/desktop tauri:dev:instance -- --instance user1 --port 1426 --dry-run
 ```
 
+### Launch multiple isolated users from config
+
+For Phase 2 launcher work, use the config-driven multi-instance scripts:
+
+```bash
+pnpm dev:desktop:multi -- --users user1,user2
+```
+
+This reads:
+
+```text
+app/desktop/scripts/multi-instance/configs/users.yaml
+```
+
+The launcher will:
+
+- prepare per-user data roots
+- assign configured ports/titles/profiles
+- write per-user logs
+- start one isolated desktop instance per configured user
+
+Launch from clean state:
+
+```bash
+pnpm dev:desktop:multi -- --reset --users user1,user2
+```
+
+Reset without relaunching:
+
+```bash
+pnpm reset:desktop:multi -- --users user1,user2
+```
+
+Inspect the resolved config without launching:
+
+```bash
+pnpm dev:desktop:multi -- --dry-run
+```
+
+Artifacts are written to deterministic paths:
+
+```text
+app/desktop/.multi-instance-data/<instance>/
+app/desktop/.multi-instance-logs/<instance>/dev-<port>.log
+app/desktop/.multi-instance-runtime/<instance>.pid
+```
+
 ### Build the desktop app
 
 ```bash
