@@ -240,6 +240,7 @@ export function useWorkspaceViewModels({
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
+    const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopBridgeState?.conversations ?? []).map((conversation) => {
       const host = hostById.get(conversation.hostId);
       const hostLabel = host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
@@ -255,26 +256,38 @@ export function useWorkspaceViewModels({
             message.direction === 'inbound-response' && message.deliveryState === 'processing'
           ))
         : undefined;
-      const showRemoteAgentLiveTurn = Boolean(activeAgentReplyMessage) || (isAgent && conversation.awaitingReply && conversation.peerTyping);
+      const localHumanLabel = host?.ownerName || 'You';
+      const localBridgeAgentLabel = host?.displayName || localAgentLabel;
+      const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
+      const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
       const messages: Message[] = conversation.messages.map((message) => {
-        const sender = isPersonChat
-          ? (message.direction === 'outbound'
-              ? (host?.ownerName || message.sender || 'You')
-              : (conversation.peerOwnerName || message.sender || conversation.title))
-          : (message.sender ?? (message.direction === 'outbound' ? 'You' : conversation.title));
+        const isOutboundHuman = message.direction === 'outbound';
+        const isInboundHuman = isAgent && message.direction === 'inbound';
+        const isLocalAgentResponse = isAgent && message.direction === 'outbound-response';
+        const isRemoteAgentResponse = isAgent && message.direction === 'inbound-response';
+        const sender = isAgent
+          ? isOutboundHuman
+            ? localHumanLabel
+            : isInboundHuman
+              ? remoteHumanLabel
+              : isLocalAgentResponse
+                ? localBridgeAgentLabel
+                : remoteAgentLabel
+          : (message.direction === 'outbound' ? localHumanLabel : remoteHumanLabel);
+        const senderType = (isOutboundHuman || isInboundHuman || !isAgent) ? 'human' : 'agent';
         const outboundStatus = [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')]
           .filter(Boolean);
-        const suppressOutboundLiveStatus = message.direction === 'outbound'
+        const suppressOutboundLiveStatus = isOutboundHuman
           && isAgent
           && ['processing', 'awaiting reply'].includes((outboundStatus[0] ?? '').toLowerCase());
-        const isLiveInboundAgentReply = isAgent
-          && message.direction === 'inbound-response'
-          && message.deliveryState === 'processing';
+        const isLiveInboundAgentReply = isRemoteAgentResponse && message.deliveryState === 'processing';
 
         if (isLiveInboundAgentReply) {
           return {
             role: 'external-agent' as const,
-            sender,
+            sender: remoteAgentLabel,
+            senderType: 'agent',
+            isOwnMessage: false,
             text: message.text,
             time: message.timeLabel,
             turn: {
@@ -294,35 +307,43 @@ export function useWorkspaceViewModels({
         }
 
         return {
-          role: (message.direction === 'outbound'
-            ? 'user'
-            : isAgent
-              ? 'external-agent'
-              : 'person') as Message['role'],
+          role: isAgent
+            ? (isOutboundHuman
+                ? 'user'
+                : isInboundHuman
+                  ? 'person'
+                  : isLocalAgentResponse
+                    ? 'owned-agent'
+                    : 'external-agent')
+            : ((message.direction === 'outbound' ? 'user' : 'person') as Message['role']),
           sender,
+          senderType,
+          isOwnMessage: isOutboundHuman,
           text: message.text,
           time: message.timeLabel,
-          statusChips: message.direction === 'outbound'
+          statusChips: isOutboundHuman
             ? (suppressOutboundLiveStatus ? [] : outboundStatus)
-            : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1]
+            : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
               ? ['typing']
               : [],
           detail: undefined,
         };
       });
 
-      if (isAgent && conversation.awaitingReply && conversation.peerTyping && !activeAgentReplyMessage) {
+      if (isAgent && conversation.awaitingReply && !activeAgentReplyMessage) {
         messages.push({
           role: 'external-agent',
-          sender: conversation.title,
+          sender: remoteAgentLabel,
+          senderType: 'agent',
+          isOwnMessage: false,
           text: '',
           time: conversation.updatedAtLabel,
           turn: {
             id: `bridge-live-turn:${conversation.id}:typing`,
             sessionId: conversation.id,
             prompt: '',
-            status: 'typing',
-            message: 'Typing…',
+            status: conversation.peerTyping ? 'typing' : 'writing',
+            message: conversation.peerTyping ? 'Typing…' : 'Replying…',
             assistantText: '',
             thinkingText: '',
             tools: [],
@@ -344,13 +365,15 @@ export function useWorkspaceViewModels({
         bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
         trust: 'Bridge',
         directness: isPersonChat ? 'Direct person chat' : 'Agent thread',
-        participants: ['You', isPersonChat ? (conversation.peerOwnerName || conversation.title) : conversation.title],
+        participants: isAgent
+          ? ['You', remoteHumanLabel, remoteAgentLabel]
+          : ['You', conversation.peerOwnerName || conversation.title],
         updatedAtLabel: conversation.updatedAtLabel,
         messages,
         _updatedAtMs: conversation.updatedAtMs,
       };
     });
-  }, [desktopBridgeState, isNativeShell]);
+  }, [desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
 
   const chatConversations = useMemo(() => {
     if (!isNativeShell) {

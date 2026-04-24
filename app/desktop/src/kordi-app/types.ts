@@ -65,6 +65,8 @@ export type MessageAttachment = {
 export type Message = {
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
+  senderType?: 'human' | 'agent';
+  isOwnMessage?: boolean;
   text: string;
   time: string;
   detail?: string;

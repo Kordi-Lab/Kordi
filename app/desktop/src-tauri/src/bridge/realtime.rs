@@ -269,7 +269,7 @@ fn append_local_agent_outbound_response(
         peer_runtime,
         event.project_id.clone(),
         None,
-        "outbound",
+        "outbound-response",
         Some(sender_name),
         response_text,
         event.request_id.clone(),
