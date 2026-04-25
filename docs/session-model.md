@@ -76,6 +76,8 @@ Current additive sync behavior:
 
 Context/cache state is scoped by local profile, session, agent identity, model/provider, prompt hash, participant hash, and message/context hashes. Cache entries must not leak across users, profiles, bridge identities, agents, or sessions.
 
+`@Person` / `@Agent` bridge outreach currently persists a `context_snapshots` row for the policy-scoped context sent with the delegation, keyed by local profile, parent session, initiating agent/human identity, target participant hash, prompt hash, and message/context-range hash.
+
 Invalidation triggers include new/edited/deleted messages, participant changes, delegated exchanges, project context changes, prompt/model/provider changes, and identity/profile changes.
 
 ## UI component design
