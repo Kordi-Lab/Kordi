@@ -30,6 +30,8 @@ pub struct SessionRow {
     pub leaf_id: Option<String>,
     pub entry_count: i64,
     pub parent_session_id: Option<String>,
+    pub session_scope: String,
+    pub project_root: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

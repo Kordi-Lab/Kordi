@@ -667,13 +667,23 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
     let mut session_sort_keys = std::collections::HashMap::<String, i64>::new();
 
     for row in rows {
+        if row.session_scope != "project" {
+            continue;
+        }
+        let Some(project_root_value) = row
+            .project_root
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+
         let sort_ts = session_sort_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
-        let session_cwd = std::path::PathBuf::from(&row.cwd);
-        let project_root =
-            kordi_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
+        let project_root = std::path::PathBuf::from(project_root_value);
         let group_id = format!("project:{}", project_root.display());
-        let settings = Settings::load_project(&session_cwd);
+        let settings = Settings::load_project(&project_root);
         let project_name = settings
             .project_name
             .as_deref()
@@ -1323,9 +1333,8 @@ fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSe
     })
 }
 
-fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
-    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let settings = Settings::load_project(cwd);
+fn load_project_info(project_root: &std::path::Path) -> Option<DesktopChatProjectInfo> {
+    let settings = Settings::load_project(project_root);
     let name = settings
         .project_name
         .as_deref()
@@ -1397,6 +1406,13 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
         .unwrap_or_else(|| "Draft".to_string());
 
     let context_window_status = current_context_window_status(setup);
+    let project = session_row
+        .as_ref()
+        .filter(|row| row.session_scope == "project")
+        .and_then(|row| row.project_root.as_deref())
+        .map(std::path::PathBuf::from)
+        .as_deref()
+        .and_then(load_project_info);
 
     Ok(DesktopChatSessionDetail {
         id: setup.session_id.clone(),
@@ -1419,7 +1435,7 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
             used_percent: context_window_status.used_percent,
             auto_compaction: context_window_status.auto_compaction,
         },
-        project: load_project_info(&setup.tool_ctx.cwd),
+        project,
         messages,
     })
 }

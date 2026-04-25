@@ -54,8 +54,10 @@ pub(super) fn create_session_with_id_and_parent(
 ) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO sessions (session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id)
-         VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5)",
+        "INSERT INTO sessions (
+             session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
+             parent_session_id, session_scope, project_root
+         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, 'chat', NULL)",
         params![session_id, cwd, now, now, parent_session_id],
     )?;
     Ok(())

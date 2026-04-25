@@ -129,7 +129,7 @@ export function useKordiAppModel() {
     selectProject,
     selectProjectSession,
   } = useWorkspaceController({
-    initialProjects: projects,
+    initialProjects: isNativeShell ? [] : projects,
     projectRoutingGroups,
     isNativeShell,
   });

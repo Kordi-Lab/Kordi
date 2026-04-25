@@ -676,7 +676,7 @@ export function useWorkspaceViewModels({
 
     const routingGroups = buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState);
     if (routingGroups.length === 0) {
-      return projectWorkspaces;
+      return [];
     }
 
     const desktopProjects = desktopChatState?.projects ?? [];
@@ -791,12 +791,49 @@ export function useWorkspaceViewModels({
     activeProjectSessionId,
     projectSelectedSessionIds,
   );
-  const fallbackProject = runtimeProjects[0] ?? projectWorkspaces[0];
+  const emptyNativeProject: Project = {
+    id: '',
+    name: 'No project yet',
+    summary: 'Projects only appear after you explicitly start one from the + menu.',
+    bridge: 'Local',
+    scope: '',
+    status: 'Empty',
+    people: [],
+    agents: [],
+    pendingInvites: [],
+    artifacts: 0,
+    tasks: 0,
+    root: '',
+    sharedContext: undefined,
+    backgroundSystem: undefined,
+    sharedSources: [],
+    sessions: [{
+      id: '',
+      name: 'No project session',
+      summary: 'Chats stay in Chats until you explicitly create or move them into a project.',
+      lastActive: '--:--',
+      status: 'Draft',
+      participants: ['You', 'Kordi'],
+      artifacts: 0,
+      tasks: 0,
+      unread: 0,
+      statusIndicator: undefined,
+      messages: [{
+        role: 'system' as const,
+        text: 'Use the + menu to start a project. Normal chats should stay in Chats by default.',
+        time: '--:--',
+      }],
+    }],
+  };
+  const fallbackProject = isNativeShell
+    ? (runtimeProjects[0] ?? emptyNativeProject)
+    : (runtimeProjects[0] ?? projectWorkspaces[0]);
   const activeProject = runtimeProjects.find((project) => project.id === resolvedProjectSelection?.projectId)
     ?? runtimeProjects.find((project) => project.id === activeProjectId)
     ?? fallbackProject;
   const activeProjectSession = activeProject.sessions.find((session) => session.id === resolvedProjectSelection?.sessionId)
-    ?? activeProject.sessions[0];
+    ?? activeProject.sessions[0]
+    ?? emptyNativeProject.sessions[0];
   const activeProjectLastMessage = activeProjectSession.messages[activeProjectSession.messages.length - 1];
 
   const activeBridgeHost = useMemo<DesktopBridgeHost | null>(() => {
