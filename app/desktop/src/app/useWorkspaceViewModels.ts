@@ -448,7 +448,7 @@ export function useWorkspaceViewModels({
 
         const runtimeAgent = agent.isActive ? localAgent : undefined;
         items.push({
-          name: runtimeAgent?.label ?? agent.label,
+          name: agent.label,
           id: agent.id,
           role: 'My agent',
           messaging: 'Direct local chat',
