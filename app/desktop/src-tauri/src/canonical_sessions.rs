@@ -1807,6 +1807,19 @@ pub(crate) fn sync_bridge_state_sessions(
         let (relationship_identity_id, remote_target_identity_id) =
             bridge_peer_identities(&conn, state, conversation)?;
         let peer_is_agent = runtime_is_agent_like(&conversation.peer_runtime);
+
+        if sync_bridge_outreach_into_parent_session(
+            &conn,
+            conversation,
+            &local_human_identity_id,
+            local_agent_identity_id.as_deref(),
+            relationship_identity_id.as_deref(),
+            &remote_target_identity_id,
+            peer_is_agent,
+        )? {
+            continue;
+        }
+
         let mut participants = Vec::new();
         if let Some(agent_identity_id) = local_agent_identity_id.clone() {
             participants.push(agent_identity_id);
@@ -1893,6 +1906,237 @@ pub(crate) fn sync_bridge_state_sessions(
     }
 
     Ok(())
+}
+
+fn outreach_status_to_exchange_status(status: &str) -> String {
+    match status.trim() {
+        "completed" | "complete" => "complete".to_string(),
+        "failed" => "failed".to_string(),
+        "cancelled" => "cancelled".to_string(),
+        "timeout" => "timeout".to_string(),
+        "awaitingReply" | "sending" | "processing" => "processing".to_string(),
+        _ => "pending".to_string(),
+    }
+}
+
+fn ensure_parent_session_participants(
+    conn: &Connection,
+    parent_session_id: &str,
+    local_human_identity_id: &str,
+    local_agent_identity_id: Option<&str>,
+    remote_target_identity_id: &str,
+    relationship_identity_id: Option<&str>,
+) -> Result<(), String> {
+    let now = now_ms();
+    if select_session(conn, parent_session_id)?.is_none() {
+        let mut participants = Vec::new();
+        if let Some(agent_identity_id) = local_agent_identity_id {
+            participants.push(agent_identity_id.to_string());
+        }
+        if let Some(relationship_identity_id) = relationship_identity_id {
+            participants.push(relationship_identity_id.to_string());
+        }
+        participants.push(remote_target_identity_id.to_string());
+        participants.sort();
+        participants.dedup();
+
+        open_or_create_session_in_db(
+            conn,
+            OpenCanonicalSessionRequest {
+                id: Some(parent_session_id.to_string()),
+                kind: "self-agent".to_string(),
+                title: Some("Session".to_string()),
+                status: Some("active".to_string()),
+                created_by_identity_id: local_human_identity_id.to_string(),
+                primary_identity_id: local_agent_identity_id.map(ToString::to_string),
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: None,
+                participant_identity_ids: participants,
+                metadata: Some(serde_json::json!({
+                    "source": "bridge-outreach-parent-fallback",
+                })),
+            },
+        )?;
+        return Ok(());
+    }
+
+    if let Some(agent_identity_id) = local_agent_identity_id {
+        upsert_participant(
+            conn,
+            parent_session_id,
+            agent_identity_id,
+            "owned-agent",
+            Some(local_human_identity_id),
+            now,
+        )?;
+    }
+    if let Some(relationship_identity_id) = relationship_identity_id {
+        upsert_participant(
+            conn,
+            parent_session_id,
+            relationship_identity_id,
+            "person",
+            Some(local_human_identity_id),
+            now,
+        )?;
+    }
+    upsert_participant(
+        conn,
+        parent_session_id,
+        remote_target_identity_id,
+        "delegate",
+        Some(local_human_identity_id),
+        now,
+    )?;
+    Ok(())
+}
+
+fn sync_bridge_outreach_into_parent_session(
+    conn: &Connection,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    local_human_identity_id: &str,
+    local_agent_identity_id: Option<&str>,
+    relationship_identity_id: Option<&str>,
+    remote_target_identity_id: &str,
+    peer_is_agent: bool,
+) -> Result<bool, String> {
+    let Some(outreach) = conversation.outreach.as_ref() else {
+        return Ok(false);
+    };
+    let Some(parent_session_id) = outreach
+        .parent_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(false);
+    };
+
+    ensure_parent_session_participants(
+        conn,
+        parent_session_id,
+        local_human_identity_id,
+        local_agent_identity_id,
+        remote_target_identity_id,
+        relationship_identity_id,
+    )?;
+
+    let delegation_id = format!("delegation:bridge:{}", conversation.id);
+    let initiator_identity_id = local_agent_identity_id.unwrap_or(local_human_identity_id);
+    let initiator_name =
+        identity_display_name(conn, initiator_identity_id)?.unwrap_or_else(|| "Kordi".to_string());
+    let join_text = if peer_is_agent {
+        format!(
+            "{} joined through {}",
+            outreach.target_display_name, initiator_name
+        )
+    } else {
+        format!(
+            "{} was involved by {}",
+            outreach.target_display_name, initiator_name
+        )
+    };
+    let join_message = append_message_in_db(
+        conn,
+        AppendCanonicalMessageRequest {
+            id: None,
+            session_id: parent_session_id.to_string(),
+            sender_identity_id: initiator_identity_id.to_string(),
+            sender_role: "system".to_string(),
+            message_kind: "status".to_string(),
+            content_text: join_text,
+            content: Some(serde_json::json!({
+                "kind": "delegation-join-event",
+                "bridgeConversationId": conversation.id,
+                "targetKind": outreach.target_kind,
+                "targetDisplayName": outreach.target_display_name,
+                "targetNodeId": outreach.target_node_id,
+                "initiatorIdentityId": initiator_identity_id,
+                "requestText": outreach.request_text,
+                "contextPolicy": "recent-window",
+            })),
+            created_at_ms: Some(outreach.created_at_ms),
+            parent_message_id: outreach.parent_message_id.clone(),
+            delegated_exchange_id: Some(delegation_id.clone()),
+            status: Some("complete".to_string()),
+            source_transport: Some("desktop-bridge-outreach".to_string()),
+            source_event_id: Some(format!("desktop-bridge-outreach:{}:join", conversation.id)),
+        },
+    )?;
+
+    let mut response_message_id = None;
+    for message in &conversation.messages {
+        let is_remote_response =
+            matches!(message.direction.as_str(), "inbound" | "inbound-response");
+        if !is_remote_response {
+            continue;
+        }
+        let sender_role = if peer_is_agent {
+            "external-agent"
+        } else {
+            "person"
+        };
+        let canonical_message = append_message_in_db(
+            conn,
+            AppendCanonicalMessageRequest {
+                id: None,
+                session_id: parent_session_id.to_string(),
+                sender_identity_id: remote_target_identity_id.to_string(),
+                sender_role: sender_role.to_string(),
+                message_kind: if peer_is_agent { "agent-turn" } else { "text" }.to_string(),
+                content_text: message.text.clone(),
+                content: Some(serde_json::json!({
+                    "direction": message.direction,
+                    "sender": message.sender,
+                    "timeLabel": message.time_label,
+                    "timestampMs": message.timestamp_ms,
+                    "deliveryState": message.delivery_state,
+                    "bridgeConversationId": conversation.id,
+                    "delegatedExchangeId": delegation_id,
+                })),
+                created_at_ms: Some(message.timestamp_ms),
+                parent_message_id: Some(join_message.id.clone()),
+                delegated_exchange_id: Some(delegation_id.clone()),
+                status: Some(canonical_bridge_message_status(
+                    message.delivery_state.as_deref(),
+                )),
+                source_transport: Some("desktop-bridge-outreach".to_string()),
+                source_event_id: Some(format!(
+                    "desktop-bridge-outreach:{}:{}",
+                    conversation.id, message.id
+                )),
+            },
+        )?;
+        response_message_id = Some(canonical_message.id);
+    }
+
+    let first_request_id = conversation
+        .messages
+        .iter()
+        .find(|message| message.direction == "outbound")
+        .map(|message| message.id.clone());
+    create_delegated_exchange_in_db(
+        conn,
+        CreateCanonicalDelegatedExchangeRequest {
+            id: Some(delegation_id),
+            session_id: parent_session_id.to_string(),
+            initiator_identity_id: initiator_identity_id.to_string(),
+            target_identity_id: remote_target_identity_id.to_string(),
+            trigger_message_id: outreach.parent_message_id.clone(),
+            request_message_id: Some(join_message.id),
+            response_message_id,
+            transport: Some("bridge".to_string()),
+            bridge_host_id: Some(conversation.host_id.clone()),
+            bridge_conversation_id: Some(conversation.id.clone()),
+            bridge_request_id: first_request_id,
+            context_policy: Some("recent-window".to_string()),
+            status: Some(outreach_status_to_exchange_status(&outreach.status)),
+            error: outreach.error.clone(),
+        },
+    )?;
+
+    Ok(true)
 }
 
 fn update_presence_in_db(

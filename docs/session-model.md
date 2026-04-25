@@ -68,6 +68,8 @@ Current additive sync behavior:
 - Desktop local chat messages mirror into canonical `session_messages` with source transport `desktop-chat` and deterministic source event IDs.
 - Bridge conversations expose `canonicalSessionId` and mirror into canonical `sessions` using `session:bridge:<bridgeConversationId>`.
 - Bridge messages mirror into canonical `session_messages` with source transport `desktop-bridge` and source event IDs based on the bridge conversation/message IDs.
+- Bridge outreach records with a `parentSessionId` mirror as canonical `delegated_exchanges` under the parent session instead of becoming canonical top-level sessions.
+- Outreach parent mirroring adds the selected **B · Join event** status message, then mirrors remote person/agent responses into the parent session with source transport `desktop-bridge-outreach`.
 - Sync is idempotent: source transport/event IDs dedupe repeated local-first imports.
 
 ## Context and KV cache
