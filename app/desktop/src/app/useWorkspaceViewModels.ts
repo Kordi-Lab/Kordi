@@ -636,7 +636,7 @@ export function useWorkspaceViewModels({
       backgroundSystem: project.backgroundSystem ?? undefined,
       sharedSources: project.sharedSources,
       sessions: project.sessions.map((session) => {
-        const messages =
+        const baseMessages =
           desktopChatState.activeSessionId === session.id
             ? preferLatestMessages(
                 mapDesktopMessages(session.id, desktopChatState.activeSession.messages),
@@ -644,6 +644,8 @@ export function useWorkspaceViewModels({
                 Boolean(desktopLiveTurnsBySession[session.id] && !desktopLiveTurnsBySession[session.id].completed),
               )
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
+        const outreachMessages = (outreachThreadsByParentSession.get(session.id) ?? []).flatMap((thread) => thread.inlineMessages);
+        const messages = [...baseMessages, ...outreachMessages];
 
         const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
         const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
@@ -667,7 +669,7 @@ export function useWorkspaceViewModels({
         };
       }),
     }));
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
