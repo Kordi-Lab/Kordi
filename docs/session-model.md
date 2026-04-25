@@ -59,6 +59,41 @@ Context/cache state is scoped by local profile, session, agent identity, model/p
 
 Invalidation triggers include new/edited/deleted messages, participant changes, delegated exchanges, project context changes, prompt/model/provider changes, and identity/profile changes.
 
+## UI component design
+
+Canonical sessions need canonical UI components so identities, avatars, participants, delegated exchanges, and presence render consistently.
+
+Planned components:
+
+- `SessionList`: left-side canonical session list. Shows only top-level canonical sessions and hides child delegated exchanges.
+- `NewSessionButton`: Chat `+` entry point. Opens own-agent session directly or launches owned-agent picker when multiple owned agents exist.
+- `OwnedAgentPicker`: popover for choosing which owned agent starts a self-agent session.
+- `ContactMessageButton`: opens/resumes canonical sessions for people, owned agents, or external agents through the canonical resolver.
+- `SessionTranscript`: renders canonical messages and delegated exchanges from the canonical DB.
+- `AgentTurnMessage`: shared native-style agent response component for local agents, remote agents, and delegated `@Agent` responses.
+- `DelegatedExchangeCard`: inline expandable metadata card for `@` involvement, not a top-level session.
+- `MentionComposer`: canonical `@` resolver grouped by people, my agents, and other users' agents.
+- `SessionRightPanel`: active-session participant graph, presence/status, delegated exchanges, and context.
+- `ParticipantCard`: canonical identity row/card with owner relationship and presence.
+- `PresenceBadge`: shared user/agent/message/session status badge.
+
+Component rules:
+
+- Components receive canonical identities or canonical avatar keys; they should not derive avatars from display names, session IDs, project IDs, or raw conversation IDs.
+- Local and remote agent responses use the same `AgentTurnMessage` UI.
+- `@` delegated responses appear inline in `SessionTranscript`, with details available via `DelegatedExchangeCard` and `SessionRightPanel`.
+- The right panel is not a second chat list; it explains the selected session's participant graph and linked exchanges.
+
+Migration order:
+
+1. Add `useCanonicalSessionViewModels()` behind a feature flag.
+2. Build canonical components without deleting legacy UI paths.
+3. Route Contact Message and Chat `+` into canonical sessions.
+4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`.
+5. Replace old chat/session rails with `SessionList`.
+6. Replace outreach thread cards with inline/right-panel `DelegatedExchangeCard` entries.
+7. Remove legacy bridge/local session merge UI after canonical UI is stable.
+
 ## Migration direction
 
 1. Add canonical DB and repository layer.
