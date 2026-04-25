@@ -57,6 +57,8 @@ pub struct DesktopChatStoredTool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -386,6 +388,17 @@ impl DesktopRuntimeSession {
         self.setup.tool_ctx.reach_out = runtime;
     }
 
+    pub fn set_bridge_outreach_prompt_context(&mut self, context: Option<String>) {
+        let base_prompt = strip_bridge_outreach_prompt_context(&self.setup.system_prompt);
+        let Some(context) = context.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+            self.setup.system_prompt = base_prompt;
+            return;
+        };
+        self.setup.system_prompt = format!(
+            "{base_prompt}{DESKTOP_BRIDGE_OUTREACH_CONTEXT_START}\n{context}\n{DESKTOP_BRIDGE_OUTREACH_CONTEXT_END}"
+        );
+    }
+
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {
         let name = requested_name.trim();
         if name.is_empty() {
@@ -531,6 +544,19 @@ impl DesktopRuntimeSession {
 
         self.detail()
     }
+}
+
+fn strip_bridge_outreach_prompt_context(prompt: &str) -> String {
+    let Some(start) = prompt.find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_START) else {
+        return prompt.to_string();
+    };
+    let Some(end_relative) = prompt[start..].find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_END) else {
+        return prompt.to_string();
+    };
+    let end = start + end_relative + DESKTOP_BRIDGE_OUTREACH_CONTEXT_END.len();
+    format!("{}{}", &prompt[..start], &prompt[end..])
+        .trim_end()
+        .to_string()
 }
 
 fn parse_db_timestamp_millis(value: &str) -> Option<i64> {

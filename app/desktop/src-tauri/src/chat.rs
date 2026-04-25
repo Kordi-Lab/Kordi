@@ -13,7 +13,9 @@ use kordi_cli::desktop_runtime::{
 use kordi_core::error::KordiError;
 use kordi_tools::ReachOutRuntime;
 
-use crate::bridge::{DesktopBridgeManager, desktop_bridge_reach_out_impl};
+use crate::bridge::{
+    DesktopBridgeManager, desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl,
+};
 use kordi_cli::turn_runner::TurnEvent;
 
 type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
@@ -244,6 +246,17 @@ fn tool_detail(details: &Option<serde_json::Value>) -> Option<String> {
 
 fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
+}
+
+async fn prepare_desktop_session_for_send(
+    runtime: &mut DesktopRuntimeSession,
+    bridge_manager: DesktopBridgeManager,
+    chat_manager: DesktopChatManager,
+    cwd: PathBuf,
+) {
+    let prompt_context = desktop_bridge_outreach_prompt_context(&bridge_manager).await;
+    runtime.set_bridge_outreach_prompt_context(prompt_context);
+    install_reach_out_runtime(runtime, bridge_manager, chat_manager, cwd);
 }
 
 fn install_reach_out_runtime(
@@ -576,12 +589,13 @@ pub async fn desktop_chat_send_message(
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
     let mut session = session.lock().await;
-    install_reach_out_runtime(
+    prepare_desktop_session_for_send(
         &mut session,
         bridge_manager.inner().clone(),
         manager.inner().clone(),
         cwd.clone(),
-    );
+    )
+    .await;
     session
         .send_message(text, Vec::new())
         .await
@@ -869,12 +883,13 @@ pub async fn desktop_chat_start_message(
     let chat_manager_for_task = manager.inner().clone();
     tokio::spawn(async move {
         let mut session = session.lock().await;
-        install_reach_out_runtime(
+        prepare_desktop_session_for_send(
             &mut session,
             bridge_manager_for_task,
             chat_manager_for_task,
             cwd,
-        );
+        )
+        .await;
 
         let result =
             session
