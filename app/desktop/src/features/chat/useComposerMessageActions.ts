@@ -484,7 +484,6 @@ export function useComposerMessageActions({
           projectName: desktopChatState?.activeSession.project?.name,
         });
         setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-        appendDesktopSystemMessage(`Started ${mentionedTarget.targetKind === 'bridge-agent' ? 'agent' : 'person'} outreach to ${mentionedTarget.peer.displayName || mentionedTarget.peer.ownerName || mentionedTarget.peer.nodeId}.`);
       } catch (error) {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
       } finally {
@@ -604,7 +603,6 @@ export function useComposerMessageActions({
           projectName: desktopChatState?.activeSession.project?.name,
         });
         setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-        appendDesktopSystemMessage(`Started ${mentionedTarget.targetKind === 'bridge-agent' ? 'agent' : 'person'} outreach to ${mentionedTarget.peer.displayName || mentionedTarget.peer.ownerName || mentionedTarget.peer.nodeId}.`);
       } catch (error) {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
       } finally {

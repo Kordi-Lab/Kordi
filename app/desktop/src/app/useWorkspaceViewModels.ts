@@ -113,6 +113,21 @@ function buildMessagePreview(message: Message) {
   return `${attachments.length} attachments`;
 }
 
+function buildOutreachJoinMessage(thread: {
+  targetKind: string;
+  targetDisplayName: string;
+  updatedAtLabel?: string;
+}): Message {
+  const isPerson = thread.targetKind === 'bridge-person';
+  return {
+    role: 'system',
+    text: isPerson
+      ? `${thread.targetDisplayName} was involved through @`
+      : `${thread.targetDisplayName} joined through @`,
+    time: thread.updatedAtLabel ?? '--:--',
+  };
+}
+
 function buildConversationPreview(messages: Message[], fallback?: string) {
   const latestMessage = [...messages]
     .reverse()
@@ -244,6 +259,9 @@ export function useWorkspaceViewModels({
         liveTurn: desktopLiveTurnsBySession[session.id],
       });
 
+      const outreachThreads = (outreachThreadsByParentSession.get(session.id) ?? []).map(({ updatedAtMs: _updatedAtMs, ...thread }) => thread);
+      const messages = [...activeMessages, ...outreachThreads.map(buildOutreachJoinMessage)];
+
       return {
         id: session.id,
         canonicalSessionId: session.id,
@@ -255,10 +273,10 @@ export function useWorkspaceViewModels({
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
         participants: ['You', 'Kordi'],
-        messages: activeMessages,
+        messages,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
-        outreachThreads: (outreachThreadsByParentSession.get(session.id) ?? []).map(({ updatedAtMs: _updatedAtMs, ...thread }) => thread),
+        outreachThreads,
         _updatedAtMs: undefined as number | undefined,
       };
     });
