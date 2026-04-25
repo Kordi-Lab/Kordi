@@ -17,6 +17,7 @@ type ActiveConversation = {
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
   canonicalDelegatedExchangeCount?: number;
+  canonicalPresenceSummary?: string;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
   bridges: string[];
@@ -160,6 +161,7 @@ export function ChatDetailPanel({
               <MetaRow label="Session ID" value={activeConv.canonicalSessionId ?? activeConv.id} valueClassName="max-w-[11rem] truncate" />
               {activeConv.canonicalStoragePath ? <MetaRow label="Local DB" value={activeConv.canonicalStoragePath} valueClassName="max-w-[11rem] truncate" /> : null}
               {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
+              {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />
               <MetaRow label="Trust" value={activeConv.trust} />
               <MetaRow label="Mode" value={activeConv.directness} />

@@ -189,13 +189,24 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
   if (!canonicalState.sessions.some((session) => session.id === sessionId)) return conversation;
 
+  const participants = canonicalState.participants.filter((participant) => participant.sessionId === sessionId);
+  const participantIdentityIds = new Set(participants.map((participant) => participant.identityId));
+  const activePresence = canonicalState.presence.filter((presence) => participantIdentityIds.has(presence.identityId) && presence.status !== 'offline');
+  const presenceSummary = activePresence.length > 0
+    ? activePresence
+        .reduce<Record<string, number>>((acc, presence) => ({ ...acc, [presence.status]: (acc[presence.status] ?? 0) + 1 }), {})
+    : null;
+
   return {
     ...conversation,
     canonicalSessionId: sessionId,
     canonicalStoragePath: canonicalState.storagePath,
-    canonicalParticipantCount: canonicalState.participants.filter((participant) => participant.sessionId === sessionId).length,
+    canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
     canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,
+    canonicalPresenceSummary: presenceSummary
+      ? Object.entries(presenceSummary).map(([status, count]) => `${count} ${status}`).join(' • ')
+      : undefined,
   };
 }
 

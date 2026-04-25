@@ -106,6 +106,7 @@ export type Conversation = {
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
   canonicalDelegatedExchangeCount?: number;
+  canonicalPresenceSummary?: string;
   name: string;
   type: ConversationType;
   subtitle: string;
