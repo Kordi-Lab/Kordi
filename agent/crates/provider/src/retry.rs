@@ -109,7 +109,20 @@ where
 
     for attempt in 0..max_retries {
         used_attempts = attempt + 1;
-        match f().await {
+        let attempt_result = tokio::select! {
+            result = f() => result,
+            _ = cancel.cancelled() => {
+                if let Some(callback) = &retry_callback {
+                    callback(ProviderRetryEvent::End {
+                        success: false,
+                        attempt: used_attempts,
+                        final_error: Some("Request cancelled".to_string()),
+                    });
+                }
+                return Err(KordiError::Provider("Request cancelled".into()));
+            }
+        };
+        match attempt_result {
             Ok(result) => {
                 if attempt > 0
                     && let Some(callback) = &retry_callback
@@ -203,6 +216,33 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    #[tokio::test]
+    async fn cancels_in_flight_attempt_immediately() {
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let task = tokio::spawn(async move {
+            with_retry(3, 1_000, 60_000, cancel_for_task, None, || async {
+                std::future::pending::<KordiResult<()>>().await
+            })
+            .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        cancel.cancel();
+
+        let result = tokio::time::timeout(Duration::from_millis(250), task)
+            .await
+            .expect("cancel should interrupt pending attempt")
+            .expect("task should not panic");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Request cancelled")
+        );
+    }
 
     #[tokio::test]
     async fn test_retry_succeeds_on_second_attempt() {

@@ -3,6 +3,7 @@ mod compaction_exec;
 #[allow(dead_code, unused_imports)]
 mod extensions;
 mod input_files;
+mod live_models;
 mod runtime_model;
 #[allow(dead_code)]
 mod session_bootstrap;

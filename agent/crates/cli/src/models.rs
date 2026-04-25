@@ -1,14 +1,20 @@
-use kordi_provider::registry::ModelRegistry;
+use kordi_core::settings::Settings;
 
-pub fn list_models(search: Option<&str>) {
-    let registry = ModelRegistry::new();
+use crate::live_models;
+
+pub async fn list_models(search: Option<&str>) {
+    let settings = std::env::current_dir()
+        .ok()
+        .map(|cwd| Settings::load_merged(&cwd))
+        .unwrap_or_default();
+    let models = live_models::model_registry_candidates_with_live(&settings).await;
 
     println!(
         "{:<14} {:<36} {:>8} {:>8} {:>9} {:>6}",
         "provider", "model", "context", "max-out", "thinking", "images"
     );
 
-    for model in registry.list() {
+    for model in models {
         // Apply search filter
         if let Some(term) = search {
             let term = term.to_lowercase();

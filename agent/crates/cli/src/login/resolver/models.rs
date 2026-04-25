@@ -72,7 +72,16 @@ pub fn preferred_available_model_for_provider(
 fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
         "anthropic" => Some("claude-opus-4-6".to_string()),
-        "openai" | "openai-codex" => Some("gpt-5.4".to_string()),
+        "openai" | "openai-codex" => {
+            if resolve_provider_auth("openai")
+                .as_ref()
+                .is_some_and(|auth| matches!(auth.method, ProviderAuthMethod::OAuth))
+            {
+                Some("gpt-5.5".to_string())
+            } else {
+                Some("gpt-5.4".to_string())
+            }
+        }
         "google" => Some("gemini-3.1-pro".to_string()),
         "github-copilot" => {
             let cached = github_copilot_cached_models();
@@ -104,12 +113,15 @@ pub fn preferred_startup_provider_and_model(
     }
 
     // Otherwise prefer OpenAI first when it is authenticated, so the app's
-    // startup default matches the global fallback default model (gpt-5.4).
-    if let Some(model) = resolve_available_model_for_provider(settings, "openai", Some("gpt-5.4")) {
+    // startup default follows the active OpenAI auth path (ChatGPT OAuth prefers gpt-5.5).
+    let openai_preferred = preferred_model_for_provider("openai");
+    if let Some(model) =
+        resolve_available_model_for_provider(settings, "openai", openai_preferred.as_deref())
+    {
         return Some(("openai".to_string(), model));
     }
     if let Some(model) =
-        resolve_available_model_for_provider(settings, "openai-codex", Some("gpt-5.4"))
+        resolve_available_model_for_provider(settings, "openai-codex", openai_preferred.as_deref())
     {
         return Some(("openai-codex".to_string(), model));
     }

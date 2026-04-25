@@ -4,6 +4,15 @@ use crate::registry::{ApiType, Model};
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
         model(
+            "gpt-5.5",
+            "GPT-5.5",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            simple_cost(5.0, 30.0),
+        ),
+        model(
             "gpt-5.4",
             "GPT-5.4",
             "openai",

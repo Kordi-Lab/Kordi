@@ -8,6 +8,7 @@ mod compaction_exec;
 mod extensions;
 
 mod input_files;
+mod live_models;
 mod login;
 mod models;
 mod oauth;
@@ -368,7 +369,7 @@ async fn main() -> Result<()> {
                 }
             }
         };
-        models::list_models(search_term);
+        models::list_models(search_term).await;
         return Ok(());
     }
 

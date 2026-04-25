@@ -11,10 +11,8 @@ use kordi_monitor::{
     render_context_window_status, resolve_context_window_status,
 };
 use kordi_provider::registry::{Model, ModelRegistry};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -732,212 +730,16 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
     }
 }
 
-fn model_source_label(provider: &str, auth: Option<&login::ResolvedProviderAuth>) -> String {
-    match (provider, auth.map(|value| value.method)) {
-        ("anthropic", Some(login::ProviderAuthMethod::OAuth)) => "Claude Pro/Max".to_string(),
-        ("anthropic", Some(login::ProviderAuthMethod::ApiKey)) => "Anthropic API key".to_string(),
-        ("openai", Some(login::ProviderAuthMethod::OAuth))
-        | ("openai-codex", Some(login::ProviderAuthMethod::OAuth)) => {
-            "ChatGPT Plus/Pro".to_string()
-        }
-        ("openai", Some(login::ProviderAuthMethod::ApiKey))
-        | ("openai-codex", Some(login::ProviderAuthMethod::ApiKey)) => "OpenAI API key".to_string(),
-        ("github-copilot", _) => "GitHub Copilot".to_string(),
-        (_, Some(login::ProviderAuthMethod::ApiKey)) => {
-            format!("{} API key", login::provider_display_name(provider))
-        }
-        _ => login::provider_display_name(provider).into_owned(),
-    }
-}
-
-fn desktop_model_option_from_live_id(
-    provider: &str,
-    model_id: String,
-    static_models: &HashMap<String, Model>,
-    auth: Option<&login::ResolvedProviderAuth>,
-) -> DesktopChatModelOption {
-    if let Some(model) = static_models.get(&model_id) {
-        return desktop_model_option_from_model(model);
-    }
-
-    DesktopChatModelOption {
-        provider: provider.to_string(),
-        provider_label: login::provider_display_name(provider).into_owned(),
-        value: format!("{provider}/{model_id}"),
-        label: model_id.clone(),
-        detail: format!(
-            "{} • live from official provider",
-            model_source_label(provider, auth)
-        ),
-    }
-}
-
-async fn fetch_openai_compatible_model_ids(
-    base_url: &str,
-    bearer_token: &str,
-) -> Result<Vec<String>> {
-    let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let response = Client::new()
-        .get(url)
-        .header("Authorization", format!("Bearer {bearer_token}"))
-        .header("Accept", "application/json")
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        anyhow::bail!("HTTP {}", response.status());
-    }
-
-    let body: Value = response.json().await?;
-    Ok(body
-        .get("data")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|item| item.get("id").and_then(|value| value.as_str()))
-        .map(ToString::to_string)
-        .collect())
-}
-
-async fn fetch_anthropic_model_ids(auth: &login::ResolvedProviderAuth) -> Result<Vec<String>> {
-    let mut request = Client::new()
-        .get("https://api.anthropic.com/v1/models")
-        .header("anthropic-version", "2023-06-01")
-        .header("accept", "application/json")
-        .header("anthropic-dangerous-direct-browser-access", "true");
-
-    request = match auth.method {
-        login::ProviderAuthMethod::OAuth => request
-            .header("Authorization", format!("Bearer {}", auth.credential))
-            .header("anthropic-beta", "oauth-2025-04-20")
-            .header("user-agent", "claude-cli/2.1.75")
-            .header("x-app", "cli"),
-        login::ProviderAuthMethod::ApiKey => request.header("x-api-key", auth.credential.clone()),
-    };
-
-    let response = request.send().await?;
-    if !response.status().is_success() {
-        anyhow::bail!("HTTP {}", response.status());
-    }
-
-    let body: Value = response.json().await?;
-    Ok(body
-        .get("data")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|item| item.get("id").and_then(|value| value.as_str()))
-        .map(ToString::to_string)
-        .collect())
-}
-
-async fn fetch_google_model_ids(api_key: &str) -> Result<Vec<String>> {
-    let url = format!("https://generativelanguage.googleapis.com/v1beta/models?key={api_key}");
-    let response = Client::new().get(url).send().await?;
-    if !response.status().is_success() {
-        anyhow::bail!("HTTP {}", response.status());
-    }
-
-    let body: Value = response.json().await?;
-    Ok(body
-        .get("models")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter(|item| {
-            item.get("supportedGenerationMethods")
-                .and_then(|value| value.as_array())
-                .map(|methods| {
-                    methods.iter().any(|method| {
-                        method
-                            .as_str()
-                            .is_some_and(|value| value.eq_ignore_ascii_case("generateContent"))
-                    })
-                })
-                .unwrap_or(false)
-        })
-        .filter_map(|item| item.get("name").and_then(|value| value.as_str()))
-        .map(|name| name.trim_start_matches("models/").to_string())
-        .filter(|name| name.contains("gemini"))
-        .collect())
-}
-
-async fn fetch_live_model_ids_for_provider(provider: &str) -> Option<Vec<String>> {
-    let auth = login::resolve_provider_auth(provider)?;
-    let result = match provider {
-        "anthropic" => fetch_anthropic_model_ids(&auth).await,
-        "openai" if matches!(auth.method, login::ProviderAuthMethod::ApiKey) => {
-            fetch_openai_compatible_model_ids("https://api.openai.com/v1", &auth.credential).await
-        }
-        "google" => fetch_google_model_ids(&auth.credential).await,
-        "groq" => {
-            fetch_openai_compatible_model_ids("https://api.groq.com/openai/v1", &auth.credential)
-                .await
-        }
-        "xai" => fetch_openai_compatible_model_ids("https://api.x.ai/v1", &auth.credential).await,
-        "openrouter" => {
-            fetch_openai_compatible_model_ids("https://openrouter.ai/api/v1", &auth.credential)
-                .await
-        }
-        "github-copilot" => Ok(login::github_copilot_cached_models()),
-        _ => return None,
-    };
-
-    result.ok().filter(|ids| !ids.is_empty())
-}
-
 pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopChatModelOption> {
     let settings = Settings::load_merged(cwd);
-    let mut static_models = login::authenticated_model_candidates(&settings);
-    static_models.sort_by(|left, right| {
+    let mut models = crate::live_models::authenticated_model_candidates_with_live(&settings).await;
+    models.sort_by(|left, right| {
         left.provider
             .cmp(&right.provider)
             .then_with(|| left.id.cmp(&right.id))
     });
 
-    let mut static_by_provider: BTreeMap<String, Vec<Model>> = BTreeMap::new();
-    for model in static_models {
-        static_by_provider
-            .entry(model.provider.clone())
-            .or_default()
-            .push(model);
-    }
-
-    let mut options = Vec::new();
-    for (provider, models) in &static_by_provider {
-        let static_lookup = models
-            .iter()
-            .cloned()
-            .map(|model| (model.id.clone(), model))
-            .collect::<HashMap<_, _>>();
-
-        let resolved_auth = login::resolve_provider_auth(provider);
-        let provider_options =
-            if let Some(mut live_ids) = fetch_live_model_ids_for_provider(provider).await {
-                live_ids.sort();
-                live_ids.dedup();
-                live_ids
-                    .into_iter()
-                    .map(|model_id| {
-                        desktop_model_option_from_live_id(
-                            provider,
-                            model_id,
-                            &static_lookup,
-                            resolved_auth.as_ref(),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                models
-                    .iter()
-                    .map(desktop_model_option_from_model)
-                    .collect::<Vec<_>>()
-            };
-
-        options.extend(provider_options);
-    }
-
-    options
+    models.iter().map(desktop_model_option_from_model).collect()
 }
 
 fn synthesize_live_model_candidate(

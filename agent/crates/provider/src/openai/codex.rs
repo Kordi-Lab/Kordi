@@ -109,11 +109,17 @@ impl OpenAiProvider {
         let mut started_tool_calls: HashSet<String> = HashSet::new();
         let mut completed_tool_calls: HashSet<String> = HashSet::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            if options.cancel.is_cancelled() {
-                let _ = tx.send(StreamEvent::Done);
-                return Ok(());
-            }
+        loop {
+            let chunk_result = tokio::select! {
+                _ = options.cancel.cancelled() => {
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+                chunk_result = stream.next() => chunk_result,
+            };
+            let Some(chunk_result) = chunk_result else {
+                break;
+            };
 
             let chunk = chunk_result
                 .map_err(|e| KordiError::Provider(format!("Codex OAuth stream error: {e}")))?;

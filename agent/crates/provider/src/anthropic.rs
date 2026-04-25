@@ -10,8 +10,8 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use kordi_core::types::CacheMetricsSource;
 use events::process_sse_event;
+use kordi_core::types::CacheMetricsSource;
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
@@ -193,11 +193,17 @@ impl Provider for AnthropicProvider {
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            if options.cancel.is_cancelled() {
-                let _ = tx.send(StreamEvent::Done);
-                return Ok(());
-            }
+        loop {
+            let chunk_result = tokio::select! {
+                _ = options.cancel.cancelled() => {
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+                chunk_result = stream.next() => chunk_result,
+            };
+            let Some(chunk_result) = chunk_result else {
+                break;
+            };
 
             let chunk =
                 chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;

@@ -226,11 +226,17 @@ impl Provider for OpenAiProvider {
         let mut buffer = String::new();
         let mut tool_calls: Vec<(String, String, String)> = Vec::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            if options.cancel.is_cancelled() {
-                let _ = tx.send(StreamEvent::Done);
-                return Ok(());
-            }
+        loop {
+            let chunk_result = tokio::select! {
+                _ = options.cancel.cancelled() => {
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+                chunk_result = stream.next() => chunk_result,
+            };
+            let Some(chunk_result) = chunk_result else {
+                break;
+            };
 
             let chunk =
                 chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
