@@ -42,11 +42,18 @@ export function mapBridgeConversationToViewModel(
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
-  const localHumanAvatarSeed = `human:${host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local'}`;
-  const localAgentAvatarSeed = `agent:${conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent'}`;
-  const remoteHumanAvatarSeed = `human:${conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId}`;
-  const remoteAgentAvatarSeed = `agent:${conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId}`;
+  const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
+  const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
+  const remoteHumanAvatarSeed = conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
+  const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
+  const participantAvatarSeeds: Record<string, string> = {
+    You: localHumanAvatarSeed,
+    [localHumanLabel]: localHumanAvatarSeed,
+    [localBridgeAgentLabel]: localAgentAvatarSeed,
+    [remoteHumanLabel]: remoteHumanAvatarSeed,
+    [remoteAgentLabel]: remoteAgentAvatarSeed,
+  };
 
   const outreachPrefix = conversation.outreach
     ? conversation.outreach.targetKind === 'bridge-person'
@@ -184,6 +191,7 @@ export function mapBridgeConversationToViewModel(
     outreach: conversation.outreach,
     identity: conversation.identity,
     avatarSeed: conversationAvatarSeed,
+    participantAvatarSeeds,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

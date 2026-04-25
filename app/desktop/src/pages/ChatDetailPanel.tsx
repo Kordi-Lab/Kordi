@@ -20,10 +20,14 @@ type ActiveConversation = {
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+  participantAvatarSeeds?: Record<string, string>;
 };
 
 function participantAvatarSeed(activeConv: ActiveConversation, participant: string, isAgent: boolean) {
   const normalizedParticipant = participant.trim();
+  const explicitSeed = activeConv.participantAvatarSeeds?.[participant] ?? activeConv.participantAvatarSeeds?.[normalizedParticipant];
+  if (explicitSeed?.trim()) return explicitSeed;
+
   const identity = activeConv.identity;
 
   if (/^(you|me)$/i.test(normalizedParticipant)) {
@@ -31,20 +35,20 @@ function participantAvatarSeed(activeConv: ActiveConversation, participant: stri
   }
   if (isAgent) {
     if (identity?.localAgentName && normalizedParticipant === identity.localAgentName) {
-      return `agent:${identity.localAgentId || identity.localAgentNodeId || identity.localAgentName}`;
+      return identity.localAgentId || identity.localAgentNodeId || identity.localAgentName;
     }
     if (identity?.remoteAgentName && normalizedParticipant === identity.remoteAgentName) {
-      return `agent:${identity.remoteAgentId || identity.remoteAgentNodeId || identity.remoteAgentName}`;
+      return identity.remoteAgentId || identity.remoteAgentNodeId || identity.remoteAgentName;
     }
-    return `agent:${normalizedParticipant}`;
+    return normalizedParticipant;
   }
   if (identity?.localHumanName && normalizedParticipant === identity.localHumanName) {
-    return `human:${identity.localHumanId || identity.localHumanName}`;
+    return identity.localHumanId || identity.localHumanName;
   }
   if (identity?.remoteHumanName && normalizedParticipant === identity.remoteHumanName) {
-    return `human:${identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName}`;
+    return identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName;
   }
-  return `human:${normalizedParticipant}`;
+  return normalizedParticipant;
 }
 
 type ProjectSource = {

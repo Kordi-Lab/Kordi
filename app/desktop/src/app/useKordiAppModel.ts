@@ -23,6 +23,7 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import { useProjectSettingsState } from '@/features/projects/useProjectSettingsState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
+import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 
 function currentMentionQuery(text: string) {
   const match = /(^|\s)@([^\s@]*)$/.exec(text);
@@ -338,6 +339,10 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
+
+  useEffect(() => {
+    setLocalProfileAvatarSeed(activeBridgeHost?.humanId);
+  }, [activeBridgeHost?.humanId]);
 
   const {
     activeContactRequest,

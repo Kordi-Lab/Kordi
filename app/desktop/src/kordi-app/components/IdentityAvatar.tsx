@@ -24,11 +24,15 @@ const ROBOT_BACKGROUNDS = ['#0f172a', '#1e1b4b', '#164e63', '#312e81', '#3b0764'
 const ROBOT_METALS = ['#cbd5e1', '#94a3b8', '#a5b4fc', '#bae6fd', '#d8b4fe', '#99f6e4'];
 const ROBOT_ACCENTS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa'];
 const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
+const LOCAL_PROFILE_IDENTITY_SEED_KEY = 'kordi.localProfileIdentitySeed.v1';
 
 export function getLocalProfileAvatarSeed() {
   if (typeof window === 'undefined') return 'local-human-profile';
   const instanceScope = window.location.origin || 'desktop';
   try {
+    const identitySeed = window.localStorage.getItem(LOCAL_PROFILE_IDENTITY_SEED_KEY)?.trim();
+    if (identitySeed) return identitySeed;
+
     const existing = window.localStorage.getItem(LOCAL_PROFILE_AVATAR_SEED_KEY)?.trim();
     if (existing) return `local-human-profile:${instanceScope}:${existing}`;
     const next = window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -36,6 +40,17 @@ export function getLocalProfileAvatarSeed() {
     return `local-human-profile:${instanceScope}:${next}`;
   } catch {
     return `local-human-profile:${instanceScope}`;
+  }
+}
+
+export function setLocalProfileAvatarSeed(seed?: string | null) {
+  if (typeof window === 'undefined') return;
+  const normalizedSeed = seed?.trim();
+  if (!normalizedSeed) return;
+  try {
+    window.localStorage.setItem(LOCAL_PROFILE_IDENTITY_SEED_KEY, normalizedSeed);
+  } catch {
+    // Ignore storage failures; getLocalProfileAvatarSeed will fall back to the instance seed.
   }
 }
 

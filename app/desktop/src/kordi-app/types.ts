@@ -114,6 +114,7 @@ export type Conversation = {
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
+  participantAvatarSeeds?: Record<string, string>;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];

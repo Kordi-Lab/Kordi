@@ -84,6 +84,7 @@ type BridgeHostSummary = {
   serverUrl: string;
   connected: boolean;
   nodeId?: string | null;
+  humanId?: string | null;
   visiblePeerCount: number;
 };
 
@@ -123,6 +124,7 @@ type WorkspaceSidebarProps = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
   activeBridgeHost: BridgeHostSummary | null;
+  localProfileAvatarSeed?: string | null;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
@@ -252,6 +254,7 @@ export function WorkspaceSidebar({
   setActiveContactId,
   displayedAgents,
   activeBridgeHost,
+  localProfileAvatarSeed,
   onRefreshBridge,
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
@@ -313,7 +316,7 @@ export function WorkspaceSidebar({
             </Button>
             <IdentityAvatar
               kind="human"
-              seed={getLocalProfileAvatarSeed()}
+              seed={localProfileAvatarSeed || getLocalProfileAvatarSeed()}
               name="Local profile"
               className="h-9 w-9 border border-white/10"
             />

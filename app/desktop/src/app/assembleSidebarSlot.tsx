@@ -46,6 +46,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       setActiveContactId={args.setActiveContactId}
       displayedAgents={args.displayedAgents}
       activeBridgeHost={args.activeBridgeHost}
+      localProfileAvatarSeed={args.activeBridgeHost?.humanId}
       onRefreshBridge={() => {
         void args.refreshDesktopBridge();
       }}
