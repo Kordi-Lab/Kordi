@@ -190,7 +190,7 @@ function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message
   return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
 }
 
-function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string; name: string }>(
+function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string; name: string; participants: string[] }>(
   conversation: T,
   canonicalState: CanonicalSessionState | null,
 ): T {
@@ -200,6 +200,9 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
   if (!canonicalSession) return conversation;
 
   const participants = canonicalState.participants.filter((participant) => participant.sessionId === sessionId);
+  const identityNames = participants
+    .map((participant) => canonicalState.identities.find((identity) => identity.id === participant.identityId)?.displayName)
+    .filter((name): name is string => Boolean(name));
   const participantIdentityIds = new Set(participants.map((participant) => participant.identityId));
   const activePresence = canonicalState.presence.filter((presence) => participantIdentityIds.has(presence.identityId) && presence.status !== 'offline');
   const presenceSummary = activePresence.length > 0
@@ -212,6 +215,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     canonicalSessionId: sessionId,
     canonicalStoragePath: canonicalState.storagePath,
     name: canonicalSession.title || conversation.name,
+    participants: identityNames.length > 0 ? identityNames : conversation.participants,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
     canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,
