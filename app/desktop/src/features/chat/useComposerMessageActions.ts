@@ -131,7 +131,7 @@ function appendOptimisticBridgeMessage(
       subtitle: text,
       updatedAtMs: timestampMs,
       updatedAtLabel: sentAt,
-      awaitingReply: true,
+      awaitingReply: isBridgeAgentRuntime(conversation.peerRuntime),
       messages: [
         ...conversation.messages,
         {

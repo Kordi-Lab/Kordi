@@ -174,14 +174,15 @@ pub(super) fn build_conversation_state(
         .last()
         .map(|message| message.text.clone())
         .unwrap_or_default();
-    let awaiting_reply = record
-        .messages
-        .iter()
-        .rev()
-        .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
-        .and_then(|message| message.delivery_state.clone())
-        .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
-        .unwrap_or(false);
+    let awaiting_reply = is_agent_like_runtime(&record.peer_runtime)
+        && record
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
+            .and_then(|message| message.delivery_state.clone())
+            .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
+            .unwrap_or(false);
     let peer_typing = record
         .peer_last_typing_at_ms
         .map(|timestamp| now_ms().saturating_sub(timestamp) <= PEER_TYPING_WINDOW_MS)
