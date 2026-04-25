@@ -10,6 +10,8 @@ import type {
   Message,
   MessageAttachment,
 } from '@/kordi-app/types';
+import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { formatDesktopClockTime } from '@/lib/time';
 
 type CanonicalConversationLike = {
@@ -375,6 +377,24 @@ function syntheticConversation(
   };
 }
 
+function shouldKeepLegacyChatConversationExtra(
+  conversation: Conversation,
+  indexes: CanonicalIndexes,
+) {
+  if (isLocalDraftChatConversationId(conversation.id)) {
+    return true;
+  }
+
+  const sessionId = conversation.canonicalSessionId ?? conversation.id;
+  if (indexes.sessionById.has(sessionId)) {
+    return false;
+  }
+
+  return conversation.id.startsWith('bridge:')
+    || isCanonicalBridgeSessionId(sessionId)
+    || !conversation.canonicalSessionId;
+}
+
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -486,7 +506,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const groupedSessionIds = new Set([...groups.values()].flatMap((sessions) => sessions.map((session) => session.id)));
       const extras = conversations.filter((conversation) => {
         const sessionId = conversation.canonicalSessionId ?? conversation.id;
-        return !hydratedIds.has(conversation.id) && !groupedSessionIds.has(sessionId);
+        return !hydratedIds.has(conversation.id)
+          && !groupedSessionIds.has(sessionId)
+          && shouldKeepLegacyChatConversationExtra(conversation, indexes);
       });
       return [...hydrated, ...extras];
     },

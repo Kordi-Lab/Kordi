@@ -4,6 +4,8 @@ import type {
   DesktopChatProjectGroup,
 } from '@/kordi-app/types';
 
+const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+
 export type CanonicalConversationLookupTarget = {
   humanId?: string | null;
   agentId?: string | null;
@@ -82,6 +84,10 @@ export function findCanonicalConversationForTarget(
   }
 
   return bestMatch?.conversation ?? null;
+}
+
+export function isCanonicalBridgeSessionId(value?: string | null) {
+  return (value ?? '').trim().startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
 }
 
 export function findOwnedAgentConversation(conversations: Conversation[]) {

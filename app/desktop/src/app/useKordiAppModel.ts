@@ -13,7 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { buildProjectRoutingGroups } from '@/features/canonical/sessionResolver';
+import { buildProjectRoutingGroups, isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
@@ -294,7 +294,9 @@ export function useKordiAppModel() {
   }, [desktopBridgeState?.hosts, isNativeShell]);
 
   const chatMentionQuery = useMemo(() => (
-    isNativeShell && activeConvId.startsWith('bridge:') ? null : currentMentionQuery(composerUi.composerDrafts.chat)
+    isNativeShell && (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(activeConvId))
+      ? null
+      : currentMentionQuery(composerUi.composerDrafts.chat)
   ), [activeConvId, composerUi.composerDrafts.chat, isNativeShell]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
   const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);

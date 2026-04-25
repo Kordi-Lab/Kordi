@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
+import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
@@ -64,7 +65,7 @@ export function useDesktopSessionController({
     setChatComposerAttachments([]);
     if (!isNativeShell) return;
 
-    if (isLocalDraftChatConversationId(sessionId)) {
+    if (isLocalDraftChatConversationId(sessionId) || isCanonicalBridgeSessionId(sessionId)) {
       setDesktopChatError(null);
       return;
     }
