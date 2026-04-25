@@ -19,14 +19,15 @@ use super::constants::{
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_RESPONSE,
 };
 use super::conversation_commands::{
-    apply_bridge_event, mailbox_payload_text, parse_bridge_event_payload, sender_name_for_runtime,
-    ParsedMailboxEvent,
+    apply_bridge_event_to_storage, mailbox_payload_text, parse_bridge_event_payload,
+    sender_name_for_runtime, ParsedMailboxEvent,
 };
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
-    append_conversation_message, build_conversation_only_bridge_state, load_conversation_store,
-    relay_plaintext_message, save_conversation_store, update_message_delivery_state,
-    DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeStore,
+    append_conversation_message_to_storage, build_conversation_only_bridge_state,
+    decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target, load_conversation_store,
+    relay_plaintext_message, update_message_delivery_state_in_storage, DesktopBridgeHostConfig,
+    DesktopBridgeManager, DesktopBridgeStore,
 };
 
 pub(super) const BRIDGE_STATE_EVENT: &str = "desktop-bridge-state";
@@ -125,9 +126,16 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
     targets
 }
 
-fn encode_outbound_frame(target_node_id: &str, payload: &Value) -> Result<String, String> {
+async fn encode_outbound_frame(
+    host: &DesktopBridgeHostConfig,
+    target_node_id: &str,
+    project_id: Option<&str>,
+    payload: &Value,
+) -> Result<String, String> {
+    let encrypted_payload =
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
     let data = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(payload).map_err(|err| err.to_string())?);
+        .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     Ok(serde_json::json!({
         "dst": target_node_id,
         "data": data,
@@ -147,12 +155,12 @@ async fn emit_bridge_state(
         .map_err(|err| err.to_string())
 }
 
-async fn save_and_emit_bridge_state(
+async fn emit_after_storage_write(
     app: &tauri::AppHandle,
     local_server: &tokio::sync::Mutex<super::LocalBridgeServerRuntime>,
-    conversations: &super::DesktopBridgeConversationStore,
+    result: Result<super::DesktopBridgeConversationStore, String>,
 ) -> Result<(), String> {
-    save_conversation_store(conversations)?;
+    result?;
     emit_bridge_state(app, local_server).await
 }
 
@@ -160,9 +168,10 @@ async fn try_send_connected_realtime_payload(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
+    project_id: Option<&str>,
     payload: &Value,
 ) -> Result<(), String> {
-    let frame = encode_outbound_frame(target_node_id, payload)?;
+    let frame = encode_outbound_frame(host, target_node_id, project_id, payload).await?;
     let runtime = manager.realtime.lock().await;
     let connection = runtime
         .connections
@@ -181,18 +190,11 @@ async fn send_realtime_or_relay(
     project_id: Option<&str>,
     payload: &Value,
 ) {
-    if try_send_connected_realtime_payload(manager, host, target_node_id, payload)
+    if try_send_connected_realtime_payload(manager, host, target_node_id, project_id, payload)
         .await
         .is_err()
     {
-        let _ = relay_plaintext_message(
-            &host.coordination,
-            &host.api_key,
-            target_node_id,
-            project_id,
-            payload,
-        )
-        .await;
+        let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
     }
 }
 
@@ -200,8 +202,7 @@ fn append_local_agent_inbound_message(
     target: &LocalRealtimeTarget,
     event: &ParsedMailboxEvent,
     text: String,
-) -> super::DesktopBridgeConversationStore {
-    let mut conversations = load_conversation_store();
+) -> Result<super::DesktopBridgeConversationStore, String> {
     let peer_display_name = event.from_display_name.clone();
     let peer_owner_name = event.from_owner_name.clone();
     let peer_runtime = event
@@ -215,8 +216,7 @@ fn append_local_agent_inbound_message(
         &event.from_node_id,
     );
 
-    append_conversation_message(
-        &mut conversations,
+    append_conversation_message_to_storage(
         &target.host.id,
         &event.from_node_id,
         peer_display_name,
@@ -230,9 +230,7 @@ fn append_local_agent_inbound_message(
         event.request_id.clone(),
         Some("processing".to_string()),
         true,
-    );
-
-    conversations
+    )
 }
 
 fn append_local_agent_outbound_response(
@@ -241,11 +239,13 @@ fn append_local_agent_outbound_response(
     response_text: String,
     delivery_state: &str,
     mark_complete: bool,
-) -> super::DesktopBridgeConversationStore {
-    let mut conversations = load_conversation_store();
+) -> Result<super::DesktopBridgeConversationStore, String> {
     if mark_complete {
         if let Some(request_id) = event.request_id.as_deref() {
-            update_message_delivery_state(&mut conversations, request_id, BRIDGE_DELIVERY_STATE_RESPONDED);
+            let _ = update_message_delivery_state_in_storage(
+                request_id,
+                BRIDGE_DELIVERY_STATE_RESPONDED,
+            )?;
         }
     }
     let peer_display_name = event.from_display_name.clone();
@@ -261,8 +261,7 @@ fn append_local_agent_outbound_response(
         &target.host.node_id,
     );
 
-    append_conversation_message(
-        &mut conversations,
+    append_conversation_message_to_storage(
         &target.host.id,
         &event.from_node_id,
         peer_display_name,
@@ -276,9 +275,7 @@ fn append_local_agent_outbound_response(
         event.request_id.clone(),
         Some(delivery_state.to_string()),
         false,
-    );
-
-    conversations
+    )
 }
 
 fn spawn_local_agent_response(
@@ -302,9 +299,12 @@ fn spawn_local_agent_response(
             Ok(stream) => stream,
             Err(error) => {
                 if let Some(request_id) = event.request_id.as_deref() {
-                    let mut conversations = load_conversation_store();
-                    update_message_delivery_state(&mut conversations, request_id, "processing_failed");
-                    let _ = save_and_emit_bridge_state(&app, &local_server, &conversations).await;
+                    let _ = emit_after_storage_write(
+                        &app,
+                        &local_server,
+                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
+                    )
+                    .await;
                     let failed = serde_json::json!({
                         "from": target.host.node_id,
                         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
@@ -338,18 +338,22 @@ fn spawn_local_agent_response(
 
             let is_final = snapshot.completed && snapshot.succeeded;
             last_sent_text = snapshot.assistant_text.clone();
-            let conversations = append_local_agent_outbound_response(
-                &target,
-                &event,
-                snapshot.assistant_text.clone(),
-                if is_final {
-                    BRIDGE_DELIVERY_STATE_RESPONDED
-                } else {
-                    "processing"
-                },
-                is_final,
-            );
-            let _ = save_and_emit_bridge_state(&app, &local_server, &conversations).await;
+            let _ = emit_after_storage_write(
+                &app,
+                &local_server,
+                append_local_agent_outbound_response(
+                    &target,
+                    &event,
+                    snapshot.assistant_text.clone(),
+                    if is_final {
+                        BRIDGE_DELIVERY_STATE_RESPONDED
+                    } else {
+                        "processing"
+                    },
+                    is_final,
+                ),
+            )
+            .await;
 
             let response = serde_json::json!({
                 "from": target.host.node_id,
@@ -396,10 +400,15 @@ fn spawn_local_agent_response(
             Ok(Ok(final_snapshot)) if final_snapshot.succeeded => {}
             Ok(Ok(final_snapshot)) => {
                 if let Some(request_id) = event.request_id.as_deref() {
-                    let error = final_snapshot.error.unwrap_or_else(|| final_snapshot.message.clone());
-                    let mut conversations = load_conversation_store();
-                    update_message_delivery_state(&mut conversations, request_id, "processing_failed");
-                    let _ = save_and_emit_bridge_state(&app, &local_server, &conversations).await;
+                    let error = final_snapshot
+                        .error
+                        .unwrap_or_else(|| final_snapshot.message.clone());
+                    let _ = emit_after_storage_write(
+                        &app,
+                        &local_server,
+                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
+                    )
+                    .await;
 
                     let failed = serde_json::json!({
                         "from": target.host.node_id,
@@ -418,9 +427,12 @@ fn spawn_local_agent_response(
             }
             Ok(Err(error)) => {
                 if let Some(request_id) = event.request_id.as_deref() {
-                    let mut conversations = load_conversation_store();
-                    update_message_delivery_state(&mut conversations, request_id, "processing_failed");
-                    let _ = save_and_emit_bridge_state(&app, &local_server, &conversations).await;
+                    let _ = emit_after_storage_write(
+                        &app,
+                        &local_server,
+                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
+                    )
+                    .await;
 
                     let failed = serde_json::json!({
                         "from": target.host.node_id,
@@ -439,9 +451,12 @@ fn spawn_local_agent_response(
             }
             Err(error) => {
                 if let Some(request_id) = event.request_id.as_deref() {
-                    let mut conversations = load_conversation_store();
-                    update_message_delivery_state(&mut conversations, request_id, "processing_failed");
-                    let _ = save_and_emit_bridge_state(&app, &local_server, &conversations).await;
+                    let _ = emit_after_storage_write(
+                        &app,
+                        &local_server,
+                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
+                    )
+                    .await;
 
                     let failed = serde_json::json!({
                         "from": target.host.node_id,
@@ -469,6 +484,7 @@ async fn handle_incoming_payload(
     target: &LocalRealtimeTarget,
     payload: Value,
 ) -> Result<(), String> {
+    let payload = decrypt_bridge_payload_for_host(&target.host, payload)?;
     let Some(event) = parse_bridge_event_payload(&payload) else {
         return Ok(());
     };
@@ -479,8 +495,12 @@ async fn handle_incoming_payload(
             return Ok(());
         }
 
-        let conversations = append_local_agent_inbound_message(target, &event, text.clone());
-        save_and_emit_bridge_state(app, local_server, &conversations).await?;
+        emit_after_storage_write(
+            app,
+            local_server,
+            append_local_agent_inbound_message(target, &event, text.clone()),
+        )
+        .await?;
 
         if let Some(request_id) = event.request_id.as_deref() {
             let processing = serde_json::json!({
@@ -511,11 +531,8 @@ async fn handle_incoming_payload(
         return Ok(());
     }
 
-    let mut conversations = load_conversation_store();
-    apply_bridge_event(&target.host, &mut conversations, event, false).await;
-    save_and_emit_bridge_state(app, local_server, &conversations).await?;
-
-    Ok(())
+    apply_bridge_event_to_storage(&target.host, event, false).await?;
+    emit_bridge_state(app, local_server).await
 }
 
 async fn run_realtime_connection(
@@ -607,10 +624,7 @@ async fn run_realtime_connection(
     }
 }
 
-pub(super) async fn set_bridge_app_handle(
-    manager: &DesktopBridgeManager,
-    app: tauri::AppHandle,
-) {
+pub(super) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: tauri::AppHandle) {
     *manager.app_handle.write().await = Some(app);
 }
 
@@ -682,5 +696,5 @@ pub(super) async fn send_realtime_payload(
     let store = super::load_bridge_store();
     sync_realtime_connections(manager, &store).await;
 
-    try_send_connected_realtime_payload(manager, host, target_node_id, payload).await
+    try_send_connected_realtime_payload(manager, host, target_node_id, None, payload).await
 }

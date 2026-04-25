@@ -5,22 +5,22 @@ use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
 
 use super::constants::{
     is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
-    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ,
-    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
-    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-    BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-    BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE,
-    BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED,
+    BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
+    BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
+    BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
+    DEFAULT_BRIDGE_RUNTIME,
 };
 use super::{
-    add_serve_contact, append_conversation_message, bridge_conversation_id,
-    build_conversation_only_bridge_state, build_current_bridge_state,
-    current_local_server_status, default_display_name,
-    fetch_mailbox, load_bridge_store,
-    load_conversation_store, note_peer_heartbeat, note_peer_typing, now_ms,
-    parse_mailbox_payload, relay_plaintext_message, save_conversation_store,
-    send_realtime_payload, update_message_delivery_state, upsert_bridge_conversation,
+    add_serve_contact, append_conversation_message_to_storage, bridge_conversation_id,
+    build_conversation_only_bridge_state, build_current_bridge_state, current_local_server_status,
+    decrypt_bridge_payload_for_host, default_display_name, fetch_mailbox, load_bridge_store,
+    load_conversation_store, mark_bridge_conversation_read_in_storage,
+    note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms, parse_mailbox_payload,
+    relay_plaintext_message, save_conversation_store, send_realtime_payload,
+    update_message_delivery_state_in_storage, upsert_bridge_conversation,
     DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
     DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
@@ -64,7 +64,10 @@ fn is_realtime_direct_chat(
 ) -> bool {
     host.api_style == API_STYLE_SERVE
         && conversation.project_id.is_none()
-        && (conversation.peer_runtime.trim().eq_ignore_ascii_case("person")
+        && (conversation
+            .peer_runtime
+            .trim()
+            .eq_ignore_ascii_case("person")
             || is_agent_like_runtime(&conversation.peer_runtime))
 }
 
@@ -135,8 +138,7 @@ async fn relay_with_contact_fallback(
     let is_direct_serve_chat = project_id.is_none() && context.host.api_style == API_STYLE_SERVE;
 
     match relay_plaintext_message(
-        &context.host.coordination,
-        &context.host.api_key,
+        &context.host,
         &context.conversation.peer_node_id,
         project_id,
         payload,
@@ -152,8 +154,7 @@ async fn relay_with_contact_fallback(
             )
             .await?;
             relay_plaintext_message(
-                &context.host.coordination,
-                &context.host.api_key,
+                &context.host,
                 &context.conversation.peer_node_id,
                 project_id,
                 payload,
@@ -165,23 +166,41 @@ async fn relay_with_contact_fallback(
 }
 
 fn outbound_payload(context: &ConversationContext, request_id: &str, message: &str) -> Value {
-    let is_person_chat = context.conversation.peer_runtime.trim().eq_ignore_ascii_case("person");
+    let is_person_chat = context
+        .conversation
+        .peer_runtime
+        .trim()
+        .eq_ignore_ascii_case("person");
     let active_agent = context
         .host
         .active_agent_id
         .as_deref()
-        .and_then(|active_id| context.host.agents.iter().find(|agent| agent.id == active_id))
+        .and_then(|active_id| {
+            context
+                .host
+                .agents
+                .iter()
+                .find(|agent| agent.id == active_id)
+        })
         .or_else(|| context.host.agents.iter().find(|agent| agent.is_default))
         .or_else(|| context.host.agents.first());
     let sender_display_name = if is_person_chat {
-        context.host.owner.clone().unwrap_or_else(default_display_name)
+        context
+            .host
+            .owner
+            .clone()
+            .unwrap_or_else(default_display_name)
     } else {
         active_agent
             .map(|agent| agent.label.clone())
             .or_else(|| context.host.display_name.clone())
             .unwrap_or_else(default_display_name)
     };
-    let sender_owner_name = context.host.owner.clone().unwrap_or_else(default_display_name);
+    let sender_owner_name = context
+        .host
+        .owner
+        .clone()
+        .unwrap_or_else(default_display_name);
     let sender_runtime = if is_person_chat {
         "person".to_string()
     } else {
@@ -266,7 +285,7 @@ pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailbox
     })
 }
 
-fn parse_mailbox_event(item: &Value) -> Option<ParsedMailboxEvent> {
+fn parse_mailbox_event(host: &DesktopBridgeHostConfig, item: &Value) -> Option<ParsedMailboxEvent> {
     let blob = item
         .get("blob")
         .and_then(|value| value.as_str())
@@ -275,7 +294,12 @@ fn parse_mailbox_event(item: &Value) -> Option<ParsedMailboxEvent> {
         return None;
     }
 
-    let parsed = parse_mailbox_payload(blob)?;
+    let mut parsed = decrypt_bridge_payload_for_host(host, parse_mailbox_payload(blob)?).ok()?;
+    if parsed.get("from").is_none() {
+        if let Some(from) = item.get("from") {
+            parsed["from"] = from.clone();
+        }
+    }
     parse_bridge_event_payload(&parsed)
 }
 
@@ -303,79 +327,6 @@ fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
 
     let word_count = normalized.split_whitespace().take(5).count();
     normalized.chars().count() < 24 && word_count <= 3
-}
-
-fn apply_delivery_event(
-    host: &DesktopBridgeHostConfig,
-    conversations: &mut DesktopBridgeConversationStore,
-    event: &ParsedMailboxEvent,
-) {
-    if let Some(target_request_id) = event
-        .payload
-        .get("requestId")
-        .and_then(|value| value.as_str())
-    {
-        let state = event
-            .payload
-            .get("state")
-            .and_then(|value| value.as_str())
-            .unwrap_or(BRIDGE_DELIVERY_STATE_DELIVERED);
-        update_message_delivery_state(conversations, target_request_id, state);
-        if state == "processing" {
-            for conversation in &mut conversations.conversations {
-                let matches_request = conversation
-                    .messages
-                    .iter()
-                    .any(|message| message.request_id.as_deref() == Some(target_request_id));
-                if matches_request && conversation.host_id == host.id {
-                    conversation.peer_last_typing_at_ms = Some(now_ms());
-                    break;
-                }
-            }
-        }
-        if state == BRIDGE_DELIVERY_STATE_RESPONDED || state == "processing_failed" {
-            for conversation in &mut conversations.conversations {
-                let matches_request = conversation
-                    .messages
-                    .iter()
-                    .any(|message| message.request_id.as_deref() == Some(target_request_id));
-                if matches_request && conversation.host_id == host.id {
-                    conversation.peer_last_typing_at_ms = None;
-                    break;
-                }
-            }
-        }
-    }
-}
-
-fn apply_presence_event(
-    host: &DesktopBridgeHostConfig,
-    conversations: &mut DesktopBridgeConversationStore,
-    event: &ParsedMailboxEvent,
-) -> bool {
-    match event.message_type.as_str() {
-        BRIDGE_MESSAGE_TYPE_TYPING => {
-            note_peer_typing(
-                conversations,
-                &host.id,
-                &event.from_node_id,
-                event.project_id.clone(),
-                None,
-            );
-            true
-        }
-        BRIDGE_MESSAGE_TYPE_HEARTBEAT => {
-            note_peer_heartbeat(
-                conversations,
-                &host.id,
-                &event.from_node_id,
-                event.project_id.clone(),
-                None,
-            );
-            true
-        }
-        _ => false,
-    }
 }
 
 fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> {
@@ -465,16 +416,29 @@ pub(super) fn sender_name_for_runtime(
     }
 }
 
-fn append_inbound_event_message(
+async fn acknowledge_inbound_delivery(host: &DesktopBridgeHostConfig, event: &ParsedMailboxEvent) {
+    if let Some(request_id) = event.request_id.as_deref() {
+        let ack = serde_json::json!({
+            "from": host.node_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+            "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_DELIVERED },
+        });
+        let _ =
+            relay_plaintext_message(host, &event.from_node_id, event.project_id.as_deref(), &ack)
+                .await;
+    }
+}
+
+fn append_inbound_event_message_to_storage(
     host: &DesktopBridgeHostConfig,
-    conversations: &mut DesktopBridgeConversationStore,
     event: &ParsedMailboxEvent,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let text = mailbox_payload_text(&event.payload);
     if text.trim().is_empty() {
-        return None;
+        return Ok(None);
     }
 
+    let conversations = load_conversation_store();
     let existing = conversations.conversations.iter().find(|conversation| {
         conversation.id
             == bridge_conversation_id(&host.id, &event.from_node_id, event.project_id.as_deref())
@@ -487,15 +451,11 @@ fn append_inbound_event_message(
         .from_owner_name
         .clone()
         .or_else(|| existing.and_then(|conversation| conversation.peer_owner_name.clone()));
-    let peer_runtime = event
-        .from_runtime
-        .clone()
-        .unwrap_or_else(|| {
-            existing
-                .map(|conversation| conversation.peer_runtime.clone())
-                .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string())
-        });
-
+    let peer_runtime = event.from_runtime.clone().unwrap_or_else(|| {
+        existing
+            .map(|conversation| conversation.peer_runtime.clone())
+            .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string())
+    });
     let sender_name = sender_name_for_runtime(
         &peer_runtime,
         peer_display_name.as_deref(),
@@ -503,12 +463,11 @@ fn append_inbound_event_message(
         &event.from_node_id,
     );
 
-    append_conversation_message(
-        conversations,
+    append_conversation_message_to_storage(
         &host.id,
         &event.from_node_id,
-        peer_display_name.clone(),
-        peer_owner_name.clone(),
+        peer_display_name,
+        peer_owner_name,
         peer_runtime,
         event.project_id.clone(),
         None,
@@ -521,80 +480,91 @@ fn append_inbound_event_message(
         text.clone(),
         event.request_id.clone(),
         if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
-            Some(
-                if bridge_response_is_done(event) {
-                    BRIDGE_DELIVERY_STATE_RESPONDED.to_string()
-                } else {
-                    "processing".to_string()
-                },
-            )
+            Some(if bridge_response_is_done(event) {
+                BRIDGE_DELIVERY_STATE_RESPONDED.to_string()
+            } else {
+                "processing".to_string()
+            })
         } else {
             None
         },
         true,
-    );
-    Some(text)
+    )?;
+    Ok(Some(text))
 }
 
-async fn acknowledge_inbound_delivery(host: &DesktopBridgeHostConfig, event: &ParsedMailboxEvent) {
-    if let Some(request_id) = event.request_id.as_deref() {
-        let ack = serde_json::json!({
-            "from": host.node_id,
-            "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-            "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_DELIVERED },
-        });
-        let _ = relay_plaintext_message(
-            &host.coordination,
-            &host.api_key,
-            &event.from_node_id,
-            event.project_id.as_deref(),
-            &ack,
-        )
-        .await;
-    }
-}
-
-pub(super) async fn apply_bridge_event(
+pub(super) async fn apply_bridge_event_to_storage(
     host: &DesktopBridgeHostConfig,
-    conversations: &mut DesktopBridgeConversationStore,
     event: ParsedMailboxEvent,
     acknowledge_delivery: bool,
-) {
+) -> Result<(), String> {
     if event.message_type == BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT {
-        apply_delivery_event(host, conversations, &event);
-        return;
+        if let Some(target_request_id) = event
+            .payload
+            .get("requestId")
+            .and_then(|value| value.as_str())
+        {
+            let state = event
+                .payload
+                .get("state")
+                .and_then(|value| value.as_str())
+                .unwrap_or(BRIDGE_DELIVERY_STATE_DELIVERED);
+            update_message_delivery_state_in_storage(target_request_id, state)?;
+        }
+        return Ok(());
     }
-    if apply_presence_event(host, conversations, &event) {
-        return;
+
+    match event.message_type.as_str() {
+        BRIDGE_MESSAGE_TYPE_TYPING => {
+            note_peer_typing_in_storage(
+                &host.id,
+                &event.from_node_id,
+                event.project_id.clone(),
+                None,
+            )?;
+            return Ok(());
+        }
+        BRIDGE_MESSAGE_TYPE_HEARTBEAT => {
+            note_peer_heartbeat_in_storage(
+                &host.id,
+                &event.from_node_id,
+                event.project_id.clone(),
+                None,
+            )?;
+            return Ok(());
+        }
+        _ => {}
     }
-    if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE && should_buffer_partial_agent_response(&event) {
-        note_peer_typing(
-            conversations,
+
+    if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE
+        && should_buffer_partial_agent_response(&event)
+    {
+        note_peer_typing_in_storage(
             &host.id,
             &event.from_node_id,
             event.project_id.clone(),
             None,
-        );
-        return;
+        )?;
+        return Ok(());
     }
 
-    if append_inbound_event_message(host, conversations, &event).is_none() {
-        return;
+    if append_inbound_event_message_to_storage(host, &event)?.is_none() {
+        return Ok(());
     }
 
     if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
         if bridge_response_is_done(&event) {
             if let Some(request_id) = event.request_id.as_deref() {
-                update_message_delivery_state(
-                    conversations,
+                update_message_delivery_state_in_storage(
                     request_id,
                     BRIDGE_DELIVERY_STATE_RESPONDED,
-                );
+                )?;
             }
         }
     } else if acknowledge_delivery {
         acknowledge_inbound_delivery(host, &event).await;
     }
+    Ok(())
 }
 
 pub(super) async fn desktop_bridge_open_conversation_impl(
@@ -628,16 +598,28 @@ pub(super) async fn desktop_bridge_open_conversation_impl(
             .hosts
             .iter()
             .find(|host| host.id == host_id)
-            .and_then(|host| host.visible_peers.iter().find(|peer| peer.node_id == peer_node_id))
+            .and_then(|host| {
+                host.visible_peers
+                    .iter()
+                    .find(|peer| peer.node_id == peer_node_id)
+            })
             .cloned()
     };
 
     let resolved_peer_display_name = peer_display_name
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| inferred_peer.as_ref().and_then(|peer| peer.display_name.clone()));
+        .or_else(|| {
+            inferred_peer
+                .as_ref()
+                .and_then(|peer| peer.display_name.clone())
+        });
     let resolved_peer_owner_name = peer_owner_name
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| inferred_peer.as_ref().and_then(|peer| peer.owner_name.clone()));
+        .or_else(|| {
+            inferred_peer
+                .as_ref()
+                .and_then(|peer| peer.owner_name.clone())
+        });
     let resolved_peer_runtime = peer_runtime
         .filter(|value| !value.trim().is_empty())
         .or_else(|| inferred_peer.as_ref().map(|peer| peer.runtime.clone()))
@@ -655,6 +637,7 @@ pub(super) async fn desktop_bridge_open_conversation_impl(
         project_name,
     );
     conversation.unread_count = 0;
+    conversation.updated_at_ms = now_ms();
     save_conversation_store(&store)?;
     Ok(build_conversation_only_bridge_state(
         load_bridge_store(),
@@ -668,10 +651,11 @@ pub(super) async fn desktop_bridge_mark_conversation_read_impl(
     conversation_id: String,
 ) -> Result<DesktopBridgeState, String> {
     let bridge_store = load_bridge_store();
-    let mut store = load_conversation_store();
+    let store = load_conversation_store();
+    let mut marked_store = None;
     if let Some(conversation) = store
         .conversations
-        .iter_mut()
+        .iter()
         .find(|conversation| conversation.id == conversation_id)
     {
         if let Some(host) = bridge_store
@@ -696,22 +680,17 @@ pub(super) async fn desktop_bridge_mark_conversation_read_impl(
                         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                         "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_READ },
                     });
-                    let _ = send_realtime_payload(
-                        manager,
-                        &host,
-                        &conversation.peer_node_id,
-                        &payload,
-                    )
-                    .await;
+                    let _ =
+                        send_realtime_payload(manager, &host, &conversation.peer_node_id, &payload)
+                            .await;
                 }
             }
         }
-        conversation.unread_count = 0;
-        save_conversation_store(&store)?;
+        marked_store = Some(mark_bridge_conversation_read_in_storage(&conversation_id)?);
     }
     Ok(build_conversation_only_bridge_state(
         bridge_store,
-        store,
+        marked_store.unwrap_or(store),
         current_local_server_status(manager).await,
     ))
 }
@@ -758,7 +737,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         return Err("Bridge message cannot be empty".to_string());
     }
 
-    let (store, mut conversations, context) = load_conversation_context(&conversation_id)?;
+    let (store, _conversations, context) = load_conversation_context(&conversation_id)?;
     let request_id = format!("{}{}", BRIDGE_REQUEST_ID_PREFIX, Uuid::new_v4().simple());
     let payload = outbound_payload(&context, &request_id, message);
 
@@ -781,8 +760,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         &context.host.node_id,
     );
 
-    append_conversation_message(
-        &mut conversations,
+    append_conversation_message_to_storage(
         &context.conversation.host_id,
         &context.conversation.peer_node_id,
         context.conversation.peer_display_name.clone(),
@@ -796,16 +774,8 @@ pub(super) async fn desktop_bridge_send_message_impl(
         Some(request_id),
         Some(BRIDGE_DELIVERY_STATE_SENT.to_string()),
         false,
-    );
-    if let Some(record) = conversations
-        .conversations
-        .iter_mut()
-        .find(|record| record.id == conversation_id)
-    {
-        record.unread_count = 0;
-    }
-
-    save_conversation_store(&conversations)?;
+    )?;
+    let conversations = mark_bridge_conversation_read_in_storage(&conversation_id)?;
     rebuild_state(manager, store, conversations).await
 }
 
@@ -814,7 +784,6 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     chat_manager: &DesktopChatManager,
 ) -> Result<DesktopBridgeState, String> {
     let store = load_bridge_store();
-    let mut conversations = load_conversation_store();
 
     for target in mailbox_targets(&store) {
         let mailbox = match fetch_mailbox(&target.host.coordination, &target.host.api_key).await {
@@ -826,7 +795,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
         }
 
         for item in mailbox {
-            let Some(event) = parse_mailbox_event(&item) else {
+            let Some(event) = parse_mailbox_event(&target.host, &item) else {
                 continue;
             };
 
@@ -849,8 +818,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     &event.from_node_id,
                 );
 
-                append_conversation_message(
-                    &mut conversations,
+                append_conversation_message_to_storage(
                     &target.host.id,
                     &event.from_node_id,
                     peer_display_name.clone(),
@@ -864,7 +832,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     event.request_id.clone(),
                     Some("processing".to_string()),
                     true,
-                );
+                )?;
 
                 if let Some(request_id) = event.request_id.as_deref() {
                     let processing = serde_json::json!({
@@ -873,8 +841,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                         "payload": { "requestId": request_id, "state": "processing" },
                     });
                     let _ = relay_plaintext_message(
-                        &target.host.coordination,
-                        &target.host.api_key,
+                        &target.host,
                         &event.from_node_id,
                         event.project_id.as_deref(),
                         &processing,
@@ -912,8 +879,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
 
                             let is_final = snapshot.completed && snapshot.succeeded;
                             last_sent_text = snapshot.assistant_text.clone();
-                            append_conversation_message(
-                                &mut conversations,
+                            append_conversation_message_to_storage(
                                 &target.host.id,
                                 &event.from_node_id,
                                 peer_display_name.clone(),
@@ -931,7 +897,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                     "processing".to_string()
                                 }),
                                 false,
-                            );
+                            )?;
 
                             let response = serde_json::json!({
                                 "from": target.host.node_id,
@@ -946,8 +912,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 "payload": { "message": snapshot.assistant_text, "done": is_final },
                             });
                             let _ = relay_plaintext_message(
-                                &target.host.coordination,
-                                &target.host.api_key,
+                                &target.host,
                                 &event.from_node_id,
                                 event.project_id.as_deref(),
                                 &response,
@@ -962,8 +927,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                         "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_RESPONDED },
                                     });
                                     let _ = relay_plaintext_message(
-                                        &target.host.coordination,
-                                        &target.host.api_key,
+                                        &target.host,
                                         &event.from_node_id,
                                         event.project_id.as_deref(),
                                         &responded,
@@ -978,6 +942,10 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                             Ok(Ok(final_snapshot)) if final_snapshot.succeeded => {}
                             Ok(Ok(final_snapshot)) => {
                                 if let Some(request_id) = event.request_id.as_deref() {
+                                    update_message_delivery_state_in_storage(
+                                        request_id,
+                                        "processing_failed",
+                                    )?;
                                     let failed = serde_json::json!({
                                         "from": target.host.node_id,
                                         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
@@ -988,8 +956,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                         },
                                     });
                                     let _ = relay_plaintext_message(
-                                        &target.host.coordination,
-                                        &target.host.api_key,
+                                        &target.host,
                                         &event.from_node_id,
                                         event.project_id.as_deref(),
                                         &failed,
@@ -999,14 +966,17 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                             }
                             Ok(Err(error)) => {
                                 if let Some(request_id) = event.request_id.as_deref() {
+                                    update_message_delivery_state_in_storage(
+                                        request_id,
+                                        "processing_failed",
+                                    )?;
                                     let failed = serde_json::json!({
                                         "from": target.host.node_id,
                                         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                                         "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
                                     });
                                     let _ = relay_plaintext_message(
-                                        &target.host.coordination,
-                                        &target.host.api_key,
+                                        &target.host,
                                         &event.from_node_id,
                                         event.project_id.as_deref(),
                                         &failed,
@@ -1016,14 +986,17 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                             }
                             Err(error) => {
                                 if let Some(request_id) = event.request_id.as_deref() {
+                                    update_message_delivery_state_in_storage(
+                                        request_id,
+                                        "processing_failed",
+                                    )?;
                                     let failed = serde_json::json!({
                                         "from": target.host.node_id,
                                         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                                         "payload": { "requestId": request_id, "state": "processing_failed", "error": error.to_string() },
                                     });
                                     let _ = relay_plaintext_message(
-                                        &target.host.coordination,
-                                        &target.host.api_key,
+                                        &target.host,
                                         &event.from_node_id,
                                         event.project_id.as_deref(),
                                         &failed,
@@ -1035,14 +1008,17 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     }
                     Err(error) => {
                         if let Some(request_id) = event.request_id.as_deref() {
+                            update_message_delivery_state_in_storage(
+                                request_id,
+                                "processing_failed",
+                            )?;
                             let failed = serde_json::json!({
                                 "from": target.host.node_id,
                                 "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                                 "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
                             });
                             let _ = relay_plaintext_message(
-                                &target.host.coordination,
-                                &target.host.api_key,
+                                &target.host,
                                 &event.from_node_id,
                                 event.project_id.as_deref(),
                                 &failed,
@@ -1055,12 +1031,11 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                 continue;
             }
 
-            apply_bridge_event(&target.host, &mut conversations, event, true).await;
+            apply_bridge_event_to_storage(&target.host, event, true).await?;
         }
     }
 
-    save_conversation_store(&conversations)?;
-    rebuild_state(manager, store, conversations).await
+    rebuild_state(manager, store, load_conversation_store()).await
 }
 
 #[cfg(test)]
@@ -1096,7 +1071,20 @@ mod tests {
             "blob": blob,
         });
 
-        let event = parse_mailbox_event(&item).expect("parse mailbox event");
+        let host = DesktopBridgeHostConfig {
+            id: "host-1".to_string(),
+            coordination: "http://127.0.0.1:17080".to_string(),
+            node_id: "kd_self".to_string(),
+            api_key: "secret".to_string(),
+            display_name: Some("Self".to_string()),
+            owner: Some("Owner".to_string()),
+            human_id: Some("kh_self".to_string()),
+            discovery_mode: "open".to_string(),
+            active_agent_id: None,
+            agents: Vec::new(),
+            api_style: API_STYLE_SERVE.to_string(),
+        };
+        let event = parse_mailbox_event(&host, &item).expect("parse mailbox event");
 
         assert_eq!(event.from_node_id, "kd_peer");
         assert_eq!(event.message_type, BRIDGE_MESSAGE_TYPE_RESPONSE);

@@ -1,25 +1,31 @@
 use chrono::{Local, TimeZone};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 use super::constants::{
-    BRIDGE_CONVERSATION_ID_PREFIX, BRIDGE_KEYCHAIN_AGENT_ACCOUNT_PREFIX,
-    BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX, BRIDGE_KEYCHAIN_SERVICE_NAME, BRIDGE_NODE_ID_PREFIX,
-    DESKTOP_BRIDGE_AGENT_IDENTITIES_DIR_NAME, DESKTOP_BRIDGE_CONFIG_FILE_NAME,
-    DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME, DESKTOP_BRIDGE_IDENTITY_FILE_NAME,
-    DESKTOP_BRIDGE_SECRETS_FILE_NAME, HOSTED_BRIDGE_DIR_NAME, KORDE_DIR_NAME,
-    LEGACY_BRIDGE_CONFIG_FILE_NAME,
+    is_inbound_message_direction, BRIDGE_CONVERSATION_ID_PREFIX,
+    BRIDGE_KEYCHAIN_AGENT_ACCOUNT_PREFIX, BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX,
+    BRIDGE_KEYCHAIN_SERVICE_NAME, BRIDGE_MESSAGE_ID_PREFIX, BRIDGE_NODE_ID_PREFIX,
+    DEFAULT_BRIDGE_RUNTIME, DESKTOP_BRIDGE_AGENT_IDENTITIES_DIR_NAME,
+    DESKTOP_BRIDGE_CONFIG_FILE_NAME, DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME,
+    DESKTOP_BRIDGE_IDENTITY_FILE_NAME, DESKTOP_BRIDGE_SECRETS_FILE_NAME, HOSTED_BRIDGE_DIR_NAME,
+    KORDE_DIR_NAME, LEGACY_BRIDGE_CONFIG_FILE_NAME, LEGACY_DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME,
 };
 use super::{
-    DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
+    default_bridge_api_style, default_display_name, default_owner_name, ensure_host_bootstrap,
+    stable_host_id, DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
     DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeStore,
-    LegacyBridgeClientConfig, default_bridge_api_style, default_display_name, default_owner_name,
-    ensure_host_bootstrap, stable_host_id,
+    LegacyBridgeClientConfig,
 };
+
+#[cfg(test)]
+use super::{default_bridge_agent_runtime, DesktopBridgeAgentConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct DesktopBridgeSecretsStore {
@@ -105,6 +111,10 @@ pub(super) fn desktop_bridge_config_path() -> Result<PathBuf, String> {
 
 pub(super) fn desktop_bridge_conversations_path() -> Result<PathBuf, String> {
     Ok(korde_dir()?.join(DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME))
+}
+
+fn legacy_desktop_bridge_conversations_path() -> Result<PathBuf, String> {
+    Ok(korde_dir()?.join(LEGACY_DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME))
 }
 
 pub(super) fn desktop_bridge_secrets_path() -> Result<PathBuf, String> {
@@ -579,13 +589,92 @@ pub(super) fn save_bridge_store(store: &DesktopBridgeStore) -> Result<(), String
     write_owner_only_json_file(&path, store)
 }
 
-pub(super) fn load_conversation_store() -> DesktopBridgeConversationStore {
-    let Some(path) = desktop_bridge_conversations_path().ok() else {
-        return DesktopBridgeConversationStore::default();
-    };
-    let store = load_json_file(&path).unwrap_or_default();
+const BRIDGE_CONVERSATION_SCHEMA_VERSION: i64 = 1;
+const BRIDGE_CONVERSATION_JSON_MIGRATION_KEY: &str = "legacy_json_migrated";
+
+fn sqlite_error(err: rusqlite::Error) -> String {
+    err.to_string()
+}
+
+fn open_conversation_db() -> Result<Connection, String> {
+    let path = desktop_bridge_conversations_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let conn = Connection::open(&path).map_err(sqlite_error)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(sqlite_error)?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;\n         PRAGMA journal_mode = WAL;\n         PRAGMA synchronous = NORMAL;",
+    )
+    .map_err(sqlite_error)?;
+    init_conversation_schema(&conn)?;
     let _ = ensure_owner_only_permissions(&path);
-    store
+    Ok(conn)
+}
+
+fn init_conversation_schema(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS bridge_schema_meta (\n            key TEXT PRIMARY KEY,\n            value TEXT NOT NULL\n        );\n        CREATE TABLE IF NOT EXISTS bridge_conversations (\n            id TEXT PRIMARY KEY,\n            host_id TEXT NOT NULL,\n            peer_node_id TEXT NOT NULL,\n            peer_display_name TEXT,\n            peer_owner_name TEXT,\n            peer_runtime TEXT NOT NULL,\n            project_id TEXT,\n            project_name TEXT,\n            unread_count INTEGER NOT NULL DEFAULT 0,\n            updated_at_ms INTEGER NOT NULL,\n            peer_last_typing_at_ms INTEGER,\n            peer_last_heartbeat_at_ms INTEGER\n        );\n        CREATE TABLE IF NOT EXISTS bridge_messages (\n            id TEXT PRIMARY KEY,\n            conversation_id TEXT NOT NULL REFERENCES bridge_conversations(id) ON DELETE CASCADE,\n            direction TEXT NOT NULL,\n            sender TEXT,\n            text TEXT NOT NULL,\n            timestamp_ms INTEGER NOT NULL,\n            request_id TEXT,\n            delivery_state TEXT\n        );\n        CREATE INDEX IF NOT EXISTS idx_bridge_conversations_updated\n            ON bridge_conversations(updated_at_ms DESC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_conversation\n            ON bridge_messages(conversation_id, timestamp_ms ASC, id ASC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_request\n            ON bridge_messages(request_id) WHERE request_id IS NOT NULL;\n        CREATE UNIQUE INDEX IF NOT EXISTS idx_bridge_messages_stream_key\n            ON bridge_messages(conversation_id, direction, request_id)\n            WHERE request_id IS NOT NULL;",
+    )
+    .map_err(sqlite_error)?;
+    conn.execute(
+        "INSERT INTO bridge_schema_meta(key, value) VALUES ('schema_version', ?1)\n         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![BRIDGE_CONVERSATION_SCHEMA_VERSION.to_string()],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn conversation_json_migrated(conn: &Connection) -> Result<bool, String> {
+    let migrated = conn
+        .query_row(
+            "SELECT value FROM bridge_schema_meta WHERE key = ?1",
+            params![BRIDGE_CONVERSATION_JSON_MIGRATION_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .is_some_and(|value| value == "1");
+    Ok(migrated)
+}
+
+fn mark_conversation_json_migrated(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO bridge_schema_meta(key, value) VALUES (?1, '1')\n         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![BRIDGE_CONVERSATION_JSON_MIGRATION_KEY],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn migrate_legacy_conversation_json(conn: &mut Connection) -> Result<(), String> {
+    if conversation_json_migrated(conn)? {
+        return Ok(());
+    }
+
+    let legacy_path = legacy_desktop_bridge_conversations_path()?;
+    let legacy_store = if legacy_path.exists() {
+        let raw = std::fs::read_to_string(&legacy_path).map_err(|err| err.to_string())?;
+        Some(
+            serde_json::from_str::<DesktopBridgeConversationStore>(&raw)
+                .map_err(|err| err.to_string())?,
+        )
+    } else {
+        None
+    };
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    if let Some(store) = legacy_store {
+        for conversation in &store.conversations {
+            upsert_conversation_record(&tx, conversation)?;
+        }
+    }
+    mark_conversation_json_migrated(&tx)?;
+    tx.commit().map_err(sqlite_error)?;
+    Ok(())
 }
 
 fn delivery_state_rank(value: Option<&str>) -> i32 {
@@ -609,7 +698,11 @@ fn merge_conversation_message_records(
     } else {
         existing
     };
-    let older = if std::ptr::eq(newer, incoming) { existing } else { incoming };
+    let older = if std::ptr::eq(newer, incoming) {
+        existing
+    } else {
+        incoming
+    };
 
     DesktopBridgeConversationMessageRecord {
         id: newer.id.clone(),
@@ -621,13 +714,22 @@ fn merge_conversation_message_records(
             newer.text.clone()
         },
         timestamp_ms: newer.timestamp_ms.max(older.timestamp_ms),
-        request_id: newer.request_id.clone().or_else(|| older.request_id.clone()),
+        request_id: newer
+            .request_id
+            .clone()
+            .or_else(|| older.request_id.clone()),
         delivery_state: if delivery_state_rank(newer.delivery_state.as_deref())
             >= delivery_state_rank(older.delivery_state.as_deref())
         {
-            newer.delivery_state.clone().or_else(|| older.delivery_state.clone())
+            newer
+                .delivery_state
+                .clone()
+                .or_else(|| older.delivery_state.clone())
         } else {
-            older.delivery_state.clone().or_else(|| newer.delivery_state.clone())
+            older
+                .delivery_state
+                .clone()
+                .or_else(|| newer.delivery_state.clone())
         },
     }
 }
@@ -636,14 +738,20 @@ fn merge_conversation_records(
     existing: &DesktopBridgeConversationRecord,
     incoming: &DesktopBridgeConversationRecord,
 ) -> DesktopBridgeConversationRecord {
-    let newer = if incoming.updated_at_ms >= existing.updated_at_ms {
+    let incoming_is_newer = incoming.updated_at_ms >= existing.updated_at_ms;
+    let newer = if incoming_is_newer {
         incoming
     } else {
         existing
     };
-    let older = if std::ptr::eq(newer, incoming) { existing } else { incoming };
+    let older = if incoming_is_newer {
+        existing
+    } else {
+        incoming
+    };
 
-    let mut messages_by_key = std::collections::BTreeMap::<String, DesktopBridgeConversationMessageRecord>::new();
+    let mut messages_by_key =
+        std::collections::BTreeMap::<String, DesktopBridgeConversationMessageRecord>::new();
     for message in existing.messages.iter().chain(incoming.messages.iter()) {
         let key = message
             .request_id
@@ -681,16 +789,25 @@ fn merge_conversation_records(
         } else {
             newer.peer_runtime.clone()
         },
-        project_id: newer.project_id.clone().or_else(|| older.project_id.clone()),
+        project_id: newer
+            .project_id
+            .clone()
+            .or_else(|| older.project_id.clone()),
         project_name: newer
             .project_name
             .clone()
             .or_else(|| older.project_name.clone()),
-        unread_count: newer.unread_count,
+        unread_count: if incoming_is_newer {
+            incoming.unread_count
+        } else {
+            existing.unread_count
+        },
         updated_at_ms: newer.updated_at_ms.max(older.updated_at_ms),
-        peer_last_typing_at_ms: newer
-            .peer_last_typing_at_ms
-            .or(older.peer_last_typing_at_ms),
+        peer_last_typing_at_ms: if incoming_is_newer {
+            incoming.peer_last_typing_at_ms
+        } else {
+            existing.peer_last_typing_at_ms
+        },
         peer_last_heartbeat_at_ms: newer
             .peer_last_heartbeat_at_ms
             .or(older.peer_last_heartbeat_at_ms),
@@ -698,38 +815,609 @@ fn merge_conversation_records(
     }
 }
 
-fn merge_conversation_stores(
-    existing: DesktopBridgeConversationStore,
-    incoming: &DesktopBridgeConversationStore,
-) -> DesktopBridgeConversationStore {
-    let mut records_by_id = std::collections::BTreeMap::<String, DesktopBridgeConversationRecord>::new();
-
-    for record in existing.conversations {
-        records_by_id.insert(record.id.clone(), record);
-    }
-
-    for record in &incoming.conversations {
-        records_by_id
-            .entry(record.id.clone())
-            .and_modify(|current| {
-                *current = merge_conversation_records(current, record);
+fn load_conversation_messages(
+    conn: &Connection,
+    conversation_id: &str,
+) -> Result<Vec<DesktopBridgeConversationMessageRecord>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state\n             FROM bridge_messages\n             WHERE conversation_id = ?1\n             ORDER BY timestamp_ms ASC, id ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(params![conversation_id], |row| {
+            Ok(DesktopBridgeConversationMessageRecord {
+                id: row.get(0)?,
+                direction: row.get(1)?,
+                sender: row.get(2)?,
+                text: row.get(3)?,
+                timestamp_ms: row.get(4)?,
+                request_id: row.get(5)?,
+                delivery_state: row.get(6)?,
             })
-            .or_insert_with(|| record.clone());
+        })
+        .map_err(sqlite_error)?;
+
+    let mut messages = Vec::new();
+    for row in rows {
+        messages.push(row.map_err(sqlite_error)?);
+    }
+    Ok(messages)
+}
+
+fn load_conversation_record(
+    conn: &Connection,
+    conversation_id: &str,
+) -> Result<Option<DesktopBridgeConversationRecord>, String> {
+    let record = conn
+        .query_row(
+            "SELECT id, host_id, peer_node_id, peer_display_name, peer_owner_name,\n                    peer_runtime, project_id, project_name, unread_count, updated_at_ms,\n                    peer_last_typing_at_ms, peer_last_heartbeat_at_ms\n             FROM bridge_conversations\n             WHERE id = ?1",
+            params![conversation_id],
+            |row| {
+                let unread_count: i64 = row.get(8)?;
+                Ok(DesktopBridgeConversationRecord {
+                    id: row.get(0)?,
+                    host_id: row.get(1)?,
+                    peer_node_id: row.get(2)?,
+                    peer_display_name: row.get(3)?,
+                    peer_owner_name: row.get(4)?,
+                    peer_runtime: row.get(5)?,
+                    project_id: row.get(6)?,
+                    project_name: row.get(7)?,
+                    unread_count: unread_count.max(0) as usize,
+                    updated_at_ms: row.get(9)?,
+                    peer_last_typing_at_ms: row.get(10)?,
+                    peer_last_heartbeat_at_ms: row.get(11)?,
+                    messages: Vec::new(),
+                })
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+
+    match record {
+        Some(mut record) => {
+            record.messages = load_conversation_messages(conn, conversation_id)?;
+            Ok(Some(record))
+        }
+        None => Ok(None),
+    }
+}
+
+fn load_conversation_store_from_db(
+    conn: &Connection,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let mut statement = conn
+        .prepare("SELECT id FROM bridge_conversations ORDER BY updated_at_ms DESC, id ASC")
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+
+    let mut conversations = Vec::new();
+    for row in rows {
+        let id = row.map_err(sqlite_error)?;
+        if let Some(record) = load_conversation_record(conn, &id)? {
+            conversations.push(record);
+        }
+    }
+    Ok(DesktopBridgeConversationStore { conversations })
+}
+
+fn store_conversation_record(
+    conn: &Connection,
+    record: &DesktopBridgeConversationRecord,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO bridge_conversations(\n             id, host_id, peer_node_id, peer_display_name, peer_owner_name, peer_runtime,\n             project_id, project_name, unread_count, updated_at_ms, peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)\n         ON CONFLICT(id) DO UPDATE SET\n             host_id = excluded.host_id,\n             peer_node_id = excluded.peer_node_id,\n             peer_display_name = excluded.peer_display_name,\n             peer_owner_name = excluded.peer_owner_name,\n             peer_runtime = excluded.peer_runtime,\n             project_id = excluded.project_id,\n             project_name = excluded.project_name,\n             unread_count = excluded.unread_count,\n             updated_at_ms = excluded.updated_at_ms,\n             peer_last_typing_at_ms = excluded.peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms = excluded.peer_last_heartbeat_at_ms",
+        params![
+            record.id,
+            record.host_id,
+            record.peer_node_id,
+            record.peer_display_name,
+            record.peer_owner_name,
+            record.peer_runtime,
+            record.project_id,
+            record.project_name,
+            record.unread_count as i64,
+            record.updated_at_ms,
+            record.peer_last_typing_at_ms,
+            record.peer_last_heartbeat_at_ms,
+        ],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn find_existing_message_for_merge(
+    conn: &Connection,
+    conversation_id: &str,
+    message: &DesktopBridgeConversationMessageRecord,
+) -> Result<Option<DesktopBridgeConversationMessageRecord>, String> {
+    let mut statement = if message.request_id.is_some() {
+        conn.prepare(
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND direction = ?2 AND request_id = ?3\n             LIMIT 1",
+        )
+    } else {
+        conn.prepare(
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND id = ?2\n             LIMIT 1",
+        )
+    }
+    .map_err(sqlite_error)?;
+
+    let mapper = |row: &rusqlite::Row<'_>| {
+        Ok(DesktopBridgeConversationMessageRecord {
+            id: row.get(0)?,
+            direction: row.get(1)?,
+            sender: row.get(2)?,
+            text: row.get(3)?,
+            timestamp_ms: row.get(4)?,
+            request_id: row.get(5)?,
+            delivery_state: row.get(6)?,
+        })
+    };
+
+    if let Some(request_id) = message.request_id.as_deref() {
+        statement
+            .query_row(
+                params![conversation_id, message.direction, request_id],
+                mapper,
+            )
+            .optional()
+            .map_err(sqlite_error)
+    } else {
+        statement
+            .query_row(params![conversation_id, message.id], mapper)
+            .optional()
+            .map_err(sqlite_error)
+    }
+}
+
+fn store_message_record(
+    conn: &Connection,
+    conversation_id: &str,
+    message: &DesktopBridgeConversationMessageRecord,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO bridge_messages(\n             id, conversation_id, direction, sender, text, timestamp_ms, request_id, delivery_state\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)\n         ON CONFLICT(id) DO UPDATE SET\n             conversation_id = excluded.conversation_id,\n             direction = excluded.direction,\n             sender = excluded.sender,\n             text = excluded.text,\n             timestamp_ms = excluded.timestamp_ms,\n             request_id = excluded.request_id,\n             delivery_state = excluded.delivery_state",
+        params![
+            message.id,
+            conversation_id,
+            message.direction,
+            message.sender,
+            message.text,
+            message.timestamp_ms,
+            message.request_id,
+            message.delivery_state,
+        ],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn upsert_message_record(
+    conn: &Connection,
+    conversation_id: &str,
+    message: &DesktopBridgeConversationMessageRecord,
+) -> Result<(), String> {
+    let merged =
+        if let Some(existing) = find_existing_message_for_merge(conn, conversation_id, message)? {
+            let mut merged = merge_conversation_message_records(&existing, message);
+            merged.id = existing.id;
+            merged
+        } else {
+            message.clone()
+        };
+    store_message_record(conn, conversation_id, &merged)
+}
+
+fn upsert_conversation_record(
+    conn: &Connection,
+    incoming: &DesktopBridgeConversationRecord,
+) -> Result<(), String> {
+    let merged = load_conversation_record(conn, &incoming.id)?
+        .map(|existing| merge_conversation_records(&existing, incoming))
+        .unwrap_or_else(|| incoming.clone());
+    store_conversation_record(conn, &merged)?;
+    for message in &merged.messages {
+        upsert_message_record(conn, &merged.id, message)?;
+    }
+    Ok(())
+}
+
+fn is_person_runtime(runtime: &str) -> bool {
+    runtime.trim().eq_ignore_ascii_case("person")
+}
+
+fn scoped_conversation_id(
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<&str>,
+    peer_runtime: &str,
+) -> String {
+    let base = bridge_conversation_id(host_id, peer_node_id, project_id);
+    if is_person_runtime(peer_runtime) {
+        format!("{base}:person")
+    } else {
+        base
+    }
+}
+
+fn conversation_matches_runtime(existing_runtime: &str, peer_runtime: &str) -> bool {
+    is_person_runtime(existing_runtime) == is_person_runtime(peer_runtime)
+}
+
+fn find_conversation_for_peer(
+    conn: &Connection,
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<&str>,
+    peer_runtime: &str,
+) -> Result<Option<DesktopBridgeConversationRecord>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT id, peer_runtime FROM bridge_conversations\n             WHERE host_id = ?1\n               AND peer_node_id = ?2\n               AND ((project_id IS NULL AND ?3 IS NULL) OR project_id = ?3)\n             ORDER BY updated_at_ms DESC, id ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(params![host_id, peer_node_id, project_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(sqlite_error)?;
+
+    for row in rows {
+        let (id, existing_runtime) = row.map_err(sqlite_error)?;
+        if conversation_matches_runtime(&existing_runtime, peer_runtime) {
+            return load_conversation_record(conn, &id);
+        }
     }
 
-    let mut conversations: Vec<_> = records_by_id.into_values().collect();
-    conversations.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
-    DesktopBridgeConversationStore { conversations }
+    Ok(None)
+}
+
+fn apply_conversation_metadata(
+    conversation: &mut DesktopBridgeConversationRecord,
+    peer_display_name: Option<String>,
+    peer_owner_name: Option<String>,
+    peer_runtime: String,
+    project_id: Option<String>,
+    project_name: Option<String>,
+) {
+    if peer_display_name.is_some() {
+        conversation.peer_display_name = peer_display_name;
+    }
+    if peer_owner_name.is_some() {
+        conversation.peer_owner_name = peer_owner_name;
+    }
+    if !peer_runtime.trim().is_empty() {
+        conversation.peer_runtime = peer_runtime;
+    }
+    if project_id.is_some() {
+        conversation.project_id = project_id;
+    }
+    if project_name.is_some() {
+        conversation.project_name = project_name;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn append_conversation_message_to_storage(
+    host_id: &str,
+    peer_node_id: &str,
+    peer_display_name: Option<String>,
+    peer_owner_name: Option<String>,
+    peer_runtime: String,
+    project_id: Option<String>,
+    project_name: Option<String>,
+    direction: &str,
+    sender: Option<String>,
+    text: String,
+    request_id: Option<String>,
+    delivery_state: Option<String>,
+    increment_unread: bool,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let timestamp_ms = now_ms();
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+
+    let mut conversation = find_conversation_for_peer(
+        &tx,
+        host_id,
+        peer_node_id,
+        project_id.as_deref(),
+        &peer_runtime,
+    )?
+    .unwrap_or_else(|| DesktopBridgeConversationRecord {
+        id: scoped_conversation_id(host_id, peer_node_id, project_id.as_deref(), &peer_runtime),
+        host_id: host_id.to_string(),
+        peer_node_id: peer_node_id.to_string(),
+        peer_display_name: peer_display_name.clone(),
+        peer_owner_name: peer_owner_name.clone(),
+        peer_runtime: peer_runtime.clone(),
+        project_id: project_id.clone(),
+        project_name: project_name.clone(),
+        unread_count: 0,
+        updated_at_ms: timestamp_ms,
+        peer_last_typing_at_ms: None,
+        peer_last_heartbeat_at_ms: None,
+        messages: Vec::new(),
+    });
+
+    apply_conversation_metadata(
+        &mut conversation,
+        peer_display_name,
+        peer_owner_name,
+        peer_runtime,
+        project_id,
+        project_name,
+    );
+    conversation.updated_at_ms = timestamp_ms;
+    if is_inbound_message_direction(direction) {
+        conversation.peer_last_typing_at_ms = None;
+    }
+
+    let existing_message = request_id.as_deref().and_then(|existing_request_id| {
+        conversation.messages.iter().position(|message| {
+            message.request_id.as_deref() == Some(existing_request_id)
+                && message.direction == direction
+        })
+    });
+
+    if let Some(index) = existing_message {
+        let message = &mut conversation.messages[index];
+        let should_apply_update = delivery_state
+            .as_deref()
+            .map(|next| {
+                delivery_state_rank(Some(next))
+                    >= delivery_state_rank(message.delivery_state.as_deref())
+            })
+            .unwrap_or(true);
+        if should_apply_update {
+            message.sender = sender.or_else(|| message.sender.clone());
+            message.text = text;
+            message.timestamp_ms = timestamp_ms;
+            if delivery_state.is_some() {
+                message.delivery_state = delivery_state;
+            }
+        }
+    } else {
+        if increment_unread {
+            conversation.unread_count += 1;
+        }
+        conversation
+            .messages
+            .push(DesktopBridgeConversationMessageRecord {
+                id: format!("{}{}", BRIDGE_MESSAGE_ID_PREFIX, Uuid::new_v4().simple()),
+                direction: direction.to_string(),
+                sender,
+                text,
+                timestamp_ms,
+                request_id,
+                delivery_state,
+            });
+    }
+
+    upsert_conversation_record(&tx, &conversation)?;
+    tx.commit().map_err(sqlite_error)?;
+    load_conversation_store_from_db(&conn)
+}
+
+pub(super) fn update_message_delivery_state_in_storage(
+    request_id: &str,
+    delivery_state: &str,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    let now = now_ms();
+
+    let mut statement = tx
+        .prepare(
+            "SELECT id, conversation_id, delivery_state FROM bridge_messages\n             WHERE request_id = ?1",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(params![request_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(sqlite_error)?;
+
+    let mut updates = Vec::new();
+    for row in rows {
+        let (message_id, conversation_id, current_state) = row.map_err(sqlite_error)?;
+        if delivery_state_rank(Some(delivery_state))
+            >= delivery_state_rank(current_state.as_deref())
+        {
+            updates.push((message_id, conversation_id));
+        }
+    }
+    drop(statement);
+
+    for (message_id, conversation_id) in updates {
+        tx.execute(
+            "UPDATE bridge_messages SET delivery_state = ?1 WHERE id = ?2",
+            params![delivery_state, message_id],
+        )
+        .map_err(sqlite_error)?;
+        let peer_last_typing_at_ms = match delivery_state {
+            "processing" => Some(now),
+            "responded" | "processing_failed" => None,
+            _ => load_conversation_record(&tx, &conversation_id)?
+                .and_then(|conversation| conversation.peer_last_typing_at_ms),
+        };
+        tx.execute(
+            "UPDATE bridge_conversations\n             SET updated_at_ms = ?1, peer_last_typing_at_ms = ?2\n             WHERE id = ?3",
+            params![now, peer_last_typing_at_ms, conversation_id],
+        )
+        .map_err(sqlite_error)?;
+    }
+
+    tx.commit().map_err(sqlite_error)?;
+    load_conversation_store_from_db(&conn)
+}
+
+fn update_peer_presence_metadata_in_storage(
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<String>,
+    project_name: Option<String>,
+    typing_at_ms: Option<Option<i64>>,
+    heartbeat_at_ms: Option<i64>,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let timestamp_ms = now_ms();
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    let mut conversation = find_conversation_for_peer(
+        &tx,
+        host_id,
+        peer_node_id,
+        project_id.as_deref(),
+        DEFAULT_BRIDGE_RUNTIME,
+    )?
+    .unwrap_or_else(|| DesktopBridgeConversationRecord {
+        id: scoped_conversation_id(
+            host_id,
+            peer_node_id,
+            project_id.as_deref(),
+            DEFAULT_BRIDGE_RUNTIME,
+        ),
+        host_id: host_id.to_string(),
+        peer_node_id: peer_node_id.to_string(),
+        peer_display_name: None,
+        peer_owner_name: None,
+        peer_runtime: DEFAULT_BRIDGE_RUNTIME.to_string(),
+        project_id: project_id.clone(),
+        project_name: project_name.clone(),
+        unread_count: 0,
+        updated_at_ms: timestamp_ms,
+        peer_last_typing_at_ms: None,
+        peer_last_heartbeat_at_ms: None,
+        messages: Vec::new(),
+    });
+    if project_id.is_some() {
+        conversation.project_id = project_id;
+    }
+    if project_name.is_some() {
+        conversation.project_name = project_name;
+    }
+    if let Some(typing_at_ms) = typing_at_ms {
+        conversation.peer_last_typing_at_ms = typing_at_ms;
+    }
+    if let Some(heartbeat_at_ms) = heartbeat_at_ms {
+        conversation.peer_last_heartbeat_at_ms = Some(heartbeat_at_ms);
+    }
+    conversation.updated_at_ms = timestamp_ms;
+    store_conversation_record(&tx, &conversation)?;
+    tx.commit().map_err(sqlite_error)?;
+    load_conversation_store_from_db(&conn)
+}
+
+pub(super) fn note_peer_typing_in_storage(
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<String>,
+    project_name: Option<String>,
+) -> Result<DesktopBridgeConversationStore, String> {
+    update_peer_presence_metadata_in_storage(
+        host_id,
+        peer_node_id,
+        project_id,
+        project_name,
+        Some(Some(now_ms())),
+        None,
+    )
+}
+
+pub(super) fn note_peer_heartbeat_in_storage(
+    host_id: &str,
+    peer_node_id: &str,
+    project_id: Option<String>,
+    project_name: Option<String>,
+) -> Result<DesktopBridgeConversationStore, String> {
+    update_peer_presence_metadata_in_storage(
+        host_id,
+        peer_node_id,
+        project_id,
+        project_name,
+        None,
+        Some(now_ms()),
+    )
+}
+
+pub(super) fn mark_bridge_conversation_read_in_storage(
+    conversation_id: &str,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    tx.execute(
+        "UPDATE bridge_conversations SET unread_count = 0, updated_at_ms = ?1 WHERE id = ?2",
+        params![now_ms(), conversation_id],
+    )
+    .map_err(sqlite_error)?;
+    tx.commit().map_err(sqlite_error)?;
+    load_conversation_store_from_db(&conn)
+}
+
+pub(super) fn load_conversation_store() -> DesktopBridgeConversationStore {
+    let mut conn = match open_conversation_db() {
+        Ok(conn) => conn,
+        Err(error) => {
+            eprintln!("Unable to open desktop bridge conversation SQLite store: {error}");
+            return DesktopBridgeConversationStore::default();
+        }
+    };
+    if let Err(error) = migrate_legacy_conversation_json(&mut conn) {
+        eprintln!("Unable to migrate desktop bridge conversation JSON store: {error}");
+    }
+    load_conversation_store_from_db(&conn).unwrap_or_else(|error| {
+        eprintln!("Unable to load desktop bridge conversations from SQLite: {error}");
+        DesktopBridgeConversationStore::default()
+    })
 }
 
 pub(super) fn save_conversation_store(
     store: &DesktopBridgeConversationStore,
 ) -> Result<(), String> {
-    let path = desktop_bridge_conversations_path()?;
-    let merged = load_json_file::<DesktopBridgeConversationStore>(&path)
-        .map(|existing| merge_conversation_stores(existing, store))
-        .unwrap_or_else(|| store.clone());
-    write_owner_only_json_file(&path, &merged)
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    for conversation in &store.conversations {
+        upsert_conversation_record(&tx, conversation)?;
+    }
+    tx.commit().map_err(sqlite_error)?;
+    Ok(())
+}
+
+pub(super) fn delete_conversations_for_host(host_id: &str) -> Result<(), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    tx.execute(
+        "DELETE FROM bridge_conversations WHERE host_id = ?1",
+        params![host_id],
+    )
+    .map_err(sqlite_error)?;
+    tx.commit().map_err(sqlite_error)?;
+    Ok(())
 }
 
 pub(super) fn bridge_conversation_id(
@@ -815,6 +1503,258 @@ pub(super) fn load_or_create_bridge_identity_for_agent(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn memory_conversation_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory bridge conversation db");
+        init_conversation_schema(&conn).expect("init bridge conversation schema");
+        conn
+    }
+
+    fn test_conversation(
+        messages: Vec<DesktopBridgeConversationMessageRecord>,
+    ) -> DesktopBridgeConversationRecord {
+        DesktopBridgeConversationRecord {
+            id: "bridge:host-1:peer-1".to_string(),
+            host_id: "host-1".to_string(),
+            peer_node_id: "peer-1".to_string(),
+            peer_display_name: Some("Peer".to_string()),
+            peer_owner_name: Some("Owner".to_string()),
+            peer_runtime: "person".to_string(),
+            project_id: None,
+            project_name: None,
+            unread_count: 0,
+            updated_at_ms: 1_000,
+            peer_last_typing_at_ms: None,
+            peer_last_heartbeat_at_ms: None,
+            messages,
+        }
+    }
+
+    fn test_message(
+        id: &str,
+        direction: &str,
+        text: &str,
+        timestamp_ms: i64,
+        request_id: Option<&str>,
+        delivery_state: Option<&str>,
+    ) -> DesktopBridgeConversationMessageRecord {
+        DesktopBridgeConversationMessageRecord {
+            id: id.to_string(),
+            direction: direction.to_string(),
+            sender: Some("sender".to_string()),
+            text: text.to_string(),
+            timestamp_ms,
+            request_id: request_id.map(ToString::to_string),
+            delivery_state: delivery_state.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn targeted_append_keeps_person_and_agent_threads_separate_for_same_node() {
+        let conn = memory_conversation_db();
+        let mut person = test_conversation(vec![test_message(
+            "msg-person",
+            "inbound",
+            "human hello",
+            1_000,
+            Some("req-person"),
+            None,
+        )]);
+        person.id = "bridge:host-1:peer-1:person".to_string();
+        upsert_conversation_record(&conn, &person).expect("insert person conversation");
+
+        append_conversation_message_to_db_for_test(
+            &conn,
+            "host-1",
+            "peer-1",
+            "kordi-desktop".to_string(),
+            "agent hello".to_string(),
+        )
+        .expect("append agent conversation");
+
+        let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+        assert_eq!(loaded.conversations.len(), 2);
+        assert!(loaded.conversations.iter().any(|conversation| {
+            conversation.id.ends_with(":person")
+                && conversation
+                    .messages
+                    .iter()
+                    .any(|message| message.text == "human hello")
+        }));
+        assert!(loaded.conversations.iter().any(|conversation| {
+            !conversation.id.ends_with(":person")
+                && conversation.peer_runtime == "kordi-desktop"
+                && conversation
+                    .messages
+                    .iter()
+                    .any(|message| message.text == "agent hello")
+        }));
+    }
+
+    fn append_conversation_message_to_db_for_test(
+        conn: &Connection,
+        host_id: &str,
+        peer_node_id: &str,
+        peer_runtime: String,
+        text: String,
+    ) -> Result<(), String> {
+        let timestamp_ms = now_ms();
+        let mut conversation =
+            find_conversation_for_peer(conn, host_id, peer_node_id, None, &peer_runtime)?
+                .unwrap_or_else(|| DesktopBridgeConversationRecord {
+                    id: scoped_conversation_id(host_id, peer_node_id, None, &peer_runtime),
+                    host_id: host_id.to_string(),
+                    peer_node_id: peer_node_id.to_string(),
+                    peer_display_name: None,
+                    peer_owner_name: None,
+                    peer_runtime,
+                    project_id: None,
+                    project_name: None,
+                    unread_count: 0,
+                    updated_at_ms: timestamp_ms,
+                    peer_last_typing_at_ms: None,
+                    peer_last_heartbeat_at_ms: None,
+                    messages: Vec::new(),
+                });
+        conversation
+            .messages
+            .push(DesktopBridgeConversationMessageRecord {
+                id: "msg-agent".to_string(),
+                direction: "inbound-response".to_string(),
+                sender: Some("agent".to_string()),
+                text,
+                timestamp_ms,
+                request_id: Some("req-agent".to_string()),
+                delivery_state: Some("responded".to_string()),
+            });
+        upsert_conversation_record(conn, &conversation)
+    }
+
+    #[test]
+    fn sqlite_upsert_preserves_messages_from_independent_writes() {
+        let conn = memory_conversation_db();
+        let first = test_conversation(vec![test_message(
+            "msg-1",
+            "outbound",
+            "hello",
+            1_000,
+            Some("req-1"),
+            Some("sent"),
+        )]);
+        let mut second = test_conversation(vec![test_message(
+            "msg-2",
+            "inbound-response",
+            "hi back",
+            1_100,
+            Some("req-2"),
+            Some("responded"),
+        )]);
+        second.updated_at_ms = 1_100;
+
+        upsert_conversation_record(&conn, &first).expect("insert first write");
+        upsert_conversation_record(&conn, &second).expect("merge second write");
+
+        let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+        let messages = &loaded.conversations[0].messages;
+        assert_eq!(messages.len(), 2);
+        assert!(messages.iter().any(|message| message.text == "hello"));
+        assert!(messages.iter().any(|message| message.text == "hi back"));
+    }
+
+    #[test]
+    fn sqlite_upsert_merges_streamed_response_by_request_and_direction() {
+        let conn = memory_conversation_db();
+        let partial = test_conversation(vec![test_message(
+            "msg-partial",
+            "outbound-response",
+            "Hel",
+            1_000,
+            Some("req-stream"),
+            Some("processing"),
+        )]);
+        let mut final_response = test_conversation(vec![test_message(
+            "msg-final",
+            "outbound-response",
+            "Hello world",
+            1_200,
+            Some("req-stream"),
+            Some("responded"),
+        )]);
+        final_response.updated_at_ms = 1_200;
+
+        upsert_conversation_record(&conn, &partial).expect("insert partial response");
+        upsert_conversation_record(&conn, &final_response).expect("upsert final response");
+
+        let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+        let messages = &loaded.conversations[0].messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].text, "Hello world");
+        assert_eq!(messages[0].delivery_state.as_deref(), Some("responded"));
+    }
+
+    #[test]
+    fn sqlite_upsert_keeps_delivery_state_monotonic() {
+        let conn = memory_conversation_db();
+        let responded = test_conversation(vec![test_message(
+            "msg-1",
+            "outbound",
+            "hello",
+            1_000,
+            Some("req-1"),
+            Some("responded"),
+        )]);
+        let mut later_read = test_conversation(vec![test_message(
+            "msg-later",
+            "outbound",
+            "hello",
+            1_100,
+            Some("req-1"),
+            Some("read"),
+        )]);
+        later_read.updated_at_ms = 1_100;
+
+        upsert_conversation_record(&conn, &responded).expect("insert responded message");
+        upsert_conversation_record(&conn, &later_read).expect("merge lower-ranked read state");
+
+        let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+        let message = &loaded.conversations[0].messages[0];
+        assert_eq!(message.delivery_state.as_deref(), Some("responded"));
+    }
+
+    #[test]
+    fn sqlite_upsert_allows_newer_final_response_to_clear_typing() {
+        let conn = memory_conversation_db();
+        let mut processing = test_conversation(vec![test_message(
+            "msg-1",
+            "inbound-response",
+            "Working",
+            1_000,
+            Some("req-1"),
+            Some("processing"),
+        )]);
+        processing.peer_last_typing_at_ms = Some(1_000);
+        let mut responded = test_conversation(vec![test_message(
+            "msg-final",
+            "inbound-response",
+            "Done",
+            1_200,
+            Some("req-1"),
+            Some("responded"),
+        )]);
+        responded.updated_at_ms = 1_200;
+        responded.peer_last_typing_at_ms = None;
+
+        upsert_conversation_record(&conn, &processing).expect("insert processing state");
+        upsert_conversation_record(&conn, &responded).expect("merge final state");
+
+        let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+        let conversation = &loaded.conversations[0];
+        assert_eq!(conversation.peer_last_typing_at_ms, None);
+        assert_eq!(
+            conversation.messages[0].delivery_state.as_deref(),
+            Some("responded")
+        );
+    }
 
     #[test]
     fn bridge_store_export_redacts_api_keys() {

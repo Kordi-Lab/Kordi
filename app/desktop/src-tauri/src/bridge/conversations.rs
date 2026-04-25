@@ -1,16 +1,12 @@
 use base64::Engine as _;
-use uuid::Uuid;
 
 use super::constants::{
-    is_agent_like_runtime, is_inbound_message_direction, BRIDGE_DELIVERY_STATE_DELIVERED,
-    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+    is_agent_like_runtime, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     PEER_TYPING_WINDOW_MS,
 };
 use super::{
     bridge_conversation_id, format_time_label, format_time_label_with_seconds, now_ms,
-    DesktopBridgeConversation, DesktopBridgeConversationMessage,
-    DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
+    DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeConversationRecord,
     DesktopBridgeConversationStore,
 };
 
@@ -43,36 +39,10 @@ fn conversation_matches(
         && conversation.peer_node_id == peer_node_id
         && conversation.project_id.as_deref() == project_id
         && peer_runtime
-            .map(|runtime| is_person_runtime(&conversation.peer_runtime) == is_person_runtime(runtime))
-            .unwrap_or(true)
-}
-
-fn existing_runtime_for(
-    store: &DesktopBridgeConversationStore,
-    host_id: &str,
-    peer_node_id: &str,
-    project_id: Option<&str>,
-    preferred_runtime: Option<&str>,
-) -> Option<String> {
-    store
-        .conversations
-        .iter()
-        .find(|conversation| {
-            conversation_matches(
-                conversation,
-                host_id,
-                peer_node_id,
-                project_id,
-                preferred_runtime,
-            )
-        })
-        .or_else(|| {
-            store.conversations.iter().find(|conversation| {
-                conversation_matches(conversation, host_id, peer_node_id, project_id, None)
+            .map(|runtime| {
+                is_person_runtime(&conversation.peer_runtime) == is_person_runtime(runtime)
             })
-        })
-        .map(|conversation| conversation.peer_runtime.clone())
-        .filter(|runtime| !runtime.trim().is_empty())
+            .unwrap_or(true)
 }
 
 pub(super) fn upsert_bridge_conversation<'a>(
@@ -85,12 +55,8 @@ pub(super) fn upsert_bridge_conversation<'a>(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> &'a mut DesktopBridgeConversationRecord {
-    let conversation_id = scoped_conversation_id(
-        host_id,
-        peer_node_id,
-        project_id.as_deref(),
-        &peer_runtime,
-    );
+    let conversation_id =
+        scoped_conversation_id(host_id, peer_node_id, project_id.as_deref(), &peer_runtime);
     let maybe_index = store.conversations.iter().position(|conversation| {
         conversation.id == conversation_id
             || conversation_matches(
@@ -141,167 +107,6 @@ pub(super) fn upsert_bridge_conversation<'a>(
     conversation
 }
 
-pub(super) fn append_conversation_message(
-    store: &mut DesktopBridgeConversationStore,
-    host_id: &str,
-    peer_node_id: &str,
-    peer_display_name: Option<String>,
-    peer_owner_name: Option<String>,
-    peer_runtime: String,
-    project_id: Option<String>,
-    project_name: Option<String>,
-    direction: &str,
-    sender: Option<String>,
-    text: String,
-    request_id: Option<String>,
-    delivery_state: Option<String>,
-    increment_unread: bool,
-) {
-    let timestamp_ms = now_ms();
-    let conversation = upsert_bridge_conversation(
-        store,
-        host_id,
-        peer_node_id,
-        peer_display_name,
-        peer_owner_name,
-        peer_runtime,
-        project_id,
-        project_name,
-    );
-    if let Some(existing_request_id) = request_id.as_deref() {
-        if let Some(existing_message) = conversation.messages.iter_mut().find(|message| {
-            message.request_id.as_deref() == Some(existing_request_id)
-                && message.direction == direction
-        }) {
-            existing_message.sender = sender.or_else(|| existing_message.sender.clone());
-            existing_message.text = text;
-            existing_message.timestamp_ms = timestamp_ms;
-            if delivery_state.is_some() {
-                existing_message.delivery_state = delivery_state;
-            }
-            conversation.updated_at_ms = timestamp_ms;
-            if is_inbound_message_direction(direction) {
-                conversation.peer_last_typing_at_ms = None;
-            }
-            return;
-        }
-    }
-
-    conversation.updated_at_ms = timestamp_ms;
-    if is_inbound_message_direction(direction) {
-        conversation.peer_last_typing_at_ms = None;
-    }
-    if increment_unread {
-        conversation.unread_count += 1;
-    }
-    conversation
-        .messages
-        .push(DesktopBridgeConversationMessageRecord {
-            id: format!("{}{}", BRIDGE_MESSAGE_ID_PREFIX, Uuid::new_v4().simple()),
-            direction: direction.to_string(),
-            sender,
-            text,
-            timestamp_ms,
-            request_id,
-            delivery_state,
-        });
-}
-
-fn delivery_state_rank(delivery_state: &str) -> i32 {
-    match delivery_state.trim().to_lowercase().as_str() {
-        "sending" | "pending_send" => 0,
-        BRIDGE_DELIVERY_STATE_SENT => 1,
-        BRIDGE_DELIVERY_STATE_DELIVERED => 2,
-        "processing" | "handed_off_direct" | "handed_off_mailbox" => 3,
-        BRIDGE_DELIVERY_STATE_READ => 4,
-        BRIDGE_DELIVERY_STATE_RESPONDED | "processing_failed" => 5,
-        _ => 0,
-    }
-}
-
-fn should_apply_delivery_state(current: Option<&str>, next: &str) -> bool {
-    current
-        .map(|value| delivery_state_rank(next) >= delivery_state_rank(value))
-        .unwrap_or(true)
-}
-
-pub(super) fn update_message_delivery_state(
-    store: &mut DesktopBridgeConversationStore,
-    request_id: &str,
-    delivery_state: &str,
-) {
-    for conversation in &mut store.conversations {
-        let mut updated_any = false;
-        for message in &mut conversation.messages {
-            if message.request_id.as_deref() == Some(request_id)
-                && should_apply_delivery_state(message.delivery_state.as_deref(), delivery_state)
-            {
-                message.delivery_state = Some(delivery_state.to_string());
-                updated_any = true;
-            }
-        }
-        if updated_any {
-            conversation.updated_at_ms = now_ms();
-        }
-    }
-}
-
-pub(super) fn note_peer_typing(
-    store: &mut DesktopBridgeConversationStore,
-    host_id: &str,
-    peer_node_id: &str,
-    project_id: Option<String>,
-    project_name: Option<String>,
-) {
-    let peer_runtime = existing_runtime_for(
-        store,
-        host_id,
-        peer_node_id,
-        project_id.as_deref(),
-        Some("person"),
-    )
-    .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
-    let conversation = upsert_bridge_conversation(
-        store,
-        host_id,
-        peer_node_id,
-        None,
-        None,
-        peer_runtime,
-        project_id,
-        project_name,
-    );
-    conversation.peer_last_typing_at_ms = Some(now_ms());
-}
-
-pub(super) fn note_peer_heartbeat(
-    store: &mut DesktopBridgeConversationStore,
-    host_id: &str,
-    peer_node_id: &str,
-    project_id: Option<String>,
-    project_name: Option<String>,
-) {
-    let peer_runtime = existing_runtime_for(
-        store,
-        host_id,
-        peer_node_id,
-        project_id.as_deref(),
-        Some("person"),
-    )
-    .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
-    let conversation = upsert_bridge_conversation(
-        store,
-        host_id,
-        peer_node_id,
-        None,
-        None,
-        peer_runtime,
-        project_id,
-        project_name,
-    );
-    conversation.peer_last_heartbeat_at_ms = Some(now_ms());
-}
-
 pub(super) fn parse_mailbox_payload(blob: &str) -> Option<serde_json::Value> {
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(blob)
@@ -333,12 +138,9 @@ pub(super) fn conversation_title(record: &DesktopBridgeConversationRecord) -> St
             .filter(|value| !value.trim().is_empty());
 
         return match (owner, agent) {
-            (Some(owner), Some(agent)) if !labels_match(&owner, &agent) => {
-                format!("{owner} · {agent}")
-            }
-            (Some(owner), Some(_agent)) => owner,
+            (Some(owner), Some(agent)) if labels_match(&owner, &agent) => owner,
+            (_owner, Some(agent)) => agent,
             (Some(owner), None) => owner,
-            (None, Some(agent)) => agent,
             (None, None) => record.peer_node_id.clone(),
         };
     }
