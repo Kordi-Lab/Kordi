@@ -1048,6 +1048,18 @@ fn sync_desktop_chat_message(
     Ok(())
 }
 
+fn should_sync_desktop_chat_summary(
+    summary: &kordi_cli::desktop_runtime::DesktopChatSessionSummary,
+) -> bool {
+    !(summary.draft && summary.message_count == 0)
+}
+
+fn should_sync_desktop_chat_detail(
+    detail: &kordi_cli::desktop_runtime::DesktopChatSessionDetail,
+) -> bool {
+    !(detail.draft && detail.message_count == 0 && detail.messages.is_empty())
+}
+
 pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
     let conn = open_db()?;
     let human_identity_id = local_profile_human_identity_id(&conn, "You")?;
@@ -1058,7 +1070,11 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         &state.local_agent.workspace_root,
     )?;
 
-    for summary in &state.sessions {
+    for summary in state
+        .sessions
+        .iter()
+        .filter(|summary| should_sync_desktop_chat_summary(summary))
+    {
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
@@ -1083,7 +1099,11 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
     }
 
     for project in &state.projects {
-        for summary in &project.sessions {
+        for summary in project
+            .sessions
+            .iter()
+            .filter(|summary| should_sync_desktop_chat_summary(summary))
+        {
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -1110,56 +1130,58 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
     }
 
     let active = &state.active_session;
-    let (project_id, project_name, project_root) = active
-        .project
-        .as_ref()
-        .map(|project| {
-            (
-                Some(project.root.clone()),
-                Some(project.name.clone()),
-                Some(project.root.clone()),
-            )
-        })
-        .unwrap_or((None, None, None));
-    open_or_create_session_in_db(
-        &conn,
-        OpenCanonicalSessionRequest {
-            id: Some(active.id.clone()),
-            kind: if project_id.is_some() {
-                "project".to_string()
-            } else {
-                "self-agent".to_string()
-            },
-            title: Some(active.title.clone()),
-            status: Some(if active.draft { "draft" } else { "active" }.to_string()),
-            created_by_identity_id: human_identity_id.clone(),
-            primary_identity_id: Some(agent_identity_id.clone()),
-            project_id,
-            project_name,
-            relationship_identity_id: None,
-            participant_identity_ids: vec![agent_identity_id.clone()],
-            metadata: Some(serde_json::json!({
-                "source": "desktop-chat-detail",
-                "provider": active.provider,
-                "providerLabel": active.provider_label,
-                "model": active.model,
-                "modelLabel": active.model_label,
-                "thinking": active.thinking,
-                "thinkingLabel": active.thinking_label,
-                "projectRoot": project_root,
-            })),
-        },
-    )?;
-
-    for (index, message) in active.messages.iter().enumerate() {
-        sync_desktop_chat_message(
+    if should_sync_desktop_chat_detail(active) {
+        let (project_id, project_name, project_root) = active
+            .project
+            .as_ref()
+            .map(|project| {
+                (
+                    Some(project.root.clone()),
+                    Some(project.name.clone()),
+                    Some(project.root.clone()),
+                )
+            })
+            .unwrap_or((None, None, None));
+        open_or_create_session_in_db(
             &conn,
-            &active.id,
-            &human_identity_id,
-            &agent_identity_id,
-            index,
-            message,
+            OpenCanonicalSessionRequest {
+                id: Some(active.id.clone()),
+                kind: if project_id.is_some() {
+                    "project".to_string()
+                } else {
+                    "self-agent".to_string()
+                },
+                title: Some(active.title.clone()),
+                status: Some(if active.draft { "draft" } else { "active" }.to_string()),
+                created_by_identity_id: human_identity_id.clone(),
+                primary_identity_id: Some(agent_identity_id.clone()),
+                project_id,
+                project_name,
+                relationship_identity_id: None,
+                participant_identity_ids: vec![agent_identity_id.clone()],
+                metadata: Some(serde_json::json!({
+                    "source": "desktop-chat-detail",
+                    "provider": active.provider,
+                    "providerLabel": active.provider_label,
+                    "model": active.model,
+                    "modelLabel": active.model_label,
+                    "thinking": active.thinking,
+                    "thinkingLabel": active.thinking_label,
+                    "projectRoot": project_root,
+                })),
+            },
         )?;
+
+        for (index, message) in active.messages.iter().enumerate() {
+            sync_desktop_chat_message(
+                &conn,
+                &active.id,
+                &human_identity_id,
+                &agent_identity_id,
+                index,
+                message,
+            )?;
+        }
     }
 
     Ok(())

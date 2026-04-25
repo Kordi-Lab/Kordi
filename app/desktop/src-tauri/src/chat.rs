@@ -79,6 +79,8 @@ pub(crate) struct BridgeAgentPromptStream {
     pub completion: tokio::task::JoinHandle<Result<DesktopChatTurnSnapshot, String>>,
 }
 
+const TRANSIENT_LOCAL_DRAFT_SESSION_ID: &str = "draft:local-chat";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatArtifactPreviewLine {
@@ -248,6 +250,54 @@ fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
 }
 
+fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
+    summary.draft && summary.message_count == 0
+}
+
+fn filter_blank_draft_projects(
+    projects: Vec<DesktopChatProjectGroup>,
+) -> Vec<DesktopChatProjectGroup> {
+    projects
+        .into_iter()
+        .map(|mut project| {
+            project
+                .sessions
+                .retain(|session| !is_blank_draft_summary(session));
+            project
+        })
+        .collect()
+}
+
+async fn build_transient_draft_chat_state(
+    cwd: &std::path::Path,
+    persisted: Vec<DesktopChatSessionSummary>,
+    projects: Vec<DesktopChatProjectGroup>,
+    model_options: Vec<DesktopChatModelOption>,
+) -> Result<DesktopChatState, String> {
+    let runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
+        .await
+        .map_err(|err| err.to_string())?;
+    let mut active_session = runtime.detail().map_err(|err| err.to_string())?;
+    active_session.id = TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string();
+    active_session.title = "New session".to_string();
+    active_session.subtitle.clear();
+    active_session.updated_at_label = "Draft".to_string();
+    active_session.message_count = 0;
+    active_session.draft = true;
+    active_session.messages.clear();
+
+    Ok(DesktopChatState {
+        cwd: cwd.display().to_string(),
+        active_session_id: TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string(),
+        sessions: persisted,
+        projects,
+        active_session,
+        local_agent: runtime.agent_profile(),
+        model_options,
+        slash_commands: runtime.slash_commands(),
+    })
+}
+
 async fn prepare_desktop_session_for_send(
     runtime: &mut DesktopRuntimeSession,
     bridge_manager: DesktopBridgeManager,
@@ -307,6 +357,9 @@ async fn ensure_loaded_session(
     let mut sessions = manager.sessions.lock().await;
 
     if let Some(session_id) = active_session_id {
+        if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+            return Ok(session_id);
+        }
         if sessions.contains_key(&session_id) {
             return Ok(session_id);
         }
@@ -341,15 +394,7 @@ async fn ensure_loaded_session(
         return Ok(session_id);
     }
 
-    let runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
-        .await
-        .map_err(|err| err.to_string())?;
-    let session_id = runtime.session_id().to_string();
-    sessions.insert(
-        session_id.clone(),
-        Arc::new(tokio::sync::Mutex::new(runtime)),
-    );
-    Ok(session_id)
+    Ok(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
 }
 
 async fn build_chat_state(
@@ -357,11 +402,24 @@ async fn build_chat_state(
     cwd: &std::path::Path,
     active_session_id: String,
 ) -> Result<DesktopChatState, String> {
-    let persisted =
-        kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
+    let persisted = kordi_cli::desktop_runtime::list_session_summaries(cwd)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .filter(|session| !is_blank_draft_summary(session))
+        .collect::<Vec<_>>();
     let model_options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
-    let projects =
-        kordi_cli::desktop_runtime::list_project_groups(cwd).map_err(|err| err.to_string())?;
+    let projects = filter_blank_draft_projects(
+        kordi_cli::desktop_runtime::list_project_groups(cwd).map_err(|err| err.to_string())?,
+    );
+    if active_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        let state =
+            build_transient_draft_chat_state(cwd, persisted, projects, model_options).await?;
+        if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
+            eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
+        }
+        return Ok(state);
+    }
+
     let active_runtime = {
         let mut sessions = manager.sessions.lock().await;
 
@@ -396,7 +454,10 @@ async fn build_chat_state(
         .any(|session| session.id == active_session_id);
     if !active_exists {
         let active_runtime = active_runtime.lock().await;
-        summaries.insert(0, active_runtime.summary().map_err(|err| err.to_string())?);
+        let summary = active_runtime.summary().map_err(|err| err.to_string())?;
+        if !is_blank_draft_summary(&summary) {
+            summaries.insert(0, summary);
+        }
     }
 
     let session_handles = {
@@ -412,7 +473,10 @@ async fn build_chat_state(
             continue;
         }
         let runtime = runtime.lock().await;
-        summaries.push(runtime.summary().map_err(|err| err.to_string())?);
+        let summary = runtime.summary().map_err(|err| err.to_string())?;
+        if !is_blank_draft_summary(&summary) {
+            summaries.push(summary);
+        }
     }
 
     let state = DesktopChatState {

@@ -89,7 +89,7 @@ Selected delegation UI: **B · Join event**. Keep the original Kordi chat UI alm
 Planned components:
 
 - `SessionList`: left-side canonical session list. Shows only top-level canonical sessions and hides child delegated exchanges. It displays the session title, but opens/routes by canonical `session.id`.
-- `NewSessionButton`: Chat `+` entry point. Opens own-agent session directly or launches owned-agent picker when multiple owned agents exist.
+- `NewSessionButton`: Chat `+` entry point. Opens an own-agent draft immediately in the UI, but does not materialize a durable session until the first meaningful write.
 - `OwnedAgentPicker`: popover for choosing which owned agent starts a self-agent session.
 - `ContactMessageButton`: opens/resumes canonical sessions for people, owned agents, or external agents through the canonical resolver.
 - `SessionTranscript`: renders canonical messages from the canonical DB, with delegation metadata attached to the relevant turns.
@@ -104,6 +104,7 @@ Component rules:
 
 - Do not redesign the shell, session rail, chat header, composer, right rail, message bubble shape, or `LiveChatTurnCard` layout for delegation.
 - Add the smallest new transcript surface possible: a centered join/request event using the existing compact system-message style.
+- Blank local chat drafts are transient UI state. They do not receive durable local/canonical session rows, and they disappear if abandoned.
 - Components receive canonical identities or canonical avatar keys; they should not derive avatars from display names, session IDs, project IDs, or raw conversation IDs.
 - Local and remote agent responses use the same `AgentTurnMessage` UI, including thinking sections, tool sections, final-answer bubble, status, and error states.
 - User-authored and agent-authored `@` delegated responses appear inline in `SessionTranscript` as normal person/agent messages.
@@ -123,11 +124,12 @@ Migration order:
 1. Add `useCanonicalSessionViewModels()` behind a feature flag.
 2. Build canonical components without deleting legacy UI paths.
 3. Route Contact Message and Chat `+` into canonical sessions by `session.id`; default unnamed sessions to the first receiver's display name.
-4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`. Backend mirroring is in place; UI read-model migration remains.
-5. Replace old chat/session rails with `SessionList`.
-6. Replace outreach thread cards with normal transcript turns plus optional inline/right-panel delegation trace details.
-7. Add agent-authored `@` rendering: local agent turn shows the mention/invocation, remote participant replies as a normal message in the same session.
-8. Remove legacy bridge/local session merge UI after canonical UI is stable.
+4. Keep blank drafts ephemeral until first real content; only then materialize the runtime/local/canonical session row.
+5. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`. Backend mirroring is in place; UI read-model migration remains.
+6. Replace old chat/session rails with `SessionList`.
+7. Replace outreach thread cards with normal transcript turns plus optional inline/right-panel delegation trace details.
+8. Add agent-authored `@` rendering: local agent turn shows the mention/invocation, remote participant replies as a normal message in the same session.
+9. Remove legacy bridge/local session merge UI after canonical UI is stable.
 
 ## Migration direction
 

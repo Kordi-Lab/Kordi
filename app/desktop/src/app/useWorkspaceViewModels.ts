@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
@@ -360,13 +361,13 @@ export function useWorkspaceViewModels({
 
   const nativeChatPlaceholder = useMemo(
     () => ({
-      id: 'local-chat-session',
-      canonicalSessionId: 'local-chat-session',
-      name: 'Chat session',
+      id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+      canonicalSessionId: undefined,
+      name: 'New session',
       type: 'owned-agent' as const,
       subtitle: isDesktopChatLoading
         ? 'Opening your local chat history…'
-        : 'No local chat session is selected.',
+        : 'Blank drafts stay local until the first real send.',
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
@@ -377,17 +378,19 @@ export function useWorkspaceViewModels({
         role: 'system' as const,
         text: isDesktopChatLoading
           ? 'Opening your local chat history…'
-          : 'Select a local session from the sidebar or create a new one to start chatting.',
+          : 'Type a message to start a new chat. Blank drafts disappear until you send something.',
         time: '--:--',
       }],
     }),
     [isDesktopChatLoading],
   );
 
-  const activeConv = useMemo(
-    () => chatConversations.find((conversation) => conversation.id === activeConvId) ?? chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]),
-    [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder],
-  );
+  const activeConv = useMemo(() => {
+    if (isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
+      return nativeChatPlaceholder;
+    }
+    return chatConversations.find((conversation) => conversation.id === activeConvId) ?? chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
+  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && activeConv.id.startsWith('bridge:');
   const activeLastMessage = activeConv.messages[activeConv.messages.length - 1];
   const activeConvHasSubtitle = activeConv.subtitle.trim().length > 0;

@@ -13,6 +13,7 @@ import type {
   ProjectSession,
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
+import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
@@ -90,7 +91,7 @@ export function useKordiDesktopActivity({
   useEffect(() => {
     const visibleLocalSessionId = activeNav === 'projects'
       ? (activeProjectSessionId || null)
-      : activeNav === 'chats' && !activeConvId.startsWith('bridge:')
+      : activeNav === 'chats' && !activeConvId.startsWith('bridge:') && !isLocalDraftChatConversationId(activeConvId)
         ? activeConvId
         : null;
     setVisibleLocalSessionId(visibleLocalSessionId);

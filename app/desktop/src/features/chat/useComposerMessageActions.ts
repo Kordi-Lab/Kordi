@@ -8,6 +8,7 @@ import {
   appendCanonicalMessage,
   cancelDesktopChatTurn,
   createDesktopBridgeOutreach,
+  createDesktopChatSession,
   openDesktopBridgeConversation,
   runDesktopChatSkillCommand,
   sendDesktopBridgeMessage,
@@ -22,6 +23,7 @@ import {
   resizeComposerTextarea,
 } from './composerController.shared';
 import type { AttachmentItem, UseComposerControllerArgs } from './composerController.types';
+import { isLocalDraftChatConversationId } from './draftSessions';
 
 type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
@@ -95,25 +97,46 @@ function appendOptimisticOutboundMessage(
     timestampMs: Date.now(),
   };
 
+  const activeSessionMatches = current.activeSession.id === targetSessionId;
+  const existingSummary = current.sessions.find((session) => session.id === targetSessionId);
+  const nextMessageCount = activeSessionMatches
+    ? current.activeSession.messageCount + 1
+    : (existingSummary?.messageCount ?? 0) + 1;
+  const nextTitle = activeSessionMatches
+    ? current.activeSession.title
+    : existingSummary?.title ?? 'New session';
+  const nextSessions = current.sessions.some((session) => session.id === targetSessionId)
+    ? current.sessions.map((session) =>
+        session.id === targetSessionId
+          ? {
+              ...session,
+              subtitle: previewText,
+              updatedAtLabel: sentAt,
+              messageCount: nextMessageCount,
+              draft: false,
+            }
+          : session,
+      )
+    : [{
+        id: targetSessionId,
+        title: nextTitle,
+        subtitle: previewText,
+        updatedAtLabel: sentAt,
+        messageCount: nextMessageCount,
+        draft: false,
+      }, ...current.sessions];
+
   return {
     ...current,
-    sessions: current.sessions.map((session) =>
-      session.id === targetSessionId
-        ? {
-            ...session,
-            subtitle: previewText,
-            updatedAtLabel: sentAt,
-            messageCount: session.messageCount + 1,
-          }
-        : session,
-    ),
+    sessions: nextSessions,
     activeSession:
-      current.activeSession.id === targetSessionId
+      activeSessionMatches
         ? {
             ...current.activeSession,
             subtitle: previewText,
             updatedAtLabel: sentAt,
-            messageCount: current.activeSession.messageCount + 1,
+            messageCount: nextMessageCount,
+            draft: false,
             messages: [...current.activeSession.messages, optimisticMessage],
           }
         : current.activeSession,
@@ -415,16 +438,22 @@ export function useComposerMessageActions({
         setOpenComposerSelector({ scope, type: 'model' });
         return true;
       }
-      case '/name':
-        if (!desktopChatState?.activeSessionId) return true;
+      case '/name': {
+        if (!desktopChatState?.activeSessionId && !isLocalDraftChatConversationId(activeConvId)) {
+          return true;
+        }
+        const activeSessionTitle = isLocalDraftChatConversationId(activeConvId)
+          ? 'New session'
+          : desktopChatState?.activeSession.title ?? 'New session';
         if (args) {
           setDesktopSessionRenameDraft(args);
-          await handleRenameDesktopSession(desktopChatState.activeSession.title);
+          await handleRenameDesktopSession(activeSessionTitle);
         } else {
-          setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
+          setDesktopSessionRenameDraft(activeSessionTitle);
           setIsEditingDesktopSessionTitle(true);
         }
         return true;
+      }
       case '/copy': {
         const lastAssistant = [...activeConvMessages].reverse().find((message) => message.role === 'owned-agent');
         if (!lastAssistant?.text?.trim()) {
@@ -539,11 +568,15 @@ export function useComposerMessageActions({
       return;
     }
 
-    const targetSessionId = activeConvId && !activeConvId.startsWith('bridge:')
-      ? activeConvId
-      : desktopChatState?.activeSessionId;
-
-    if (!targetSessionId) return;
+    const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
+    let targetSessionId = isTransientDraftConversation
+      ? null
+      : activeConvId && !activeConvId.startsWith('bridge:') && !isLocalDraftChatConversationId(activeConvId)
+        ? activeConvId
+        : desktopChatState?.activeSessionId;
+    if (isLocalDraftChatConversationId(targetSessionId)) {
+      targetSessionId = null;
+    }
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
@@ -553,6 +586,22 @@ export function useComposerMessageActions({
       return;
     }
 
+    let materializedState: DesktopChatState | null = null;
+    const ensureLocalSessionId = async () => {
+      if (targetSessionId) {
+        if (desktopChatState?.activeSessionId !== targetSessionId) {
+          await refreshDesktopChat(targetSessionId);
+        }
+        return targetSessionId;
+      }
+
+      materializedState = await createDesktopChatSession();
+      targetSessionId = materializedState.activeSessionId;
+      setDesktopChatState(materializedState);
+      setActiveConvId(targetSessionId);
+      return targetSessionId;
+    };
+
     const mentionedTarget = chatComposerAttachments.length === 0 ? resolveMentionedBridgeTarget(text, desktopBridgeState) : null;
     if (mentionedTarget) {
       try {
@@ -561,6 +610,7 @@ export function useComposerMessageActions({
         setDesktopChatError(null);
         setComposerDrafts((current) => ({ ...current, chat: '' }));
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        const parentSessionId = await ensureLocalSessionId();
         const nextState = await createDesktopBridgeOutreach({
           hostId: mentionedTarget.host.id,
           targetNodeId: mentionedTarget.peer.nodeId,
@@ -568,7 +618,7 @@ export function useComposerMessageActions({
           requestText: mentionedTarget.requestText,
           contextText: renderProjectContext(desktopChatState),
           contextPolicy: 'recent-window',
-          parentSessionId: targetSessionId,
+          parentSessionId,
           projectId: desktopChatState?.activeSession.project?.root,
           projectName: desktopChatState?.activeSession.project?.name,
         });
@@ -584,16 +634,14 @@ export function useComposerMessageActions({
     try {
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
-      if (desktopChatState?.activeSessionId !== targetSessionId) {
-        await refreshDesktopChat(targetSessionId);
-      }
+      const resolvedSessionId = await ensureLocalSessionId();
 
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       await appendCanonicalUserMessage(
-        activeConvCanonicalSessionId ?? targetSessionId,
+        activeConvCanonicalSessionId ?? resolvedSessionId,
         canonicalHumanIdentityId,
         text,
         chatComposerAttachments,
@@ -601,14 +649,14 @@ export function useComposerMessageActions({
         'desktop-chat-ui',
       );
       setDesktopChatState((current) => (
-        current
-          ? appendOptimisticOutboundMessage(current, targetSessionId, previewText, text, chatComposerAttachments, sentAt)
+        (current ?? materializedState)
+          ? appendOptimisticOutboundMessage(current ?? materializedState!, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt)
           : current
       ));
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-      const turn = await startDesktopChatMessage(targetSessionId, text, attachmentPaths);
+      const turn = await startDesktopChatMessage(resolvedSessionId, text, attachmentPaths);
       void watchDesktopLiveTurn(turn);
     } catch (error) {
       setPendingUserChatMessage(null);

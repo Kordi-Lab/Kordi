@@ -497,6 +497,7 @@ export function useKordiAppModel() {
   } = useDesktopSessionController({
     isNativeShell,
     activeConversationIsBridge,
+    activeConvId,
     desktopChatState,
     desktopSessionRenameDraft: sessionUi.desktopSessionRenameDraft,
     selectProjectSession,

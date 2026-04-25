@@ -9,11 +9,17 @@ import {
   renameDesktopChatSession,
 } from '@/lib/desktop';
 
+import {
+  LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+  isLocalDraftChatConversationId,
+} from './draftSessions';
+
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
 
 type UseDesktopSessionControllerArgs = {
   isNativeShell: boolean;
   activeConversationIsBridge: boolean;
+  activeConvId: string;
   desktopChatState: DesktopChatState | null;
   desktopSessionRenameDraft: string;
   selectProjectSession: (projectId: string, sessionId: string) => void;
@@ -34,6 +40,7 @@ type UseDesktopSessionControllerArgs = {
 export function useDesktopSessionController({
   isNativeShell,
   activeConversationIsBridge,
+  activeConvId,
   desktopChatState,
   desktopSessionRenameDraft,
   selectProjectSession,
@@ -57,6 +64,11 @@ export function useDesktopSessionController({
     setChatComposerAttachments([]);
     if (!isNativeShell) return;
 
+    if (isLocalDraftChatConversationId(sessionId)) {
+      setDesktopChatError(null);
+      return;
+    }
+
     if (sessionId.startsWith('bridge:')) {
       try {
         const nextState = await markDesktopBridgeConversationRead(sessionId);
@@ -79,19 +91,13 @@ export function useDesktopSessionController({
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;
 
-    try {
-      shouldAutoFollowChatRef.current = true;
-      setDesktopChatError(null);
-      setPendingUserChatMessage(null);
-      const nextState = await createDesktopChatSession();
-      setDesktopChatState(nextState);
-      setActiveConvId(nextState.activeSessionId);
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
-      setChatComposerAttachments([]);
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create chat session');
-    }
-  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+    shouldAutoFollowChatRef.current = true;
+    setDesktopChatError(null);
+    setPendingUserChatMessage(null);
+    setActiveConvId(LOCAL_DRAFT_CHAT_CONVERSATION_ID);
+    setComposerDrafts((current) => ({ ...current, chat: '' }));
+    setChatComposerAttachments([]);
+  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleSelectProjectSession = useCallback(async (projectId: string, sessionId: string) => {
     shouldAutoFollowChatRef.current = true;
@@ -112,6 +118,8 @@ export function useDesktopSessionController({
     if (!isNativeShell || activeConversationIsBridge || !desktopChatState?.activeSessionId) return;
     const name = desktopSessionRenameDraft.trim();
     const baselineName = fallbackName ?? desktopChatState.activeSession.title;
+    const isTransientDraft = isLocalDraftChatConversationId(activeConvId)
+      || isLocalDraftChatConversationId(desktopChatState.activeSessionId);
 
     if (!name) {
       setDesktopSessionRenameDraft(baselineName);
@@ -119,21 +127,26 @@ export function useDesktopSessionController({
       return;
     }
 
-    if (name === baselineName) {
+    if (!isTransientDraft && name === baselineName) {
       setIsEditingDesktopSessionTitle(false);
       return;
     }
 
     try {
       setDesktopChatError(null);
-      const nextState = await renameDesktopChatSession(desktopChatState.activeSessionId, name);
+      const sessionState = isTransientDraft
+        ? await createDesktopChatSession()
+        : desktopChatState;
+      const targetSessionId = sessionState.activeSessionId;
+      const nextState = await renameDesktopChatSession(targetSessionId, name);
       setDesktopChatState(nextState);
+      setActiveConvId(nextState.activeSessionId);
       setDesktopSessionRenameDraft(nextState.activeSession.title);
       setIsEditingDesktopSessionTitle(false);
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to rename session');
     }
-  }, [activeConversationIsBridge, desktopChatState, desktopSessionRenameDraft, isNativeShell, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
+  }, [activeConvId, activeConversationIsBridge, desktopChatState, desktopSessionRenameDraft, isNativeShell, setActiveConvId, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
 
   return {
     handleSelectChatSession,

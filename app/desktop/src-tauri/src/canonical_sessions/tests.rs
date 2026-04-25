@@ -233,6 +233,45 @@ fn outreach_context_snapshot_is_session_scoped() {
 }
 
 #[test]
+fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
+    let blank_summary = kordi_cli::desktop_runtime::DesktopChatSessionSummary {
+        id: "draft:local-chat".to_string(),
+        title: "New session".to_string(),
+        subtitle: String::new(),
+        updated_at_label: "Draft".to_string(),
+        message_count: 0,
+        draft: true,
+    };
+    let blank_detail = kordi_cli::desktop_runtime::DesktopChatSessionDetail {
+        id: "draft:local-chat".to_string(),
+        title: "New session".to_string(),
+        subtitle: String::new(),
+        provider: "openai".to_string(),
+        provider_label: "OpenAI".to_string(),
+        model: "gpt-5".to_string(),
+        model_label: "gpt-5".to_string(),
+        thinking: "medium".to_string(),
+        thinking_label: "Medium".to_string(),
+        updated_at_label: "Draft".to_string(),
+        message_count: 0,
+        draft: true,
+        cache_monitor_text: None,
+        context_window_text: "0 / 0".to_string(),
+        context_window_status: kordi_cli::desktop_runtime::DesktopChatContextWindowStatus {
+            context_window: 0,
+            used_tokens: None,
+            used_percent: None,
+            auto_compaction: false,
+        },
+        project: None,
+        messages: Vec::new(),
+    };
+
+    assert!(!should_sync_desktop_chat_summary(&blank_summary));
+    assert!(!should_sync_desktop_chat_detail(&blank_detail));
+}
+
+#[test]
 fn synced_user_message_reconciles_optimistic_ui_message() {
     let conn = test_conn();
     let session = open_or_create_session_in_db(
