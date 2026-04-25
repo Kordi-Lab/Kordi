@@ -1040,6 +1040,165 @@ fn select_delegated_exchange(
     .map_err(|err| err.to_string())
 }
 
+fn runtime_is_agent_like(runtime: &str) -> bool {
+    let normalized = runtime.trim().to_lowercase();
+    ["agent", "claude", "codex", "openclaw", "pi", "bot", "kordi"]
+        .iter()
+        .any(|token| normalized.contains(token))
+}
+
+fn update_local_profile_identities(
+    conn: &Connection,
+    human_identity_id: Option<&str>,
+    active_agent_identity_id: Option<&str>,
+) -> Result<(), String> {
+    let profile = ensure_local_profile(conn)?;
+    conn.execute(
+        "UPDATE local_profile
+         SET human_identity_id = COALESCE(?1, human_identity_id),
+             active_agent_identity_id = COALESCE(?2, active_agent_identity_id),
+             updated_at_ms = ?3
+         WHERE id = ?4",
+        params![
+            human_identity_id,
+            active_agent_identity_id,
+            now_ms(),
+            profile.id
+        ],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn sync_bridge_state_identities(
+    state: &crate::bridge::DesktopBridgeState,
+) -> Result<(), String> {
+    let conn = open_db()?;
+
+    for host in &state.hosts {
+        let host_human = upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: None,
+                kind: "human".to_string(),
+                display_name: host.owner_name.clone(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some(host.id.clone()),
+                bridge_node_id: host.node_id.clone(),
+                human_id: Some(host.human_id.clone()),
+                agent_id: None,
+                avatar_key: Some(host.human_id.clone()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )?;
+
+        let mut active_agent_identity_id = None;
+        for agent in &host.agents {
+            let agent_identity = upsert_identity_in_db(
+                &conn,
+                UpsertCanonicalIdentityRequest {
+                    id: None,
+                    kind: "agent".to_string(),
+                    display_name: agent.label.clone(),
+                    owner_identity_id: Some(host_human.id.clone()),
+                    source: Some("bridge".to_string()),
+                    source_host_id: Some(host.id.clone()),
+                    bridge_node_id: agent.node_id.clone(),
+                    human_id: Some(host.human_id.clone()),
+                    agent_id: Some(agent.id.clone()),
+                    avatar_key: Some(agent.id.clone()),
+                    profile_image_url: None,
+                    metadata: Some(serde_json::json!({
+                        "runtime": agent.runtime,
+                        "isDefault": agent.is_default,
+                        "isActive": agent.is_active,
+                        "registered": agent.registered,
+                    })),
+                },
+            )?;
+            if agent.is_active || host.active_agent_id.as_deref() == Some(agent.id.as_str()) {
+                active_agent_identity_id = Some(agent_identity.id.clone());
+            }
+        }
+
+        if state.active_host_id.as_deref() == Some(host.id.as_str()) {
+            update_local_profile_identities(
+                &conn,
+                Some(host_human.id.as_str()),
+                active_agent_identity_id.as_deref(),
+            )?;
+        }
+
+        for peer in &host.visible_peers {
+            let peer_human_identity_id =
+                match (peer.human_id.as_deref(), peer.owner_name.as_deref()) {
+                    (Some(human_id), Some(owner_name))
+                        if !human_id.trim().is_empty() && !owner_name.trim().is_empty() =>
+                    {
+                        Some(
+                            upsert_identity_in_db(
+                                &conn,
+                                UpsertCanonicalIdentityRequest {
+                                    id: None,
+                                    kind: "human".to_string(),
+                                    display_name: owner_name.to_string(),
+                                    owner_identity_id: None,
+                                    source: Some("bridge".to_string()),
+                                    source_host_id: Some(host.id.clone()),
+                                    bridge_node_id: Some(peer.node_id.clone()),
+                                    human_id: Some(human_id.to_string()),
+                                    agent_id: None,
+                                    avatar_key: Some(human_id.to_string()),
+                                    profile_image_url: None,
+                                    metadata: Some(serde_json::json!({
+                                        "discoveryMode": peer.discovery_mode,
+                                        "sharedProjects": peer.shared_projects,
+                                    })),
+                                },
+                            )?
+                            .id,
+                        )
+                    }
+                    _ => None,
+                };
+
+            if peer.agent_id.is_some() || runtime_is_agent_like(&peer.runtime) {
+                let display_name = peer
+                    .display_name
+                    .clone()
+                    .or_else(|| peer.owner_name.clone())
+                    .unwrap_or_else(|| peer.node_id.clone());
+                upsert_identity_in_db(
+                    &conn,
+                    UpsertCanonicalIdentityRequest {
+                        id: None,
+                        kind: "agent".to_string(),
+                        display_name,
+                        owner_identity_id: peer_human_identity_id,
+                        source: Some("bridge".to_string()),
+                        source_host_id: Some(host.id.clone()),
+                        bridge_node_id: Some(peer.node_id.clone()),
+                        human_id: peer.human_id.clone(),
+                        agent_id: peer.agent_id.clone(),
+                        avatar_key: peer.agent_id.clone().or_else(|| Some(peer.node_id.clone())),
+                        profile_image_url: None,
+                        metadata: Some(serde_json::json!({
+                            "runtime": peer.runtime,
+                            "isDefaultAgent": peer.is_default_agent,
+                            "discoveryMode": peer.discovery_mode,
+                            "sharedProjects": peer.shared_projects,
+                        })),
+                    },
+                )?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn update_presence_in_db(
     conn: &Connection,
     request: UpdateCanonicalPresenceRequest,
