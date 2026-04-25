@@ -91,29 +91,29 @@ export function mapBridgeConversationToViewModel(
     const suppressOutboundLiveStatus = isOutboundHuman
       && isAgent
       && ['processing', 'awaiting reply'].includes((outboundStatus[0] ?? '').toLowerCase());
-    const isLiveInboundAgentReply = isRemoteAgentResponse && message.deliveryState === 'processing';
+    const isLiveAgentReply = (isRemoteAgentResponse || isLocalAgentResponse) && message.deliveryState === 'processing';
 
-    if (isLiveInboundAgentReply) {
+    if (isRemoteAgentResponse || isLocalAgentResponse) {
       return {
-        role: 'external-agent' as const,
-        sender: remoteAgentLabel,
+        role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
+        sender: isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel,
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
-        senderAvatarSeed: remoteAgentAvatarSeed,
-        text: message.text,
+        senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
+        text: '',
         time: message.timeLabel,
         turn: {
           id: `bridge-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
           prompt: '',
-          status: message.text.trim() ? 'writing' : 'typing',
-          message: message.text.trim() ? 'Replying…' : 'Typing…',
+          status: isLiveAgentReply ? (message.text.trim() ? 'writing' : 'typing') : 'complete',
+          message: isLiveAgentReply ? (message.text.trim() ? 'Replying…' : 'Typing…') : 'Complete',
           assistantText: message.text,
           thinkingText: '',
           tools: [],
-          completed: false,
-          succeeded: false,
+          completed: !isLiveAgentReply,
+          succeeded: !isLiveAgentReply,
           error: null,
         },
       };
