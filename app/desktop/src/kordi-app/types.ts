@@ -402,6 +402,7 @@ export type AppendCanonicalMessageRequest = {
   messageKind: 'text' | 'agent-turn' | 'delegation-request' | 'delegation-response' | 'system' | 'status' | string;
   contentText: string;
   content?: unknown;
+  createdAtMs?: number | null;
   parentMessageId?: string | null;
   delegatedExchangeId?: string | null;
   status?: string | null;
@@ -624,6 +625,7 @@ export type DesktopBridgeIdentitySnapshot = {
 
 export type DesktopBridgeConversation = {
   id: string;
+  canonicalSessionId: string;
   hostId: string;
   peerNodeId: string;
   peerDisplayName?: string | null;

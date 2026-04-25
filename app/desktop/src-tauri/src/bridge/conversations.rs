@@ -192,6 +192,7 @@ pub(super) fn build_conversation_state(
         .map(format_time_label_with_seconds);
     DesktopBridgeConversation {
         id: record.id.clone(),
+        canonical_session_id: crate::canonical_sessions::canonical_bridge_session_id(&record.id),
         host_id: record.host_id.clone(),
         peer_node_id: record.peer_node_id.clone(),
         peer_display_name: record.peer_display_name.clone(),

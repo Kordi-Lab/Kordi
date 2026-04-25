@@ -28,6 +28,9 @@ pub(super) async fn desktop_bridge_state_impl(
     if let Err(error) = crate::canonical_sessions::sync_bridge_state_identities(&state) {
         eprintln!("Unable to sync bridge identities into canonical sessions: {error}");
     }
+    if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
+        eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
+    }
     Ok(state)
 }
 

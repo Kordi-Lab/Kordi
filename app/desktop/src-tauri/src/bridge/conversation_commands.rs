@@ -1,23 +1,21 @@
 use kordi_tools::{ReachOutRequest, ReachOutResponse};
 use serde_json::Value;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
-use crate::chat::{DesktopChatManager, start_bridge_agent_prompt_stream};
+use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
 
 use super::constants::{
-    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ,
-    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
+    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED,
+    BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_INBOUND,
     BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
     BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
-    DEFAULT_BRIDGE_RUNTIME, is_agent_like_runtime, is_inbound_message_direction,
+    DEFAULT_BRIDGE_RUNTIME,
 };
 use super::{
-    DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
-    DesktopBridgeCreateOutreachRequest, DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot,
-    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
     add_serve_contact, append_conversation_message_to_storage, bridge_conversation_id,
     build_conversation_only_bridge_state, build_current_bridge_state, current_local_server_status,
     decrypt_bridge_payload_for_host, default_display_name, fetch_mailbox, load_bridge_store,
@@ -25,6 +23,9 @@ use super::{
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms, parse_mailbox_payload,
     relay_plaintext_message, save_conversation_store, send_realtime_payload,
     update_message_delivery_state_in_storage, upsert_bridge_conversation,
+    DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
+    DesktopBridgeCreateOutreachRequest, DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot,
+    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -125,11 +126,15 @@ async fn rebuild_state(
     store: DesktopBridgeStore,
     conversations: DesktopBridgeConversationStore,
 ) -> Result<DesktopBridgeState, String> {
-    Ok(build_conversation_only_bridge_state(
+    let state = build_conversation_only_bridge_state(
         store,
         conversations,
         current_local_server_status(manager).await,
-    ))
+    );
+    if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
+        eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
+    }
+    Ok(state)
 }
 
 async fn relay_with_contact_fallback(

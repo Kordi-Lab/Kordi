@@ -14,7 +14,7 @@ use kordi_core::error::KordiError;
 use kordi_tools::ReachOutRuntime;
 
 use crate::bridge::{
-    DesktopBridgeManager, desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl,
+    desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl, DesktopBridgeManager,
 };
 use kordi_cli::turn_runner::TurnEvent;
 
@@ -415,7 +415,7 @@ async fn build_chat_state(
         summaries.push(runtime.summary().map_err(|err| err.to_string())?);
     }
 
-    Ok(DesktopChatState {
+    let state = DesktopChatState {
         cwd: cwd.display().to_string(),
         active_session_id,
         sessions: summaries,
@@ -424,7 +424,11 @@ async fn build_chat_state(
         local_agent,
         model_options,
         slash_commands,
-    })
+    };
+    if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
+        eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
+    }
+    Ok(state)
 }
 
 #[tauri::command]

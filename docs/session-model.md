@@ -62,6 +62,14 @@ The existing local runtime session DB and bridge conversation DB remain temporar
 
 All session-linked tables use `session_id` as the durable join key. Project joins, delegated exchanges, bridge/audit records, and cache/context rows should connect to the canonical DB by `session_id`; they must not depend on mutable titles.
 
+Current additive sync behavior:
+
+- Desktop local chat sessions mirror into canonical `sessions` using the existing runtime session ID as canonical `session.id`.
+- Desktop local chat messages mirror into canonical `session_messages` with source transport `desktop-chat` and deterministic source event IDs.
+- Bridge conversations expose `canonicalSessionId` and mirror into canonical `sessions` using `session:bridge:<bridgeConversationId>`.
+- Bridge messages mirror into canonical `session_messages` with source transport `desktop-bridge` and source event IDs based on the bridge conversation/message IDs.
+- Sync is idempotent: source transport/event IDs dedupe repeated local-first imports.
+
 ## Context and KV cache
 
 Context/cache state is scoped by local profile, session, agent identity, model/provider, prompt hash, participant hash, and message/context hashes. Cache entries must not leak across users, profiles, bridge identities, agents, or sessions.
@@ -111,7 +119,7 @@ Migration order:
 1. Add `useCanonicalSessionViewModels()` behind a feature flag.
 2. Build canonical components without deleting legacy UI paths.
 3. Route Contact Message and Chat `+` into canonical sessions by `session.id`; default unnamed sessions to the first receiver's display name.
-4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`.
+4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`. Backend mirroring is in place; UI read-model migration remains.
 5. Replace old chat/session rails with `SessionList`.
 6. Replace outreach thread cards with normal transcript turns plus optional inline/right-panel delegation trace details.
 7. Add agent-authored `@` rendering: local agent turn shows the mention/invocation, remote participant replies as a normal message in the same session.

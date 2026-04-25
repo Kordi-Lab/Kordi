@@ -36,7 +36,7 @@ use self::network::{
     remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
 };
 #[allow(unused_imports)]
-use self::realtime::{BRIDGE_STATE_EVENT, send_realtime_payload, sync_realtime_connections};
+use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
 #[allow(unused_imports)]
 use self::state::{
     build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state,
@@ -291,6 +291,7 @@ pub struct DesktopBridgeConversationMessage {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopBridgeConversation {
     pub id: String,
+    pub canonical_session_id: String,
     pub host_id: String,
     pub peer_node_id: String,
     pub peer_display_name: Option<String>,
