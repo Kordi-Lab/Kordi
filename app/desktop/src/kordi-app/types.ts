@@ -99,6 +99,17 @@ export type OutreachThreadSummary = {
   updatedAtLabel?: string;
 };
 
+export type ConversationParticipant = {
+  id: string;
+  name: string;
+  kind: 'human' | 'agent' | string;
+  role: string;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
+  presenceStatus?: string | null;
+  presenceDetail?: string | null;
+};
+
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
@@ -116,6 +127,7 @@ export type Conversation = {
   trust: string;
   directness: string;
   participants: string[];
+  canonicalParticipants?: ConversationParticipant[];
   messages: Message[];
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;

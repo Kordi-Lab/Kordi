@@ -9,6 +9,7 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
   Contact,
+  ConversationParticipant,
   DesktopBridgeConversation,
   DesktopBridgeHost,
   DesktopBridgePeer,
@@ -315,11 +316,28 @@ function canonicalMessagesForSession(canonicalState: CanonicalSessionState, sess
     });
 }
 
-function canonicalParticipantNames(canonicalState: CanonicalSessionState, sessionId: string, fallback: string[]) {
-  const names = canonicalState.participants
+function canonicalParticipantDetails(canonicalState: CanonicalSessionState, sessionId: string): ConversationParticipant[] {
+  return canonicalState.participants
     .filter((participant) => participant.sessionId === sessionId)
-    .map((participant) => canonicalState.identities.find((identity) => identity.id === participant.identityId)?.displayName)
-    .filter((name): name is string => Boolean(name));
+    .flatMap((participant) => {
+      const identity = canonicalState.identities.find((item) => item.id === participant.identityId);
+      if (!identity) return [];
+      const presence = canonicalState.presence.find((item) => item.identityId === identity.id);
+      return [{
+        id: identity.id,
+        name: identity.displayName,
+        kind: identity.kind,
+        role: participant.role,
+        avatarKey: identity.avatarKey,
+        profileImageUrl: identity.profileImageUrl,
+        presenceStatus: presence?.status ?? null,
+        presenceDetail: presence?.detail ?? null,
+      }];
+    });
+}
+
+function canonicalParticipantNames(canonicalState: CanonicalSessionState, sessionId: string, fallback: string[]) {
+  const names = canonicalParticipantDetails(canonicalState, sessionId).map((participant) => participant.name);
   return names.length > 0 ? names : fallback;
 }
 
@@ -342,7 +360,8 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
   if (!canonicalSession) return conversation;
 
   const participants = canonicalState.participants.filter((participant) => participant.sessionId === sessionId);
-  const identityNames = canonicalParticipantNames(canonicalState, sessionId, conversation.participants);
+  const canonicalParticipants = canonicalParticipantDetails(canonicalState, sessionId);
+  const identityNames = canonicalParticipants.length > 0 ? canonicalParticipants.map((participant) => participant.name) : conversation.participants;
   const participantIdentityIds = new Set(participants.map((participant) => participant.identityId));
   const activePresence = canonicalState.presence.filter((presence) => participantIdentityIds.has(presence.identityId) && presence.status !== 'offline');
   const presenceSummary = activePresence.length > 0
@@ -361,6 +380,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     name: canonicalSession.title || conversation.name,
     subtitle: buildConversationPreview(messages, conversation.subtitle),
     participants: identityNames,
+    canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
     messages,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,

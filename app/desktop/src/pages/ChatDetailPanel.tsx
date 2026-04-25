@@ -19,6 +19,16 @@ type ActiveConversation = {
   canonicalDelegatedExchangeCount?: number;
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
+  canonicalParticipants?: Array<{
+    id: string;
+    name: string;
+    kind: 'human' | 'agent' | string;
+    role: string;
+    avatarKey?: string | null;
+    profileImageUrl?: string | null;
+    presenceStatus?: string | null;
+    presenceDetail?: string | null;
+  }>;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
   bridges: string[];
@@ -175,7 +185,33 @@ export function ChatDetailPanel({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Participants</div>
           <div className="app-inspector-list">
-            {activeConv.participants.map((participant) => {
+            {activeConv.canonicalParticipants?.length ? activeConv.canonicalParticipants.map((participant) => {
+              const isAgent = participant.kind === 'agent';
+              const status = participant.presenceStatus && participant.presenceStatus !== 'offline'
+                ? participant.presenceStatus
+                : participant.role;
+
+              return (
+                <div key={participant.id} className="app-inspector-list-row">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <IdentityAvatar
+                      kind={isAgent ? 'agent' : 'human'}
+                      seed={participant.avatarKey ?? participant.name}
+                      imageUrl={participant.profileImageUrl}
+                      name={participant.name}
+                      className="h-7 w-7 border border-white/10"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{participant.name}</span>
+                      {participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
+                    </span>
+                  </span>
+                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
+                    {status}
+                  </Badge>
+                </div>
+              );
+            }) : activeConv.participants.map((participant) => {
               const isAgent = activeConv.type !== 'person' && /agent|bot|assistant/i.test(participant);
 
               return (
