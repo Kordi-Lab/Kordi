@@ -42,7 +42,7 @@ impl Tool for ReachOutTool {
     }
 
     fn description(&self) -> &str {
-        "Reach out to a visible bridge agent or person for information. Use this when another connected agent/person may know something you need. The outreach is always allowed, creates a visible resumable bridge conversation, includes project context by default, and when possible returns the remote reply as the tool result."
+        "Internal executor for @Person/@Agent participation. Use this when a mentioned or visible connected person/agent may have relevant information. The outreach is always allowed, creates a visible join event in the current session when possible, includes policy-scoped context by default, and can return the remote reply as the tool result."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -51,7 +51,7 @@ impl Tool for ReachOutTool {
             "properties": {
                 "target": {
                     "type": "string",
-                    "description": "Visible bridge agent/person to contact. May be a display name, owner name, node id, human id, or agent id."
+                    "description": "Visible person/agent to contact. May be a display name, owner name, node id, human id, or agent id."
                 },
                 "targetKind": {
                     "type": "string",
@@ -64,7 +64,7 @@ impl Tool for ReachOutTool {
                 },
                 "context": {
                     "type": "string",
-                    "description": "Optional extra context to send with the request. Project context is included automatically unless disabled."
+                    "description": "Optional extra context to send with the request. Runtime context is included according to session policy unless disabled."
                 },
                 "includeProjectContext": {
                     "type": "boolean",
