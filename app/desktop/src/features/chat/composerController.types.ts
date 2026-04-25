@@ -33,12 +33,14 @@ export type UseComposerControllerArgs = {
   isNativeShell: boolean;
   activeConversationIsBridge: boolean;
   activeConvId: string;
+  activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
   activeProjectId: string;
   activeProjectSessionId: string;
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
+  canonicalHumanIdentityId?: string | null;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   composerSelections: ComposerSelectionState;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;

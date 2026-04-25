@@ -1,268 +1,26 @@
-use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+mod commands;
+mod core;
+mod message_reconcile;
+mod models;
+mod presence;
+mod schema;
+#[cfg(test)]
+mod tests;
+
+pub use self::models::*;
+
+use self::core::{
+    canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
+};
+use self::presence::update_presence_in_db;
+use self::schema::{ensure_local_profile, initialize_schema};
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 1;
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalSessionState {
-    pub storage_path: String,
-    pub profile: CanonicalLocalProfile,
-    pub identities: Vec<CanonicalIdentity>,
-    pub sessions: Vec<CanonicalSession>,
-    pub participants: Vec<CanonicalSessionParticipant>,
-    pub messages: Vec<CanonicalSessionMessage>,
-    pub delegated_exchanges: Vec<CanonicalDelegatedExchange>,
-    pub presence: Vec<CanonicalPresence>,
-    pub context_snapshots: Vec<CanonicalContextSnapshot>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalLocalProfile {
-    pub id: String,
-    pub display_name: Option<String>,
-    pub human_identity_id: Option<String>,
-    pub active_agent_identity_id: Option<String>,
-    pub storage_root: String,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalIdentity {
-    pub id: String,
-    pub kind: String,
-    pub display_name: String,
-    pub owner_identity_id: Option<String>,
-    pub source: String,
-    pub source_host_id: Option<String>,
-    pub bridge_node_id: Option<String>,
-    pub human_id: Option<String>,
-    pub agent_id: Option<String>,
-    pub avatar_key: String,
-    pub profile_image_url: Option<String>,
-    pub metadata: Option<Value>,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalSession {
-    pub id: String,
-    pub kind: String,
-    pub title: String,
-    pub status: String,
-    pub created_by_identity_id: String,
-    pub primary_identity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub project_name: Option<String>,
-    pub relationship_identity_id: Option<String>,
-    pub metadata: Option<Value>,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-    pub last_message_at_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalSessionParticipant {
-    pub session_id: String,
-    pub identity_id: String,
-    pub role: String,
-    pub state: String,
-    pub added_by_identity_id: Option<String>,
-    pub added_at_ms: i64,
-    pub last_seen_at_ms: Option<i64>,
-    pub last_read_message_id: Option<String>,
-    pub metadata: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalSessionMessage {
-    pub id: String,
-    pub session_id: String,
-    pub sender_identity_id: String,
-    pub sender_role: String,
-    pub message_kind: String,
-    pub content_text: String,
-    pub content: Option<Value>,
-    pub parent_message_id: Option<String>,
-    pub delegated_exchange_id: Option<String>,
-    pub status: String,
-    pub sequence_num: i64,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-    pub content_hash: Option<String>,
-    pub source_transport: Option<String>,
-    pub source_event_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalDelegatedExchange {
-    pub id: String,
-    pub session_id: String,
-    pub initiator_identity_id: String,
-    pub target_identity_id: String,
-    pub trigger_message_id: Option<String>,
-    pub request_message_id: Option<String>,
-    pub response_message_id: Option<String>,
-    pub transport: String,
-    pub bridge_host_id: Option<String>,
-    pub bridge_conversation_id: Option<String>,
-    pub bridge_request_id: Option<String>,
-    pub context_policy: String,
-    pub status: String,
-    pub error: Option<String>,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalPresence {
-    pub identity_id: String,
-    pub status: String,
-    pub session_id: Option<String>,
-    pub detail: Option<String>,
-    pub updated_at_ms: i64,
-    pub expires_at_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalContextSnapshot {
-    pub id: String,
-    pub profile_id: String,
-    pub session_id: String,
-    pub agent_identity_id: String,
-    pub provider: String,
-    pub model: String,
-    pub prompt_hash: String,
-    pub project_context_hash: Option<String>,
-    pub participant_hash: String,
-    pub upto_message_id: Option<String>,
-    pub message_range_hash: String,
-    pub summary_text: Option<String>,
-    pub summary_json: Option<Value>,
-    pub token_count: Option<i64>,
-    pub created_at_ms: i64,
-    pub invalidated_at_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpsertCanonicalIdentityRequest {
-    pub id: Option<String>,
-    pub kind: String,
-    pub display_name: String,
-    pub owner_identity_id: Option<String>,
-    pub source: Option<String>,
-    pub source_host_id: Option<String>,
-    pub bridge_node_id: Option<String>,
-    pub human_id: Option<String>,
-    pub agent_id: Option<String>,
-    pub avatar_key: Option<String>,
-    pub profile_image_url: Option<String>,
-    pub metadata: Option<Value>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenCanonicalSessionRequest {
-    pub id: Option<String>,
-    pub kind: String,
-    pub title: Option<String>,
-    pub status: Option<String>,
-    pub created_by_identity_id: String,
-    pub primary_identity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub project_name: Option<String>,
-    pub relationship_identity_id: Option<String>,
-    pub participant_identity_ids: Vec<String>,
-    pub metadata: Option<Value>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppendCanonicalMessageRequest {
-    pub id: Option<String>,
-    pub session_id: String,
-    pub sender_identity_id: String,
-    pub sender_role: String,
-    pub message_kind: String,
-    pub content_text: String,
-    pub content: Option<Value>,
-    pub created_at_ms: Option<i64>,
-    pub parent_message_id: Option<String>,
-    pub delegated_exchange_id: Option<String>,
-    pub status: Option<String>,
-    pub source_transport: Option<String>,
-    pub source_event_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateCanonicalDelegatedExchangeRequest {
-    pub id: Option<String>,
-    pub session_id: String,
-    pub initiator_identity_id: String,
-    pub target_identity_id: String,
-    pub trigger_message_id: Option<String>,
-    pub request_message_id: Option<String>,
-    pub response_message_id: Option<String>,
-    pub transport: Option<String>,
-    pub bridge_host_id: Option<String>,
-    pub bridge_conversation_id: Option<String>,
-    pub bridge_request_id: Option<String>,
-    pub context_policy: Option<String>,
-    pub status: Option<String>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCanonicalPresenceRequest {
-    pub identity_id: String,
-    pub status: String,
-    pub session_id: Option<String>,
-    pub detail: Option<String>,
-    pub expires_at_ms: Option<i64>,
-}
-
-fn now_ms() -> i64 {
-    Utc::now().timestamp_millis()
-}
-
-fn canonical_storage_root() -> PathBuf {
-    kordi_core::config::preferred_global_settings_dir()
-}
-
-fn canonical_sessions_db_path() -> PathBuf {
-    canonical_storage_root().join(CANONICAL_SESSIONS_DB_FILENAME)
-}
-
-fn hash_hex(value: &str, bytes: usize) -> String {
-    let digest = Sha256::digest(value.as_bytes());
-    hex::encode(&digest[..bytes.min(digest.len())])
-}
-
-fn stable_profile_id(storage_root: &Path) -> String {
-    format!(
-        "profile:{}",
-        hash_hex(&storage_root.display().to_string(), 10)
-    )
-}
 
 pub(crate) fn canonical_bridge_session_id(conversation_id: &str) -> String {
     format!("session:bridge:{}", conversation_id.trim())
@@ -490,212 +248,6 @@ fn open_db() -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|err| err.to_string())?;
     initialize_schema(&conn)?;
     Ok(conn)
-}
-
-fn initialize_schema(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         CREATE TABLE IF NOT EXISTS canonical_schema_meta (
-             key TEXT PRIMARY KEY,
-             value TEXT NOT NULL
-         );
-         CREATE TABLE IF NOT EXISTS local_profile (
-             id TEXT PRIMARY KEY,
-             display_name TEXT,
-             human_identity_id TEXT,
-             active_agent_identity_id TEXT,
-             storage_root TEXT NOT NULL,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL
-         );
-         CREATE TABLE IF NOT EXISTS identities (
-             id TEXT PRIMARY KEY,
-             kind TEXT NOT NULL CHECK(kind IN ('human', 'agent')),
-             display_name TEXT NOT NULL,
-             owner_identity_id TEXT,
-             source TEXT NOT NULL,
-             source_host_id TEXT,
-             bridge_node_id TEXT,
-             human_id TEXT,
-             agent_id TEXT,
-             avatar_key TEXT NOT NULL,
-             profile_image_url TEXT,
-             metadata_json TEXT,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS idx_identities_kind ON identities(kind);
-         CREATE INDEX IF NOT EXISTS idx_identities_human_id ON identities(human_id);
-         CREATE INDEX IF NOT EXISTS idx_identities_agent_id ON identities(agent_id);
-         CREATE INDEX IF NOT EXISTS idx_identities_bridge_node ON identities(bridge_node_id);
-         CREATE TABLE IF NOT EXISTS sessions (
-             id TEXT PRIMARY KEY,
-             kind TEXT NOT NULL,
-             title TEXT NOT NULL,
-             status TEXT NOT NULL DEFAULT 'active',
-             created_by_identity_id TEXT NOT NULL,
-             primary_identity_id TEXT,
-             project_id TEXT,
-             project_name TEXT,
-             relationship_identity_id TEXT,
-             metadata_json TEXT,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL,
-             last_message_at_ms INTEGER
-         );
-         CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
-         CREATE INDEX IF NOT EXISTS idx_sessions_primary_identity ON sessions(primary_identity_id);
-         CREATE INDEX IF NOT EXISTS idx_sessions_relationship_identity ON sessions(relationship_identity_id);
-         CREATE TABLE IF NOT EXISTS session_participants (
-             session_id TEXT NOT NULL,
-             identity_id TEXT NOT NULL,
-             role TEXT NOT NULL,
-             state TEXT NOT NULL DEFAULT 'active',
-             added_by_identity_id TEXT,
-             added_at_ms INTEGER NOT NULL,
-             last_seen_at_ms INTEGER,
-             last_read_message_id TEXT,
-             metadata_json TEXT,
-             PRIMARY KEY(session_id, identity_id)
-         );
-         CREATE INDEX IF NOT EXISTS idx_session_participants_identity ON session_participants(identity_id);
-         CREATE TABLE IF NOT EXISTS session_messages (
-             id TEXT PRIMARY KEY,
-             session_id TEXT NOT NULL,
-             sender_identity_id TEXT NOT NULL,
-             sender_role TEXT NOT NULL,
-             message_kind TEXT NOT NULL,
-             content_text TEXT NOT NULL DEFAULT '',
-             content_json TEXT,
-             parent_message_id TEXT,
-             delegated_exchange_id TEXT,
-             status TEXT NOT NULL,
-             sequence_num INTEGER NOT NULL,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL,
-             content_hash TEXT,
-             source_transport TEXT,
-             source_event_id TEXT
-         );
-         CREATE INDEX IF NOT EXISTS idx_session_messages_session_seq ON session_messages(session_id, sequence_num);
-         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_messages_source_event
-             ON session_messages(source_transport, source_event_id)
-             WHERE source_transport IS NOT NULL AND source_event_id IS NOT NULL;
-         CREATE TABLE IF NOT EXISTS delegated_exchanges (
-             id TEXT PRIMARY KEY,
-             session_id TEXT NOT NULL,
-             initiator_identity_id TEXT NOT NULL,
-             target_identity_id TEXT NOT NULL,
-             trigger_message_id TEXT,
-             request_message_id TEXT,
-             response_message_id TEXT,
-             transport TEXT NOT NULL,
-             bridge_host_id TEXT,
-             bridge_conversation_id TEXT,
-             bridge_request_id TEXT,
-             context_policy TEXT NOT NULL,
-             status TEXT NOT NULL,
-             error TEXT,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS idx_delegated_exchanges_session ON delegated_exchanges(session_id);
-         CREATE INDEX IF NOT EXISTS idx_delegated_exchanges_bridge_request ON delegated_exchanges(bridge_request_id);
-         CREATE TABLE IF NOT EXISTS presence (
-             identity_id TEXT PRIMARY KEY,
-             status TEXT NOT NULL,
-             session_id TEXT,
-             detail TEXT,
-             updated_at_ms INTEGER NOT NULL,
-             expires_at_ms INTEGER
-         );
-         CREATE TABLE IF NOT EXISTS context_snapshots (
-             id TEXT PRIMARY KEY,
-             profile_id TEXT NOT NULL,
-             session_id TEXT NOT NULL,
-             agent_identity_id TEXT NOT NULL,
-             provider TEXT NOT NULL,
-             model TEXT NOT NULL,
-             prompt_hash TEXT NOT NULL,
-             project_context_hash TEXT,
-             participant_hash TEXT NOT NULL,
-             upto_message_id TEXT,
-             message_range_hash TEXT NOT NULL,
-             summary_text TEXT,
-             summary_json TEXT,
-             token_count INTEGER,
-             created_at_ms INTEGER NOT NULL,
-             invalidated_at_ms INTEGER
-         );
-         CREATE INDEX IF NOT EXISTS idx_context_snapshots_lookup
-             ON context_snapshots(profile_id, session_id, agent_identity_id, provider, model, prompt_hash, participant_hash, message_range_hash);
-         CREATE TABLE IF NOT EXISTS kv_cache_entries (
-             key_hash TEXT PRIMARY KEY,
-             profile_id TEXT NOT NULL,
-             session_id TEXT,
-             agent_identity_id TEXT,
-             provider TEXT,
-             model TEXT,
-             value_json TEXT,
-             value_blob_path TEXT,
-             metadata_json TEXT,
-             created_at_ms INTEGER NOT NULL,
-             updated_at_ms INTEGER NOT NULL,
-             expires_at_ms INTEGER
-         );",
-    )
-    .map_err(|err| err.to_string())?;
-    conn.execute(
-        "INSERT INTO canonical_schema_meta(key, value) VALUES('version', ?1)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![SCHEMA_VERSION.to_string()],
-    )
-    .map_err(|err| err.to_string())?;
-    ensure_local_profile(conn)?;
-    Ok(())
-}
-
-fn ensure_local_profile(conn: &Connection) -> Result<CanonicalLocalProfile, String> {
-    let root = canonical_storage_root();
-    let storage_root = root.display().to_string();
-    let profile_id = stable_profile_id(&root);
-    if let Some(profile) = select_local_profile(conn, &profile_id)? {
-        return Ok(profile);
-    }
-
-    let now = now_ms();
-    conn.execute(
-        "INSERT INTO local_profile(id, display_name, human_identity_id, active_agent_identity_id, storage_root, created_at_ms, updated_at_ms)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![profile_id, "Local profile", Option::<String>::None, Option::<String>::None, storage_root, now, now],
-    )
-    .map_err(|err| err.to_string())?;
-    select_local_profile(conn, &profile_id)?
-        .ok_or_else(|| "Unable to create local profile".to_string())
-}
-
-fn select_local_profile(
-    conn: &Connection,
-    profile_id: &str,
-) -> Result<Option<CanonicalLocalProfile>, String> {
-    conn.query_row(
-        "SELECT id, display_name, human_identity_id, active_agent_identity_id, storage_root, created_at_ms, updated_at_ms
-         FROM local_profile WHERE id = ?1",
-        params![profile_id],
-        |row| {
-            Ok(CanonicalLocalProfile {
-                id: row.get(0)?,
-                display_name: row.get(1)?,
-                human_identity_id: row.get(2)?,
-                active_agent_identity_id: row.get(3)?,
-                storage_root: row.get(4)?,
-                created_at_ms: row.get(5)?,
-                updated_at_ms: row.get(6)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|err| err.to_string())
 }
 
 fn upsert_identity_in_db(
@@ -1457,35 +1009,42 @@ fn sync_desktop_chat_message(
         "text"
     };
 
-    append_message_in_db(
-        conn,
-        AppendCanonicalMessageRequest {
-            id: None,
-            session_id: session_id.to_string(),
-            sender_identity_id: sender_identity_id.to_string(),
-            sender_role: sender_role.to_string(),
-            message_kind: message_kind.to_string(),
-            content_text: message.text.clone(),
-            content: Some(serde_json::json!({
-                "role": message.role,
-                "sender": message.sender,
-                "detail": message.detail,
-                "timeLabel": message.time_label,
-                "timestampMs": message.timestamp_ms,
-                "attachments": message.attachments,
-                "thinkingText": message.thinking_text,
-                "tools": message.tools,
-            })),
-            created_at_ms: Some(message.timestamp_ms),
-            parent_message_id: None,
-            delegated_exchange_id: None,
-            status: Some(if is_agent { "complete" } else { "sent" }.to_string()),
-            source_transport: Some("desktop-chat".to_string()),
-            source_event_id: Some(canonical_desktop_message_source_event_id(
-                session_id, index, message,
-            )),
-        },
-    )?;
+    let request = AppendCanonicalMessageRequest {
+        id: None,
+        session_id: session_id.to_string(),
+        sender_identity_id: sender_identity_id.to_string(),
+        sender_role: sender_role.to_string(),
+        message_kind: message_kind.to_string(),
+        content_text: message.text.clone(),
+        content: Some(serde_json::json!({
+            "role": message.role,
+            "sender": message.sender,
+            "detail": message.detail,
+            "timeLabel": message.time_label,
+            "timestampMs": message.timestamp_ms,
+            "attachments": message.attachments,
+            "thinkingText": message.thinking_text,
+            "tools": message.tools,
+        })),
+        created_at_ms: Some(message.timestamp_ms),
+        parent_message_id: None,
+        delegated_exchange_id: None,
+        status: Some(if is_agent { "complete" } else { "sent" }.to_string()),
+        source_transport: Some("desktop-chat".to_string()),
+        source_event_id: Some(canonical_desktop_message_source_event_id(
+            session_id, index, message,
+        )),
+    };
+    if is_user {
+        message_reconcile::append_or_reconcile_message_from_sync(
+            conn,
+            request,
+            "desktop-chat-ui",
+            5_000,
+        )?;
+    } else {
+        append_message_in_db(conn, request)?;
+    };
     Ok(())
 }
 
@@ -1969,36 +1528,40 @@ pub(crate) fn sync_bridge_state_sessions(
             } else {
                 "text"
             };
-            append_message_in_db(
-                &conn,
-                AppendCanonicalMessageRequest {
-                    id: None,
-                    session_id: conversation.canonical_session_id.clone(),
-                    sender_identity_id,
-                    sender_role,
-                    message_kind: message_kind.to_string(),
-                    content_text: message.text.clone(),
-                    content: Some(serde_json::json!({
-                        "direction": message.direction,
-                        "sender": message.sender,
-                        "timeLabel": message.time_label,
-                        "timestampMs": message.timestamp_ms,
-                        "deliveryState": message.delivery_state,
-                        "bridgeConversationId": conversation.id,
-                    })),
-                    created_at_ms: Some(message.timestamp_ms),
-                    parent_message_id: None,
-                    delegated_exchange_id: None,
-                    status: Some(canonical_bridge_message_status(
-                        message.delivery_state.as_deref(),
-                    )),
-                    source_transport: Some("desktop-bridge".to_string()),
-                    source_event_id: Some(format!(
-                        "desktop-bridge:{}:{}",
-                        conversation.id, message.id
-                    )),
-                },
-            )?;
+            let request = AppendCanonicalMessageRequest {
+                id: None,
+                session_id: conversation.canonical_session_id.clone(),
+                sender_identity_id,
+                sender_role: sender_role.clone(),
+                message_kind: message_kind.to_string(),
+                content_text: message.text.clone(),
+                content: Some(serde_json::json!({
+                    "direction": message.direction,
+                    "sender": message.sender,
+                    "timeLabel": message.time_label,
+                    "timestampMs": message.timestamp_ms,
+                    "deliveryState": message.delivery_state,
+                    "bridgeConversationId": conversation.id,
+                })),
+                created_at_ms: Some(message.timestamp_ms),
+                parent_message_id: None,
+                delegated_exchange_id: None,
+                status: Some(canonical_bridge_message_status(
+                    message.delivery_state.as_deref(),
+                )),
+                source_transport: Some("desktop-bridge".to_string()),
+                source_event_id: Some(format!("desktop-bridge:{}:{}", conversation.id, message.id)),
+            };
+            if sender_role == "user" {
+                message_reconcile::append_or_reconcile_message_from_sync(
+                    &conn,
+                    request,
+                    "desktop-bridge-ui",
+                    5_000,
+                )?;
+            } else {
+                append_message_in_db(&conn, request)?;
+            };
         }
     }
 
@@ -2353,56 +1916,6 @@ fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {
     }
 }
 
-fn update_presence_in_db(
-    conn: &Connection,
-    request: UpdateCanonicalPresenceRequest,
-) -> Result<CanonicalPresence, String> {
-    let now = now_ms();
-    conn.execute(
-        "INSERT INTO presence(identity_id, status, session_id, detail, updated_at_ms, expires_at_ms)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(identity_id) DO UPDATE SET
-             status = excluded.status,
-             session_id = excluded.session_id,
-             detail = excluded.detail,
-             updated_at_ms = excluded.updated_at_ms,
-             expires_at_ms = excluded.expires_at_ms",
-        params![
-            request.identity_id,
-            validate_status(Some(request.status), "offline"),
-            clean_optional(request.session_id),
-            clean_optional(request.detail),
-            now,
-            request.expires_at_ms,
-        ],
-    )
-    .map_err(|err| err.to_string())?;
-    select_presence(conn, &request.identity_id)?
-        .ok_or_else(|| "Unable to save presence".to_string())
-}
-
-fn select_presence(
-    conn: &Connection,
-    identity_id: &str,
-) -> Result<Option<CanonicalPresence>, String> {
-    conn.query_row(
-        "SELECT identity_id, status, session_id, detail, updated_at_ms, expires_at_ms FROM presence WHERE identity_id = ?1",
-        params![identity_id],
-        |row| {
-            Ok(CanonicalPresence {
-                identity_id: row.get(0)?,
-                status: row.get(1)?,
-                session_id: row.get(2)?,
-                detail: row.get(3)?,
-                updated_at_ms: row.get(4)?,
-                expires_at_ms: row.get(5)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|err| err.to_string())
-}
-
 fn query_all<T>(
     conn: &Connection,
     sql: &str,
@@ -2414,406 +1927,42 @@ fn query_all<T>(
         .map_err(|err| err.to_string())
 }
 
-fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionState, String> {
-    let path = canonical_sessions_db_path();
-    let profile_id = stable_profile_id(&canonical_storage_root());
-    let profile = select_local_profile(conn, &profile_id)?
-        .ok_or_else(|| "Local profile missing".to_string())?;
-    let identities = query_all(
-        conn,
-        "SELECT id FROM identities ORDER BY kind ASC, display_name ASC",
-        |row| row.get::<_, String>(0),
-    )?
-    .into_iter()
-    .filter_map(|id| select_identity(conn, &id).ok().flatten())
-    .collect();
-    let sessions = query_all(
-        conn,
-        "SELECT id FROM sessions ORDER BY updated_at_ms DESC, id ASC",
-        |row| row.get::<_, String>(0),
-    )?
-    .into_iter()
-    .filter_map(|id| select_session(conn, &id).ok().flatten())
-    .collect();
-    let participants = query_all(
-        conn,
-        "SELECT session_id, identity_id, role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
-         FROM session_participants ORDER BY session_id ASC, added_at_ms ASC, identity_id ASC",
-        |row| {
-            Ok(CanonicalSessionParticipant {
-                session_id: row.get(0)?,
-                identity_id: row.get(1)?,
-                role: row.get(2)?,
-                state: row.get(3)?,
-                added_by_identity_id: row.get(4)?,
-                added_at_ms: row.get(5)?,
-                last_seen_at_ms: row.get(6)?,
-                last_read_message_id: row.get(7)?,
-                metadata: json_from_db(row.get(8)?),
-            })
-        },
-    )?;
-    let messages = query_all(
-        conn,
-        "SELECT id FROM session_messages ORDER BY session_id ASC, sequence_num ASC",
-        |row| row.get::<_, String>(0),
-    )?
-    .into_iter()
-    .filter_map(|id| select_message(conn, &id).ok().flatten())
-    .collect();
-    let delegated_exchanges = query_all(
-        conn,
-        "SELECT id FROM delegated_exchanges ORDER BY updated_at_ms DESC, id ASC",
-        |row| row.get::<_, String>(0),
-    )?
-    .into_iter()
-    .filter_map(|id| select_delegated_exchange(conn, &id).ok().flatten())
-    .collect();
-    let presence = query_all(
-        conn,
-        "SELECT identity_id, status, session_id, detail, updated_at_ms, expires_at_ms FROM presence ORDER BY updated_at_ms DESC",
-        |row| {
-            Ok(CanonicalPresence {
-                identity_id: row.get(0)?,
-                status: row.get(1)?,
-                session_id: row.get(2)?,
-                detail: row.get(3)?,
-                updated_at_ms: row.get(4)?,
-                expires_at_ms: row.get(5)?,
-            })
-        },
-    )?;
-    let context_snapshots = query_all(
-        conn,
-        "SELECT id, profile_id, session_id, agent_identity_id, provider, model, prompt_hash, project_context_hash,
-                participant_hash, upto_message_id, message_range_hash, summary_text, summary_json, token_count, created_at_ms, invalidated_at_ms
-         FROM context_snapshots ORDER BY created_at_ms DESC, id ASC",
-        |row| {
-            Ok(CanonicalContextSnapshot {
-                id: row.get(0)?,
-                profile_id: row.get(1)?,
-                session_id: row.get(2)?,
-                agent_identity_id: row.get(3)?,
-                provider: row.get(4)?,
-                model: row.get(5)?,
-                prompt_hash: row.get(6)?,
-                project_context_hash: row.get(7)?,
-                participant_hash: row.get(8)?,
-                upto_message_id: row.get(9)?,
-                message_range_hash: row.get(10)?,
-                summary_text: row.get(11)?,
-                summary_json: json_from_db(row.get(12)?),
-                token_count: row.get(13)?,
-                created_at_ms: row.get(14)?,
-                invalidated_at_ms: row.get(15)?,
-            })
-        },
-    )?;
-
-    Ok(CanonicalSessionState {
-        storage_path: path.display().to_string(),
-        profile,
-        identities,
-        sessions,
-        participants,
-        messages,
-        delegated_exchanges,
-        presence,
-        context_snapshots,
-    })
-}
-
 #[tauri::command]
 pub fn desktop_canonical_session_state() -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    load_state_from_db(&conn)
+    commands::desktop_canonical_session_state()
 }
 
 #[tauri::command]
 pub fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    upsert_identity_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    commands::desktop_canonical_upsert_identity(request)
 }
 
 #[tauri::command]
 pub fn desktop_canonical_open_or_create_session(
     request: OpenCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    open_or_create_session_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    commands::desktop_canonical_open_or_create_session(request)
 }
 
 #[tauri::command]
 pub fn desktop_canonical_append_message(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    append_message_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    commands::desktop_canonical_append_message(request)
 }
 
 #[tauri::command]
 pub fn desktop_canonical_create_delegated_exchange(
     request: CreateCanonicalDelegatedExchangeRequest,
 ) -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    create_delegated_exchange_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    commands::desktop_canonical_create_delegated_exchange(request)
 }
 
 #[tauri::command]
 pub fn desktop_canonical_update_presence(
     request: UpdateCanonicalPresenceRequest,
 ) -> Result<CanonicalSessionState, String> {
-    let conn = open_db()?;
-    update_presence_in_db(&conn, request)?;
-    load_state_from_db(&conn)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_conn() -> Connection {
-        let conn = Connection::open_in_memory().expect("open in-memory db");
-        initialize_schema(&conn).expect("initialize schema");
-        conn
-    }
-
-    #[test]
-    fn identity_uses_canonical_human_id_and_avatar_key() {
-        let conn = test_conn();
-        let identity = upsert_identity_in_db(
-            &conn,
-            UpsertCanonicalIdentityRequest {
-                id: None,
-                kind: "human".to_string(),
-                display_name: "Alice".to_string(),
-                owner_identity_id: None,
-                source: Some("bridge".to_string()),
-                source_host_id: Some("host-1".to_string()),
-                bridge_node_id: Some("kd_alice".to_string()),
-                human_id: Some("kh_alice".to_string()),
-                agent_id: None,
-                avatar_key: None,
-                profile_image_url: None,
-                metadata: None,
-            },
-        )
-        .expect("upsert identity");
-
-        assert_eq!(identity.id, "human:kh_alice");
-        assert_eq!(identity.avatar_key, "kh_alice");
-    }
-
-    #[test]
-    fn open_session_is_deterministic_and_adds_participants() {
-        let conn = test_conn();
-        let request = OpenCanonicalSessionRequest {
-            id: None,
-            kind: "relationship".to_string(),
-            title: Some("Alice".to_string()),
-            status: None,
-            created_by_identity_id: "human:local".to_string(),
-            primary_identity_id: Some("human:kh_alice".to_string()),
-            project_id: None,
-            project_name: None,
-            relationship_identity_id: Some("human:kh_alice".to_string()),
-            participant_identity_ids: vec![
-                "human:kh_alice".to_string(),
-                "agent:ka_alice".to_string(),
-            ],
-            metadata: None,
-        };
-        let first = open_or_create_session_in_db(&conn, request.clone()).expect("open first");
-        let second = open_or_create_session_in_db(&conn, request).expect("open second");
-        assert_eq!(first.id, second.id);
-
-        let state = load_state_from_db(&conn).expect("load state");
-        assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.participants.len(), 3);
-    }
-
-    #[test]
-    fn default_session_title_uses_first_receiver_display_name() {
-        let conn = test_conn();
-        upsert_identity_in_db(
-            &conn,
-            UpsertCanonicalIdentityRequest {
-                id: Some("human:bob".to_string()),
-                kind: "human".to_string(),
-                display_name: "Bob".to_string(),
-                owner_identity_id: None,
-                source: Some("bridge".to_string()),
-                source_host_id: None,
-                bridge_node_id: None,
-                human_id: None,
-                agent_id: None,
-                avatar_key: None,
-                profile_image_url: None,
-                metadata: None,
-            },
-        )
-        .expect("upsert Bob");
-        upsert_identity_in_db(
-            &conn,
-            UpsertCanonicalIdentityRequest {
-                id: Some("agent:bob-kordi".to_string()),
-                kind: "agent".to_string(),
-                display_name: "Bob's Kordi".to_string(),
-                owner_identity_id: Some("human:bob".to_string()),
-                source: Some("bridge".to_string()),
-                source_host_id: None,
-                bridge_node_id: None,
-                human_id: None,
-                agent_id: None,
-                avatar_key: None,
-                profile_image_url: None,
-                metadata: None,
-            },
-        )
-        .expect("upsert Bob's Kordi");
-
-        let session = open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: None,
-                kind: "relationship".to_string(),
-                title: None,
-                status: None,
-                created_by_identity_id: "human:local".to_string(),
-                primary_identity_id: Some("human:bob".to_string()),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: Some("human:bob".to_string()),
-                participant_identity_ids: vec![
-                    "human:bob".to_string(),
-                    "agent:bob-kordi".to_string(),
-                ],
-                metadata: None,
-            },
-        )
-        .expect("open session");
-
-        assert_eq!(session.title, "Bob");
-        assert!(session.id.starts_with("session:"));
-    }
-
-    #[test]
-    fn source_event_dedupes_messages() {
-        let conn = test_conn();
-        let session = open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some("session:test".to_string()),
-                kind: "self-agent".to_string(),
-                title: Some("Test".to_string()),
-                status: None,
-                created_by_identity_id: "human:local".to_string(),
-                primary_identity_id: Some("agent:local".to_string()),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: None,
-                participant_identity_ids: vec!["agent:local".to_string()],
-                metadata: None,
-            },
-        )
-        .expect("open session");
-        let request = AppendCanonicalMessageRequest {
-            id: None,
-            session_id: session.id,
-            sender_identity_id: "human:local".to_string(),
-            sender_role: "user".to_string(),
-            message_kind: "text".to_string(),
-            content_text: "hello".to_string(),
-            content: None,
-            created_at_ms: None,
-            parent_message_id: None,
-            delegated_exchange_id: None,
-            status: None,
-            source_transport: Some("bridge".to_string()),
-            source_event_id: Some("event-1".to_string()),
-        };
-        let first = append_message_in_db(&conn, request.clone()).expect("append first");
-        let second = append_message_in_db(&conn, request).expect("append second");
-        assert_eq!(first.id, second.id);
-
-        let state = load_state_from_db(&conn).expect("load state");
-        assert_eq!(state.messages.len(), 1);
-    }
-
-    #[test]
-    fn outreach_context_snapshot_is_session_scoped() {
-        let conn = test_conn();
-        let session = open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some("session:parent".to_string()),
-                kind: "self-agent".to_string(),
-                title: Some("Parent".to_string()),
-                status: None,
-                created_by_identity_id: "human:local".to_string(),
-                primary_identity_id: Some("agent:local".to_string()),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: None,
-                participant_identity_ids: vec![
-                    "agent:local".to_string(),
-                    "agent:remote".to_string(),
-                ],
-                metadata: None,
-            },
-        )
-        .expect("open session");
-        let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
-            target_kind: "bridge-agent".to_string(),
-            parent_session_id: Some(session.id.clone()),
-            parent_turn_id: None,
-            parent_message_id: None,
-            bridge_host_id: "host-1".to_string(),
-            bridge_conversation_id: Some("bridge:host-1:remote".to_string()),
-            target_node_id: "kd_remote".to_string(),
-            target_human_id: Some("kh_remote".to_string()),
-            target_agent_id: Some("ka_remote".to_string()),
-            target_display_name: "Remote Kordi".to_string(),
-            target_owner_name: Some("Remote".to_string()),
-            target_runtime: Some("kordi".to_string()),
-            request_text: "Can you check this?".to_string(),
-            context_text: Some("Recent parent context".to_string()),
-            context_policy: Some("recent-window".to_string()),
-            project_id: Some("project-1".to_string()),
-            project_name: Some("Project".to_string()),
-            status: "awaitingReply".to_string(),
-            created_at_ms: 1000,
-            updated_at_ms: 1000,
-            completed_at_ms: None,
-            error: None,
-        };
-
-        store_outreach_context_snapshot(
-            &conn,
-            &session.id,
-            "agent:local",
-            "agent:remote",
-            "delegation:test",
-            &outreach,
-            "recent-window",
-        )
-        .expect("store snapshot");
-
-        let state = load_state_from_db(&conn).expect("load state");
-        assert_eq!(state.context_snapshots.len(), 1);
-        let snapshot = &state.context_snapshots[0];
-        assert_eq!(snapshot.session_id, "session:parent");
-        assert_eq!(snapshot.agent_identity_id, "agent:local");
-        assert_eq!(snapshot.provider, "desktop-bridge");
-        assert_eq!(
-            snapshot.summary_text.as_deref(),
-            Some("Recent parent context")
-        );
-    }
+    commands::desktop_canonical_update_presence(request)
 }

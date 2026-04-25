@@ -5,6 +5,7 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerScope, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeState, DesktopChatState, Project } from '@/kordi-app/types';
 import {
+  appendCanonicalMessage,
   cancelDesktopChatTurn,
   createDesktopBridgeOutreach,
   openDesktopBridgeConversation,
@@ -27,12 +28,14 @@ type UseComposerMessageActionsArgs = Pick<
   | 'isNativeShell'
   | 'activeConversationIsBridge'
   | 'activeConvId'
+  | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
   | 'activeConvBridgeTarget'
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'desktopChatState'
   | 'desktopBridgeState'
+  | 'canonicalHumanIdentityId'
   | 'desktopLiveTurn'
   | 'composerDrafts'
   | 'setComposerDrafts'
@@ -192,6 +195,39 @@ function findBridgeConversationForTarget(
   )) ?? null;
 }
 
+async function appendCanonicalUserMessage(
+  sessionId: string,
+  senderIdentityId: string | null | undefined,
+  text: string,
+  attachments: AttachmentItem[],
+  sentAt: string,
+  sourceTransport: 'desktop-chat-ui' | 'desktop-bridge-ui',
+) {
+  if (!senderIdentityId) return;
+
+  const timestampMs = Date.now();
+  await appendCanonicalMessage({
+    id: null,
+    sessionId,
+    senderIdentityId,
+    senderRole: 'user',
+    messageKind: 'text',
+    contentText: text,
+    content: {
+      sender: 'You',
+      timeLabel: sentAt,
+      timestampMs,
+      attachments: toOptimisticAttachments(attachments),
+    },
+    createdAtMs: timestampMs,
+    parentMessageId: null,
+    delegatedExchangeId: null,
+    status: 'sending',
+    sourceTransport,
+    sourceEventId: `${sourceTransport}:${sessionId}:${timestampMs}`,
+  });
+}
+
 function normalizeMentionLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -278,12 +314,14 @@ export function useComposerMessageActions({
   isNativeShell,
   activeConversationIsBridge,
   activeConvId,
+  activeConvCanonicalSessionId,
   activeConvMessages,
   activeConvBridgeTarget,
   activeProjectId,
   activeProjectSessionId,
   desktopChatState,
   desktopBridgeState,
+  canonicalHumanIdentityId,
   desktopLiveTurn,
   composerDrafts,
   setComposerDrafts,
@@ -477,6 +515,14 @@ export function useComposerMessageActions({
           throw new Error('Unable to resolve bridge conversation');
         }
 
+        await appendCanonicalUserMessage(
+          activeConvCanonicalSessionId ?? targetConversationId,
+          canonicalHumanIdentityId,
+          text,
+          [],
+          sentAt,
+          'desktop-bridge-ui',
+        );
         setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, text, sentAt, optimisticMessageId));
         setComposerDrafts((current) => ({ ...current, chat: '' }));
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
@@ -546,6 +592,14 @@ export function useComposerMessageActions({
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
+      await appendCanonicalUserMessage(
+        activeConvCanonicalSessionId ?? targetSessionId,
+        canonicalHumanIdentityId,
+        text,
+        chatComposerAttachments,
+        sentAt,
+        'desktop-chat-ui',
+      );
       setDesktopChatState((current) => (
         current
           ? appendOptimisticOutboundMessage(current, targetSessionId, previewText, text, chatComposerAttachments, sentAt)
@@ -563,10 +617,12 @@ export function useComposerMessageActions({
   }, [
     activeConversationIsBridge,
     activeConvBridgeTarget,
+    activeConvCanonicalSessionId,
     activeConvId,
     appendDesktopSystemMessage,
     attachmentSummaryText,
     chatComposerAttachments,
+    canonicalHumanIdentityId,
     composerDrafts.chat,
     desktopBridgeState,
     desktopChatState,
@@ -663,6 +719,14 @@ export function useComposerMessageActions({
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
+      await appendCanonicalUserMessage(
+        activeProjectSessionId,
+        canonicalHumanIdentityId,
+        text,
+        chatComposerAttachments,
+        sentAt,
+        'desktop-chat-ui',
+      );
       setDesktopChatState((current) => {
         if (!current || current.activeSessionId !== activeProjectSessionId) return current;
         return appendOptimisticOutboundMessage(current, activeProjectSessionId, previewText, text, chatComposerAttachments, sentAt);
@@ -678,6 +742,7 @@ export function useComposerMessageActions({
   }, [
     activeProjectId,
     activeProjectSessionId,
+    canonicalHumanIdentityId,
     appendDesktopSystemMessage,
     appendProjectDraft,
     attachmentSummaryText,
