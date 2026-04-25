@@ -2,16 +2,16 @@ use crate::extensions::ExtensionCommandRegistry;
 use crate::tool_registry::ToolRegistry;
 use crate::turn_runner::{TurnConfig, TurnEvent, run_turn, wrap_conn};
 use async_trait::async_trait;
+use chrono::Utc;
 use kordi_core::error::KordiResult;
 use kordi_core::types::{
-    AgentMessage, CacheMetricsSource, ContentBlock, EntryBase, SessionEntry, StopReason,
-    UserMessage,
+    AgentMessage, AssistantContent, AssistantMessage, CacheMetricsSource, ContentBlock, EntryBase,
+    SessionEntry, StopReason, Usage, UserMessage,
 };
 use kordi_monitor::RequestMetricsTracker;
 use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, UsageInfo};
 use kordi_session::store;
 use kordi_tools::{Tool, ToolResult, ToolScheduling};
-use chrono::Utc;
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -226,6 +226,11 @@ impl Provider for OverflowProvider {
 
 struct MetricsProvider;
 
+struct PreemptiveCompactionProvider {
+    complete_count: Arc<AtomicUsize>,
+    stream_count: Arc<AtomicUsize>,
+}
+
 struct ErrorAwareToolProvider {
     call_count: AtomicUsize,
 }
@@ -259,6 +264,42 @@ impl Provider for MetricsProvider {
         }));
         let _ = tx.send(StreamEvent::TextDelta {
             text: "done".to_string(),
+        });
+        let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Provider for PreemptiveCompactionProvider {
+    fn name(&self) -> &str {
+        "preemptive-compaction-provider"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        self.complete_count.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![
+            StreamEvent::TextDelta {
+                text: "## Goal\nKeep going\n\n## Progress\n### Done\n- [x] compressed\n"
+                    .to_string(),
+            },
+            StreamEvent::Done,
+        ])
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        self.stream_count.fetch_add(1, Ordering::SeqCst);
+        let _ = tx.send(StreamEvent::TextDelta {
+            text: "answer after compression".to_string(),
         });
         let _ = tx.send(StreamEvent::Done);
         Ok(())
@@ -476,7 +517,9 @@ impl Tool for OverlapProbeTool {
                 }
             })
             .await
-            .map_err(|_| kordi_core::error::KordiError::Tool("tool calls did not overlap".into()))?;
+            .map_err(|_| {
+                kordi_core::error::KordiError::Tool("tool calls did not overlap".into())
+            })?;
         } else {
             self.notify.notify_waiters();
         }
@@ -1154,6 +1197,112 @@ async fn overflow_recovery_compacts_only_active_path_context() {
     assert_eq!(path[0].entry_id, "root0001");
     assert_eq!(path[1].entry_id, "actv0003");
     assert_eq!(path[2].entry_type, "compaction");
+}
+
+#[tokio::test]
+async fn run_turn_auto_compacts_at_ninety_percent_before_provider_request() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let db_path = dir.path().join("session.db");
+    let conn = store::open_db(&db_path).expect("db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+
+    let old_user = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("old00001".into()),
+            parent_id: None,
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::User(UserMessage {
+            content: vec![ContentBlock::Text {
+                text: "old context".repeat(100),
+            }],
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, &session_id, &old_user).expect("append old user");
+
+    let latest_assistant = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("asst0002".into()),
+            parent_id: Some(kordi_core::types::EntryId("old00001".into())),
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "ready".to_string(),
+            }],
+            provider: "dummy".to_string(),
+            model: "dummy-model".to_string(),
+            usage: Usage {
+                total_tokens: 900,
+                ..Default::default()
+            },
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, &session_id, &latest_assistant).expect("append assistant");
+
+    let complete_count = Arc::new(AtomicUsize::new(0));
+    let stream_count = Arc::new(AtomicUsize::new(0));
+    let provider = Arc::new(PreemptiveCompactionProvider {
+        complete_count: complete_count.clone(),
+        stream_count: stream_count.clone(),
+    });
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id: session_id.clone(),
+        system_prompt: "system".to_string(),
+        model: test_model(1_000),
+        provider,
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings {
+            enabled: true,
+            reserve_tokens: 0,
+            keep_recent_tokens: 1,
+        },
+        tool_registry: ToolRegistry::default(),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(config, event_tx, "continue".to_string()).await;
+    result.expect("turn should continue after preemptive compaction");
+
+    assert_eq!(complete_count.load(Ordering::SeqCst), 1);
+    assert_eq!(stream_count.load(Ordering::SeqCst), 1);
+
+    let events = std::iter::from_fn(|| event_rx.try_recv().ok()).collect::<Vec<_>>();
+    let compaction_idx = events
+        .iter()
+        .position(|event| matches!(event, TurnEvent::AutoCompactionStart))
+        .expect("auto-compaction should start");
+    let turn_start_idx = events
+        .iter()
+        .position(|event| matches!(event, TurnEvent::TurnStart { .. }))
+        .expect("turn should start after compaction");
+    assert!(compaction_idx < turn_start_idx);
+    assert!(events.iter().any(|event| matches!(event, TurnEvent::Status(message) if message.starts_with("Auto-compacted session:"))));
+    assert!(events.iter().any(
+        |event| matches!(event, TurnEvent::Done { text } if text == "answer after compression")
+    ));
+
+    let append_conn = store::open_db(&db_path).expect("reopen db");
+    let path = kordi_session::tree::active_path(&append_conn, &session_id).expect("active path");
+    assert!(path.iter().any(|row| row.entry_type == "compaction"));
 }
 
 #[tokio::test]

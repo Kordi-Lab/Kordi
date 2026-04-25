@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
+import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { fetchDesktopChatState, fetchDesktopChatTurnState } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
@@ -113,6 +113,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [isDesktopChatSending, setIsDesktopChatSending] = useState(false);
   const [desktopLiveTurnsBySession, setDesktopLiveTurnsBySession] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [pendingUserChatMessage, setPendingUserChatMessage] = useState<{ text: string; time: string } | null>(null);
+  const [queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession] = useState<Record<string, QueuedDesktopChatMessage[]>>({});
   const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
   const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
@@ -193,6 +194,18 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         next[sessionId] = turn;
       }
 
+      return changed ? next : current;
+    });
+    setQueuedDesktopMessagesBySession((current) => {
+      let changed = false;
+      const next: Record<string, QueuedDesktopChatMessage[]> = {};
+      for (const [sessionId, messages] of Object.entries(current)) {
+        if (!knownSessionIds.has(sessionId) || messages.length === 0) {
+          changed = true;
+          continue;
+        }
+        next[sessionId] = messages;
+      }
       return changed ? next : current;
     });
   }, [desktopChatState]);
@@ -408,6 +421,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setDesktopLiveTurnsBySession,
     pendingUserChatMessage,
     setPendingUserChatMessage,
+    queuedDesktopMessagesBySession,
+    setQueuedDesktopMessagesBySession,
     cachedChatSessionMessages,
     setCachedChatSessionMessages,
     cachedProjectSessionMessages,

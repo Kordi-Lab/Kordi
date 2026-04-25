@@ -76,6 +76,8 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     pendingUserChatMessage,
     setPendingUserChatMessage,
+    queuedDesktopMessagesBySession,
+    setQueuedDesktopMessagesBySession,
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
@@ -461,6 +463,8 @@ export function useKordiAppModel() {
     setDesktopChatError,
     setIsDesktopChatSending: setIsDesktopBridgeSending,
     setPendingUserChatMessage,
+    queuedDesktopMessagesBySession,
+    setQueuedDesktopMessagesBySession,
     setDesktopBridgeState,
     watchDesktopLiveTurn,
     shouldAutoFollowChatRef,
@@ -520,6 +524,8 @@ export function useKordiAppModel() {
     selectComposerValue,
   ]);
 
+  const activeQueuedDesktopMessages = queuedDesktopMessagesBySession[activeConv.id] ?? ('queuedMessages' in activeConv ? activeConv.queuedMessages : undefined) ?? [];
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -542,6 +548,7 @@ export function useKordiAppModel() {
     chatTranscriptScrollRef,
     shouldAutoFollowChatRef,
     desktopChatState,
+    activeConv,
     activeConversationIsBridge,
     chatModelOptions,
     selectComposerValue,
@@ -747,6 +754,7 @@ export function useKordiAppModel() {
     isBridgePolling,
     lastBridgePollAtLabel,
     activeSessionProject,
+    activeQueuedDesktopMessages,
     showAuthGate,
     dismissAuthGate,
     inlineAuthDialog,

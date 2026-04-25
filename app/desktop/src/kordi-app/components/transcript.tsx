@@ -468,25 +468,28 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
         <div className={cn(
           'min-w-0 overflow-hidden text-[13px] shadow-sm',
           isOwnHumanMessage
-            ? 'max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
+            ? 'w-fit max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
             : isPeerHumanMessage
-              ? 'max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
+              ? 'w-fit max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
               : 'flex-1 rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
           bubble,
         )}>
         {showCompactFooter ? (
           showInlineCompactFooter ? (
-            <div className="flex items-end justify-between gap-2">
-              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+            <div className="flex flex-col">
+              <div className="whitespace-pre-wrap break-words leading-[1.45]">
                 {msg.text}
               </div>
-              <MessageFooter
-                time={msg.time}
-                status={isOwnHumanMessage ? deliveryStatus : undefined}
-                detail={msg.detail}
-                isUser={isOwnHumanMessage}
-                compact
-              />
+              <div className={cn(
+                'mt-1 flex items-center justify-end gap-1 whitespace-nowrap text-[10px] leading-none tabular-nums',
+                isOwnHumanMessage ? 'text-black/54' : 'text-slate-500',
+              )}>
+                {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
+                  <span>{msg.detail}</span>
+                ) : null}
+                <span>{msg.time}</span>
+                {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
+              </div>
             </div>
           ) : (
             <>
@@ -561,15 +564,20 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
   const hasAssistant = turn.assistantText.trim().length > 0;
   const hasThinking = turn.thinkingText.trim().length > 0;
   const showLiveStatusHeader = !historical && !turn.completed && !(turn.status === 'writing' && hasAssistant);
+  const isCompressionStatus = turn.status === 'compacting' || turn.status === 'compacted' || turn.status === 'compaction_failed';
   const liveStatusText =
     turn.status === 'cancelling'
       ? 'Stopping…'
       : turn.status === 'retrying'
         ? 'Retrying…'
         : turn.status === 'compacting'
-          ? 'Compacting…'
-          : turn.status === 'typing'
-            ? 'Typing…'
+          ? 'Compressing conversation…'
+          : turn.status === 'compacted'
+            ? 'Conversation compressed. Continuing…'
+            : turn.status === 'compaction_failed'
+              ? 'Compression needs attention'
+              : turn.status === 'typing'
+                ? 'Typing…'
             : turn.status === 'writing'
               ? 'Replying…'
               : 'Working…';
@@ -582,6 +590,29 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
           <span className="text-slate-300">{liveStatusText}</span>
+        </div>
+      ) : null}
+
+      {isCompressionStatus ? (
+        <div className={cn(
+          'rounded-2xl border px-4 py-3 text-sm',
+          turn.status === 'compaction_failed'
+            ? 'border-rose-500/20 bg-rose-500/10 text-rose-100'
+            : turn.status === 'compacted'
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
+              : 'border-amber-400/25 bg-amber-400/10 text-amber-50',
+        )}>
+          <div className="flex items-center gap-2 font-medium">
+            {turn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : turn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+            <span>{turn.status === 'compacting' ? 'Compressing conversation…' : turn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
+          </div>
+          <div className="mt-1.5 text-[12px] leading-5 opacity-80">
+            {turn.status === 'compacting'
+              ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
+              : turn.status === 'compacted'
+                ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
+                : (turn.error ?? turn.message)}
+          </div>
         </div>
       ) : null}
 

@@ -112,10 +112,11 @@ pub fn should_compact(
     context_window: usize,
     settings: &CompactionSettings,
 ) -> bool {
-    if context_window == 0 {
-        return false;
-    }
-
+    let context_window = if context_window == 0 {
+        128_000
+    } else {
+        context_window
+    };
     let threshold_tokens = context_window.saturating_mul(settings.threshold_percent as usize) / 100;
     context_tokens >= threshold_tokens
         || context_window.saturating_sub(context_tokens) <= settings.reserve_tokens

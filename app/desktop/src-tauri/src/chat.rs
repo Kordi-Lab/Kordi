@@ -96,7 +96,13 @@ fn sanitize_bridge_segment(value: &str) -> String {
     let sanitized: String = value
         .trim()
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect();
     if sanitized.is_empty() {
         "unknown".to_string()
@@ -105,7 +111,10 @@ fn sanitize_bridge_segment(value: &str) -> String {
     }
 }
 
-fn bridge_agent_session_cwd(local_agent_node_id: &str, peer_node_id: &str) -> Result<PathBuf, String> {
+fn bridge_agent_session_cwd(
+    local_agent_node_id: &str,
+    peer_node_id: &str,
+) -> Result<PathBuf, String> {
     let root = std::env::var_os("APP_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or(chat_cwd()?);
@@ -593,11 +602,13 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                             state.message = "Writing response…".to_string();
                             state.assistant_text.push_str(text);
                         }),
-                        TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
-                            state.status = "thinking".to_string();
-                            state.message = "Thinking…".to_string();
-                            state.thinking_text.push_str(text);
-                        }),
+                        TurnEvent::ThinkingDelta(text) => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "thinking".to_string();
+                                state.message = "Thinking…".to_string();
+                                state.thinking_text.push_str(text);
+                            })
+                        }
                         TurnEvent::ToolCallStart { id, name } => {
                             update_turn(&snapshot_for_task, |state| {
                                 state.status = "tooling".to_string();
@@ -616,21 +627,29 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                         }
                         TurnEvent::ToolCallDelta { id, args } => {
                             update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
                                     tool.arguments.push_str(args);
                                 }
                             })
                         }
-                        TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
-                            state.status = "tooling".to_string();
-                            state.message = "Running tool…".to_string();
-                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                                tool.status = "running".to_string();
-                            }
-                        }),
+                        TurnEvent::ToolExecuting { id } => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "tooling".to_string();
+                                state.message = "Running tool…".to_string();
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
+                                    tool.status = "running".to_string();
+                                }
+                            })
+                        }
                         TurnEvent::ToolOutputDelta { id, chunk } => {
                             update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
                                     tool.status = "running".to_string();
                                     tool.live_output.push_str(chunk);
                                 }
@@ -684,10 +703,29 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                             state.status = "streaming".to_string();
                             state.message = "Retry complete. Continuing…".to_string();
                         }),
-                        TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
-                            state.status = "compacting".to_string();
-                            state.message = "Auto-compacting session…".to_string();
-                        }),
+                        TurnEvent::AutoCompactionStart => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "compacting".to_string();
+                                state.message = "Compressing conversation…".to_string();
+                            })
+                        }
+                        TurnEvent::Status(message)
+                            if message.starts_with("Auto-compacted session:") =>
+                        {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "compacted".to_string();
+                                state.message = "Conversation compressed. Continuing…".to_string();
+                            })
+                        }
+                        TurnEvent::Status(message)
+                            if message.starts_with("Auto-compaction failed:") =>
+                        {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "compaction_failed".to_string();
+                                state.message = message.clone();
+                                state.error = Some(message.clone());
+                            })
+                        }
                         TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
                     }
                     publish_bridge_agent_snapshot(&snapshot_for_task, &updates_tx_for_task);
@@ -702,12 +740,15 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                     state.message = "Response complete".to_string();
                     state.completed = true;
                     state.succeeded = true;
+                    state.error = None;
                     if state.assistant_text.trim().is_empty() {
                         if let Some(text) = detail
                             .messages
                             .iter()
                             .rev()
-                            .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+                            .find(|message| {
+                                message.role == "assistant" && !message.text.trim().is_empty()
+                            })
                             .map(|message| message.text.clone())
                         {
                             state.assistant_text = text;
@@ -901,8 +942,25 @@ pub async fn desktop_chat_start_message(
                     }),
                     TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
                         state.status = "compacting".to_string();
-                        state.message = "Auto-compacting session…".to_string();
+                        state.message = "Compressing conversation…".to_string();
                     }),
+                    TurnEvent::Status(message)
+                        if message.starts_with("Auto-compacted session:") =>
+                    {
+                        update_turn(&snapshot_for_task, |state| {
+                            state.status = "compacted".to_string();
+                            state.message = "Conversation compressed. Continuing…".to_string();
+                        })
+                    }
+                    TurnEvent::Status(message)
+                        if message.starts_with("Auto-compaction failed:") =>
+                    {
+                        update_turn(&snapshot_for_task, |state| {
+                            state.status = "compaction_failed".to_string();
+                            state.message = message.clone();
+                            state.error = Some(message.clone());
+                        })
+                    }
                     TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
                 })
                 .await;

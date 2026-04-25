@@ -124,7 +124,7 @@ mod tests {
     fn compaction_settings() -> CompactionSettings {
         CompactionSettings {
             enabled: true,
-            threshold_percent: 80,
+            threshold_percent: 90,
             reserve_tokens: 0,
             min_entries: 2,
             keep_recent_entries: 1,

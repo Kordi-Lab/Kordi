@@ -3,11 +3,11 @@ use super::{
     estimate_tokens_message, estimate_tokens_text, extract_file_operations, prepare_compaction,
     serialize_conversation, should_compact,
 };
+use chrono::Utc;
 use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, CompactionSettings, ContentBlock, EntryBase,
     SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
 };
-use chrono::Utc;
 
 use crate::store::EntryRow;
 
@@ -140,17 +140,31 @@ fn test_summarization_prompt_format() {
 #[test]
 fn test_should_compact() {
     let settings = CompactionSettings::default();
-    // 128K context, 100K used — should not compact (100K < 128K - 16K = 112K)
+    // 128K context, 100K used — should not compact (below 90% and outside reserve).
     assert!(!should_compact(100_000, 128_000, &settings));
-    // 120K used — should compact (120K > 112K)
-    assert!(should_compact(120_000, 128_000, &settings));
+    // 116K used — should compact at the 90% threshold.
+    assert!(should_compact(116_000, 128_000, &settings));
 }
 
 #[test]
-fn test_should_compact_triggers() {
-    let settings = CompactionSettings::default(); // reserve=16384
-    assert!(should_compact(120_000, 128_000, &settings)); // over threshold
-    assert!(!should_compact(100_000, 128_000, &settings)); // under threshold
+fn test_should_compact_triggers_at_ninety_percent() {
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 0,
+        keep_recent_tokens: 20_000,
+    };
+    assert!(!should_compact(89_999, 100_000, &settings));
+    assert!(should_compact(90_000, 100_000, &settings));
+}
+
+#[test]
+fn test_should_compact_still_respects_reserve_tokens() {
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 16_384,
+        keep_recent_tokens: 20_000,
+    };
+    assert!(should_compact(112_000, 128_000, &settings));
 }
 
 #[test]
@@ -348,6 +362,53 @@ fn prepare_compaction_tokens_before_ignores_usage_before_latest_compaction() {
         + estimate_tokens_message(&make_user_msg("abcdefgh"));
 
     assert_eq!(prep.tokens_before, expected);
+}
+
+#[test]
+fn prepare_compaction_returns_none_when_latest_entry_is_compaction() {
+    let now = Utc::now();
+    let user_entry = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("u1".to_string()),
+            parent_id: None,
+            timestamp: now,
+        },
+        message: make_user_msg(&"x".repeat(200)),
+    };
+    let compaction_entry = SessionEntry::Compaction {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("c1".to_string()),
+            parent_id: Some(kordi_core::types::EntryId("u1".to_string())),
+            timestamp: now,
+        },
+        summary: "summary".to_string(),
+        first_kept_entry_id: kordi_core::types::EntryId("u1".to_string()),
+        tokens_before: 90_000,
+        details: None,
+        from_plugin: false,
+    };
+    let entries = vec![
+        EntryRow {
+            session_id: "s1".to_string(),
+            seq: 1,
+            entry_id: "u1".to_string(),
+            parent_id: None,
+            entry_type: "message".to_string(),
+            timestamp: now.to_rfc3339(),
+            payload: serde_json::to_string(&user_entry).unwrap(),
+        },
+        EntryRow {
+            session_id: "s1".to_string(),
+            seq: 2,
+            entry_id: "c1".to_string(),
+            parent_id: Some("u1".to_string()),
+            entry_type: "compaction".to_string(),
+            timestamp: now.to_rfc3339(),
+            payload: serde_json::to_string(&compaction_entry).unwrap(),
+        },
+    ];
+
+    assert!(prepare_compaction(&entries, &CompactionSettings::default()).is_none());
 }
 
 #[test]

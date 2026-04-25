@@ -95,7 +95,7 @@ impl Default for CompactionSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            threshold_percent: 80,
+            threshold_percent: 90,
             reserve_tokens: 2_048,
             min_entries: 8,
             keep_recent_entries: 6,
