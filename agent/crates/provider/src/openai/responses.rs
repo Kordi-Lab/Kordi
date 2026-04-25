@@ -1,7 +1,7 @@
 use super::{OpenAiProvider, default_prompt_cache_key};
+use futures::StreamExt;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_core::types::CacheMetricsSource;
-use futures::StreamExt;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use tokio::sync::mpsc;
@@ -66,11 +66,17 @@ impl OpenAiProvider {
         let mut started_tool_calls = HashSet::new();
         let mut completed_tool_calls = HashSet::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            if options.cancel.is_cancelled() {
-                let _ = tx.send(StreamEvent::Done);
-                return Ok(());
-            }
+        loop {
+            let chunk_result = tokio::select! {
+                _ = options.cancel.cancelled() => {
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+                chunk_result = stream.next() => chunk_result,
+            };
+            let Some(chunk_result) = chunk_result else {
+                break;
+            };
 
             let chunk =
                 chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;

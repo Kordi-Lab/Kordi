@@ -27,10 +27,11 @@ pub use providers::{
 };
 pub use resolver::{
     AuthSource, ProviderAuthOptionSummary, ResolvedProviderAuth, add_cached_github_copilot_models,
-    auth_source, authenticated_model_candidates, available_model_for_provider,
-    preferred_available_model_for_provider, preferred_startup_provider_and_model,
-    provider_auth_option_summaries, provider_auth_status_summary, provider_model_selection_detail,
-    resolve_provider_auth, resolve_provider_auth_choice,
+    auth_source, authenticated_model_candidates, authenticated_providers,
+    available_model_for_provider, preferred_available_model_for_provider,
+    preferred_startup_provider_and_model, provider_auth_option_summaries,
+    provider_auth_status_summary, provider_model_selection_detail, resolve_provider_auth,
+    resolve_provider_auth_choice,
 };
 
 #[cfg(test)]
