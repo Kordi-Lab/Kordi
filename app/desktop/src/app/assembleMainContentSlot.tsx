@@ -1,5 +1,6 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } from '@/app/mainContentShellBuilders';
+import { findCanonicalConversationForTarget } from '@/features/canonical/sessionReadModel';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -49,6 +50,17 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             void openLocalAgentChat();
             return;
           }
+
+          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
+            humanId: contact.bridgeHumanId,
+            agentId: contact.bridgeAgentId,
+            bridgeNodeId: contact.bridgePeerNodeId,
+          });
+          if (existingConversation) {
+            void args.handleSelectChatSession(existingConversation.id);
+            return;
+          }
+
           if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(contact.bridgeHostId, contact.bridgePeerNodeId, contact.name, contact.owner, contact.bridgePeerRuntime);
         },
@@ -67,6 +79,16 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             void openLocalAgentChat();
             return;
           }
+
+          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
+            agentId: agent.bridgeAgentId,
+            bridgeNodeId: agent.bridgePeerNodeId,
+          });
+          if (existingConversation) {
+            void args.handleSelectChatSession(existingConversation.id);
+            return;
+          }
+
           if (!agent.bridgeHostId || !agent.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
         },

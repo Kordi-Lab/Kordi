@@ -104,6 +104,10 @@ export type ConversationParticipant = {
   name: string;
   kind: 'human' | 'agent' | string;
   role: string;
+  source?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
   avatarKey?: string | null;
   profileImageUrl?: string | null;
   presenceStatus?: string | null;
