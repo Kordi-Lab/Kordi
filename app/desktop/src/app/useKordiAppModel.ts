@@ -248,7 +248,7 @@ export function useKordiAppModel() {
     isNativeShell,
     activeNav,
     activeConvId,
-    activeConversationIsBridge: isNativeShell && activeConvId.startsWith('bridge:'),
+    activeConversationIsBridge: isNativeShell && (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(activeConvId)),
     composerChatText: composerUi.composerDrafts.chat,
     shouldAutoFollowChatRef,
   });

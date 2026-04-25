@@ -517,7 +517,8 @@ export function useComposerMessageActions({
       }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `bridge-pending-${Date.now()}`;
-      let targetConversationId = activeConversationIsBridge ? activeConvId : null;
+      const hasMaterializedBridgeConversation = activeConversationIsBridge && activeConvId.startsWith('bridge:');
+      let targetConversationId = hasMaterializedBridgeConversation ? activeConvId : null;
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);

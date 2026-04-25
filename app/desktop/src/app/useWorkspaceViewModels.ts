@@ -5,6 +5,7 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
+  isCanonicalBridgeSessionId,
   normalizeCanonicalProjectGroupId,
   projectRootFromCanonicalProjectGroupId,
   resolveProjectSelection,
@@ -418,7 +419,11 @@ export function useWorkspaceViewModels({
     }
     return chatConversations.find((conversation) => conversation.id === activeConvId) ?? chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
   }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
-  const activeConversationIsBridge = isNativeShell && activeConv.id.startsWith('bridge:');
+  const activeConversationIsBridge = isNativeShell && (
+    activeConv.id.startsWith('bridge:')
+    || isCanonicalBridgeSessionId(activeConv.canonicalSessionId ?? activeConv.id)
+    || Boolean(activeConv.bridgeTarget)
+  );
   const activeLastMessage = activeConv.messages[activeConv.messages.length - 1];
   const activeConvHasSubtitle = activeConv.subtitle.trim().length > 0;
 
