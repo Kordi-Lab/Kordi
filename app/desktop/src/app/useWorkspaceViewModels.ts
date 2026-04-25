@@ -246,6 +246,7 @@ export function useWorkspaceViewModels({
 
       return {
         id: session.id,
+        canonicalSessionId: session.id,
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(activeMessages, session.subtitle),
@@ -286,6 +287,7 @@ export function useWorkspaceViewModels({
   const nativeChatPlaceholder = useMemo(
     () => ({
       id: 'local-chat-session',
+      canonicalSessionId: 'local-chat-session',
       name: 'Chat session',
       type: 'owned-agent' as const,
       subtitle: isDesktopChatLoading

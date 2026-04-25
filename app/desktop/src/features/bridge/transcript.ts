@@ -173,6 +173,7 @@ export function mapBridgeConversationToViewModel(
 
   return {
     id: conversation.id,
+    canonicalSessionId: conversation.canonicalSessionId,
     name: conversation.title,
     type: isAgent ? 'external-agent' : 'person',
     subtitle: outreachPrefix

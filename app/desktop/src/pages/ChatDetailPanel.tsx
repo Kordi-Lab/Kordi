@@ -10,7 +10,9 @@ import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 
 type ActiveConversation = {
+  id: string;
   name: string;
+  canonicalSessionId?: string;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
   bridges: string[];
@@ -151,6 +153,7 @@ export function ChatDetailPanel({
               <TypeBadge type={activeConv.type} compact />
             </div>
             <div className="app-inspector-meta-list">
+              <MetaRow label="Session ID" value={activeConv.canonicalSessionId ?? activeConv.id} valueClassName="max-w-[11rem] truncate" />
               <MetaRow label="Last active" value={activeLastMessage?.time} />
               <MetaRow label="Trust" value={activeConv.trust} />
               <MetaRow label="Mode" value={activeConv.directness} />

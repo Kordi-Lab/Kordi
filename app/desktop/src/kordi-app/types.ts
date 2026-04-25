@@ -101,6 +101,7 @@ export type OutreachThreadSummary = {
 
 export type Conversation = {
   id: string;
+  canonicalSessionId?: string;
   name: string;
   type: ConversationType;
   subtitle: string;
