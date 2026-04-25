@@ -366,7 +366,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }));
 
         while (!nextTurn.completed) {
-          await new Promise((resolve) => window.setTimeout(resolve, 120));
+          await new Promise((resolve) => window.setTimeout(resolve, 60));
           nextTurn = await fetchDesktopChatTurnState(nextTurn.id);
           setDesktopLiveTurnsBySession((current) => ({
             ...current,
@@ -379,15 +379,14 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         const visibleSessionId = visibleLocalSessionIdRef.current;
         const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId;
 
-        setDesktopLiveTurnsBySession((current) => {
-          if (!current[nextTurn.sessionId]) return current;
-          const { [nextTurn.sessionId]: _removed, ...rest } = current;
-          return rest;
-        });
-
         if (isVisibleCompletedSession) {
           try {
             await refreshDesktopChat(nextTurn.sessionId);
+            setDesktopLiveTurnsBySession((current) => {
+              if (!current[nextTurn.sessionId]) return current;
+              const { [nextTurn.sessionId]: _removed, ...rest } = current;
+              return rest;
+            });
           } catch {
             mergeCompletedDesktopTurn(nextTurn);
           }

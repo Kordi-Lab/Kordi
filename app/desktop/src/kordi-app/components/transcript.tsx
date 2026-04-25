@@ -426,7 +426,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
 
   if (msg.turn) {
     return (
-      <div className="flex w-full max-w-[min(100%,66rem)] flex-col items-start gap-0.5 py-0.5">
+      <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -563,9 +563,10 @@ function toolDisplayConfig(toolName: string) {
 export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
   const hasAssistant = turn.assistantText.trim().length > 0;
   const hasThinking = turn.thinkingText.trim().length > 0;
-  const showLiveStatusHeader = !historical && !turn.completed && !(turn.status === 'writing' && hasAssistant);
-  const liveStatusText =
-    turn.status === 'cancelling'
+  const showLiveStatusHeader = !historical && !turn.completed && !hasAssistant;
+  const liveStatusText = turn.message?.trim().length
+    ? turn.message
+    : turn.status === 'cancelling'
       ? 'Stopping…'
       : turn.status === 'retrying'
         ? 'Retrying…'
@@ -575,12 +576,14 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             ? 'Typing…'
             : turn.status === 'writing'
               ? 'Replying…'
-              : 'Working…';
+              : turn.status === 'streaming' || turn.status === 'starting'
+                ? 'Replying…'
+                : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="w-full max-w-[min(100%,66rem)] space-y-1.5 pb-1.5">
+    <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
       {showLiveStatusHeader ? (
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -641,7 +644,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
 
       {hasAssistant ? (
         <div className="flex w-full flex-col items-start gap-0.5 py-0.5">
-          <div className="app-chat-bubble-peer min-w-0 overflow-hidden w-full max-w-none rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
+          <div className="app-chat-bubble-peer min-w-0 overflow-hidden w-full max-w-[min(100%,42rem)] rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
             <MarkdownContent text={turn.assistantText} />
           </div>
         </div>
