@@ -21,6 +21,7 @@ type CanonicalConversationLike = {
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
+  updatedAtLabel?: string;
   name: string;
   subtitle: string;
   participants: string[];
@@ -373,6 +374,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const messages = this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
       const canonicalParticipants = this.participantDetails(sessionId);
+      const latestTime = messages[messages.length - 1]?.time
+        ?? conversation.updatedAtLabel
+        ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
 
       return {
         ...conversation,
@@ -383,6 +387,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         messages,
+        updatedAtLabel: latestTime,
         canonicalParticipantCount: (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
         canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
