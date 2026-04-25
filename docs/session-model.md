@@ -81,9 +81,11 @@ Planned components:
 Component rules:
 
 - Components receive canonical identities or canonical avatar keys; they should not derive avatars from display names, session IDs, project IDs, or raw conversation IDs.
-- Local and remote agent responses use the same `AgentTurnMessage` UI.
+- Local and remote agent responses use the same `AgentTurnMessage` UI, including thinking sections, tool sections, final-answer bubble, status, and error states.
 - User-authored and agent-authored `@` delegated responses appear inline in `SessionTranscript` as normal person/agent messages.
-- The main remote response UI is `AgentTurnMessage`; delegation trace is secondary and collapsed by default.
+- Agent-authored `@Person` shows the target's response as a normal person bubble; it must not show a fake agent `Replying…` state.
+- Agent-authored `@Agent` shows the target's response as a normal `AgentTurnMessage`, including thinking/tool timeline when available.
+- Delegation trace is secondary and collapsed by default.
 - The right panel is not a second chat list; it explains the selected session's participant graph and linked exchanges.
 
 Migration order:

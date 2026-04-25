@@ -3,18 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kordi delegation UI preview — existing shell</title>
+  <title>Kordi delegation UI preview — existing UI</title>
   <style>
     :root {
       color-scheme: dark;
       --utility-background: rgb(10 10 12);
       --utility-foreground: rgb(241 245 249);
-      --utility-card: rgba(24, 24, 28, 0.9);
-      --utility-muted: rgba(34, 34, 39, 0.9);
       --utility-muted-text: rgb(148 163 184);
-      --app-motion-fast: 180ms;
-      --app-motion-base: 220ms;
-      --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
       --app-page-bg:
         radial-gradient(circle at top, rgba(224, 211, 172, 0.07), transparent 24%),
         radial-gradient(circle at bottom right, rgba(122, 128, 80, 0.06), transparent 28%),
@@ -38,7 +33,6 @@
         0 18px 40px rgba(0, 0, 0, 0.24),
         0 -6px 14px rgba(255, 255, 255, 0.012);
       --app-button-primary-bg: rgba(219, 214, 206, 0.84);
-      --app-button-primary-hover: rgba(229, 224, 217, 0.9);
       --app-button-primary-text: rgb(31 28 27);
       --app-chat-bubble-user-bg: rgba(224, 218, 210, 0.9);
       --app-chat-bubble-user-text: rgb(29 26 24);
@@ -46,14 +40,13 @@
       --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.16);
       --delegation-accent: rgb(167 139 250);
       --delegation-good: rgb(52 211 153);
+      --danger: rgb(251 113 133);
     }
 
     .theme-light {
       color-scheme: light;
       --utility-background: rgb(255 255 255);
       --utility-foreground: rgb(31 27 25);
-      --utility-card: rgba(255, 255, 255, 0.88);
-      --utility-muted: rgba(228, 222, 214, 0.82);
       --utility-muted-text: rgb(97 91 86);
       --app-page-bg:
         radial-gradient(circle at top, rgba(255, 250, 240, 0.74), transparent 24%),
@@ -74,7 +67,6 @@
       --app-control-active: rgba(43, 35, 32, 0.11);
       --app-control-border: rgba(43, 35, 32, 0.1);
       --app-button-primary-bg: rgba(44, 38, 34, 0.92);
-      --app-button-primary-hover: rgba(36, 31, 28, 0.96);
       --app-button-primary-text: rgb(246 242 237);
       --app-chat-bubble-user-bg: rgba(214, 208, 199, 0.88);
       --app-chat-bubble-user-text: rgb(30 27 25);
@@ -82,19 +74,20 @@
       --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.12);
       --delegation-accent: rgb(109 40 217);
       --delegation-good: rgb(5 150 105);
+      --danger: rgb(225 29 72);
     }
 
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
       background: var(--app-page-bg);
       color: var(--utility-foreground);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
-      overflow: hidden;
     }
-    button, input, textarea { font: inherit; }
+    button, input { font: inherit; }
     button { cursor: pointer; }
 
     .preview-note {
@@ -108,14 +101,13 @@
       max-width: calc(100vw - 36px);
       border: 1px solid var(--app-divider);
       border-radius: 999px;
-      background: color-mix(in oklab, var(--app-modal-bg) 88%, transparent);
+      background: var(--app-modal-bg);
       padding: 7px 10px;
       color: var(--utility-muted-text);
       box-shadow: var(--app-shadow-float);
-      backdrop-filter: blur(18px);
       white-space: nowrap;
     }
-    .preview-note strong { color: var(--utility-foreground); font-weight: 600; }
+    .preview-note strong { color: var(--utility-foreground); font-weight: 650; }
     .preview-note button {
       border: 1px solid var(--app-divider);
       border-radius: 999px;
@@ -124,13 +116,8 @@
       padding: 4px 8px;
     }
 
-    .bridge-app {
-      height: 100dvh;
-      padding: 44px 18px 18px;
-      background: var(--app-page-bg);
-    }
+    .bridge-app { height: 100dvh; padding: 44px 18px 18px; background: var(--app-page-bg); }
     .app-shell {
-      position: relative;
       display: flex;
       height: 100%;
       overflow: hidden;
@@ -140,20 +127,9 @@
       box-shadow: var(--app-shadow-float);
       backdrop-filter: blur(24px);
     }
-    .app-grid {
-      display: grid;
-      grid-template-columns: 360px minmax(0, 1fr);
-      width: 100%;
-      min-width: 0;
-    }
-    .app-side-shell {
-      overflow: hidden;
-      background: var(--app-side-bg);
-    }
-    .workspace-sidebar {
-      display: flex;
-      height: 100%;
-    }
+    .app-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); width: 100%; min-width: 0; }
+    .app-side-shell { overflow: hidden; background: var(--app-side-bg); }
+    .workspace-sidebar { display: flex; height: 100%; }
     .app-left-glass {
       display: flex;
       width: 68px;
@@ -170,69 +146,47 @@
       box-shadow: inset -1px 0 0 var(--app-left-glass-border);
     }
     .nav-stack { display: grid; gap: 10px; }
-    .app-workspace-nav-button,
-    .app-icon-button {
+    .icon-button {
       display: grid;
       place-items: center;
       width: 44px;
       height: 44px;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 14%, transparent);
+      border: 1px solid color-mix(in oklab, var(--app-divider) 42%, transparent);
       border-radius: 18px;
       background: transparent;
       color: var(--utility-muted-text);
-      transition: background var(--app-motion-fast) var(--app-motion-ease), border-color var(--app-motion-fast) var(--app-motion-ease), color var(--app-motion-fast) var(--app-motion-ease);
     }
-    .app-workspace-nav-button.active,
-    .app-list-item-active {
-      border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
-      background: var(--app-control-active);
-      color: var(--utility-foreground);
-    }
-    .app-workspace-nav-button:hover,
-    .app-icon-button:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
-    .nav-glyph { font-size: 17px; line-height: 1; }
-    .profile-avatar, .identity-avatar {
+    .icon-button.active { border-color: var(--app-divider); background: var(--app-control-active); color: var(--utility-foreground); }
+    .icon-button:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
+
+    .identity-avatar {
       display: grid;
       place-items: center;
       flex: none;
       overflow: hidden;
+      width: 28px;
+      height: 28px;
       border: 1px solid color-mix(in oklab, var(--app-divider) 90%, transparent);
       border-radius: 999px;
       color: white;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 750;
       letter-spacing: -0.03em;
       background:
         radial-gradient(circle at 72% 18%, rgba(255,255,255,.34), transparent 22px),
         linear-gradient(135deg, var(--avatar-a), var(--avatar-b));
     }
+    .identity-avatar.large { width: 40px; height: 40px; font-size: 13px; }
+    .identity-avatar.mini { width: 19px; height: 19px; font-size: 8px; }
     .avatar-a { --avatar-a: #a86d46; --avatar-b: #d7b66e; }
     .avatar-ak { --avatar-a: #6766b5; --avatar-b: #8fa4d6; }
     .avatar-b { --avatar-a: #3f8d73; --avatar-b: #7fb8a4; }
     .avatar-bk { --avatar-a: #6852ac; --avatar-b: #9b8bd0; }
     .avatar-system { --avatar-a: #5a5b56; --avatar-b: #88877d; }
-    .profile-avatar { width: 36px; height: 36px; }
-    .identity-avatar { width: 28px; height: 28px; font-size: 11px; }
-    .identity-avatar.large { width: 40px; height: 40px; font-size: 13px; }
-    .identity-avatar.mini { width: 19px; height: 19px; font-size: 8px; }
 
-    .app-session-panel {
-      width: 292px;
-      overflow: hidden;
-      background: var(--app-session-bg);
-    }
-    .session-panel-inner {
-      display: flex;
-      height: 100%;
-      flex-direction: column;
-      padding: 10px;
-    }
-    .panel-heading {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
+    .app-session-panel { width: 292px; overflow: hidden; background: var(--app-session-bg); }
+    .session-panel-inner { display: flex; height: 100%; flex-direction: column; padding: 10px; }
+    .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
     .panel-title { font-size: 15px; font-weight: 650; }
     .panel-subtitle { margin-top: 2px; color: var(--utility-muted-text); font-size: 11px; }
     .sidebar-copy { margin: 0 4px 8px; color: var(--utility-muted-text); font-size: 11px; line-height: 1.45; }
@@ -246,31 +200,9 @@
       padding: 7px 10px;
       color: var(--utility-muted-text);
     }
-    .app-input-shell input {
-      width: 100%;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--utility-foreground);
-      font-size: 13px;
-    }
-    .app-filter-tabs {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 2px;
-      margin: 8px 0;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
-      border-radius: 12px;
-      padding: 2px;
-    }
-    .app-filter-tab {
-      border: 0;
-      border-radius: 9px;
-      background: transparent;
-      color: var(--utility-muted-text);
-      padding: 6px 0;
-      font-size: 11px;
-    }
+    .app-input-shell input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--utility-foreground); font-size: 13px; }
+    .app-filter-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 8px 0; border: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent); border-radius: 12px; padding: 2px; }
+    .app-filter-tab { border: 0; border-radius: 9px; background: transparent; color: var(--utility-muted-text); padding: 6px 0; font-size: 11px; }
     .app-filter-tab-active { background: var(--app-control-bg); color: var(--utility-foreground); }
     .session-scroll { min-height: 0; overflow: hidden; padding-top: 2px; }
     .app-session-row {
@@ -282,83 +214,24 @@
       color: var(--utility-foreground);
       padding: 6px 8px;
       text-align: left;
-      transition: background var(--app-motion-fast) var(--app-motion-ease), border-color var(--app-motion-fast) var(--app-motion-ease);
     }
     .app-session-row + .app-session-row { margin-top: 4px; }
     .app-session-row:hover { background: var(--app-control-bg); }
-    .app-session-row-active {
-      border-color: color-mix(in oklab, var(--app-divider) 70%, transparent);
-      background: var(--app-control-active);
-    }
+    .app-session-row-active { border-color: color-mix(in oklab, var(--app-divider) 70%, transparent); background: var(--app-control-active); }
     .session-row-grid { display: flex; align-items: flex-start; gap: 8px; }
     .session-main { min-width: 0; flex: 1; }
     .session-line { display: flex; align-items: flex-start; gap: 8px; }
     .session-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--utility-foreground); font-size: 12px; font-weight: 600; }
     .session-time { flex: none; color: var(--utility-muted-text); font-size: 10px; font-variant-numeric: tabular-nums; }
     .session-preview { margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--utility-muted-text); font-size: 11px; line-height: 1.05rem; }
-    .indicator-dot {
-      display: inline-block;
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--delegation-good);
-      box-shadow: 0 0 0 3px color-mix(in oklab, var(--delegation-good) 18%, transparent);
-    }
 
-    .app-main-panel {
-      min-width: 0;
-      overflow: hidden;
-      border-left: 1px solid color-mix(in oklab, var(--app-divider) 80%, transparent);
-      border-radius: 0 22px 22px 0;
-      background: var(--app-main-bg);
-    }
-    .main-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 320px;
-      height: 100%;
-      min-width: 0;
-    }
-    .chat-area {
-      display: flex;
-      min-width: 0;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .app-page-header {
-      display: flex;
-      flex: none;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      border-bottom: 1px solid var(--app-divider);
-      background: color-mix(in oklab, var(--app-main-bg) 78%, transparent);
-      padding: 10px 16px;
-      backdrop-filter: blur(10px);
-    }
-    .header-title-row {
-      display: flex;
-      min-height: 26px;
-      align-items: center;
-      gap: 6px;
-    }
-    .header-title {
-      margin: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--utility-foreground);
-      font-size: 17px;
-      font-weight: 650;
-    }
-    .header-meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 4px 10px;
-      color: var(--utility-muted-text);
-      font-size: 11px;
-      line-height: 20px;
-    }
+    .app-main-panel { min-width: 0; overflow: hidden; border-left: 1px solid color-mix(in oklab, var(--app-divider) 80%, transparent); border-radius: 0 22px 22px 0; background: var(--app-main-bg); }
+    .main-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; height: 100%; min-width: 0; }
+    .chat-area { display: flex; min-width: 0; flex-direction: column; overflow: hidden; }
+    .app-page-header { display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--app-divider); background: rgba(255,255,255,.018); padding: 10px 16px; backdrop-filter: blur(10px); }
+    .header-title-row { display: flex; min-height: 26px; align-items: center; gap: 6px; }
+    .header-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--utility-foreground); font-size: 17px; font-weight: 650; }
+    .header-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--utility-muted-text); font-size: 11px; line-height: 20px; }
     .badge, .chip {
       display: inline-flex;
       align-items: center;
@@ -371,69 +244,26 @@
     }
     .badge { padding: 2px 7px; font-size: 10px; line-height: 1; }
     .chip { padding: 5px 8px; color: var(--utility-muted-text); font-size: 11px; line-height: 1; }
-    .chip.active { color: var(--utility-foreground); }
     .chip.delegation { border-color: color-mix(in oklab, var(--delegation-accent) 34%, var(--app-divider)); color: color-mix(in oklab, var(--delegation-accent) 82%, var(--utility-foreground)); }
-    .header-actions { display: flex; align-items: center; gap: 8px; }
-    .utility-button {
-      border: 1px solid var(--app-control-border);
-      border-radius: 999px;
-      background: var(--app-control-bg);
-      color: var(--utility-foreground);
-      padding: 8px 12px;
-      font-size: 12px;
-    }
+    .chip.good { border-color: color-mix(in oklab, var(--delegation-good) 34%, var(--app-divider)); color: color-mix(in oklab, var(--delegation-good) 82%, var(--utility-foreground)); }
+    .utility-button { border: 1px solid var(--app-control-border); border-radius: 999px; background: var(--app-control-bg); color: var(--utility-foreground); padding: 8px 12px; font-size: 12px; }
 
-    .variant-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      border-bottom: 1px solid var(--app-divider);
-      padding: 8px 16px;
-      background: color-mix(in oklab, var(--app-main-bg) 66%, transparent);
-    }
-    .variant-tab {
-      border: 1px solid var(--app-control-border);
-      border-radius: 999px;
-      background: transparent;
-      color: var(--utility-muted-text);
-      padding: 6px 9px;
-      font-size: 11px;
-    }
-    .variant-tab.active {
-      background: var(--app-control-active);
-      color: var(--utility-foreground);
-    }
+    .scenario-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--app-divider); padding: 8px 16px; background: rgba(255,255,255,.014); }
+    .scenario-tab { border: 1px solid var(--app-control-border); border-radius: 999px; background: transparent; color: var(--utility-muted-text); padding: 6px 9px; font-size: 11px; }
+    .scenario-tab.active { background: var(--app-control-active); color: var(--utility-foreground); }
 
-    .transcript-scroll {
-      min-height: 0;
-      flex: 1;
-      overflow: hidden;
-      padding: 14px 16px;
-    }
+    .transcript-scroll { min-height: 0; flex: 1; overflow: hidden; padding: 14px 16px; }
+    .scenario-view { display: none; }
+    .scenario-view.active { display: block; }
     .messages { display: grid; gap: 4px; align-content: end; min-height: 100%; }
-    .app-message-meta {
-      color: var(--utility-muted-text);
-      font-size: 11px;
-      line-height: 1.3;
-    }
-    .message-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 4px 0;
-    }
+    .app-message-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--utility-muted-text); font-size: 11px; line-height: 1.3; }
+    .message-group { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
     .message-group.own { align-items: flex-end; }
     .message-group.peer, .message-group.agent { align-items: flex-start; }
-    .message-line {
-      display: flex;
-      max-width: min(100%, 42rem);
-      align-items: flex-end;
-      gap: 8px;
-    }
+    .message-line { display: flex; max-width: min(100%, 42rem); align-items: flex-end; gap: 8px; }
     .message-line.own { flex-direction: row-reverse; max-width: 31rem; }
     .message-line.agent { align-items: flex-start; width: min(100%, 66rem); max-width: 66rem; }
-    .app-chat-bubble-user,
-    .app-chat-bubble-peer {
+    .app-chat-bubble-user, .app-chat-bubble-peer {
       min-width: 0;
       overflow: hidden;
       box-shadow: none;
@@ -441,155 +271,71 @@
       line-height: 1.5;
       white-space: pre-wrap;
     }
-    .app-chat-bubble-user {
-      max-width: 26rem;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-      border-radius: 20px 20px 6px 20px;
-      background: var(--app-chat-bubble-user-bg);
-      color: var(--app-chat-bubble-user-text);
-      padding: 8px 12px;
-    }
-    .app-chat-bubble-peer {
-      border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent);
-      border-radius: 20px 20px 20px 6px;
-      background: var(--app-chat-bubble-peer-bg);
-      color: var(--utility-foreground);
-      padding: 8px 12px;
-    }
-    .agent-turn {
-      width: 100%;
-      max-width: min(100%, 66rem);
-    }
-    .agent-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 2px 0 6px;
-      color: var(--utility-muted-text);
-      font-size: 11px;
-      font-weight: 500;
-    }
-    .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid color-mix(in oklab, var(--utility-muted-text) 24%, transparent);
-      border-top-color: var(--utility-muted-text);
-      border-radius: 999px;
-      animation: spin 1s linear infinite;
-    }
+    .app-chat-bubble-user { max-width: 26rem; border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent); border-radius: 20px 20px 6px 20px; background: var(--app-chat-bubble-user-bg); color: var(--app-chat-bubble-user-text); padding: 8px 12px; }
+    .app-chat-bubble-peer { border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent); border-radius: 20px 20px 20px 6px; background: var(--app-chat-bubble-peer-bg); color: var(--utility-foreground); padding: 8px 12px; }
+    .time-inline { margin-left: 8px; color: color-mix(in oklab, var(--utility-muted-text) 68%, transparent); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .mention { color: color-mix(in oklab, var(--delegation-accent) 88%, var(--utility-foreground)); font-weight: 650; }
+
+    .agent-turn { width: 100%; max-width: min(100%, 66rem); padding-bottom: 2px; }
+    .agent-status { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; color: var(--utility-muted-text); font-size: 11px; font-weight: 500; }
+    .spinner { width: 14px; height: 14px; border: 2px solid color-mix(in oklab, var(--utility-muted-text) 24%, transparent); border-top-color: var(--utility-muted-text); border-radius: 999px; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .agent-answer {
-      width: 100%;
-      border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent);
-      border-radius: 18px;
-      background: var(--app-chat-bubble-peer-bg);
-      color: var(--utility-foreground);
-      padding: 10px 14px;
-      font-size: 13px;
-      line-height: 1.55;
-    }
-    .agent-answer p { margin: 0; }
-    .agent-answer p + p { margin-top: 8px; }
-    .agent-answer strong { font-weight: 650; }
-    .agent-answer-footer {
+    .timeline-section { padding: 2px 0; }
+    .timeline-section summary {
       display: flex;
-      flex-wrap: wrap;
+      min-height: 30px;
+      width: 100%;
       align-items: center;
-      gap: 6px;
-      margin-top: 9px;
-      border-top: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent);
-      padding-top: 8px;
-    }
-    .agent-answer-footer summary {
+      justify-content: space-between;
+      gap: 8px;
+      border-radius: 10px;
+      padding: 4px 6px;
+      color: var(--utility-foreground);
       list-style: none;
       cursor: pointer;
     }
-    .agent-answer-footer summary::-webkit-details-marker { display: none; }
-    .trace-details {
-      width: 100%;
-      margin-top: 8px;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 70%, transparent);
-      border-radius: 14px;
-      background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
-      padding: 10px 12px;
-      color: var(--utility-muted-text);
-      font-size: 11px;
-      line-height: 1.55;
-    }
-    .trace-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 14px; }
-    .trace-grid strong { color: var(--utility-foreground); font-weight: 500; }
-    .center-event {
-      justify-self: center;
-      display: inline-flex;
-      max-width: min(100%, 520px);
-      align-items: center;
-      gap: 8px;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent);
-      border-radius: 999px;
-      background: color-mix(in oklab, var(--app-control-bg) 54%, transparent);
-      padding: 6px 10px;
-      color: var(--utility-muted-text);
-      font-size: 11px;
-      line-height: 1.2;
-    }
-    .center-event strong { color: var(--utility-foreground); font-weight: 550; }
-    .mention { color: color-mix(in oklab, var(--delegation-accent) 88%, var(--utility-foreground)); font-weight: 650; }
-    .time-inline {
-      margin-left: 8px;
-      color: color-mix(in oklab, var(--utility-muted-text) 68%, transparent);
-      font-size: 10px;
-      font-variant-numeric: tabular-nums;
-    }
-    .option-view { display: none; }
-    .option-view.active { display: contents; }
-
-    .composer-shell {
-      flex: none;
-      padding: 12px 20px 16px;
-    }
-    .composer-box {
-      position: relative;
-      border: 1px solid color-mix(in oklab, var(--app-divider) 84%, transparent);
-      border-radius: 22px;
-      background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
-      padding: 12px 14px 10px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
-    }
-    .mention-menu {
-      position: absolute;
-      left: 16px;
-      bottom: calc(100% + 8px);
-      width: 332px;
+    .timeline-section summary:hover { background: rgba(255,255,255,.025); }
+    .timeline-section summary::-webkit-details-marker { display: none; }
+    .section-left { display: flex; min-width: 0; align-items: center; gap: 6px; }
+    .chevron { color: var(--utility-muted-text); font-size: 12px; }
+    details[open] .chevron { transform: rotate(90deg); }
+    .section-icon { color: var(--utility-muted-text); font-size: 13px; }
+    .section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+    .section-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--utility-muted-text); font-size: 10px; }
+    .tool-badge { border: 1px solid var(--app-divider); border-radius: 999px; background: rgba(255,255,255,.03); color: var(--utility-muted-text); padding: 3px 6px; font-size: 8.5px; font-weight: 700; letter-spacing: .08em; line-height: 1; text-transform: uppercase; }
+    .tool-badge.done { border-color: color-mix(in oklab, var(--delegation-good) 24%, var(--app-divider)); color: color-mix(in oklab, var(--delegation-good) 86%, var(--utility-foreground)); }
+    .tool-badge.waiting { border-color: color-mix(in oklab, var(--delegation-accent) 24%, var(--app-divider)); color: color-mix(in oklab, var(--delegation-accent) 86%, var(--utility-foreground)); }
+    .section-body { padding: 3px 6px 7px 28px; color: var(--utility-muted-text); font-size: 12.5px; line-height: 1.55; }
+    .tool-block {
+      margin-top: 6px;
       overflow: hidden;
-      border: 1px solid var(--app-divider);
+      border: 1px solid color-mix(in oklab, var(--app-divider) 82%, transparent);
       border-radius: 14px;
-      background: var(--app-modal-bg);
-      box-shadow: var(--app-shadow-float);
+      background: rgba(0,0,0,.12);
     }
-    .mention-menu-head { padding: 10px 12px 8px; color: var(--utility-foreground); font-size: 12px; font-weight: 600; }
+    .tool-block-label { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--app-divider); padding: 7px 10px; color: var(--utility-muted-text); font-size: 10px; font-weight: 600; }
+    .tool-code { margin: 0; max-height: 128px; overflow: hidden; padding: 9px 10px; color: var(--utility-foreground); white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; line-height: 1.55; }
+    .agent-answer { width: 100%; border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent); border-radius: 18px; background: var(--app-chat-bubble-peer-bg); color: var(--utility-foreground); padding: 10px 14px; font-size: 13px; line-height: 1.55; }
+    .agent-answer p { margin: 0; }
+    .agent-answer p + p { margin-top: 8px; }
+    .agent-answer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; border-top: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent); padding-top: 8px; }
+    .center-event { justify-self: center; display: inline-flex; max-width: min(100%, 620px); align-items: center; gap: 8px; border: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--app-control-bg) 54%, transparent); padding: 6px 10px; color: var(--utility-muted-text); font-size: 11px; line-height: 1.2; margin: 6px auto; }
+    .center-event strong { color: var(--utility-foreground); font-weight: 600; }
+
+    .composer-shell { flex: none; padding: 12px 20px 16px; }
+    .composer-box { position: relative; border: 1px solid color-mix(in oklab, var(--app-divider) 84%, transparent); border-radius: 22px; background: color-mix(in oklab, var(--app-control-bg) 72%, transparent); padding: 12px 14px 10px; }
+    .mention-menu { position: absolute; left: 16px; bottom: calc(100% + 8px); width: 332px; overflow: hidden; border: 1px solid var(--app-divider); border-radius: 14px; background: var(--app-modal-bg); box-shadow: var(--app-shadow-float); }
+    .mention-menu-head { padding: 10px 12px 8px; color: var(--utility-foreground); font-size: 12px; font-weight: 650; }
     .mention-group-label { padding: 7px 12px 4px; color: var(--utility-muted-text); font-size: 10px; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; }
     .mention-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; }
     .mention-item.active { background: var(--app-control-active); }
-    .mention-name { color: var(--utility-foreground); font-size: 12px; font-weight: 550; }
+    .mention-name { color: var(--utility-foreground); font-size: 12px; font-weight: 600; }
     .mention-detail { color: var(--utility-muted-text); font-size: 11px; }
     .composer-text { min-height: 28px; color: var(--utility-foreground); font-size: 15px; line-height: 24px; }
     .composer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--app-divider); margin-top: 9px; padding-top: 9px; }
-    .send-button {
-      border: 0;
-      border-radius: 14px;
-      background: var(--app-button-primary-bg);
-      color: var(--app-button-primary-text);
-      padding: 8px 12px;
-      font-weight: 650;
-    }
+    .send-button { border: 0; border-radius: 14px; background: var(--app-button-primary-bg); color: var(--app-button-primary-text); padding: 8px 12px; font-weight: 650; }
 
-    .right-rail {
-      min-width: 0;
-      overflow: hidden;
-      border-left: 1px solid color-mix(in oklab, var(--app-divider) 80%, transparent);
-      background: color-mix(in oklab, var(--app-main-bg) 26%, transparent);
-      padding: 16px;
-    }
+    .right-rail { min-width: 0; overflow: hidden; border-left: 1px solid color-mix(in oklab, var(--app-divider) 80%, transparent); background: rgba(255,255,255,.012); padding: 16px; }
     .rail-tabs { display: flex; gap: 2px; margin-bottom: 16px; border: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent); border-radius: 12px; padding: 2px; }
     .rail-tab { flex: 1; border: 0; border-radius: 10px; background: transparent; color: var(--utility-muted-text); padding: 6px 8px; font-size: 12px; }
     .rail-tab.active { background: color-mix(in oklab, var(--app-control-bg) 88%, transparent); color: var(--utility-foreground); }
@@ -607,22 +353,15 @@
     .participant-id { display: flex; min-width: 0; align-items: center; gap: 8px; }
     .participant-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--utility-foreground); font-size: 13px; }
     .status-badge { border: 1px solid color-mix(in oklab, var(--app-divider) 80%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--app-card-bg) 92%, transparent); color: var(--utility-muted-text); padding: 4px 8px; font-size: 10px; }
-    .delegation-summary {
-      display: grid;
-      gap: 8px;
-      border: 1px solid color-mix(in oklab, var(--delegation-accent) 24%, var(--app-divider));
-      border-radius: 14px;
-      background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
-      padding: 12px 13px;
-    }
+    .delegation-summary { display: grid; gap: 8px; border: 1px solid color-mix(in oklab, var(--delegation-accent) 24%, var(--app-divider)); border-radius: 14px; background: color-mix(in oklab, var(--app-control-bg) 42%, transparent); padding: 12px 13px; }
     .delegation-title { color: var(--utility-foreground); font-size: 12px; font-weight: 650; }
     .delegation-copy { color: var(--utility-muted-text); font-size: 12px; line-height: 1.55; }
 
-    @media (max-width: 1140px) {
+    @media (max-width: 1160px) {
       body { overflow: auto; }
       .bridge-app { height: auto; min-height: 100dvh; }
-      .app-shell { min-height: 900px; }
-      .app-grid { grid-template-columns: 300px minmax(0,1fr); }
+      .app-shell { min-height: 980px; }
+      .app-grid { grid-template-columns: 310px minmax(0,1fr); }
       .main-grid { grid-template-columns: minmax(0,1fr); }
       .right-rail { display: none; }
     }
@@ -630,8 +369,8 @@
 </head>
 <body>
   <div class="preview-note">
-    <strong>Based on current Kordi UI</strong>
-    <span>Only delegation rendering changes. Includes user @ agent and agent @ agent.</span>
+    <strong>Existing Kordi UI preview</strong>
+    <span>Shows user @ agent, agent @ user, and agent @ agent with native thinking/tool timeline.</span>
     <button id="themeToggle" type="button">Light</button>
   </div>
 
@@ -641,14 +380,14 @@
         <aside class="app-side-shell workspace-sidebar">
           <div class="app-left-glass">
             <div class="nav-stack">
-              <button class="app-workspace-nav-button active" title="Chats"><span class="nav-glyph">✦</span></button>
-              <button class="app-workspace-nav-button" title="Projects"><span class="nav-glyph">◎</span></button>
-              <button class="app-workspace-nav-button" title="Contacts"><span class="nav-glyph">☷</span></button>
-              <button class="app-workspace-nav-button" title="Settings"><span class="nav-glyph">⚙</span></button>
+              <button class="icon-button active" title="Chats">✦</button>
+              <button class="icon-button" title="Projects">◎</button>
+              <button class="icon-button" title="Contacts">☷</button>
+              <button class="icon-button" title="Settings">⚙</button>
             </div>
             <div class="nav-stack">
-              <button class="app-icon-button" title="New">+</button>
-              <div class="profile-avatar avatar-a">A</div>
+              <button class="icon-button" title="New">+</button>
+              <div class="identity-avatar avatar-a large">A</div>
             </div>
           </div>
 
@@ -659,9 +398,9 @@
                   <div class="panel-title">Chats</div>
                   <div class="panel-subtitle">5 total • all caught up</div>
                 </div>
-                <button class="app-icon-button" style="width:32px;height:32px;border-radius:12px" title="New chat">+</button>
+                <button class="icon-button" style="width:32px;height:32px;border-radius:12px" title="New chat">+</button>
               </div>
-              <div class="sidebar-copy">People, owned agents, and delegated sessions all stay in one list.</div>
+              <div class="sidebar-copy">People, owned agents, and delegated exchanges stay in canonical sessions.</div>
               <div class="app-input-shell"><span>⌕</span><input value="" placeholder="Search sessions" /></div>
               <div class="app-filter-tabs"><button class="app-filter-tab app-filter-tab-active">All</button><button class="app-filter-tab">People</button><button class="app-filter-tab">Agents</button></div>
               <div class="session-scroll">
@@ -669,8 +408,8 @@
                   <span class="session-row-grid">
                     <span class="identity-avatar avatar-b large">B</span>
                     <span class="session-main">
-                      <span class="session-line"><span class="session-name">Bob</span><span class="session-time">16:34</span></span>
-                      <span class="session-preview" id="sessionPreview">Bob’s Kordi replied inline</span>
+                      <span class="session-line"><span class="session-name">Bob</span><span class="session-time">16:37</span></span>
+                      <span class="session-preview" id="sessionPreview">Agent asked Bob and got a person reply</span>
                     </span>
                   </span>
                 </button>
@@ -692,15 +431,6 @@
                     </span>
                   </span>
                 </button>
-                <button class="app-session-row">
-                  <span class="session-row-grid">
-                    <span class="identity-avatar avatar-system large">K</span>
-                    <span class="session-main">
-                      <span class="session-line"><span class="session-name">Session model notes</span><span class="session-time">Mon</span></span>
-                      <span class="session-preview">Canonical DB migration checklist</span>
-                    </span>
-                  </span>
-                </button>
               </div>
             </div>
           </div>
@@ -719,158 +449,183 @@
                     <span>🛡 Known contact</span>
                     <span>🌐 Kordi bridge</span>
                     <span>↔ Direct bridge chat</span>
-                    <span class="chip delegation"><span class="indicator-dot"></span><span id="headerDelegationLabel">Bob’s Kordi participated via @</span></span>
+                    <span class="chip delegation" id="headerDelegationLabel">Agent-authored @ is active</span>
                   </div>
                 </div>
-                <div class="header-actions"><button class="utility-button">Hide details</button></div>
+                <div><button class="utility-button">Hide details</button></div>
               </header>
 
-              <div class="variant-tabs" role="tablist" aria-label="Delegation rendering options">
-                <button class="variant-tab active" data-variant="minimal">A · Minimal chip</button>
-                <button class="variant-tab" data-variant="event">B · Join event</button>
-                <button class="variant-tab" data-variant="trace">C · Inline trace</button>
+              <div class="scenario-tabs" role="tablist" aria-label="Delegation flow scenarios">
+                <button class="scenario-tab" data-scenario="user-agent">User @ Agent</button>
+                <button class="scenario-tab active" data-scenario="agent-user">Agent @ User</button>
+                <button class="scenario-tab" data-scenario="agent-agent">Agent @ Agent</button>
               </div>
 
               <div class="transcript-scroll">
-                <div class="messages">
-                  <div class="message-group own">
-                    <div class="app-message-meta">Alice</div>
-                    <div class="message-line own">
-                      <span class="identity-avatar avatar-a">A</span>
-                      <div class="app-chat-bubble-user">Hi Bob — can you sanity check the onboarding copy?<span class="time-inline">16:32 ✓✓</span></div>
+                <section class="scenario-view" data-view="user-agent">
+                  <div class="messages">
+                    <div class="message-group own">
+                      <div class="app-message-meta">Alice</div>
+                      <div class="message-line own"><span class="identity-avatar avatar-a">A</span><div class="app-chat-bubble-user"><span class="mention">@Bob’s Kordi</span> review the latest session model wording and point out confusing parts.<span class="time-inline">16:34 ✓✓</span></div></div>
                     </div>
-                  </div>
 
-                  <div class="message-group peer">
-                    <div class="app-message-meta">Bob</div>
-                    <div class="message-line">
-                      <span class="identity-avatar avatar-b">B</span>
-                      <div class="app-chat-bubble-peer">I’m looking. Might be faster if my Kordi checks the bridge/session wording too.<span class="time-inline">16:33</span></div>
-                    </div>
-                  </div>
-
-                  <div class="message-group own">
-                    <div class="app-message-meta">Alice</div>
-                    <div class="message-line own">
-                      <span class="identity-avatar avatar-a">A</span>
-                      <div class="app-chat-bubble-user"><span class="mention">@Bob’s Kordi</span> please review the latest session model wording and point out confusing parts.<span class="time-inline">16:34 ✓✓</span></div>
-                    </div>
-                  </div>
-
-                  <div class="option-view active" data-view="minimal">
                     <div class="message-group agent">
-                      <div class="app-message-meta">Bob’s Kordi • 16:34 <span class="chip delegation">via @ mention</span></div>
-                      <div class="message-line agent">
-                        <span class="identity-avatar avatar-bk">BK</span>
-                        <div class="agent-turn">
-                          <div class="agent-status"><span class="spinner"></span><span>Replying…</span></div>
-                          <div class="agent-answer">
-                            <p>The main ambiguity is whether “involve Bob” notifies Bob as a person or only asks Bob’s agent. I would keep two explicit targets: <strong>@Bob</strong> for the person and <strong>@Bob’s Kordi</strong> for the agent.</p>
-                            <p>The response should stay in this same session exactly like a native agent response. Delegation metadata can be a small chip, not a separate card or thread.</p>
-                          </div>
+                      <div class="app-message-meta">Bob’s Kordi • 16:34 <span class="chip delegation">invited by Alice</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-bk">BK</span><div class="agent-turn">
+                        <div class="agent-status"><span class="spinner"></span><span>Replying…</span></div>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">✦</span><span class="section-title">Thinking</span><span class="section-meta">Reasoning trace</span></span><span class="tool-badge">show</span></summary>
+                          <div class="section-body">Reviewing the current distinction between person mentions, agent mentions, and transport/audit records.</div>
+                        </details>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">☷</span><span class="section-title">Session context</span><span class="section-meta">recent-window + summary</span></span><span class="tool-badge done">done</span></summary>
+                          <div class="section-body"><div class="tool-block"><div class="tool-block-label">Result</div><pre class="tool-code">Participants: Alice, Alice’s Kordi, Bob, Bob’s Kordi
+Policy: recent-window + summary
+Visible UI: native agent turn, not reach_out</pre></div></div>
+                        </details>
+                        <div class="agent-answer">
+                          <p>The main ambiguity is whether “involve Bob” notifies Bob as a person or asks Bob’s agent. Keep two explicit targets: <strong>@Bob</strong> and <strong>@Bob’s Kordi</strong>.</p>
+                          <p>My response should stay here as a normal native agent response. Delegation metadata can be a small chip or collapsed trace.</p>
                         </div>
-                      </div>
+                      </div></div>
                     </div>
                   </div>
+                </section>
 
-                  <div class="option-view" data-view="event">
-                    <div class="center-event"><span class="identity-avatar mini avatar-bk">BK</span><span><strong>Bob’s Kordi joined</strong> through Alice’s @ mention · context: recent + summary</span></div>
+                <section class="scenario-view active" data-view="agent-user">
+                  <div class="messages">
+                    <div class="message-group own">
+                      <div class="app-message-meta">Alice</div>
+                      <div class="message-line own"><span class="identity-avatar avatar-a">A</span><div class="app-chat-bubble-user">Alice’s Kordi, ask <span class="mention">@Bob</span> if he agrees that remote agent replies should look like native agent replies.<span class="time-inline">16:35 ✓✓</span></div></div>
+                    </div>
+
                     <div class="message-group agent">
-                      <div class="app-message-meta">Bob’s Kordi • 16:34</div>
-                      <div class="message-line agent">
-                        <span class="identity-avatar avatar-bk">BK</span>
-                        <div class="agent-turn">
-                          <div class="agent-answer">
-                            <p>The copy is understandable, but “session” and “delegated exchange” are currently doing too much. In UI, the exchange should be invisible unless someone asks for details.</p>
-                            <p>Keep the transcript mental model simple: Alice asked, Bob’s Kordi replied, all inside Bob’s session.</p>
-                          </div>
+                      <div class="app-message-meta">Alice’s Kordi • 16:35 <span class="chip delegation">agent-authored @Bob</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-ak">AK</span><div class="agent-turn">
+                        <div class="agent-status"><span class="spinner"></span><span>Asking Bob…</span></div>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">✦</span><span class="section-title">Thinking</span><span class="section-meta">Reasoning trace</span></span><span class="tool-badge">show</span></summary>
+                          <div class="section-body">Need a human confirmation from Bob. Since the target is a person, the response should come back as a person bubble, not an agent “Replying…” state.</div>
+                        </details>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">@</span><span class="section-title">@Bob</span><span class="section-meta">Person participation request</span></span><span class="tool-badge waiting">sent</span></summary>
+                          <div class="section-body"><div class="tool-block"><div class="tool-block-label">Request sent as participation, not reach_out UI</div><pre class="tool-code">Target: Bob
+Kind: person
+Context: last-message + short summary
+Prompt: “Do you agree remote agent replies should look native?”</pre></div></div>
+                        </details>
+                        <div class="agent-answer">
+                          <p>I’m asking <span class="mention">@Bob</span> directly and will fold his answer back into this session.</p>
                         </div>
-                      </div>
+                      </div></div>
                     </div>
-                  </div>
 
-                  <div class="option-view" data-view="trace">
+                    <div class="center-event"><span class="identity-avatar mini avatar-b">B</span><span><strong>Bob was involved by Alice’s Kordi</strong> · waiting for a person reply, no fake agent “Replying…”</span></div>
+
+                    <div class="message-group peer">
+                      <div class="app-message-meta">Bob • 16:36 <span class="chip good">person response</span></div>
+                      <div class="message-line"><span class="identity-avatar avatar-b">B</span><div class="app-chat-bubble-peer">Yes. If Bob’s Kordi answers, it should look like a normal agent response. But if I answer as Bob, show a normal person bubble like this.<span class="time-inline">16:36</span></div></div>
+                    </div>
+
                     <div class="message-group agent">
-                      <div class="app-message-meta">Bob’s Kordi • 16:34 <span class="chip delegation">delegated by Alice</span></div>
-                      <div class="message-line agent">
-                        <span class="identity-avatar avatar-bk">BK</span>
-                        <div class="agent-turn">
-                          <div class="agent-answer">
-                            <p>I would update the plan text to say: remote agent responses render with the same <strong>AgentTurnMessage</strong> surface as local/native agent responses.</p>
-                            <p>DelegatedExchange is a persistence/audit object, not the primary visual object.</p>
-                            <div class="agent-answer-footer">
-                              <details>
-                                <summary><span class="chip delegation">Show delegation trace</span></summary>
-                                <div class="trace-details">
-                                  <div class="trace-grid">
-                                    <strong>Initiator</strong><span>Alice</span>
-                                    <strong>Target</strong><span>Bob’s Kordi</span>
-                                    <strong>Context policy</strong><span>recent-window + summary</span>
-                                    <strong>Transport</strong><span>bridge request brq_83e2…</span>
-                                    <strong>Status</strong><span>completed · 2.8s</span>
-                                  </div>
-                                </div>
-                              </details>
-                            </div>
-                          </div>
+                      <div class="app-message-meta">Alice’s Kordi • 16:37 <span class="chip delegation">uses @Bob response</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-ak">AK</span><div class="agent-turn">
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">☑</span><span class="section-title">@Bob response</span><span class="section-meta">received from person</span></span><span class="tool-badge done">done</span></summary>
+                          <div class="section-body">Bob confirmed person replies should stay person bubbles, while remote agent replies should use native agent turn UI.</div>
+                        </details>
+                        <div class="agent-answer">
+                          <p>Bob agrees. I’ll write the plan so <strong>agent responses use AgentTurnMessage</strong>, while <strong>person responses stay normal human chat bubbles</strong>. The delegated exchange record remains trace/audit data only.</p>
                         </div>
-                      </div>
+                      </div></div>
                     </div>
                   </div>
+                </section>
 
-                  <div class="center-event"><span class="identity-avatar mini avatar-ak">AK</span><span><strong>Agent-authored @ example</strong> · Alice’s Kordi can involve Bob’s Kordi without exposing a reach_out tool</span></div>
-
-                  <div class="message-group own">
-                    <div class="app-message-meta">Alice</div>
-                    <div class="message-line own">
-                      <span class="identity-avatar avatar-a">A</span>
-                      <div class="app-chat-bubble-user">Alice’s Kordi, coordinate with Bob’s Kordi and tell me which wording we should ship.<span class="time-inline">16:35 ✓✓</span></div>
+                <section class="scenario-view" data-view="agent-agent">
+                  <div class="messages">
+                    <div class="message-group own">
+                      <div class="app-message-meta">Alice</div>
+                      <div class="message-line own"><span class="identity-avatar avatar-a">A</span><div class="app-chat-bubble-user">Alice’s Kordi, coordinate with <span class="mention">@Bob’s Kordi</span> and tell me which delegation UI we should ship.<span class="time-inline">16:38 ✓✓</span></div></div>
                     </div>
-                  </div>
 
-                  <div class="message-group agent">
-                    <div class="app-message-meta">Alice’s Kordi • 16:35 <span class="chip delegation">agent-authored @</span></div>
-                    <div class="message-line agent">
-                      <span class="identity-avatar avatar-ak">AK</span>
-                      <div class="agent-turn">
+                    <div class="message-group agent">
+                      <div class="app-message-meta">Alice’s Kordi • 16:38 <span class="chip delegation">agent-authored @Agent</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-ak">AK</span><div class="agent-turn">
                         <div class="agent-status"><span class="spinner"></span><span>Involving Bob’s Kordi…</span></div>
-                        <div class="agent-answer">
-                          <p>I’ll verify this with <span class="mention">@Bob’s Kordi</span> before making the final recommendation.</p>
-                          <p>Question for Bob’s Kordi: should the plan describe delegation as a visible card, a normal agent turn, or a trace-only detail?</p>
-                          <div class="agent-answer-footer">
-                            <span class="chip delegation">creates delegated exchange</span>
-                            <span class="chip">context: recent + summary</span>
-                          </div>
-                        </div>
-                      </div>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">✦</span><span class="section-title">Thinking</span><span class="section-meta">Reasoning trace</span></span><span class="tool-badge">show</span></summary>
+                          <div class="section-body">Need a second agent’s assessment. Use canonical @ participation, attach limited context, and render the response as a normal remote agent turn.</div>
+                        </details>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">☷</span><span class="section-title">Read session model</span><span class="section-meta">tool use</span></span><span class="tool-badge done">done</span></summary>
+                          <div class="section-body"><div class="tool-block"><div class="tool-block-label">Result</div><pre class="tool-code">Rule: @ is product surface
+Rule: reach_out hidden/internal
+Rule: remote responses render in parent session</pre></div></div>
+                        </details>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">@</span><span class="section-title">@Bob’s Kordi</span><span class="section-meta">External agent participation request</span></span><span class="tool-badge waiting">sent</span></summary>
+                          <div class="section-body"><div class="tool-block"><div class="tool-block-label">Request</div><pre class="tool-code">Target: Bob’s Kordi
+Kind: agent
+Context: recent-window + summary
+Ask: “Should delegated responses render as a card or native agent turn?”</pre></div></div>
+                        </details>
+                        <div class="agent-answer"><p>I’m involving <span class="mention">@Bob’s Kordi</span> with the current summary, then I’ll combine its answer with mine.</p></div>
+                      </div></div>
                     </div>
-                  </div>
 
-                  <div class="message-group agent">
-                    <div class="app-message-meta">Bob’s Kordi • 16:36 <span class="chip delegation">invited by Alice’s Kordi</span></div>
-                    <div class="message-line agent">
-                      <span class="identity-avatar avatar-bk">BK</span>
-                      <div class="agent-turn">
+                    <div class="center-event"><span class="identity-avatar mini avatar-bk">BK</span><span><strong>Bob’s Kordi joined</strong> through Alice’s Kordi · response renders as native agent turn</span></div>
+
+                    <div class="message-group agent">
+                      <div class="app-message-meta">Bob’s Kordi • 16:39 <span class="chip delegation">invited by Alice’s Kordi</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-bk">BK</span><div class="agent-turn">
+                        <div class="agent-status"><span class="spinner"></span><span>Replying…</span></div>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">✦</span><span class="section-title">Thinking</span><span class="section-meta">Reasoning trace</span></span><span class="tool-badge">show</span></summary>
+                          <div class="section-body">Compare the card approach with the existing native LiveChatTurnCard pattern. The existing pattern already supports thinking, tool use, final answer, and error states.</div>
+                        </details>
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">☷</span><span class="section-title">Shared context</span><span class="section-meta">tool use</span></span><span class="tool-badge done">done</span></summary>
+                          <div class="section-body"><div class="tool-block"><div class="tool-block-label">Result</div><pre class="tool-code">Existing UI supports:
+- Thinking section
+- Tool sections
+- Assistant answer bubble
+- Status/error footer
+Recommendation: reuse it for remote agents.</pre></div></div>
+                        </details>
                         <div class="agent-answer">
-                          <p>Ship the normal agent turn. The user should see me as a participant replying in Bob’s session, not as a tool result or special outreach object.</p>
-                          <p>The trace can stay collapsed in details: initiator <strong>Alice’s Kordi</strong>, target <strong>Bob’s Kordi</strong>, context policy <strong>recent-window + summary</strong>.</p>
+                          <p>Ship the native agent turn. A separate delegation card would hide the useful thinking/tool timeline users already understand.</p>
+                          <p>Use a small chip like <strong>invited by Alice’s Kordi</strong> plus optional trace details in the right panel.</p>
                         </div>
-                      </div>
+                      </div></div>
+                    </div>
+
+                    <div class="message-group agent">
+                      <div class="app-message-meta">Alice’s Kordi • 16:40 <span class="chip good">final synthesis</span></div>
+                      <div class="message-line agent"><span class="identity-avatar avatar-ak">AK</span><div class="agent-turn">
+                        <details class="timeline-section" open>
+                          <summary><span class="section-left"><span class="chevron">›</span><span class="section-icon">☑</span><span class="section-title">@Bob’s Kordi response</span><span class="section-meta">received from agent</span></span><span class="tool-badge done">done</span></summary>
+                          <div class="section-body">Remote agent response preserved thinking/tool sections and final answer, then fed back into the local agent’s final recommendation.</div>
+                        </details>
+                        <div class="agent-answer">
+                          <p>Recommendation: keep <strong>AgentTurnMessage</strong> as the single visual surface for local and remote agents. Delegation only adds participant metadata, initiator chips, and optional trace details.</p>
+                        </div>
+                      </div></div>
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
 
               <footer class="composer-shell">
                 <div class="composer-box">
-                  <div class="mention-menu" id="mentionMenu">
+                  <div class="mention-menu">
                     <div class="mention-menu-head">Mention someone</div>
                     <div class="mention-group-label">People</div>
-                    <div class="mention-item"><span class="identity-avatar avatar-b">B</span><span><div class="mention-name">Bob</div><div class="mention-detail">Person · online</div></span></div>
+                    <div class="mention-item active"><span class="identity-avatar avatar-b">B</span><span><div class="mention-name">Bob</div><div class="mention-detail">Person · online · replies as human bubble</div></span></div>
                     <div class="mention-group-label">Other users’ agents</div>
-                    <div class="mention-item active"><span class="identity-avatar avatar-bk">BK</span><span><div class="mention-name">Bob’s Kordi</div><div class="mention-detail">Agent · reachable through Bob</div></span></div>
+                    <div class="mention-item"><span class="identity-avatar avatar-bk">BK</span><span><div class="mention-name">Bob’s Kordi</div><div class="mention-detail">Agent · replies with thinking/tool timeline</div></span></div>
                     <div class="mention-group-label">My agents</div>
-                    <div class="mention-item"><span class="identity-avatar avatar-ak">AK</span><span><div class="mention-name">Alice’s Kordi</div><div class="mention-detail">Owned agent · local</div></span></div>
+                    <div class="mention-item"><span class="identity-avatar avatar-ak">AK</span><span><div class="mention-name">Alice’s Kordi</div><div class="mention-detail">Owned agent · can author @ mentions</div></span></div>
                   </div>
                   <div class="composer-text">Reply or type <span class="mention">@</span> to involve a person or agent…</div>
                   <div class="composer-bottom"><span class="chip">Manual · Claude Sonnet · 68% context left</span><button class="send-button">Send</button></div>
@@ -886,7 +641,7 @@
                 <div class="inspector-heading">Bob</div>
                 <div class="inspector-subtext">Canonical relationship session. Bob and Bob’s Kordi are grouped here, not split into separate top-level chats.</div>
                 <div class="meta-list" style="margin-top:12px">
-                  <div class="meta-row"><span class="meta-label">Last active</span><span class="meta-value">16:34</span></div>
+                  <div class="meta-row"><span class="meta-label">Last active</span><span class="meta-value">16:40</span></div>
                   <div class="meta-row"><span class="meta-label">Trust</span><span class="meta-value">Known contact</span></div>
                   <div class="meta-row"><span class="meta-label">Mode</span><span class="meta-value">Direct bridge chat</span></div>
                 </div>
@@ -897,23 +652,23 @@
                 <div class="participant-list">
                   <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-a">A</span><span class="participant-name">Alice</span></span><span class="status-badge">Self</span></div>
                   <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-ak">AK</span><span class="participant-name">Alice’s Kordi</span></span><span class="status-badge">Available</span></div>
-                  <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-b">B</span><span class="participant-name">Bob</span></span><span class="status-badge">Online</span></div>
-                  <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-bk">BK</span><span class="participant-name">Bob’s Kordi</span></span><span class="status-badge">Replying</span></div>
+                  <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-b">B</span><span class="participant-name">Bob</span></span><span class="status-badge" id="bobStatus">Replied</span></div>
+                  <div class="participant-row"><span class="participant-id"><span class="identity-avatar avatar-bk">BK</span><span class="participant-name">Bob’s Kordi</span></span><span class="status-badge" id="bobKordiStatus">Available</span></div>
                 </div>
               </section>
 
               <section class="app-detail-section">
-                <div class="app-detail-kicker">Delegation</div>
+                <div class="app-detail-kicker">Delegation flow</div>
                 <div class="delegation-summary">
-                  <div class="delegation-title" id="delegationTitle">Minimal transcript chip</div>
-                  <div class="delegation-copy" id="delegationCopy">No separate card or outreach thread. Bob’s Kordi appears as a normal agent turn; a small chip exposes trace details if needed.</div>
+                  <div class="delegation-title" id="delegationTitle">Agent @ User</div>
+                  <div class="delegation-copy" id="delegationCopy">Alice’s Kordi mentions @Bob, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.</div>
                 </div>
                 <div class="meta-list" style="margin-top:12px">
-                  <div class="meta-row"><span class="meta-label">User @ initiator</span><span class="meta-value">Alice</span></div>
-                  <div class="meta-row"><span class="meta-label">Agent @ initiator</span><span class="meta-value">Alice’s Kordi</span></div>
-                  <div class="meta-row"><span class="meta-label">Target</span><span class="meta-value">Bob’s Kordi</span></div>
+                  <div class="meta-row"><span class="meta-label">Initiator</span><span class="meta-value" id="initiatorValue">Alice’s Kordi</span></div>
+                  <div class="meta-row"><span class="meta-label">Target</span><span class="meta-value" id="targetValue">Bob</span></div>
+                  <div class="meta-row"><span class="meta-label">Response UI</span><span class="meta-value" id="responseValue">Person bubble</span></div>
                   <div class="meta-row"><span class="meta-label">Context</span><span class="meta-value">recent + summary</span></div>
-                  <div class="meta-row"><span class="meta-label">UI surface</span><span class="meta-value">AgentTurnMessage</span></div>
+                  <div class="meta-row"><span class="meta-label">Hidden plumbing</span><span class="meta-value">No reach_out UI</span></div>
                 </div>
               </section>
             </aside>
@@ -926,44 +681,72 @@
   <script>
     const root = document.getElementById('root');
     const themeToggle = document.getElementById('themeToggle');
-    const tabs = Array.from(document.querySelectorAll('.variant-tab'));
-    const views = Array.from(document.querySelectorAll('.option-view'));
-    const title = document.getElementById('delegationTitle');
-    const copy = document.getElementById('delegationCopy');
-    const sessionPreview = document.getElementById('sessionPreview');
-    const headerLabel = document.getElementById('headerDelegationLabel');
+    const tabs = Array.from(document.querySelectorAll('.scenario-tab'));
+    const views = Array.from(document.querySelectorAll('.scenario-view'));
+    const fields = {
+      title: document.getElementById('delegationTitle'),
+      copy: document.getElementById('delegationCopy'),
+      preview: document.getElementById('sessionPreview'),
+      header: document.getElementById('headerDelegationLabel'),
+      initiator: document.getElementById('initiatorValue'),
+      target: document.getElementById('targetValue'),
+      response: document.getElementById('responseValue'),
+      bobStatus: document.getElementById('bobStatus'),
+      bobKordiStatus: document.getElementById('bobKordiStatus')
+    };
 
-    const details = {
-      minimal: {
-        title: 'Minimal transcript chip',
-        copy: 'No separate card or outreach thread. Bob’s Kordi appears as a normal agent turn; a small chip exposes trace details if needed.',
-        preview: 'Bob’s Kordi replied inline',
-        header: 'Bob’s Kordi participated via @'
+    const scenarios = {
+      'user-agent': {
+        title: 'User @ Agent',
+        copy: 'Alice mentions @Bob’s Kordi. Bob’s Kordi replies as a native agent turn with thinking and tool sections preserved.',
+        preview: 'User asked Bob’s Kordi; agent replied inline',
+        header: 'User @ Agent · native remote agent response',
+        initiator: 'Alice',
+        target: 'Bob’s Kordi',
+        response: 'AgentTurnMessage',
+        bobStatus: 'Online',
+        bobKordiStatus: 'Replied'
       },
-      event: {
-        title: 'Subtle join event + normal reply',
-        copy: 'A one-line system event shows that Bob’s Kordi joined through @. The actual answer is still a normal native agent message.',
-        preview: 'Bob’s Kordi joined and replied',
-        header: 'Bob’s Kordi joined through @'
+      'agent-user': {
+        title: 'Agent @ User',
+        copy: 'Alice’s Kordi mentions @Bob, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.',
+        preview: 'Agent asked Bob and got a person reply',
+        header: 'Agent @ User · person response',
+        initiator: 'Alice’s Kordi',
+        target: 'Bob',
+        response: 'Person bubble',
+        bobStatus: 'Replied',
+        bobKordiStatus: 'Available'
       },
-      trace: {
-        title: 'Collapsible trace inside agent turn',
-        copy: 'The trace is attached to the native agent turn and collapsed by default. This is useful for debugging without making delegation the main UI.',
-        preview: 'Bob’s Kordi replied · trace available',
-        header: 'Delegation trace available'
+      'agent-agent': {
+        title: 'Agent @ Agent',
+        copy: 'Alice’s Kordi mentions @Bob’s Kordi. The remote agent response keeps the same thinking/tool/final-answer timeline as local agent turns.',
+        preview: 'Agent asked Bob’s Kordi; remote agent replied',
+        header: 'Agent @ Agent · remote agent response',
+        initiator: 'Alice’s Kordi',
+        target: 'Bob’s Kordi',
+        response: 'AgentTurnMessage',
+        bobStatus: 'Online',
+        bobKordiStatus: 'Replied'
       }
     };
 
-    function setVariant(id) {
-      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.variant === id));
+    function setScenario(id) {
+      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.scenario === id));
       views.forEach((view) => view.classList.toggle('active', view.dataset.view === id));
-      title.textContent = details[id].title;
-      copy.textContent = details[id].copy;
-      sessionPreview.textContent = details[id].preview;
-      headerLabel.textContent = details[id].header;
+      const data = scenarios[id];
+      fields.title.textContent = data.title;
+      fields.copy.textContent = data.copy;
+      fields.preview.textContent = data.preview;
+      fields.header.textContent = data.header;
+      fields.initiator.textContent = data.initiator;
+      fields.target.textContent = data.target;
+      fields.response.textContent = data.response;
+      fields.bobStatus.textContent = data.bobStatus;
+      fields.bobKordiStatus.textContent = data.bobKordiStatus;
     }
 
-    tabs.forEach((tab) => tab.addEventListener('click', () => setVariant(tab.dataset.variant)));
+    tabs.forEach((tab) => tab.addEventListener('click', () => setScenario(tab.dataset.scenario)));
     themeToggle.addEventListener('click', () => {
       root.classList.toggle('theme-light');
       themeToggle.textContent = root.classList.contains('theme-light') ? 'Dark' : 'Light';
