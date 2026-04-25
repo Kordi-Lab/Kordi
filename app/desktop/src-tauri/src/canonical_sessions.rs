@@ -1108,17 +1108,20 @@ fn update_local_profile_identities(
     conn: &Connection,
     human_identity_id: Option<&str>,
     active_agent_identity_id: Option<&str>,
+    display_name: Option<&str>,
 ) -> Result<(), String> {
     let profile = ensure_local_profile(conn)?;
     conn.execute(
         "UPDATE local_profile
          SET human_identity_id = COALESCE(?1, human_identity_id),
              active_agent_identity_id = COALESCE(?2, active_agent_identity_id),
-             updated_at_ms = ?3
-         WHERE id = ?4",
+             display_name = COALESCE(?3, display_name),
+             updated_at_ms = ?4
+         WHERE id = ?5",
         params![
             human_identity_id,
             active_agent_identity_id,
+            display_name,
             now_ms(),
             profile.id
         ],
@@ -1210,6 +1213,7 @@ pub(crate) fn sync_bridge_state_identities(
                 &conn,
                 Some(host_human.id.as_str()),
                 active_agent_identity_id.as_deref(),
+                Some(host.owner_name.as_str()),
             )?;
         }
 
@@ -1340,7 +1344,7 @@ fn local_profile_human_identity_id(
             metadata: Some(serde_json::json!({ "profileId": profile.id })),
         },
     )?;
-    update_local_profile_identities(conn, Some(identity.id.as_str()), None)?;
+    update_local_profile_identities(conn, Some(identity.id.as_str()), None, Some(display_name))?;
     Ok(identity.id)
 }
 
@@ -1380,7 +1384,7 @@ fn local_agent_identity_id(
             })),
         },
     )?;
-    update_local_profile_identities(conn, None, Some(identity.id.as_str()))?;
+    update_local_profile_identities(conn, None, Some(identity.id.as_str()), None)?;
     Ok(identity.id)
 }
 
