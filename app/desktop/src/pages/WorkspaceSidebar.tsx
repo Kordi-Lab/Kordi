@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalProfileAvatarSeed, IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
@@ -309,7 +309,7 @@ export function WorkspaceSidebar({
             </Button>
             <IdentityAvatar
               kind="human"
-              seed="local-human-profile"
+              seed={getLocalProfileAvatarSeed()}
               name="Local profile"
               className="h-9 w-9 border border-white/10"
             />
