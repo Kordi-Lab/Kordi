@@ -106,6 +106,7 @@ export type Conversation = {
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
   canonicalDelegatedExchangeCount?: number;
+  canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   name: string;
   type: ConversationType;
@@ -360,6 +361,25 @@ export type CanonicalPresence = {
   expiresAtMs?: number | null;
 };
 
+export type CanonicalContextSnapshot = {
+  id: string;
+  profileId: string;
+  sessionId: string;
+  agentIdentityId: string;
+  provider: string;
+  model: string;
+  promptHash: string;
+  projectContextHash?: string | null;
+  participantHash: string;
+  uptoMessageId?: string | null;
+  messageRangeHash: string;
+  summaryText?: string | null;
+  summaryJson?: unknown;
+  tokenCount?: number | null;
+  createdAtMs: number;
+  invalidatedAtMs?: number | null;
+};
+
 export type CanonicalSessionState = {
   storagePath: string;
   profile: CanonicalLocalProfile;
@@ -369,6 +389,7 @@ export type CanonicalSessionState = {
   messages: CanonicalSessionMessage[];
   delegatedExchanges: CanonicalDelegatedExchange[];
   presence: CanonicalPresence[];
+  contextSnapshots: CanonicalContextSnapshot[];
 };
 
 export type UpsertCanonicalIdentityRequest = {

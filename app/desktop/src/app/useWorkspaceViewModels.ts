@@ -213,6 +213,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
     canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,
+    canonicalContextSnapshotCount: canonicalState.contextSnapshots.filter((snapshot) => snapshot.sessionId === sessionId).length,
     canonicalPresenceSummary: presenceSummary
       ? Object.entries(presenceSummary).map(([status, count]) => `${count} ${status}`).join(' • ')
       : undefined,

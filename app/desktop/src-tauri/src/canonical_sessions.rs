@@ -20,6 +20,7 @@ pub struct CanonicalSessionState {
     pub messages: Vec<CanonicalSessionMessage>,
     pub delegated_exchanges: Vec<CanonicalDelegatedExchange>,
     pub presence: Vec<CanonicalPresence>,
+    pub context_snapshots: Vec<CanonicalContextSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +137,27 @@ pub struct CanonicalPresence {
     pub detail: Option<String>,
     pub updated_at_ms: i64,
     pub expires_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalContextSnapshot {
+    pub id: String,
+    pub profile_id: String,
+    pub session_id: String,
+    pub agent_identity_id: String,
+    pub provider: String,
+    pub model: String,
+    pub prompt_hash: String,
+    pub project_context_hash: Option<String>,
+    pub participant_hash: String,
+    pub upto_message_id: Option<String>,
+    pub message_range_hash: String,
+    pub summary_text: Option<String>,
+    pub summary_json: Option<Value>,
+    pub token_count: Option<i64>,
+    pub created_at_ms: i64,
+    pub invalidated_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2115,6 +2137,15 @@ fn sync_bridge_outreach_into_parent_session(
     } else {
         format!("{base_join_text} — “{request_preview}”")
     };
+    store_outreach_context_snapshot(
+        conn,
+        parent_session_id,
+        initiator_identity_id,
+        remote_target_identity_id,
+        &delegation_id,
+        outreach,
+        &context_policy,
+    )?;
     let join_message = append_message_in_db(
         conn,
         AppendCanonicalMessageRequest {
@@ -2210,6 +2241,81 @@ fn sync_bridge_outreach_into_parent_session(
     )?;
 
     Ok(true)
+}
+
+fn store_outreach_context_snapshot(
+    conn: &Connection,
+    session_id: &str,
+    agent_identity_id: &str,
+    target_identity_id: &str,
+    delegation_id: &str,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    context_policy: &str,
+) -> Result<(), String> {
+    let Some(context_text) = outreach
+        .context_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let profile = ensure_local_profile(conn)?;
+    let prompt_hash = hash_hex(&outreach.request_text, 16);
+    let project_context_hash = outreach.project_id.as_ref().map(|project_id| {
+        hash_hex(
+            &format!(
+                "{}|{}",
+                project_id,
+                outreach.project_name.as_deref().unwrap_or_default()
+            ),
+            16,
+        )
+    });
+    let participant_hash = hash_hex(target_identity_id, 16);
+    let message_range_hash = hash_hex(&format!("{context_policy}|{context_text}"), 16);
+    let id = format!(
+        "context:{}",
+        hash_hex(
+            &format!(
+                "{}|{}|{}|{}",
+                profile.id, session_id, delegation_id, message_range_hash
+            ),
+            16,
+        )
+    );
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO context_snapshots(
+             id, profile_id, session_id, agent_identity_id, provider, model, prompt_hash, project_context_hash,
+             participant_hash, upto_message_id, message_range_hash, summary_text, summary_json, token_count, created_at_ms, invalidated_at_ms
+         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, NULL, ?12, ?13, NULL)
+         ON CONFLICT(id) DO UPDATE SET
+             summary_text = excluded.summary_text,
+             token_count = excluded.token_count,
+             invalidated_at_ms = NULL",
+        params![
+            id,
+            profile.id,
+            session_id,
+            agent_identity_id,
+            "desktop-bridge",
+            outreach
+                .target_runtime
+                .as_deref()
+                .unwrap_or(outreach.target_kind.as_str()),
+            prompt_hash,
+            project_context_hash,
+            participant_hash,
+            message_range_hash,
+            context_text,
+            ((context_text.len() as i64) / 4).max(1),
+            now,
+        ],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 fn inline_event_preview(text: &str) -> String {
@@ -2359,6 +2465,32 @@ fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionState, String
             })
         },
     )?;
+    let context_snapshots = query_all(
+        conn,
+        "SELECT id, profile_id, session_id, agent_identity_id, provider, model, prompt_hash, project_context_hash,
+                participant_hash, upto_message_id, message_range_hash, summary_text, summary_json, token_count, created_at_ms, invalidated_at_ms
+         FROM context_snapshots ORDER BY created_at_ms DESC, id ASC",
+        |row| {
+            Ok(CanonicalContextSnapshot {
+                id: row.get(0)?,
+                profile_id: row.get(1)?,
+                session_id: row.get(2)?,
+                agent_identity_id: row.get(3)?,
+                provider: row.get(4)?,
+                model: row.get(5)?,
+                prompt_hash: row.get(6)?,
+                project_context_hash: row.get(7)?,
+                participant_hash: row.get(8)?,
+                upto_message_id: row.get(9)?,
+                message_range_hash: row.get(10)?,
+                summary_text: row.get(11)?,
+                summary_json: json_from_db(row.get(12)?),
+                token_count: row.get(13)?,
+                created_at_ms: row.get(14)?,
+                invalidated_at_ms: row.get(15)?,
+            })
+        },
+    )?;
 
     Ok(CanonicalSessionState {
         storage_path: path.display().to_string(),
@@ -2369,6 +2501,7 @@ fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionState, String
         messages,
         delegated_exchanges,
         presence,
+        context_snapshots,
     })
 }
 
