@@ -41,6 +41,12 @@ export function mapBridgeConversationToViewModel(
   const localBridgeAgentLabel = host?.displayName || localAgentLabel;
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
+  const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
+  const localHumanAvatarSeed = `human:${host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local'}`;
+  const localAgentAvatarSeed = `agent:${conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent'}`;
+  const remoteHumanAvatarSeed = `human:${conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId}`;
+  const remoteAgentAvatarSeed = `agent:${conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId}`;
+  const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
 
   const outreachPrefix = conversation.outreach
     ? conversation.outreach.targetKind === 'bridge-person'
@@ -62,6 +68,17 @@ export function mapBridgeConversationToViewModel(
             : remoteAgentLabel
       : (message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND ? localHumanLabel : remoteHumanLabel);
     const senderType = (isOutboundHuman || isInboundHuman || !isAgent) ? 'human' : 'agent';
+    const senderAvatarSeed = isAgent
+      ? isOutboundHuman
+        ? localHumanAvatarSeed
+        : isInboundHuman
+          ? remoteHumanAvatarSeed
+          : isLocalAgentResponse
+            ? localAgentAvatarSeed
+            : remoteAgentAvatarSeed
+      : message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+        ? localHumanAvatarSeed
+        : remoteHumanAvatarSeed;
     const outboundStatus = [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')]
       .filter(Boolean);
     const suppressOutboundLiveStatus = isOutboundHuman
@@ -76,6 +93,7 @@ export function mapBridgeConversationToViewModel(
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
+        senderAvatarSeed: remoteAgentAvatarSeed,
         text: message.text,
         time: message.timeLabel,
         turn: {
@@ -108,6 +126,7 @@ export function mapBridgeConversationToViewModel(
       senderType,
       isOwnMessage: isOutboundHuman,
       showSenderMeta: isAgent,
+      senderAvatarSeed,
       text: message.text,
       time: message.timeLabel,
       statusChips: isOutboundHuman
@@ -126,6 +145,7 @@ export function mapBridgeConversationToViewModel(
       senderType: 'agent',
       isOwnMessage: false,
       showSenderMeta: true,
+      senderAvatarSeed: remoteAgentAvatarSeed,
       text: '',
       time: conversation.updatedAtLabel,
       turn: {
@@ -163,6 +183,7 @@ export function mapBridgeConversationToViewModel(
     updatedAtLabel: conversation.updatedAtLabel,
     outreach: conversation.outreach,
     identity: conversation.identity,
+    avatarSeed: conversationAvatarSeed,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

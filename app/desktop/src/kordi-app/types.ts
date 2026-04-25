@@ -69,6 +69,7 @@ export type Message = {
   sender?: string;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;
+  senderAvatarSeed?: string | null;
   isOwnMessage?: boolean;
   showSenderMeta?: boolean;
   text: string;
@@ -112,6 +113,7 @@ export type Conversation = {
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
@@ -132,6 +134,9 @@ export type Contact = {
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
+  bridgeHumanId?: string | null;
+  bridgeAgentId?: string | null;
+  avatarSeed?: string | null;
   profileImageUrl?: string | null;
 };
 

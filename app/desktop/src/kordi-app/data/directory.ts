@@ -486,8 +486,8 @@ export const contacts: Contact[] = [
 
 export const contactGroups: Array<{ id: ContactClass; label: string }> = [
   { id: 'my-agents', label: 'My agents' },
-  { id: 'other-users-agents', label: 'Other users’ agents' },
   { id: 'other-users', label: 'Other users' },
+  { id: 'other-users-agents', label: 'Other users’ agents' },
 ];
 
 export const contactRequests: ContactRequest[] = [

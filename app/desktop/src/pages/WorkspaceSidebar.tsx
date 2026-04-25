@@ -28,6 +28,7 @@ type ConversationItem = {
   statusIndicator?: SessionStatusIndicator;
   type?: ConversationType;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
 };
 
 type ProjectSessionItem = {
@@ -70,6 +71,9 @@ function conversationAvatarKind(conversation: ConversationItem): IdentityAvatarK
 }
 
 function conversationAvatarSeed(conversation: ConversationItem) {
+  if (conversation.avatarSeed?.trim()) {
+    return conversation.avatarSeed;
+  }
   if (conversation.type === 'owned-agent') {
     return `agent:${conversation.participants?.find((participant) => participant !== 'You') || conversation.name || 'local-agent'}`;
   }

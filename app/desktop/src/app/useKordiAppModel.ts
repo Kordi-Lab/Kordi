@@ -246,26 +246,40 @@ export function useKordiAppModel() {
   const bridgeMentionTargets = useMemo<ComposerMentionOption[]>(() => {
     if (!isNativeShell || !desktopBridgeState?.hosts.length) return [];
 
-    return desktopBridgeState.hosts.flatMap((host) => host.visiblePeers.map((peer) => {
-      const label = peer.displayName?.trim() || peer.ownerName?.trim() || peer.nodeId;
-      const targetKind = isBridgeAgentRuntime(peer.runtime) ? 'bridge-agent' as const : 'bridge-person' as const;
+    return desktopBridgeState.hosts.flatMap((host) => host.visiblePeers.flatMap((peer) => {
+      const isAgent = isBridgeAgentRuntime(peer.runtime);
       const owner = peer.ownerName?.trim();
-      const detailParts = [
-        targetKind === 'bridge-agent' ? 'Bridge agent' : 'Bridge person',
-        owner && owner !== label ? owner : null,
-        host.displayName || host.ownerName,
-        peer.runtime,
-      ].filter((value): value is string => Boolean(value));
+      const agentLabel = peer.displayName?.trim() || owner || peer.nodeId;
+      const options: ComposerMentionOption[] = [];
 
-      return {
-        value: label,
-        label,
-        detail: detailParts.join(' • '),
-        targetKind,
+      if (isAgent && peer.isDefaultAgent && owner && peer.humanId?.trim()) {
+        options.push({
+          value: owner,
+          label: owner,
+          detail: ['Bridge person', `Owns ${agentLabel}`, host.displayName || host.ownerName].filter(Boolean).join(' • '),
+          targetKind: 'bridge-person',
+          bridgeHostId: host.id,
+          nodeId: peer.nodeId,
+          runtime: 'person',
+        });
+      }
+
+      options.push({
+        value: agentLabel,
+        label: agentLabel,
+        detail: [
+          isAgent ? 'Bridge agent' : 'Bridge person',
+          owner && owner !== agentLabel ? owner : null,
+          host.displayName || host.ownerName,
+          peer.runtime,
+        ].filter((value): value is string => Boolean(value)).join(' • '),
+        targetKind: isAgent ? 'bridge-agent' : 'bridge-person',
         bridgeHostId: host.id,
         nodeId: peer.nodeId,
         runtime: peer.runtime,
-      };
+      });
+
+      return options;
     }));
   }, [desktopBridgeState?.hosts, isNativeShell]);
 

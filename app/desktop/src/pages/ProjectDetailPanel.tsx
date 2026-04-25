@@ -214,7 +214,7 @@ export function ProjectDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={`${activeProject.id}:${member}`}
+                      seed={`${isAgent ? 'agent' : 'human'}:${member}`}
                       name={member}
                       className="h-7 w-7 border border-white/10"
                     />

@@ -4,7 +4,7 @@ import { MessageSquareMore } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalProfileAvatarSeed, IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
@@ -21,6 +21,31 @@ type ActiveConversation = {
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
 };
+
+function participantAvatarSeed(activeConv: ActiveConversation, participant: string, isAgent: boolean) {
+  const normalizedParticipant = participant.trim();
+  const identity = activeConv.identity;
+
+  if (/^(you|me)$/i.test(normalizedParticipant)) {
+    return getLocalProfileAvatarSeed();
+  }
+  if (isAgent) {
+    if (identity?.localAgentName && normalizedParticipant === identity.localAgentName) {
+      return `agent:${identity.localAgentId || identity.localAgentNodeId || identity.localAgentName}`;
+    }
+    if (identity?.remoteAgentName && normalizedParticipant === identity.remoteAgentName) {
+      return `agent:${identity.remoteAgentId || identity.remoteAgentNodeId || identity.remoteAgentName}`;
+    }
+    return `agent:${normalizedParticipant}`;
+  }
+  if (identity?.localHumanName && normalizedParticipant === identity.localHumanName) {
+    return `human:${identity.localHumanId || identity.localHumanName}`;
+  }
+  if (identity?.remoteHumanName && normalizedParticipant === identity.remoteHumanName) {
+    return `human:${identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName}`;
+  }
+  return `human:${normalizedParticipant}`;
+}
 
 type ProjectSource = {
   label: string;
@@ -141,7 +166,7 @@ export function ChatDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={`${activeConv.name}:${participant}`}
+                      seed={participantAvatarSeed(activeConv, participant, isAgent)}
                       name={participant}
                       className="h-7 w-7 border border-white/10"
                     />

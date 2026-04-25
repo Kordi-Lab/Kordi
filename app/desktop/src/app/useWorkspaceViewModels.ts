@@ -362,6 +362,9 @@ export function useWorkspaceViewModels({
         bridgeHostId: host.id,
         bridgePeerNodeId: host.nodeId ?? undefined,
         bridgePeerRuntime: 'kordi-desktop',
+        bridgeHumanId: host.humanId,
+        bridgeAgentId: host.activeAgentId ?? undefined,
+        avatarSeed: `agent:${host.activeAgentId || host.nodeId || host.id}`,
       });
 
       for (const peer of host.visiblePeers) {
@@ -386,6 +389,9 @@ export function useWorkspaceViewModels({
           bridgeHostId: host.id,
           bridgePeerNodeId: peer.nodeId,
           bridgePeerRuntime: peer.runtime,
+          bridgeHumanId: peer.humanId,
+          bridgeAgentId: peer.agentId,
+          avatarSeed: isAgent ? `agent:${peer.agentId || peer.nodeId}` : `human:${peer.humanId || peer.ownerName || peer.nodeId}`,
         });
 
         if (isAgent && peer.ownerName) {
@@ -407,6 +413,9 @@ export function useWorkspaceViewModels({
             bridgeHostId: host.id,
             bridgePeerNodeId: peer.nodeId,
             bridgePeerRuntime: 'person',
+            bridgeHumanId: peer.humanId,
+            bridgeAgentId: peer.agentId,
+            avatarSeed: `human:${peer.humanId || peer.ownerName || peer.nodeId}`,
           });
         }
       }

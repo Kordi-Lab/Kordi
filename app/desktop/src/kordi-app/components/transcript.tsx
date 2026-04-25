@@ -448,7 +448,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
-  const avatarSeed = isOwnHumanMessage ? getLocalProfileAvatarSeed() : `${avatarKind}:${avatarName}`;
+  const avatarSeed = msg.senderAvatarSeed?.trim() || (isOwnHumanMessage ? getLocalProfileAvatarSeed() : `${avatarKind}:${avatarName}`);
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -673,7 +673,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
-        seed={contact.bridgePeerNodeId ?? contact.id}
+        seed={contact.avatarSeed ?? contact.bridgePeerNodeId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
         className="h-10 w-10 border border-white/10"
