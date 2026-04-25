@@ -2,8 +2,8 @@ use base64::Engine as _;
 use uuid::Uuid;
 
 use super::constants::{
-    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
-    PEER_TYPING_WINDOW_MS,
+    is_agent_like_runtime, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_ID_PREFIX,
+    DEFAULT_BRIDGE_RUNTIME, PEER_TYPING_WINDOW_MS,
 };
 use super::{
     bridge_conversation_id, format_time_label, format_time_label_with_seconds, now_ms,
@@ -285,17 +285,6 @@ pub(super) fn parse_mailbox_payload(blob: &str) -> Option<serde_json::Value> {
         .decode(blob)
         .ok()?;
     serde_json::from_slice(&decoded).ok()
-}
-
-fn is_agent_like_runtime(runtime: &str) -> bool {
-    let runtime = runtime.trim().to_lowercase();
-    runtime.contains("agent")
-        || runtime.contains("claude")
-        || runtime.contains("codex")
-        || runtime.contains("openclaw")
-        || runtime.contains("pi")
-        || runtime.contains("bot")
-        || runtime.contains("kordi")
 }
 
 fn labels_match(a: &str, b: &str) -> bool {

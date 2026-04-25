@@ -4,11 +4,11 @@ use uuid::Uuid;
 use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
 
 use super::constants::{
-    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ,
-    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_TYPE_ASK,
-    BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
-    BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
-    DEFAULT_BRIDGE_RUNTIME,
+    is_agent_like_runtime, API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_DELIVERED,
+    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
+    BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+    BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE,
+    BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
 };
 use super::{
     add_serve_contact, append_conversation_message, bridge_conversation_id,
@@ -45,17 +45,6 @@ pub(super) struct ParsedMailboxEvent {
     pub(super) payload: Value,
     pub(super) request_id: Option<String>,
     pub(super) project_id: Option<String>,
-}
-
-fn is_agent_like_runtime(peer_runtime: &str) -> bool {
-    let runtime = peer_runtime.to_lowercase();
-    runtime.contains("agent")
-        || runtime.contains("claude")
-        || runtime.contains("codex")
-        || runtime.contains("openclaw")
-        || runtime.contains("pi")
-        || runtime.contains("bot")
-        || runtime.contains("kordi")
 }
 
 fn outbound_message_type(peer_runtime: &str) -> &'static str {
