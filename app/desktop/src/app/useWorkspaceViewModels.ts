@@ -6,6 +6,7 @@ import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   Contact,
+  DesktopBridgeConversation,
   DesktopBridgeHost,
   DesktopBridgePeer,
   DesktopBridgeProject,
@@ -113,19 +114,52 @@ function buildMessagePreview(message: Message) {
   return `${attachments.length} attachments`;
 }
 
-function buildOutreachJoinMessage(thread: {
-  targetKind: string;
-  targetDisplayName: string;
-  updatedAtLabel?: string;
-}): Message {
-  const isPerson = thread.targetKind === 'bridge-person';
-  return {
+function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): Message[] {
+  const outreach = conversation.outreach;
+  if (!outreach) return [];
+
+  const isAgent = outreach.targetKind === 'bridge-agent';
+  const targetName = outreach.targetDisplayName || conversation.title;
+  const avatarSeed = isAgent
+    ? outreach.targetAgentId || outreach.targetNodeId
+    : outreach.targetHumanId || outreach.targetOwnerName || outreach.targetNodeId;
+  const messages: Message[] = [{
     role: 'system',
-    text: isPerson
-      ? `${thread.targetDisplayName} was involved through @`
-      : `${thread.targetDisplayName} joined through @`,
-    time: thread.updatedAtLabel ?? '--:--',
-  };
+    text: isAgent ? `${targetName} joined through @` : `${targetName} was involved through @`,
+    time: conversation.updatedAtLabel,
+  }];
+
+  for (const message of conversation.messages) {
+    if (message.direction !== 'inbound' && message.direction !== 'inbound-response') continue;
+    const isProcessingAgent = isAgent && message.deliveryState === 'processing';
+    messages.push({
+      role: isAgent ? 'external-agent' : 'person',
+      sender: targetName,
+      senderType: isAgent ? 'agent' : 'human',
+      isOwnMessage: false,
+      showSenderMeta: true,
+      senderAvatarSeed: avatarSeed,
+      text: message.text,
+      time: message.timeLabel,
+      turn: isProcessingAgent
+        ? {
+            id: `bridge-outreach-live-turn:${conversation.id}:${message.id}`,
+            sessionId: outreach.parentSessionId ?? conversation.canonicalSessionId,
+            prompt: outreach.requestText,
+            status: message.text.trim() ? 'writing' : 'typing',
+            message: message.text.trim() ? 'Replying…' : 'Typing…',
+            assistantText: message.text,
+            thinkingText: '',
+            tools: [],
+            completed: false,
+            succeeded: false,
+            error: null,
+          }
+        : undefined,
+    });
+  }
+
+  return messages;
 }
 
 function buildConversationPreview(messages: Message[], fallback?: string) {
@@ -212,6 +246,7 @@ export function useWorkspaceViewModels({
       status: string;
       updatedAtLabel?: string;
       updatedAtMs: number;
+      inlineMessages: Message[];
     }>>();
 
     for (const conversation of desktopBridgeState?.conversations ?? []) {
@@ -227,6 +262,7 @@ export function useWorkspaceViewModels({
         status: outreach.status,
         updatedAtLabel: conversation.updatedAtLabel,
         updatedAtMs: conversation.updatedAtMs,
+        inlineMessages: buildOutreachInlineMessages(conversation),
       };
       grouped.set(parentSessionId, [...(grouped.get(parentSessionId) ?? []), thread]);
     }
@@ -259,15 +295,16 @@ export function useWorkspaceViewModels({
         liveTurn: desktopLiveTurnsBySession[session.id],
       });
 
-      const outreachThreads = (outreachThreadsByParentSession.get(session.id) ?? []).map(({ updatedAtMs: _updatedAtMs, ...thread }) => thread);
-      const messages = [...activeMessages, ...outreachThreads.map(buildOutreachJoinMessage)];
+      const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
+      const outreachThreads = outreachRecords.map(({ updatedAtMs: _updatedAtMs, inlineMessages: _inlineMessages, ...thread }) => thread);
+      const messages = [...activeMessages, ...outreachRecords.flatMap((thread) => thread.inlineMessages)];
 
       return {
         id: session.id,
         canonicalSessionId: session.id,
         name: session.title,
         type: 'owned-agent' as const,
-        subtitle: buildConversationPreview(activeMessages, session.subtitle),
+        subtitle: buildConversationPreview(messages, session.subtitle),
         unread: unreadCount,
         bridges: ['Local'],
         trust: 'Owned',
