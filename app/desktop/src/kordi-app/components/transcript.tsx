@@ -442,7 +442,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
   const deliveryStatus = primaryMessageStatus(msg);
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
-  const showHeaderMeta = isAgentMessage && Boolean(msg.sender);
+  const showHeaderMeta = Boolean(msg.showSenderMeta && msg.sender);
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
@@ -451,7 +451,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
-          {msg.sender} • {msg.time}
+          {showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
       <div className={cn(
@@ -548,7 +548,7 @@ function toolDisplayConfig(toolName: string) {
 export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
   const hasAssistant = turn.assistantText.trim().length > 0;
   const hasThinking = turn.thinkingText.trim().length > 0;
-  const showLiveStatusHeader = !historical && !turn.completed;
+  const showLiveStatusHeader = !historical && !turn.completed && !(turn.status === 'writing' && hasAssistant);
   const liveStatusText =
     turn.status === 'cancelling'
       ? 'Stopping…'

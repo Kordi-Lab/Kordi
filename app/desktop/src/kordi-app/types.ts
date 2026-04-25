@@ -69,6 +69,7 @@ export type Message = {
   sender?: string;
   senderType?: 'human' | 'agent';
   isOwnMessage?: boolean;
+  showSenderMeta?: boolean;
   text: string;
   time: string;
   detail?: string;

@@ -126,10 +126,6 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     desktopSessionRenameDraft: args.desktopSessionRenameDraft,
     setDesktopSessionRenameDraft: args.setDesktopSessionRenameDraft,
     onRenameDesktopSession: args.handleRenameDesktopSession,
-    bridgeStatusText: args.activeBridgeConversation?.peerTyping
-      ? `${args.activeBridgeConversation.title} is typing…`
-      : null,
-    bridgeStatusLoading: false,
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     onTranscriptScroll: args.onChatTranscriptScroll,
     onOpenSource: (file) => {
