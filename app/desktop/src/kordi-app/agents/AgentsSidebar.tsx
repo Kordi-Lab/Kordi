@@ -1,9 +1,9 @@
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { IdentityAvatar } from '../components/IdentityAvatar';
 import type { Agent } from '../types';
-import { getAgentInitials, type AgentConfigDraft } from './model';
+import type { AgentConfigDraft } from './model';
 
 export function AgentsSidebar({
   agents,
@@ -50,11 +50,13 @@ export function AgentsSidebar({
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-9 w-9 border border-white/8">
-                    <AvatarFallback className={cn('text-[11px]', isSelected ? 'bg-[#e7e1d8] text-[#201d1a]' : 'bg-white/[0.05] text-slate-200')}>
-                      {getAgentInitials(agent.name)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <IdentityAvatar
+                    kind="agent"
+                    seed={agent.id}
+                    name={agent.name}
+                    imageUrl={agent.profileImageUrl}
+                    className="h-9 w-9 border border-white/8"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

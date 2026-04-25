@@ -68,6 +68,7 @@ export type Message = {
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
   senderType?: 'human' | 'agent';
+  senderProfileImageUrl?: string | null;
   isOwnMessage?: boolean;
   showSenderMeta?: boolean;
   text: string;
@@ -100,6 +101,7 @@ export type Conversation = {
   messages: Message[];
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
+  profileImageUrl?: string | null;
 };
 
 export type Contact = {
@@ -117,6 +119,7 @@ export type Contact = {
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
+  profileImageUrl?: string | null;
 };
 
 export type ContactRequest = {
@@ -125,6 +128,7 @@ export type ContactRequest = {
   title: string;
   detail: string;
   time: string;
+  profileImageUrl?: string | null;
 };
 
 export type Agent = {
@@ -159,6 +163,7 @@ export type Agent = {
   isBridgeDefault?: boolean;
   isBridgeActive?: boolean;
   isBridgeRegistered?: boolean;
+  profileImageUrl?: string | null;
 };
 
 export type ProjectSession = {
@@ -326,6 +331,7 @@ export type DesktopBridgePeer = {
   agentId?: string | null;
   isDefaultAgent?: boolean;
   discoveryMode?: string | null;
+  profileImageUrl?: string | null;
 };
 
 export type DesktopBridgeProject = {
@@ -342,6 +348,7 @@ export type DesktopBridgeAgent = {
   isDefault: boolean;
   isActive: boolean;
   registered: boolean;
+  profileImageUrl?: string | null;
 };
 
 export type DesktopBridgeHost = {

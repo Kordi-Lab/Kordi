@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 
+import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project } from '@/kordi-app/types';
 import {
@@ -132,7 +133,7 @@ function appendOptimisticBridgeMessage(
         ...conversation.messages,
         {
           id: optimisticMessageId,
-          direction: 'outbound',
+          direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
           sender: 'You',
           text,
           timeLabel: sentAt,

@@ -307,6 +307,10 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
 
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
+  | 'setActiveNav'
+  | 'chatConversations'
+  | 'handleCreateChatSession'
+  | 'handleSelectChatSession'
   | 'filteredGroupedContacts'
   | 'isContactRequestsOpen'
   | 'setIsContactRequestsOpen'

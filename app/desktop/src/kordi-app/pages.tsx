@@ -1,10 +1,10 @@
 import { ChevronDown, ChevronRight, Eye, Plus, Search, X } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { BridgeChip, ContactRequestRow, ContactRow } from './components';
+import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
 
@@ -191,9 +191,15 @@ export function ContactsPage({
                 {contactOverlayMode === 'contact' ? (
                   <div>
                     <div className="mb-4 flex items-center gap-3">
-                      <Avatar className="h-12 w-12 border border-white/10">
-                        <AvatarFallback className="bg-slate-800 text-slate-100">{activeContact.initials}</AvatarFallback>
-                      </Avatar>
+                      <EditableIdentityAvatar
+                        kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
+                        seed={activeContact.bridgePeerNodeId ?? activeContact.id}
+                        name={activeContact.name}
+                        imageUrl={activeContact.profileImageUrl}
+                        label={`${activeContact.name} avatar`}
+                        compact
+                        className="h-12 w-12 border border-white/10"
+                      />
                       <div>
                         <div className="text-sm text-slate-300">
                           {activeContact.entityType} • {activeContact.subtitle}

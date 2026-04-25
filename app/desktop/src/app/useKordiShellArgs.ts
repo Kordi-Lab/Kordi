@@ -46,6 +46,10 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
     },
     mainContent: {
       activeNav: args.activeNav,
+      setActiveNav: args.setActiveNav,
+      chatConversations: args.chatConversations,
+      handleCreateChatSession: args.handleCreateChatSession,
+      handleSelectChatSession: args.handleSelectChatSession,
       filteredGroupedContacts: args.filteredGroupedContacts,
       isContactRequestsOpen: args.isContactRequestsOpen,
       setIsContactRequestsOpen: args.setIsContactRequestsOpen,
