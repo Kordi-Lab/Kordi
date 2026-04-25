@@ -413,6 +413,10 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
+    pub fn materialize_session(&mut self) -> Result<()> {
+        ensure_session_row_created(&mut self.setup)
+    }
+
     pub async fn send_message(
         &mut self,
         prompt: String,

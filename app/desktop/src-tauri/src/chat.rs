@@ -578,9 +578,10 @@ pub async fn desktop_chat_new_session(
     manager: State<'_, DesktopChatManager>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let runtime = DesktopRuntimeSession::create_new(cwd.clone())
+    let mut runtime = DesktopRuntimeSession::create_new(cwd.clone())
         .await
         .map_err(|err| err.to_string())?;
+    runtime.materialize_session().map_err(|err| err.to_string())?;
     let session_id = runtime.session_id().to_string();
     manager.sessions.lock().await.insert(
         session_id.clone(),

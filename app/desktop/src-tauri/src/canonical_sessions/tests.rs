@@ -242,6 +242,82 @@ fn outreach_context_snapshot_is_session_scoped() {
 }
 
 #[test]
+fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
+    let state = crate::chat::DesktopChatState {
+        cwd: "/tmp/workspace".to_string(),
+        active_session_id: "session:local".to_string(),
+        sessions: vec![kordi_cli::desktop_runtime::DesktopChatSessionSummary {
+            id: "session:local".to_string(),
+            title: "Plan backend refactor".to_string(),
+            subtitle: "Plan backend refactor".to_string(),
+            updated_at_label: "Now".to_string(),
+            message_count: 1,
+            draft: false,
+        }],
+        projects: Vec::new(),
+        active_session: kordi_cli::desktop_runtime::DesktopChatSessionDetail {
+            id: "session:local".to_string(),
+            title: "Plan backend refactor".to_string(),
+            subtitle: "Plan backend refactor".to_string(),
+            provider: "openai".to_string(),
+            provider_label: "OpenAI".to_string(),
+            model: "gpt-5".to_string(),
+            model_label: "gpt-5".to_string(),
+            thinking: "medium".to_string(),
+            thinking_label: "Medium".to_string(),
+            updated_at_label: "Now".to_string(),
+            message_count: 1,
+            draft: false,
+            cache_monitor_text: None,
+            context_window_text: "0 / 0".to_string(),
+            context_window_status: kordi_cli::desktop_runtime::DesktopChatContextWindowStatus {
+                context_window: 0,
+                used_tokens: None,
+                used_percent: None,
+                auto_compaction: false,
+            },
+            project: Some(kordi_cli::desktop_runtime::DesktopChatProjectInfo {
+                name: "src-tauri".to_string(),
+                root: "/tmp/workspace/app/desktop/src-tauri".to_string(),
+                shared_context: None,
+                background_system: None,
+                shared_sources: Vec::new(),
+            }),
+            messages: vec![kordi_cli::desktop_runtime::DesktopChatMessage {
+                role: "user".to_string(),
+                sender: Some("You".to_string()),
+                text: "Plan backend refactor".to_string(),
+                detail: None,
+                time_label: "Now".to_string(),
+                timestamp_ms: 1,
+                thinking_text: None,
+                tools: Vec::new(),
+                attachments: Vec::new(),
+            }],
+        },
+        local_agent: kordi_cli::desktop_runtime::DesktopChatAgentProfile {
+            label: "Kordi".to_string(),
+            system_prompt: String::new(),
+            loaded_skills: Vec::new(),
+            loaded_tools: Vec::new(),
+            loaded_plugins: Vec::new(),
+            identity_files: Vec::new(),
+            default_provider: "openai".to_string(),
+            default_model: "gpt-5".to_string(),
+            workspace_root: "/tmp/workspace".to_string(),
+            last_activities: Vec::new(),
+        },
+        model_options: Vec::new(),
+        slash_commands: Vec::new(),
+    };
+
+    assert_eq!(
+        explicit_desktop_project_membership(&state, "session:local"),
+        None
+    );
+}
+
+#[test]
 fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
     let blank_summary = kordi_cli::desktop_runtime::DesktopChatSessionSummary {
         id: "draft:local-chat".to_string(),

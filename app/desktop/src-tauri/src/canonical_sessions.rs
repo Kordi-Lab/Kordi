@@ -26,6 +26,7 @@ pub(crate) fn canonical_bridge_session_id(conversation_id: &str) -> String {
     format!("session:bridge:{}", conversation_id.trim())
 }
 
+#[cfg(test)]
 fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
     let normalized = project_root.trim();
     if normalized.is_empty() {
@@ -1069,6 +1070,19 @@ fn should_sync_desktop_chat_detail(
     !(detail.draft && detail.message_count == 0 && detail.messages.is_empty())
 }
 
+fn explicit_desktop_project_membership(
+    state: &crate::chat::DesktopChatState,
+    session_id: &str,
+) -> Option<(String, String, String)> {
+    state.projects.iter().find_map(|project| {
+        project
+            .sessions
+            .iter()
+            .any(|session| session.id == session_id)
+            .then(|| (project.id.clone(), project.name.clone(), project.root.clone()))
+    })
+}
+
 pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
     let conn = open_db()?;
     let human_identity_id = local_profile_human_identity_id(&conn, "You")?;
@@ -1140,22 +1154,23 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
 
     let active = &state.active_session;
     if should_sync_desktop_chat_detail(active) {
-        let (project_id, project_name, project_root) = active
-            .project
+        let explicit_project = explicit_desktop_project_membership(state, &active.id);
+        let (project_id, project_name, project_root) = explicit_project
             .as_ref()
-            .map(|project| {
+            .map(|(project_id, project_name, project_root)| {
                 (
-                    canonical_desktop_project_group_id(&project.root),
-                    Some(project.name.clone()),
-                    Some(project.root.clone()),
+                    Some(project_id.clone()),
+                    Some(project_name.clone()),
+                    Some(project_root.clone()),
                 )
             })
             .unwrap_or((None, None, None));
+        let workspace_root = active.project.as_ref().map(|project| project.root.clone());
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
                 id: Some(active.id.clone()),
-                kind: if project_id.is_some() {
+                kind: if explicit_project.is_some() {
                     "project".to_string()
                 } else {
                     "self-agent".to_string()
@@ -1177,6 +1192,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                     "thinking": active.thinking,
                     "thinkingLabel": active.thinking_label,
                     "projectRoot": project_root,
+                    "workspaceRoot": workspace_root,
                 })),
             },
         )?;

@@ -80,6 +80,31 @@ function toOptimisticAttachments(attachments: AttachmentItem[]) {
   }));
 }
 
+function optimisticSessionTitleFromMessage(messageText: string, attachments: AttachmentItem[], fallbackTitle: string) {
+  const titleFromText = messageText
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(' ')
+    .slice(0, 60)
+    .trim();
+
+  if (titleFromText) {
+    return titleFromText;
+  }
+
+  if (attachments.length === 1) {
+    return `Attached ${attachments[0].name}`;
+  }
+
+  if (attachments.length > 1) {
+    return `${attachments.length} attachments`;
+  }
+
+  return fallbackTitle;
+}
+
 function appendOptimisticOutboundMessage(
   current: DesktopChatState,
   targetSessionId: string,
@@ -102,9 +127,12 @@ function appendOptimisticOutboundMessage(
   const nextMessageCount = activeSessionMatches
     ? current.activeSession.messageCount + 1
     : (existingSummary?.messageCount ?? 0) + 1;
-  const nextTitle = activeSessionMatches
+  const baselineTitle = activeSessionMatches
     ? current.activeSession.title
     : existingSummary?.title ?? 'New session';
+  const nextTitle = baselineTitle.trim() === 'New session'
+    ? optimisticSessionTitleFromMessage(messageText, attachments, baselineTitle)
+    : baselineTitle;
   const nextSessions = current.sessions.some((session) => session.id === targetSessionId)
     ? current.sessions.map((session) =>
         session.id === targetSessionId
@@ -650,11 +678,15 @@ export function useComposerMessageActions({
         sentAt,
         'desktop-chat-ui',
       );
-      setDesktopChatState((current) => (
-        (current ?? materializedState)
-          ? appendOptimisticOutboundMessage(current ?? materializedState!, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt)
-          : current
-      ));
+      setDesktopChatState((current) => {
+        const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
+          ? materializedState
+          : current;
+        if (!baseState) {
+          return current;
+        }
+        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
+      });
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
