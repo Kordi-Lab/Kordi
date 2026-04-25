@@ -64,6 +64,8 @@ Invalidation triggers include new/edited/deleted messages, participant changes, 
 
 Canonical sessions need canonical UI components so identities, avatars, participants, delegated exchanges, and presence render consistently. Delegation should change metadata and participant state, not introduce a separate visual language.
 
+Selected delegation UI: **B · Join event**. Keep the original Kordi chat UI almost unchanged. Add one subtle centered join/request event when a person or agent is involved through `@`, then render the response with the existing message components.
+
 Planned components:
 
 - `SessionList`: left-side canonical session list. Shows only top-level canonical sessions and hides child delegated exchanges.
@@ -80,6 +82,8 @@ Planned components:
 
 Component rules:
 
+- Do not redesign the shell, session rail, chat header, composer, right rail, message bubble shape, or `LiveChatTurnCard` layout for delegation.
+- Add the smallest new transcript surface possible: a centered join/request event using the existing compact system-message style.
 - Components receive canonical identities or canonical avatar keys; they should not derive avatars from display names, session IDs, project IDs, or raw conversation IDs.
 - Local and remote agent responses use the same `AgentTurnMessage` UI, including thinking sections, tool sections, final-answer bubble, status, and error states.
 - User-authored and agent-authored `@` delegated responses appear inline in `SessionTranscript` as normal person/agent messages.
@@ -87,6 +91,12 @@ Component rules:
 - Agent-authored `@Agent` shows the target's response as a normal `AgentTurnMessage`, including thinking/tool timeline when available.
 - Delegation trace is secondary and collapsed by default.
 - The right panel is not a second chat list; it explains the selected session's participant graph and linked exchanges.
+
+Join event examples:
+
+- User `@Agent`: `Bob's Kordi joined through Alice's @ mention` → Bob's Kordi replies with existing `AgentTurnMessage`.
+- Agent `@User`: `Bob was involved by Alice's Kordi` → Bob replies with an existing person bubble; Alice's Kordi can then synthesize.
+- Agent `@Agent`: `Bob's Kordi joined through Alice's Kordi` → Bob's Kordi replies with existing `AgentTurnMessage`, including thinking/tool timeline.
 
 Migration order:
 

@@ -369,8 +369,8 @@
 </head>
 <body>
   <div class="preview-note">
-    <strong>Existing Kordi UI preview</strong>
-    <span>Shows user @ agent, agent @ user, and agent @ agent with native thinking/tool timeline.</span>
+    <strong>Chosen: B · Join event</strong>
+    <span>Minimal change to original UI: add a subtle join/request event, keep existing bubbles and agent thinking/tool timeline.</span>
     <button id="themeToggle" type="button">Light</button>
   </div>
 
@@ -409,7 +409,7 @@
                     <span class="identity-avatar avatar-b large">B</span>
                     <span class="session-main">
                       <span class="session-line"><span class="session-name">Bob</span><span class="session-time">16:37</span></span>
-                      <span class="session-preview" id="sessionPreview">Agent asked Bob and got a person reply</span>
+                      <span class="session-preview" id="sessionPreview">B · Join event: agent asked Bob</span>
                     </span>
                   </span>
                 </button>
@@ -449,16 +449,16 @@
                     <span>🛡 Known contact</span>
                     <span>🌐 Kordi bridge</span>
                     <span>↔ Direct bridge chat</span>
-                    <span class="chip delegation" id="headerDelegationLabel">Agent-authored @ is active</span>
+                    <span class="chip delegation" id="headerDelegationLabel">B · Join event · Agent @ User</span>
                   </div>
                 </div>
                 <div><button class="utility-button">Hide details</button></div>
               </header>
 
               <div class="scenario-tabs" role="tablist" aria-label="Delegation flow scenarios">
-                <button class="scenario-tab" data-scenario="user-agent">User @ Agent</button>
-                <button class="scenario-tab active" data-scenario="agent-user">Agent @ User</button>
-                <button class="scenario-tab" data-scenario="agent-agent">Agent @ Agent</button>
+                <button class="scenario-tab" data-scenario="user-agent">B · User @ Agent</button>
+                <button class="scenario-tab active" data-scenario="agent-user">B · Agent @ User</button>
+                <button class="scenario-tab" data-scenario="agent-agent">B · Agent @ Agent</button>
               </div>
 
               <div class="transcript-scroll">
@@ -468,6 +468,8 @@
                       <div class="app-message-meta">Alice</div>
                       <div class="message-line own"><span class="identity-avatar avatar-a">A</span><div class="app-chat-bubble-user"><span class="mention">@Bob’s Kordi</span> review the latest session model wording and point out confusing parts.<span class="time-inline">16:34 ✓✓</span></div></div>
                     </div>
+
+                    <div class="center-event"><span class="identity-avatar mini avatar-bk">BK</span><span><strong>Bob’s Kordi joined</strong> through Alice’s @ mention · context: recent + summary</span></div>
 
                     <div class="message-group agent">
                       <div class="app-message-meta">Bob’s Kordi • 16:34 <span class="chip delegation">invited by Alice</span></div>
@@ -660,8 +662,8 @@ Recommendation: reuse it for remote agents.</pre></div></div>
               <section class="app-detail-section">
                 <div class="app-detail-kicker">Delegation flow</div>
                 <div class="delegation-summary">
-                  <div class="delegation-title" id="delegationTitle">Agent @ User</div>
-                  <div class="delegation-copy" id="delegationCopy">Alice’s Kordi mentions @Bob, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.</div>
+                  <div class="delegation-title" id="delegationTitle">B · Join event · Agent @ User</div>
+                  <div class="delegation-copy" id="delegationCopy">Alice’s Kordi mentions @Bob. The UI adds one subtle centered join/request event, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.</div>
                 </div>
                 <div class="meta-list" style="margin-top:12px">
                   <div class="meta-row"><span class="meta-label">Initiator</span><span class="meta-value" id="initiatorValue">Alice’s Kordi</span></div>
@@ -697,10 +699,10 @@ Recommendation: reuse it for remote agents.</pre></div></div>
 
     const scenarios = {
       'user-agent': {
-        title: 'User @ Agent',
-        copy: 'Alice mentions @Bob’s Kordi. Bob’s Kordi replies as a native agent turn with thinking and tool sections preserved.',
-        preview: 'User asked Bob’s Kordi; agent replied inline',
-        header: 'User @ Agent · native remote agent response',
+        title: 'B · Join event · User @ Agent',
+        copy: 'Alice mentions @Bob’s Kordi. The UI adds one subtle centered join event, then Bob’s Kordi replies as a native agent turn with thinking and tool sections preserved.',
+        preview: 'B · Join event: Bob’s Kordi replied',
+        header: 'B · Join event · User @ Agent',
         initiator: 'Alice',
         target: 'Bob’s Kordi',
         response: 'AgentTurnMessage',
@@ -708,10 +710,10 @@ Recommendation: reuse it for remote agents.</pre></div></div>
         bobKordiStatus: 'Replied'
       },
       'agent-user': {
-        title: 'Agent @ User',
-        copy: 'Alice’s Kordi mentions @Bob, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.',
-        preview: 'Agent asked Bob and got a person reply',
-        header: 'Agent @ User · person response',
+        title: 'B · Join event · Agent @ User',
+        copy: 'Alice’s Kordi mentions @Bob. The UI adds one subtle centered request event, Bob answers as a person bubble, then Alice’s Kordi uses that answer in its final agent response.',
+        preview: 'B · Join event: agent asked Bob',
+        header: 'B · Join event · Agent @ User',
         initiator: 'Alice’s Kordi',
         target: 'Bob',
         response: 'Person bubble',
@@ -719,10 +721,10 @@ Recommendation: reuse it for remote agents.</pre></div></div>
         bobKordiStatus: 'Available'
       },
       'agent-agent': {
-        title: 'Agent @ Agent',
-        copy: 'Alice’s Kordi mentions @Bob’s Kordi. The remote agent response keeps the same thinking/tool/final-answer timeline as local agent turns.',
-        preview: 'Agent asked Bob’s Kordi; remote agent replied',
-        header: 'Agent @ Agent · remote agent response',
+        title: 'B · Join event · Agent @ Agent',
+        copy: 'Alice’s Kordi mentions @Bob’s Kordi. The UI adds one subtle centered join event, then the remote agent response keeps the same thinking/tool/final-answer timeline as local agent turns.',
+        preview: 'B · Join event: remote agent replied',
+        header: 'B · Join event · Agent @ Agent',
         initiator: 'Alice’s Kordi',
         target: 'Bob’s Kordi',
         response: 'AgentTurnMessage',
