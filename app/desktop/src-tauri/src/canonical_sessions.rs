@@ -2074,6 +2074,16 @@ fn sync_bridge_outreach_into_parent_session(
         remote_target_identity_id,
         relationship_identity_id,
     )?;
+    update_presence_in_db(
+        conn,
+        UpdateCanonicalPresenceRequest {
+            identity_id: remote_target_identity_id.to_string(),
+            status: outreach_presence_status(&outreach.status, peer_is_agent),
+            session_id: Some(parent_session_id.to_string()),
+            detail: Some(outreach.target_display_name.clone()),
+            expires_at_ms: None,
+        },
+    )?;
 
     let delegation_id = format!("delegation:bridge:{}", conversation.id);
     let initiator_identity_id = local_agent_identity_id.unwrap_or(local_human_identity_id);
@@ -2190,6 +2200,15 @@ fn sync_bridge_outreach_into_parent_session(
     )?;
 
     Ok(true)
+}
+
+fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {
+    match status {
+        "sending" | "awaitingReply" => "replying".to_string(),
+        "failed" => "error".to_string(),
+        _ if peer_is_agent => "available".to_string(),
+        _ => "online".to_string(),
+    }
 }
 
 fn update_presence_in_db(
