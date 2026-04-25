@@ -7,15 +7,14 @@ import {
   Search,
 } from 'lucide-react';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, NavId, SessionStatusIndicator } from '@/kordi-app/types';
-import { getInitials } from '@/kordi-app/utils';
+import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
 type ConversationItem = {
@@ -24,8 +23,11 @@ type ConversationItem = {
   subtitle: string;
   unread: number;
   messages: Array<{ time?: string }>;
+  participants?: string[];
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
+  type?: ConversationType;
+  profileImageUrl?: string | null;
 };
 
 type ProjectSessionItem = {
@@ -60,7 +62,19 @@ type AgentItem = {
   role: string;
   messaging: string;
   tasks: number;
+  profileImageUrl?: string | null;
 };
+
+function conversationAvatarKind(conversation: ConversationItem): IdentityAvatarKind {
+  return conversation.type === 'person' ? 'human' : 'agent';
+}
+
+function conversationAvatarSeed(conversation: ConversationItem) {
+  if (conversation.type === 'owned-agent') {
+    return `agent:${conversation.participants?.find((participant) => participant !== 'You') || conversation.name || 'local-agent'}`;
+  }
+  return `${conversation.type ?? 'conversation'}:${conversation.name || conversation.id}`;
+}
 
 type BridgeHostSummary = {
   serverUrl: string;
@@ -293,9 +307,12 @@ export function WorkspaceSidebar({
             <Button size="icon" className="h-9 w-9 rounded-[14px]">
               <Plus className="h-4 w-4" />
             </Button>
-            <Avatar className="h-9 w-9 border border-white/10">
-              <AvatarFallback className="bg-slate-800 text-[11px] text-slate-100">CC</AvatarFallback>
-            </Avatar>
+            <IdentityAvatar
+              kind="human"
+              seed="local-human-profile"
+              name="Local profile"
+              className="h-9 w-9 border border-white/10"
+            />
           </div>
         </div>
 
@@ -381,11 +398,13 @@ export function WorkspaceSidebar({
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              <Avatar className="mt-px h-7 w-7 border border-white/10">
-                                <AvatarFallback className={isActive ? 'bg-[#e7e1d8] text-[#201d1a]' : 'bg-white/[0.045] text-slate-200'}>
-                                  {getInitials(conversation.name)}
-                                </AvatarFallback>
-                              </Avatar>
+                              <IdentityAvatar
+                                kind={conversationAvatarKind(conversation)}
+                                seed={conversationAvatarSeed(conversation)}
+                                name={conversation.name}
+                                imageUrl={conversation.profileImageUrl}
+                                className="mt-px h-7 w-7 border border-white/10"
+                              />
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2.5">
                                   <div className="min-w-0 flex-1">
@@ -573,11 +592,20 @@ export function WorkspaceSidebar({
                         <Card key={agent.id} className="rounded-3xl border-white/10 bg-white/5 text-white shadow-none">
                           <CardContent className="p-4">
                             <div className="mb-3 flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-medium">{agent.name}</div>
-                                <div className="text-xs text-slate-400">{agent.id}</div>
+                              <div className="flex min-w-0 items-start gap-3">
+                                <IdentityAvatar
+                                  kind="agent"
+                                  seed={agent.id}
+                                  name={agent.name}
+                                  imageUrl={agent.profileImageUrl}
+                                  className="h-10 w-10 border border-white/10"
+                                />
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium">{agent.name}</div>
+                                  <div className="truncate text-xs text-slate-400">{agent.id}</div>
+                                </div>
                               </div>
-                              <Badge variant="outline" className="border-white/20 text-slate-200">
+                              <Badge variant="outline" className="shrink-0 border-white/20 text-slate-200">
                                 {agent.status}
                               </Badge>
                             </div>

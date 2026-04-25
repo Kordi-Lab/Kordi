@@ -3,6 +3,7 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
@@ -205,14 +206,26 @@ export function ProjectDetailPanel({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Members</div>
           <div className="app-inspector-list">
-            {[...activeProject.people, ...activeProject.agents].map((member) => (
-              <div key={member} className="app-inspector-list-row">
-                <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{member}</span>
-                <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                  Active
-                </Badge>
-              </div>
-            ))}
+            {[...activeProject.people, ...activeProject.agents].map((member) => {
+              const isAgent = activeProject.agents.includes(member);
+
+              return (
+                <div key={member} className="app-inspector-list-row">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <IdentityAvatar
+                      kind={isAgent ? 'agent' : 'human'}
+                      seed={`${activeProject.id}:${member}`}
+                      name={member}
+                      className="h-7 w-7 border border-white/10"
+                    />
+                    <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{member}</span>
+                  </span>
+                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
+                    Active
+                  </Badge>
+                </div>
+              );
+            })}
           </div>
         </section>
       </div>

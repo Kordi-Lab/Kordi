@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
+import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection } from '@/kordi-app/data/settings';
 import type {
   DesktopAuthState,
@@ -153,6 +154,46 @@ export function SettingsPage({
                   void handleLogoutProvider(providerId);
                 }}
               />
+            ) : activeSettingsSection.id === 'personalization' ? (
+              <div className="space-y-3.5">
+                <div className="app-surface-muted app-settings-surface overflow-hidden rounded-[22px] p-[18px] shadow-none">
+                  <div className="mb-3.5 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[15px] font-medium text-white">Profile avatar</div>
+                      <div className="mt-1 max-w-2xl text-[13px] leading-5 text-slate-400">
+                        Upload a custom image for your local human identity. If you reset it, Kordi falls back to the deterministic pixel avatar.
+                      </div>
+                    </div>
+                  </div>
+                  <EditableIdentityAvatar
+                    kind="human"
+                    seed="local-human-profile"
+                    name="Local profile"
+                    label="Local profile"
+                    className="h-16 w-16 border border-white/10"
+                  />
+                </div>
+
+                <div className="app-surface-muted app-settings-surface overflow-hidden rounded-[22px] shadow-none">
+                  {activeSettingsSection.items.map((item, index) => (
+                    <div
+                      key={item.label}
+                      className={cn(
+                        'grid items-center gap-3 px-5 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
+                        index > 0 ? 'border-t border-white/10' : '',
+                      )}
+                    >
+                      <div>
+                        <div className="text-[13px] font-medium text-white">{item.label}</div>
+                        <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
+                      </div>
+                      <div className="flex justify-end">
+                        <SettingsValueControl item={item} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : activeSettingsSection.id === 'projects' ? (
               <div className="space-y-3.5">
                 <div className="app-surface-muted app-settings-surface app-settings-memory-card overflow-hidden rounded-[22px] p-[18px] shadow-none">

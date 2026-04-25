@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
@@ -34,6 +35,8 @@ type BridgeConversation = {
   peerRuntime: string;
   projectName?: string | null;
   projectId?: string | null;
+  title?: string;
+  peerTyping?: boolean;
 };
 
 type ChatDetailPanelProps = {
@@ -121,14 +124,26 @@ export function ChatDetailPanel({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Participants</div>
           <div className="app-inspector-list">
-            {activeConv.participants.map((participant) => (
-              <div key={participant} className="app-inspector-list-row">
-                <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{participant}</span>
-                <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                  Active
-                </Badge>
-              </div>
-            ))}
+            {activeConv.participants.map((participant) => {
+              const isAgent = activeConv.type !== 'person' && /agent|bot|assistant/i.test(participant);
+
+              return (
+                <div key={participant} className="app-inspector-list-row">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <IdentityAvatar
+                      kind={isAgent ? 'agent' : 'human'}
+                      seed={`${activeConv.name}:${participant}`}
+                      name={participant}
+                      className="h-7 w-7 border border-white/10"
+                    />
+                    <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{participant}</span>
+                  </span>
+                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
+                    Active
+                  </Badge>
+                </div>
+              );
+            })}
           </div>
         </section>
 

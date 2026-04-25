@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import type { Agent } from '../types';
 import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
 import { AgentConfigList, AgentInspectorSection } from './shared';
@@ -129,10 +130,20 @@ export function AgentDetailPane({
     <section className="flex min-h-0 min-w-0 flex-col bg-[rgba(20,20,24,0.42)] text-white">
       <div className="border-b border-white/6 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[12px] font-medium text-slate-400">Agent inspector</div>
-            <div className="mt-1 text-[24px] font-semibold tracking-[-0.02em] text-white">{activeAgent.name}</div>
-            <div className="mt-1 text-[13px] text-slate-400">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
+          <div className="flex min-w-0 items-start gap-3">
+            <EditableIdentityAvatar
+              kind="agent"
+              seed={activeAgent.id}
+              name={activeAgent.name}
+              imageUrl={activeAgent.profileImageUrl}
+              label={`${activeAgent.name} avatar`}
+              compact
+              className="mt-0.5 h-12 w-12 border border-white/10"
+            />
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-slate-400">Agent inspector</div>
+              <div className="mt-1 truncate text-[24px] font-semibold tracking-[-0.02em] text-white">{activeAgent.name}</div>
+              <div className="mt-1 text-[13px] text-slate-400">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
             {activeSaveFeedback ? (
               <div
                 className={cn(
@@ -146,7 +157,8 @@ export function AgentDetailPane({
               >
                 {activeSaveFeedback.text}
               </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {isEditable ? (

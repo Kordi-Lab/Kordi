@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Copy, Link2, Plus, Star, UserRound } from 'lucide-react';
+import { ChevronRight, Copy, Link2, Plus, Star } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import {
   DEFAULT_BRIDGE_DISPLAY_NAME,
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import type { DesktopBridgePeer } from '@/kordi-app/types';
 
@@ -257,6 +258,13 @@ function BridgeAgentsStep({
             {activeBridgeHost.agents.map((agent) => (
               <div key={agent.id} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
                 <div className="flex items-start justify-between gap-3">
+                  <IdentityAvatar
+                    kind="agent"
+                    seed={agent.id}
+                    name={agent.label}
+                    imageUrl={agent.profileImageUrl}
+                    className="mt-0.5 h-10 w-10 border border-white/10"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-[13px] font-medium text-white">{agent.label}</div>
@@ -488,9 +496,13 @@ function BridgePeerCard({
   return (
     <div className="app-bridge-list-item rounded-[20px] border border-white/10 bg-white/[0.035] px-3 py-3 transition hover:bg-white/[0.055]">
       <div className="flex items-start gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200">
-          {kind === 'person' ? <UserRound className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-        </div>
+        <IdentityAvatar
+          kind={kind === 'person' ? 'human' : 'agent'}
+          seed={peer.agentId || peer.humanId || peer.nodeId}
+          name={title}
+          imageUrl={peer.profileImageUrl}
+          className="h-9 w-9 border border-white/10"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="truncate text-[13px] font-medium text-white">{title}</div>

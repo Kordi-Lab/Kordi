@@ -26,10 +26,10 @@ import {
   Wrench,
 } from 'lucide-react';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import type {
   Contact,
@@ -446,6 +446,9 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
+  const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
+  const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
+  const avatarSeed = isOwnHumanMessage ? 'local-human-profile' : `${avatarKind}:${avatarName}`;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -454,15 +457,23 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
           {showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn(
-        'min-w-0 overflow-hidden text-[13px] shadow-sm',
-        isOwnHumanMessage
-          ? 'max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
-          : isPeerHumanMessage
-            ? 'max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
-            : 'w-full max-w-none rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
-        bubble,
-      )}>
+      <div className={cn('flex items-end gap-2', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+        <IdentityAvatar
+          kind={avatarKind}
+          seed={avatarSeed}
+          name={avatarName}
+          imageUrl={msg.senderProfileImageUrl}
+          className="mb-0.5 h-7 w-7 border border-white/10"
+        />
+        <div className={cn(
+          'min-w-0 overflow-hidden text-[13px] shadow-sm',
+          isOwnHumanMessage
+            ? 'max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
+            : isPeerHumanMessage
+              ? 'max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
+              : 'flex-1 rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
+          bubble,
+        )}>
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="flex items-end justify-between gap-2">
@@ -509,6 +520,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
             ) : null}
           </>
         )}
+        </div>
       </div>
     </div>
   );
@@ -643,6 +655,14 @@ export function BridgeChip({ bridge }: { bridge: string }) {
   return <Badge variant="outline" className="app-control-chip rounded-full">{bridge}</Badge>;
 }
 
+function contactAvatarKind(contact: Contact): IdentityAvatarKind {
+  return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
+}
+
+function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {
+  return /agent/i.test(request.title) ? 'agent' : 'human';
+}
+
 export function ContactRow({ contact, active, onSelect }: { contact: Contact; active: boolean; onSelect: () => void }) {
   return (
     <button
@@ -651,9 +671,13 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
         active ? 'app-list-item-active text-white' : 'app-list-item text-white'
       }`}
     >
-      <Avatar className="h-10 w-10 border border-white/10">
-        <AvatarFallback className={active ? 'bg-slate-100 text-slate-950' : 'bg-slate-800 text-slate-100'}>{contact.initials}</AvatarFallback>
-      </Avatar>
+      <IdentityAvatar
+        kind={contactAvatarKind(contact)}
+        seed={contact.bridgePeerNodeId ?? contact.id}
+        name={contact.name}
+        imageUrl={contact.profileImageUrl}
+        className="h-10 w-10 border border-white/10"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium">{contact.name}</span>
@@ -683,9 +707,13 @@ export function ContactRequestRow({
       )}
     >
       <div className="flex items-start gap-3">
-        <Avatar className="h-10 w-10 border border-white/10">
-          <AvatarFallback className={active ? 'bg-slate-100 text-slate-950' : 'bg-slate-800 text-slate-100'}>{request.initials}</AvatarFallback>
-        </Avatar>
+        <IdentityAvatar
+          kind={requestAvatarKind(request)}
+          seed={request.id}
+          name={request.title}
+          imageUrl={request.profileImageUrl}
+          className="h-10 w-10 border border-white/10"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="truncate text-sm font-medium">{request.title}</div>
