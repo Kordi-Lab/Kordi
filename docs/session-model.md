@@ -32,6 +32,12 @@ Kordi sessions are local-first. Each desktop profile owns a canonical session da
    - If Bob and Bob's default agent are in the same logical relationship, the session list shows one session.
    - Messages still preserve exact sender identity: Bob vs Bob's Kordi.
 
+7. **Stable session identity and default naming**
+   - Every canonical session has a stable `session.id`; UI, projects, bridge transport records, delegated exchanges, messages, context snapshots, and KV/cache rows must join/reference sessions by this ID, not by title or display name.
+   - Session titles are user-facing labels only and can be renamed without breaking references.
+   - When creating a new session without an explicit title, the default title is the first receiver's display name, e.g. opening a chat to Bob creates a session titled `Bob`; opening a chat to Bob's Kordi creates a session titled `Bob's Kordi`.
+   - For relationship sessions, the first receiver/person name is preferred over that person's default agent so Bob + Bob's Kordi appears as one session titled `Bob`.
+
 ## Database
 
 The first implementation lands an additive local SQLite database:
@@ -54,6 +60,8 @@ Tables:
 
 The existing local runtime session DB and bridge conversation DB remain temporarily as transport/source stores while canonical reads/writes are introduced in phases.
 
+All session-linked tables use `session_id` as the durable join key. Project joins, delegated exchanges, bridge/audit records, and cache/context rows should connect to the canonical DB by `session_id`; they must not depend on mutable titles.
+
 ## Context and KV cache
 
 Context/cache state is scoped by local profile, session, agent identity, model/provider, prompt hash, participant hash, and message/context hashes. Cache entries must not leak across users, profiles, bridge identities, agents, or sessions.
@@ -68,7 +76,7 @@ Selected delegation UI: **B · Join event**. Keep the original Kordi chat UI alm
 
 Planned components:
 
-- `SessionList`: left-side canonical session list. Shows only top-level canonical sessions and hides child delegated exchanges.
+- `SessionList`: left-side canonical session list. Shows only top-level canonical sessions and hides child delegated exchanges. It displays the session title, but opens/routes by canonical `session.id`.
 - `NewSessionButton`: Chat `+` entry point. Opens own-agent session directly or launches owned-agent picker when multiple owned agents exist.
 - `OwnedAgentPicker`: popover for choosing which owned agent starts a self-agent session.
 - `ContactMessageButton`: opens/resumes canonical sessions for people, owned agents, or external agents through the canonical resolver.
@@ -102,7 +110,7 @@ Migration order:
 
 1. Add `useCanonicalSessionViewModels()` behind a feature flag.
 2. Build canonical components without deleting legacy UI paths.
-3. Route Contact Message and Chat `+` into canonical sessions.
+3. Route Contact Message and Chat `+` into canonical sessions by `session.id`; default unnamed sessions to the first receiver's display name.
 4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`.
 5. Replace old chat/session rails with `SessionList`.
 6. Replace outreach thread cards with normal transcript turns plus optional inline/right-panel delegation trace details.

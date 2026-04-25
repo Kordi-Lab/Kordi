@@ -261,6 +261,73 @@ fn stable_session_id(request: &OpenCanonicalSessionRequest) -> String {
     format!("session:{}", hash_hex(&seed, 16))
 }
 
+fn identity_display_name(conn: &Connection, identity_id: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT display_name FROM identities WHERE id = ?1",
+        params![identity_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn receiver_identity_ids(request: &OpenCanonicalSessionRequest) -> Vec<String> {
+    let mut receiver_ids = Vec::new();
+    let mut push_receiver = |identity_id: Option<&String>| {
+        let Some(identity_id) = identity_id.map(String::as_str).map(str::trim) else {
+            return;
+        };
+        if identity_id.is_empty() || identity_id == request.created_by_identity_id.trim() {
+            return;
+        }
+        if !receiver_ids.iter().any(|existing| existing == identity_id) {
+            receiver_ids.push(identity_id.to_string());
+        }
+    };
+
+    push_receiver(request.primary_identity_id.as_ref());
+    push_receiver(request.relationship_identity_id.as_ref());
+    for participant_id in &request.participant_identity_ids {
+        push_receiver(Some(participant_id));
+    }
+
+    receiver_ids
+}
+
+fn default_session_title(
+    conn: &Connection,
+    request: &OpenCanonicalSessionRequest,
+) -> Result<String, String> {
+    if let Some(title) = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(title.to_string());
+    }
+    if let Some(project_name) = request
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(project_name.to_string());
+    }
+
+    for identity_id in receiver_identity_ids(request) {
+        if let Some(display_name) = identity_display_name(conn, &identity_id)?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(display_name);
+        }
+        return Ok(identity_id);
+    }
+
+    Ok("New session".to_string())
+}
+
 fn clean_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
@@ -706,23 +773,7 @@ fn open_or_create_session_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| stable_session_id(&request));
-    let title = request
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or(request
-            .project_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty()))
-        .or(request
-            .primary_identity_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty()))
-        .unwrap_or("New session")
-        .to_string();
+    let title = default_session_title(conn, &request)?;
     let status = validate_status(request.status, "active");
     let metadata = json_to_db(&request.metadata)?;
     let now = now_ms();
@@ -1455,6 +1506,71 @@ mod tests {
         let state = load_state_from_db(&conn).expect("load state");
         assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.participants.len(), 3);
+    }
+
+    #[test]
+    fn default_session_title_uses_first_receiver_display_name() {
+        let conn = test_conn();
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some("human:bob".to_string()),
+                kind: "human".to_string(),
+                display_name: "Bob".to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: None,
+                agent_id: None,
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert Bob");
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some("agent:bob-kordi".to_string()),
+                kind: "agent".to_string(),
+                display_name: "Bob's Kordi".to_string(),
+                owner_identity_id: Some("human:bob".to_string()),
+                source: Some("bridge".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: None,
+                agent_id: None,
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert Bob's Kordi");
+
+        let session = open_or_create_session_in_db(
+            &conn,
+            OpenCanonicalSessionRequest {
+                id: None,
+                kind: "relationship".to_string(),
+                title: None,
+                status: None,
+                created_by_identity_id: "human:local".to_string(),
+                primary_identity_id: Some("human:bob".to_string()),
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: Some("human:bob".to_string()),
+                participant_identity_ids: vec![
+                    "human:bob".to_string(),
+                    "agent:bob-kordi".to_string(),
+                ],
+                metadata: None,
+            },
+        )
+        .expect("open session");
+
+        assert_eq!(session.title, "Bob");
+        assert!(session.id.starts_with("session:"));
     }
 
     #[test]
