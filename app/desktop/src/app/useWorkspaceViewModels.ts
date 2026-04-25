@@ -134,6 +134,21 @@ function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): M
   for (const message of conversation.messages) {
     if (message.direction !== 'inbound' && message.direction !== 'inbound-response') continue;
     const isProcessingAgent = isAgent && message.deliveryState === 'processing';
+    const agentTurn = isAgent
+      ? {
+          id: `bridge-outreach-live-turn:${conversation.id}:${message.id}`,
+          sessionId: outreach.parentSessionId ?? conversation.canonicalSessionId,
+          prompt: outreach.requestText,
+          status: isProcessingAgent ? (message.text.trim() ? 'writing' : 'typing') : 'complete',
+          message: isProcessingAgent ? (message.text.trim() ? 'Replying…' : 'Typing…') : 'Complete',
+          assistantText: message.text,
+          thinkingText: '',
+          tools: [],
+          completed: !isProcessingAgent,
+          succeeded: !isProcessingAgent,
+          error: null,
+        }
+      : undefined;
     messages.push({
       role: isAgent ? 'external-agent' : 'person',
       sender: targetName,
@@ -141,23 +156,9 @@ function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): M
       isOwnMessage: false,
       showSenderMeta: true,
       senderAvatarSeed: avatarSeed,
-      text: message.text,
+      text: isAgent ? '' : message.text,
       time: message.timeLabel,
-      turn: isProcessingAgent
-        ? {
-            id: `bridge-outreach-live-turn:${conversation.id}:${message.id}`,
-            sessionId: outreach.parentSessionId ?? conversation.canonicalSessionId,
-            prompt: outreach.requestText,
-            status: message.text.trim() ? 'writing' : 'typing',
-            message: message.text.trim() ? 'Replying…' : 'Typing…',
-            assistantText: message.text,
-            thinkingText: '',
-            tools: [],
-            completed: false,
-            succeeded: false,
-            error: null,
-          }
-        : undefined,
+      turn: agentTurn,
     });
   }
 
