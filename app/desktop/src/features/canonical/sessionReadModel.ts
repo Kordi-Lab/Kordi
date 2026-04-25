@@ -4,6 +4,7 @@ import type {
   CanonicalSessionParticipant,
   CanonicalSessionState,
   Conversation,
+  ConversationBridgeTarget,
   ConversationParticipant,
   DesktopChatToolSnapshot,
   Message,
@@ -21,6 +22,7 @@ type CanonicalConversationLike = {
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
+  bridgeTarget?: ConversationBridgeTarget | null;
   updatedAtLabel?: string;
   name: string;
   subtitle: string;
@@ -285,6 +287,94 @@ function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessag
   return placeholderOnly || canonicalMessages.length >= existingMessages.length;
 }
 
+function sessionMetadata(session: CanonicalSessionState['sessions'][number]) {
+  return session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+    ? session.metadata as Record<string, unknown>
+    : {};
+}
+
+function syntheticBridgeTarget(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+): ConversationBridgeTarget | null {
+  const metadata = sessionMetadata(session);
+  const hostId = stringValue(metadata.bridgeHostId);
+  const nodeId = stringValue(metadata.peerNodeId);
+  const runtime = stringValue(metadata.peerRuntime);
+  if (!hostId || !nodeId) return null;
+
+  const matchingParticipant = participants.find((participant) => participant.bridgeNodeId === nodeId)
+    ?? participants.find((participant) => participant.agentId || participant.humanId)
+    ?? participants[0];
+
+  return {
+    hostId,
+    nodeId,
+    displayName: matchingParticipant?.name ?? stringValue(metadata.peerDisplayName) ?? null,
+    ownerName: matchingParticipant?.humanId ? matchingParticipant.name : null,
+    runtime: runtime ?? null,
+    humanId: matchingParticipant?.humanId ?? null,
+    agentId: matchingParticipant?.agentId ?? null,
+  };
+}
+
+function syntheticConversationType(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+): Conversation['type'] {
+  if (session.kind === 'self-agent') return 'owned-agent';
+  if (session.kind === 'direct-agent') return 'external-agent';
+  if (session.kind === 'direct-person' || session.kind === 'relationship') {
+    const primary = participants.find((participant) => participant.id === session.primaryIdentityId);
+    return primary?.kind === 'agent' ? 'external-agent' : 'person';
+  }
+  return 'owned-agent';
+}
+
+function syntheticConversation(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+  messages: Message[],
+  buildSubtitle: ConversationSubtitleBuilder,
+): Conversation {
+  const primary = participants.find((participant) => participant.id === session.primaryIdentityId) ?? participants[0];
+  const participantNames = participants.map((participant) => participant.name);
+  const participantAvatarSeeds = participants.reduce<Record<string, string>>((acc, participant) => {
+    if (participant.avatarKey) {
+      acc[participant.name] = participant.avatarKey;
+    }
+    return acc;
+  }, {});
+  const bridgeTarget = syntheticBridgeTarget(session, participants);
+  const updatedAtLabel = messages[messages.length - 1]?.time
+    ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+
+  return {
+    id: session.id,
+    canonicalSessionId: session.id,
+    name: session.title,
+    type: syntheticConversationType(session, participants),
+    subtitle: buildSubtitle(messages, session.title),
+    unread: 0,
+    bridges: bridgeTarget ? ['Bridge'] : ['Local'],
+    trust: bridgeTarget ? 'Bridge' : 'Owned',
+    directness: 'Direct chat',
+    participants: participantNames,
+    canonicalParticipants: participants,
+    messages,
+    updatedAtLabel,
+    avatarSeed: primary?.avatarKey ?? null,
+    profileImageUrl: primary?.profileImageUrl ?? null,
+    participantAvatarSeeds,
+    bridgeTarget,
+    canonicalStoragePath: undefined,
+    canonicalParticipantCount: participants.length,
+    canonicalMessageCount: messages.length,
+    canonicalDelegatedExchangeCount: 0,
+    canonicalContextSnapshotCount: 0,
+  };
+}
+
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -387,6 +477,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         messages,
         updatedAtLabel: latestTime,
+        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, canonicalParticipants),
         canonicalParticipantCount: (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
         canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
@@ -415,9 +506,18 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         })
         .flatMap((sessions) => {
           const representative = sessions.find((session) => sourceBySessionId.has(session.id));
-          if (!representative) return [];
-          const source = sourceBySessionId.get(representative.id);
-          return source ? [this.applyConversation(source, buildSubtitle)] : [];
+          if (representative) {
+            const source = sourceBySessionId.get(representative.id);
+            return source ? [this.applyConversation(source, buildSubtitle)] : [];
+          }
+
+          const fallbackSession = sessions[0];
+          const fallbackParticipants = this.participantDetails(fallbackSession.id);
+          const fallbackMessages = this.messages(fallbackSession.id);
+          return [this.applyConversation(
+            syntheticConversation(fallbackSession, fallbackParticipants, fallbackMessages, buildSubtitle),
+            buildSubtitle,
+          )];
         });
       const hydratedIds = new Set(hydrated.map((conversation) => conversation.id));
       const groupedSessionIds = new Set([...groups.values()].flatMap((sessions) => sessions.map((session) => session.id)));

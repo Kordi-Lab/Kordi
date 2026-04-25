@@ -114,6 +114,16 @@ export type ConversationParticipant = {
   presenceDetail?: string | null;
 };
 
+export type ConversationBridgeTarget = {
+  hostId: string;
+  nodeId: string;
+  displayName?: string | null;
+  ownerName?: string | null;
+  runtime?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+};
+
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
@@ -138,6 +148,7 @@ export type Conversation = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
+  bridgeTarget?: ConversationBridgeTarget | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];

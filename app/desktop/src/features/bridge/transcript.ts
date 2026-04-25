@@ -1,4 +1,4 @@
-import type { Conversation, DesktopBridgeConversation, DesktopBridgeHost, Message } from '@/kordi-app/types';
+import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeHost, Message } from '@/kordi-app/types';
 import {
   BRIDGE_MESSAGE_DIRECTION_INBOUND,
   BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
@@ -171,6 +171,16 @@ export function mapBridgeConversationToViewModel(
     });
   }
 
+  const bridgeTarget: ConversationBridgeTarget = {
+    hostId: conversation.hostId,
+    nodeId: conversation.peerNodeId,
+    displayName: conversation.peerDisplayName,
+    ownerName: conversation.peerOwnerName,
+    runtime: conversation.peerRuntime,
+    humanId: conversation.identity?.remoteHumanId,
+    agentId: conversation.identity?.remoteAgentId,
+  };
+
   return {
     id: conversation.id,
     canonicalSessionId: conversation.canonicalSessionId,
@@ -193,6 +203,7 @@ export function mapBridgeConversationToViewModel(
     identity: conversation.identity,
     avatarSeed: conversationAvatarSeed,
     participantAvatarSeeds,
+    bridgeTarget,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

@@ -4,6 +4,7 @@ import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   ComposerScope,
   ComposerSelectorType,
+  ConversationBridgeTarget,
   DesktopBridgeState,
   DesktopChatState,
   DesktopChatTurnSnapshot,
@@ -33,6 +34,7 @@ export type UseComposerControllerArgs = {
   activeConversationIsBridge: boolean;
   activeConvId: string;
   activeConvMessages: Message[];
+  activeConvBridgeTarget?: ConversationBridgeTarget | null;
   activeProjectId: string;
   activeProjectSessionId: string;
   desktopChatState: DesktopChatState | null;
@@ -67,4 +69,5 @@ export type UseComposerControllerArgs = {
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
+  setActiveConvId: Dispatch<SetStateAction<string>>;
 };

@@ -328,6 +328,7 @@ export function useWorkspaceViewModels({
         messages,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
+        bridgeTarget: undefined,
         outreachThreads,
         _updatedAtMs: undefined as number | undefined,
       };
@@ -371,6 +372,7 @@ export function useWorkspaceViewModels({
       trust: 'Owned',
       directness: 'Direct chat',
       participants: ['You', 'Kordi'],
+      bridgeTarget: undefined,
       messages: [{
         role: 'system' as const,
         text: isDesktopChatLoading

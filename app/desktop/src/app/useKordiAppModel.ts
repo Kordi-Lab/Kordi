@@ -536,6 +536,7 @@ export function useKordiAppModel() {
     activeConversationIsBridge,
     activeConvId: activeConv.id,
     activeConvMessages: activeConv.messages,
+    activeConvBridgeTarget: activeConv.bridgeTarget,
     activeProjectId,
     activeProjectSessionId,
     desktopChatState,
@@ -570,6 +571,7 @@ export function useKordiAppModel() {
     setDesktopBridgeState,
     watchDesktopLiveTurn,
     shouldAutoFollowChatRef,
+    setActiveConvId,
   });
 
   useEffect(() => {
