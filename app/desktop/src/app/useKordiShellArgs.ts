@@ -193,6 +193,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleSendChatMessage: args.handleSendChatMessage,
       activeBridgeConversation: args.activeBridgeConversation,
       activeBridgeAwaitingReply: args.activeBridgeAwaitingReply,
+      activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       isBridgePolling: args.isBridgePolling,
     },
@@ -228,6 +229,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       isBridgePolling: args.isBridgePolling,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       activeSessionProject: args.activeSessionProject,
+      activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
     },
     overlay: {
       showAuthGate: args.showAuthGate,

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
-import type { ComposerScope, DesktopChatState } from '@/kordi-app/types';
+import type { ComposerScope, Conversation, DesktopChatState } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 
 type UseKordiShellViewModelArgs = {
@@ -11,6 +11,7 @@ type UseKordiShellViewModelArgs = {
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   desktopChatState: DesktopChatState | null;
+  activeConv: Conversation;
   activeConversationIsBridge: boolean;
   chatModelOptions: ComposerModelOption[];
   selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => Promise<void>;
@@ -27,6 +28,7 @@ export function useKordiShellViewModel({
   chatTranscriptScrollRef,
   shouldAutoFollowChatRef,
   desktopChatState,
+  activeConv,
   activeConversationIsBridge,
   chatModelOptions,
   selectComposerValue,
@@ -90,8 +92,8 @@ export function useKordiShellViewModel({
     onProjectTranscriptScroll,
     onChatTranscriptScroll,
     activeRuntimeSessionId: desktopChatState?.activeSessionId,
-    activeRuntimeContextStatus: desktopChatState?.activeSession?.contextWindowStatus,
-    activeRuntimeCacheText: desktopChatState?.activeSession?.cacheMonitorText,
+    activeRuntimeContextStatus: desktopChatState?.activeSession?.contextWindowStatus ?? (!activeConversationIsBridge ? activeConv.contextWindowStatus : undefined),
+    activeRuntimeCacheText: desktopChatState?.activeSession?.cacheMonitorText ?? (!activeConversationIsBridge ? activeConv.cacheMonitorText : undefined),
     activeSessionProject: !activeConversationIsBridge ? (desktopChatState?.activeSession?.project ?? null) : null,
     chatModelOptionsForShell: chatModelOptions.length > 0 ? chatModelOptions : undefined,
     wrappedSelectComposerValue,

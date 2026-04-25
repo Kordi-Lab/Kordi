@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project } from '@/kordi-app/types';
+import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import {
   cancelDesktopChatTurn,
   runDesktopChatSkillCommand,
@@ -50,6 +50,8 @@ type UseComposerMessageActionsArgs = Pick<
   | 'setDesktopChatError'
   | 'setIsDesktopChatSending'
   | 'setPendingUserChatMessage'
+  | 'queuedDesktopMessagesBySession'
+  | 'setQueuedDesktopMessagesBySession'
   | 'setDesktopBridgeState'
   | 'watchDesktopLiveTurn'
   | 'shouldAutoFollowChatRef'
@@ -150,6 +152,30 @@ function appendOptimisticBridgeMessage(
   };
 }
 
+function removeQueuedDesktopMessage(
+  current: Record<string, QueuedDesktopChatMessage[]>,
+  sessionId: string,
+  messageId: string,
+) {
+  const queue = current[sessionId] ?? [];
+  const nextQueue = queue.filter((message) => message.id !== messageId);
+  if (nextQueue.length === queue.length) return current;
+  if (nextQueue.length === 0) {
+    const { [sessionId]: _removed, ...rest } = current;
+    return rest;
+  }
+  return { ...current, [sessionId]: nextQueue };
+}
+
+function restoreQueuedDesktopMessage(
+  current: Record<string, QueuedDesktopChatMessage[]>,
+  message: QueuedDesktopChatMessage,
+) {
+  const queue = current[message.sessionId] ?? [];
+  if (queue.some((queued) => queued.id === message.id)) return current;
+  return { ...current, [message.sessionId]: [message, ...queue] };
+}
+
 function markOptimisticBridgeMessageFailed(
   current: DesktopBridgeState | null,
   conversationId: string,
@@ -204,6 +230,8 @@ export function useComposerMessageActions({
   setDesktopChatError,
   setIsDesktopChatSending,
   setPendingUserChatMessage,
+  queuedDesktopMessagesBySession,
+  setQueuedDesktopMessagesBySession,
   setDesktopBridgeState,
   watchDesktopLiveTurn,
   shouldAutoFollowChatRef,
@@ -212,6 +240,84 @@ export function useComposerMessageActions({
   appendProjectDraft,
   appendChatDraft,
 }: UseComposerMessageActionsArgs) {
+  const isFlushingQueuedDesktopMessageRef = useRef(false);
+
+  const queueDesktopMessage = useCallback((
+    scope: 'chat' | 'project',
+    sessionId: string,
+    text: string,
+    attachments: AttachmentItem[],
+  ) => {
+    const queued = {
+      id: `queued-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      sessionId,
+      scope,
+      text,
+      time: formatDesktopEventTime(),
+      attachments: attachments.map((attachment) => ({ ...attachment })),
+    };
+    setQueuedDesktopMessagesBySession((current) => ({
+      ...current,
+      [sessionId]: [...(current[sessionId] ?? []), queued],
+    }));
+    setComposerDrafts((current) => ({ ...current, [scope]: '' }));
+    setChatComposerAttachments([]);
+    resizeComposerTextarea(
+      scope === 'project'
+        ? 'textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]'
+        : 'textarea[placeholder="Message a person, an agent, or delegate a task…"]',
+    );
+    shouldAutoFollowChatRef.current = true;
+  }, [setChatComposerAttachments, setComposerDrafts, setQueuedDesktopMessagesBySession, shouldAutoFollowChatRef]);
+
+  const sendQueuedDesktopMessage = useCallback(async (queued: QueuedDesktopChatMessage) => {
+    const sentAt = formatDesktopEventTime();
+    const attachmentPaths = queued.attachments.map((item) => item.path);
+    const previewText = attachmentSummaryText(queued.text);
+    setDesktopChatState((current) => (
+      current
+        ? appendOptimisticOutboundMessage(current, queued.sessionId, previewText, queued.text, queued.attachments, sentAt)
+        : current
+    ));
+    const turn = await startDesktopChatMessage(queued.sessionId, queued.text, attachmentPaths);
+    void watchDesktopLiveTurn(turn);
+  }, [attachmentSummaryText, setDesktopChatState, watchDesktopLiveTurn]);
+
+  useEffect(() => {
+    if (!isNativeShell || activeConversationIsBridge) return;
+    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
+    if (isFlushingQueuedDesktopMessageRef.current) return;
+
+    const targetSessionId = activeConvId && !activeConvId.startsWith('bridge:')
+      ? activeConvId
+      : desktopChatState?.activeSessionId;
+    if (!targetSessionId) return;
+
+    const nextQueued = queuedDesktopMessagesBySession[targetSessionId]?.[0];
+    if (!nextQueued) return;
+
+    isFlushingQueuedDesktopMessageRef.current = true;
+    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessage(current, targetSessionId, nextQueued.id));
+    sendQueuedDesktopMessage(nextQueued)
+      .catch((error) => {
+        setQueuedDesktopMessagesBySession((current) => restoreQueuedDesktopMessage(current, nextQueued));
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued message');
+      })
+      .finally(() => {
+        isFlushingQueuedDesktopMessageRef.current = false;
+      });
+  }, [
+    activeConversationIsBridge,
+    activeConvId,
+    desktopChatState?.activeSessionId,
+    desktopLiveTurn,
+    isNativeShell,
+    queuedDesktopMessagesBySession,
+    sendQueuedDesktopMessage,
+    setDesktopChatError,
+    setQueuedDesktopMessagesBySession,
+  ]);
+
   const appendDesktopSystemMessage = useCallback((text: string) => {
     const timeLabel = formatDesktopEventTime();
     setDesktopChatState((current) => {
@@ -370,7 +476,10 @@ export function useComposerMessageActions({
       : desktopChatState?.activeSessionId;
 
     if (!targetSessionId) return;
-    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
+    if (desktopLiveTurn && !desktopLiveTurn.completed) {
+      queueDesktopMessage('chat', targetSessionId, text, chatComposerAttachments);
+      return;
+    }
 
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current) => ({ ...current, chat: '' }));
@@ -422,6 +531,7 @@ export function useComposerMessageActions({
     setIsDesktopChatSending,
     setOpenComposerSelector,
     setPendingUserChatMessage,
+    queueDesktopMessage,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
   ]);
@@ -466,7 +576,10 @@ export function useComposerMessageActions({
       return;
     }
 
-    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
+    if (desktopLiveTurn && !desktopLiveTurn.completed) {
+      queueDesktopMessage('project', activeProjectSessionId, text, chatComposerAttachments);
+      return;
+    }
 
     try {
       shouldAutoFollowChatRef.current = true;
@@ -500,6 +613,7 @@ export function useComposerMessageActions({
     setDesktopChatState,
     setProjectWorkspaces,
     shouldAutoFollowChatRef,
+    queueDesktopMessage,
     watchDesktopLiveTurn,
   ]);
 

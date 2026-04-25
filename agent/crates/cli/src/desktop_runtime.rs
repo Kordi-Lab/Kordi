@@ -116,6 +116,7 @@ pub struct DesktopChatContextWindowStatus {
     pub used_tokens: Option<u64>,
     pub used_percent: Option<f64>,
     pub auto_compaction: bool,
+    pub compaction_threshold_percent: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1383,6 +1384,8 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
             used_tokens: context_window_status.used_tokens,
             used_percent: context_window_status.used_percent,
             auto_compaction: context_window_status.auto_compaction,
+            compaction_threshold_percent:
+                kordi_session::compaction::AUTO_COMPACTION_THRESHOLD_PERCENT,
         },
         project: load_project_info(&setup.tool_ctx.cwd),
         messages,
@@ -1814,7 +1817,10 @@ fn load_session_messages(
                         role: "system".to_string(),
                         sender: None,
                         text: message.summary,
-                        detail: Some(format!("Compaction • {} tokens", message.tokens_before)),
+                        detail: Some(format!(
+                            "Conversation compressed • {} tokens before",
+                            message.tokens_before
+                        )),
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
                         attachments: Vec::new(),
@@ -1905,7 +1911,10 @@ fn load_session_messages(
                     role: "system".to_string(),
                     sender: None,
                     text: summary,
-                    detail: Some(format!("Compaction • {} tokens", tokens_before)),
+                    detail: Some(format!(
+                        "Conversation compressed • {} tokens before",
+                        tokens_before
+                    )),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
                     attachments: Vec::new(),

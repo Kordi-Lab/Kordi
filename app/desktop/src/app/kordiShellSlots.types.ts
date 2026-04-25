@@ -22,6 +22,7 @@ import type {
   DesktopChatState,
   DesktopChatTurnSnapshot,
   DetailTab,
+  QueuedDesktopChatMessage,
   EditFilePreview,
   Message,
   Project,
@@ -252,6 +253,7 @@ export type AssembleKordiShellSlotsArgs = {
   isBridgePolling: boolean;
   lastBridgePollAtLabel: string | null;
   activeSessionProject: DesktopChatProjectInfo | null;
+  activeQueuedDesktopMessages: QueuedDesktopChatMessage[];
   showAuthGate: boolean;
   dismissAuthGate: () => void;
   inlineAuthDialog: {
@@ -453,6 +455,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'
   | 'handleSendChatMessage'
+  | 'activeQueuedDesktopMessages'
   | 'activeBridgeConversation'
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'
@@ -491,6 +494,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isBridgePolling'
   | 'lastBridgePollAtLabel'
   | 'activeSessionProject'
+  | 'activeQueuedDesktopMessages'
 >;
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,

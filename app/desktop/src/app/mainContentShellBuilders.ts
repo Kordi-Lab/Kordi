@@ -133,6 +133,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       args.setIsDetailPanelCollapsed(false);
     },
     desktopLiveTurn: args.desktopLiveTurn,
+    queuedDesktopMessages: args.activeQueuedDesktopMessages,
     filteredChatSlashCommands: args.filteredChatSlashCommands,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,

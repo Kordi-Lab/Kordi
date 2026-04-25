@@ -99,6 +99,10 @@ export type Conversation = {
   directness: string;
   participants: string[];
   messages: Message[];
+  contextWindowStatus?: DesktopChatContextWindowStatus;
+  cacheMonitorText?: string | null;
+  queuedMessages?: QueuedDesktopChatMessage[];
+  previewLiveTurn?: DesktopChatTurnSnapshot | null;
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
@@ -311,6 +315,7 @@ export type DesktopChatContextWindowStatus = {
   usedTokens?: number | null;
   usedPercent?: number | null;
   autoCompaction: boolean;
+  compactionThresholdPercent?: number;
 };
 
 export type DesktopChatProjectSource = {
@@ -497,6 +502,15 @@ export type DesktopChatToolSnapshot = {
   resultText?: string | null;
   detail?: string | null;
   isError: boolean;
+};
+
+export type QueuedDesktopChatMessage = {
+  id: string;
+  sessionId: string;
+  scope: 'chat' | 'project';
+  text: string;
+  time: string;
+  attachments: (MessageAttachment & { id: string; path: string })[];
 };
 
 export type DesktopChatTurnSnapshot = {

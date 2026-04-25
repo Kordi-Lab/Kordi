@@ -11,6 +11,7 @@ import type {
   Message,
   MessageAttachment,
   NavId,
+  QueuedDesktopChatMessage,
   Project,
 } from '@/kordi-app/types';
 
@@ -63,6 +64,8 @@ export type UseComposerControllerArgs = {
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setIsDesktopChatSending: Dispatch<SetStateAction<boolean>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<PendingUserMessage>>;
+  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
+  setQueuedDesktopMessagesBySession: Dispatch<SetStateAction<Record<string, QueuedDesktopChatMessage[]>>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;

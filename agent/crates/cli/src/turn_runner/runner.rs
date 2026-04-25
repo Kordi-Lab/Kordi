@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::Utc;
 use kordi_core::agent_loop::is_context_overflow;
 use kordi_core::agent_session::messages_to_provider;
 use kordi_core::types::AgentMessage;
@@ -13,7 +14,6 @@ use kordi_provider::{
     RetryCallback, StreamEvent,
 };
 use kordi_session::context;
-use chrono::Utc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -148,6 +148,11 @@ pub(crate) async fn run_turn_inner(
     }
 
     loop {
+        if maybe_execute_auto_compaction(config, event_tx, false).await? {
+            let mut tracker = config.request_metrics_tracker.lock().await;
+            tracker.increment_context_epoch();
+        }
+
         let _ = event_tx.send(TurnEvent::TurnStart { turn_index });
         let _ = send_extension_event_safe(
             &config.extensions,
@@ -241,14 +246,6 @@ pub(crate) async fn run_turn_inner(
         {
             let mut tracker = config.request_metrics_tracker.lock().await;
             tracker.commit(&prepared_metrics);
-        }
-
-        if collected.tool_calls.is_empty() {
-            let compacted = maybe_execute_auto_compaction(config, event_tx, false).await?;
-            if compacted {
-                let mut tracker = config.request_metrics_tracker.lock().await;
-                tracker.increment_context_epoch();
-            }
         }
 
         if config.cancel.is_cancelled() && !collected.tool_calls.is_empty() {

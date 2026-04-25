@@ -386,10 +386,18 @@ export function ComposerRuntimeStatus({
   const totalTokens = contextStatus?.contextWindow ?? 0;
   const usedPercentLabel = contextPercent === null ? '—' : `${Math.round(contextPercent)}%`;
   const leftPercentLabel = contextPercent === null ? '—' : `${Math.max(0, Math.round(100 - contextPercent))}%`;
+  const thresholdPercent = contextStatus?.compactionThresholdPercent ?? 90;
+  const isCompressionReady = contextPercent !== null && contextPercent >= thresholdPercent;
+  const isNearCompression = contextPercent !== null && contextPercent >= Math.max(0, thresholdPercent - 10);
+  const ringColor = isCompressionReady
+    ? 'color-mix(in oklab, #f97316 88%, var(--utility-foreground))'
+    : isNearCompression
+      ? 'color-mix(in oklab, #facc15 82%, var(--utility-foreground))'
+      : 'color-mix(in oklab, var(--utility-muted-text) 92%, transparent)';
   const ringStyle = contextPercent === null
     ? { background: 'color-mix(in oklab, var(--utility-muted-text) 20%, transparent)' }
     : {
-        background: `conic-gradient(color-mix(in oklab, var(--utility-muted-text) 92%, transparent) ${contextPercent * 3.6}deg, color-mix(in oklab, var(--utility-muted-text) 20%, transparent) 0deg)`,
+        background: `conic-gradient(${ringColor} ${contextPercent * 3.6}deg, color-mix(in oklab, var(--utility-muted-text) 20%, transparent) 0deg)`,
       };
 
   if (!contextStatus) {
@@ -416,9 +424,19 @@ export function ComposerRuntimeStatus({
             {usedTokens === null ? '—' : formatCompactTokenCount(usedTokens)} / {formatCompactTokenCount(totalTokens)} tokens used
           </div>
           {contextStatus.autoCompaction ? (
-            <div className="mt-3 space-y-0.5 text-[11px] text-[color:var(--utility-foreground)]">
-              <div>Codex automatically</div>
-              <div>compacts its context</div>
+            <div className="mt-3 space-y-1 text-[11px] text-[color:var(--utility-foreground)]">
+              <div>Auto-compresses at {thresholdPercent}% context usage.</div>
+              {isCompressionReady ? (
+                <div className="rounded-md border border-orange-400/35 bg-orange-400/10 px-2 py-1 text-orange-200">
+                  The next request will compress this conversation first.
+                </div>
+              ) : isNearCompression ? (
+                <div className="rounded-md border border-yellow-400/30 bg-yellow-400/10 px-2 py-1 text-yellow-100">
+                  Near the compression threshold.
+                </div>
+              ) : (
+                <div className="text-[color:var(--utility-muted-text)]">Plenty of context remains.</div>
+              )}
             </div>
           ) : (
             <div className="mt-3 text-[11px] text-[color:var(--utility-foreground)]">Automatic compaction is off</div>

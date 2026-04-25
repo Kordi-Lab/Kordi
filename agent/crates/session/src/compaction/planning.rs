@@ -4,6 +4,9 @@ use kordi_core::types::{
     AgentMessage, AssistantContent, CompactionSettings, ContentBlock, SessionEntry, StopReason,
 };
 
+pub const AUTO_COMPACTION_THRESHOLD_PERCENT: u64 = 90;
+pub const FALLBACK_CONTEXT_WINDOW_TOKENS: u64 = 128_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContextUsageEstimate {
     pub tokens: u64,
@@ -18,7 +21,19 @@ pub fn should_compact(
     context_window: u64,
     settings: &CompactionSettings,
 ) -> bool {
-    settings.enabled && context_tokens > context_window.saturating_sub(settings.reserve_tokens)
+    if !settings.enabled {
+        return false;
+    }
+
+    let context_window = if context_window == 0 {
+        FALLBACK_CONTEXT_WINDOW_TOKENS
+    } else {
+        context_window
+    };
+    let threshold_tokens =
+        (context_window as u128 * AUTO_COMPACTION_THRESHOLD_PERCENT as u128).div_ceil(100) as u64;
+    context_tokens >= threshold_tokens
+        || context_tokens > context_window.saturating_sub(settings.reserve_tokens)
 }
 
 /// Calculate total context tokens from usage.
