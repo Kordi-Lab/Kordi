@@ -27,14 +27,15 @@ const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
 
 export function getLocalProfileAvatarSeed() {
   if (typeof window === 'undefined') return 'local-human-profile';
+  const instanceScope = window.location.origin || 'desktop';
   try {
     const existing = window.localStorage.getItem(LOCAL_PROFILE_AVATAR_SEED_KEY)?.trim();
-    if (existing) return `local-human-profile:${existing}`;
+    if (existing) return `local-human-profile:${instanceScope}:${existing}`;
     const next = window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     window.localStorage.setItem(LOCAL_PROFILE_AVATAR_SEED_KEY, next);
-    return `local-human-profile:${next}`;
+    return `local-human-profile:${instanceScope}:${next}`;
   } catch {
-    return `local-human-profile:${window.location.origin}`;
+    return `local-human-profile:${instanceScope}`;
   }
 }
 
