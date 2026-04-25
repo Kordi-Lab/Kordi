@@ -529,6 +529,9 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
 
+  if (normalized === 'reach_out') {
+    return { icon: ArrowRightLeft, label: '@ participant', argumentsLabel: 'Request', resultLabel: 'Participant response' };
+  }
   if (normalized.includes('web_fetch')) {
     return { icon: Globe };
   }
@@ -608,7 +611,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
           <TimelineSection
             key={tool.id}
             icon={toolDisplay.icon}
-            title={tool.name}
+            title={toolDisplay.label ?? tool.name}
             meta={tool.detail ?? tool.status}
             expanded={expanded}
             onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !expanded }))}
@@ -628,9 +631,9 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             }
           >
             <div>
-              {tool.arguments ? <ToolTranscriptBlock label="Arguments" icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
+              {tool.arguments ? <ToolTranscriptBlock label={toolDisplay.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
               {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
-              {tool.resultText ? <ToolTranscriptBlock label="Result" icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
+              {tool.resultText ? <ToolTranscriptBlock label={toolDisplay.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
             </div>
           </TimelineSection>
         );
