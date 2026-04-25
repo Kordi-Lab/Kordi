@@ -375,8 +375,27 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
 
         setPendingUserChatMessage(null);
-        mergeCompletedDesktopTurn(nextTurn);
-        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && visibleLocalSessionIdRef.current === nextTurn.sessionId) {
+
+        const visibleSessionId = visibleLocalSessionIdRef.current;
+        const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId;
+
+        setDesktopLiveTurnsBySession((current) => {
+          if (!current[nextTurn.sessionId]) return current;
+          const { [nextTurn.sessionId]: _removed, ...rest } = current;
+          return rest;
+        });
+
+        if (isVisibleCompletedSession) {
+          try {
+            await refreshDesktopChat(nextTurn.sessionId);
+          } catch {
+            mergeCompletedDesktopTurn(nextTurn);
+          }
+        } else {
+          mergeCompletedDesktopTurn(nextTurn);
+        }
+
+        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && isVisibleCompletedSession) {
           setDesktopChatError(nextTurn.error ?? nextTurn.message);
         }
       } catch (error) {
@@ -392,7 +411,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
       }
     },
-    [mergeCompletedDesktopTurn],
+    [mergeCompletedDesktopTurn, refreshDesktopChat],
   );
 
   return {
