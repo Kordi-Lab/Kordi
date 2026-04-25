@@ -2098,7 +2098,7 @@ fn sync_bridge_outreach_into_parent_session(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "recent-window".to_string());
-    let join_text = if peer_is_agent {
+    let base_join_text = if peer_is_agent {
         format!(
             "{} joined through {}",
             outreach.target_display_name, initiator_name
@@ -2108,6 +2108,12 @@ fn sync_bridge_outreach_into_parent_session(
             "{} was involved by {}",
             outreach.target_display_name, initiator_name
         )
+    };
+    let request_preview = inline_event_preview(&outreach.request_text);
+    let join_text = if request_preview.is_empty() {
+        base_join_text
+    } else {
+        format!("{base_join_text} — “{request_preview}”")
     };
     let join_message = append_message_in_db(
         conn,
@@ -2204,6 +2210,14 @@ fn sync_bridge_outreach_into_parent_session(
     )?;
 
     Ok(true)
+}
+
+fn inline_event_preview(text: &str) -> String {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= 140 {
+        return normalized;
+    }
+    normalized.chars().take(137).collect::<String>() + "…"
 }
 
 fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {

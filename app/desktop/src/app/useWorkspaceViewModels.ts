@@ -116,6 +116,12 @@ function buildMessagePreview(message: Message) {
   return `${attachments.length} attachments`;
 }
 
+function inlineRequestPreview(text: string) {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  return normalized.length > 140 ? `${normalized.slice(0, 137)}…` : normalized;
+}
+
 function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): Message[] {
   const outreach = conversation.outreach;
   if (!outreach) return [];
@@ -125,9 +131,11 @@ function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): M
   const avatarSeed = isAgent
     ? outreach.targetAgentId || outreach.targetNodeId
     : outreach.targetHumanId || outreach.targetOwnerName || outreach.targetNodeId;
+  const requestPreview = inlineRequestPreview(outreach.requestText);
+  const joinText = isAgent ? `${targetName} joined through @` : `${targetName} was involved through @`;
   const messages: Message[] = [{
     role: 'system',
-    text: isAgent ? `${targetName} joined through @` : `${targetName} was involved through @`,
+    text: requestPreview ? `${joinText} — “${requestPreview}”` : joinText,
     time: conversation.updatedAtLabel,
   }];
 
