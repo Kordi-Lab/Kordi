@@ -2111,11 +2111,6 @@ fn sync_bridge_outreach_into_parent_session(
         response_message_id = Some(canonical_message.id);
     }
 
-    let first_request_id = conversation
-        .messages
-        .iter()
-        .find(|message| message.direction == "outbound")
-        .map(|message| message.id.clone());
     create_delegated_exchange_in_db(
         conn,
         CreateCanonicalDelegatedExchangeRequest {
@@ -2129,7 +2124,7 @@ fn sync_bridge_outreach_into_parent_session(
             transport: Some("bridge".to_string()),
             bridge_host_id: Some(conversation.host_id.clone()),
             bridge_conversation_id: Some(conversation.id.clone()),
-            bridge_request_id: first_request_id,
+            bridge_request_id: None,
             context_policy: Some("recent-window".to_string()),
             status: Some(outreach_status_to_exchange_status(&outreach.status)),
             error: outreach.error.clone(),
