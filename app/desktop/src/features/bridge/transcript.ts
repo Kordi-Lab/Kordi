@@ -42,6 +42,11 @@ export function mapBridgeConversationToViewModel(
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
 
+  const outreachPrefix = conversation.outreach
+    ? conversation.outreach.targetKind === 'bridge-person'
+      ? 'Person outreach'
+      : 'Agent outreach'
+    : null;
   const messages: Message[] = conversation.messages.map((message) => {
     const isOutboundHuman = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND;
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
@@ -143,17 +148,21 @@ export function mapBridgeConversationToViewModel(
     id: conversation.id,
     name: conversation.title,
     type: isAgent ? 'external-agent' : 'person',
-    subtitle: conversation.projectName
-      ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
-      : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
+    subtitle: outreachPrefix
+      ? `${outreachPrefix}${conversation.projectName ? ` • ${conversation.projectName}` : ''} • ${conversation.subtitle || conversation.outreach?.requestText || 'Waiting for reply'}`
+      : conversation.projectName
+        ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
+        : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
     unread: conversation.unreadCount,
     bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Bridge',
-    directness: isPersonChat ? 'Direct person chat' : 'Agent thread',
+    directness: outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
     participants: isAgent
       ? ['You', remoteHumanLabel, remoteAgentLabel]
       : ['You', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
+    outreach: conversation.outreach,
+    identity: conversation.identity,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

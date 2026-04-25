@@ -21,8 +21,9 @@ use super::{
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms, parse_mailbox_payload,
     relay_plaintext_message, save_conversation_store, send_realtime_payload,
     update_message_delivery_state_in_storage, upsert_bridge_conversation,
-    DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
+    DesktopBridgeCreateOutreachRequest, DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot,
+    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -644,6 +645,116 @@ pub(super) async fn desktop_bridge_open_conversation_impl(
         store,
         current_local_server_status(manager).await,
     ))
+}
+
+pub(super) async fn desktop_bridge_create_outreach_impl(
+    manager: &DesktopBridgeManager,
+    request: DesktopBridgeCreateOutreachRequest,
+) -> Result<DesktopBridgeState, String> {
+    let message = request.request_text.trim();
+    if message.is_empty() {
+        return Err("Outreach request cannot be empty".to_string());
+    }
+
+    let target_kind = request.target_kind.trim().to_ascii_lowercase();
+    if target_kind != "bridge-agent" && target_kind != "bridge-person" {
+        return Err("Outreach target kind must be bridge-agent or bridge-person".to_string());
+    }
+
+    let current_state = build_current_bridge_state(manager).await;
+    let host = current_state
+        .hosts
+        .iter()
+        .find(|host| host.id == request.host_id)
+        .cloned()
+        .ok_or_else(|| "Bridge host not found".to_string())?;
+    let peer = host
+        .visible_peers
+        .iter()
+        .find(|peer| peer.node_id == request.target_node_id)
+        .cloned()
+        .ok_or_else(|| "Bridge outreach target is not visible on this host".to_string())?;
+
+    let peer_runtime = if target_kind == "bridge-person" {
+        "person".to_string()
+    } else {
+        peer.runtime.clone()
+    };
+    if target_kind == "bridge-agent" && !is_agent_like_runtime(&peer_runtime) {
+        return Err("Selected outreach target is not a bridge agent".to_string());
+    }
+
+    let now = now_ms();
+    let mut store = load_conversation_store();
+    let conversation = upsert_bridge_conversation(
+        &mut store,
+        &request.host_id,
+        &request.target_node_id,
+        peer.display_name.clone(),
+        peer.owner_name.clone(),
+        peer_runtime.clone(),
+        request.project_id.clone(),
+        request.project_name.clone(),
+    );
+    let active_agent = host
+        .active_agent_id
+        .as_deref()
+        .and_then(|active_id| host.agents.iter().find(|agent| agent.id == active_id))
+        .or_else(|| host.agents.iter().find(|agent| agent.is_default))
+        .or_else(|| host.agents.first());
+    let target_display_name = peer
+        .display_name
+        .clone()
+        .or_else(|| peer.owner_name.clone())
+        .unwrap_or_else(|| peer.node_id.clone());
+
+    conversation.outreach = Some(DesktopBridgeOutreachMetadata {
+        target_kind: target_kind.clone(),
+        parent_session_id: request.parent_session_id.clone(),
+        parent_turn_id: request.parent_turn_id.clone(),
+        parent_message_id: request.parent_message_id.clone(),
+        bridge_host_id: request.host_id.clone(),
+        bridge_conversation_id: Some(conversation.id.clone()),
+        target_node_id: request.target_node_id.clone(),
+        target_human_id: peer.human_id.clone(),
+        target_agent_id: (target_kind == "bridge-agent")
+            .then(|| peer.agent_id.clone())
+            .flatten(),
+        target_display_name: target_display_name.clone(),
+        target_owner_name: peer.owner_name.clone(),
+        target_runtime: Some(peer_runtime.clone()),
+        request_text: message.to_string(),
+        context_text: request.context_text.clone(),
+        project_id: request.project_id.clone(),
+        project_name: request.project_name.clone(),
+        status: "awaitingReply".to_string(),
+        created_at_ms: now,
+        updated_at_ms: now,
+        completed_at_ms: None,
+        error: None,
+    });
+    conversation.identity = Some(DesktopBridgeIdentitySnapshot {
+        bridge_host_id: request.host_id.clone(),
+        local_human_id: host.human_id.clone(),
+        local_human_name: host.owner_name.clone(),
+        local_agent_id: active_agent.map(|agent| agent.id.clone()),
+        local_agent_name: active_agent.map(|agent| agent.label.clone()),
+        local_agent_node_id: host.node_id.clone(),
+        remote_human_id: peer.human_id.clone(),
+        remote_human_name: peer.owner_name.clone(),
+        remote_human_node_id: (target_kind == "bridge-person").then(|| peer.node_id.clone()),
+        remote_agent_id: (target_kind == "bridge-agent")
+            .then(|| peer.agent_id.clone())
+            .flatten(),
+        remote_agent_name: (target_kind == "bridge-agent").then_some(target_display_name),
+        remote_agent_node_id: (target_kind == "bridge-agent").then(|| peer.node_id.clone()),
+        remote_agent_runtime: (target_kind == "bridge-agent").then_some(peer_runtime),
+    });
+    conversation.updated_at_ms = now;
+    let conversation_id = conversation.id.clone();
+    save_conversation_store(&store)?;
+
+    desktop_bridge_send_message_impl(manager, conversation_id, message.to_string()).await
 }
 
 pub(super) async fn desktop_bridge_mark_conversation_read_impl(

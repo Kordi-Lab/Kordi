@@ -36,6 +36,7 @@ export type UseComposerControllerArgs = {
   activeProjectId: string;
   activeProjectSessionId: string;
   desktopChatState: DesktopChatState | null;
+  desktopBridgeState: DesktopBridgeState | null;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   composerSelections: ComposerSelectionState;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;

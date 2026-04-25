@@ -589,7 +589,7 @@ pub(super) fn save_bridge_store(store: &DesktopBridgeStore) -> Result<(), String
     write_owner_only_json_file(&path, store)
 }
 
-const BRIDGE_CONVERSATION_SCHEMA_VERSION: i64 = 1;
+const BRIDGE_CONVERSATION_SCHEMA_VERSION: i64 = 2;
 const BRIDGE_CONVERSATION_JSON_MIGRATION_KEY: &str = "legacy_json_migrated";
 
 fn sqlite_error(err: rusqlite::Error) -> String {
@@ -613,11 +613,29 @@ fn open_conversation_db() -> Result<Connection, String> {
     Ok(conn)
 }
 
+fn ensure_conversation_column(conn: &Connection, column: &str, definition: &str) -> Result<(), String> {
+    let exists = conn
+        .prepare("PRAGMA table_info(bridge_conversations)")
+        .map_err(sqlite_error)?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sqlite_error)?
+        .filter_map(Result::ok)
+        .any(|name| name == column);
+
+    if !exists {
+        conn.execute(&format!("ALTER TABLE bridge_conversations ADD COLUMN {definition}"), [])
+            .map_err(sqlite_error)?;
+    }
+    Ok(())
+}
+
 fn init_conversation_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS bridge_schema_meta (\n            key TEXT PRIMARY KEY,\n            value TEXT NOT NULL\n        );\n        CREATE TABLE IF NOT EXISTS bridge_conversations (\n            id TEXT PRIMARY KEY,\n            host_id TEXT NOT NULL,\n            peer_node_id TEXT NOT NULL,\n            peer_display_name TEXT,\n            peer_owner_name TEXT,\n            peer_runtime TEXT NOT NULL,\n            project_id TEXT,\n            project_name TEXT,\n            unread_count INTEGER NOT NULL DEFAULT 0,\n            updated_at_ms INTEGER NOT NULL,\n            peer_last_typing_at_ms INTEGER,\n            peer_last_heartbeat_at_ms INTEGER\n        );\n        CREATE TABLE IF NOT EXISTS bridge_messages (\n            id TEXT PRIMARY KEY,\n            conversation_id TEXT NOT NULL REFERENCES bridge_conversations(id) ON DELETE CASCADE,\n            direction TEXT NOT NULL,\n            sender TEXT,\n            text TEXT NOT NULL,\n            timestamp_ms INTEGER NOT NULL,\n            request_id TEXT,\n            delivery_state TEXT\n        );\n        CREATE INDEX IF NOT EXISTS idx_bridge_conversations_updated\n            ON bridge_conversations(updated_at_ms DESC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_conversation\n            ON bridge_messages(conversation_id, timestamp_ms ASC, id ASC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_request\n            ON bridge_messages(request_id) WHERE request_id IS NOT NULL;\n        CREATE UNIQUE INDEX IF NOT EXISTS idx_bridge_messages_stream_key\n            ON bridge_messages(conversation_id, direction, request_id)\n            WHERE request_id IS NOT NULL;",
+        "CREATE TABLE IF NOT EXISTS bridge_schema_meta (\n            key TEXT PRIMARY KEY,\n            value TEXT NOT NULL\n        );\n        CREATE TABLE IF NOT EXISTS bridge_conversations (\n            id TEXT PRIMARY KEY,\n            host_id TEXT NOT NULL,\n            peer_node_id TEXT NOT NULL,\n            peer_display_name TEXT,\n            peer_owner_name TEXT,\n            peer_runtime TEXT NOT NULL,\n            project_id TEXT,\n            project_name TEXT,\n            unread_count INTEGER NOT NULL DEFAULT 0,\n            updated_at_ms INTEGER NOT NULL,\n            peer_last_typing_at_ms INTEGER,\n            peer_last_heartbeat_at_ms INTEGER,\n            outreach_metadata TEXT,\n            identity_snapshot TEXT\n        );\n        CREATE TABLE IF NOT EXISTS bridge_messages (\n            id TEXT PRIMARY KEY,\n            conversation_id TEXT NOT NULL REFERENCES bridge_conversations(id) ON DELETE CASCADE,\n            direction TEXT NOT NULL,\n            sender TEXT,\n            text TEXT NOT NULL,\n            timestamp_ms INTEGER NOT NULL,\n            request_id TEXT,\n            delivery_state TEXT\n        );\n        CREATE INDEX IF NOT EXISTS idx_bridge_conversations_updated\n            ON bridge_conversations(updated_at_ms DESC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_conversation\n            ON bridge_messages(conversation_id, timestamp_ms ASC, id ASC);\n        CREATE INDEX IF NOT EXISTS idx_bridge_messages_request\n            ON bridge_messages(request_id) WHERE request_id IS NOT NULL;\n        CREATE UNIQUE INDEX IF NOT EXISTS idx_bridge_messages_stream_key\n            ON bridge_messages(conversation_id, direction, request_id)\n            WHERE request_id IS NOT NULL;",
     )
     .map_err(sqlite_error)?;
+    ensure_conversation_column(conn, "outreach_metadata", "outreach_metadata TEXT")?;
+    ensure_conversation_column(conn, "identity_snapshot", "identity_snapshot TEXT")?;
     conn.execute(
         "INSERT INTO bridge_schema_meta(key, value) VALUES ('schema_version', ?1)\n         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![BRIDGE_CONVERSATION_SCHEMA_VERSION.to_string()],
@@ -811,6 +829,8 @@ fn merge_conversation_records(
         peer_last_heartbeat_at_ms: newer
             .peer_last_heartbeat_at_ms
             .or(older.peer_last_heartbeat_at_ms),
+        outreach: newer.outreach.clone().or_else(|| older.outreach.clone()),
+        identity: newer.identity.clone().or_else(|| older.identity.clone()),
         messages,
     }
 }
@@ -845,13 +865,36 @@ fn load_conversation_messages(
     Ok(messages)
 }
 
+fn parse_optional_json<T: for<'de> Deserialize<'de>>(value: Option<String>) -> Result<Option<T>, rusqlite::Error> {
+    value
+        .filter(|raw| !raw.trim().is_empty())
+        .map(|raw| {
+            serde_json::from_str(&raw).map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    raw.len(),
+                    rusqlite::types::Type::Text,
+                    Box::new(err),
+                )
+            })
+        })
+        .transpose()
+}
+
+fn optional_json<T: Serialize>(value: &Option<T>) -> Result<Option<String>, String> {
+    value
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|err| err.to_string())
+}
+
 fn load_conversation_record(
     conn: &Connection,
     conversation_id: &str,
 ) -> Result<Option<DesktopBridgeConversationRecord>, String> {
     let record = conn
         .query_row(
-            "SELECT id, host_id, peer_node_id, peer_display_name, peer_owner_name,\n                    peer_runtime, project_id, project_name, unread_count, updated_at_ms,\n                    peer_last_typing_at_ms, peer_last_heartbeat_at_ms\n             FROM bridge_conversations\n             WHERE id = ?1",
+            "SELECT id, host_id, peer_node_id, peer_display_name, peer_owner_name,\n                    peer_runtime, project_id, project_name, unread_count, updated_at_ms,\n                    peer_last_typing_at_ms, peer_last_heartbeat_at_ms,\n                    outreach_metadata, identity_snapshot\n             FROM bridge_conversations\n             WHERE id = ?1",
             params![conversation_id],
             |row| {
                 let unread_count: i64 = row.get(8)?;
@@ -868,6 +911,8 @@ fn load_conversation_record(
                     updated_at_ms: row.get(9)?,
                     peer_last_typing_at_ms: row.get(10)?,
                     peer_last_heartbeat_at_ms: row.get(11)?,
+                    outreach: parse_optional_json(row.get(12)?)?,
+                    identity: parse_optional_json(row.get(13)?)?,
                     messages: Vec::new(),
                 })
             },
@@ -908,8 +953,10 @@ fn store_conversation_record(
     conn: &Connection,
     record: &DesktopBridgeConversationRecord,
 ) -> Result<(), String> {
+    let outreach_metadata = optional_json(&record.outreach)?;
+    let identity_snapshot = optional_json(&record.identity)?;
     conn.execute(
-        "INSERT INTO bridge_conversations(\n             id, host_id, peer_node_id, peer_display_name, peer_owner_name, peer_runtime,\n             project_id, project_name, unread_count, updated_at_ms, peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)\n         ON CONFLICT(id) DO UPDATE SET\n             host_id = excluded.host_id,\n             peer_node_id = excluded.peer_node_id,\n             peer_display_name = excluded.peer_display_name,\n             peer_owner_name = excluded.peer_owner_name,\n             peer_runtime = excluded.peer_runtime,\n             project_id = excluded.project_id,\n             project_name = excluded.project_name,\n             unread_count = excluded.unread_count,\n             updated_at_ms = excluded.updated_at_ms,\n             peer_last_typing_at_ms = excluded.peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms = excluded.peer_last_heartbeat_at_ms",
+        "INSERT INTO bridge_conversations(\n             id, host_id, peer_node_id, peer_display_name, peer_owner_name, peer_runtime,\n             project_id, project_name, unread_count, updated_at_ms, peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms, outreach_metadata, identity_snapshot\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)\n         ON CONFLICT(id) DO UPDATE SET\n             host_id = excluded.host_id,\n             peer_node_id = excluded.peer_node_id,\n             peer_display_name = excluded.peer_display_name,\n             peer_owner_name = excluded.peer_owner_name,\n             peer_runtime = excluded.peer_runtime,\n             project_id = excluded.project_id,\n             project_name = excluded.project_name,\n             unread_count = excluded.unread_count,\n             updated_at_ms = excluded.updated_at_ms,\n             peer_last_typing_at_ms = excluded.peer_last_typing_at_ms,\n             peer_last_heartbeat_at_ms = excluded.peer_last_heartbeat_at_ms,\n             outreach_metadata = excluded.outreach_metadata,\n             identity_snapshot = excluded.identity_snapshot",
         params![
             record.id,
             record.host_id,
@@ -923,6 +970,8 @@ fn store_conversation_record(
             record.updated_at_ms,
             record.peer_last_typing_at_ms,
             record.peer_last_heartbeat_at_ms,
+            outreach_metadata,
+            identity_snapshot,
         ],
     )
     .map_err(sqlite_error)?;
@@ -1143,6 +1192,8 @@ pub(super) fn append_conversation_message_to_storage(
         updated_at_ms: timestamp_ms,
         peer_last_typing_at_ms: None,
         peer_last_heartbeat_at_ms: None,
+        outreach: None,
+        identity: None,
         messages: Vec::new(),
     });
 
@@ -1304,6 +1355,8 @@ fn update_peer_presence_metadata_in_storage(
         updated_at_ms: timestamp_ms,
         peer_last_typing_at_ms: None,
         peer_last_heartbeat_at_ms: None,
+        outreach: None,
+        identity: None,
         messages: Vec::new(),
     });
     if project_id.is_some() {
@@ -1526,6 +1579,8 @@ mod tests {
             updated_at_ms: 1_000,
             peer_last_typing_at_ms: None,
             peer_last_heartbeat_at_ms: None,
+            outreach: None,
+            identity: None,
             messages,
         }
     }
@@ -1614,6 +1669,8 @@ mod tests {
                     updated_at_ms: timestamp_ms,
                     peer_last_typing_at_ms: None,
                     peer_last_heartbeat_at_ms: None,
+                    outreach: None,
+                    identity: None,
                     messages: Vec::new(),
                 });
         conversation

@@ -83,6 +83,8 @@ pub(super) fn upsert_bridge_conversation<'a>(
             updated_at_ms: now_ms(),
             peer_last_typing_at_ms: None,
             peer_last_heartbeat_at_ms: None,
+            outreach: None,
+            identity: None,
             messages: Vec::new(),
         });
         store.conversations.len() - 1
@@ -204,6 +206,8 @@ pub(super) fn build_conversation_state(
         awaiting_reply,
         peer_typing,
         peer_last_heartbeat_label,
+        outreach: record.outreach.clone(),
+        identity: record.identity.clone(),
         messages,
     }
 }

@@ -99,6 +99,7 @@ pub fn run() {
             bridge::desktop_bridge_open_conversation,
             bridge::desktop_bridge_mark_conversation_read,
             bridge::desktop_bridge_send_message,
+            bridge::desktop_bridge_create_outreach,
             bridge::desktop_bridge_send_presence,
             bridge::desktop_bridge_poll_mailbox,
             auth::desktop_auth_state,

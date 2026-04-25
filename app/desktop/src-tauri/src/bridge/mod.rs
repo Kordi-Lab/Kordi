@@ -150,6 +150,10 @@ struct DesktopBridgeConversationRecord {
     peer_last_typing_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     peer_last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    identity: Option<DesktopBridgeIdentitySnapshot>,
     #[serde(default)]
     messages: Vec<DesktopBridgeConversationMessageRecord>,
 }
@@ -165,6 +169,50 @@ struct DesktopBridgeConversationMessageRecord {
     request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     delivery_state: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeOutreachMetadata {
+    pub target_kind: String,
+    pub parent_session_id: Option<String>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub bridge_host_id: String,
+    pub bridge_conversation_id: Option<String>,
+    pub target_node_id: String,
+    pub target_human_id: Option<String>,
+    pub target_agent_id: Option<String>,
+    pub target_display_name: String,
+    pub target_owner_name: Option<String>,
+    pub target_runtime: Option<String>,
+    pub request_text: String,
+    pub context_text: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub status: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub completed_at_ms: Option<i64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeIdentitySnapshot {
+    pub bridge_host_id: String,
+    pub local_human_id: String,
+    pub local_human_name: String,
+    pub local_agent_id: Option<String>,
+    pub local_agent_name: Option<String>,
+    pub local_agent_node_id: Option<String>,
+    pub remote_human_id: Option<String>,
+    pub remote_human_name: Option<String>,
+    pub remote_human_node_id: Option<String>,
+    pub remote_agent_id: Option<String>,
+    pub remote_agent_name: Option<String>,
+    pub remote_agent_node_id: Option<String>,
+    pub remote_agent_runtime: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,6 +304,8 @@ pub struct DesktopBridgeConversation {
     pub awaiting_reply: bool,
     pub peer_typing: bool,
     pub peer_last_heartbeat_label: Option<String>,
+    pub outreach: Option<DesktopBridgeOutreachMetadata>,
+    pub identity: Option<DesktopBridgeIdentitySnapshot>,
     pub messages: Vec<DesktopBridgeConversationMessage>,
 }
 
@@ -290,6 +340,21 @@ pub struct DesktopBridgeInvite {
     pub invite_id: String,
     pub invite_token: String,
     pub share_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeCreateOutreachRequest {
+    pub host_id: String,
+    pub target_node_id: String,
+    pub target_kind: String,
+    pub request_text: String,
+    pub context_text: Option<String>,
+    pub parent_session_id: Option<String>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -751,6 +816,14 @@ pub async fn desktop_bridge_send_message(
     text: String,
 ) -> Result<DesktopBridgeState, String> {
     conversation_commands::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_create_outreach(
+    manager: State<'_, DesktopBridgeManager>,
+    request: DesktopBridgeCreateOutreachRequest,
+) -> Result<DesktopBridgeState, String> {
+    conversation_commands::desktop_bridge_create_outreach_impl(&manager, request).await
 }
 
 #[tauri::command]

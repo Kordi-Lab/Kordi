@@ -434,6 +434,7 @@ export function useKordiAppModel() {
     activeProjectId,
     activeProjectSessionId,
     desktopChatState,
+    desktopBridgeState,
     desktopLiveTurn: activeDesktopLiveTurn,
     composerSelections: composerUi.composerSelections,
     setComposerSelections: composerUi.setComposerSelections,

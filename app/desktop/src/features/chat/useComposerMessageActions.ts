@@ -1,10 +1,12 @@
 import { useCallback } from 'react';
 
 import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
+import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project } from '@/kordi-app/types';
 import {
   cancelDesktopChatTurn,
+  createDesktopBridgeOutreach,
   runDesktopChatSkillCommand,
   sendDesktopBridgeMessage,
   startDesktopChatMessage,
@@ -28,6 +30,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'desktopChatState'
+  | 'desktopBridgeState'
   | 'desktopLiveTurn'
   | 'composerDrafts'
   | 'setComposerDrafts'
@@ -174,6 +177,58 @@ function markOptimisticBridgeMessageFailed(
   };
 }
 
+function normalizeMentionLabel(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function renderProjectContext(state: DesktopChatState | null) {
+  const project = state?.activeSession.project;
+  if (!project) return null;
+
+  const lines = [
+    `Project: ${project.name}`,
+    project.sharedContext ? `Context: ${project.sharedContext}` : null,
+    project.backgroundSystem ? `Standing instruction: ${project.backgroundSystem}` : null,
+    project.sharedSources.length > 0
+      ? `Shared sources: ${project.sharedSources.map((source) => [source.label, source.detail].filter(Boolean).join(' — ')).join('; ')}`
+      : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopBridgeState | null) {
+  if (!text.trimStart().startsWith('@') || !bridgeState) return null;
+  const afterAt = text.trimStart().slice(1).trimStart();
+  if (!afterAt) return null;
+  const normalizedAfterAt = normalizeMentionLabel(afterAt);
+
+  const candidates = bridgeState.hosts.flatMap((host) => host.visiblePeers.flatMap((peer) => {
+    const labels = [peer.displayName, peer.ownerName]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((label) => ({ label, normalized: normalizeMentionLabel(label) }));
+    return labels.map((label) => ({ host, peer, label }));
+  }));
+
+  const match = candidates
+    .filter((candidate) => (
+      normalizedAfterAt === candidate.label.normalized
+      || normalizedAfterAt.startsWith(`${candidate.label.normalized} `)
+    ))
+    .sort((left, right) => right.label.normalized.length - left.label.normalized.length)[0];
+  if (!match) return null;
+
+  const requestText = afterAt.slice(match.label.label.length).trim();
+  if (!requestText) return null;
+
+  return {
+    host: match.host,
+    peer: match.peer,
+    targetKind: isBridgeAgentRuntime(match.peer.runtime) ? 'bridge-agent' as const : 'bridge-person' as const,
+    requestText,
+  };
+}
+
 export function useComposerMessageActions({
   isNativeShell,
   activeConversationIsBridge,
@@ -182,6 +237,7 @@ export function useComposerMessageActions({
   activeProjectId,
   activeProjectSessionId,
   desktopChatState,
+  desktopBridgeState,
   desktopLiveTurn,
   composerDrafts,
   setComposerDrafts,
@@ -379,6 +435,34 @@ export function useComposerMessageActions({
       return;
     }
 
+    const mentionedTarget = chatComposerAttachments.length === 0 ? resolveMentionedBridgeTarget(text, desktopBridgeState) : null;
+    if (mentionedTarget) {
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setIsDesktopChatSending(true);
+        setDesktopChatError(null);
+        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        const nextState = await createDesktopBridgeOutreach({
+          hostId: mentionedTarget.host.id,
+          targetNodeId: mentionedTarget.peer.nodeId,
+          targetKind: mentionedTarget.targetKind,
+          requestText: mentionedTarget.requestText,
+          contextText: renderProjectContext(desktopChatState),
+          parentSessionId: targetSessionId,
+          projectId: desktopChatState?.activeSession.project?.root,
+          projectName: desktopChatState?.activeSession.project?.name,
+        });
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+        appendDesktopSystemMessage(`Started ${mentionedTarget.targetKind === 'bridge-agent' ? 'agent' : 'person'} outreach to ${mentionedTarget.peer.displayName || mentionedTarget.peer.ownerName || mentionedTarget.peer.nodeId}.`);
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
+      } finally {
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
     try {
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
@@ -407,13 +491,16 @@ export function useComposerMessageActions({
   }, [
     activeConversationIsBridge,
     activeConvId,
+    appendDesktopSystemMessage,
     attachmentSummaryText,
     chatComposerAttachments,
     composerDrafts.chat,
-    desktopChatState?.activeSessionId,
+    desktopBridgeState,
+    desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
     isNativeShell,
+    refreshDesktopChat,
     setChatComposerAttachments,
     setComposerDrafts,
     setDesktopBridgeState,

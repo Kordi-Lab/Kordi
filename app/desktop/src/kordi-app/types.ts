@@ -102,6 +102,8 @@ export type Conversation = {
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
+  outreach?: DesktopBridgeOutreachMetadata | null;
+  identity?: DesktopBridgeIdentitySnapshot | null;
 };
 
 export type Contact = {
@@ -381,6 +383,46 @@ export type DesktopBridgeConversationMessage = {
   deliveryState?: string | null;
 };
 
+export type DesktopBridgeOutreachMetadata = {
+  targetKind: 'bridge-agent' | 'bridge-person' | string;
+  parentSessionId?: string | null;
+  parentTurnId?: string | null;
+  parentMessageId?: string | null;
+  bridgeHostId: string;
+  bridgeConversationId?: string | null;
+  targetNodeId: string;
+  targetHumanId?: string | null;
+  targetAgentId?: string | null;
+  targetDisplayName: string;
+  targetOwnerName?: string | null;
+  targetRuntime?: string | null;
+  requestText: string;
+  contextText?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  status: 'sending' | 'awaitingReply' | 'complete' | 'failed' | 'cancelled' | string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  completedAtMs?: number | null;
+  error?: string | null;
+};
+
+export type DesktopBridgeIdentitySnapshot = {
+  bridgeHostId: string;
+  localHumanId: string;
+  localHumanName: string;
+  localAgentId?: string | null;
+  localAgentName?: string | null;
+  localAgentNodeId?: string | null;
+  remoteHumanId?: string | null;
+  remoteHumanName?: string | null;
+  remoteHumanNodeId?: string | null;
+  remoteAgentId?: string | null;
+  remoteAgentName?: string | null;
+  remoteAgentNodeId?: string | null;
+  remoteAgentRuntime?: string | null;
+};
+
 export type DesktopBridgeConversation = {
   id: string;
   hostId: string;
@@ -398,7 +440,22 @@ export type DesktopBridgeConversation = {
   awaitingReply: boolean;
   peerTyping: boolean;
   peerLastHeartbeatLabel?: string | null;
+  outreach?: DesktopBridgeOutreachMetadata | null;
+  identity?: DesktopBridgeIdentitySnapshot | null;
   messages: DesktopBridgeConversationMessage[];
+};
+
+export type DesktopBridgeCreateOutreachRequest = {
+  hostId: string;
+  targetNodeId: string;
+  targetKind: 'bridge-agent' | 'bridge-person';
+  requestText: string;
+  contextText?: string | null;
+  parentSessionId?: string | null;
+  parentTurnId?: string | null;
+  parentMessageId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
 };
 
 export type DesktopBridgeLocalServerStatus = {

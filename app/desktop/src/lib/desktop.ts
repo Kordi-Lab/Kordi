@@ -1,4 +1,4 @@
-import type { DesktopArtifactPreview, DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
+import type { DesktopArtifactPreview, DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeCreateOutreachRequest, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -200,6 +200,10 @@ export async function markDesktopBridgeConversationRead(conversationId: string) 
 
 export async function sendDesktopBridgeMessage(conversationId: string, text: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_send_message', { conversationId, text });
+}
+
+export async function createDesktopBridgeOutreach(request: DesktopBridgeCreateOutreachRequest) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_create_outreach', { request });
 }
 
 export async function sendDesktopBridgePresence(conversationId: string, kind: 'typing' | 'heartbeat') {
