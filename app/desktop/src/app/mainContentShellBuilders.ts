@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
+import { findCanonicalConversationForTarget } from '@/features/canonical/sessionReadModel';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -47,6 +48,11 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
     onRemoveBridgeContact: args.handleRemoveBridgeContact,
     onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime) => {
+      const existingConversation = findCanonicalConversationForTarget(args.chatConversations, { bridgeNodeId: peerNodeId });
+      if (existingConversation) {
+        void args.handleSelectChatSession(existingConversation.id);
+        return;
+      }
       void args.handleOpenBridgeConversation(hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime);
     },
     onBridgeWizardPrimary: () => {

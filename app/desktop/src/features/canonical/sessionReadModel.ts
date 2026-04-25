@@ -294,6 +294,7 @@ export type CanonicalSessionReadModel = {
     conversation: T,
     buildSubtitle: ConversationSubtitleBuilder,
   ) => T;
+  buildChatConversations: (conversations: Conversation[], buildSubtitle: ConversationSubtitleBuilder) => Conversation[];
 };
 
 export type CanonicalConversationLookupTarget = {
@@ -337,6 +338,14 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
+  const chatSessionIds = canonicalState.sessions
+    .filter((session) => session.kind !== 'project')
+    .sort((left, right) => {
+      const leftTs = left.lastMessageAtMs ?? left.updatedAtMs ?? left.createdAtMs;
+      const rightTs = right.lastMessageAtMs ?? right.updatedAtMs ?? right.createdAtMs;
+      return rightTs - leftTs;
+    })
+    .map((session) => session.id);
 
   return {
     sessionTitle(sessionId, fallback) {
@@ -380,6 +389,17 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
         canonicalPresenceSummary: indexes.presenceSummaryBySessionId.get(sessionId),
       };
+    },
+    buildChatConversations(conversations, buildSubtitle) {
+      const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
+      const hydrated = chatSessionIds
+        .flatMap((sessionId) => {
+          const source = sourceBySessionId.get(sessionId);
+          return source ? [this.applyConversation(source, buildSubtitle)] : [];
+        });
+      const hydratedIds = new Set(hydrated.map((conversation) => conversation.id));
+      const extras = conversations.filter((conversation) => !hydratedIds.has(conversation.id));
+      return [...hydrated, ...extras];
     },
   };
 }

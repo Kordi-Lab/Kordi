@@ -351,9 +351,10 @@ export function useWorkspaceViewModels({
     }
     const merged = [...bridgeChatConversations, ...localChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
-    return merged.map(({ _updatedAtMs, ...conversation }) => (
-      canonicalReadModel ? canonicalReadModel.applyConversation(conversation, buildConversationPreview) : conversation
-    ));
+    const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
+    return canonicalReadModel
+      ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
+      : sourceConversations;
   }, [bridgeChatConversations, canonicalReadModel, isNativeShell, localChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
