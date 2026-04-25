@@ -1150,6 +1150,16 @@ pub(crate) fn sync_bridge_state_identities(
                 metadata: None,
             },
         )?;
+        update_presence_in_db(
+            &conn,
+            UpdateCanonicalPresenceRequest {
+                identity_id: host_human.id.clone(),
+                status: if host.connected { "online" } else { "offline" }.to_string(),
+                session_id: None,
+                detail: Some(host.server_url.clone()),
+                expires_at_ms: None,
+            },
+        )?;
 
         let mut active_agent_identity_id = None;
         for agent in &host.agents {
@@ -1173,6 +1183,21 @@ pub(crate) fn sync_bridge_state_identities(
                         "isActive": agent.is_active,
                         "registered": agent.registered,
                     })),
+                },
+            )?;
+            update_presence_in_db(
+                &conn,
+                UpdateCanonicalPresenceRequest {
+                    identity_id: agent_identity.id.clone(),
+                    status: if host.connected {
+                        "available"
+                    } else {
+                        "offline"
+                    }
+                    .to_string(),
+                    session_id: None,
+                    detail: Some(agent.runtime.clone()),
+                    expires_at_ms: None,
                 },
             )?;
             if agent.is_active || host.active_agent_id.as_deref() == Some(agent.id.as_str()) {
@@ -1221,13 +1246,26 @@ pub(crate) fn sync_bridge_state_identities(
                     _ => None,
                 };
 
+            if let Some(peer_human_identity_id) = peer_human_identity_id.as_deref() {
+                update_presence_in_db(
+                    &conn,
+                    UpdateCanonicalPresenceRequest {
+                        identity_id: peer_human_identity_id.to_string(),
+                        status: if host.connected { "online" } else { "offline" }.to_string(),
+                        session_id: None,
+                        detail: peer.discovery_mode.clone(),
+                        expires_at_ms: None,
+                    },
+                )?;
+            }
+
             if peer.agent_id.is_some() || runtime_is_agent_like(&peer.runtime) {
                 let display_name = peer
                     .display_name
                     .clone()
                     .or_else(|| peer.owner_name.clone())
                     .unwrap_or_else(|| peer.node_id.clone());
-                upsert_identity_in_db(
+                let peer_agent = upsert_identity_in_db(
                     &conn,
                     UpsertCanonicalIdentityRequest {
                         id: None,
@@ -1247,6 +1285,21 @@ pub(crate) fn sync_bridge_state_identities(
                             "discoveryMode": peer.discovery_mode,
                             "sharedProjects": peer.shared_projects,
                         })),
+                    },
+                )?;
+                update_presence_in_db(
+                    &conn,
+                    UpdateCanonicalPresenceRequest {
+                        identity_id: peer_agent.id,
+                        status: if host.connected {
+                            "available"
+                        } else {
+                            "offline"
+                        }
+                        .to_string(),
+                        session_id: None,
+                        detail: Some(peer.runtime.clone()),
+                        expires_at_ms: None,
                     },
                 )?;
             }
