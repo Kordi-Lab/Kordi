@@ -70,6 +70,7 @@ export function mapBridgeConversationToViewModel(
         sender: remoteAgentLabel,
         senderType: 'agent',
         isOwnMessage: false,
+        showSenderMeta: true,
         text: message.text,
         time: message.timeLabel,
         turn: {
@@ -101,6 +102,7 @@ export function mapBridgeConversationToViewModel(
       sender,
       senderType,
       isOwnMessage: isOutboundHuman,
+      showSenderMeta: isAgent,
       text: message.text,
       time: message.timeLabel,
       statusChips: isOutboundHuman
@@ -118,6 +120,7 @@ export function mapBridgeConversationToViewModel(
       sender: remoteAgentLabel,
       senderType: 'agent',
       isOwnMessage: false,
+      showSenderMeta: true,
       text: '',
       time: conversation.updatedAtLabel,
       turn: {

@@ -2,7 +2,8 @@ use base64::Engine as _;
 use uuid::Uuid;
 
 use super::constants::{
-    is_agent_like_runtime, is_inbound_message_direction, BRIDGE_DELIVERY_STATE_RESPONDED,
+    is_agent_like_runtime, is_inbound_message_direction, BRIDGE_DELIVERY_STATE_DELIVERED,
+    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
     BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
     PEER_TYPING_WINDOW_MS,
 };
@@ -206,6 +207,24 @@ pub(super) fn append_conversation_message(
         });
 }
 
+fn delivery_state_rank(delivery_state: &str) -> i32 {
+    match delivery_state.trim().to_lowercase().as_str() {
+        "sending" | "pending_send" => 0,
+        BRIDGE_DELIVERY_STATE_SENT => 1,
+        BRIDGE_DELIVERY_STATE_DELIVERED => 2,
+        "processing" | "handed_off_direct" | "handed_off_mailbox" => 3,
+        BRIDGE_DELIVERY_STATE_READ => 4,
+        BRIDGE_DELIVERY_STATE_RESPONDED | "processing_failed" => 5,
+        _ => 0,
+    }
+}
+
+fn should_apply_delivery_state(current: Option<&str>, next: &str) -> bool {
+    current
+        .map(|value| delivery_state_rank(next) >= delivery_state_rank(value))
+        .unwrap_or(true)
+}
+
 pub(super) fn update_message_delivery_state(
     store: &mut DesktopBridgeConversationStore,
     request_id: &str,
@@ -214,7 +233,9 @@ pub(super) fn update_message_delivery_state(
     for conversation in &mut store.conversations {
         let mut updated_any = false;
         for message in &mut conversation.messages {
-            if message.request_id.as_deref() == Some(request_id) {
+            if message.request_id.as_deref() == Some(request_id)
+                && should_apply_delivery_state(message.delivery_state.as_deref(), delivery_state)
+            {
                 message.delivery_state = Some(delivery_state.to_string());
                 updated_any = true;
             }

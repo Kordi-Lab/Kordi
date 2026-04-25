@@ -5,7 +5,6 @@ import {
   FileText,
   Globe,
   Image as ImageIcon,
-  LoaderCircle,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
@@ -60,8 +59,6 @@ type ChatsPageProps = {
   desktopSessionRenameDraft: string;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   onRenameDesktopSession: (baselineName: string) => Promise<void>;
-  bridgeStatusText?: string | null;
-  bridgeStatusLoading: boolean;
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
@@ -112,8 +109,6 @@ export function ChatsPage({
   desktopSessionRenameDraft,
   setDesktopSessionRenameDraft,
   onRenameDesktopSession,
-  bridgeStatusText,
-  bridgeStatusLoading,
   chatTranscriptScrollRef,
   onTranscriptScroll,
   onOpenSource,
@@ -213,12 +208,6 @@ export function ChatsPage({
               ))}
               <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}</span>
             </div>
-            {activeConversationIsBridge && bridgeStatusText ? (
-              <div className="mt-1.5 flex items-center gap-2 text-[12px] text-slate-400">
-                {bridgeStatusLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span className="truncate">{bridgeStatusText}</span>
-              </div>
-            ) : null}
           </div>
         </div>
         {showRightDetailRail && (
