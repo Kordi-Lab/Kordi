@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_core::settings::Settings;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{emit_progress_line, text_result};
@@ -10,6 +10,10 @@ use crate::{ReachOutRequest, Tool, ToolContext, ToolResult};
 
 fn default_true() -> bool {
     true
+}
+
+fn default_context_policy() -> String {
+    "recent-window".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -23,6 +27,9 @@ pub struct ReachOutInput {
     pub message: String,
     /// Optional extra context to include with the request.
     pub context: Option<String>,
+    /// Context-sharing policy for the remote participant.
+    #[serde(default = "default_context_policy")]
+    pub context_policy: String,
     /// Include concise project context automatically unless explicitly disabled.
     #[serde(default = "default_true")]
     pub include_project_context: bool,
@@ -65,6 +72,11 @@ impl Tool for ReachOutTool {
                 "context": {
                     "type": "string",
                     "description": "Optional extra context to send with the request. Runtime context is included according to session policy unless disabled."
+                },
+                "contextPolicy": {
+                    "type": "string",
+                    "enum": ["last-message", "recent-window", "summary", "full-session"],
+                    "description": "How much session context to share with the remote participant. Defaults to recent-window."
                 },
                 "includeProjectContext": {
                     "type": "boolean",
@@ -109,6 +121,7 @@ impl Tool for ReachOutTool {
                 .map(|value| value.trim().to_ascii_lowercase()),
             message: input.message.trim().to_string(),
             context,
+            context_policy: normalize_context_policy(&input.context_policy)?,
             include_project_context: input.include_project_context,
             wait_for_response: input.wait_for_response,
             timeout_seconds: input.timeout_seconds,
@@ -172,6 +185,7 @@ fn validate_input(input: &ReachOutInput) -> KordiResult<()> {
             "reach_out message is required".to_string(),
         ));
     }
+    let _ = normalize_context_policy(&input.context_policy)?;
     if let Some(kind) = input.target_kind.as_deref() {
         let normalized = kind.trim().to_ascii_lowercase();
         if normalized != "bridge-agent" && normalized != "bridge-person" {
@@ -181,6 +195,18 @@ fn validate_input(input: &ReachOutInput) -> KordiResult<()> {
         }
     }
     Ok(())
+}
+
+fn normalize_context_policy(value: &str) -> KordiResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "" => Ok(default_context_policy()),
+        "last-message" | "recent-window" | "summary" | "full-session" => Ok(normalized),
+        _ => Err(KordiError::Tool(
+            "reach_out contextPolicy must be last-message, recent-window, summary, or full-session"
+                .to_string(),
+        )),
+    }
 }
 
 fn build_context(input: &ReachOutInput, ctx: &ToolContext) -> Option<String> {

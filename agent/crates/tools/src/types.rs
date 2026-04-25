@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use kordi_core::error::KordiResult;
-use kordi_provider::{Provider, registry::Model};
+use kordi_provider::{registry::Model, Provider};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, future::Future, path::PathBuf, pin::Pin, sync::Arc};
@@ -126,6 +126,7 @@ pub struct ReachOutRequest {
     pub target_kind: Option<String>,
     pub message: String,
     pub context: Option<String>,
+    pub context_policy: String,
     pub include_project_context: bool,
     pub wait_for_response: bool,
     pub timeout_seconds: Option<u64>,

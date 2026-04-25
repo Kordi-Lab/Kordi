@@ -603,6 +603,7 @@ export type DesktopBridgeOutreachMetadata = {
   targetRuntime?: string | null;
   requestText: string;
   contextText?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
   projectId?: string | null;
   projectName?: string | null;
   status: 'sending' | 'awaitingReply' | 'complete' | 'failed' | 'cancelled' | string;
@@ -657,6 +658,7 @@ export type DesktopBridgeCreateOutreachRequest = {
   targetKind: 'bridge-agent' | 'bridge-person';
   requestText: string;
   contextText?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
   parentSessionId?: string | null;
   parentTurnId?: string | null;
   parentMessageId?: string | null;

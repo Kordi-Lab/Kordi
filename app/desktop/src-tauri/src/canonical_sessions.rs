@@ -2079,6 +2079,11 @@ fn sync_bridge_outreach_into_parent_session(
     let initiator_identity_id = local_agent_identity_id.unwrap_or(local_human_identity_id);
     let initiator_name =
         identity_display_name(conn, initiator_identity_id)?.unwrap_or_else(|| "Kordi".to_string());
+    let context_policy = outreach
+        .context_policy
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "recent-window".to_string());
     let join_text = if peer_is_agent {
         format!(
             "{} joined through {}",
@@ -2107,7 +2112,7 @@ fn sync_bridge_outreach_into_parent_session(
                 "targetNodeId": outreach.target_node_id,
                 "initiatorIdentityId": initiator_identity_id,
                 "requestText": outreach.request_text,
-                "contextPolicy": "recent-window",
+                "contextPolicy": context_policy.clone(),
             })),
             created_at_ms: Some(outreach.created_at_ms),
             parent_message_id: outreach.parent_message_id.clone(),
@@ -2178,7 +2183,7 @@ fn sync_bridge_outreach_into_parent_session(
             bridge_host_id: Some(conversation.host_id.clone()),
             bridge_conversation_id: Some(conversation.id.clone()),
             bridge_request_id: None,
-            context_policy: Some("recent-window".to_string()),
+            context_policy: Some(context_policy),
             status: Some(outreach_status_to_exchange_status(&outreach.status)),
             error: outreach.error.clone(),
         },
