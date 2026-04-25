@@ -1886,6 +1886,16 @@ pub(crate) fn sync_bridge_state_sessions(
         let (relationship_identity_id, remote_target_identity_id) =
             bridge_peer_identities(&conn, state, conversation)?;
         let peer_is_agent = runtime_is_agent_like(&conversation.peer_runtime);
+        let peer_is_default_agent = state
+            .hosts
+            .iter()
+            .find(|host| host.id == conversation.host_id)
+            .and_then(|host| {
+                host.visible_peers
+                    .iter()
+                    .find(|peer| peer.node_id == conversation.peer_node_id)
+            })
+            .is_some_and(|peer| peer.is_default_agent);
 
         if sync_bridge_outreach_into_parent_session(
             &conn,
@@ -1910,6 +1920,14 @@ pub(crate) fn sync_bridge_state_sessions(
         participants.sort();
         participants.dedup();
 
+        let primary_identity_id = if peer_is_agent && peer_is_default_agent {
+            relationship_identity_id
+                .clone()
+                .unwrap_or_else(|| remote_target_identity_id.clone())
+        } else {
+            remote_target_identity_id.clone()
+        };
+
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
@@ -1922,7 +1940,7 @@ pub(crate) fn sync_bridge_state_sessions(
                 title: None,
                 status: Some("active".to_string()),
                 created_by_identity_id: local_human_identity_id.clone(),
-                primary_identity_id: Some(remote_target_identity_id.clone()),
+                primary_identity_id: Some(primary_identity_id),
                 project_id: conversation.project_id.clone(),
                 project_name: conversation.project_name.clone(),
                 relationship_identity_id,

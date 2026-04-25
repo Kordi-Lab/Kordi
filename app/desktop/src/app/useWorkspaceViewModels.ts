@@ -190,13 +190,14 @@ function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message
   return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
 }
 
-function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string }>(
+function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string; name: string }>(
   conversation: T,
   canonicalState: CanonicalSessionState | null,
 ): T {
   if (!canonicalState) return conversation;
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
-  if (!canonicalState.sessions.some((session) => session.id === sessionId)) return conversation;
+  const canonicalSession = canonicalState.sessions.find((session) => session.id === sessionId);
+  if (!canonicalSession) return conversation;
 
   const participants = canonicalState.participants.filter((participant) => participant.sessionId === sessionId);
   const participantIdentityIds = new Set(participants.map((participant) => participant.identityId));
@@ -210,6 +211,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     ...conversation,
     canonicalSessionId: sessionId,
     canonicalStoragePath: canonicalState.storagePath,
+    name: canonicalSession.title || conversation.name,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
     canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,
