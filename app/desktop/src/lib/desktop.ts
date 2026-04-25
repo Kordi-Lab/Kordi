@@ -1,4 +1,21 @@
-import type { DesktopArtifactPreview, DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeCreateOutreachRequest, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
+import type {
+  AppendCanonicalMessageRequest,
+  CanonicalSessionState,
+  CreateCanonicalDelegatedExchangeRequest,
+  DesktopArtifactPreview,
+  DesktopAuthAttemptSnapshot,
+  DesktopAuthState,
+  DesktopBridgeCreateOutreachRequest,
+  DesktopBridgeInvite,
+  DesktopBridgeState,
+  DesktopChatProjectSource,
+  DesktopChatState,
+  DesktopChatTurnSnapshot,
+  DesktopProjectSettings,
+  OpenCanonicalSessionRequest,
+  UpdateCanonicalPresenceRequest,
+  UpsertCanonicalIdentityRequest,
+} from '@/kordi-app/types';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -212,6 +229,31 @@ export async function sendDesktopBridgePresence(conversationId: string, kind: 't
 
 export async function pollDesktopBridgeMailbox() {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_poll_mailbox');
+}
+
+export async function fetchCanonicalSessionState() {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_session_state');
+}
+
+export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_identity', { request });
+}
+
+export async function openOrCreateCanonicalSession(request: OpenCanonicalSessionRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_open_or_create_session', { request });
+}
+
+export async function appendCanonicalMessage(request: AppendCanonicalMessageRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_append_message', { request });
+}
+
+export async function createCanonicalDelegatedExchange(request: CreateCanonicalDelegatedExchangeRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_create_delegated_exchange', { request });
+}
+
+export async function updateCanonicalPresence(request: UpdateCanonicalPresenceRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_update_presence', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {

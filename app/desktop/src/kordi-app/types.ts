@@ -252,6 +252,188 @@ export type DesktopAuthProvider = {
   options: DesktopAuthOption[];
 };
 
+export type CanonicalLocalProfile = {
+  id: string;
+  displayName?: string | null;
+  humanIdentityId?: string | null;
+  activeAgentIdentityId?: string | null;
+  storageRoot: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalIdentity = {
+  id: string;
+  kind: 'human' | 'agent' | string;
+  displayName: string;
+  ownerIdentityId?: string | null;
+  source: 'local' | 'bridge' | 'imported' | string;
+  sourceHostId?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  avatarKey: string;
+  profileImageUrl?: string | null;
+  metadata?: unknown;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalSession = {
+  id: string;
+  kind: 'self-agent' | 'direct-person' | 'direct-agent' | 'relationship' | 'group' | 'project' | string;
+  title: string;
+  status: 'active' | 'archived' | 'draft' | string;
+  createdByIdentityId: string;
+  primaryIdentityId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  relationshipIdentityId?: string | null;
+  metadata?: unknown;
+  createdAtMs: number;
+  updatedAtMs: number;
+  lastMessageAtMs?: number | null;
+};
+
+export type CanonicalSessionParticipant = {
+  sessionId: string;
+  identityId: string;
+  role: 'self' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
+  state: 'active' | 'invited' | 'pending' | 'left' | string;
+  addedByIdentityId?: string | null;
+  addedAtMs: number;
+  lastSeenAtMs?: number | null;
+  lastReadMessageId?: string | null;
+  metadata?: unknown;
+};
+
+export type CanonicalSessionMessage = {
+  id: string;
+  sessionId: string;
+  senderIdentityId: string;
+  senderRole: 'user' | 'owned-agent' | 'external-agent' | 'person' | 'system' | string;
+  messageKind: 'text' | 'agent-turn' | 'delegation-request' | 'delegation-response' | 'system' | 'status' | string;
+  contentText: string;
+  content?: unknown;
+  parentMessageId?: string | null;
+  delegatedExchangeId?: string | null;
+  status: 'draft' | 'sending' | 'sent' | 'delivered' | 'read' | 'processing' | 'complete' | 'failed' | string;
+  sequenceNum: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+  contentHash?: string | null;
+  sourceTransport?: string | null;
+  sourceEventId?: string | null;
+};
+
+export type CanonicalDelegatedExchange = {
+  id: string;
+  sessionId: string;
+  initiatorIdentityId: string;
+  targetIdentityId: string;
+  triggerMessageId?: string | null;
+  requestMessageId?: string | null;
+  responseMessageId?: string | null;
+  transport: 'bridge' | 'local' | 'internal' | string;
+  bridgeHostId?: string | null;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  contextPolicy: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string;
+  status: 'pending' | 'sending' | 'processing' | 'complete' | 'failed' | 'cancelled' | 'timeout' | string;
+  error?: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalPresence = {
+  identityId: string;
+  status: 'online' | 'offline' | 'away' | 'typing' | 'running' | 'replying' | 'error' | string;
+  sessionId?: string | null;
+  detail?: string | null;
+  updatedAtMs: number;
+  expiresAtMs?: number | null;
+};
+
+export type CanonicalSessionState = {
+  storagePath: string;
+  profile: CanonicalLocalProfile;
+  identities: CanonicalIdentity[];
+  sessions: CanonicalSession[];
+  participants: CanonicalSessionParticipant[];
+  messages: CanonicalSessionMessage[];
+  delegatedExchanges: CanonicalDelegatedExchange[];
+  presence: CanonicalPresence[];
+};
+
+export type UpsertCanonicalIdentityRequest = {
+  id?: string | null;
+  kind: 'human' | 'agent';
+  displayName: string;
+  ownerIdentityId?: string | null;
+  source?: 'local' | 'bridge' | 'imported' | string | null;
+  sourceHostId?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
+  metadata?: unknown;
+};
+
+export type OpenCanonicalSessionRequest = {
+  id?: string | null;
+  kind: 'self-agent' | 'direct-person' | 'direct-agent' | 'relationship' | 'group' | 'project';
+  title?: string | null;
+  status?: 'active' | 'archived' | 'draft' | string | null;
+  createdByIdentityId: string;
+  primaryIdentityId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  relationshipIdentityId?: string | null;
+  participantIdentityIds: string[];
+  metadata?: unknown;
+};
+
+export type AppendCanonicalMessageRequest = {
+  id?: string | null;
+  sessionId: string;
+  senderIdentityId: string;
+  senderRole: 'user' | 'owned-agent' | 'external-agent' | 'person' | 'system' | string;
+  messageKind: 'text' | 'agent-turn' | 'delegation-request' | 'delegation-response' | 'system' | 'status' | string;
+  contentText: string;
+  content?: unknown;
+  parentMessageId?: string | null;
+  delegatedExchangeId?: string | null;
+  status?: string | null;
+  sourceTransport?: string | null;
+  sourceEventId?: string | null;
+};
+
+export type CreateCanonicalDelegatedExchangeRequest = {
+  id?: string | null;
+  sessionId: string;
+  initiatorIdentityId: string;
+  targetIdentityId: string;
+  triggerMessageId?: string | null;
+  requestMessageId?: string | null;
+  responseMessageId?: string | null;
+  transport?: 'bridge' | 'local' | 'internal' | string | null;
+  bridgeHostId?: string | null;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
+  status?: string | null;
+  error?: string | null;
+};
+
+export type UpdateCanonicalPresenceRequest = {
+  identityId: string;
+  status: 'online' | 'offline' | 'away' | 'typing' | 'running' | 'replying' | 'error' | string;
+  sessionId?: string | null;
+  detail?: string | null;
+  expiresAtMs?: number | null;
+};
+
 export type DesktopAuthState = {
   authPath: string;
   hasAnyAuth: boolean;

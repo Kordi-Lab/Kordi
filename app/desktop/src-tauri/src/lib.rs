@@ -1,6 +1,7 @@
 mod auth;
 #[path = "bridge/mod.rs"]
 mod bridge;
+mod canonical_sessions;
 mod chat;
 mod project;
 mod workspace;
@@ -102,6 +103,12 @@ pub fn run() {
             bridge::desktop_bridge_create_outreach,
             bridge::desktop_bridge_send_presence,
             bridge::desktop_bridge_poll_mailbox,
+            canonical_sessions::desktop_canonical_session_state,
+            canonical_sessions::desktop_canonical_upsert_identity,
+            canonical_sessions::desktop_canonical_open_or_create_session,
+            canonical_sessions::desktop_canonical_append_message,
+            canonical_sessions::desktop_canonical_create_delegated_exchange,
+            canonical_sessions::desktop_canonical_update_presence,
             auth::desktop_auth_state,
             auth::desktop_save_api_key,
             auth::desktop_logout,
