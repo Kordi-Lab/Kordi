@@ -187,6 +187,41 @@ export function useWorkspaceViewModels({
   desktopLiveTurnsBySession,
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
+  const outreachThreadsByParentSession = useMemo(() => {
+    const grouped = new Map<string, Array<{
+      id: string;
+      title: string;
+      subtitle: string;
+      targetKind: string;
+      targetDisplayName: string;
+      status: string;
+      updatedAtLabel?: string;
+      updatedAtMs: number;
+    }>>();
+
+    for (const conversation of desktopBridgeState?.conversations ?? []) {
+      const outreach = conversation.outreach;
+      const parentSessionId = outreach?.parentSessionId;
+      if (!outreach || !parentSessionId) continue;
+      const thread = {
+        id: conversation.id,
+        title: conversation.title,
+        subtitle: conversation.subtitle || outreach.requestText || 'Outreach thread',
+        targetKind: outreach.targetKind,
+        targetDisplayName: outreach.targetDisplayName,
+        status: outreach.status,
+        updatedAtLabel: conversation.updatedAtLabel,
+        updatedAtMs: conversation.updatedAtMs,
+      };
+      grouped.set(parentSessionId, [...(grouped.get(parentSessionId) ?? []), thread]);
+    }
+
+    for (const threads of grouped.values()) {
+      threads.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+    }
+    return grouped;
+  }, [desktopBridgeState?.conversations]);
+
   const localChatConversations = useMemo(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) {
       return [];
@@ -222,19 +257,22 @@ export function useWorkspaceViewModels({
         messages: activeMessages,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
+        outreachThreads: (outreachThreadsByParentSession.get(session.id) ?? []).map(({ updatedAtMs: _updatedAtMs, ...thread }) => thread),
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
     const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
-    return (desktopBridgeState?.conversations ?? []).map((conversation) => (
-      mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
-    ));
-  }, [desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
+    return (desktopBridgeState?.conversations ?? [])
+      .filter((conversation) => !conversation.outreach?.parentSessionId || conversation.id === activeConvId)
+      .map((conversation) => (
+        mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
+      ));
+  }, [activeConvId, desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
 
   const chatConversations = useMemo(() => {
     if (!isNativeShell) {

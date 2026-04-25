@@ -613,6 +613,7 @@ export function useKordiAppModel() {
     activeNav,
     setActiveNav,
     activeConvId,
+    setActiveConvId,
     activeProjectId,
     activeProjectSessionId,
     activeSettingsSectionId: settingsUi.activeSettingsSectionId,

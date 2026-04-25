@@ -88,6 +88,16 @@ export type SessionStatusIndicator = {
   live?: boolean;
 };
 
+export type OutreachThreadSummary = {
+  id: string;
+  title: string;
+  subtitle: string;
+  targetKind: 'bridge-agent' | 'bridge-person' | string;
+  targetDisplayName: string;
+  status: string;
+  updatedAtLabel?: string;
+};
+
 export type Conversation = {
   id: string;
   name: string;
@@ -104,6 +114,7 @@ export type Conversation = {
   profileImageUrl?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
+  outreachThreads?: OutreachThreadSummary[];
 };
 
 export type Contact = {

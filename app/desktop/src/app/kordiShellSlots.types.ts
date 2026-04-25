@@ -50,6 +50,7 @@ export type AssembleKordiShellSlotsArgs = {
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
+  setActiveConvId: Dispatch<SetStateAction<string>>;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeSettingsSectionId: SettingsSectionId;
@@ -487,6 +488,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'bridgeInvite'
   | 'handleCreateProjectBridgeInvite'
   | 'setActiveNav'
+  | 'setActiveConvId'
   | 'openProjectSettings'
   | 'getStatusBadgeClass'
   | 'activeConv'

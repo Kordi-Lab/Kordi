@@ -220,6 +220,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       bridgeInvite: args.bridgeInvite,
       handleCreateProjectBridgeInvite: args.handleCreateProjectBridgeInvite,
       setActiveNav: args.setActiveNav,
+      setActiveConvId: args.setActiveConvId,
       openProjectSettings: args.openProjectSettings,
       getStatusBadgeClass: args.getStatusBadgeClass,
       activeConv: args.activeConv,
