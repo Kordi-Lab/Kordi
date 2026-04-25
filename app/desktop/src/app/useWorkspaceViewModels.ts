@@ -315,6 +315,14 @@ function canonicalMessagesForSession(canonicalState: CanonicalSessionState, sess
     });
 }
 
+function canonicalParticipantNames(canonicalState: CanonicalSessionState, sessionId: string, fallback: string[]) {
+  const names = canonicalState.participants
+    .filter((participant) => participant.sessionId === sessionId)
+    .map((participant) => canonicalState.identities.find((identity) => identity.id === participant.identityId)?.displayName)
+    .filter((name): name is string => Boolean(name));
+  return names.length > 0 ? names : fallback;
+}
+
 function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessages: Message[]) {
   if (canonicalMessages.length === 0) return false;
   if (existingMessages.some((message) => message.turn && !message.turn.completed)) return false;
@@ -334,9 +342,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
   if (!canonicalSession) return conversation;
 
   const participants = canonicalState.participants.filter((participant) => participant.sessionId === sessionId);
-  const identityNames = participants
-    .map((participant) => canonicalState.identities.find((identity) => identity.id === participant.identityId)?.displayName)
-    .filter((name): name is string => Boolean(name));
+  const identityNames = canonicalParticipantNames(canonicalState, sessionId, conversation.participants);
   const participantIdentityIds = new Set(participants.map((participant) => participant.identityId));
   const activePresence = canonicalState.presence.filter((presence) => participantIdentityIds.has(presence.identityId) && presence.status !== 'offline');
   const presenceSummary = activePresence.length > 0
@@ -354,7 +360,7 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     canonicalStoragePath: canonicalState.storagePath,
     name: canonicalSession.title || conversation.name,
     subtitle: buildConversationPreview(messages, conversation.subtitle),
-    participants: identityNames.length > 0 ? identityNames : conversation.participants,
+    participants: identityNames,
     messages,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
@@ -833,18 +839,22 @@ export function useWorkspaceViewModels({
               )
             : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
         const outreachMessages = (outreachThreadsByParentSession.get(session.id) ?? []).flatMap((thread) => thread.inlineMessages);
-        const messages = [...baseMessages, ...outreachMessages];
+        const legacyMessages = [...baseMessages, ...outreachMessages];
+        const canonicalSession = canonicalSessionState?.sessions.find((item) => item.id === session.id);
+        const canonicalMessages = canonicalSessionState ? canonicalMessagesForSession(canonicalSessionState, session.id) : [];
+        const messages = shouldUseCanonicalMessages(legacyMessages, canonicalMessages) ? canonicalMessages : legacyMessages;
+        const participants = canonicalSessionState ? canonicalParticipantNames(canonicalSessionState, session.id, ['You', 'Kordi']) : ['You', 'Kordi'];
 
         const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
         const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
 
         return {
           id: session.id,
-          name: session.title,
+          name: canonicalSession?.title || session.title,
           summary: buildConversationPreview(messages, session.subtitle),
           lastActive: session.updatedAtLabel,
           status: session.draft ? 'Draft' : 'Active',
-          participants: ['You', 'Kordi'],
+          participants,
           artifacts: project.sharedSources.length,
           tasks: 0,
           unread: unreadCount,
@@ -857,7 +867,7 @@ export function useWorkspaceViewModels({
         };
       }),
     }));
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalSessionState, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
