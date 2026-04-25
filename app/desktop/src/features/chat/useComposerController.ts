@@ -24,6 +24,8 @@ export function useComposerController(args: UseComposerControllerArgs) {
     setProjectComposerText: inputActions.setProjectComposerText,
     acceptChatSlashCommand: messageActions.acceptChatSlashCommand,
     acceptProjectSlashCommand: messageActions.acceptProjectSlashCommand,
+    acceptChatMentionTarget: messageActions.acceptChatMentionTarget,
+    acceptProjectMentionTarget: messageActions.acceptProjectMentionTarget,
     handleSendChatMessage: messageActions.handleSendChatMessage,
     handleSendProjectMessage: messageActions.handleSendProjectMessage,
     handleStopDesktopChatTurn: messageActions.handleStopDesktopChatTurn,

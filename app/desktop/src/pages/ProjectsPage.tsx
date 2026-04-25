@@ -20,12 +20,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
   LiveChatTurnCard,
   MessageBubble,
   type ComposerAuthOption,
+  type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
@@ -97,9 +99,11 @@ type ProjectsPageProps = {
   onOpenSource: (file: EditFilePreview) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
+  filteredProjectMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
+  acceptProjectMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -147,9 +151,11 @@ export function ProjectsPage({
   onOpenSource,
   desktopLiveTurn,
   filteredProjectSlashCommands,
+  filteredProjectMentionTargets,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptProjectSlashCommand,
+  acceptProjectMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -295,6 +301,12 @@ export function ProjectsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)}
                 onSelect={acceptProjectSlashCommand}
               />
+            ) : filteredProjectMentionTargets.length > 0 ? (
+              <ComposerMentionMenu
+                items={filteredProjectMentionTargets}
+                selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)}
+                onSelect={acceptProjectMentionTarget}
+              />
             ) : null}
             <div
               className={cn(
@@ -365,9 +377,31 @@ export function ProjectsPage({
                       return;
                     }
                   }
+                  if (filteredProjectMentionTargets.length > 0) {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
+                      return;
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
+                      return;
+                    }
+                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                      event.preventDefault();
+                      acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
+                      return;
+                    }
+                  }
                   if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
                     event.preventDefault();
                     setProjectComposerText('/');
+                    return;
+                  }
+                  if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
+                    event.preventDefault();
+                    setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {

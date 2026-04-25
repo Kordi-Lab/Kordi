@@ -18,6 +18,7 @@ import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
@@ -25,6 +26,7 @@ import {
   MessageBubble,
   TypeBadge,
   type ComposerAuthOption,
+  type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
@@ -64,9 +66,11 @@ type ChatsPageProps = {
   onOpenSource: (file: EditFilePreview) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredChatSlashCommands: DesktopChatSlashCommand[];
+  filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -114,9 +118,11 @@ export function ChatsPage({
   onOpenSource,
   desktopLiveTurn,
   filteredChatSlashCommands,
+  filteredChatMentionTargets,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptChatSlashCommand,
+  acceptChatMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -260,6 +266,12 @@ export function ChatsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
                 onSelect={acceptChatSlashCommand}
               />
+            ) : filteredChatMentionTargets.length > 0 ? (
+              <ComposerMentionMenu
+                items={filteredChatMentionTargets}
+                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
+                onSelect={acceptChatMentionTarget}
+              />
             ) : null}
             <div
               className={cn(
@@ -332,9 +344,31 @@ export function ChatsPage({
                       return;
                     }
                   }
+                  if (filteredChatMentionTargets.length > 0) {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
+                      return;
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
+                      return;
+                    }
+                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                      event.preventDefault();
+                      acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
+                      return;
+                    }
+                  }
                   if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
                     event.preventDefault();
                     setChatComposerText('/');
+                    return;
+                  }
+                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
+                    event.preventDefault();
+                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {

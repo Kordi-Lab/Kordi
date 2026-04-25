@@ -32,8 +32,8 @@ const DESKTOP_HOTKEY_LINES = [
   'Enter — send message',
   'Shift+Enter — newline',
   '↑/↓ — navigate slash commands',
-  'Tab — accept slash command',
-  'Esc — close slash command menu',
+  'Tab — accept slash command or @ mention',
+  'Esc — close slash command or @ mention menu',
   '⌘/Ctrl+. — open settings',
 ].join('\n');
 
@@ -48,6 +48,7 @@ const DESKTOP_SLASH_HELP_LINES = [
   '/fork      Fork from a previous message',
   '/skill     Manage loaded skills',
   '',
+  'Type @ to reach out to visible bridge people or agents from chat/project composers.',
   'Skill, prompt, and extension slash commands also appear in the command menu.',
 ].join('\n');
 

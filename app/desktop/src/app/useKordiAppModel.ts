@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
@@ -18,9 +18,28 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
+import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import { useProjectSettingsState } from '@/features/projects/useProjectSettingsState';
+import type { ComposerMentionOption } from '@/kordi-app/components';
+
+function currentMentionQuery(text: string) {
+  const match = /(^|\s)@([^\s@]*)$/.exec(text);
+  return match ? match[2].toLowerCase() : null;
+}
+
+function filterMentionTargets(targets: ComposerMentionOption[], query: string | null) {
+  if (query === null) return [];
+  if (!query) return targets.slice(0, 8);
+
+  return targets
+    .filter((target) => {
+      const haystack = `${target.label} ${target.detail ?? ''} ${target.nodeId} ${target.runtime}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .slice(0, 8);
+}
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -224,6 +243,39 @@ export function useKordiAppModel() {
     shouldAutoFollowChatRef,
   });
 
+  const bridgeMentionTargets = useMemo<ComposerMentionOption[]>(() => {
+    if (!isNativeShell || !desktopBridgeState?.hosts.length) return [];
+
+    return desktopBridgeState.hosts.flatMap((host) => host.visiblePeers.map((peer) => {
+      const label = peer.displayName?.trim() || peer.ownerName?.trim() || peer.nodeId;
+      const targetKind = isBridgeAgentRuntime(peer.runtime) ? 'bridge-agent' as const : 'bridge-person' as const;
+      const owner = peer.ownerName?.trim();
+      const detailParts = [
+        targetKind === 'bridge-agent' ? 'Bridge agent' : 'Bridge person',
+        owner && owner !== label ? owner : null,
+        host.displayName || host.ownerName,
+        peer.runtime,
+      ].filter((value): value is string => Boolean(value));
+
+      return {
+        value: label,
+        label,
+        detail: detailParts.join(' • '),
+        targetKind,
+        bridgeHostId: host.id,
+        nodeId: peer.nodeId,
+        runtime: peer.runtime,
+      };
+    }));
+  }, [desktopBridgeState?.hosts, isNativeShell]);
+
+  const chatMentionQuery = useMemo(() => (
+    isNativeShell && activeConvId.startsWith('bridge:') ? null : currentMentionQuery(composerUi.composerDrafts.chat)
+  ), [activeConvId, composerUi.composerDrafts.chat, isNativeShell]);
+  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
+  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);
+  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, projectMentionQuery), [bridgeMentionTargets, projectMentionQuery]);
+
   const {
     chatConversations,
     filteredConversations,
@@ -423,6 +475,8 @@ export function useKordiAppModel() {
     setProjectComposerText,
     acceptChatSlashCommand,
     acceptProjectSlashCommand,
+    acceptChatMentionTarget,
+    acceptProjectMentionTarget,
     handleSendChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
@@ -695,10 +749,14 @@ export function useKordiAppModel() {
     desktopLiveTurn: activeDesktopLiveTurn,
     filteredProjectSlashCommands,
     filteredChatSlashCommands,
+    filteredProjectMentionTargets,
+    filteredChatMentionTargets,
     chatSlashMenuIndex: composerUi.chatSlashMenuIndex,
     setChatSlashMenuIndex: composerUi.setChatSlashMenuIndex,
     acceptProjectSlashCommand,
     acceptChatSlashCommand,
+    acceptProjectMentionTarget,
+    acceptChatMentionTarget,
     chatAttachmentInputRef,
     chatComposerAttachments: composerUi.chatComposerAttachments,
     saveDesktopAttachments,

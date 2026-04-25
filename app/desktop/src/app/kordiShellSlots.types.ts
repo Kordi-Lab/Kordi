@@ -1,6 +1,6 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 
-import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
@@ -199,10 +199,14 @@ export type AssembleKordiShellSlotsArgs = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
+  filteredProjectMentionTargets: ComposerMentionOption[];
+  filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
   acceptChatSlashCommand: (value: string) => void;
+  acceptProjectMentionTarget: (value: string) => void;
+  acceptChatMentionTarget: (value: string) => void;
   chatAttachmentInputRef: MutableRefObject<HTMLInputElement | null>;
   chatComposerAttachments: AttachmentItem[];
   saveDesktopAttachments: (files: File[]) => Promise<AttachmentItem[]>;
@@ -412,9 +416,11 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveSourcePreview'
   | 'desktopLiveTurn'
   | 'filteredProjectSlashCommands'
+  | 'filteredProjectMentionTargets'
   | 'chatSlashMenuIndex'
   | 'setChatSlashMenuIndex'
   | 'acceptProjectSlashCommand'
+  | 'acceptProjectMentionTarget'
   | 'chatAttachmentInputRef'
   | 'chatComposerAttachments'
   | 'saveDesktopAttachments'
@@ -445,7 +451,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatTranscriptScrollRef'
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
+  | 'filteredChatMentionTargets'
   | 'acceptChatSlashCommand'
+  | 'acceptChatMentionTarget'
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'

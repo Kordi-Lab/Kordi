@@ -197,36 +197,66 @@ function renderProjectContext(state: DesktopChatState | null) {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+function mentionTextStartsWithLabel(text: string, label: string) {
+  const normalizedText = normalizeMentionLabel(text);
+  const normalizedLabel = normalizeMentionLabel(label);
+  if (normalizedText === normalizedLabel) return true;
+  if (!normalizedText.startsWith(normalizedLabel)) return false;
+  const next = normalizedText.slice(normalizedLabel.length, normalizedLabel.length + 1);
+  return !next || /[\s:;,.!?—-]/.test(next);
+}
+
 function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopBridgeState | null) {
-  if (!text.trimStart().startsWith('@') || !bridgeState) return null;
-  const afterAt = text.trimStart().slice(1).trimStart();
-  if (!afterAt) return null;
-  const normalizedAfterAt = normalizeMentionLabel(afterAt);
+  if (!bridgeState) return null;
+  const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
+  if (mentionMatches.length === 0) return null;
 
   const candidates = bridgeState.hosts.flatMap((host) => host.visiblePeers.flatMap((peer) => {
-    const labels = [peer.displayName, peer.ownerName]
+    const labels = [peer.displayName, peer.ownerName, peer.nodeId]
       .filter((value): value is string => Boolean(value?.trim()))
       .map((label) => ({ label, normalized: normalizeMentionLabel(label) }));
     return labels.map((label) => ({ host, peer, label }));
   }));
 
-  const match = candidates
-    .filter((candidate) => (
-      normalizedAfterAt === candidate.label.normalized
-      || normalizedAfterAt.startsWith(`${candidate.label.normalized} `)
-    ))
-    .sort((left, right) => right.label.normalized.length - left.label.normalized.length)[0];
-  if (!match) return null;
+  for (const mention of mentionMatches) {
+    const mentionStart = (mention.index ?? 0) + mention[1].length;
+    const rawAfterAt = text.slice(mentionStart + 1);
+    const leadingWhitespace = rawAfterAt.length - rawAfterAt.trimStart().length;
+    const afterAt = rawAfterAt.trimStart();
+    if (!afterAt) continue;
+    const match = candidates
+      .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.label.label))
+      .sort((left, right) => right.label.normalized.length - left.label.normalized.length)[0];
+    if (!match) continue;
 
-  const requestText = afterAt.slice(match.label.label.length).trim();
-  if (!requestText) return null;
+    let mentionEnd = mentionStart + 1 + leadingWhitespace + match.label.label.length;
+    if (/[:;,.!?—-]/.test(text[mentionEnd] ?? '')) {
+      mentionEnd += 1;
+    }
+    const requestText = `${text.slice(0, mentionStart)}${text.slice(mentionEnd)}`.replace(/\s+/g, ' ').trim();
+    if (!requestText) continue;
 
-  return {
-    host: match.host,
-    peer: match.peer,
-    targetKind: isBridgeAgentRuntime(match.peer.runtime) ? 'bridge-agent' as const : 'bridge-person' as const,
-    requestText,
-  };
+    return {
+      host: match.host,
+      peer: match.peer,
+      targetKind: isBridgeAgentRuntime(match.peer.runtime) ? 'bridge-agent' as const : 'bridge-person' as const,
+      requestText,
+    };
+  }
+
+  return null;
+}
+
+function insertMentionIntoDraft(current: string, label: string) {
+  const mention = `@${label}`;
+  const match = /(^|\s)@([^\s@]*)$/.exec(current);
+  if (match && typeof match.index === 'number') {
+    return `${current.slice(0, match.index)}${match[1]}${mention} `;
+  }
+  if (!current.trim()) {
+    return `${mention} `;
+  }
+  return `${mention} ${current}`;
 }
 
 export function useComposerMessageActions({
@@ -555,6 +585,34 @@ export function useComposerMessageActions({
 
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
+    const mentionedTarget = chatComposerAttachments.length === 0 ? resolveMentionedBridgeTarget(text, desktopBridgeState) : null;
+    if (mentionedTarget) {
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setIsDesktopChatSending(true);
+        setDesktopChatError(null);
+        appendProjectDraft('');
+        resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]');
+        const nextState = await createDesktopBridgeOutreach({
+          hostId: mentionedTarget.host.id,
+          targetNodeId: mentionedTarget.peer.nodeId,
+          targetKind: mentionedTarget.targetKind,
+          requestText: mentionedTarget.requestText,
+          contextText: renderProjectContext(desktopChatState),
+          parentSessionId: activeProjectSessionId,
+          projectId: desktopChatState?.activeSession.project?.root,
+          projectName: desktopChatState?.activeSession.project?.name,
+        });
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+        appendDesktopSystemMessage(`Started ${mentionedTarget.targetKind === 'bridge-agent' ? 'agent' : 'person'} outreach to ${mentionedTarget.peer.displayName || mentionedTarget.peer.ownerName || mentionedTarget.peer.nodeId}.`);
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
+      } finally {
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
     try {
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
@@ -576,19 +634,34 @@ export function useComposerMessageActions({
   }, [
     activeProjectId,
     activeProjectSessionId,
+    appendDesktopSystemMessage,
     appendProjectDraft,
     attachmentSummaryText,
     chatComposerAttachments,
     composerDrafts.project,
+    desktopBridgeState,
+    desktopChatState,
     desktopLiveTurn,
     isNativeShell,
     setChatComposerAttachments,
+    setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
+    setIsDesktopChatSending,
     setProjectWorkspaces,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
   ]);
+
+  const acceptChatMentionTarget = useCallback((label: string) => {
+    setComposerDrafts((current) => ({ ...current, chat: insertMentionIntoDraft(current.chat, label) }));
+    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', insertMentionIntoDraft(composerDrafts.chat, label));
+  }, [composerDrafts.chat, setComposerDrafts]);
+
+  const acceptProjectMentionTarget = useCallback((label: string) => {
+    setComposerDrafts((current) => ({ ...current, project: insertMentionIntoDraft(current.project, label) }));
+    resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
+  }, [composerDrafts.project, setComposerDrafts]);
 
   const handleStopDesktopChatTurn = useCallback(async () => {
     if (!desktopLiveTurn || desktopLiveTurn.completed) return;
@@ -608,5 +681,7 @@ export function useComposerMessageActions({
     handleStopDesktopChatTurn,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
+    acceptChatMentionTarget,
+    acceptProjectMentionTarget,
   };
 }
