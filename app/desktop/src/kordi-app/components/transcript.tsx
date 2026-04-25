@@ -29,7 +29,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
+import { getLocalProfileAvatarSeed, IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import type {
   Contact,
@@ -448,7 +448,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
-  const avatarSeed = isOwnHumanMessage ? 'local-human-profile' : `${avatarKind}:${avatarName}`;
+  const avatarSeed = isOwnHumanMessage ? getLocalProfileAvatarSeed() : `${avatarKind}:${avatarName}`;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
