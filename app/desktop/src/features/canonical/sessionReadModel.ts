@@ -388,43 +388,6 @@ export type CanonicalSessionReadModel = {
   buildChatConversations: (conversations: Conversation[], buildSubtitle: ConversationSubtitleBuilder) => Conversation[];
 };
 
-export type CanonicalConversationLookupTarget = {
-  humanId?: string | null;
-  agentId?: string | null;
-  bridgeNodeId?: string | null;
-};
-
-export function findCanonicalConversationForTarget(
-  conversations: Conversation[],
-  target: CanonicalConversationLookupTarget,
-): Conversation | null {
-  const normalizedHumanId = target.humanId?.trim();
-  const normalizedAgentId = target.agentId?.trim();
-  const normalizedBridgeNodeId = target.bridgeNodeId?.trim();
-
-  let bestMatch: { rank: number; conversation: Conversation } | null = null;
-  for (const conversation of conversations) {
-    const participants = conversation.canonicalParticipants ?? [];
-    if (participants.length === 0) continue;
-
-    let rank = Number.POSITIVE_INFINITY;
-    if (normalizedAgentId && participants.some((participant) => participant.agentId === normalizedAgentId)) {
-      rank = conversation.directness === 'Direct chat' ? 0 : 1;
-    } else if (normalizedHumanId && participants.some((participant) => participant.humanId === normalizedHumanId)) {
-      rank = conversation.directness === 'Direct chat' ? 0 : 1;
-    } else if (normalizedBridgeNodeId && participants.some((participant) => participant.bridgeNodeId === normalizedBridgeNodeId)) {
-      rank = conversation.directness === 'Direct chat' ? 2 : 3;
-    }
-
-    if (!Number.isFinite(rank)) continue;
-    if (!bestMatch || rank < bestMatch.rank) {
-      bestMatch = { rank, conversation };
-    }
-  }
-
-  return bestMatch?.conversation ?? null;
-}
-
 export function createCanonicalSessionReadModel(canonicalState: CanonicalSessionState | null): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 

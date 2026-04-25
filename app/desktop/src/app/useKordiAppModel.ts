@@ -13,6 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
+import { buildProjectRoutingGroups } from '@/features/canonical/sessionResolver';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
@@ -110,6 +111,11 @@ export function useKordiAppModel() {
     mapDesktopMessages,
   });
 
+  const projectRoutingGroups = useMemo(
+    () => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState),
+    [canonicalSessionState, desktopChatState?.projects],
+  );
+
   const {
     activeNav,
     setActiveNav,
@@ -124,7 +130,7 @@ export function useKordiAppModel() {
     selectProjectSession,
   } = useWorkspaceController({
     initialProjects: projects,
-    desktopProjects: desktopChatState?.projects,
+    projectRoutingGroups,
     isNativeShell,
   });
 

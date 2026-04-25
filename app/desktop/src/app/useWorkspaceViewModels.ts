@@ -2,6 +2,13 @@ import { useMemo } from 'react';
 
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import {
+  buildProjectRoutingGroups,
+  canonicalProjectGroupIdFromRoot,
+  normalizeCanonicalProjectGroupId,
+  projectRootFromCanonicalProjectGroupId,
+  resolveProjectSelection,
+} from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
@@ -214,6 +221,26 @@ function buildSessionStatusIndicator({
   }
 
   return undefined;
+}
+
+function canonicalProjectMetadata(session: CanonicalSessionState['sessions'][number]) {
+  return session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+    ? session.metadata as Record<string, unknown>
+    : {};
+}
+
+function canonicalProjectRoot(session: CanonicalSessionState['sessions'][number]) {
+  const metadata = canonicalProjectMetadata(session);
+  return typeof metadata.projectRoot === 'string' && metadata.projectRoot.trim().length > 0
+    ? metadata.projectRoot.trim()
+    : projectRootFromCanonicalProjectGroupId(session.projectId);
+}
+
+function canonicalProjectDisplayName(session: CanonicalSessionState['sessions'][number]) {
+  const trimmedProjectName = session.projectName?.trim();
+  if (trimmedProjectName) return trimmedProjectName;
+  const projectRoot = canonicalProjectRoot(session);
+  return projectRoot?.split(/[\\/]/).filter(Boolean).pop() ?? 'Project';
 }
 
 export function findBridgeProjectForWorkspace(host: DesktopBridgeHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
@@ -638,63 +665,105 @@ export function useWorkspaceViewModels({
   const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
   const runtimeProjects = useMemo(() => {
-    if (!isNativeShell || !desktopChatState?.projects?.length) {
+    if (!isNativeShell) {
       return projectWorkspaces;
     }
 
-    return desktopChatState.projects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      summary: project.summary,
-      bridge: 'Local',
-      scope: project.root,
-      status: project.backgroundSystem ? 'Configured' : 'Local',
-      people: [],
-      agents: [],
-      pendingInvites: [],
-      artifacts: project.sharedSources.length,
-      tasks: 0,
-      root: project.root,
-      sharedContext: project.summary,
-      backgroundSystem: project.backgroundSystem ?? undefined,
-      sharedSources: project.sharedSources,
-      sessions: project.sessions.map((session) => {
-        const baseMessages =
-          desktopChatState.activeSessionId === session.id
-            ? preferLatestMessages(
-                mapDesktopMessages(session.id, desktopChatState.activeSession.messages),
-                cachedProjectSessionMessages[session.id],
-                Boolean(desktopLiveTurnsBySession[session.id] && !desktopLiveTurnsBySession[session.id].completed),
-              )
-            : cachedProjectSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
-        const outreachMessages = (outreachThreadsByParentSession.get(session.id) ?? []).flatMap((thread) => thread.inlineMessages);
-        const legacyMessages = [...baseMessages, ...outreachMessages];
-        const messages = canonicalReadModel ? canonicalReadModel.preferMessages(session.id, legacyMessages) : legacyMessages;
-        const participants = canonicalReadModel ? canonicalReadModel.participantNames(session.id, ['You', 'Kordi']) : ['You', 'Kordi'];
+    const routingGroups = buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState);
+    if (routingGroups.length === 0) {
+      return projectWorkspaces;
+    }
 
-        const isVisibleSession = activeNav === 'projects' && activeProjectId === project.id && activeProjectSessionId === session.id;
-        const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
+    const desktopProjects = desktopChatState?.projects ?? [];
+    const desktopProjectById = new Map(
+      desktopProjects.map((project) => [normalizeCanonicalProjectGroupId(project.id, project.root) ?? project.id, project]),
+    );
+    const workspaceProjectById = new Map(
+      projectWorkspaces.map((project) => [canonicalProjectGroupIdFromRoot(project.root) ?? project.id, project]),
+    );
+    const canonicalProjectSessionById = new Map(
+      (canonicalSessionState?.sessions ?? [])
+        .filter((session) => session.kind === 'project')
+        .map((session) => [session.id, session]),
+    );
 
-        return {
-          id: session.id,
-          name: canonicalReadModel?.sessionTitle(session.id, session.title) ?? session.title,
-          summary: buildConversationPreview(messages, session.subtitle),
-          lastActive: session.updatedAtLabel,
-          status: session.draft ? 'Draft' : 'Active',
-          participants,
-          artifacts: project.sharedSources.length,
-          tasks: 0,
-          unread: unreadCount,
-          statusIndicator: buildSessionStatusIndicator({
-            unreadCount,
-            showBackgroundActivity: !isVisibleSession,
-            liveTurn: desktopLiveTurnsBySession[session.id],
-          }),
-          messages,
-        };
-      }),
-    }));
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalReadModel, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+    return routingGroups.map((group) => {
+      const desktopProject = desktopProjectById.get(group.id);
+      const workspaceProject = workspaceProjectById.get(group.id);
+      const projectScope = desktopProject?.root
+        ?? workspaceProject?.root
+        ?? projectRootFromCanonicalProjectGroupId(group.id)
+        ?? group.id;
+      const sharedSources = desktopProject?.sharedSources ?? workspaceProject?.sharedSources ?? [];
+      const canonicalLeadSession = group.sessions
+        .map((session) => canonicalProjectSessionById.get(session.id))
+        .find((session) => Boolean(session));
+      const projectName = desktopProject?.name
+        ?? workspaceProject?.name
+        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : 'Project');
+      const projectSummary = desktopProject?.summary
+        ?? workspaceProject?.summary
+        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : projectScope);
+
+      return {
+        id: group.id,
+        name: projectName,
+        summary: projectSummary,
+        bridge: 'Local',
+        scope: projectScope,
+        status: desktopProject?.backgroundSystem ? 'Configured' : 'Local',
+        people: workspaceProject?.people ?? [],
+        agents: workspaceProject?.agents ?? [],
+        pendingInvites: workspaceProject?.pendingInvites ?? [],
+        artifacts: sharedSources.length,
+        tasks: workspaceProject?.tasks ?? 0,
+        root: projectScope,
+        sharedContext: desktopProject?.summary ?? workspaceProject?.sharedContext,
+        backgroundSystem: desktopProject?.backgroundSystem ?? workspaceProject?.backgroundSystem,
+        sharedSources,
+        sessions: group.sessions.map(({ id: sessionId }) => {
+          const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId);
+          const canonicalSession = canonicalProjectSessionById.get(sessionId);
+          const baseMessages =
+            desktopSession && desktopChatState?.activeSessionId === sessionId
+              ? preferLatestMessages(
+                  mapDesktopMessages(sessionId, desktopChatState.activeSession.messages),
+                  cachedProjectSessionMessages[sessionId],
+                  Boolean(desktopLiveTurnsBySession[sessionId] && !desktopLiveTurnsBySession[sessionId].completed),
+                )
+              : cachedProjectSessionMessages[sessionId]
+                ?? (desktopSession
+                  ? [{ role: 'system' as const, text: desktopSession.draft ? 'Draft session' : 'Session ready', time: desktopSession.updatedAtLabel }]
+                  : []);
+          const outreachMessages = (outreachThreadsByParentSession.get(sessionId) ?? []).flatMap((thread) => thread.inlineMessages);
+          const legacyMessages = [...baseMessages, ...outreachMessages];
+          const messages = canonicalReadModel ? canonicalReadModel.preferMessages(sessionId, legacyMessages) : legacyMessages;
+          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['You', 'Kordi']) : ['You', 'Kordi'];
+
+          const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
+          const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
+
+          return {
+            id: sessionId,
+            name: canonicalReadModel?.sessionTitle(sessionId, desktopSession?.title ?? canonicalSession?.title ?? 'Project session') ?? desktopSession?.title ?? canonicalSession?.title ?? 'Project session',
+            summary: buildConversationPreview(messages, desktopSession?.subtitle ?? canonicalSession?.title),
+            lastActive: desktopSession?.updatedAtLabel ?? messages[messages.length - 1]?.time ?? '--:--',
+            status: desktopSession?.draft || canonicalSession?.status === 'draft' ? 'Draft' : 'Active',
+            participants,
+            artifacts: sharedSources.length,
+            tasks: workspaceProject?.tasks ?? 0,
+            unread: unreadCount,
+            statusIndicator: buildSessionStatusIndicator({
+              unreadCount,
+              showBackgroundActivity: !isVisibleSession,
+              liveTurn: desktopLiveTurnsBySession[sessionId],
+            }),
+            messages,
+          };
+        }),
+      };
+    });
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
@@ -708,11 +777,20 @@ export function useWorkspaceViewModels({
     });
   }, [projectSearch, runtimeProjects]);
 
+  const resolvedProjectSelection = resolveProjectSelection(
+    runtimeProjects.map((project) => ({
+      id: project.id,
+      sessions: project.sessions.map((session) => ({ id: session.id })),
+    })),
+    activeProjectId,
+    activeProjectSessionId,
+    projectSelectedSessionIds,
+  );
   const fallbackProject = runtimeProjects[0] ?? projectWorkspaces[0];
-  const activeProject = runtimeProjects.find((project) => project.id === activeProjectId) ?? fallbackProject;
-  const rememberedActiveProjectSessionId = projectSelectedSessionIds[activeProject?.id ?? ''];
-  const activeProjectSession = activeProject.sessions.find((session) => session.id === activeProjectSessionId)
-    ?? activeProject.sessions.find((session) => session.id === rememberedActiveProjectSessionId)
+  const activeProject = runtimeProjects.find((project) => project.id === resolvedProjectSelection?.projectId)
+    ?? runtimeProjects.find((project) => project.id === activeProjectId)
+    ?? fallbackProject;
+  const activeProjectSession = activeProject.sessions.find((session) => session.id === resolvedProjectSelection?.sessionId)
     ?? activeProject.sessions[0];
   const activeProjectLastMessage = activeProjectSession.messages[activeProjectSession.messages.length - 1];
 

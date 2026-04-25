@@ -60,6 +60,15 @@ fn open_session_is_deterministic_and_adds_participants() {
 }
 
 #[test]
+fn canonical_desktop_project_group_id_uses_project_prefix() {
+    assert_eq!(
+        canonical_desktop_project_group_id("/tmp/workspace").as_deref(),
+        Some("project:/tmp/workspace")
+    );
+    assert_eq!(canonical_desktop_project_group_id("   "), None);
+}
+
+#[test]
 fn default_session_title_uses_first_receiver_display_name() {
     let conn = test_conn();
     upsert_identity_in_db(

@@ -26,6 +26,15 @@ pub(crate) fn canonical_bridge_session_id(conversation_id: &str) -> String {
     format!("session:bridge:{}", conversation_id.trim())
 }
 
+fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
+    let normalized = project_root.trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(format!("project:{normalized}"))
+    }
+}
+
 fn stable_session_id(request: &OpenCanonicalSessionRequest) -> String {
     let seed = [
         request.kind.trim(),
@@ -1136,7 +1145,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             .as_ref()
             .map(|project| {
                 (
-                    Some(project.root.clone()),
+                    canonical_desktop_project_group_id(&project.root),
                     Some(project.name.clone()),
                     Some(project.root.clone()),
                 )

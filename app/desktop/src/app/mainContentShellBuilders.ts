@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
-import { findCanonicalConversationForTarget } from '@/features/canonical/sessionReadModel';
+import { findCanonicalConversationForTarget } from '@/features/canonical/sessionResolver';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 

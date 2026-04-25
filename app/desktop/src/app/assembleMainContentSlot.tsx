@@ -1,15 +1,13 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } from '@/app/mainContentShellBuilders';
-import { findCanonicalConversationForTarget } from '@/features/canonical/sessionReadModel';
+import { findCanonicalConversationForTarget, findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
   const openLocalAgentChat = async () => {
     args.setActiveNav('chats');
-    const existingLocalConversation = args.chatConversations.find(
-      (conversation) => conversation.type === 'owned-agent' && !conversation.id.startsWith('bridge:'),
-    );
+    const existingLocalConversation = findOwnedAgentConversation(args.chatConversations);
     if (existingLocalConversation) {
       await args.handleSelectChatSession(existingLocalConversation.id);
       return;
