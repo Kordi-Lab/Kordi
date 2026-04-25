@@ -21,31 +21,34 @@ use self::local_server::LocalBridgeServerRuntime;
 
 #[allow(unused_imports)]
 use self::conversations::{
-    append_conversation_message, build_conversation_state, note_peer_heartbeat, note_peer_typing,
-    parse_mailbox_payload, update_message_delivery_state, upsert_bridge_conversation,
+    build_conversation_state, parse_mailbox_payload, upsert_bridge_conversation,
 };
 #[allow(unused_imports)]
 use self::local_server::{current_local_server_status, start_local_server, stop_local_server};
 #[allow(unused_imports)]
 use self::network::{
     add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
-    create_serve_project, fetch_mailbox, fetch_registry_visible_nodes, fetch_serve_contacts,
-    fetch_serve_discovery, health_check, join_serve_project, register_bridge_host,
-    relay_plaintext_message, remove_serve_contact, update_registered_registry_node,
-    update_serve_discovery_mode,
+    create_serve_project, decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target,
+    fetch_mailbox, fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery,
+    health_check, join_serve_project, register_bridge_host, relay_plaintext_message,
+    remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
 };
 #[allow(unused_imports)]
 use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
 #[allow(unused_imports)]
-use self::state::{build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state};
+use self::state::{
+    build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state,
+};
 #[allow(unused_imports)]
 use self::storage::{
-    bridge_conversation_id, bridge_hosts_match, delete_bridge_host_secrets,
-    desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
-    format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
-    normalize_imported_bridge_host, normalize_server_url, now_ms, parse_imported_bridge_store,
-    save_bridge_store, save_conversation_store, write_bridge_store_export,
+    append_conversation_message_to_storage, bridge_conversation_id, bridge_hosts_match,
+    delete_bridge_host_secrets, delete_conversations_for_host, desktop_bridge_config_path,
+    desktop_bridge_conversations_path, format_time_label, format_time_label_with_seconds,
+    hosted_bridge_dir, korde_dir, legacy_bridge_config_path, load_bridge_store,
+    load_conversation_store, load_legacy_bridge_config, mark_bridge_conversation_read_in_storage,
+    normalize_imported_bridge_host, normalize_server_url, note_peer_heartbeat_in_storage,
+    note_peer_typing_in_storage, now_ms, parse_imported_bridge_store, save_bridge_store,
+    save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -300,16 +303,15 @@ impl Default for DesktopBridgeManager {
     fn default() -> Self {
         Self {
             local_server: Arc::new(tokio::sync::Mutex::new(LocalBridgeServerRuntime::default())),
-            realtime: Arc::new(tokio::sync::Mutex::new(realtime::RealtimeBridgeRuntime::default())),
+            realtime: Arc::new(tokio::sync::Mutex::new(
+                realtime::RealtimeBridgeRuntime::default(),
+            )),
             app_handle: Arc::new(tokio::sync::RwLock::new(None)),
         }
     }
 }
 
-pub(crate) async fn set_bridge_app_handle(
-    manager: &DesktopBridgeManager,
-    app: tauri::AppHandle,
-) {
+pub(crate) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: tauri::AppHandle) {
     realtime::set_bridge_app_handle(manager, app).await;
 }
 

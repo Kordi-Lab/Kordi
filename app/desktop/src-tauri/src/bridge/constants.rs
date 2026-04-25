@@ -32,7 +32,10 @@ pub(super) const BRIDGE_CONVERSATION_ID_PREFIX: &str = "bridge:";
 
 pub(super) const KORDE_DIR_NAME: &str = ".korde";
 pub(super) const DESKTOP_BRIDGE_CONFIG_FILE_NAME: &str = "desktop-bridges.json";
-pub(super) const DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME: &str = "desktop-bridge-conversations.json";
+pub(super) const DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME: &str =
+    "desktop-bridge-conversations.sqlite3";
+pub(super) const LEGACY_DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME: &str =
+    "desktop-bridge-conversations.json";
 pub(super) const DESKTOP_BRIDGE_SECRETS_FILE_NAME: &str = "desktop-bridge-secrets.json";
 pub(super) const LEGACY_BRIDGE_CONFIG_FILE_NAME: &str = "config.json";
 pub(super) const DESKTOP_BRIDGE_IDENTITY_FILE_NAME: &str = "desktop-bridge-identity.json";
@@ -42,7 +45,7 @@ pub(super) const HOSTED_BRIDGE_DIR_NAME: &str = "hosted-bridge";
 pub(super) const DESKTOP_BRIDGE_CONFIG_FALLBACK_PATH: &str = "~/.korde/desktop-bridges.json";
 pub(super) const LEGACY_BRIDGE_CONFIG_FALLBACK_PATH: &str = "~/.korde/config.json";
 pub(super) const DESKTOP_BRIDGE_CONVERSATIONS_FALLBACK_PATH: &str =
-    "~/.korde/desktop-bridge-conversations.json";
+    "~/.korde/desktop-bridge-conversations.sqlite3";
 
 pub(super) const DEFAULT_DISPLAY_NAME: &str = "Kordi";
 pub(super) const DEFAULT_OWNER_NAME: &str = "Kordi User";
@@ -56,7 +59,8 @@ pub(super) const BRIDGE_KEYCHAIN_SERVICE_NAME: &str = "app.kordi.desktop.bridge"
 pub(super) const BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX: &str = "host:";
 pub(super) const BRIDGE_KEYCHAIN_AGENT_ACCOUNT_PREFIX: &str = "agent:";
 
-const AGENT_LIKE_RUNTIME_TOKENS: &[&str] = &["agent", "claude", "codex", "openclaw", "pi", "bot", "kordi"];
+const AGENT_LIKE_RUNTIME_TOKENS: &[&str] =
+    &["agent", "claude", "codex", "openclaw", "pi", "bot", "kordi"];
 
 pub(super) fn is_agent_like_runtime(runtime: &str) -> bool {
     let normalized = runtime.trim().to_lowercase();

@@ -1,4 +1,7 @@
 use base64::Engine as _;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use rand::RngCore;
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -7,7 +10,9 @@ use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE, DESKTOP_BRIDGE_RUNTI
 use super::storage::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
 };
-use super::{generate_registry_node_id, DesktopBridgePeer, DesktopBridgeProject};
+use super::{
+    generate_registry_node_id, DesktopBridgeHostConfig, DesktopBridgePeer, DesktopBridgeProject,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +69,13 @@ struct ServeContactItem {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ServeNodeKeysResponse {
+    node_id: String,
+    x25519_pubkey: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ServeProjectItem {
     project_id: String,
     slug: String,
@@ -95,6 +107,45 @@ fn bridge_client() -> Client {
 
 fn trimmed_base_url(base_url: &str) -> &str {
     base_url.trim_end_matches('/')
+}
+
+fn bridge_identity_id_for_host(host: &DesktopBridgeHostConfig) -> String {
+    host.active_agent_id
+        .clone()
+        .or_else(|| {
+            host.agents
+                .iter()
+                .find(|agent| agent.is_default)
+                .map(|agent| agent.id.clone())
+        })
+        .or_else(|| host.agents.first().map(|agent| agent.id.clone()))
+        .unwrap_or_else(|| "default-agent".to_string())
+}
+
+fn ed25519_secret_to_x25519(secret: &[u8; 32]) -> [u8; 32] {
+    use sha2::{Digest, Sha512};
+    let digest = Sha512::digest(secret);
+    let mut scalar = [0u8; 32];
+    scalar.copy_from_slice(&digest[..32]);
+    scalar[0] &= 248;
+    scalar[31] &= 127;
+    scalar[31] |= 64;
+    scalar
+}
+
+fn bridge_e2ee_key(shared: &[u8; 32], sender_node_id: &str, target_node_id: &str) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"kordi-desktop-bridge-e2ee-v1");
+    hasher.update(shared);
+    hasher.update(sender_node_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(target_node_id.as_bytes());
+    hasher.finalize().into()
+}
+
+fn bridge_payload_is_encrypted(payload: &serde_json::Value) -> bool {
+    payload.get("envelopeType").and_then(|value| value.as_str()) == Some("kordi_bridge_e2ee_v1")
 }
 
 async fn send_request(
@@ -137,6 +188,156 @@ async fn parse_json_response<T: DeserializeOwned>(
         .json::<T>()
         .await
         .map_err(|err| format!("{parse_error}: {err}"))
+}
+
+async fn fetch_serve_node_keys(
+    base_url: &str,
+    api_key: &str,
+    target_node_id: &str,
+    project_id: Option<&str>,
+) -> Result<ServeNodeKeysResponse, String> {
+    let mut url = format!("{}/v1/keys/{target_node_id}", trimmed_base_url(base_url));
+    if let Some(project_id) = project_id.filter(|value| !value.trim().is_empty()) {
+        url = format!("{url}?project={project_id}");
+    }
+    let response = send_request(
+        bridge_client().get(url).bearer_auth(api_key),
+        "Unable to fetch bridge recipient keys",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to fetch bridge recipient keys",
+            response.status(),
+        ));
+    }
+    parse_json_response::<ServeNodeKeysResponse>(response, "Unable to parse bridge recipient keys")
+        .await
+}
+
+fn encrypt_payload_for_recipient(
+    sender_host: &DesktopBridgeHostConfig,
+    recipient_keys: &ServeNodeKeysResponse,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let identity_id = bridge_identity_id_for_host(sender_host);
+    let (signing, verifying) = load_or_create_bridge_identity_for_agent(&identity_id)?;
+    let sender_secret = ed25519_secret_to_x25519(&signing.to_bytes());
+    let sender_secret = x25519_dalek::StaticSecret::from(sender_secret);
+    let recipient_public_bytes: [u8; 32] = hex::decode(&recipient_keys.x25519_pubkey)
+        .map_err(|err| format!("Invalid bridge recipient x25519 key: {err}"))?
+        .try_into()
+        .map_err(|bytes: Vec<u8>| {
+            format!(
+                "Invalid bridge recipient x25519 key length: {}",
+                bytes.len()
+            )
+        })?;
+    let recipient_public = x25519_dalek::PublicKey::from(recipient_public_bytes);
+    let shared = sender_secret.diffie_hellman(&recipient_public);
+    let key_bytes = bridge_e2ee_key(
+        shared.as_bytes(),
+        &sender_host.node_id,
+        &recipient_keys.node_id,
+    );
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+    let mut nonce_bytes = [0u8; 12];
+    rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
+    let plaintext = serde_json::to_vec(payload).map_err(|err| err.to_string())?;
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_ref())
+        .map_err(|_| "Unable to encrypt bridge payload".to_string())?;
+    Ok(serde_json::json!({
+        "envelopeType": "kordi_bridge_e2ee_v1",
+        "alg": "x25519-chacha20poly1305",
+        "from": sender_host.node_id,
+        "to": recipient_keys.node_id,
+        "senderEd25519Pubkey": bs58::encode(verifying.as_bytes()).into_string(),
+        "nonce": base64::engine::general_purpose::STANDARD.encode(nonce_bytes),
+        "ciphertext": base64::engine::general_purpose::STANDARD.encode(ciphertext),
+    }))
+}
+
+pub(super) fn decrypt_bridge_payload_for_host(
+    recipient_host: &DesktopBridgeHostConfig,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if !bridge_payload_is_encrypted(&payload) {
+        return Ok(payload);
+    }
+    let sender_node_id = payload
+        .get("from")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Encrypted bridge payload is missing sender".to_string())?;
+    let target_node_id = payload
+        .get("to")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Encrypted bridge payload is missing recipient".to_string())?;
+    if target_node_id != recipient_host.node_id {
+        return Err("Encrypted bridge payload recipient does not match this node".to_string());
+    }
+    let sender_ed25519 = payload
+        .get("senderEd25519Pubkey")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Encrypted bridge payload is missing sender key".to_string())?;
+    let sender_ed25519_bytes: [u8; 32] = bs58::decode(sender_ed25519)
+        .into_vec()
+        .map_err(|err| format!("Invalid bridge sender key: {err}"))?
+        .try_into()
+        .map_err(|bytes: Vec<u8>| format!("Invalid bridge sender key length: {}", bytes.len()))?;
+    let sender_verifying = ed25519_dalek::VerifyingKey::from_bytes(&sender_ed25519_bytes)
+        .map_err(|err| format!("Invalid bridge sender key: {err}"))?;
+    let derived_sender_node_id = derive_node_id(&sender_verifying);
+    if derived_sender_node_id != sender_node_id {
+        return Err("Encrypted bridge payload sender key does not match sender node".to_string());
+    }
+    let sender_x25519 = ed25519_to_x25519_public(&sender_ed25519_bytes)?;
+    let sender_public = x25519_dalek::PublicKey::from(sender_x25519);
+    let identity_id = bridge_identity_id_for_host(recipient_host);
+    let (signing, _verifying) = load_or_create_bridge_identity_for_agent(&identity_id)?;
+    let recipient_secret =
+        x25519_dalek::StaticSecret::from(ed25519_secret_to_x25519(&signing.to_bytes()));
+    let shared = recipient_secret.diffie_hellman(&sender_public);
+    let key_bytes = bridge_e2ee_key(shared.as_bytes(), sender_node_id, target_node_id);
+    let nonce = payload
+        .get("nonce")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Encrypted bridge payload is missing nonce".to_string())?;
+    let nonce_bytes = base64::engine::general_purpose::STANDARD
+        .decode(nonce)
+        .map_err(|err| format!("Invalid bridge payload nonce: {err}"))?;
+    if nonce_bytes.len() != 12 {
+        return Err("Invalid bridge payload nonce length".to_string());
+    }
+    let ciphertext = payload
+        .get("ciphertext")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Encrypted bridge payload is missing ciphertext".to_string())?;
+    let ciphertext = base64::engine::general_purpose::STANDARD
+        .decode(ciphertext)
+        .map_err(|err| format!("Invalid bridge payload ciphertext: {err}"))?;
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(&nonce_bytes), ciphertext.as_ref())
+        .map_err(|_| "Unable to decrypt bridge payload".to_string())?;
+    serde_json::from_slice(&plaintext)
+        .map_err(|err| format!("Invalid decrypted bridge payload: {err}"))
+}
+
+pub(super) async fn encrypt_bridge_payload_for_target(
+    sender_host: &DesktopBridgeHostConfig,
+    target_node_id: &str,
+    project_id: Option<&str>,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let recipient_keys = fetch_serve_node_keys(
+        &sender_host.coordination,
+        &sender_host.api_key,
+        target_node_id,
+        project_id,
+    )
+    .await?;
+    encrypt_payload_for_recipient(sender_host, &recipient_keys, payload)
 }
 
 pub(super) async fn health_check(base_url: &str) -> Result<(), String> {
@@ -821,22 +1022,26 @@ pub(super) async fn fetch_mailbox(
 }
 
 pub(super) async fn relay_plaintext_message(
-    base_url: &str,
-    api_key: &str,
+    host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &serde_json::Value,
 ) -> Result<(), String> {
+    let encrypted_payload =
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
     let blob = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(payload).map_err(|err| err.to_string())?);
-    let url = format!("{}/v1/relay", trimmed_base_url(base_url));
+        .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
+    let url = format!("{}/v1/relay", trimmed_base_url(&host.coordination));
     let body = serde_json::json!({
         "targetNodeId": target_node_id,
         "blob": blob,
         "projectId": project_id,
     });
     let response = send_request(
-        bridge_client().post(url).bearer_auth(api_key).json(&body),
+        bridge_client()
+            .post(url)
+            .bearer_auth(&host.api_key)
+            .json(&body),
         "Unable to relay bridge message",
     )
     .await?;

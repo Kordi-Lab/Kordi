@@ -327,8 +327,10 @@ export function useWorkspaceViewModels({
       });
 
       for (const peer of host.visiblePeers) {
-        const id = `bridge-peer:${peer.nodeId}`;
         const isAgent = isBridgeAgentRuntime(peer.runtime);
+        const id = isAgent
+          ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
+          : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
         const existing = byId.get(id);
         const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
         byId.set(id, {
@@ -347,6 +349,28 @@ export function useWorkspaceViewModels({
           bridgePeerNodeId: peer.nodeId,
           bridgePeerRuntime: peer.runtime,
         });
+
+        if (isAgent && peer.ownerName) {
+          const personId = `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? peer.ownerName}`;
+          const existingPerson = byId.get(personId);
+          const personBridges = Array.from(new Set([...(existingPerson?.bridges ?? []), label])).sort();
+          byId.set(personId, {
+            id: personId,
+            name: peer.ownerName,
+            initials: getInitials(peer.ownerName),
+            classType: 'other-users',
+            entityType: 'Person',
+            subtitle: `Owner of ${peer.displayName || 'external agent'}`,
+            bridges: personBridges,
+            status: host.connected ? 'Reachable' : 'Offline',
+            discoverableOn: personBridges,
+            detail: [peer.humanId ? `Human ID: ${peer.humanId}` : null, peer.nodeId, peer.displayName ? `Agent: ${peer.displayName}` : null].filter(Boolean).join(' • '),
+            owner: peer.ownerName,
+            bridgeHostId: host.id,
+            bridgePeerNodeId: peer.nodeId,
+            bridgePeerRuntime: 'person',
+          });
+        }
       }
     }
 
