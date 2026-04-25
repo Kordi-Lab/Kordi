@@ -127,7 +127,7 @@ type ProjectsPageProps = {
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
-  onSendProjectMessage: () => void;
+  onSendProjectMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
 };
@@ -406,7 +406,7 @@ export function ProjectsPage({
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    onSendProjectMessage();
+                    onSendProjectMessage(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"

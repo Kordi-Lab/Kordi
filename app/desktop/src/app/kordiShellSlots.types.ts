@@ -237,8 +237,8 @@ export type AssembleKordiShellSlotsArgs = {
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
-  handleSendProjectMessage: () => void;
-  handleSendChatMessage: () => void;
+  handleSendProjectMessage: (draftOverride?: string) => void;
+  handleSendChatMessage: (draftOverride?: string) => void;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
   setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;

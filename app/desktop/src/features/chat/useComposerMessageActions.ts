@@ -505,9 +505,10 @@ export function useComposerMessageActions({
     setOpenComposerSelector,
   ]);
 
-  const handleSendChatMessage = useCallback(async () => {
+  const handleSendChatMessage = useCallback(async (draftOverride?: string) => {
     if (!isNativeShell) return;
-    const text = composerDrafts.chat.trim();
+    const rawText = draftOverride ?? composerDrafts.chat;
+    const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
     if (activeConversationIsBridge || activeConvBridgeTarget) {
@@ -692,8 +693,9 @@ export function useComposerMessageActions({
     watchDesktopLiveTurn,
   ]);
 
-  const handleSendProjectMessage = useCallback(async () => {
-    const text = composerDrafts.project.trim();
+  const handleSendProjectMessage = useCallback(async (draftOverride?: string) => {
+    const rawText = draftOverride ?? composerDrafts.project;
+    const text = rawText.trim();
     if (!activeProjectSessionId || (!text && chatComposerAttachments.length === 0)) return;
 
     if (!isNativeShell) {
