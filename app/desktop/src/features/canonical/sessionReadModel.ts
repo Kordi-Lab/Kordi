@@ -339,14 +339,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
-  const chatSessionIds = canonicalState.sessions
+  const chatSessions = canonicalState.sessions
     .filter((session) => session.kind !== 'project')
     .sort((left, right) => {
       const leftTs = left.lastMessageAtMs ?? left.updatedAtMs ?? left.createdAtMs;
       const rightTs = right.lastMessageAtMs ?? right.updatedAtMs ?? right.createdAtMs;
       return rightTs - leftTs;
-    })
-    .map((session) => session.id);
+    });
 
   return {
     sessionTitle(sessionId, fallback) {
@@ -397,13 +396,35 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
     },
     buildChatConversations(conversations, buildSubtitle) {
       const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
-      const hydrated = chatSessionIds
-        .flatMap((sessionId) => {
-          const source = sourceBySessionId.get(sessionId);
+      const groups = new Map<string, typeof chatSessions>();
+      for (const session of chatSessions) {
+        const isDefaultAgentRelationship = session.kind === 'direct-agent'
+          && session.relationshipIdentityId
+          && session.primaryIdentityId === session.relationshipIdentityId;
+        const groupKey = session.kind === 'direct-person' || isDefaultAgentRelationship
+          ? `relationship:${session.relationshipIdentityId ?? session.id}`
+          : session.id;
+        groups.set(groupKey, [...(groups.get(groupKey) ?? []), session]);
+      }
+
+      const hydrated = [...groups.values()]
+        .sort((left, right) => {
+          const leftTs = left[0]?.lastMessageAtMs ?? left[0]?.updatedAtMs ?? left[0]?.createdAtMs ?? 0;
+          const rightTs = right[0]?.lastMessageAtMs ?? right[0]?.updatedAtMs ?? right[0]?.createdAtMs ?? 0;
+          return rightTs - leftTs;
+        })
+        .flatMap((sessions) => {
+          const representative = sessions.find((session) => sourceBySessionId.has(session.id));
+          if (!representative) return [];
+          const source = sourceBySessionId.get(representative.id);
           return source ? [this.applyConversation(source, buildSubtitle)] : [];
         });
       const hydratedIds = new Set(hydrated.map((conversation) => conversation.id));
-      const extras = conversations.filter((conversation) => !hydratedIds.has(conversation.id));
+      const groupedSessionIds = new Set([...groups.values()].flatMap((sessions) => sessions.map((session) => session.id)));
+      const extras = conversations.filter((conversation) => {
+        const sessionId = conversation.canonicalSessionId ?? conversation.id;
+        return !hydratedIds.has(conversation.id) && !groupedSessionIds.has(sessionId);
+      });
       return [...hydrated, ...extras];
     },
   };
