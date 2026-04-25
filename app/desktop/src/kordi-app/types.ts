@@ -1,3 +1,5 @@
+import type { BridgeMessageDirection } from '@/features/bridge/messages';
+
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
 export type ChatFilter = 'all' | 'people' | 'agents' | 'delegated';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
@@ -363,7 +365,7 @@ export type DesktopBridgeHost = {
 
 export type DesktopBridgeConversationMessage = {
   id: string;
-  direction: string;
+  direction: BridgeMessageDirection;
   sender?: string | null;
   text: string;
   timeLabel: string;

@@ -17,6 +17,11 @@ pub(super) const BRIDGE_DELIVERY_STATE_RESPONDED: &str = "responded";
 pub(super) const BRIDGE_DELIVERY_STATE_DELIVERED: &str = "delivered";
 pub(super) const BRIDGE_DELIVERY_STATE_READ: &str = "read";
 
+pub(super) const BRIDGE_MESSAGE_DIRECTION_OUTBOUND: &str = "outbound";
+pub(super) const BRIDGE_MESSAGE_DIRECTION_INBOUND: &str = "inbound";
+pub(super) const BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE: &str = "outbound-response";
+pub(super) const BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE: &str = "inbound-response";
+
 pub(super) const BRIDGE_HOST_ID_PREFIX: &str = "bridge_";
 pub(super) const BRIDGE_NODE_ID_PREFIX: &str = "kd_";
 pub(super) const BRIDGE_HUMAN_ID_PREFIX: &str = "kh_";
@@ -58,4 +63,9 @@ pub(super) fn is_agent_like_runtime(runtime: &str) -> bool {
     AGENT_LIKE_RUNTIME_TOKENS
         .iter()
         .any(|token| normalized.contains(token))
+}
+
+pub(super) fn is_inbound_message_direction(direction: &str) -> bool {
+    direction == BRIDGE_MESSAGE_DIRECTION_INBOUND
+        || direction == BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
 }
