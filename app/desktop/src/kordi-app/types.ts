@@ -102,6 +102,10 @@ export type OutreachThreadSummary = {
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
+  canonicalStoragePath?: string;
+  canonicalParticipantCount?: number;
+  canonicalMessageCount?: number;
+  canonicalDelegatedExchangeCount?: number;
   name: string;
   type: ConversationType;
   subtitle: string;

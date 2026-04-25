@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
@@ -24,6 +24,8 @@ import { useBridgeState } from '@/features/bridge/useBridgeState';
 import { useProjectSettingsState } from '@/features/projects/useProjectSettingsState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import type { CanonicalSessionState } from '@/kordi-app/types';
+import { fetchCanonicalSessionState } from '@/lib/desktop';
 
 function currentMentionQuery(text: string) {
   const match = /(^|\s)@([^\s@]*)$/.exec(text);
@@ -55,6 +57,7 @@ export function useKordiAppModel() {
   const shouldAutoFollowChatRef = useRef(true);
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
   const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
+  const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
 
   const localUi = useKordiLocalUiState();
   const {
@@ -291,6 +294,24 @@ export function useKordiAppModel() {
   const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);
   const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, projectMentionQuery), [bridgeMentionTargets, projectMentionQuery]);
 
+  const bridgeCanonicalRefreshKey = useMemo(
+    () => (desktopBridgeState?.conversations ?? []).map((conversation) => `${conversation.id}:${conversation.updatedAtMs}:${conversation.messages.length}`).join('|'),
+    [desktopBridgeState?.conversations],
+  );
+
+  const refreshCanonicalState = useCallback(async () => {
+    if (!isNativeShell) return;
+    try {
+      setCanonicalSessionState(await fetchCanonicalSessionState());
+    } catch {
+      // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
+    }
+  }, [isNativeShell]);
+
+  useEffect(() => {
+    void refreshCanonicalState();
+  }, [desktopChatState?.activeSessionId, bridgeCanonicalRefreshKey, refreshCanonicalState]);
+
   const {
     chatConversations,
     filteredConversations,
@@ -321,6 +342,7 @@ export function useKordiAppModel() {
     isDesktopChatLoading,
     desktopChatState,
     desktopBridgeState,
+    canonicalSessionState,
     projectWorkspaces: projectsUi.projectWorkspaces,
     projectSelectedSessionIds,
     activeNav,

@@ -5,6 +5,7 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
+  CanonicalSessionState,
   Contact,
   DesktopBridgeConversation,
   DesktopBridgeHost,
@@ -25,6 +26,7 @@ type UseWorkspaceViewModelsArgs = {
   isDesktopChatLoading: boolean;
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
+  canonicalSessionState: CanonicalSessionState | null;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
@@ -179,6 +181,24 @@ function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message
   return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
 }
 
+function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string }>(
+  conversation: T,
+  canonicalState: CanonicalSessionState | null,
+): T {
+  if (!canonicalState) return conversation;
+  const sessionId = conversation.canonicalSessionId ?? conversation.id;
+  if (!canonicalState.sessions.some((session) => session.id === sessionId)) return conversation;
+
+  return {
+    ...conversation,
+    canonicalSessionId: sessionId,
+    canonicalStoragePath: canonicalState.storagePath,
+    canonicalParticipantCount: canonicalState.participants.filter((participant) => participant.sessionId === sessionId).length,
+    canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
+    canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,
+  };
+}
+
 function buildSessionStatusIndicator({
   unreadCount,
   showBackgroundActivity,
@@ -218,6 +238,7 @@ export function useWorkspaceViewModels({
   isDesktopChatLoading,
   desktopChatState,
   desktopBridgeState,
+  canonicalSessionState,
   projectWorkspaces,
   projectSelectedSessionIds,
   activeNav,
@@ -336,8 +357,8 @@ export function useWorkspaceViewModels({
     }
     const merged = [...bridgeChatConversations, ...localChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
-    return merged.map(({ _updatedAtMs, ...conversation }) => conversation);
-  }, [bridgeChatConversations, isNativeShell, localChatConversations]);
+    return merged.map(({ _updatedAtMs, ...conversation }) => attachCanonicalSessionMeta(conversation, canonicalSessionState));
+  }, [bridgeChatConversations, canonicalSessionState, isNativeShell, localChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => ({
