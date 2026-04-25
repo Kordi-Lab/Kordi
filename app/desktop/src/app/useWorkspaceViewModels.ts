@@ -5,6 +5,8 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
+  CanonicalIdentity,
+  CanonicalSessionMessage,
   CanonicalSessionState,
   Contact,
   DesktopBridgeConversation,
@@ -14,12 +16,15 @@ import type {
   DesktopBridgeState,
   DesktopChatMessage,
   DesktopChatState,
+  DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   Message,
+  MessageAttachment,
   Project,
   SessionStatusIndicator,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
+import { formatDesktopClockTime } from '@/lib/time';
 
 type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
@@ -190,7 +195,136 @@ function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message
   return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
 }
 
-function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string; name: string; participants: string[] }>(
+function contentRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function canonicalAttachments(value: unknown): MessageAttachment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const attachments = value.flatMap((item) => {
+    const record = contentRecord(item);
+    const name = stringValue(record.name);
+    const rawKind = stringValue(record.kind);
+    if (!name || (rawKind !== 'image' && rawKind !== 'file')) return [];
+    const kind: MessageAttachment['kind'] = rawKind;
+    return [{
+      kind,
+      name,
+      formatLabel: stringValue(record.formatLabel) ?? null,
+      previewUrl: stringValue(record.previewUrl) ?? null,
+      mimeType: stringValue(record.mimeType) ?? null,
+    }];
+  });
+  return attachments.length > 0 ? attachments : undefined;
+}
+
+function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    const record = contentRecord(item);
+    const name = stringValue(record.name);
+    if (!name) return [];
+    return [{
+      id: stringValue(record.id) ?? `canonical-tool-${index}`,
+      name,
+      status: stringValue(record.status) ?? 'done',
+      arguments: stringValue(record.arguments) ?? '',
+      liveOutput: stringValue(record.liveOutput) ?? '',
+      resultText: stringValue(record.resultText) ?? null,
+      detail: stringValue(record.detail) ?? null,
+      isError: Boolean(record.isError),
+    }];
+  });
+}
+
+function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
+  if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
+    return message.senderRole as Message['role'];
+  }
+  if (identity?.kind === 'agent') return identity.source === 'local' ? 'owned-agent' : 'external-agent';
+  return 'person';
+}
+
+function canonicalMessageIsComplete(message: CanonicalSessionMessage, content: Record<string, unknown>) {
+  const status = message.status.toLowerCase();
+  const deliveryState = stringValue(content.deliveryState)?.toLowerCase();
+  return !['draft', 'sending', 'processing'].includes(status) && deliveryState !== 'processing';
+}
+
+function mapCanonicalMessage(
+  message: CanonicalSessionMessage,
+  identityById: Map<string, CanonicalIdentity>,
+  profileHumanIdentityId?: string | null,
+): Message | null {
+  const content = contentRecord(message.content);
+  const identity = identityById.get(message.senderIdentityId);
+  const role = canonicalMessageRole(message, identity);
+  const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
+  const completed = canonicalMessageIsComplete(message, content);
+  const failed = message.status === 'failed' || stringValue(content.deliveryState) === 'failed';
+  const tools = canonicalTools(content.tools);
+  const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
+  const sender = stringValue(content.sender) || identity?.displayName;
+  const thinkingText = stringValue(content.thinkingText) ?? '';
+
+  if (role === 'system' && !message.contentText.trim()) return null;
+
+  return {
+    role,
+    sender,
+    senderType: identity?.kind === 'agent' ? 'agent' : 'human',
+    senderProfileImageUrl: identity?.profileImageUrl ?? null,
+    senderAvatarSeed: identity?.avatarKey ?? null,
+    isOwnMessage: role === 'user' || message.senderIdentityId === profileHumanIdentityId,
+    showSenderMeta: role === 'person' || role === 'external-agent',
+    text: isAgentTurn ? '' : message.contentText,
+    time,
+    detail: stringValue(content.detail),
+    attachments: canonicalAttachments(content.attachments),
+    statusChips: role === 'user' && message.status !== 'sent' ? [message.status] : undefined,
+    turn: isAgentTurn
+      ? {
+          id: `canonical-turn:${message.id}`,
+          sessionId: message.sessionId,
+          prompt: '',
+          status: completed ? (failed ? 'failed' : 'complete') : (message.contentText.trim() ? 'writing' : 'typing'),
+          message: completed ? (failed ? 'Failed' : 'Complete') : (message.contentText.trim() ? 'Replying…' : 'Typing…'),
+          assistantText: message.contentText,
+          thinkingText,
+          tools,
+          completed,
+          succeeded: completed && !failed && tools.every((tool) => !tool.isError),
+          error: failed ? stringValue(content.error) ?? 'Message failed' : null,
+        }
+      : undefined,
+  };
+}
+
+function canonicalMessagesForSession(canonicalState: CanonicalSessionState, sessionId: string) {
+  const identityById = new Map(canonicalState.identities.map((identity) => [identity.id, identity]));
+  return canonicalState.messages
+    .filter((message) => message.sessionId === sessionId)
+    .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs)
+    .flatMap((message) => {
+      const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
+      return mapped ? [mapped] : [];
+    });
+}
+
+function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessages: Message[]) {
+  if (canonicalMessages.length === 0) return false;
+  if (existingMessages.some((message) => message.turn && !message.turn.completed)) return false;
+  const placeholderOnly = existingMessages.length === 1
+    && existingMessages[0]?.role === 'system'
+    && /^(Draft session|Session ready|Opening your local chat history|Select a local session)/.test(existingMessages[0]?.text ?? '');
+  return placeholderOnly || canonicalMessages.length >= existingMessages.length;
+}
+
+function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?: string; name: string; subtitle: string; participants: string[]; messages: Message[] }>(
   conversation: T,
   canonicalState: CanonicalSessionState | null,
 ): T {
@@ -209,13 +343,19 @@ function attachCanonicalSessionMeta<T extends { id: string; canonicalSessionId?:
     ? activePresence
         .reduce<Record<string, number>>((acc, presence) => ({ ...acc, [presence.status]: (acc[presence.status] ?? 0) + 1 }), {})
     : null;
+  const canonicalMessages = canonicalMessagesForSession(canonicalState, sessionId);
+  const messages = shouldUseCanonicalMessages(conversation.messages, canonicalMessages)
+    ? canonicalMessages
+    : conversation.messages;
 
   return {
     ...conversation,
     canonicalSessionId: sessionId,
     canonicalStoragePath: canonicalState.storagePath,
     name: canonicalSession.title || conversation.name,
+    subtitle: buildConversationPreview(messages, conversation.subtitle),
     participants: identityNames.length > 0 ? identityNames : conversation.participants,
+    messages,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: canonicalState.messages.filter((message) => message.sessionId === sessionId).length,
     canonicalDelegatedExchangeCount: canonicalState.delegatedExchanges.filter((exchange) => exchange.sessionId === sessionId).length,

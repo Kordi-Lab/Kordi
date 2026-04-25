@@ -294,6 +294,16 @@ export function useKordiAppModel() {
   const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);
   const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, projectMentionQuery), [bridgeMentionTargets, projectMentionQuery]);
 
+  const desktopCanonicalRefreshKey = useMemo(
+    () => [
+      desktopChatState?.activeSessionId ?? '',
+      desktopChatState?.activeSession.messages.length ?? 0,
+      ...(desktopChatState?.sessions ?? []).map((session) => `${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
+      ...(desktopChatState?.projects ?? []).flatMap((project) => project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`)),
+    ].join('|'),
+    [desktopChatState],
+  );
+
   const bridgeCanonicalRefreshKey = useMemo(
     () => (desktopBridgeState?.conversations ?? []).map((conversation) => `${conversation.id}:${conversation.updatedAtMs}:${conversation.messages.length}`).join('|'),
     [desktopBridgeState?.conversations],
@@ -310,7 +320,7 @@ export function useKordiAppModel() {
 
   useEffect(() => {
     void refreshCanonicalState();
-  }, [desktopChatState?.activeSessionId, bridgeCanonicalRefreshKey, refreshCanonicalState]);
+  }, [bridgeCanonicalRefreshKey, desktopCanonicalRefreshKey, refreshCanonicalState]);
 
   const {
     chatConversations,
