@@ -263,6 +263,8 @@ function BridgeAgentsStep({
                     seed={agent.id}
                     name={agent.label}
                     imageUrl={agent.profileImageUrl}
+                    avatarKey={`agent:${activeBridgeHost.id}:${agent.id}`}
+                    ownerSeed={`human:${activeBridgeHost.humanId || activeBridgeHost.ownerName}`}
                     className="mt-0.5 h-10 w-10 border border-white/10"
                   />
                   <div className="min-w-0 flex-1">
@@ -501,6 +503,8 @@ function BridgePeerCard({
           seed={peer.agentId || peer.humanId || peer.nodeId}
           name={title}
           imageUrl={peer.profileImageUrl}
+          avatarKey={kind === 'agent' ? `agent:${peer.nodeId}` : `human:${peer.humanId ?? peer.ownerName ?? peer.nodeId}`}
+          ownerSeed={kind === 'agent' ? `human:${peer.humanId ?? peer.ownerName ?? peer.nodeId}` : undefined}
           className="h-9 w-9 border border-white/10"
         />
         <div className="min-w-0 flex-1">

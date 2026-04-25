@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
+import { getLocalHumanAvatarKey } from '../components/IdentityAvatar';
 import type { Agent } from '../types';
 import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
 import { AgentConfigList, AgentInspectorSection } from './shared';
@@ -136,6 +137,8 @@ export function AgentDetailPane({
               seed={activeAgent.id}
               name={activeAgent.name}
               imageUrl={activeAgent.profileImageUrl}
+              avatarKey={activeAgent.avatarKey}
+              ownerSeed={activeAgent.ownerAvatarKey ?? (activeAgent.bridgeOwnerName ? `human:${activeAgent.bridgeOwnerName}` : getLocalHumanAvatarKey())}
               label={`${activeAgent.name} avatar`}
               compact
               className="mt-0.5 h-12 w-12 border border-white/10"

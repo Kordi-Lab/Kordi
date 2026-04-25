@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
+import { getLocalHumanAvatarKey } from '@/kordi-app/components/IdentityAvatar';
 import type { SettingsSection } from '@/kordi-app/data/settings';
 import type {
   DesktopAuthState,
@@ -167,8 +168,9 @@ export function SettingsPage({
                   </div>
                   <EditableIdentityAvatar
                     kind="human"
-                    seed="local-human-profile"
+                    seed={getLocalHumanAvatarKey()}
                     name="Local profile"
+                    avatarKey={getLocalHumanAvatarKey()}
                     label="Local profile"
                     className="h-16 w-16 border border-white/10"
                   />

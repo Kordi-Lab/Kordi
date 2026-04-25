@@ -10,6 +10,7 @@ export type IdentityAvatarProps = {
   name?: string | null;
   imageUrl?: string | null;
   avatarKey?: string | null;
+  ownerSeed?: string | null;
   className?: string;
   generatedClassName?: string;
 };
@@ -20,9 +21,9 @@ const SKIN_TONES = ['#ffd7a8', '#f1b985', '#c98254', '#8f563b', '#5f3426', '#f6c
 const HAIR_COLORS = ['#20140f', '#3b2418', '#71411f', '#b76e32', '#f4d06f', '#1f2937', '#7c2d12'];
 const SHIRT_COLORS = ['#0f766e', '#1d4ed8', '#be123c', '#7c3aed', '#15803d', '#c2410c', '#334155'];
 
-const ROBOT_BACKGROUNDS = ['#0f172a', '#1e1b4b', '#164e63', '#312e81', '#3b0764', '#064e3b', '#431407', '#111827'];
-const ROBOT_METALS = ['#cbd5e1', '#94a3b8', '#a5b4fc', '#bae6fd', '#d8b4fe', '#99f6e4'];
-const ROBOT_ACCENTS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa'];
+const ROBOT_BACKGROUNDS = ['#242728', '#282622', '#2b292f', '#26302d', '#2f2a25', '#272b32'];
+const ROBOT_METALS = ['#d2cbc0', '#c7c2b8', '#bcb8af', '#c9c7c0', '#cec3b5', '#b9c0bd'];
+const ROBOT_ACCENTS = ['#9aa58e', '#a58f7b', '#8fa1a8', '#a39a88', '#978fa4', '#8f9b96'];
 
 function hashString(value: string) {
   let hash = 2166136261;
@@ -63,17 +64,24 @@ function humanAvatarParts(seed: string) {
   };
 }
 
-function robotAvatarParts(seed: string) {
+function robotAvatarParts(seed: string, ownerSeed?: string | null) {
   const random = createRandom(`agent:${seed}`);
+  const ownerParts = ownerSeed?.trim() ? humanAvatarParts(ownerSeed.trim()) : null;
+
   return {
-    background: pick(random, ROBOT_BACKGROUNDS),
-    metal: pick(random, ROBOT_METALS),
-    accent: pick(random, ROBOT_ACCENTS),
-    dark: random() > 0.48 ? '#0f172a' : '#111827',
-    headStyle: Math.floor(random() * 4),
-    eyeStyle: Math.floor(random() * 4),
+    background: ownerParts?.background ?? pick(random, ROBOT_BACKGROUNDS),
+    metal: ownerParts?.accent ?? pick(random, ROBOT_METALS),
+    accent: ownerParts?.shirt ?? pick(random, ROBOT_ACCENTS),
+    dark: random() > 0.48 ? '#343230' : '#2f3434',
+    headStyle: Math.floor(random() * 6),
+    eyeStyle: Math.floor(random() * 7),
+    mouthStyle: Math.floor(random() * 4),
     mouthBars: 2 + Math.floor(random() * 4),
-    antenna: Math.floor(random() * 3),
+    antenna: Math.floor(random() * 6),
+    earStyle: Math.floor(random() * 4),
+    bodyStyle: Math.floor(random() * 4),
+    facePanel: Math.floor(random() * 4),
+    backgroundPattern: Math.floor(random() * 5),
   };
 }
 
@@ -139,51 +147,90 @@ function PixelHumanAvatar({ seed, className }: { seed: string; className?: strin
   );
 }
 
-function RobotAvatar({ seed, className }: { seed: string; className?: string }) {
-  const parts = robotAvatarParts(seed);
-  const roundedHead = parts.headStyle % 2 === 0 ? 5 : 1;
-  const hasAntennaStem = parts.antenna !== 0;
+function RobotAvatar({ seed, ownerSeed, className }: { seed: string; ownerSeed?: string | null; className?: string }) {
+  const parts = robotAvatarParts(seed, ownerSeed);
+  const roundedHead = [5, 1, 7, 2, 0, 4][parts.headStyle] ?? 4;
+  const headX = [14, 12, 16, 13, 15, 11][parts.headStyle] ?? 14;
+  const headY = [16, 18, 15, 14, 17, 16][parts.headStyle] ?? 16;
+  const headWidth = [36, 40, 32, 38, 34, 42][parts.headStyle] ?? 36;
+  const headHeight = [32, 29, 34, 31, 30, 32][parts.headStyle] ?? 32;
+  const faceX = headX + (parts.facePanel === 2 ? 5 : 4);
+  const faceY = headY + (parts.facePanel === 1 ? 5 : 4);
+  const faceWidth = headWidth - (parts.facePanel === 3 ? 12 : 8);
+  const faceHeight = parts.facePanel === 0 ? 26 : parts.facePanel === 1 ? 22 : 24;
   const mouthBars = Array.from({ length: parts.mouthBars }, (_, index) => index);
+  const mouthY = faceY + faceHeight - 6;
+  const eyeY = faceY + 8;
 
   return (
     <svg className={className} viewBox="0 0 64 64" role="img" aria-hidden="true" shapeRendering="crispEdges">
       <rect width="64" height="64" fill={parts.background} />
-      <rect x="6" y="10" width="10" height="3" fill={parts.accent} opacity="0.45" />
-      <rect x="9" y="13" width="3" height="8" fill={parts.accent} opacity="0.3" />
-      <rect x="49" y="46" width="9" height="3" fill={parts.accent} opacity="0.35" />
-      <rect x="52" y="38" width="3" height="8" fill={parts.accent} opacity="0.22" />
-      <rect x="5" y="50" width="5" height="5" fill="#fff" opacity="0.08" />
+      {parts.backgroundPattern === 0 ? <rect x="6" y="10" width="10" height="3" fill={parts.accent} opacity="0.18" /> : null}
+      {parts.backgroundPattern === 0 ? <rect x="9" y="13" width="3" height="8" fill={parts.accent} opacity="0.12" /> : null}
+      {parts.backgroundPattern === 1 ? <rect x="48" y="8" width="5" height="18" fill={parts.accent} opacity="0.12" /> : null}
+      {parts.backgroundPattern === 1 ? <rect x="42" y="14" width="14" height="3" fill={parts.accent} opacity="0.16" /> : null}
+      {parts.backgroundPattern === 2 ? <rect x="7" y="47" width="13" height="4" fill={parts.accent} opacity="0.14" /> : null}
+      {parts.backgroundPattern === 2 ? <rect x="12" y="41" width="4" height="13" fill={parts.accent} opacity="0.1" /> : null}
+      {parts.backgroundPattern === 3 ? <rect x="49" y="46" width="9" height="3" fill={parts.accent} opacity="0.16" /> : null}
+      {parts.backgroundPattern === 3 ? <rect x="52" y="38" width="3" height="8" fill={parts.accent} opacity="0.1" /> : null}
+      {parts.backgroundPattern === 4 ? <rect x="5" y="50" width="5" height="5" fill="#fff" opacity="0.05" /> : null}
+      {parts.backgroundPattern === 4 ? <rect x="52" y="9" width="4" height="4" fill="#fff" opacity="0.06" /> : null}
 
-      {hasAntennaStem ? <rect x="31" y="8" width="2" height="8" fill={parts.accent} /> : null}
-      {parts.antenna === 1 ? <rect x="28" y="5" width="8" height="5" fill={parts.accent} /> : null}
-      {parts.antenna === 2 ? <rect x="29" y="4" width="6" height="6" fill={parts.accent} /> : null}
+      {parts.antenna === 1 ? <rect x="31" y="8" width="2" height="8" fill={parts.accent} opacity="0.64" /> : null}
+      {parts.antenna === 1 ? <rect x="28" y="5" width="8" height="5" fill={parts.accent} opacity="0.64" /> : null}
+      {parts.antenna === 2 ? <rect x="31" y="7" width="2" height="9" fill={parts.accent} opacity="0.58" /> : null}
+      {parts.antenna === 2 ? <rect x="29" y="4" width="6" height="6" fill={parts.accent} opacity="0.58" /> : null}
+      {parts.antenna === 3 ? <rect x="22" y="8" width="2" height="9" fill={parts.accent} opacity="0.54" /> : null}
+      {parts.antenna === 3 ? <rect x="40" y="8" width="2" height="9" fill={parts.accent} opacity="0.54" /> : null}
+      {parts.antenna === 4 ? <rect x="27" y="9" width="10" height="2" fill={parts.accent} opacity="0.58" /> : null}
+      {parts.antenna === 4 ? <rect x="30" y="6" width="4" height="4" fill={parts.accent} opacity="0.58" /> : null}
+      {parts.antenna === 5 ? <rect x="31" y="6" width="2" height="10" fill={parts.metal} opacity="0.76" /> : null}
+      {parts.antenna === 5 ? <rect x="28" y="4" width="8" height="3" fill={parts.accent} opacity="0.5" /> : null}
 
-      <rect x="24" y="48" width="16" height="7" fill={parts.metal} opacity="0.9" />
+      <rect x="24" y="48" width="16" height="7" fill={parts.metal} opacity="0.86" />
       <rect x="18" y="53" width="28" height="11" fill={parts.dark} />
-      <rect x="21" y="55" width="22" height="5" fill={parts.accent} opacity="0.72" />
-      <rect x="11" y="28" width="6" height="12" fill={parts.dark} />
-      <rect x="47" y="28" width="6" height="12" fill={parts.dark} />
-      <rect x="14" y="16" width="36" height="32" rx={roundedHead} fill={parts.dark} />
-      <rect x="17" y="19" width="30" height="26" rx={roundedHead} fill={parts.metal} />
-      <rect x="21" y="24" width="22" height="13" fill={parts.dark} />
+      {parts.bodyStyle === 0 ? <rect x="21" y="55" width="22" height="5" fill={parts.accent} opacity="0.28" /> : null}
+      {parts.bodyStyle === 1 ? <rect x="24" y="54" width="16" height="7" fill={parts.accent} opacity="0.22" /> : null}
+      {parts.bodyStyle === 2 ? <rect x="20" y="56" width="7" height="4" fill={parts.accent} opacity="0.24" /> : null}
+      {parts.bodyStyle === 2 ? <rect x="37" y="56" width="7" height="4" fill={parts.accent} opacity="0.24" /> : null}
+      {parts.bodyStyle === 3 ? <rect x="29" y="54" width="6" height="9" fill={parts.accent} opacity="0.2" /> : null}
 
-      {parts.eyeStyle === 0 ? <rect x="24" y="28" width="5" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 0 ? <rect x="35" y="28" width="5" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 1 ? <rect x="24" y="27" width="16" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="23" y="27" width="7" height="7" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="35" y="27" width="7" height="7" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="25" y="29" width="3" height="3" fill="#fff" opacity="0.6" /> : null}
-      {parts.eyeStyle === 2 ? <rect x="37" y="29" width="3" height="3" fill="#fff" opacity="0.6" /> : null}
-      {parts.eyeStyle === 3 ? <rect x="23" y="29" width="18" height="3" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 3 ? <rect x="26" y="26" width="3" height="3" fill={parts.accent} opacity="0.7" /> : null}
-      {parts.eyeStyle === 3 ? <rect x="36" y="26" width="3" height="3" fill={parts.accent} opacity="0.7" /> : null}
+      {parts.earStyle === 0 ? <rect x={headX - 3} y={headY + 12} width="5" height="11" fill={parts.dark} /> : null}
+      {parts.earStyle === 0 ? <rect x={headX + headWidth - 2} y={headY + 12} width="5" height="11" fill={parts.dark} /> : null}
+      {parts.earStyle === 1 ? <rect x={headX - 4} y={headY + 9} width="4" height="17" fill={parts.metal} opacity="0.82" /> : null}
+      {parts.earStyle === 1 ? <rect x={headX + headWidth} y={headY + 9} width="4" height="17" fill={parts.metal} opacity="0.82" /> : null}
+      {parts.earStyle === 2 ? <rect x={headX - 5} y={headY + 15} width="6" height="6" fill={parts.accent} opacity="0.36" /> : null}
+      {parts.earStyle === 2 ? <rect x={headX + headWidth - 1} y={headY + 15} width="6" height="6" fill={parts.accent} opacity="0.36" /> : null}
 
-      <rect x="24" y="40" width="16" height="2" fill={parts.dark} opacity="0.78" />
+      <rect x={headX} y={headY} width={headWidth} height={headHeight} rx={roundedHead} fill={parts.dark} />
+      <rect x={faceX} y={faceY} width={faceWidth} height={faceHeight} rx={Math.max(1, roundedHead - 1)} fill={parts.metal} opacity="0.96" />
+      {parts.facePanel === 1 ? <rect x={faceX + 3} y={faceY + 3} width={faceWidth - 6} height="3" fill="#fff" opacity="0.12" /> : null}
+      {parts.facePanel === 2 ? <rect x={faceX + faceWidth - 5} y={faceY + 4} width="2" height={faceHeight - 8} fill={parts.dark} opacity="0.16" /> : null}
+      {parts.facePanel === 3 ? <rect x={faceX + 4} y={faceY + faceHeight - 5} width={faceWidth - 8} height="2" fill={parts.dark} opacity="0.16" /> : null}
+      <rect x={faceX + 4} y={faceY + 5} width={faceWidth - 8} height={Math.min(13, faceHeight - 12)} fill={parts.dark} />
+
+      {parts.eyeStyle === 0 ? <rect x={faceX + 7} y={eyeY} width="5" height="5" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 0 ? <rect x={faceX + faceWidth - 12} y={eyeY} width="5" height="5" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 1 ? <rect x={faceX + 7} y={eyeY - 1} width={faceWidth - 14} height="5" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 2 ? <rect x={faceX + 6} y={eyeY - 1} width="7" height="7" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 2 ? <rect x={faceX + faceWidth - 13} y={eyeY - 1} width="7" height="7" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 3 ? <rect x={faceX + 6} y={eyeY + 1} width={faceWidth - 12} height="3" fill={parts.accent} opacity="0.76" /> : null}
+      {parts.eyeStyle === 4 ? <rect x={faceX + 8} y={eyeY} width="4" height="6" fill={parts.accent} opacity="0.72" /> : null}
+      {parts.eyeStyle === 4 ? <rect x={faceX + faceWidth - 10} y={eyeY + 1} width="4" height="5" fill={parts.accent} opacity="0.72" /> : null}
+      {parts.eyeStyle === 5 ? <rect x={faceX + 7} y={eyeY} width="12" height="4" fill={parts.accent} opacity="0.68" /> : null}
+      {parts.eyeStyle === 5 ? <rect x={faceX + faceWidth - 12} y={eyeY} width="5" height="4" fill={parts.accent} opacity="0.68" /> : null}
+      {parts.eyeStyle === 6 ? <rect x={faceX + 8} y={eyeY - 2} width="4" height="4" fill={parts.accent} opacity="0.66" /> : null}
+      {parts.eyeStyle === 6 ? <rect x={faceX + faceWidth - 14} y={eyeY + 2} width="10" height="3" fill={parts.accent} opacity="0.66" /> : null}
+
+      {parts.mouthStyle === 0 ? <rect x={faceX + 7} y={mouthY} width={faceWidth - 14} height="2" fill={parts.dark} opacity="0.74" /> : null}
+      {parts.mouthStyle === 1 ? <rect x={faceX + 10} y={mouthY - 1} width={faceWidth - 20} height="4" fill={parts.dark} opacity="0.68" /> : null}
+      {parts.mouthStyle === 2 ? <rect x={faceX + 9} y={mouthY} width={faceWidth - 18} height="1" fill={parts.dark} opacity="0.78" /> : null}
+      {parts.mouthStyle === 3 ? <rect x={faceX + 11} y={mouthY - 2} width={faceWidth - 22} height="5" fill={parts.dark} opacity="0.62" /> : null}
       {mouthBars.map((bar) => (
-        <rect key={bar} x={25 + bar * 3} y="40" width="1" height="2" fill={parts.accent} opacity="0.9" />
+        <rect key={bar} x={faceX + 8 + bar * 3} y={mouthY} width="1" height="2" fill={parts.accent} opacity="0.5" />
       ))}
-      <rect x="20" y="21" width="3" height="3" fill="#fff" opacity="0.35" />
-      <rect x="41" y="42" width="3" height="3" fill="#000" opacity="0.16" />
+      <rect x={faceX + 3} y={faceY + 2} width="3" height="3" fill="#fff" opacity="0.16" />
+      <rect x={faceX + faceWidth - 6} y={faceY + faceHeight - 4} width="3" height="3" fill="#000" opacity="0.13" />
     </svg>
   );
 }
@@ -192,9 +239,26 @@ export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, ava
   return avatarKey?.trim() || `${kind}:${seed.trim() || 'unknown'}`;
 }
 
-export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, className, generatedClassName }: IdentityAvatarProps) {
-  const normalizedSeed = seed.trim() || name?.trim() || `${kind}:unknown`;
-  const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, avatarKey);
+export function getLocalAvatarScope() {
+  if (typeof window === 'undefined') {
+    return 'default';
+  }
+
+  return window.location.port || window.location.host || 'default';
+}
+
+export function getLocalHumanAvatarKey() {
+  return `human:local:${getLocalAvatarScope()}`;
+}
+
+export function getLocalAgentAvatarKey() {
+  return `agent:local:${getLocalAvatarScope()}:local-agent`;
+}
+
+export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, ownerSeed, className, generatedClassName }: IdentityAvatarProps) {
+  const fallbackSeed = seed.trim() || name?.trim() || `${kind}:unknown`;
+  const resolvedAvatarKey = getIdentityAvatarKey(kind, fallbackSeed, avatarKey);
+  const normalizedSeed = resolvedAvatarKey;
   const localOverride = useAvatarOverride(resolvedAvatarKey);
   const resolvedImageUrl = localOverride ?? imageUrl;
   const label = name?.trim() ? `${name} avatar` : `${kind === 'agent' ? 'Agent' : 'Human'} avatar`;
@@ -206,7 +270,7 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
       data-avatar-kind={kind}
     >
       {kind === 'agent' ? (
-        <RobotAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
+        <RobotAvatar seed={normalizedSeed} ownerSeed={ownerSeed} className={cn('h-full w-full', generatedClassName)} />
       ) : (
         <PixelHumanAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
       )}

@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { IdentityAvatar } from '../components/IdentityAvatar';
+import { getLocalHumanAvatarKey, IdentityAvatar } from '../components/IdentityAvatar';
 import type { Agent } from '../types';
 import type { AgentConfigDraft } from './model';
 
@@ -55,6 +55,8 @@ export function AgentsSidebar({
                     seed={agent.id}
                     name={agent.name}
                     imageUrl={agent.profileImageUrl}
+                    avatarKey={agent.avatarKey}
+                    ownerSeed={agent.ownerAvatarKey ?? (agent.bridgeOwnerName ? `human:${agent.bridgeOwnerName}` : getLocalHumanAvatarKey())}
                     className="h-9 w-9 border border-white/8"
                   />
                   <div className="min-w-0 flex-1">

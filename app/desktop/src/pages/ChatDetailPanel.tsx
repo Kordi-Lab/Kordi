@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalHumanAvatarKey, IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
@@ -14,6 +14,8 @@ type ActiveConversation = {
   trust: string;
   directness: string;
   participants: string[];
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
 };
 
 type ProjectSource = {
@@ -132,8 +134,10 @@ export function ChatDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={`${activeConv.name}:${participant}`}
+                      seed={participant}
                       name={participant}
+                      avatarKey={isAgent ? (activeConv.avatarKey ?? `agent:${participant}`) : participant === 'You' ? getLocalHumanAvatarKey() : `human:${participant}`}
+                      ownerSeed={isAgent ? (activeConv.ownerAvatarKey ?? getLocalHumanAvatarKey()) : undefined}
                       className="h-7 w-7 border border-white/10"
                     />
                     <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{participant}</span>

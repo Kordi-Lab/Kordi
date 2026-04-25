@@ -69,6 +69,8 @@ export type Message = {
   sender?: string;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;
+  senderAvatarKey?: string | null;
+  senderOwnerName?: string | null;
   isOwnMessage?: boolean;
   showSenderMeta?: boolean;
   text: string;
@@ -106,6 +108,8 @@ export type Conversation = {
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
 };
 
 export type Contact = {
@@ -124,6 +128,8 @@ export type Contact = {
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
   profileImageUrl?: string | null;
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
 };
 
 export type ContactRequest = {
@@ -168,6 +174,8 @@ export type Agent = {
   isBridgeActive?: boolean;
   isBridgeRegistered?: boolean;
   profileImageUrl?: string | null;
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
 };
 
 export type ProjectSession = {

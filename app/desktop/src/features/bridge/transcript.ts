@@ -37,9 +37,15 @@ export function mapBridgeConversationToViewModel(
         message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE && message.deliveryState === 'processing'
       ))
     : undefined;
+  const peerIdentity = host?.visiblePeers.find((peer) => peer.nodeId === conversation.peerNodeId);
   const localHumanLabel = host?.ownerName || 'You';
+  const localHumanAvatarKey = `human:${host?.humanId || host?.ownerName || 'local-human-profile'}`;
+  const localAgentNodeId = host?.agents.find((agent) => agent.id === host.activeAgentId)?.nodeId || host?.nodeId || host?.activeAgentId;
+  const localAgentAvatarKey = `agent:${localAgentNodeId || 'local-agent'}`;
   const localBridgeAgentLabel = host?.displayName || localAgentLabel;
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
+  const remoteHumanAvatarKey = `human:${peerIdentity?.humanId || (isPersonChat ? conversation.peerNodeId : (conversation.peerOwnerName || conversation.peerNodeId))}`;
+  const remoteAgentAvatarKey = `agent:${peerIdentity?.nodeId || conversation.peerNodeId}`;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
 
   const messages: Message[] = conversation.messages.map((message) => {
@@ -57,6 +63,14 @@ export function mapBridgeConversationToViewModel(
             : remoteAgentLabel
       : (message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND ? localHumanLabel : remoteHumanLabel);
     const senderType = (isOutboundHuman || isInboundHuman || !isAgent) ? 'human' : 'agent';
+    const senderAvatarKey = senderType === 'agent'
+      ? (isLocalAgentResponse ? localAgentAvatarKey : remoteAgentAvatarKey)
+      : message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+        ? localHumanAvatarKey
+        : remoteHumanAvatarKey;
+    const senderOwnerName = senderType === 'agent'
+      ? (isLocalAgentResponse ? localHumanAvatarKey : remoteHumanAvatarKey)
+      : undefined;
     const outboundStatus = [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')]
       .filter(Boolean);
     const suppressOutboundLiveStatus = isOutboundHuman
@@ -69,6 +83,8 @@ export function mapBridgeConversationToViewModel(
         role: 'external-agent' as const,
         sender: remoteAgentLabel,
         senderType: 'agent',
+        senderAvatarKey: remoteAgentAvatarKey,
+        senderOwnerName: remoteHumanAvatarKey,
         isOwnMessage: false,
         showSenderMeta: true,
         text: message.text,
@@ -101,6 +117,8 @@ export function mapBridgeConversationToViewModel(
         : ((message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND ? 'user' : 'person') as Message['role']),
       sender,
       senderType,
+      senderAvatarKey,
+      senderOwnerName,
       isOwnMessage: isOutboundHuman,
       showSenderMeta: isAgent,
       text: message.text,
@@ -119,6 +137,8 @@ export function mapBridgeConversationToViewModel(
       role: 'external-agent',
       sender: remoteAgentLabel,
       senderType: 'agent',
+      senderAvatarKey: remoteAgentAvatarKey,
+      senderOwnerName: remoteHumanAvatarKey,
       isOwnMessage: false,
       showSenderMeta: true,
       text: '',
@@ -154,6 +174,8 @@ export function mapBridgeConversationToViewModel(
       ? ['You', remoteHumanLabel, remoteAgentLabel]
       : ['You', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
+    avatarKey: isAgent ? remoteAgentAvatarKey : remoteHumanAvatarKey,
+    ownerAvatarKey: isAgent ? remoteHumanAvatarKey : undefined,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

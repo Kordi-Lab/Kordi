@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalHumanAvatarKey, IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
@@ -28,6 +28,8 @@ type ConversationItem = {
   statusIndicator?: SessionStatusIndicator;
   type?: ConversationType;
   profileImageUrl?: string | null;
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
 };
 
 type ProjectSessionItem = {
@@ -63,6 +65,9 @@ type AgentItem = {
   messaging: string;
   tasks: number;
   profileImageUrl?: string | null;
+  avatarKey?: string | null;
+  ownerAvatarKey?: string | null;
+  bridgeOwnerName?: string | null;
 };
 
 function conversationAvatarKind(conversation: ConversationItem): IdentityAvatarKind {
@@ -76,10 +81,22 @@ function conversationAvatarSeed(conversation: ConversationItem) {
   return `${conversation.type ?? 'conversation'}:${conversation.name || conversation.id}`;
 }
 
+function conversationAvatarOwnerSeed(conversation: ConversationItem) {
+  if (conversation.type === 'owned-agent') {
+    return getLocalHumanAvatarKey();
+  }
+  if (conversation.type === 'external-agent') {
+    return conversation.ownerAvatarKey ?? undefined;
+  }
+  return undefined;
+}
+
 type BridgeHostSummary = {
   serverUrl: string;
   connected: boolean;
   nodeId?: string | null;
+  humanId?: string | null;
+  ownerName?: string | null;
   visiblePeerCount: number;
 };
 
@@ -309,8 +326,9 @@ export function WorkspaceSidebar({
             </Button>
             <IdentityAvatar
               kind="human"
-              seed="local-human-profile"
-              name="Local profile"
+              seed={activeBridgeHost?.humanId || getLocalHumanAvatarKey()}
+              name={activeBridgeHost?.ownerName || 'Local profile'}
+              avatarKey={activeBridgeHost?.humanId ? `human:${activeBridgeHost.humanId}` : getLocalHumanAvatarKey()}
               className="h-9 w-9 border border-white/10"
             />
           </div>
@@ -403,6 +421,8 @@ export function WorkspaceSidebar({
                                 seed={conversationAvatarSeed(conversation)}
                                 name={conversation.name}
                                 imageUrl={conversation.profileImageUrl}
+                                avatarKey={conversation.avatarKey}
+                                ownerSeed={conversationAvatarOwnerSeed(conversation)}
                                 className="mt-px h-7 w-7 border border-white/10"
                               />
                               <div className="min-w-0 flex-1">
@@ -598,6 +618,8 @@ export function WorkspaceSidebar({
                                   seed={agent.id}
                                   name={agent.name}
                                   imageUrl={agent.profileImageUrl}
+                                  avatarKey={agent.avatarKey}
+                                  ownerSeed={agent.ownerAvatarKey ?? (agent.bridgeOwnerName ? `human:${agent.bridgeOwnerName}` : getLocalHumanAvatarKey())}
                                   className="h-10 w-10 border border-white/10"
                                 />
                                 <div className="min-w-0">

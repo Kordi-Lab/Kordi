@@ -29,7 +29,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
+import { getLocalHumanAvatarKey, IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import type {
   Contact,
@@ -448,7 +448,8 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
-  const avatarSeed = isOwnHumanMessage ? 'local-human-profile' : `${avatarKind}:${avatarName}`;
+  const avatarSeed = isOwnHumanMessage ? getLocalHumanAvatarKey() : `${avatarKind}:${avatarName}`;
+  const avatarOwnerSeed = avatarKind === 'agent' ? (msg.senderOwnerName ?? getLocalHumanAvatarKey()) : undefined;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -463,6 +464,8 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
           seed={avatarSeed}
           name={avatarName}
           imageUrl={msg.senderProfileImageUrl}
+          avatarKey={msg.senderAvatarKey}
+          ownerSeed={avatarOwnerSeed}
           className="mb-0.5 h-7 w-7 border border-white/10"
         />
         <div className={cn(
@@ -707,6 +710,8 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
         seed={contact.bridgePeerNodeId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
+        avatarKey={contact.avatarKey}
+        ownerSeed={contactAvatarKind(contact) === 'agent' ? (contact.ownerAvatarKey ?? (contact.classType === 'my-agents' ? getLocalHumanAvatarKey() : `human:${contact.owner}`)) : undefined}
         className="h-10 w-10 border border-white/10"
       />
       <div className="min-w-0 flex-1">

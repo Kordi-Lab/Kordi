@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { getLocalAgentAvatarKey, getLocalHumanAvatarKey } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
@@ -187,6 +188,20 @@ export function useWorkspaceViewModels({
   desktopLiveTurnsBySession,
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
+  const activeBridgeHostForIdentity = useMemo(
+    () => (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId) ?? desktopBridgeState?.hosts?.[0] ?? null,
+    [desktopBridgeState?.activeHostId, desktopBridgeState?.hosts],
+  );
+  const localHumanAvatarKey = activeBridgeHostForIdentity?.humanId
+    ? `human:${activeBridgeHostForIdentity.humanId}`
+    : getLocalHumanAvatarKey();
+  const activeBridgeAgentForIdentity = activeBridgeHostForIdentity?.agents.find((agent) => agent.id === activeBridgeHostForIdentity.activeAgentId)
+    ?? activeBridgeHostForIdentity?.agents[0]
+    ?? null;
+  const localAgentAvatarKey = activeBridgeAgentForIdentity?.nodeId || activeBridgeHostForIdentity?.nodeId
+    ? `agent:${activeBridgeAgentForIdentity?.nodeId || activeBridgeHostForIdentity?.nodeId}`
+    : getLocalAgentAvatarKey();
+
   const localChatConversations = useMemo(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) {
       return [];
@@ -222,10 +237,12 @@ export function useWorkspaceViewModels({
         messages: activeMessages,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
+        avatarKey: localAgentAvatarKey,
+        ownerAvatarKey: localHumanAvatarKey,
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localAgentAvatarKey, localHumanAvatarKey, localSessionUnreadCounts, mapDesktopMessages]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -324,6 +341,8 @@ export function useWorkspaceViewModels({
         bridgeHostId: host.id,
         bridgePeerNodeId: host.nodeId ?? undefined,
         bridgePeerRuntime: 'kordi-desktop',
+        avatarKey: host.agents.find((agent) => agent.id === host.activeAgentId)?.nodeId || host.nodeId ? `agent:${host.agents.find((agent) => agent.id === host.activeAgentId)?.nodeId || host.nodeId}` : getLocalAgentAvatarKey(),
+        ownerAvatarKey: `human:${host.humanId || host.ownerName}`,
       });
 
       for (const peer of host.visiblePeers) {
@@ -348,6 +367,12 @@ export function useWorkspaceViewModels({
           bridgeHostId: host.id,
           bridgePeerNodeId: peer.nodeId,
           bridgePeerRuntime: peer.runtime,
+          avatarKey: isAgent
+            ? `agent:${peer.nodeId}`
+            : `human:${peer.humanId ?? peer.ownerName ?? peer.nodeId}`,
+          ownerAvatarKey: isAgent
+            ? `human:${peer.humanId ?? peer.ownerName ?? peer.nodeId}`
+            : undefined,
         });
 
         if (isAgent && peer.ownerName) {
@@ -369,6 +394,8 @@ export function useWorkspaceViewModels({
             bridgeHostId: host.id,
             bridgePeerNodeId: peer.nodeId,
             bridgePeerRuntime: 'person',
+            avatarKey: `human:${peer.humanId ?? peer.ownerName}`,
+            ownerAvatarKey: `human:${peer.humanId ?? peer.ownerName}`,
           });
         }
       }
@@ -387,11 +414,13 @@ export function useWorkspaceViewModels({
         discoverableOn: ['Local'],
         detail: `Chat directly with your local Kordi agent • ${localAgent.workspaceRoot}`,
         owner: 'You',
+        avatarKey: localAgentAvatarKey,
+        ownerAvatarKey: localHumanAvatarKey,
       });
     }
 
     return Array.from(byId.values());
-  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell, localAgentAvatarKey, localHumanAvatarKey]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
     if (!isNativeShell) return [];
@@ -443,10 +472,12 @@ export function useWorkspaceViewModels({
           bridgeAgentId: agent.id,
           bridgeServerUrl: host.serverUrl,
           bridgeOwnerName: host.ownerName,
+          ownerAvatarKey: `human:${host.humanId || host.ownerName}`,
           isOwned: true,
           isBridgeDefault: agent.isDefault,
           isBridgeActive: agent.isActive,
           isBridgeRegistered: agent.registered,
+          avatarKey: agent.nodeId || host.nodeId ? `agent:${agent.nodeId || host.nodeId}` : `agent:${host.id}:${agent.id}`,
         });
       }
     }
@@ -476,11 +507,13 @@ export function useWorkspaceViewModels({
         exposesLoadedPlugins: true,
         isOwned: true,
         isBridgeActive: true,
+        avatarKey: localAgentAvatarKey,
+        ownerAvatarKey: localHumanAvatarKey,
       });
     }
 
     return items;
-  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell, localAgentAvatarKey, localHumanAvatarKey]);
 
   const groupedContacts = useMemo(
     () =>

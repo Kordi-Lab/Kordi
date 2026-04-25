@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 
+import { getLocalAgentAvatarKey, getLocalHumanAvatarKey } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 export function useDesktopTranscriptAdapter() {
@@ -29,6 +30,8 @@ export function useDesktopTranscriptAdapter() {
             : message.role === 'user'
               ? message.sender ?? 'You'
               : message.sender ?? undefined,
+        senderAvatarKey: message.role === 'assistant' ? getLocalAgentAvatarKey() : undefined,
+        senderOwnerName: message.role === 'assistant' ? getLocalHumanAvatarKey() : undefined,
         text: message.text,
         time: message.timeLabel,
         detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),

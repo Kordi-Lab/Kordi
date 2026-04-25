@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { BridgeChip, ContactRequestRow, ContactRow } from './components';
 import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
+import { getLocalHumanAvatarKey } from './components/IdentityAvatar';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
 
@@ -196,6 +197,8 @@ export function ContactsPage({
                         seed={activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
+                        avatarKey={activeContact.avatarKey}
+                        ownerSeed={activeContact.classType === 'my-agents' ? getLocalHumanAvatarKey() : activeContact.classType === 'other-users-agents' ? (activeContact.ownerAvatarKey ?? `human:${activeContact.owner}`) : undefined}
                         label={`${activeContact.name} avatar`}
                         compact
                         className="h-12 w-12 border border-white/10"
