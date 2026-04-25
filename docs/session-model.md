@@ -21,6 +21,7 @@ Kordi sessions are local-first. Each desktop profile owns a canonical session da
 4. **`@` is the product surface for participation**
    - Users involve people/agents with `@Person` / `@Agent` inside the current session.
    - Owned agents can also involve people/agents through the same participation model.
+   - Agent-authored `@` is rendered as normal agent participation, for example Alice's Kordi can say it is involving `@Bob's Kordi`, then Bob's Kordi replies as a normal agent turn in the same transcript.
    - `reach_out` may remain internal executor plumbing, but it is not the user-facing concept.
 
 5. **Remote responses stay in the parent session**
@@ -61,7 +62,7 @@ Invalidation triggers include new/edited/deleted messages, participant changes, 
 
 ## UI component design
 
-Canonical sessions need canonical UI components so identities, avatars, participants, delegated exchanges, and presence render consistently.
+Canonical sessions need canonical UI components so identities, avatars, participants, delegated exchanges, and presence render consistently. Delegation should change metadata and participant state, not introduce a separate visual language.
 
 Planned components:
 
@@ -69,9 +70,9 @@ Planned components:
 - `NewSessionButton`: Chat `+` entry point. Opens own-agent session directly or launches owned-agent picker when multiple owned agents exist.
 - `OwnedAgentPicker`: popover for choosing which owned agent starts a self-agent session.
 - `ContactMessageButton`: opens/resumes canonical sessions for people, owned agents, or external agents through the canonical resolver.
-- `SessionTranscript`: renders canonical messages and delegated exchanges from the canonical DB.
+- `SessionTranscript`: renders canonical messages from the canonical DB, with delegation metadata attached to the relevant turns.
 - `AgentTurnMessage`: shared native-style agent response component for local agents, remote agents, and delegated `@Agent` responses.
-- `DelegatedExchangeCard`: inline expandable metadata card for `@` involvement, not a top-level session.
+- `DelegationDetailsPopover` / `DelegationTraceDisclosure`: optional collapsed details for request id, initiator, target, context policy, timing, status, and transport/audit trace.
 - `MentionComposer`: canonical `@` resolver grouped by people, my agents, and other users' agents.
 - `SessionRightPanel`: active-session participant graph, presence/status, delegated exchanges, and context.
 - `ParticipantCard`: canonical identity row/card with owner relationship and presence.
@@ -81,7 +82,8 @@ Component rules:
 
 - Components receive canonical identities or canonical avatar keys; they should not derive avatars from display names, session IDs, project IDs, or raw conversation IDs.
 - Local and remote agent responses use the same `AgentTurnMessage` UI.
-- `@` delegated responses appear inline in `SessionTranscript`, with details available via `DelegatedExchangeCard` and `SessionRightPanel`.
+- User-authored and agent-authored `@` delegated responses appear inline in `SessionTranscript` as normal person/agent messages.
+- The main remote response UI is `AgentTurnMessage`; delegation trace is secondary and collapsed by default.
 - The right panel is not a second chat list; it explains the selected session's participant graph and linked exchanges.
 
 Migration order:
@@ -91,8 +93,9 @@ Migration order:
 3. Route Contact Message and Chat `+` into canonical sessions.
 4. Mirror local/bridge messages into canonical DB and render via `SessionTranscript`.
 5. Replace old chat/session rails with `SessionList`.
-6. Replace outreach thread cards with inline/right-panel `DelegatedExchangeCard` entries.
-7. Remove legacy bridge/local session merge UI after canonical UI is stable.
+6. Replace outreach thread cards with normal transcript turns plus optional inline/right-panel delegation trace details.
+7. Add agent-authored `@` rendering: local agent turn shows the mention/invocation, remote participant replies as a normal message in the same session.
+8. Remove legacy bridge/local session merge UI after canonical UI is stable.
 
 ## Migration direction
 
