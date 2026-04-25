@@ -13,5 +13,6 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::web_search::WebSearchTool),
         Box::new(crate::web_fetch::WebFetchTool),
         Box::new(crate::browser_fetch::BrowserFetchTool),
+        Box::new(crate::reach_out::ReachOutTool),
     ]
 }

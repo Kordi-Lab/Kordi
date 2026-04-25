@@ -362,7 +362,9 @@ impl TuiController {
 
 #[cfg(test)]
 mod tests {
-    use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
+    use kordi_core::agent_session_runtime::{
+        AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost,
+    };
     use kordi_provider::openai::OpenAiProvider;
     use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
     use kordi_session::store;
@@ -432,6 +434,7 @@ mod tests {
             execution_policy: ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,
+            reach_out: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
         };

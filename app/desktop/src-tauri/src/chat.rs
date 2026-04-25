@@ -10,6 +10,10 @@ use kordi_cli::desktop_runtime::{
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
     DesktopRuntimeSession,
 };
+use kordi_core::error::KordiError;
+use kordi_tools::ReachOutRuntime;
+
+use crate::bridge::{DesktopBridgeManager, desktop_bridge_reach_out_impl};
 use kordi_cli::turn_runner::TurnEvent;
 
 type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
@@ -96,7 +100,13 @@ fn sanitize_bridge_segment(value: &str) -> String {
     let sanitized: String = value
         .trim()
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect();
     if sanitized.is_empty() {
         "unknown".to_string()
@@ -105,7 +115,10 @@ fn sanitize_bridge_segment(value: &str) -> String {
     }
 }
 
-fn bridge_agent_session_cwd(local_agent_node_id: &str, peer_node_id: &str) -> Result<PathBuf, String> {
+fn bridge_agent_session_cwd(
+    local_agent_node_id: &str,
+    peer_node_id: &str,
+) -> Result<PathBuf, String> {
     let root = std::env::var_os("APP_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or(chat_cwd()?);
@@ -231,6 +244,44 @@ fn tool_detail(details: &Option<serde_json::Value>) -> Option<String> {
 
 fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
+}
+
+fn install_reach_out_runtime(
+    runtime: &mut DesktopRuntimeSession,
+    bridge_manager: DesktopBridgeManager,
+    chat_manager: DesktopChatManager,
+    cwd: PathBuf,
+) {
+    let parent_session_id = runtime.session_id().to_string();
+    runtime.set_reach_out_runtime(Some(ReachOutRuntime {
+        reach_out: Arc::new(move |mut request| {
+            let bridge_manager = bridge_manager.clone();
+            let chat_manager = chat_manager.clone();
+            let cwd = cwd.clone();
+            let parent_session_id = parent_session_id.clone();
+            Box::pin(async move {
+                if request.parent_session_id.is_none() {
+                    request.parent_session_id = Some(parent_session_id);
+                }
+                if request.project_name.is_none() {
+                    request.project_name = kordi_core::settings::Settings::load_project(&cwd)
+                        .project_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string)
+                        .or_else(|| {
+                            cwd.file_name()
+                                .and_then(|value| value.to_str())
+                                .map(ToString::to_string)
+                        });
+                }
+                desktop_bridge_reach_out_impl(&bridge_manager, &chat_manager, request)
+                    .await
+                    .map_err(KordiError::Tool)
+            })
+        }),
+    }));
 }
 
 async fn ensure_loaded_session(
@@ -511,6 +562,7 @@ pub async fn desktop_chat_rename_session(
 #[tauri::command]
 pub async fn desktop_chat_send_message(
     manager: State<'_, DesktopChatManager>,
+    bridge_manager: State<'_, DesktopBridgeManager>,
     session_id: String,
     text: String,
 ) -> Result<DesktopChatState, String> {
@@ -524,6 +576,12 @@ pub async fn desktop_chat_send_message(
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
     let mut session = session.lock().await;
+    install_reach_out_runtime(
+        &mut session,
+        bridge_manager.inner().clone(),
+        manager.inner().clone(),
+        cwd.clone(),
+    );
     session
         .send_message(text, Vec::new())
         .await
@@ -593,11 +651,13 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                             state.message = "Writing response…".to_string();
                             state.assistant_text.push_str(text);
                         }),
-                        TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
-                            state.status = "thinking".to_string();
-                            state.message = "Thinking…".to_string();
-                            state.thinking_text.push_str(text);
-                        }),
+                        TurnEvent::ThinkingDelta(text) => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "thinking".to_string();
+                                state.message = "Thinking…".to_string();
+                                state.thinking_text.push_str(text);
+                            })
+                        }
                         TurnEvent::ToolCallStart { id, name } => {
                             update_turn(&snapshot_for_task, |state| {
                                 state.status = "tooling".to_string();
@@ -616,21 +676,29 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                         }
                         TurnEvent::ToolCallDelta { id, args } => {
                             update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
                                     tool.arguments.push_str(args);
                                 }
                             })
                         }
-                        TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
-                            state.status = "tooling".to_string();
-                            state.message = "Running tool…".to_string();
-                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                                tool.status = "running".to_string();
-                            }
-                        }),
+                        TurnEvent::ToolExecuting { id } => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "tooling".to_string();
+                                state.message = "Running tool…".to_string();
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
+                                    tool.status = "running".to_string();
+                                }
+                            })
+                        }
                         TurnEvent::ToolOutputDelta { id, chunk } => {
                             update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                                if let Some(tool) =
+                                    state.tools.iter_mut().find(|tool| tool.id == *id)
+                                {
                                     tool.status = "running".to_string();
                                     tool.live_output.push_str(chunk);
                                 }
@@ -684,10 +752,12 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                             state.status = "streaming".to_string();
                             state.message = "Retry complete. Continuing…".to_string();
                         }),
-                        TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
-                            state.status = "compacting".to_string();
-                            state.message = "Auto-compacting session…".to_string();
-                        }),
+                        TurnEvent::AutoCompactionStart => {
+                            update_turn(&snapshot_for_task, |state| {
+                                state.status = "compacting".to_string();
+                                state.message = "Auto-compacting session…".to_string();
+                            })
+                        }
                         TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
                     }
                     publish_bridge_agent_snapshot(&snapshot_for_task, &updates_tx_for_task);
@@ -707,7 +777,9 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
                             .messages
                             .iter()
                             .rev()
-                            .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+                            .find(|message| {
+                                message.role == "assistant" && !message.text.trim().is_empty()
+                            })
                             .map(|message| message.text.clone())
                         {
                             state.assistant_text = text;
@@ -741,6 +813,7 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
 #[tauri::command]
 pub async fn desktop_chat_start_message(
     manager: State<'_, DesktopChatManager>,
+    bridge_manager: State<'_, DesktopBridgeManager>,
     session_id: String,
     text: String,
     attachment_paths: Option<Vec<String>>,
@@ -792,8 +865,16 @@ pub async fn desktop_chat_start_message(
     };
 
     let snapshot_for_task = snapshot.clone();
+    let bridge_manager_for_task = bridge_manager.inner().clone();
+    let chat_manager_for_task = manager.inner().clone();
     tokio::spawn(async move {
         let mut session = session.lock().await;
+        install_reach_out_runtime(
+            &mut session,
+            bridge_manager_for_task,
+            chat_manager_for_task,
+            cwd,
+        );
 
         let result =
             session

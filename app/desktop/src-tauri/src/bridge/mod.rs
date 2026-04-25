@@ -19,6 +19,8 @@ use uuid::Uuid;
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
 use self::local_server::LocalBridgeServerRuntime;
 
+pub(crate) use self::conversation_commands::desktop_bridge_reach_out_impl;
+
 #[allow(unused_imports)]
 use self::conversations::{
     build_conversation_state, parse_mailbox_payload, upsert_bridge_conversation,
@@ -34,7 +36,7 @@ use self::network::{
     remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
 };
 #[allow(unused_imports)]
-use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
+use self::realtime::{BRIDGE_STATE_EVENT, send_realtime_payload, sync_realtime_connections};
 #[allow(unused_imports)]
 use self::state::{
     build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state,

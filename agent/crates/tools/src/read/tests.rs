@@ -10,6 +10,7 @@ fn make_ctx(dir: &Path) -> ToolContext {
         execution_policy: crate::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,
+        reach_out: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
         request_approval: None,
     }

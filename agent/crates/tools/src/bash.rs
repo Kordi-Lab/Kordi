@@ -300,6 +300,7 @@ mod tests {
             execution_policy: crate::ExecutionPolicy::Yolo,
             on_output: None,
             web_search: None,
+            reach_out: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: Some(Arc::new(|_| {
                 Box::pin(async {

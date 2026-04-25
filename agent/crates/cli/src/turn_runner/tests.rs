@@ -2,6 +2,7 @@ use crate::extensions::ExtensionCommandRegistry;
 use crate::tool_registry::ToolRegistry;
 use crate::turn_runner::{TurnConfig, TurnEvent, run_turn, wrap_conn};
 use async_trait::async_trait;
+use chrono::Utc;
 use kordi_core::error::KordiResult;
 use kordi_core::types::{
     AgentMessage, CacheMetricsSource, ContentBlock, EntryBase, SessionEntry, StopReason,
@@ -11,7 +12,6 @@ use kordi_monitor::RequestMetricsTracker;
 use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, UsageInfo};
 use kordi_session::store;
 use kordi_tools::{Tool, ToolResult, ToolScheduling};
-use chrono::Utc;
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -476,7 +476,9 @@ impl Tool for OverlapProbeTool {
                 }
             })
             .await
-            .map_err(|_| kordi_core::error::KordiError::Tool("tool calls did not overlap".into()))?;
+            .map_err(|_| {
+                kordi_core::error::KordiError::Tool("tool calls did not overlap".into())
+            })?;
         } else {
             self.notify.notify_waiters();
         }
@@ -596,6 +598,7 @@ fn test_tool_context() -> kordi_tools::ToolContext {
         execution_policy: kordi_tools::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,
+        reach_out: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }

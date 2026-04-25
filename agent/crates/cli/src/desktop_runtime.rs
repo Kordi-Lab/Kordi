@@ -382,6 +382,10 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
+    pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
+        self.setup.tool_ctx.reach_out = runtime;
+    }
+
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {
         let name = requested_name.trim();
         if name.is_empty() {
@@ -1137,6 +1141,7 @@ fn build_turn_config(
             execution_policy: setup.tool_ctx.execution_policy,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
+            reach_out: setup.tool_ctx.reach_out.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

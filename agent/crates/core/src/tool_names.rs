@@ -13,6 +13,7 @@ fn is_builtin_tool_name(name: &str) -> bool {
             | "web_search"
             | "web_fetch"
             | "browser_fetch"
+            | "reach_out"
     )
 }
 

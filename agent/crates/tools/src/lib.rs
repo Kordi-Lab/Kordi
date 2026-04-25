@@ -10,6 +10,7 @@ pub mod find;
 pub mod grep;
 pub mod ls;
 pub(crate) mod path;
+pub mod reach_out;
 pub mod read;
 mod registry;
 pub(crate) mod sandbox;
@@ -28,7 +29,8 @@ pub use scheduler::{
     execute_tool_calls,
 };
 pub use types::{
-    ExecutionPolicy, RequestToolApprovalFn, Tool, ToolApprovalDecision, ToolApprovalOutcome,
+    ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,
+    ReachOutRuntime, RequestToolApprovalFn, Tool, ToolApprovalDecision, ToolApprovalOutcome,
     ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult, ToolScheduling,
     WebSearchRuntime,
 };

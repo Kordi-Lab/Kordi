@@ -1,4 +1,6 @@
 use anyhow::Result;
+use chrono::Utc;
+use futures::future::join_all;
 use kordi_core::tool_names::normalize_requested_tool_name;
 use kordi_core::types::*;
 use kordi_hooks::events::{
@@ -8,8 +10,6 @@ use kordi_hooks::{Event, ToolCallEvent};
 use kordi_provider::{CollectedResponse, CollectedToolCall};
 use kordi_session::store;
 use kordi_tools::{FileQueue, Tool, ToolContext, ToolScheduling, execute_reserved_tool_call};
-use chrono::Utc;
-use futures::future::join_all;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -177,9 +177,10 @@ async fn preflight_tool_call(
         finish_tool_call(
             ExecutedToolCall {
                 prepared,
-                result: Err(kordi_core::error::KordiError::Tool(block_reason.unwrap_or_else(
-                    || format!("Tool {} blocked by extension", tool_call.name),
-                ))),
+                result: Err(kordi_core::error::KordiError::Tool(
+                    block_reason
+                        .unwrap_or_else(|| format!("Tool {} blocked by extension", tool_call.name)),
+                )),
                 duration_ms: 0,
                 ran_execution: false,
             },
@@ -408,6 +409,7 @@ fn tool_context_with_output_forwarding(
             });
         })),
         web_search: env.tool_ctx.web_search.clone(),
+        reach_out: env.tool_ctx.reach_out.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
     }

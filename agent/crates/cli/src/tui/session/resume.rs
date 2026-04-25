@@ -132,14 +132,15 @@ impl TuiController {
                         self.session_setup.api_key = runtime.api_key.clone();
                         self.session_setup.base_url = runtime.base_url.clone();
                         self.session_setup.headers = runtime.headers.clone();
-                        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-                            provider: self.session_setup.provider.clone(),
-                            model: self.session_setup.model.clone(),
-                            api_key: self.session_setup.api_key.clone(),
-                            base_url: self.session_setup.base_url.clone(),
-                            headers: runtime.headers,
-                            enabled: true,
-                        });
+                        self.session_setup.tool_ctx.web_search =
+                            Some(kordi_tools::WebSearchRuntime {
+                                provider: self.session_setup.provider.clone(),
+                                model: self.session_setup.model.clone(),
+                                api_key: self.session_setup.api_key.clone(),
+                                base_url: self.session_setup.base_url.clone(),
+                                headers: runtime.headers,
+                                enabled: true,
+                            });
                         self.options.model_display = Some(format!(
                             "{}/{}",
                             self.session_setup.model.provider, self.session_setup.model.id
@@ -219,7 +220,10 @@ mod tests {
     use std::collections::{HashMap, VecDeque};
     use std::sync::Arc;
 
-    use kordi_core::agent_session_runtime::{AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost};
+    use chrono::Utc;
+    use kordi_core::agent_session_runtime::{
+        AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost,
+    };
     use kordi_core::types::{
         AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage,
     };
@@ -228,7 +232,6 @@ mod tests {
     use kordi_session::store;
     use kordi_tools::{ExecutionPolicy, ToolContext, ToolExecutionMode};
     use kordi_tui::tui::TuiCommand;
-    use chrono::Utc;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
 
@@ -267,6 +270,7 @@ mod tests {
             execution_policy: ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,
+            reach_out: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
         };

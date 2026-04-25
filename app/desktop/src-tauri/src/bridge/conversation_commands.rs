@@ -1,19 +1,23 @@
+use kordi_tools::{ReachOutRequest, ReachOutResponse};
 use serde_json::Value;
+use tokio::time::{Duration, sleep};
 use uuid::Uuid;
 
-use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
+use crate::chat::{DesktopChatManager, start_bridge_agent_prompt_stream};
 
 use super::constants::{
-    is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
-    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED,
-    BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_READ,
+    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_INBOUND,
     BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
     BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
-    DEFAULT_BRIDGE_RUNTIME,
+    DEFAULT_BRIDGE_RUNTIME, is_agent_like_runtime, is_inbound_message_direction,
 };
 use super::{
+    DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
+    DesktopBridgeCreateOutreachRequest, DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot,
+    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
     add_serve_contact, append_conversation_message_to_storage, bridge_conversation_id,
     build_conversation_only_bridge_state, build_current_bridge_state, current_local_server_status,
     decrypt_bridge_payload_for_host, default_display_name, fetch_mailbox, load_bridge_store,
@@ -21,9 +25,6 @@ use super::{
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms, parse_mailbox_payload,
     relay_plaintext_message, save_conversation_store, send_realtime_payload,
     update_message_delivery_state_in_storage, upsert_bridge_conversation,
-    DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
-    DesktopBridgeCreateOutreachRequest, DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot,
-    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -163,6 +164,16 @@ async fn relay_with_contact_fallback(
             .await
         }
         Err(error) => Err(error),
+    }
+}
+
+fn format_outreach_message(message: &str, context_text: Option<&str>) -> String {
+    let context = context_text
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match context {
+        Some(context) => format!("Context:\n{context}\n\nRequest:\n{}", message.trim()),
+        None => message.trim().to_string(),
     }
 }
 
@@ -553,6 +564,14 @@ pub(super) async fn apply_bridge_event_to_storage(
         return Ok(());
     }
 
+    let completes_outreach =
+        event.message_type != BRIDGE_MESSAGE_TYPE_RESPONSE || bridge_response_is_done(&event);
+    if completes_outreach {
+        let conversation_id =
+            bridge_conversation_id(&host.id, &event.from_node_id, event.project_id.as_deref());
+        let _ = mark_outreach_status(&conversation_id, "completed", true, None);
+    }
+
     if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
         if bridge_response_is_done(&event) {
             if let Some(request_id) = event.request_id.as_deref() {
@@ -754,7 +773,259 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
     let conversation_id = conversation.id.clone();
     save_conversation_store(&store)?;
 
-    desktop_bridge_send_message_impl(manager, conversation_id, message.to_string()).await
+    let outbound_message = format_outreach_message(message, request.context_text.as_deref());
+    desktop_bridge_send_message_impl(manager, conversation_id, outbound_message).await
+}
+
+fn normalize_outreach_target(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .replace(|ch: char| ch.is_whitespace(), " ")
+}
+
+fn outreach_target_matches(peer: &super::DesktopBridgePeer, target: &str) -> bool {
+    let normalized = normalize_outreach_target(target);
+    if normalized.is_empty() {
+        return false;
+    }
+    [
+        Some(peer.node_id.as_str()),
+        peer.display_name.as_deref(),
+        peer.owner_name.as_deref(),
+        peer.human_id.as_deref(),
+        peer.agent_id.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|candidate| {
+        let candidate = normalize_outreach_target(candidate);
+        candidate == normalized
+            || candidate.contains(&normalized)
+            || normalized.contains(&candidate)
+    })
+}
+
+fn infer_reach_out_kind(
+    peer_runtime: &str,
+    requested_kind: Option<&str>,
+) -> Result<String, String> {
+    match requested_kind.map(|value| value.trim().to_ascii_lowercase()) {
+        Some(kind) if kind == "bridge-agent" => {
+            if !is_agent_like_runtime(peer_runtime) {
+                return Err("Selected outreach target is not a bridge agent".to_string());
+            }
+            Ok(kind)
+        }
+        Some(kind) if kind == "bridge-person" => Ok(kind),
+        Some(_) => Err("reach_out targetKind must be bridge-agent or bridge-person".to_string()),
+        None if is_agent_like_runtime(peer_runtime) => Ok("bridge-agent".to_string()),
+        None => Ok("bridge-person".to_string()),
+    }
+}
+
+fn find_outreach_response(
+    conversation_id: &str,
+    started_at_ms: i64,
+    request_id: Option<&str>,
+) -> Option<String> {
+    let store = load_conversation_store();
+    let conversation = store
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == conversation_id)?;
+    conversation
+        .messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.timestamp_ms >= started_at_ms
+                && (message.direction == BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+                    || message.direction == BRIDGE_MESSAGE_DIRECTION_INBOUND)
+                && request_id.is_none_or(|request_id| {
+                    message.request_id.as_deref() == Some(request_id)
+                        || message.direction == BRIDGE_MESSAGE_DIRECTION_INBOUND
+                })
+                && !message.text.trim().is_empty()
+        })
+        .map(|message| message.text.clone())
+}
+
+fn latest_outreach_request_id(conversation_id: &str, started_at_ms: i64) -> Option<String> {
+    let store = load_conversation_store();
+    let conversation = store
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == conversation_id)?;
+    conversation
+        .messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.timestamp_ms >= started_at_ms
+                && message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+                && message.request_id.is_some()
+        })
+        .and_then(|message| message.request_id.clone())
+}
+
+fn mark_outreach_status(
+    conversation_id: &str,
+    status: &str,
+    completed: bool,
+    error: Option<String>,
+) -> Result<(), String> {
+    let mut store = load_conversation_store();
+    if let Some(conversation) = store
+        .conversations
+        .iter_mut()
+        .find(|conversation| conversation.id == conversation_id)
+    {
+        if let Some(outreach) = conversation.outreach.as_mut() {
+            outreach.status = status.to_string();
+            outreach.updated_at_ms = now_ms();
+            outreach.error = error;
+            if completed {
+                outreach.completed_at_ms = Some(now_ms());
+            }
+        }
+    }
+    save_conversation_store(&store)
+}
+
+pub(crate) async fn desktop_bridge_reach_out_impl(
+    manager: &DesktopBridgeManager,
+    chat_manager: &DesktopChatManager,
+    request: ReachOutRequest,
+) -> Result<ReachOutResponse, String> {
+    let target = request.target.trim();
+    let message = request.message.trim();
+    if target.is_empty() {
+        return Err("reach_out target is required".to_string());
+    }
+    if message.is_empty() {
+        return Err("reach_out message is required".to_string());
+    }
+
+    let current_state = build_current_bridge_state(manager).await;
+    let active_host_id = current_state.active_host_id.as_deref();
+    let mut matches = current_state
+        .hosts
+        .iter()
+        .flat_map(|host| host.visible_peers.iter().map(move |peer| (host, peer)))
+        .filter(|(_, peer)| outreach_target_matches(peer, target))
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|(host, peer)| {
+        let active_rank = if Some(host.id.as_str()) == active_host_id {
+            0
+        } else {
+            1
+        };
+        let exact_rank = [
+            Some(peer.node_id.as_str()),
+            peer.display_name.as_deref(),
+            peer.owner_name.as_deref(),
+            peer.human_id.as_deref(),
+            peer.agent_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|candidate| normalize_outreach_target(candidate) == normalize_outreach_target(target));
+        (active_rank, if exact_rank { 0 } else { 1 })
+    });
+    let (host, peer) = matches
+        .first()
+        .ok_or_else(|| format!("No visible bridge target matched '{target}'"))?;
+    let target_kind = infer_reach_out_kind(&peer.runtime, request.target_kind.as_deref())?;
+    let started_at_ms = now_ms();
+
+    let project_name = request.project_name.clone().or_else(|| {
+        request
+            .context
+            .as_deref()
+            .and_then(|context| {
+                context
+                    .lines()
+                    .find_map(|line| line.strip_prefix("Project: "))
+            })
+            .map(ToString::to_string)
+    });
+
+    let state = desktop_bridge_create_outreach_impl(
+        manager,
+        DesktopBridgeCreateOutreachRequest {
+            host_id: host.id.clone(),
+            target_node_id: peer.node_id.clone(),
+            target_kind: target_kind.clone(),
+            request_text: message.to_string(),
+            context_text: request.context.clone(),
+            parent_session_id: request.parent_session_id.clone(),
+            parent_turn_id: request.parent_turn_id.clone(),
+            parent_message_id: request.parent_message_id.clone(),
+            project_id: request.project_id.clone(),
+            project_name,
+        },
+    )
+    .await?;
+
+    let conversation = state
+        .conversations
+        .iter()
+        .find(|conversation| {
+            conversation.host_id == host.id && conversation.peer_node_id == peer.node_id
+        })
+        .cloned()
+        .ok_or_else(|| "Outreach conversation was not created".to_string())?;
+    let conversation_id = conversation.id.clone();
+    let request_id = latest_outreach_request_id(&conversation_id, started_at_ms);
+
+    if !request.wait_for_response {
+        return Ok(ReachOutResponse {
+            conversation_id,
+            target_kind,
+            target_display_name: conversation.title,
+            target_owner_name: conversation.peer_owner_name,
+            response_text: None,
+            status: "awaitingReply".to_string(),
+            timed_out: false,
+        });
+    }
+
+    let timeout_seconds = request.timeout_seconds.unwrap_or(120).clamp(5, 600);
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_seconds);
+    let mut response_text =
+        find_outreach_response(&conversation_id, started_at_ms, request_id.as_deref());
+    while response_text.is_none() && std::time::Instant::now() < deadline {
+        let _ = desktop_bridge_poll_mailbox_impl(manager, chat_manager).await;
+        response_text =
+            find_outreach_response(&conversation_id, started_at_ms, request_id.as_deref());
+        if response_text.is_some() {
+            break;
+        }
+        sleep(Duration::from_millis(1500)).await;
+    }
+
+    let timed_out = response_text.is_none();
+    if timed_out {
+        mark_outreach_status(&conversation_id, "awaitingReply", false, None)?;
+    } else {
+        mark_outreach_status(&conversation_id, "completed", true, None)?;
+    }
+
+    Ok(ReachOutResponse {
+        conversation_id,
+        target_kind,
+        target_display_name: conversation.title,
+        target_owner_name: conversation.peer_owner_name,
+        response_text,
+        status: if timed_out {
+            "awaitingReply"
+        } else {
+            "completed"
+        }
+        .to_string(),
+        timed_out,
+    })
 }
 
 pub(super) async fn desktop_bridge_mark_conversation_read_impl(
