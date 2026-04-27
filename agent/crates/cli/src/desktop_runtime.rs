@@ -74,9 +74,9 @@ fn desktop_model_options_cache()
     DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
-fn desktop_model_options_cache_key(cwd: &Path) -> String {
+fn desktop_model_options_cache_key(cwd: &Path, settings: &Settings) -> String {
     let mut parts = vec![cwd.display().to_string()];
-    for provider in login::authenticated_providers() {
+    for provider in login::authenticated_providers_for_settings(settings) {
         let active_method = login::active_auth_method(&provider)
             .map(|method| method.footer_label().to_string())
             .unwrap_or_else(|| "unknown".to_string());
@@ -98,6 +98,22 @@ fn desktop_model_options_cache_key(cwd: &Path) -> String {
         parts.push(format!(
             "auth:{provider}:{active_method}:{active_source}:{active_identity}"
         ));
+    }
+    if let Some(providers) = &settings.providers {
+        for provider in providers {
+            let env_present = provider.api_key_env.as_deref().is_some_and(|env_key| {
+                std::env::var(env_key)
+                    .map(|value| !value.trim().is_empty())
+                    .unwrap_or(false)
+            });
+            parts.push(format!(
+                "provider:{}:{}:{}:{}",
+                provider.name,
+                provider.base_url.as_deref().unwrap_or_default(),
+                provider.api.as_deref().unwrap_or_default(),
+                env_present
+            ));
+        }
     }
     parts.join("|")
 }
@@ -901,7 +917,8 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
 }
 
 pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopChatModelOption> {
-    let cache_key = desktop_model_options_cache_key(cwd);
+    let settings = Settings::load_merged(cwd);
+    let cache_key = desktop_model_options_cache_key(cwd, &settings);
     if let Some(cached_options) = desktop_model_options_cache().lock().ok().and_then(|cache| {
         cache
             .get(&cache_key)
@@ -911,7 +928,6 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
         return cached_options;
     }
 
-    let settings = Settings::load_merged(cwd);
     let mut models = crate::live_models::authenticated_model_candidates_with_live(&settings).await;
     models.sort_by(|left, right| {
         left.provider
@@ -924,7 +940,9 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
         .map(desktop_model_option_from_model)
         .collect::<Vec<_>>();
 
-    if let Ok(mut cache) = desktop_model_options_cache().lock() {
+    if !options.is_empty()
+        && let Ok(mut cache) = desktop_model_options_cache().lock()
+    {
         cache.insert(cache_key, (Instant::now(), options.clone()));
     }
 
@@ -933,20 +951,23 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
 
 fn synthesize_live_model_candidate(
     registry: &ModelRegistry,
+    settings: &Settings,
     provider: &str,
     model_id: &str,
 ) -> Option<Model> {
-    let template = registry
+    let has_template = registry
         .list()
         .iter()
-        .find(|model| model.provider == provider)
-        .cloned()?;
+        .any(|model| model.provider == provider);
+    if !has_template && !login::provider_configured_for_settings(settings, provider) {
+        return None;
+    }
 
-    Some(Model {
-        id: model_id.to_string(),
-        name: model_id.to_string(),
-        ..template
-    })
+    Some(
+        crate::runtime_model::synthesize_model_candidate_with_settings(
+            registry, settings, provider, model_id,
+        ),
+    )
 }
 
 fn resolve_model_candidate(
@@ -968,7 +989,7 @@ fn resolve_model_candidate(
             .find(provider, model_id)
             .cloned()
             .or_else(|| registry.find_fuzzy(model_id, Some(provider)).cloned())
-            .or_else(|| synthesize_live_model_candidate(&registry, provider, model_id))
+            .or_else(|| synthesize_live_model_candidate(&registry, settings, provider, model_id))
             .ok_or_else(|| anyhow!("Unknown model: {requested}"));
     }
 
@@ -981,7 +1002,9 @@ fn resolve_model_candidate(
         }) {
             return Ok(model.clone());
         }
-        if let Some(model) = synthesize_live_model_candidate(&registry, provider, requested) {
+        if let Some(model) =
+            synthesize_live_model_candidate(&registry, settings, provider, requested)
+        {
             return Ok(model);
         }
     }
@@ -996,7 +1019,9 @@ fn resolve_model_candidate(
 }
 
 fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
-    let runtime = crate::runtime_model::resolve_runtime_config(&setup.model);
+    let settings = Settings::load_merged(&setup.tool_ctx.cwd);
+    let runtime =
+        crate::runtime_model::resolve_runtime_config_with_settings(&setup.model, &settings);
 
     setup.provider = runtime.provider.clone();
     setup.auth = runtime.auth;

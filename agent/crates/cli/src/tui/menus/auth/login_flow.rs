@@ -19,8 +19,13 @@ impl TuiController {
             return false;
         }
 
-        let runtime =
-            crate::runtime_model::build_runtime_config(&self.session_setup.model, Some(auth));
+        let settings =
+            kordi_core::settings::Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+        let runtime = crate::runtime_model::build_runtime_config_with_settings(
+            &self.session_setup.model,
+            &settings,
+            Some(auth),
+        );
         self.session_setup.auth = runtime.auth;
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
@@ -49,12 +54,18 @@ impl TuiController {
             return false;
         }
 
-        let runtime = crate::runtime_model::build_runtime_config(&self.session_setup.model, None);
+        let settings =
+            kordi_core::settings::Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+        let runtime = crate::runtime_model::build_runtime_config_with_settings(
+            &self.session_setup.model,
+            &settings,
+            None,
+        );
 
         self.session_setup.auth = None;
         self.session_setup.api_key.clear();
         self.session_setup.base_url = runtime.base_url.clone();
-        self.session_setup.headers.clear();
+        self.session_setup.headers = runtime.headers.clone();
         self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),

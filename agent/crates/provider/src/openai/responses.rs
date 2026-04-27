@@ -34,12 +34,13 @@ impl OpenAiProvider {
             options.cancel.clone(),
             options.retry_callback.clone(),
             || {
-                let mut builder = self
-                    .client
-                    .post(&url)
-                    .header("Authorization", format!("Bearer {}", options.api_key))
-                    .header("Content-Type", "application/json")
-                    .header("accept", "text/event-stream");
+                let mut builder = super::apply_bearer_auth(
+                    self.client
+                        .post(&url)
+                        .header("Content-Type", "application/json")
+                        .header("accept", "text/event-stream"),
+                    &options.api_key,
+                );
                 for (k, v) in &options.headers {
                     builder = builder.header(k.as_str(), v.as_str());
                 }

@@ -193,6 +193,7 @@ export function AuthPage({
         onSelectAuthChoice={onSelectAuthChoice}
         onRemoveAuthProfile={onRemoveAuthProfile}
         onLogoutProvider={onLogoutProvider}
+        onRefreshAuth={onRefresh}
       />
     );
   }, [
@@ -214,7 +215,14 @@ export function AuthPage({
   ]);
 
   const detailHeader = showDetailPage ? (
-    <div className="mb-4 flex items-center gap-3">
+    <div
+      className={cn(
+        'flex items-center gap-3',
+        showHero
+          ? 'mb-4'
+          : 'app-main-panel sticky top-0 z-30 -mt-5 mb-4 border-b border-[color:var(--app-divider)] px-0 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.16)]',
+      )}
+    >
       <AuthNavigationControls canGoBack={canGoBack} canGoForward={canGoForward} onBack={goBack} onForward={goForward} />
       {!showHero && provider ? (
         <div className="text-[18px] font-semibold tracking-tight text-white">{provider.label} auth</div>
@@ -252,7 +260,7 @@ export function AuthPage({
                   </h1>
 
                   <p className="mt-5 max-w-[45ch] text-[15px] leading-7 text-slate-300">
-                    Choose a provider on the right, then sign in with your browser or save an API key. One working connection is enough to get started.
+                    Choose a provider on the right, then sign in, save an API key, or use a local model server. One working connection is enough to get started.
                   </p>
                 </div>
 
@@ -294,8 +302,8 @@ export function AuthPage({
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-medium text-slate-200">2</div>
                     <div>
-                      <div className="font-medium text-white">Choose browser sign-in or API key</div>
-                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">You can add more providers later if you want fallbacks or separate billing.</div>
+                      <div className="font-medium text-white">Choose sign-in, API key, or local server</div>
+                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">Local LM Studio and Ollama servers can be used without saving a key.</div>
                     </div>
                   </div>
                 </div>
@@ -316,7 +324,7 @@ export function AuthPage({
             <div className="mb-5 shrink-0">
               <div className="text-[18px] font-semibold tracking-tight text-white">Authentication</div>
               <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">
-                Connect Kordi to model providers, manage saved accounts and keys, and switch which access method is active.
+                Connect Kordi to cloud accounts or local model servers, manage saved accounts and optional keys, and switch which access method is active.
               </div>
             </div>
           )}

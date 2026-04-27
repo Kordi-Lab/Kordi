@@ -386,10 +386,14 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let mut registry = ModelRegistry::new();
     registry.load_custom_models(&settings);
     login::add_cached_github_copilot_models(&mut registry);
-    let model =
-        crate::runtime_model::resolve_or_synthesize_model(&registry, &provider_name, &model_id);
+    let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
+        &registry,
+        &settings,
+        &provider_name,
+        &model_id,
+    );
 
-    let runtime = crate::runtime_model::resolve_runtime_config(&model);
+    let runtime = crate::runtime_model::resolve_runtime_config_with_settings(&model, &settings);
     let provider = runtime.provider.clone();
     let auth = runtime.auth;
     let api_key = runtime.api_key.clone();

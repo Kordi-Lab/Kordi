@@ -18,38 +18,104 @@ fn live_model_client() -> Client {
         .unwrap_or_else(|_| Client::new())
 }
 
+fn openai_compatible_model_client(base_url: &str) -> Client {
+    let timeout = if login::is_loopback_base_url(base_url) {
+        Duration::from_secs(2)
+    } else {
+        LIVE_MODEL_FETCH_TIMEOUT
+    };
+    Client::builder()
+        .timeout(timeout)
+        .build()
+        .unwrap_or_else(|_| Client::new())
+}
+
 /// Fetch the provider's live model ids using the currently active auth profile.
 ///
 /// This is intentionally best-effort: callers fall back to the built-in registry when the upstream
 /// endpoint is unavailable. ChatGPT/Codex OAuth is not queried because its internal catalog exposes
 /// non-runtime slugs such as `gpt-5-5-thinking`; like pi, Kordi uses curated public model ids for
 /// that path.
+#[allow(dead_code)]
 pub async fn fetch_live_model_ids_for_provider(provider: &str) -> Option<Vec<String>> {
+    fetch_live_model_ids_for_provider_with_settings(provider, &Settings::default()).await
+}
+
+pub async fn fetch_live_model_ids_for_provider_with_settings(
+    provider: &str,
+    settings: &Settings,
+) -> Option<Vec<String>> {
     let normalized = login::normalize_provider_for_model_selection(provider);
-    let auth = login::resolve_provider_auth(&normalized)?;
+    let auth = runtime_model::resolve_provider_auth_with_settings(settings, &normalized);
+    let bearer_token = auth
+        .as_ref()
+        .map(|auth| auth.credential.as_str())
+        .unwrap_or_default();
+    let base_url_override = runtime_model::provider_override_base_url(settings, &normalized);
     let result = match normalized.as_str() {
-        "anthropic" => fetch_anthropic_model_ids(&auth).await,
-        "openai" if matches!(auth.method, login::ProviderAuthMethod::OAuth) => return None,
+        "anthropic" => fetch_anthropic_model_ids(auth.as_ref()?).await,
+        "openai"
+            if base_url_override.is_none()
+                && auth.as_ref().is_some_and(|auth| {
+                    matches!(auth.method, login::ProviderAuthMethod::OAuth)
+                }) =>
+        {
+            return None;
+        }
         "openai" => {
-            fetch_openai_compatible_model_ids("https://api.openai.com/v1", &auth.credential).await
+            fetch_openai_compatible_model_ids(
+                base_url_override
+                    .as_deref()
+                    .unwrap_or("https://api.openai.com/v1"),
+                bearer_token,
+            )
+            .await
         }
-        "google" => fetch_google_model_ids(&auth.credential).await,
+        "lm-studio" | "ollama" => {
+            fetch_openai_compatible_model_ids(
+                login::local_openai_provider_base_url(&normalized)?,
+                bearer_token,
+            )
+            .await
+        }
+        "google" => fetch_google_model_ids(&auth.as_ref()?.credential).await,
         "groq" => {
-            fetch_openai_compatible_model_ids("https://api.groq.com/openai/v1", &auth.credential)
-                .await
+            fetch_openai_compatible_model_ids(
+                base_url_override
+                    .as_deref()
+                    .unwrap_or("https://api.groq.com/openai/v1"),
+                bearer_token,
+            )
+            .await
         }
-        "xai" => fetch_openai_compatible_model_ids("https://api.x.ai/v1", &auth.credential).await,
+        "xai" => {
+            fetch_openai_compatible_model_ids(
+                base_url_override
+                    .as_deref()
+                    .unwrap_or("https://api.x.ai/v1"),
+                bearer_token,
+            )
+            .await
+        }
         "openrouter" => {
-            fetch_openai_compatible_model_ids("https://openrouter.ai/api/v1", &auth.credential)
-                .await
+            fetch_openai_compatible_model_ids(
+                base_url_override
+                    .as_deref()
+                    .unwrap_or("https://openrouter.ai/api/v1"),
+                bearer_token,
+            )
+            .await
         }
         "github-copilot" => Ok(login::github_copilot_cached_models()),
-        _ => return None,
+        _ => {
+            let base_url = base_url_override?;
+            fetch_openai_compatible_model_ids(&base_url, bearer_token).await
+        }
     };
 
     result
         .ok()
-        .map(sanitize_model_ids)
+        .map(|ids| sanitize_model_ids_for_provider(settings, &normalized, ids))
         .filter(|ids| !ids.is_empty())
 }
 
@@ -69,15 +135,20 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
         },
     );
 
-    for provider in login::authenticated_providers() {
+    for provider in login::authenticated_providers_for_settings(settings) {
         let static_models = by_provider.get(&provider).cloned().unwrap_or_default();
-        if static_models.is_empty() {
-            continue;
-        }
-        if let Some(live_ids) = fetch_live_model_ids_for_provider(&provider).await {
+        if let Some(live_ids) =
+            fetch_live_model_ids_for_provider_with_settings(&provider, settings).await
+        {
             by_provider.insert(
                 provider.clone(),
-                merge_live_model_ids(&registry, &provider, &static_models, live_ids),
+                merge_live_model_ids_with_settings(
+                    &registry,
+                    settings,
+                    &provider,
+                    &static_models,
+                    live_ids,
+                ),
             );
         }
     }
@@ -88,7 +159,7 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
 /// Return models for authenticated providers only, augmented with live upstream model ids.
 #[allow(dead_code)]
 pub async fn authenticated_model_candidates_with_live(settings: &Settings) -> Vec<Model> {
-    let available = login::authenticated_providers();
+    let available = login::authenticated_providers_for_settings(settings);
     if available.is_empty() {
         return Vec::new();
     }
@@ -100,8 +171,25 @@ pub async fn authenticated_model_candidates_with_live(settings: &Settings) -> Ve
         .collect()
 }
 
+#[allow(dead_code)]
 pub fn merge_live_model_ids(
     registry: &ModelRegistry,
+    provider: &str,
+    static_models: &[Model],
+    live_ids: Vec<String>,
+) -> Vec<Model> {
+    merge_live_model_ids_with_settings(
+        registry,
+        &Settings::default(),
+        provider,
+        static_models,
+        live_ids,
+    )
+}
+
+pub fn merge_live_model_ids_with_settings(
+    registry: &ModelRegistry,
+    settings: &Settings,
     provider: &str,
     static_models: &[Model],
     live_ids: Vec<String>,
@@ -115,12 +203,12 @@ pub fn merge_live_model_ids(
         }
     }
 
-    for model_id in sanitize_model_ids(live_ids) {
+    for model_id in sanitize_model_ids_for_provider(settings, provider, live_ids) {
         if !seen.insert(model_id.clone()) {
             continue;
         }
-        merged.push(runtime_model::synthesize_model_candidate(
-            registry, provider, &model_id,
+        merged.push(runtime_model::synthesize_model_candidate_with_settings(
+            registry, settings, provider, &model_id,
         ));
     }
 
@@ -133,12 +221,13 @@ async fn fetch_openai_compatible_model_ids(
     bearer_token: &str,
 ) -> Result<Vec<String>> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let response = live_model_client()
+    let mut request = openai_compatible_model_client(base_url)
         .get(url)
-        .header("Authorization", format!("Bearer {bearer_token}"))
-        .header("Accept", "application/json")
-        .send()
-        .await?;
+        .header("Accept", "application/json");
+    if !bearer_token.trim().is_empty() {
+        request = request.header("Authorization", format!("Bearer {bearer_token}"));
+    }
+    let response = request.send().await?;
 
     if !response.status().is_success() {
         bail!("HTTP {}", response.status());
@@ -220,7 +309,7 @@ fn model_id_from_json_object(value: &Value) -> Option<String> {
         .into_iter()
         .filter_map(|key| object.get(key)?.as_str())
         .map(normalize_model_id)
-        .find(|id| looks_like_model_id(id))
+        .find(|id| is_safe_model_id(id))
 }
 
 fn normalize_model_id(value: &str) -> String {
@@ -228,28 +317,60 @@ fn normalize_model_id(value: &str) -> String {
 }
 
 fn sanitize_model_ids(ids: Vec<String>) -> Vec<String> {
+    sanitize_model_ids_with(ids, looks_like_model_id)
+}
+
+fn sanitize_model_ids_for_provider(
+    settings: &Settings,
+    provider: &str,
+    ids: Vec<String>,
+) -> Vec<String> {
+    if accepts_arbitrary_safe_live_model_ids(settings, provider) {
+        sanitize_model_ids_with(ids, is_safe_model_id)
+    } else {
+        sanitize_model_ids(ids)
+    }
+}
+
+fn sanitize_model_ids_with(ids: Vec<String>, keep: impl Fn(&str) -> bool) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut sanitized = ids
         .into_iter()
         .map(|id| normalize_model_id(&id))
-        .filter(|id| looks_like_model_id(id))
+        .filter(|id| keep(id))
         .filter(|id| seen.insert(id.clone()))
         .collect::<Vec<_>>();
     sanitized.sort();
     sanitized
 }
 
-fn looks_like_model_id(value: &str) -> bool {
+fn accepts_arbitrary_safe_live_model_ids(settings: &Settings, provider: &str) -> bool {
+    let configured_base_url = runtime_model::provider_override_base_url(settings, provider)
+        .or_else(|| login::local_openai_provider_base_url(provider).map(ToString::to_string));
+    runtime_model::provider_override_for_settings(settings, provider).is_some()
+        || login::provider_allows_no_auth(provider, configured_base_url.as_deref())
+}
+
+fn is_safe_model_id(value: &str) -> bool {
     let value = value.trim();
     if value.is_empty() || value.len() > 128 || value.chars().any(char::is_whitespace) {
         return false;
     }
 
-    let lower = value.to_ascii_lowercase();
-    let model_part = if let Some((prefix, suffix)) = lower.rsplit_once('/') {
-        if prefix.is_empty() || prefix.contains('/') || suffix.is_empty() {
-            return false;
-        }
+    if let Some((prefix, suffix)) = value.rsplit_once('/') {
+        return !prefix.is_empty() && !prefix.contains('/') && !suffix.is_empty();
+    }
+
+    true
+}
+
+fn looks_like_model_id(value: &str) -> bool {
+    if !is_safe_model_id(value) {
+        return false;
+    }
+
+    let lower = value.trim().to_ascii_lowercase();
+    let model_part = if let Some((_, suffix)) = lower.rsplit_once('/') {
         suffix
     } else {
         lower.as_str()
@@ -270,6 +391,12 @@ fn looks_like_model_id(value: &str) -> bool {
         || model_part.starts_with("mixtral")
         || model_part.starts_with("qwen")
         || model_part.starts_with("deepseek")
+        || model_part.starts_with("gemma")
+        || model_part.starts_with("phi")
+        || model_part.starts_with("granite")
+        || model_part.starts_with("codestral")
+        || model_part.starts_with("starcoder")
+        || model_part.starts_with("smollm")
 }
 
 #[cfg(test)]
@@ -306,5 +433,43 @@ mod tests {
     fn accepts_provider_prefixed_model_ids_from_openai_compatible_catalogs() {
         assert!(looks_like_model_id("openai/gpt-5.5"));
         assert!(looks_like_model_id("anthropic/claude-opus-4-6"));
+        assert!(looks_like_model_id("lmstudio-community/Qwen3-4B-Instruct"));
+        assert!(looks_like_model_id("llama3.2:latest"));
+    }
+
+    #[test]
+    fn model_id_extraction_keeps_safe_local_catalog_ids_for_provider_filtering() {
+        let value = serde_json::json!({"id": "NousResearch/Hermes-3-Llama"});
+        assert_eq!(
+            model_id_from_json_object(&value).as_deref(),
+            Some("NousResearch/Hermes-3-Llama")
+        );
+        assert!(!looks_like_model_id("NousResearch/Hermes-3-Llama"));
+    }
+
+    #[test]
+    fn merge_live_model_ids_synthesizes_local_providers_without_static_templates() {
+        let registry = ModelRegistry::new();
+        let merged = merge_live_model_ids(
+            &registry,
+            "lm-studio",
+            &[],
+            vec![
+                "qwen3-coder-30b".to_string(),
+                "NousResearch/Hermes-3-Llama".to_string(),
+            ],
+        );
+
+        let model = merged
+            .iter()
+            .find(|model| model.id == "qwen3-coder-30b")
+            .expect("local live model synthesized");
+        assert_eq!(model.provider, "lm-studio");
+        assert_eq!(model.base_url.as_deref(), Some("http://localhost:1234/v1"));
+        assert!(
+            merged
+                .iter()
+                .any(|model| model.id == "NousResearch/Hermes-3-Llama")
+        );
     }
 }

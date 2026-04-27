@@ -35,7 +35,7 @@ export function AuthProviderList({
             </div>
           </div>
           <div className="mt-1 max-w-[40ch] text-[11px] leading-5 text-slate-400">
-            Pick one provider to unlock chat now. You can save more later for fallbacks or separate billing.
+            Pick a cloud provider or local model server. LM Studio and Ollama are ready without a saved key once their local servers are running.
           </div>
         </div>
         <Button

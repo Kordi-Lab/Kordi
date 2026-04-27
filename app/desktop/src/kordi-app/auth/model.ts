@@ -17,6 +17,7 @@ export type AuthDisplayProvider = {
   statusSummary: string;
   loginHint: string;
   authority?: string | null;
+  localBaseUrl?: string;
   methods: AuthDisplayMethod[];
 };
 
@@ -31,10 +32,45 @@ export function normalizeSelectedProviderId(id: string | null) {
   return id === 'openai-codex' ? 'openai' : id;
 }
 
+export function localProviderBaseUrl(providerId: string) {
+  if (providerId === 'lm-studio') return 'http://localhost:1234/v1';
+  if (providerId === 'ollama') return 'http://localhost:11434/v1';
+  return null;
+}
+
+export function isLocalProvider(providerId: string) {
+  return localProviderBaseUrl(providerId) !== null;
+}
+
+function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthProvider {
+  const label = providerId === 'lm-studio' ? 'LM Studio' : 'Ollama';
+  const baseUrl = localProviderBaseUrl(providerId);
+
+  return {
+    id: providerId,
+    label,
+    statusSummary: 'Local server setup required',
+    loginHint: providerId === 'lm-studio'
+      ? 'Run against LM Studio’s local OpenAI-compatible server. No API key is required unless you enabled one in LM Studio.'
+      : 'Run against Ollama’s local OpenAI-compatible server. The default local server does not need an API key.',
+    envVar: providerId === 'lm-studio' ? 'LM_STUDIO_API_KEY' : 'OLLAMA_API_KEY',
+    helpUrl: providerId === 'lm-studio' ? 'https://lmstudio.ai/docs/app/api/endpoints/openai' : 'https://docs.ollama.com',
+    supportsOAuth: false,
+    supportsApiKey: true,
+    configured: false,
+    authority: null,
+    baseUrl,
+    options: [],
+  };
+}
+
 export function buildAuthDisplayProviders(authState: DesktopAuthState | null): AuthDisplayProvider[] {
   if (!authState) return [];
 
   const byId = new Map(authState.providers.map((provider) => [provider.id, provider]));
+  for (const providerId of ['lm-studio', 'ollama'] as const) {
+    if (!byId.has(providerId)) byId.set(providerId, localProviderFallback(providerId));
+  }
   const providers: AuthDisplayProvider[] = [];
 
   const anthropic = byId.get('anthropic');
@@ -115,7 +151,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     });
   }
 
-  const singleProviderIds = ['github-copilot', 'google', 'groq', 'openrouter', 'xai'] as const;
+  const singleProviderIds = ['github-copilot', 'lm-studio', 'ollama', 'google', 'groq', 'openrouter', 'xai'] as const;
   for (const id of singleProviderIds) {
     const provider = byId.get(id);
     if (!provider) continue;
@@ -125,27 +161,36 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     providers.push({
       id,
       label: provider.label,
-      configured: provider.options.length > 0,
+      configured: provider.configured,
       statusSummary: provider.statusSummary,
       loginHint: provider.loginHint,
       authority: provider.authority,
+      localBaseUrl: isLocalProvider(id) ? (provider.baseUrl || localProviderBaseUrl(id) || undefined) : undefined,
       methods: [
         {
           mode,
           title:
             id === 'github-copilot'
               ? 'GitHub sign-in'
-              : id === 'google'
-                ? 'Google API key'
-                : id === 'groq'
-                  ? 'Groq API key'
-                  : id === 'openrouter'
-                    ? 'OpenRouter API key'
-                    : 'xAI API key',
+              : id === 'lm-studio'
+                ? 'LM Studio local server'
+                : id === 'ollama'
+                  ? 'Ollama local server'
+                  : id === 'google'
+                    ? 'Google API key'
+                    : id === 'groq'
+                      ? 'Groq API key'
+                      : id === 'openrouter'
+                        ? 'OpenRouter API key'
+                        : 'xAI API key',
           detail:
             mode === 'oauth'
               ? 'Sign in with GitHub and keep multiple saved accounts if you need them.'
-              : `Use ${provider.envVar || 'API_KEY'} for direct API access, or save more than one key and switch later.`,
+              : id === 'lm-studio'
+                ? `Start LM Studio’s local server at ${provider.baseUrl || localProviderBaseUrl(id)}. API keys are optional and only needed if you enabled one.`
+                : id === 'ollama'
+                  ? `Start Ollama’s OpenAI-compatible server at ${provider.baseUrl || localProviderBaseUrl(id)}. The default local server does not need an API key.`
+                  : `Use ${provider.envVar || 'API_KEY'} for direct API access, or save more than one key and switch later.`,
           providerId: provider.id,
           helpUrl: provider.helpUrl,
           envVar: provider.envVar,
@@ -155,12 +200,17 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     });
   }
 
-  return providers.sort((left, right) => Number(right.configured) - Number(left.configured) || left.label.localeCompare(right.label));
+  return providers.sort((left, right) => (
+    Number(right.configured) - Number(left.configured)
+    || Number(isLocalProvider(right.id)) - Number(isLocalProvider(left.id))
+    || left.label.localeCompare(right.label)
+  ));
 }
 
 export function providerListSubtitle(provider: AuthDisplayProvider) {
   const totalOptions = provider.methods.reduce((sum, method) => sum + method.options.length, 0);
 
+  if (provider.localBaseUrl && totalOptions === 0) return `Local endpoint • ${provider.localBaseUrl}`;
   if (!provider.configured) return 'No saved accounts or keys yet';
   if (provider.id === 'github-copilot' && provider.authority) return `Saved access • ${provider.authority}`;
   if (totalOptions === 1) return '1 saved account or key';

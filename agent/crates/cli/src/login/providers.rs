@@ -16,6 +16,16 @@ const KNOWN_PROVIDERS: &[(&str, &str, &str)] = &[
         "https://platform.openai.com/api-keys",
     ),
     (
+        "lm-studio",
+        "LM_STUDIO_API_KEY",
+        "https://lmstudio.ai/docs/app/api/endpoints/openai",
+    ),
+    (
+        "ollama",
+        "OLLAMA_API_KEY",
+        "https://github.com/ollama/ollama/blob/main/docs/openai.md",
+    ),
+    (
         "google",
         "GOOGLE_API_KEY",
         "https://aistudio.google.com/app/apikey",
@@ -39,11 +49,43 @@ pub fn is_oauth_provider(provider: &str) -> bool {
     OAUTH_PROVIDERS.contains(&provider)
 }
 
+pub fn local_openai_provider_base_url(provider: &str) -> Option<&'static str> {
+    match normalize_provider_for_model_selection(provider).as_str() {
+        "lm-studio" => Some("http://localhost:1234/v1"),
+        "ollama" => Some("http://localhost:11434/v1"),
+        _ => None,
+    }
+}
+
+pub fn is_local_openai_provider(provider: &str) -> bool {
+    local_openai_provider_base_url(provider).is_some()
+}
+
+pub fn is_loopback_base_url(base_url: &str) -> bool {
+    let lower = base_url.trim().to_ascii_lowercase();
+    lower.starts_with("http://localhost")
+        || lower.starts_with("https://localhost")
+        || lower.starts_with("http://127.0.0.1")
+        || lower.starts_with("https://127.0.0.1")
+        || lower.starts_with("http://[::1]")
+        || lower.starts_with("https://[::1]")
+}
+
+pub fn provider_allows_no_auth(provider: &str, base_url: Option<&str>) -> bool {
+    is_local_openai_provider(provider) || base_url.is_some_and(is_loopback_base_url)
+}
+
 pub fn normalize_provider_for_model_selection(provider: &str) -> String {
     match provider {
         "openai-codex" => "openai".to_string(),
         other => other.to_string(),
     }
+}
+
+pub fn provider_names_match(left: &str, right: &str) -> bool {
+    left == right
+        || normalize_provider_for_model_selection(left)
+            == normalize_provider_for_model_selection(right)
 }
 
 /// Resolve the environment-variable hint and help URL used by both the CLI
@@ -71,6 +113,8 @@ pub fn provider_display_name(provider: &str) -> Cow<'_, str> {
         "openai-codex" => Cow::Borrowed("ChatGPT Plus/Pro (Codex)"),
         "github-copilot" => Cow::Borrowed("GitHub Copilot"),
         "openai" => Cow::Borrowed("OpenAI"),
+        "lm-studio" => Cow::Borrowed("LM Studio"),
+        "ollama" => Cow::Borrowed("Ollama"),
         "google" => Cow::Borrowed("Google Gemini"),
         "groq" => Cow::Borrowed("Groq"),
         "xai" => Cow::Borrowed("xAI"),
@@ -133,6 +177,14 @@ pub fn provider_login_hint(provider: &str) -> String {
                 "Uses GitHub device/browser auth, then exchanges the GitHub token for a Copilot runtime token. Supports github.com or GitHub Enterprise Server. Current target: {target}."
             )
         }
+        "lm-studio" => {
+            "Runs against LM Studio's local OpenAI-compatible server at http://localhost:1234/v1. No API key is required unless you enabled one in LM Studio."
+                .to_string()
+        }
+        "ollama" => {
+            "Runs against Ollama's local OpenAI-compatible server at http://localhost:11434/v1. No API key is required for the default local server."
+                .to_string()
+        }
         other => {
             let (env_var, url) = provider_meta(other);
             if url.is_empty() {
@@ -157,6 +209,8 @@ pub fn provider_api_key_variant(provider: &str) -> Option<&'static str> {
     match provider {
         "anthropic" => Some("anthropic"),
         "openai" | "openai-codex" => Some("openai"),
+        "lm-studio" => Some("lm-studio"),
+        "ollama" => Some("ollama"),
         "google" => Some("google"),
         "groq" => Some("groq"),
         "xai" => Some("xai"),
@@ -172,6 +226,7 @@ pub(super) fn get_provider_status(name: &str) -> &'static str {
 
     match auth_source(name) {
         Some(AuthSource::EnvVar) => "✓ (env)",
+        _ if provider_allows_no_auth(name, local_openai_provider_base_url(name)) => "✓ (local)",
         _ => "✗",
     }
 }
@@ -179,9 +234,11 @@ pub(super) fn get_provider_status(name: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderAuthMethod, is_oauth_provider, normalize_provider_for_model_selection,
-        provider_api_key_variant, provider_auth_method, provider_display_name, provider_login_hint,
-        provider_meta, provider_oauth_variant,
+        ProviderAuthMethod, is_local_openai_provider, is_loopback_base_url, is_oauth_provider,
+        local_openai_provider_base_url, normalize_provider_for_model_selection,
+        provider_allows_no_auth, provider_api_key_variant, provider_auth_method,
+        provider_display_name, provider_login_hint, provider_meta, provider_names_match,
+        provider_oauth_variant,
     };
 
     #[test]
@@ -200,6 +257,8 @@ mod tests {
             provider_display_name("openai-codex"),
             "ChatGPT Plus/Pro (Codex)"
         );
+        assert_eq!(provider_display_name("lm-studio"), "LM Studio");
+        assert_eq!(provider_display_name("ollama"), "Ollama");
         assert_eq!(provider_display_name("custom"), "custom");
     }
 
@@ -222,6 +281,8 @@ mod tests {
         assert_eq!(provider_oauth_variant("openai"), Some("openai-codex"));
         assert_eq!(provider_oauth_variant("google"), None);
         assert_eq!(provider_api_key_variant("openai-codex"), Some("openai"));
+        assert_eq!(provider_api_key_variant("lm-studio"), Some("lm-studio"));
+        assert_eq!(provider_api_key_variant("ollama"), Some("ollama"));
         assert_eq!(provider_api_key_variant("github-copilot"), None);
     }
 
@@ -234,6 +295,10 @@ mod tests {
         let api_key_hint = provider_login_hint("google");
         assert!(api_key_hint.contains("GOOGLE_API_KEY"));
         assert!(api_key_hint.contains("aistudio.google.com"));
+
+        let local_hint = provider_login_hint("lm-studio");
+        assert!(local_hint.contains("localhost:1234"));
+        assert!(local_hint.contains("No API key is required"));
 
         let fallback_hint = provider_login_hint("custom");
         assert_eq!(fallback_hint, "Set API_KEY or paste an API key.");
@@ -249,5 +314,32 @@ mod tests {
             normalize_provider_for_model_selection("anthropic"),
             "anthropic"
         );
+        assert!(provider_names_match("openai", "openai-codex"));
+        assert!(provider_names_match("lm-studio", "lm-studio"));
+        assert!(!provider_names_match("openai", "lm-studio"));
+    }
+
+    #[test]
+    fn local_openai_providers_allow_no_auth_on_loopback_endpoints() {
+        assert_eq!(
+            local_openai_provider_base_url("lm-studio"),
+            Some("http://localhost:1234/v1")
+        );
+        assert_eq!(
+            local_openai_provider_base_url("ollama"),
+            Some("http://localhost:11434/v1")
+        );
+        assert!(is_local_openai_provider("lm-studio"));
+        assert!(is_loopback_base_url("http://127.0.0.1:8000/v1"));
+        assert!(is_loopback_base_url("http://[::1]:1234/v1"));
+        assert!(provider_allows_no_auth("lm-studio", None));
+        assert!(provider_allows_no_auth(
+            "custom-local",
+            Some("http://localhost:8000/v1")
+        ));
+        assert!(!provider_allows_no_auth(
+            "custom-remote",
+            Some("https://llm.example.com/v1")
+        ));
     }
 }
