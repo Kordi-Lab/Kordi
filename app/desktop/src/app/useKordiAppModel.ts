@@ -17,7 +17,7 @@ import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonical
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
@@ -31,7 +31,6 @@ import {
   archiveDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
-  createDesktopProjectSession,
   deleteDesktopChatSessionForever,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
@@ -890,20 +889,27 @@ export function useKordiAppModel() {
     const projectRoot = activeProject.root?.trim();
     if (!projectRoot) return;
 
-    try {
-      setDesktopChatError(null);
-      const nextState = await createDesktopProjectSession(projectRoot);
-      setDesktopChatState(nextState);
-      const resolvedProjectRoot = nextState.activeSession.project?.root ?? projectRoot;
-      const projectId = canonicalProjectGroupIdFromRoot(resolvedProjectRoot) ?? activeProject.id;
-      selectProjectSession(projectId, nextState.activeSessionId);
-      projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
-      setActiveNav('projects');
-      await refreshCanonicalState();
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create project session');
-    }
-  }, [activeProject.id, activeProject.root, isNativeShell, projectsUi.setExpandedProjectIds, refreshCanonicalState, selectProjectSession, setActiveNav, setDesktopChatError, setDesktopChatState]);
+    setDesktopChatError(null);
+    const projectId = canonicalProjectGroupIdFromRoot(projectRoot) ?? activeProject.id;
+    const draftSessionId = projectDraftSessionId(projectId);
+    selectProjectSession(projectId, draftSessionId);
+    projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
+    composerUi.setComposerDrafts((current) => ({ ...current, project: '' }));
+    composerUi.setChatComposerAttachments([]);
+    composerUi.setOpenComposerSelector(null);
+    setActiveNav('projects');
+  }, [
+    activeProject.id,
+    activeProject.root,
+    composerUi.setChatComposerAttachments,
+    composerUi.setComposerDrafts,
+    composerUi.setOpenComposerSelector,
+    isNativeShell,
+    projectsUi.setExpandedProjectIds,
+    selectProjectSession,
+    setActiveNav,
+    setDesktopChatError,
+  ]);
 
   const {
     rootThemeClass,

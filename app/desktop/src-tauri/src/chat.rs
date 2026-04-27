@@ -359,17 +359,27 @@ fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
 }
 
+fn is_placeholder_session_title(title: &str) -> bool {
+    let trimmed = title.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("New session") || trimmed == "Session"
+}
+
 fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
-    summary.draft && summary.message_count == 0
+    summary.message_count == 0 && (summary.draft || is_placeholder_session_title(&summary.title))
 }
 
 fn filter_blank_draft_projects(
     projects: Vec<DesktopChatProjectGroup>,
 ) -> Vec<DesktopChatProjectGroup> {
-    // Project creation itself is explicit, and the Projects page can now create an
-    // empty project session before the first message. Keep those draft project
-    // rows visible so a user-created project session does not become an orphan.
     projects
+        .into_iter()
+        .map(|mut project| {
+            project
+                .sessions
+                .retain(|session| !is_blank_draft_summary(session));
+            project
+        })
+        .collect()
 }
 
 async fn ensure_transient_draft_runtime(
@@ -1295,6 +1305,10 @@ pub async fn desktop_chat_send_message(
     session_id: String,
     text: String,
 ) -> Result<DesktopChatState, String> {
+    if text.trim().is_empty() {
+        return Err("Message is empty".to_string());
+    }
+
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
@@ -1452,6 +1466,11 @@ pub async fn desktop_chat_start_message(
     text: String,
     attachment_paths: Option<Vec<String>>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
+    let attachment_paths = attachment_paths.unwrap_or_default();
+    if text.trim().is_empty() && attachment_paths.is_empty() {
+        return Err("Message is empty".to_string());
+    }
+
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
@@ -1462,7 +1481,6 @@ pub async fn desktop_chat_start_message(
                 .to_string(),
         );
     }
-    let attachment_paths = attachment_paths.unwrap_or_default();
     let turn_id = uuid::Uuid::new_v4().to_string();
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
         id: turn_id.clone(),

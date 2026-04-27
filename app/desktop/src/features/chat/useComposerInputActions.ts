@@ -3,6 +3,8 @@ import { useCallback } from 'react';
 import { normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { storeDesktopChatAttachment, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
+import { isProjectDraftSessionId } from './draftSessions';
+
 import {
   formatDesktopEventTime,
   formatThinkingSelectionLabel,
@@ -199,7 +201,7 @@ export function useComposerInputActions({
     setOpenComposerSelector(null);
 
     const targetSessionId = scope === 'project' ? activeProjectSessionId : desktopChatState?.activeSessionId;
-    if (isNativeShell && targetSessionId) {
+    if (isNativeShell && targetSessionId && !isProjectDraftSessionId(targetSessionId)) {
       try {
         setDesktopChatError(null);
 

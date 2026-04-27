@@ -14,6 +14,7 @@ import {
 import {
   LOCAL_DRAFT_CHAT_CONVERSATION_ID,
   isLocalDraftChatConversationId,
+  isProjectDraftSessionId,
 } from './draftSessions';
 
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
@@ -108,6 +109,11 @@ export function useDesktopSessionController({
     setChatComposerAttachments([]);
     setOpenComposerSelector(null);
     if (!isNativeShell) return;
+
+    if (isProjectDraftSessionId(sessionId)) {
+      setDesktopChatError(null);
+      return;
+    }
 
     try {
       setDesktopChatError(null);

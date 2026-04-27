@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { resolveProjectSelection, type ProjectRoutingGroup } from '@/features/canonical/sessionResolver';
+import { isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import type { DetailTab, NavId, Project } from '@/kordi-app/types';
 
 type UseWorkspaceControllerArgs = {
@@ -42,7 +43,7 @@ export function useWorkspaceController({
   }, []);
 
   useEffect(() => {
-    if (!isNativeShell || !projectRoutingGroups?.length) return;
+    if (!isNativeShell || !projectRoutingGroups?.length || isProjectDraftSessionId(activeProjectSessionId)) return;
 
     const latestSelection = latestProjectSelectionRef.current;
     const resolvedSelection = resolveProjectSelection(
@@ -62,7 +63,7 @@ export function useWorkspaceController({
   }, [activeProjectId, activeProjectSessionId, isNativeShell, projectRoutingGroups, projectSelectedSessionIds]);
 
   useEffect(() => {
-    if (!activeProjectId || !activeProjectSessionId) return;
+    if (!activeProjectId || !activeProjectSessionId || isProjectDraftSessionId(activeProjectSessionId)) return;
     latestProjectSelectionRef.current = { projectId: activeProjectId, sessionId: activeProjectSessionId };
     setProjectSelectedSessionIds((current) => (
       current[activeProjectId] === activeProjectSessionId
