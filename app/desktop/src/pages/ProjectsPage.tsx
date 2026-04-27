@@ -311,7 +311,7 @@ export function ProjectsPage({
                 onOpenSource={onOpenSource}
               />
             ))}
-            {desktopLiveTurn && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
+            {desktopLiveTurn && !desktopLiveTurn.completed && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
           </motion.div>
         </ScrollArea>
       </div>
