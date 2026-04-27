@@ -115,7 +115,7 @@ function relatedProjectArtifacts(project: ProjectWorkspace): SessionArtifact[] {
   }
 
   if (project.root?.trim()) {
-    pushFile(`${project.root.replace(/\/$/, '')}/.kordi/settings.json`, 'Project settings', 'Project name, context, prompt, and shared source configuration');
+    pushFile(`${project.root.replace(/\/$/, '')}/.kordi/settings.json`, 'Project settings', 'Created after saving project info, context, prompts, or shared source configuration');
   }
 
   return artifacts;

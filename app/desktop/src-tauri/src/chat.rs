@@ -756,7 +756,16 @@ pub async fn desktop_chat_artifact_preview(
     const MAX_PREVIEW_LINES: usize = 400;
 
     let resolved_path = resolve_artifact_preview_path(&path, base_root.as_deref())?;
-    let bytes = std::fs::read(&resolved_path).map_err(|err| err.to_string())?;
+    let bytes = std::fs::read(&resolved_path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            format!("Artifact file not found: {}", resolved_path.display())
+        } else {
+            format!(
+                "Unable to read artifact preview for {}: {err}",
+                resolved_path.display()
+            )
+        }
+    })?;
     let mut truncated = bytes.len() > MAX_PREVIEW_BYTES;
     let preview_bytes = if truncated {
         &bytes[..MAX_PREVIEW_BYTES]

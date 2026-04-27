@@ -52,6 +52,24 @@ function renderPreview(preview: DesktopArtifactPreview) {
   );
 }
 
+function previewErrorCopy(error: string, artifact: SessionArtifact | null) {
+  const missing = /not found|no such file|os error 2/i.test(error);
+  if (!missing) {
+    return {
+      title: 'Unable to preview this file',
+      description: error,
+    };
+  }
+
+  const isProjectSettings = artifact?.path.endsWith('/.kordi/settings.json') || artifact?.path === '.kordi/settings.json';
+  return {
+    title: 'File is not on disk yet',
+    description: isProjectSettings
+      ? 'Project settings are created after you save project info, context, system prompt, or shared sources. This project can still have sessions before that settings file exists.'
+      : 'Kordi tracked this related path from the project/session, but the file does not currently exist. It may have been moved, deleted, or not created by the agent yet.',
+  };
+}
+
 export function ArtifactInspector({
   isNativeShell,
   artifacts,
@@ -73,6 +91,7 @@ export function ArtifactInspector({
     ? `${previewBaseRoot ?? ''}:${activeArtifact.id}:${activeArtifact.timeLabel ?? ''}:${activeArtifact.live ? 'live' : 'ready'}`
     : null;
   const cachedPreview = activePreviewKey ? previewCache[activePreviewKey] ?? null : null;
+  const previewErrorDetails = previewError ? previewErrorCopy(previewError, activeArtifact) : null;
 
   useEffect(() => {
     if (artifacts.length === 0) {
@@ -180,8 +199,11 @@ export function ArtifactInspector({
                 <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                 Loading artifact preview…
               </div>
-            ) : previewError ? (
-              <div className="px-4 py-4 text-[12px] text-rose-200">{previewError}</div>
+            ) : previewErrorDetails ? (
+              <div className="px-4 py-4">
+                <div className="text-[13px] font-medium text-[color:var(--utility-foreground)]">{previewErrorDetails.title}</div>
+                <div className="mt-1 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{previewErrorDetails.description}</div>
+              </div>
             ) : cachedPreview ? (
               <>
                 {renderPreview(cachedPreview)}
