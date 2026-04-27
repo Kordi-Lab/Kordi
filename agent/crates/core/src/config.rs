@@ -32,6 +32,7 @@ const NPM_PACKAGES_DIRNAME: &str = "npm";
 const GIT_PACKAGES_DIRNAME: &str = "git";
 const APP_DATA_DIR_ENV_VAR: &str = "APP_DATA_DIR";
 const KORDI_STORAGE_ROOT_ENV_VAR: &str = "KORDI_STORAGE_ROOT";
+const KORDI_AUTH_PATH_ENV_VAR: &str = "KORDI_AUTH_PATH";
 
 /// Resolve the legacy global agent resource directory.
 ///
@@ -315,6 +316,9 @@ pub fn artifacts_dir(storage: &StorageSettings) -> PathBuf {
 
 /// Resolve the effective auth store path.
 pub fn auth_path(storage: &StorageSettings) -> PathBuf {
+    if let Some(auth_path) = process_auth_path() {
+        return auth_path;
+    }
     if configured_storage_root(storage).is_some() {
         return preferred_auth_path(storage);
     }
@@ -413,6 +417,14 @@ fn process_storage_root() -> Option<PathBuf> {
                 .map(PathBuf::from)
                 .map(|path| path.join(PRIMARY_PROJECT_SETTINGS_DIRNAME.trim_start_matches('.')))
         })
+}
+
+fn process_auth_path() -> Option<PathBuf> {
+    std::env::var(KORDI_AUTH_PATH_ENV_VAR)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(|value| expand_user_path(&value))
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -745,6 +757,34 @@ mod tests {
 
         let _ = fs::remove_dir_all(home);
         let _ = fs::remove_dir_all(app_data_dir);
+    }
+
+    #[test]
+    fn auth_path_env_override_only_changes_auth_store_path() {
+        let _lock = env_lock().lock().unwrap();
+        let home = make_temp_dir();
+        let storage_root = make_temp_dir();
+        let auth_dir = make_temp_dir();
+        let auth_file = auth_dir.join("shared-auth.json");
+        let _home = EnvGuard::set("HOME", home.to_str().unwrap());
+        let _storage_root =
+            EnvGuard::set(KORDI_STORAGE_ROOT_ENV_VAR, storage_root.to_str().unwrap());
+        let _auth_path = EnvGuard::set(KORDI_AUTH_PATH_ENV_VAR, auth_file.to_str().unwrap());
+
+        let storage = StorageSettings::default();
+        assert_eq!(
+            session_db_path(&storage),
+            storage_root.join(SESSIONS_DB_FILENAME)
+        );
+        assert_eq!(
+            artifacts_dir(&storage),
+            storage_root.join(ARTIFACTS_DIRNAME)
+        );
+        assert_eq!(auth_path(&storage), auth_file);
+
+        let _ = fs::remove_dir_all(home);
+        let _ = fs::remove_dir_all(storage_root);
+        let _ = fs::remove_dir_all(auth_dir);
     }
 
     #[test]

@@ -33,6 +33,7 @@ Options:
   --config <path>         Config file path. Default: app/desktop/scripts/multi-instance/configs/users.yaml
   --users <ids>           Comma-separated user ids to include. Default: all configured users.
   --reset                 Stop matching launched instances and remove their data/logs before continuing.
+  --shared-auth           Use the configured shared auth file by path instead of copying it per instance.
   --dry-run               Print the resolved plan and exit.
   --help                  Show this help.
 `);
@@ -43,6 +44,7 @@ export function parseCommonArgs(argv, { command }) {
     configPath: defaultConfigPath,
     userIds: [],
     reset: false,
+    sharedAuth: false,
     dryRun: false,
   };
 
@@ -56,6 +58,10 @@ export function parseCommonArgs(argv, { command }) {
     }
     if (arg === '--reset') {
       options.reset = true;
+      continue;
+    }
+    if (arg === '--shared-auth') {
+      options.sharedAuth = true;
       continue;
     }
     if (arg === '--dry-run') {
@@ -324,13 +330,18 @@ export function applyBootstrap(instance, { force = false } = {}) {
   };
 }
 
-export function prepareInstanceEnvironment(config, instance, { forceBootstrap = false } = {}) {
+export function prepareInstanceEnvironment(config, instance, { forceBootstrap = false, skipBootstrap = false } = {}) {
   ensureMultiInstanceDirs({
     ...config,
     dataRoot: instance.dataDir,
     logsRoot: instance.logDir,
     runtimeRoot: config.runtimeRoot,
   });
+
+  if (skipBootstrap) {
+    return { id: instance.id, seeded: false, reason: 'shared-auth-path' };
+  }
+
   return applyBootstrap(instance, { force: forceBootstrap });
 }
 
