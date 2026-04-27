@@ -1126,11 +1126,17 @@ fn resolve_model_candidate(
     registry.load_custom_models(settings);
     login::add_cached_github_copilot_models(&mut registry);
 
+    let requested_prefix_is_configured_provider = requested
+        .split_once('/')
+        .map(|(provider, _)| login::normalize_provider_for_model_selection(provider))
+        .is_some_and(|provider| login::provider_configured_for_settings(settings, &provider));
+
     if requested.contains('/')
         && let Some(provider) = current_provider
     {
         let normalized_provider = login::normalize_provider_for_model_selection(provider);
         if login::is_local_openai_provider(&normalized_provider)
+            && !requested_prefix_is_configured_provider
             && !requested.starts_with(&format!("{normalized_provider}/"))
             && let Some(model) = synthesize_live_model_candidate(
                 &registry,
@@ -2513,6 +2519,34 @@ mod tests {
 
         assert_eq!(model.provider, "ollama");
         assert_eq!(model.id, "llama3.2:latest");
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_selection_is_not_absorbed_by_current_lm_studio_provider() -> Result<()> {
+        let settings = Settings {
+            providers: Some(vec![
+                ProviderOverride {
+                    name: "lm-studio".to_string(),
+                    base_url: Some("http://localhost:1234/v1".to_string()),
+                    api_key_env: None,
+                    api: None,
+                    headers: None,
+                },
+                ProviderOverride {
+                    name: "ollama".to_string(),
+                    base_url: Some("http://localhost:11434/v1".to_string()),
+                    api_key_env: None,
+                    api: None,
+                    headers: None,
+                },
+            ]),
+            ..Settings::default()
+        };
+        let model = resolve_model_candidate(&settings, "ollama/qwen:1.8b-chat", Some("lm-studio"))?;
+
+        assert_eq!(model.provider, "ollama");
+        assert_eq!(model.id, "qwen:1.8b-chat");
         Ok(())
     }
 

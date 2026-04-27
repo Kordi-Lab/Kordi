@@ -783,6 +783,7 @@ async fn authenticated_model_options_with_local_runtime(
     cwd: &std::path::Path,
 ) -> Vec<DesktopChatModelOption> {
     let mut options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
+    options.retain(|option| option.provider != "ollama");
     merge_lm_studio_running_model_options(cwd, &mut options).await;
     merge_ollama_running_model_options(cwd, &mut options).await;
     options
