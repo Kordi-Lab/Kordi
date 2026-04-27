@@ -7,6 +7,7 @@ import type {
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
+import { isSelfReferenceName, possessiveScopedLabel, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 
 export function contentRecord(value: unknown): Record<string, unknown> {
@@ -91,15 +92,16 @@ export function directBridgeSourceEventForOutreachDuplicate(message: CanonicalSe
   return sourceWithoutRequestSuffix.replace('desktop-bridge-outreach:', 'desktop-bridge:');
 }
 
-export function ownerScopedAgentName(identity: CanonicalIdentity | undefined, identityById: Map<string, CanonicalIdentity>) {
+export function ownerScopedAgentName(
+  identity: CanonicalIdentity | undefined,
+  identityById: Map<string, CanonicalIdentity>,
+  profileHumanIdentityId?: string | null,
+) {
   if (!identity) return undefined;
-  if (identity.kind !== 'agent') return identity.displayName;
+  if (identity.kind !== 'agent') return selfDisplayName(identity.displayName, identity.id === profileHumanIdentityId);
   const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
   if (!owner?.displayName) return identity.displayName;
-  const scopedName = `${owner.displayName}'s ${identity.displayName}`;
-  return identity.displayName === scopedName || identity.displayName.startsWith(`${owner.displayName}'s `)
-    ? identity.displayName
-    : scopedName;
+  return possessiveScopedLabel(owner.displayName, identity.displayName, owner.id === profileHumanIdentityId) ?? identity.displayName;
 }
 
 export function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
@@ -162,12 +164,13 @@ export function processingAgentMessage(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   target: CanonicalIdentity,
   identityById: Map<string, CanonicalIdentity>,
+  profileHumanIdentityId?: string | null,
 ): Message {
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
   const time = formatDesktopClockTime(exchange.updatedAtMs || exchange.createdAtMs);
   return {
     role,
-    sender: ownerScopedAgentName(target, identityById) ?? target.displayName,
+    sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,
     senderType: 'agent',
     senderProfileImageUrl: target.profileImageUrl ?? null,
     senderAvatarSeed: target.avatarKey ?? null,
@@ -204,19 +207,21 @@ export function mapCanonicalMessage(
   const failed = message.status === 'failed' || stringValue(content.deliveryState) === 'failed';
   const tools = canonicalTools(content.tools);
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
-  const scopedAgentSender = ownerScopedAgentName(identity, identityById);
+  const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
   const contentSender = stringValue(content.sender)?.trim();
   const isOwnMessage = role === 'user' || message.senderIdentityId === profileHumanIdentityId;
   const sender = (() => {
     if (identity?.kind === 'agent') {
-      return !contentSender || contentSender === identity.displayName
-        ? scopedAgentSender
-        : contentSender;
+      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+      if (owner?.displayName && contentSender) {
+        return possessiveScopedLabel(owner.displayName, contentSender, owner.id === profileHumanIdentityId) ?? contentSender;
+      }
+      return scopedAgentSender;
     }
-    if (contentSender?.toLowerCase() === 'you' && !isOwnMessage) {
+    if (isSelfReferenceName(contentSender) && !isOwnMessage) {
       return identity?.displayName ?? contentSender;
     }
-    return contentSender || identity?.displayName || scopedAgentSender;
+    return selfDisplayName(contentSender || identity?.displayName || scopedAgentSender, isOwnMessage);
   })();
   const thinkingText = stringValue(content.thinkingText) ?? '';
   const rawDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);

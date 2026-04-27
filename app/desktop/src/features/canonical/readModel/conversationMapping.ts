@@ -21,7 +21,7 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
 
   const placeholderOnly = existingMessages.length === 1
     && existingMessages[0]?.role === 'system'
-    && /^(Draft session|Session ready|Opening your local chat history|Select a local session)/.test(existingMessages[0]?.text ?? '');
+    && /^(Draft session|Session ready|Opening (?:my|your) local chat history|Select a local session)/.test(existingMessages[0]?.text ?? '');
 
   return placeholderOnly || canonicalMessages.length >= existingMessages.length;
 }

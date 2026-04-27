@@ -59,7 +59,7 @@ export function appendOptimisticOutboundMessage(
 ) {
   const optimisticMessage = {
     role: 'user' as const,
-    sender: 'You',
+    sender: 'Me',
     text: messageText,
     attachments: toOptimisticAttachments(attachments),
     mentions,
@@ -139,7 +139,7 @@ export function appendOptimisticBridgeMessage(
         {
           id: optimisticMessageId,
           direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
-          sender: 'You',
+          sender: 'Me',
           text,
           timeLabel: sentAt,
           timestampMs,
@@ -225,7 +225,7 @@ export function prepareCanonicalUserMessage(
       messageKind: 'text',
       contentText: text,
       content: {
-        sender: 'You',
+        sender: 'Me',
         timeLabel: sentAt,
         timestampMs,
         attachments: toOptimisticAttachments(attachments),

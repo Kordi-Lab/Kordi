@@ -1,4 +1,5 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { possessiveScopedLabel } from '@/lib/identityLabels';
 import type {
   ConversationBridgeTarget,
   DesktopBridgeState,
@@ -44,13 +45,12 @@ export function normalizeMentionLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-export function scopedAgentLabel(ownerName: string | null | undefined, agentLabel: string | null | undefined) {
+export function scopedAgentLabel(ownerName: string | null | undefined, agentLabel: string | null | undefined, ownerIsSelf = false) {
   const label = agentLabel?.trim();
   if (!label) return null;
   const owner = ownerName?.trim();
   if (!owner) return label;
-  const prefix = `${owner}'s `;
-  return label.startsWith(prefix) ? label : `${prefix}${label}`;
+  return possessiveScopedLabel(owner, label, ownerIsSelf);
 }
 
 export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
@@ -68,6 +68,8 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
   return [
     hostDisplayName,
     agentLabel,
+    scopedAgentLabel(ownerName, 'Kordi', true),
+    scopedAgentLabel(ownerName, agentLabel || 'Kordi', true),
     scopedAgentLabel(ownerName, 'Kordi'),
     scopedAgentLabel(ownerName, agentLabel || 'Kordi'),
     activeAgent?.id,

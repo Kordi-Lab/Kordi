@@ -6,6 +6,7 @@ import {
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/bridge/messages';
 import { isBridgeAgentRuntime, isBridgePersonRuntime } from '@/features/bridge/runtime';
+import { firstPersonPossessiveLabel } from '@/lib/identityLabels';
 
 type BridgeConversationViewModel = Conversation & {
   _updatedAtMs?: number;
@@ -83,8 +84,8 @@ export function mapBridgeConversationToViewModel(
         && message.deliveryState === 'processing'
       ))
     : undefined;
-  const localHumanLabel = host?.ownerName || 'You';
-  const localBridgeAgentLabel = host?.displayName || localAgentLabel;
+  const localHumanLabel = 'Me';
+  const localBridgeAgentLabel = firstPersonPossessiveLabel(host?.displayName || localAgentLabel, host?.ownerName);
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
@@ -249,8 +250,8 @@ export function mapBridgeConversationToViewModel(
     trust: 'Bridge',
     directness: outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
     participants: isAgent
-      ? ['You', remoteHumanLabel, remoteAgentLabel]
-      : ['You', conversation.peerOwnerName || conversation.title],
+      ? ['Me', remoteHumanLabel, remoteAgentLabel]
+      : ['Me', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
     outreach: conversation.outreach,
     identity: conversation.identity,

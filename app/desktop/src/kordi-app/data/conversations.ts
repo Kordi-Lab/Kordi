@@ -12,24 +12,24 @@ export const conversations: Conversation[] = [
     bridges: ['Alpha', 'Beta'],
     trust: 'Trusted',
     directness: 'Delegated thread',
-    participants: ['You', 'Your Research Agent', "Alice's Research Agent"],
+    participants: ['Me', 'My Research Agent', "Alice's Research Agent"],
     messages: [
       { role: 'system', text: 'Delegated thread resumed from yesterday', time: '08:54' },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Check whether Alice already organized the outline into introduction, findings, and next-step sections.',
         time: '08:55',
       },
       {
         role: 'owned-agent',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'I will ask Alice’s Research Agent for the exact structure and whether the concise version is already formatted.',
         time: '08:55',
       },
       {
         role: 'action',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'Remote coordination started',
         detail: 'Direct transport unavailable • relayed through Alpha mailbox',
         time: '08:55',
@@ -42,13 +42,13 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'owned-agent',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'Alice’s side already has the concise version organized into introduction, findings, and next steps. The long notes are still being finalized.',
         time: '08:56',
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Ask if she can send the concise one first and attach the citation-complete notes later.',
         time: '08:57',
       },
@@ -60,16 +60,16 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'owned-agent',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'Confirmed. Alice can ship the concise version immediately and send the completed long-form notes later today.',
         time: '08:58',
       },
-      { role: 'system', text: 'Delegation started via Your Research Agent', time: '09:12' },
-      { role: 'user', sender: 'You', text: 'Ask Alice’s agent whether the literature summary is ready.', time: '09:13' },
-      { role: 'owned-agent', sender: 'Your Research Agent', text: 'I will contact Alice’s Research Agent and summarize the reply for you.', time: '09:13' },
+      { role: 'system', text: 'Delegation started via My Research Agent', time: '09:12' },
+      { role: 'user', sender: 'Me', text: 'Ask Alice’s agent whether the literature summary is ready.', time: '09:13' },
+      { role: 'owned-agent', sender: 'My Research Agent', text: 'I will contact Alice’s Research Agent and summarize the reply here.', time: '09:13' },
       {
         role: 'action',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'Outgoing relay created',
         detail: 'Status: sent • waiting for reply • approval not required',
         time: '09:13',
@@ -82,7 +82,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'owned-agent',
-        sender: 'Your Research Agent',
+        sender: 'My Research Agent',
         text: 'Summary: Alice’s side is ready with a concise version now. Full notes are coming later today.',
         time: '09:14',
       },
@@ -97,7 +97,7 @@ export const conversations: Conversation[] = [
     bridges: ['Alpha'],
     trust: 'Owned',
     directness: 'Direct chat',
-    participants: ['You', 'My Core Agent'],
+    participants: ['Me', 'My Core Agent'],
     contextWindowStatus: {
       contextWindow: 128000,
       usedTokens: 116480,
@@ -138,7 +138,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Summarize today’s open follow-ups from the Bridges draft review.',
         time: '08:34',
       },
@@ -150,7 +150,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Turn that into a short update I can send to Bob right now.',
         time: '08:35',
       },
@@ -162,7 +162,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Also prepare a reminder for tomorrow morning to revisit the settings page typography.',
         time: '08:36',
       },
@@ -175,7 +175,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Can you make the update to Bob a bit warmer and more concise?',
         time: '08:37',
       },
@@ -187,7 +187,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Good. Now write a slightly more direct version for chat, without the extra context.',
         time: '08:38',
       },
@@ -199,7 +199,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Before that, check whether the settings page still feels oversized compared with chat.',
         time: '08:39',
       },
@@ -216,7 +216,7 @@ export const conversations: Conversation[] = [
         detail: 'Reducing sidebar width, typography scale, and control density',
         time: '08:40',
       },
-      { role: 'user', sender: 'You', text: 'Draft a reply and schedule a follow-up for tomorrow.', time: '08:41' },
+      { role: 'user', sender: 'Me', text: 'Draft a reply and schedule a follow-up for tomorrow.', time: '08:41' },
       {
         role: 'owned-agent',
         sender: 'My Core Agent',
@@ -239,7 +239,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Great. Keep the reminder, and give me the shortest possible follow-up reply for Bob.',
         time: '08:43',
       },
@@ -258,7 +258,7 @@ export const conversations: Conversation[] = [
       },
       {
         role: 'user',
-        sender: 'You',
+        sender: 'Me',
         text: 'Add one note for tomorrow: verify that the input bar always stays pinned to the bottom when the window shrinks.',
         time: '08:45',
       },
@@ -279,9 +279,9 @@ export const conversations: Conversation[] = [
     bridges: ['Beta', 'Gamma'],
     trust: 'Verified',
     directness: 'Direct chat',
-    participants: ['You', 'Bob'],
+    participants: ['Me', 'Bob'],
     messages: [
-      { role: 'user', sender: 'You', text: 'Did you review the prototype?', time: 'Yesterday' },
+      { role: 'user', sender: 'Me', text: 'Did you review the prototype?', time: 'Yesterday' },
       {
         role: 'person',
         sender: 'Bob',
@@ -299,9 +299,9 @@ export const conversations: Conversation[] = [
     bridges: ['Alpha'],
     trust: 'Owned',
     directness: 'Direct chat',
-    participants: ['You', 'Code Agent'],
+    participants: ['Me', 'Code Agent'],
     messages: [
-      { role: 'user', sender: 'You', text: 'Outline the review principles we should keep across crates.', time: '07:58' },
+      { role: 'user', sender: 'Me', text: 'Outline the review principles we should keep across crates.', time: '07:58' },
       { role: 'owned-agent', sender: 'Code Agent', text: 'I grouped them into safety, clarity, and runtime boundaries.', time: '08:02' },
     ],
   },
@@ -314,9 +314,9 @@ export const conversations: Conversation[] = [
     bridges: ['Alpha', 'Gamma'],
     trust: 'Trusted',
     directness: 'Delegated thread',
-    participants: ['You', 'Your Research Agent', "Carol's Builder Agent"],
+    participants: ['Me', 'My Research Agent', "Carol's Builder Agent"],
     messages: [
-      { role: 'owned-agent', sender: 'Your Research Agent', text: 'Carol shared a draft scope for the open-source wrap app.', time: 'Mon' },
+      { role: 'owned-agent', sender: 'My Research Agent', text: 'Carol shared a draft scope for the open-source wrap app.', time: 'Mon' },
       { role: 'external-agent', sender: "Carol's Builder Agent", text: 'First milestone covers the shell, session inbox, and route logs.', time: 'Mon' },
     ],
   },
@@ -329,7 +329,7 @@ export const conversations: Conversation[] = [
     bridges: ['Beta'],
     trust: 'Trusted',
     directness: 'Delegated thread',
-    participants: ['You', 'My Core Agent', "Nora's Scheduling Agent"],
+    participants: ['Me', 'My Core Agent', "Nora's Scheduling Agent"],
     messages: [
       { role: 'owned-agent', sender: 'My Core Agent', text: 'I proposed two meeting windows for next week.', time: 'Tue' },
       { role: 'external-agent', sender: "Nora's Scheduling Agent", text: 'Tuesday 14:00 works best after preference matching.', time: 'Tue' },
@@ -344,7 +344,7 @@ export const conversations: Conversation[] = [
     bridges: ['Gamma'],
     trust: 'Pending',
     directness: 'Delegated thread',
-    participants: ['You', 'My Core Agent', "Listing Agent"],
+    participants: ['Me', 'My Core Agent', "Listing Agent"],
     messages: [
       { role: 'external-agent', sender: 'Listing Agent', text: 'The landlord accepted a virtual tour before document submission.', time: 'Wed' },
     ],
@@ -358,7 +358,7 @@ export const conversations: Conversation[] = [
     bridges: ['Beta'],
     trust: 'Verified',
     directness: 'Direct chat',
-    participants: ['You', 'Bob', 'Review Agent'],
+    participants: ['Me', 'Bob', 'Review Agent'],
     messages: [
       { role: 'person', sender: 'Bob', text: 'I left notes on structure, claims, and the conclusion paragraph.', time: 'Thu' },
     ],

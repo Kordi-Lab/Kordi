@@ -1,6 +1,7 @@
 import { useCallback, type MutableRefObject } from 'react';
 
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { selfDisplayName } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 type LocalAvatarSeedsRef = MutableRefObject<{
@@ -38,7 +39,7 @@ export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopT
           message.role === 'assistant'
             ? message.sender ?? 'Kordi'
             : message.role === 'user'
-              ? message.sender ?? 'You'
+              ? selfDisplayName(message.sender ?? 'Me', true)
               : message.sender ?? undefined,
         text: message.text,
         time: message.timeLabel,

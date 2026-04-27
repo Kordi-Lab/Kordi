@@ -12,7 +12,7 @@ export const contacts: Contact[] = [
     status: 'Owned',
     discoverableOn: ['Alpha'],
     detail: 'Keeps durable notes, archived sessions, and historical summaries for reuse.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'calendar-agent',
@@ -25,7 +25,7 @@ export const contacts: Contact[] = [
     status: 'External allowed',
     discoverableOn: ['Beta'],
     detail: 'Handles meeting negotiation, time matching, and availability routing.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'my-core-agent',
@@ -37,8 +37,8 @@ export const contacts: Contact[] = [
     bridges: ['Alpha'],
     status: 'Owned',
     discoverableOn: ['Alpha'],
-    detail: 'Your default assistant for direct chat, routing, and everyday tasks.',
-    owner: 'You',
+    detail: 'My default assistant for direct chat, routing, and everyday tasks.',
+    owner: 'Me',
   },
   {
     id: 'research-agent',
@@ -51,7 +51,7 @@ export const contacts: Contact[] = [
     status: 'External allowed',
     discoverableOn: ['Alpha', 'Gamma'],
     detail: 'Can contact trusted peers and other agents across multiple bridges.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'security-agent',
@@ -64,7 +64,7 @@ export const contacts: Contact[] = [
     status: 'Approval required',
     discoverableOn: ['Gamma'],
     detail: 'Reviews outbound permissions, approval gates, and restricted bridge policies.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'builder-agent',
@@ -77,7 +77,7 @@ export const contacts: Contact[] = [
     status: 'Owned',
     discoverableOn: ['Alpha'],
     detail: 'Builds starter structures, project shells, and implementation scaffolds for new workspaces.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'finance-agent',
@@ -90,7 +90,7 @@ export const contacts: Contact[] = [
     status: 'Approval required',
     discoverableOn: ['Beta'],
     detail: 'Tracks budgets, estimates costs, and helps compare pricing across vendors and plans.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'navigator-agent',
@@ -103,7 +103,7 @@ export const contacts: Contact[] = [
     status: 'External allowed',
     discoverableOn: ['Alpha', 'Beta'],
     detail: 'Helps route requests, find contacts, and map the right bridge path for coordination.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'ops-agent',
@@ -116,7 +116,7 @@ export const contacts: Contact[] = [
     status: 'Owned',
     discoverableOn: ['Gamma'],
     detail: 'Coordinates recurring operational flows, request handling, and process hygiene across projects.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'qa-agent',
@@ -129,7 +129,7 @@ export const contacts: Contact[] = [
     status: 'External allowed',
     discoverableOn: ['Alpha', 'Gamma'],
     detail: 'Runs verification passes, catches regressions, and summarizes test status before release.',
-    owner: 'You',
+    owner: 'Me',
   },
   {
     id: 'alice-research-agent',

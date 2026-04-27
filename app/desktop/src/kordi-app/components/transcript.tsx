@@ -28,6 +28,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
@@ -536,7 +537,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
-  const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
+  const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
     ? currentLocalProfileAvatarSeed
     : msg.role === 'owned-agent'

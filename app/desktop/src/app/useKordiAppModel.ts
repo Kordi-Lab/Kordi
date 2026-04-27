@@ -27,6 +27,7 @@ import { useProjectSettingsState } from '@/features/projects/useProjectSettingsS
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
+import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
   archiveDesktopChatSession,
   deleteDesktopChatSessionForever,
@@ -36,6 +37,25 @@ import {
 
 function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
+  const id = identityId?.trim();
+  if (!state || !id) return null;
+  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
+}
+
+function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
+  if (!state) return null;
+  const activeSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
+  if (activeSeed) return activeSeed;
+  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
+  if (!profileHumanIdentityId) return null;
+  return state.identities.find((identity) => (
+    identity.kind === 'agent'
+    && identity.source === 'local'
+    && identity.ownerIdentityId === profileHumanIdentityId
+  ))?.avatarKey?.trim() || null;
 }
 
 type MentionQuery = {
@@ -342,9 +362,8 @@ export function useKordiAppModel() {
       const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
       const ownerName = activeHost?.ownerName?.trim();
       const hostDisplayName = activeHost?.displayName?.trim();
-      const ownerPrefix = ownerName ? `${ownerName}'s ` : '';
-      const localAgentLabel = ownerPrefix && !bridgeAgentLabel.startsWith(ownerPrefix)
-        ? `${ownerPrefix}${bridgeAgentLabel}`
+      const localAgentLabel = ownerName
+        ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
         : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
       pushOption({
         value: localAgentLabel,
@@ -414,11 +433,12 @@ export function useKordiAppModel() {
     ?? avatarBridgeHost?.agents.find((agent) => agent.isDefault)
     ?? avatarBridgeHost?.agents[0]
     ?? null;
-  const localProfileAvatarSeed = avatarBridgeHost?.humanId?.trim()
-    || canonicalSessionState?.profile.humanIdentityId?.trim()
+  const localProfileAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+    || avatarBridgeHost?.humanId?.trim()
     || canonicalSessionState?.profile.id?.trim()
     || null;
-  const localAgentAvatarSeed = avatarBridgeAgent?.id?.trim()
+  const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
+    || avatarBridgeAgent?.id?.trim()
     || avatarBridgeHost?.activeAgentId?.trim()
     || avatarBridgeAgent?.nodeId?.trim()
     || avatarBridgeHost?.nodeId?.trim()
