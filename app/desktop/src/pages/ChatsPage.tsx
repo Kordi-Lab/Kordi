@@ -49,19 +49,19 @@ type QueuedMessageBubbleProps = {
 function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubbleProps) {
   return (
     <div className="flex justify-end py-0.5">
-      <div className="max-w-[min(72%,34rem)] rounded-[19px] rounded-br-[6px] border border-amber-300/22 bg-amber-300/9 px-3 py-2 text-right shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+      <div className="app-queued-message max-w-[min(72%,34rem)] rounded-[19px] rounded-br-[6px] px-3 py-2 text-right">
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1 text-left">
-            <div className="mb-0.5 inline-flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em] text-amber-100/64">
+            <div className="app-queued-message-label mb-0.5 inline-flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
               <Clock3 className="h-2.5 w-2.5" />
               <span>{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
             </div>
-            <div className="whitespace-pre-wrap break-words text-[13px] leading-5 text-amber-50/95">{message.text}</div>
+            <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
           </div>
-          <div className="shrink-0 pb-0.5 text-[10px] leading-none text-amber-100/50">{message.time}</div>
+          <div className="app-queued-message-meta shrink-0 pb-0.5 text-[10px] leading-none">{message.time}</div>
         </div>
         {message.attachments.length > 0 ? (
-          <div className="mt-1 text-[10px] leading-none text-amber-100/55">
+          <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
             {message.attachments.length} attachment{message.attachments.length === 1 ? '' : 's'} waiting
           </div>
         ) : null}

@@ -2,11 +2,11 @@ import { useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
-import type { ComposerScope, Conversation, DesktopChatState } from '@/kordi-app/types';
+import type { ComposerScope, Conversation, DesktopChatState, ResolvedThemeMode } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 
 type UseKordiShellViewModelArgs = {
-  themeMode: 'dark' | 'light';
+  themeMode: ResolvedThemeMode;
   lastBridgePollAt: number | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;

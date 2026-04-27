@@ -307,10 +307,10 @@ export function BridgeSetupSection({
           </div>
           {desktopBridgeError ? (
             <div className={cn(
-              'rounded-xl px-3 py-2 text-[12px]',
+              'app-bridge-notice rounded-xl px-3 py-2 text-[12px]',
               desktopBridgeError.toLowerCase().includes('copied')
-                ? 'border border-cyan-500/20 bg-cyan-500/10 text-cyan-100'
-                : 'border border-rose-500/20 bg-rose-500/10 text-rose-100',
+                ? 'app-bridge-notice-success'
+                : 'app-bridge-notice-error',
             )}>
               {desktopBridgeError}
             </div>

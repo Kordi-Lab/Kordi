@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ThemeMode } from '@/kordi-app/types';
+import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
   isNativeShell: boolean;
@@ -26,7 +26,7 @@ type UseKordiUiEffectsArgs = {
   setChatComposerAttachments: Dispatch<SetStateAction<Array<{ id: string; name: string; path: string; kind: 'image' | 'file' }>>>;
   openComposerSelector: { scope: ComposerScope; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
-  themeMode: ThemeMode;
+  themeMode: ResolvedThemeMode;
   activeConversationIsBridge: boolean;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;

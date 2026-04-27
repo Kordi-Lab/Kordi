@@ -1,11 +1,13 @@
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   background: #050c17;
   color: rgb(241 245 249);
   font-synthesis: none;
+  font-kerning: normal;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -45,6 +47,8 @@ body.theme-light {
 }
 
 button,
-input {
+input,
+textarea,
+select {
   font: inherit;
 }

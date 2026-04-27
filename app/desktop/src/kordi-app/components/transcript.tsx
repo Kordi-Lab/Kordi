@@ -546,7 +546,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
   const deliveryStatus = primaryMessageStatus(msg);
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
-  const showHeaderMeta = Boolean(msg.showSenderMeta && msg.sender);
+  const showHeaderMeta = Boolean((msg.showSenderMeta || isAgentMessage) && msg.sender);
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
@@ -557,39 +557,42 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
+  const showAvatar = !isAgentMessage;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
-          {showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
+          {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end gap-2', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
-        <IdentityAvatar
-          kind={avatarKind}
-          seed={avatarSeed}
-          name={avatarName}
-          imageUrl={msg.senderProfileImageUrl}
-          className="mb-0.5 h-7 w-7 border border-white/10"
-        />
+      <div className={cn('flex items-end', showAvatar ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+        {showAvatar ? (
+          <IdentityAvatar
+            kind={avatarKind}
+            seed={avatarSeed}
+            name={avatarName}
+            imageUrl={msg.senderProfileImageUrl}
+            className="mb-0.5 h-7 w-7 border border-white/10"
+          />
+        ) : null}
         <div className={cn(
           'min-w-0 overflow-hidden text-[13px] shadow-sm',
           isOwnHumanMessage
             ? 'w-fit max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
             : isPeerHumanMessage
               ? 'w-fit max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
-              : 'flex-1 rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5',
+              : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           bubble,
         )}>
         {showCompactFooter ? (
           showInlineCompactFooter ? (
-            <div className="flex items-end justify-between gap-2">
-              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-[1.45]">
+            <div className="leading-[1.45]">
+              <span className="whitespace-pre-wrap break-words">
                 {renderTextWithMentionPills(msg.text, msg.mentions)}
-              </div>
-              <div className={cn(
-                'mt-1 flex items-center justify-end gap-1 whitespace-nowrap text-[10px] leading-none tabular-nums',
+              </span>
+              <span className={cn(
+                'ml-2 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[10px] leading-none tabular-nums',
                 isOwnHumanMessage ? 'text-black/54' : 'text-slate-500',
               )}>
                 {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
@@ -597,7 +600,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
                 ) : null}
                 <span>{msg.time}</span>
                 {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
-              </div>
+              </span>
             </div>
           ) : (
             <>
@@ -755,18 +758,18 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
 
       {isCompressionStatus ? (
         <div className={cn(
-          'rounded-2xl border px-4 py-3 text-sm',
+          'app-compression-card rounded-2xl px-4 py-3 text-sm',
           visibleTurn.status === 'compaction_failed'
-            ? 'border-rose-500/20 bg-rose-500/10 text-rose-100'
+            ? 'app-compression-card-error'
             : visibleTurn.status === 'compacted'
-              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
-              : 'border-amber-400/25 bg-amber-400/10 text-amber-50',
+              ? 'app-compression-card-success'
+              : 'app-compression-card-active',
         )}>
-          <div className="flex items-center gap-2 font-medium">
+          <div className="app-compression-title flex items-center gap-2 font-medium">
             {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
             <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
           </div>
-          <div className="mt-1.5 text-[12px] leading-5 opacity-80">
+          <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
             {visibleTurn.status === 'compacting'
               ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
               : visibleTurn.status === 'compacted'
@@ -858,7 +861,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
   return (
     <button
       onClick={onSelect}
-      className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left transition ${
+      className={`flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left transition ${
         active ? 'app-list-item-active text-white' : 'app-list-item text-white'
       }`}
     >
@@ -871,10 +874,10 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{contact.name}</span>
-          <span className={`text-[11px] ${active ? 'text-slate-100' : 'text-slate-300'}`}>{contact.entityType}</span>
+          <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
+          <span className={`text-[10.5px] leading-4 ${active ? 'text-slate-100' : 'text-slate-300'}`}>{contact.entityType}</span>
         </div>
-        <div className={`truncate text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{contact.subtitle}</div>
+        <div className={`truncate text-[11.5px] leading-4 ${active ? 'text-slate-100' : 'text-slate-300'}`}>{contact.subtitle}</div>
       </div>
       <ChevronRight className={`h-4 w-4 ${active ? 'text-slate-200' : 'text-slate-500'}`} />
     </button>

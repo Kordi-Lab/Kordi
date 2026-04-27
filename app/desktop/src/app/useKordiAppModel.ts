@@ -565,7 +565,7 @@ export function useKordiAppModel() {
     setChatComposerAttachments: composerUi.setChatComposerAttachments,
     openComposerSelector: composerUi.openComposerSelector,
     composerControlsRef,
-    themeMode: settingsUi.themeMode,
+    themeMode: settingsUi.resolvedThemeMode,
     activeConversationIsBridge,
     setDesktopSessionRenameDraft: sessionUi.setDesktopSessionRenameDraft,
     setIsEditingDesktopSessionTitle: sessionUi.setIsEditingDesktopSessionTitle,
@@ -861,7 +861,7 @@ export function useKordiAppModel() {
     wrappedSendProjectMessage,
     wrappedSendChatMessage,
   } = useKordiShellViewModel({
-    themeMode: settingsUi.themeMode,
+    themeMode: settingsUi.resolvedThemeMode,
     lastBridgePollAt,
     chatTranscriptScrollRef,
     shouldAutoFollowChatRef,

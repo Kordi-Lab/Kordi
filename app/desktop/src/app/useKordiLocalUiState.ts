@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
-import type { ChatFilter, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ThemeMode } from '@/kordi-app/types';
+import type { ChatFilter, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+
+function getSystemThemeMode(): ResolvedThemeMode {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return 'dark';
+  }
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
 export function useKordiLocalUiState() {
   const [activeContactGroup, setActiveContactGroup] = useState<ContactClass>('my-agents');
@@ -29,6 +36,20 @@ export function useKordiLocalUiState() {
   const [activeSourcePreview, setActiveSourcePreview] = useState<EditFilePreview | null>(null);
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+  const [systemThemeMode, setSystemThemeMode] = useState<ResolvedThemeMode>(() => getSystemThemeMode());
+  const resolvedThemeMode: ResolvedThemeMode = themeMode === 'auto' ? systemThemeMode : themeMode;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    const updateSystemThemeMode = () => {
+      setSystemThemeMode(mediaQuery.matches ? 'light' : 'dark');
+    };
+
+    updateSystemThemeMode();
+    mediaQuery.addEventListener('change', updateSystemThemeMode);
+    return () => mediaQuery.removeEventListener('change', updateSystemThemeMode);
+  }, []);
 
   const [desktopSessionRenameDraft, setDesktopSessionRenameDraft] = useState('');
   const [isEditingDesktopSessionTitle, setIsEditingDesktopSessionTitle] = useState(false);
@@ -87,6 +108,7 @@ export function useKordiLocalUiState() {
       activeArtifactId,
       setActiveArtifactId,
       themeMode,
+      resolvedThemeMode,
       setThemeMode,
     },
     sessionUi: {

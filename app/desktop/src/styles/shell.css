@@ -146,15 +146,40 @@
 }
 
 .app-input-shell {
-  border: 1px solid var(--app-divider);
+  border: 1px solid var(--app-control-border);
   background: var(--app-control-bg);
+  color: var(--utility-foreground);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.02),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
 }
 
 .app-input-shell:hover {
   background: var(--app-control-hover);
+}
+
+.app-input-shell:focus,
+.app-input-shell:focus-within {
+  border-color: color-mix(in oklab, var(--app-control-border) 72%, var(--utility-foreground));
+  background: color-mix(in oklab, var(--app-control-hover) 88%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--app-control-border) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.app-input-shell::placeholder,
+.app-input-shell input::placeholder,
+.app-input-shell textarea::placeholder {
+  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+}
+
+.app-input-shell input,
+.app-input-shell textarea {
+  color: var(--utility-foreground);
 }
 
 .app-icon-button {
@@ -475,6 +500,74 @@
   background: var(--app-chat-bubble-peer-bg);
   color: var(--utility-foreground);
   box-shadow: none;
+}
+
+.app-auth-notice {
+  border: 1px solid rgba(251, 191, 36, 0.26);
+  background: rgba(251, 191, 36, 0.11);
+  color: rgb(254 243 199);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-auth-notice-title {
+  color: rgb(255 251 235);
+}
+
+.app-auth-notice-icon {
+  color: rgb(252 211 77);
+}
+
+.app-auth-notice-description {
+  color: rgba(254, 243, 199, 0.82);
+}
+
+.app-auth-notice-action {
+  color: var(--utility-foreground);
+}
+
+.app-compression-card {
+  border: 1px solid transparent;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.app-compression-card-active {
+  border-color: rgba(251, 191, 36, 0.32);
+  background: rgba(251, 191, 36, 0.14);
+  color: rgb(254 243 199);
+}
+
+.app-compression-card-success {
+  border-color: rgba(16, 185, 129, 0.26);
+  background: rgba(16, 185, 129, 0.12);
+  color: rgb(209 250 229);
+}
+
+.app-compression-card-error {
+  border-color: rgba(244, 63, 94, 0.28);
+  background: rgba(244, 63, 94, 0.12);
+  color: rgb(255 228 230);
+}
+
+.app-compression-detail {
+  color: color-mix(in oklab, currentColor 78%, transparent);
+  font-weight: 400;
+}
+
+.app-queued-message {
+  border: 1px solid rgba(251, 191, 36, 0.26);
+  background: rgba(251, 191, 36, 0.1);
+  color: rgb(254 243 199);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.app-queued-message-label,
+.app-queued-message-meta {
+  color: rgba(254, 243, 199, 0.64);
+}
+
+.app-queued-message-text {
+  color: rgba(255, 251, 235, 0.96);
 }
 
 .app-badge-neutral,
@@ -953,6 +1046,8 @@
 
 .app-bridge-page .app-bridge-field {
   line-height: 1.45;
+  letter-spacing: -0.004em;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-bridge-page .app-bridge-list-item {
@@ -977,6 +1072,24 @@
 .app-bridge-page .app-bridge-empty {
   box-shadow: none;
   background: color-mix(in oklab, var(--app-control-bg) 24%, transparent);
+}
+
+.app-bridge-page .app-bridge-notice {
+  border: 1px solid var(--app-divider);
+  font-weight: 500;
+  letter-spacing: -0.002em;
+}
+
+.app-bridge-page .app-bridge-notice-success {
+  border-color: rgba(34, 211, 238, 0.24);
+  background: rgba(34, 211, 238, 0.1);
+  color: rgb(207 250 254);
+}
+
+.app-bridge-page .app-bridge-notice-error {
+  border-color: rgba(244, 63, 94, 0.24);
+  background: rgba(244, 63, 94, 0.1);
+  color: rgb(255 228 230);
 }
 
 .app-bridge-page .app-bridge-empty-title {
@@ -1005,10 +1118,115 @@
   background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
 }
 
+.app-agent-shell {
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-agent-sidebar,
+.app-agent-detail-pane,
+.app-agent-content-pane {
+  color: var(--utility-foreground);
+}
+
+.app-agent-sidebar {
+  background: color-mix(in oklab, var(--utility-card) 62%, var(--utility-background));
+}
+
+.app-agent-detail-pane {
+  background: color-mix(in oklab, var(--app-card-bg) 56%, var(--utility-background));
+}
+
+.app-agent-content-pane {
+  border-left: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: color-mix(in oklab, var(--app-card-bg) 72%, var(--utility-background));
+}
+
+.app-agent-panel-header {
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
+}
+
+.app-agent-panel-title,
+.app-agent-section-title,
+.app-agent-row-title,
+.app-agent-hero-title,
+.app-agent-content-title {
+  color: var(--utility-foreground);
+}
+
+.app-agent-panel-subtitle,
+.app-agent-section-detail,
+.app-agent-row-copy,
+.app-agent-empty-state,
+.app-agent-empty-copy,
+.app-agent-row-meta,
+.app-agent-code-label {
+  color: var(--utility-muted-text);
+}
+
+.app-agent-list-row:hover,
+.app-agent-inspector-row:hover,
+.app-agent-skill-chip-editable:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
+}
+
+.app-agent-list-row-active,
+.app-agent-inspector-row-active {
+  border-color: color-mix(in oklab, var(--app-divider) 86%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 68%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-agent-section,
+.app-agent-inner-list,
+.app-agent-inspector-row,
+.app-agent-empty-callout,
+.app-agent-code-panel {
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: color-mix(in oklab, var(--app-card-bg) 72%, transparent);
+}
+
+.app-agent-inner-list-row {
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+}
+
+.app-agent-empty-callout {
+  color: var(--utility-muted-text);
+}
+
+.app-agent-chip,
+.app-agent-skill-chip {
+  border-color: color-mix(in oklab, var(--app-control-border) 82%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 54%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-agent-skill-chip-selected {
+  border-color: color-mix(in oklab, var(--app-control-border) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 70%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-agent-code-panel {
+  background: var(--app-code-bg);
+}
+
+.app-agent-code-toolbar {
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: var(--app-code-toolbar-bg);
+  color: var(--utility-muted-text);
+}
+
+.app-agent-code-text {
+  color: color-mix(in oklab, var(--utility-foreground) 86%, var(--utility-muted-text));
+}
+
 .app-message-meta {
   font-size: 11px;
   line-height: 1.35;
   color: var(--utility-muted-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .app-message-status-bar {
