@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 3;
+const CURRENT_VERSION: i32 = 4;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -56,6 +56,22 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project_root
     ON sessions(project_root);
 "#;
 
+const MIGRATION_V4: &str = r#"
+CREATE TABLE IF NOT EXISTS projects (
+    project_id  TEXT PRIMARY KEY,
+    root        TEXT NOT NULL UNIQUE,
+    name        TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    archived_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_root
+    ON projects(root);
+CREATE INDEX IF NOT EXISTS idx_projects_archived_at
+    ON projects(archived_at);
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -73,6 +89,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 3 {
         conn.execute_batch(MIGRATION_V3)?;
         set_version(conn, 3)?;
+    }
+
+    if current < 4 {
+        conn.execute_batch(MIGRATION_V4)?;
+        set_version(conn, 4)?;
     }
 
     Ok(())
@@ -119,5 +140,14 @@ mod tests {
         assert!(columns.contains(&"parent_session_id".to_string()));
         assert!(columns.contains(&"session_scope".to_string()));
         assert!(columns.contains(&"project_root".to_string()));
+
+        let project_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(project_count, 1);
     }
 }

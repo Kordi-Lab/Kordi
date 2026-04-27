@@ -30,6 +30,9 @@ import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types'
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
   archiveDesktopChatSession,
+  createDesktopProject,
+  createDesktopProjectFromFolder,
+  createDesktopProjectSession,
   deleteDesktopChatSessionForever,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
@@ -105,7 +108,7 @@ function removeSessionFromDesktopState(state: DesktopChatState | null, sessionId
     projects: state.projects.map((project) => ({
       ...project,
       sessions: project.sessions.filter((session) => session.id !== sessionId),
-    })).filter((project) => project.sessions.length > 0),
+    })),
   };
 }
 
@@ -451,7 +454,10 @@ export function useKordiAppModel() {
       desktopChatState?.activeSessionId ?? '',
       desktopChatState?.activeSession.messages.length ?? 0,
       ...(desktopChatState?.sessions ?? []).map((session) => `${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
-      ...(desktopChatState?.projects ?? []).flatMap((project) => project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`)),
+      ...(desktopChatState?.projects ?? []).flatMap((project) => [
+        `${project.id}:${project.root}:${project.name}:${project.sessions.length}`,
+        ...project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
+      ]),
     ].join('|'),
     [desktopChatState],
   );
@@ -698,6 +704,8 @@ export function useKordiAppModel() {
     activeConvBridgeTarget: activeConv.bridgeTarget,
     activeProjectId,
     activeProjectSessionId,
+    activeProjectRoot: activeProject.root,
+    selectProjectSession,
     desktopChatState,
     desktopBridgeState,
     canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
@@ -864,6 +872,61 @@ export function useKordiAppModel() {
     }
   }, [isNativeShell, projectsUi.setExpandedProjectIds, selectProjectSession, setActiveNav, setDesktopChatError, setDesktopChatState]);
 
+  const handleSelectCreatedProject = useCallback(async (projectRoot: string) => {
+    const projectId = canonicalProjectGroupIdFromRoot(projectRoot) ?? projectRoot;
+    setActiveNav('projects');
+    selectProject(projectId);
+    projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
+    await refreshDesktopChat(desktopChatState?.activeSessionId);
+    await refreshCanonicalState();
+  }, [desktopChatState?.activeSessionId, projectsUi.setExpandedProjectIds, refreshCanonicalState, refreshDesktopChat, selectProject, setActiveNav]);
+
+  const handleCreateProjectFromFolder = useCallback(async (folderPath: string, name?: string) => {
+    if (!isNativeShell) return;
+    try {
+      setDesktopChatError(null);
+      const project = await createDesktopProjectFromFolder(folderPath, name);
+      await handleSelectCreatedProject(project.root);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create project from folder';
+      setDesktopChatError(message);
+      throw new Error(message);
+    }
+  }, [handleSelectCreatedProject, isNativeShell, setDesktopChatError]);
+
+  const handleCreateProject = useCallback(async (name: string, parentDir?: string) => {
+    if (!isNativeShell) return;
+    try {
+      setDesktopChatError(null);
+      const project = await createDesktopProject(name, parentDir);
+      await handleSelectCreatedProject(project.root);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create project';
+      setDesktopChatError(message);
+      throw new Error(message);
+    }
+  }, [handleSelectCreatedProject, isNativeShell, setDesktopChatError]);
+
+  const handleCreateProjectSession = useCallback(async () => {
+    if (!isNativeShell) return;
+    const projectRoot = activeProject.root?.trim();
+    if (!projectRoot) return;
+
+    try {
+      setDesktopChatError(null);
+      const nextState = await createDesktopProjectSession(projectRoot);
+      setDesktopChatState(nextState);
+      const resolvedProjectRoot = nextState.activeSession.project?.root ?? projectRoot;
+      const projectId = canonicalProjectGroupIdFromRoot(resolvedProjectRoot) ?? activeProject.id;
+      selectProjectSession(projectId, nextState.activeSessionId);
+      projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
+      setActiveNav('projects');
+      await refreshCanonicalState();
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create project session');
+    }
+  }, [activeProject.id, activeProject.root, isNativeShell, projectsUi.setExpandedProjectIds, refreshCanonicalState, selectProjectSession, setActiveNav, setDesktopChatError, setDesktopChatState]);
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -920,6 +983,9 @@ export function useKordiAppModel() {
     handleArchiveChatSession,
     handleDeleteChatSession,
     handleMoveChatSessionToProject,
+    handleCreateProjectFromFolder,
+    handleCreateProject,
+    handleCreateProjectSession,
     chatSearch: chatsUi.chatSearch,
     setChatSearch: chatsUi.setChatSearch,
     chatFilter: chatsUi.chatFilter,

@@ -27,6 +27,97 @@ fn resolve_project_root(project_root: Option<String>) -> Result<PathBuf, String>
     Ok(kordi_core::config::project_root(&base).unwrap_or(base))
 }
 
+fn expand_home_path(raw_path: &str) -> PathBuf {
+    if raw_path == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(raw_path));
+    }
+    if let Some(rest) = raw_path.strip_prefix("~/") {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| PathBuf::from(raw_path));
+    }
+    PathBuf::from(raw_path)
+}
+
+fn resolve_explicit_project_folder(raw_path: &str, create: bool) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("Project folder is required".to_string());
+    }
+
+    let candidate = expand_home_path(trimmed);
+    let resolved = if candidate.is_absolute() {
+        candidate
+    } else {
+        std::env::current_dir()
+            .map_err(|err| err.to_string())?
+            .join(candidate)
+    };
+
+    if create {
+        std::fs::create_dir_all(&resolved).map_err(|err| err.to_string())?;
+    }
+
+    if !resolved.exists() {
+        return Err("Project folder does not exist".to_string());
+    }
+    if !resolved.is_dir() {
+        return Err("Project path must be a folder".to_string());
+    }
+
+    Ok(std::fs::canonicalize(&resolved).unwrap_or(resolved))
+}
+
+fn sanitize_project_slug(value: &str) -> String {
+    let slug = value
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        "project".to_string()
+    } else {
+        slug
+    }
+}
+
+fn default_new_project_parent() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Kordi Projects"))
+        .unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("Kordi Projects")
+        })
+}
+
+fn register_project_folder(root: &std::path::Path, name: Option<&str>) -> Result<(), String> {
+    kordi_cli::desktop_runtime::register_project(root, name).map_err(|err| err.to_string())?;
+    if let Some(name) = name.map(str::trim).filter(|value| !value.is_empty()) {
+        let mut settings = Settings::load_project(root);
+        if settings
+            .project_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            settings.project_name = Some(name.to_string());
+            settings.save_project(root).map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 fn load_project_settings_for_root(root: &std::path::Path) -> DesktopProjectSettings {
     let settings = Settings::load_project(root);
     let name = settings
@@ -64,6 +155,46 @@ pub fn desktop_project_settings(
     project_root: Option<String>,
 ) -> Result<DesktopProjectSettings, String> {
     let root = resolve_project_root(project_root)?;
+    Ok(load_project_settings_for_root(&root))
+}
+
+#[tauri::command]
+pub fn desktop_project_create_from_folder(
+    folder_path: String,
+    name: Option<String>,
+) -> Result<DesktopProjectSettings, String> {
+    let root = resolve_explicit_project_folder(&folder_path, false)?;
+    let trimmed_name = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    register_project_folder(&root, trimmed_name)?;
+    Ok(load_project_settings_for_root(&root))
+}
+
+#[tauri::command]
+pub fn desktop_project_create_new(
+    name: String,
+    parent_dir: Option<String>,
+) -> Result<DesktopProjectSettings, String> {
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err("Project name is required".to_string());
+    }
+
+    let parent = parent_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| resolve_explicit_project_folder(value, true))
+        .transpose()?
+        .unwrap_or_else(default_new_project_parent);
+    std::fs::create_dir_all(&parent).map_err(|err| err.to_string())?;
+
+    let root = parent.join(sanitize_project_slug(trimmed_name));
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    register_project_folder(&root, Some(trimmed_name))?;
     Ok(load_project_settings_for_root(&root))
 }
 
@@ -113,5 +244,6 @@ pub fn desktop_save_project_settings(
     settings
         .save_project(&root)
         .map_err(|err| err.to_string())?;
+    register_project_folder(&root, Some(&name))?;
     Ok(load_project_settings_for_root(&root))
 }

@@ -69,6 +69,8 @@ Identity rules:
 
 The existing local runtime session DB and bridge conversation DB remain temporarily as transport/source stores while canonical reads/writes are introduced in phases.
 
+Desktop runtime project membership uses the local runtime session DB fields `sessions.session_scope = 'project'` and `sessions.project_root`. A session can belong to one project; moving/creating a project session updates those fields and resumes the runtime from `project_root` so all sessions under the project load the same project settings, prompts, shared sources, and filesystem context. Empty projects are persisted separately in the runtime session DB `projects` registry (`project_id`, `root`, `name`, timestamps, `archived_at`) so creating a project from the Projects `+` menu does not have to create a blank session row.
+
 All session-linked tables use `session_id` as the durable join key. Project joins, delegated exchanges, bridge/audit records, and cache/context rows should connect to the canonical DB by `session_id`; they must not depend on mutable titles.
 
 Current additive sync behavior:

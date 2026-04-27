@@ -252,15 +252,10 @@ fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
 fn filter_blank_draft_projects(
     projects: Vec<DesktopChatProjectGroup>,
 ) -> Vec<DesktopChatProjectGroup> {
+    // Project creation itself is explicit, and the Projects page can now create an
+    // empty project session before the first message. Keep those draft project
+    // rows visible so a user-created project session does not become an orphan.
     projects
-        .into_iter()
-        .map(|mut project| {
-            project
-                .sessions
-                .retain(|session| !is_blank_draft_summary(session));
-            project
-        })
-        .collect()
 }
 
 async fn ensure_transient_draft_runtime(
@@ -809,6 +804,44 @@ pub async fn desktop_chat_new_session(
 }
 
 #[tauri::command]
+pub async fn desktop_chat_new_project_session(
+    manager: State<'_, DesktopChatManager>,
+    project_root: String,
+    title: Option<String>,
+) -> Result<DesktopChatState, String> {
+    let cwd = chat_cwd()?;
+    let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
+    kordi_cli::desktop_runtime::register_project(&resolved_project_root, None)
+        .map_err(|err| err.to_string())?;
+
+    let mut runtime = DesktopRuntimeSession::create_new(resolved_project_root.clone())
+        .await
+        .map_err(|err| err.to_string())?;
+    runtime
+        .materialize_session()
+        .map_err(|err| err.to_string())?;
+    let title = title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("New session");
+    runtime.set_name(title).map_err(|err| err.to_string())?;
+    let session_id = runtime.session_id().to_string();
+    kordi_cli::desktop_runtime::move_session_to_project(&session_id, &resolved_project_root)
+        .map_err(|err| err.to_string())?;
+
+    {
+        let mut sessions = manager.sessions.lock().await;
+        sessions.insert(
+            session_id.clone(),
+            Arc::new(tokio::sync::Mutex::new(runtime)),
+        );
+    }
+
+    build_chat_state(&manager, &cwd, session_id).await
+}
+
+#[tauri::command]
 pub async fn desktop_chat_prepare_draft_session(
     manager: State<'_, DesktopChatManager>,
 ) -> Result<(), String> {
@@ -918,6 +951,21 @@ fn resolve_session_action_fallback_target(
     Ok(next_chat_session_id.unwrap_or_else(|| TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string()))
 }
 
+fn expand_home_project_path(raw_path: &str) -> std::path::PathBuf {
+    if raw_path == "~" {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(raw_path));
+    }
+    if let Some(rest) = raw_path.strip_prefix("~/") {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| std::path::PathBuf::from(raw_path));
+    }
+    std::path::PathBuf::from(raw_path)
+}
+
 fn resolve_project_root_input(
     cwd: &std::path::Path,
     raw_project_root: &str,
@@ -927,7 +975,7 @@ fn resolve_project_root_input(
         return Err("Project folder is required".to_string());
     }
 
-    let candidate = std::path::PathBuf::from(trimmed);
+    let candidate = expand_home_project_path(trimmed);
     let resolved = if candidate.is_absolute() {
         candidate
     } else {
@@ -1024,6 +1072,8 @@ pub async fn desktop_chat_move_session_to_project(
     }
 
     let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
+    kordi_cli::desktop_runtime::register_project(&resolved_project_root, None)
+        .map_err(|err| err.to_string())?;
     manager.sessions.lock().await.remove(&target.id);
     kordi_cli::desktop_runtime::move_session_to_project(&target.id, &resolved_project_root)
         .map_err(|err| err.to_string())?;

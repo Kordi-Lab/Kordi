@@ -76,6 +76,9 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,
     onRenameDesktopSession: args.handleRenameDesktopSession,
+    onCreateProjectSession: () => {
+      void args.handleCreateProjectSession();
+    },
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     onTranscriptScroll: args.onProjectTranscriptScroll,
     onOpenSource: (file) => {

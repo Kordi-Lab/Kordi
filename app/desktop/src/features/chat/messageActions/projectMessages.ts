@@ -2,19 +2,21 @@ import { useCallback } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { Project } from '@/kordi-app/types';
-import { createDesktopBridgeOutreach, startDesktopChatMessage } from '@/lib/desktop';
+import { createDesktopBridgeOutreach, createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMentionedBridgeTarget } from './mentions';
-import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
+import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type UseProjectMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'activeConvMessages'
   | 'activeProjectId'
   | 'activeProjectSessionId'
+  | 'activeProjectRoot'
+  | 'selectProjectSession'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
   | 'composerDrafts'
@@ -40,6 +42,8 @@ export function useProjectMessageActions({
   activeConvMessages,
   activeProjectId,
   activeProjectSessionId,
+  activeProjectRoot,
+  selectProjectSession,
   appendProjectDraft,
   attachmentSummaryText,
   canonicalHumanIdentityId,
@@ -62,9 +66,29 @@ export function useProjectMessageActions({
   return useCallback(async (draftOverride?: string) => {
     const rawText = draftOverride ?? composerDrafts.project;
     const text = rawText.trim();
-    if (!activeProjectSessionId || (!text && chatComposerAttachments.length === 0)) return;
+    if (!text && chatComposerAttachments.length === 0) return;
+
+    let resolvedProjectSessionId = activeProjectSessionId;
+    let resolvedDesktopChatState = desktopChatState;
+    const ensureProjectSession = async () => {
+      if (resolvedProjectSessionId) {
+        return { sessionId: resolvedProjectSessionId, state: resolvedDesktopChatState };
+      }
+      const projectRoot = activeProjectRoot?.trim();
+      if (!projectRoot) {
+        throw new Error('Create or select a project before sending a project message.');
+      }
+      const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session');
+      const nextState = await createDesktopProjectSession(projectRoot, sessionTitle);
+      resolvedDesktopChatState = nextState;
+      resolvedProjectSessionId = nextState.activeSessionId;
+      setDesktopChatState(nextState);
+      selectProjectSession(activeProjectId, resolvedProjectSessionId);
+      return { sessionId: resolvedProjectSessionId, state: nextState };
+    };
 
     if (!isNativeShell) {
+      if (!activeProjectSessionId) return;
       shouldAutoFollowChatRef.current = true;
       const sentAt = formatDesktopEventTime();
 
@@ -108,11 +132,12 @@ export function useProjectMessageActions({
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
+        const { sessionId: projectSessionId, state: projectChatState } = await ensureProjectSession();
         appendProjectDraft('');
         resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]');
         const sentAt = formatDesktopEventTime();
         const preparedCanonicalMessage = prepareCanonicalUserMessage(
-          activeProjectSessionId,
+          projectSessionId,
           canonicalHumanIdentityId,
           text,
           [],
@@ -123,8 +148,8 @@ export function useProjectMessageActions({
         );
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         setDesktopChatState((current) => {
-          if (!current || current.activeSessionId !== activeProjectSessionId) return current;
-          return appendOptimisticOutboundMessage(current, activeProjectSessionId, text, text, [], sentAt, mentionForBridgeTarget(mentionedTarget));
+          if (!current || current.activeSessionId !== projectSessionId) return current;
+          return appendOptimisticOutboundMessage(current, projectSessionId, text, text, [], sentAt, mentionForBridgeTarget(mentionedTarget));
         });
         void persistCanonicalUserMessage(preparedCanonicalMessage)
           .catch((error: unknown) => {
@@ -139,16 +164,16 @@ export function useProjectMessageActions({
             ...outreachIdentityForBridgeTarget(mentionedTarget),
             triggerText: text,
             contextText: combineContext(
-              renderProjectContext(desktopChatState),
+              renderProjectContext(projectChatState),
               renderRecentMessageContext(activeConvMessages),
             ),
             contextPolicy: 'recent-window',
-            parentSessionId: activeProjectSessionId,
-            parentSessionTitle: desktopChatState?.activeSession.title,
+            parentSessionId: projectSessionId,
+            parentSessionTitle: projectChatState?.activeSession.title,
             parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
             parentMessageId,
-            projectId: desktopChatState?.activeSession.project?.root,
-            projectName: desktopChatState?.activeSession.project?.name,
+            projectId: projectChatState?.activeSession.project?.root,
+            projectName: projectChatState?.activeSession.project?.name,
           }))
           .then((nextState) => {
             setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
@@ -167,11 +192,12 @@ export function useProjectMessageActions({
     try {
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
+      const { sessionId: projectSessionId } = await ensureProjectSession();
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
-        activeProjectSessionId,
+        projectSessionId,
         canonicalHumanIdentityId,
         text,
         chatComposerAttachments,
@@ -180,8 +206,8 @@ export function useProjectMessageActions({
       );
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
       setDesktopChatState((current) => {
-        if (!current || current.activeSessionId !== activeProjectSessionId) return current;
-        return appendOptimisticOutboundMessage(current, activeProjectSessionId, previewText, text, chatComposerAttachments, sentAt);
+        if (!current || current.activeSessionId !== projectSessionId) return current;
+        return appendOptimisticOutboundMessage(current, projectSessionId, previewText, text, chatComposerAttachments, sentAt);
       });
       appendProjectDraft('');
       setChatComposerAttachments([]);
@@ -190,7 +216,7 @@ export function useProjectMessageActions({
         .catch((error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
         })
-        .then(() => startDesktopChatMessage(activeProjectSessionId, text, attachmentPaths))
+        .then(() => startDesktopChatMessage(projectSessionId, text, attachmentPaths))
         .then((turn) => {
           void watchDesktopLiveTurn(turn);
         })
@@ -203,6 +229,7 @@ export function useProjectMessageActions({
   }, [
     activeConvMessages,
     activeProjectId,
+    activeProjectRoot,
     activeProjectSessionId,
     canonicalHumanIdentityId,
     appendProjectDraft,
@@ -220,6 +247,7 @@ export function useProjectMessageActions({
     setDesktopChatState,
     setIsDesktopChatSending,
     setProjectWorkspaces,
+    selectProjectSession,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
   ]);

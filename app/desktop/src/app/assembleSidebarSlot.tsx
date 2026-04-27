@@ -36,6 +36,8 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       onMoveChatSessionToProject={(sessionId, projectRoot) => {
         void args.handleMoveChatSessionToProject(sessionId, projectRoot);
       }}
+      onCreateProjectFromFolder={args.handleCreateProjectFromFolder}
+      onCreateProject={args.handleCreateProject}
       runtimeProjects={args.runtimeProjects}
       projectSearch={args.projectSearch}
       setProjectSearch={args.setProjectSearch}

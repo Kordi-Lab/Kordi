@@ -764,13 +764,94 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
         .collect()
 }
 
+fn project_group_id(project_root: &std::path::Path) -> String {
+    format!("project:{}", project_root.display())
+}
+
+fn project_group_from_root(
+    project_root: &std::path::Path,
+    registered_name: Option<&str>,
+) -> DesktopChatProjectGroup {
+    let settings = Settings::load_project(project_root);
+    let project_name = settings
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            registered_name
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .map(ToString::to_string)
+        .or_else(|| {
+            project_root
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Project".to_string());
+    let summary = settings
+        .project_context
+        .clone()
+        .or_else(|| settings.project_system_prompt.clone())
+        .unwrap_or_else(|| project_root.display().to_string());
+    let background_system = settings.project_system_prompt.clone();
+    let shared_sources = settings
+        .project_shared_sources
+        .iter()
+        .map(|source| DesktopChatProjectSource {
+            label: source.label.clone(),
+            path: source.path.clone(),
+            detail: source.detail.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    DesktopChatProjectGroup {
+        id: project_group_id(project_root),
+        name: project_name,
+        root: project_root.display().to_string(),
+        summary,
+        background_system,
+        shared_sources,
+        sessions: Vec::new(),
+    }
+}
+
+pub fn register_project(
+    project_root: &std::path::Path,
+    name: Option<&str>,
+) -> Result<DesktopChatProjectGroup> {
+    let conn = open_sessions_db()?;
+    let group_id = project_group_id(project_root);
+    kordi_session::store::upsert_project(
+        &conn,
+        &group_id,
+        &project_root.display().to_string(),
+        name,
+    )?;
+    Ok(project_group_from_root(project_root, name))
+}
+
 pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProjectGroup>> {
     let conn = open_sessions_db()?;
     let rows = kordi_session::store::list_all_sessions(&conn)?;
+    let registered_projects = kordi_session::store::list_projects(&conn)?;
     let mut groups: std::collections::BTreeMap<String, DesktopChatProjectGroup> =
         std::collections::BTreeMap::new();
     let mut group_sort_keys = std::collections::HashMap::<String, i64>::new();
     let mut session_sort_keys = std::collections::HashMap::<String, i64>::new();
+
+    for project in registered_projects {
+        let project_root = std::path::PathBuf::from(project.root.trim());
+        let group_id = project_group_id(&project_root);
+        groups
+            .entry(group_id.clone())
+            .or_insert_with(|| project_group_from_root(&project_root, project.name.as_deref()));
+        group_sort_keys
+            .entry(group_id)
+            .or_insert_with(|| parse_db_timestamp_millis(&project.updated_at).unwrap_or_default());
+    }
 
     for row in rows {
         if row.session_scope != "project" {
@@ -788,49 +869,12 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
         let sort_ts = session_sort_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
         let project_root = std::path::PathBuf::from(project_root_value);
-        let group_id = format!("project:{}", project_root.display());
-        let settings = Settings::load_project(&project_root);
-        let project_name = settings
-            .project_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .or_else(|| {
-                project_root
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .map(ToString::to_string)
-            })
-            .unwrap_or_else(|| "Project".to_string());
-        let summary = settings
-            .project_context
-            .clone()
-            .or_else(|| settings.project_system_prompt.clone())
-            .unwrap_or_else(|| project_root.display().to_string());
-        let background_system = settings.project_system_prompt.clone();
-        let shared_sources = settings
-            .project_shared_sources
-            .iter()
-            .map(|source| DesktopChatProjectSource {
-                label: source.label.clone(),
-                path: source.path.clone(),
-                detail: source.detail.clone(),
-            })
-            .collect::<Vec<_>>();
+        let group_id = project_group_id(&project_root);
         let summary_row = session_summary_from_row(&conn, row)?;
 
         let entry = groups
             .entry(group_id.clone())
-            .or_insert_with(|| DesktopChatProjectGroup {
-                id: group_id.clone(),
-                name: project_name,
-                root: project_root.display().to_string(),
-                summary,
-                background_system,
-                shared_sources,
-                sessions: Vec::new(),
-            });
+            .or_insert_with(|| project_group_from_root(&project_root, None));
         entry.sessions.push(summary_row);
         session_sort_keys.insert(session_id, sort_ts);
         group_sort_keys
@@ -888,6 +932,8 @@ pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path)
         bail!("Session not found: {session_id}");
     };
     let project_root_str = project_root.display().to_string();
+    let group_id = project_group_id(project_root);
+    kordi_session::store::upsert_project(&conn, &group_id, &project_root_str, None)?;
     kordi_session::store::update_session_scope(
         &conn,
         session_id,

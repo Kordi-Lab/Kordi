@@ -289,8 +289,20 @@ export async function saveDesktopProjectSettings(
   });
 }
 
+export async function createDesktopProjectFromFolder(folderPath: string, name?: string) {
+  return invokeDesktop<DesktopProjectSettings>('desktop_project_create_from_folder', { folderPath, name });
+}
+
+export async function createDesktopProject(name: string, parentDir?: string) {
+  return invokeDesktop<DesktopProjectSettings>('desktop_project_create_new', { name, parentDir });
+}
+
 export async function createDesktopChatSession() {
   return invokeDesktop<DesktopChatState>('desktop_chat_new_session');
+}
+
+export async function createDesktopProjectSession(projectRoot: string, title?: string) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_new_project_session', { projectRoot, title });
 }
 
 export async function prepareDesktopChatDraftSession() {

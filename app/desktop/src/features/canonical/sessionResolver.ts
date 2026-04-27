@@ -15,6 +15,7 @@ export type CanonicalConversationLookupTarget = {
 export type ProjectRoutingGroup = {
   id: string;
   sessions: Array<{ id: string }>;
+  persisted?: boolean;
 };
 
 function normalizedProjectRoot(value?: string | null) {
@@ -118,16 +119,20 @@ export function buildProjectRoutingGroups(
   const sessionIdsByGroupId = new Map<string, string[]>();
   const latestTimestampByGroupId = new Map<string, number>();
   const sessionTimestampById = new Map<string, number>();
+  const persistedGroupIds = new Set<string>();
   const archivedSessionIds = new Set(
     (canonicalState?.sessions ?? [])
       .filter((session) => session.status === 'archived')
       .map((session) => session.id),
   );
 
-  const addGroup = (groupId: string, timestampMs: number) => {
+  const addGroup = (groupId: string, timestampMs: number, persisted = false) => {
     if (!sessionIdsByGroupId.has(groupId)) {
       sessionIdsByGroupId.set(groupId, []);
       groupIdsInOrder.push(groupId);
+    }
+    if (persisted) {
+      persistedGroupIds.add(groupId);
     }
     latestTimestampByGroupId.set(groupId, Math.max(latestTimestampByGroupId.get(groupId) ?? 0, timestampMs));
   };
@@ -144,6 +149,8 @@ export function buildProjectRoutingGroups(
 
   for (const project of desktopProjects ?? []) {
     const groupId = normalizeCanonicalProjectGroupId(project.id, project.root) ?? project.id;
+    if (!groupId) continue;
+    addGroup(groupId, 0, true);
     for (const session of project.sessions) {
       if (archivedSessionIds.has(session.id)) continue;
       addSession(groupId, session.id, 0);
@@ -164,11 +171,12 @@ export function buildProjectRoutingGroups(
     .sort((left, right) => (latestTimestampByGroupId.get(right) ?? 0) - (latestTimestampByGroupId.get(left) ?? 0))
     .map((groupId) => ({
       id: groupId,
+      persisted: persistedGroupIds.has(groupId),
       sessions: (sessionIdsByGroupId.get(groupId) ?? [])
         .sort((left, right) => (sessionTimestampById.get(right) ?? 0) - (sessionTimestampById.get(left) ?? 0))
         .map((id) => ({ id })),
     }))
-    .filter((group) => group.sessions.length > 0);
+    .filter((group) => group.persisted || group.sessions.length > 0);
 }
 
 export function resolveProjectSelection(
@@ -194,10 +202,8 @@ export function resolveProjectSelection(
       ?? resolvedProject.sessions.find((session) => session.id === rememberedSessionId)?.id
       ?? resolvedProject.sessions[0]?.id;
 
-  return resolvedSessionId
-    ? {
-        projectId: resolvedProject.id,
-        sessionId: resolvedSessionId,
-      }
-    : null;
+  return {
+    projectId: resolvedProject.id,
+    sessionId: resolvedSessionId ?? '',
+  };
 }

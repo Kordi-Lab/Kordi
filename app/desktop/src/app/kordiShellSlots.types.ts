@@ -74,7 +74,7 @@ export type AssembleKordiShellSlotsArgs = {
   setProjectSearch: Dispatch<SetStateAction<string>>;
   filteredProjects: Project[];
   projectSelectedSessionIds: Record<string, string>;
-  selectProject: (projectId: string) => void;
+  selectProject: (projectId: string, sessionId?: string) => void;
   expandedProjectIds: Record<string, boolean>;
   setExpandedProjectIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   groupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -91,6 +91,9 @@ export type AssembleKordiShellSlotsArgs = {
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
+  handleCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void>;
+  handleCreateProject: (name: string, parentDir?: string) => Promise<void>;
+  handleCreateProjectSession: () => Promise<void>;
   handleSelectProjectSession: (projectId: string, sessionId: string) => Promise<void>;
 
   filteredGroupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -297,6 +300,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleArchiveChatSession'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
+  | 'handleCreateProjectFromFolder'
+  | 'handleCreateProject'
   | 'runtimeProjects'
   | 'projectSearch'
   | 'setProjectSearch'
@@ -407,6 +412,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'desktopProjectError'
   | 'handleSaveProjectSettings'
   | 'updateProjectSettingsDraft'
+  | 'handleCreateProjectSession'
   | 'themeMode'
   | 'setThemeMode'
   | 'collapseChatSessions'

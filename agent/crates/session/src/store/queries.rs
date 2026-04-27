@@ -2,7 +2,7 @@ use anyhow::Result;
 use kordi_core::types::SessionEntry;
 use rusqlite::{Connection, params};
 
-use super::{EntryRow, SessionRow};
+use super::{EntryRow, ProjectRow, SessionRow};
 
 /// Get an entry by id.
 pub(super) fn get_entry(
@@ -196,6 +196,26 @@ pub(super) fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
             parent_session_id: row.get(7)?,
             session_scope: row.get(8)?,
             project_root: row.get(9)?,
+        })
+    })?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub(super) fn list_projects(conn: &Connection) -> Result<Vec<ProjectRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT project_id, root, name, created_at, updated_at, archived_at
+         FROM projects
+         WHERE archived_at IS NULL
+         ORDER BY updated_at DESC, created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ProjectRow {
+            project_id: row.get(0)?,
+            root: row.get(1)?,
+            name: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+            archived_at: row.get(5)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
