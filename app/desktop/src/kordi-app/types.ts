@@ -895,4 +895,5 @@ export type DesktopChatTurnSnapshot = {
   completed: boolean;
   succeeded: boolean;
   error?: string | null;
+  transcriptRefreshRequired?: boolean;
 };

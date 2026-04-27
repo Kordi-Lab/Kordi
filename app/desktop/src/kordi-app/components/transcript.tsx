@@ -894,6 +894,7 @@ function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.completed ? 'completed' : 'running',
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
+    turn.transcriptRefreshRequired ? 'refresh' : 'stable',
     ...turn.tools.map((tool) => [
       tool.id,
       tool.name,
