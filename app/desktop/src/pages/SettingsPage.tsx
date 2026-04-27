@@ -115,10 +115,16 @@ export function SettingsPage({
             })}
           </div>
         </div>
-        <ScrollArea className="app-main-panel relative z-10 block h-full w-full min-w-0 justify-self-stretch overflow-x-hidden pointer-events-auto">
+        <ScrollArea className={cn(
+          'app-main-panel relative z-10 block h-full w-full min-w-0 justify-self-stretch overflow-x-hidden pointer-events-auto',
+          activeSettingsSection.id === 'auth' && 'overflow-hidden',
+        )}>
           <div
             ref={settingsContentRef}
-            className="block w-full min-w-0 max-w-none px-6 py-5"
+            className={cn(
+              'block w-full min-w-0 max-w-none px-6 py-5',
+              activeSettingsSection.id === 'auth' && 'h-full min-h-0',
+            )}
             style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
           >
             {activeSettingsSection.id !== 'auth' && (

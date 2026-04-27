@@ -23,10 +23,10 @@ export function AuthProviderList({
 }: AuthProviderListProps) {
   return (
     <div
-      className="app-surface-muted app-auth-provider-list block w-full min-w-0 max-w-none flex-1 self-stretch rounded-[24px] border border-white/6 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      className="app-surface-muted app-auth-provider-list flex h-full min-h-0 w-full min-w-0 max-w-none flex-1 flex-col self-stretch overflow-hidden rounded-[24px] border border-white/6 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="mb-2 flex items-start justify-between gap-3 px-2 py-1">
+      <div className="mb-2 flex shrink-0 items-start justify-between gap-3 px-2 py-1">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[13px] font-medium text-white">Choose a provider</div>

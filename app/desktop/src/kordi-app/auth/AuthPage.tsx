@@ -224,7 +224,7 @@ export function AuthPage({
 
   return (
     <div
-      className={cn('relative z-10 block min-h-0 w-full min-w-0 max-w-none pointer-events-auto', showHero ? 'h-full' : '')}
+      className={cn('relative z-10 block min-h-0 w-full min-w-0 max-w-none pointer-events-auto', (showHero || variant === 'settings') ? 'h-full' : '')}
       style={
         showHero
           ? { WebkitAppRegion: 'no-drag' as const }
@@ -311,9 +311,9 @@ export function AuthPage({
           </div>
         </div>
       ) : (
-        <div className="app-auth-settings-page w-full" style={{ WebkitAppRegion: 'no-drag' as const }}>
+        <div className="app-auth-settings-page flex h-full min-h-0 w-full flex-col overflow-hidden" style={{ WebkitAppRegion: 'no-drag' as const }}>
           {!showDetailPage && (
-            <div className="mb-5">
+            <div className="mb-5 shrink-0">
               <div className="text-[18px] font-semibold tracking-tight text-white">Authentication</div>
               <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">
                 Connect Kordi to model providers, manage saved accounts and keys, and switch which access method is active.
@@ -321,8 +321,8 @@ export function AuthPage({
             </div>
           )}
 
-          {detailHeader}
-          <div className="flex w-full min-w-0 max-w-none flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+          {detailHeader ? <div className="shrink-0">{detailHeader}</div> : null}
+          <div className="flex min-h-0 w-full min-w-0 max-w-none flex-1 flex-col overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
         </div>
       )}
     </div>
