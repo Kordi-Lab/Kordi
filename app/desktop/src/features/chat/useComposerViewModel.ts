@@ -45,7 +45,7 @@ export function useComposerViewModel({
     for (const provider of authDisplayProviders) {
       const providerId = normalizeSelectedProviderId(provider.id) ?? provider.id;
       const preferredModel = provider.preferredModel?.trim();
-      if (!provider.configured || !isLocalProvider(providerId) || !preferredModel) continue;
+      if (!provider.configured || !isLocalProvider(providerId) || !preferredModel || providerId === 'ollama') continue;
       const [modelProvider, ...modelParts] = preferredModel.split('/');
       const normalizedModelProvider = normalizeSelectedProviderId(modelProvider) ?? modelProvider;
       const modelId = normalizedModelProvider === providerId && modelParts.length > 0 ? modelParts.join('/') : preferredModel;
@@ -63,7 +63,7 @@ export function useComposerViewModel({
     for (const selection of [composerSelections.chat.model, composerSelections.project.model]) {
       const [provider, ...modelParts] = selection.split('/');
       const modelId = modelParts.join('/').trim();
-      if (!['lm-studio', 'ollama'].includes(provider) || !modelId || options.some((option) => option.value === selection)) continue;
+      if (provider !== 'lm-studio' || !modelId || options.some((option) => option.value === selection)) continue;
       options.push({
         value: selection,
         label: modelId,
@@ -132,7 +132,7 @@ export function useComposerViewModel({
         const displayProvider = displayProviders.find((provider) => provider.id === modelProviderId);
         return providerLabels.has(modelProviderId)
           || chatModelOptions.some((model) => model.provider === modelProviderId)
-          || (displayProvider?.configured && ['lm-studio', 'ollama'].includes(modelProviderId));
+          || (displayProvider?.configured && modelProviderId === 'lm-studio');
       });
   }, [authDisplayProviders, chatModelOptions]);
 
@@ -141,7 +141,7 @@ export function useComposerViewModel({
     const providerModels = chatModelOptions.filter((option) => option.provider === modelProviderId);
     const savedLocalProvider = authDisplayProviders.find((provider) => (normalizeSelectedProviderId(provider.id) ?? provider.id) === modelProviderId);
     const savedLocalModel = savedLocalProvider?.preferredModel?.trim();
-    const savedLocalModelValue = savedLocalProvider?.configured && isLocalProvider(modelProviderId) && savedLocalModel
+    const savedLocalModelValue = savedLocalProvider?.configured && isLocalProvider(modelProviderId) && modelProviderId !== 'ollama' && savedLocalModel
       ? (() => {
           const [savedProvider, ...modelParts] = savedLocalModel.split('/');
           const normalizedSavedProvider = normalizeSelectedProviderId(savedProvider) ?? savedProvider;

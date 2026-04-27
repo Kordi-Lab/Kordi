@@ -2473,17 +2473,21 @@ mod tests {
     use kordi_core::settings::ProviderOverride;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
 
-    fn lm_studio_settings() -> Settings {
+    fn local_provider_settings(provider: &str, base_url: &str) -> Settings {
         Settings {
             providers: Some(vec![ProviderOverride {
-                name: "lm-studio".to_string(),
-                base_url: Some("http://localhost:1234/v1".to_string()),
+                name: provider.to_string(),
+                base_url: Some(base_url.to_string()),
                 api_key_env: None,
                 api: None,
                 headers: None,
             }]),
             ..Settings::default()
         }
+    }
+
+    fn lm_studio_settings() -> Settings {
+        local_provider_settings("lm-studio", "http://localhost:1234/v1")
     }
 
     #[test]
@@ -2496,6 +2500,19 @@ mod tests {
 
         assert_eq!(model.provider, "lm-studio");
         assert_eq!(model.id, "google/gemma-4-e4b");
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_model_selection_resolves_to_ollama_provider() -> Result<()> {
+        let model = resolve_model_candidate(
+            &local_provider_settings("ollama", "http://localhost:11434/v1"),
+            "ollama/llama3.2:latest",
+            Some("anthropic"),
+        )?;
+
+        assert_eq!(model.provider, "ollama");
+        assert_eq!(model.id, "llama3.2:latest");
         Ok(())
     }
 

@@ -335,6 +335,11 @@ export function OllamaModelControlCenter({
     );
   };
 
+  const saveOllamaModelPreference = async (model: string) => {
+    await setDesktopLocalProviderPort('ollama', Number(port), model);
+    await Promise.resolve(onRefreshAuth());
+  };
+
   const installOrUpdateOllama = async () => {
     await runOllamaAction(
       'install',
@@ -362,6 +367,7 @@ export function OllamaModelControlCenter({
       async () => {
         await refreshInstalledModels();
         await refreshRunningModels();
+        setActionMessage(`Pulled ${model}. Run it to make it available in chat.`);
       },
     );
   };
@@ -387,7 +393,11 @@ export function OllamaModelControlCenter({
       `load:${model}`,
       () => loadOllamaModelDesktop(endpoint, model),
       `Running ${model}`,
-      () => setRunningModelIds((current) => new Set(current).add(model)),
+      async () => {
+        await saveOllamaModelPreference(model);
+        setRunningModelIds((current) => new Set(current).add(model));
+        setActionMessage(`Running and saved Ollama with ${model}.`);
+      },
     );
   };
 
