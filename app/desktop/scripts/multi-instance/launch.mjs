@@ -21,6 +21,7 @@ const config = loadMultiInstanceConfig(options.configPath, options.userIds);
 if (options.dryRun) {
   console.log(JSON.stringify({
     reset: options.reset,
+    sharedAuth: options.sharedAuth,
     command: tauriDevInstanceScript,
     ...summarizeConfig(config),
   }, null, 2));
@@ -28,6 +29,13 @@ if (options.dryRun) {
 }
 
 ensureMultiInstanceDirs(config);
+
+if (options.sharedAuth) {
+  const missingSharedAuth = config.users.filter((instance) => !instance.bootstrap?.authFile);
+  if (missingSharedAuth.length > 0) {
+    throw new Error(`--shared-auth requires a configured bootstrap auth file for: ${missingSharedAuth.map((instance) => instance.id).join(', ')}`);
+  }
+}
 
 if (options.reset) {
   console.log('[kordi] Resetting selected multi-instance users before launch...');
@@ -39,7 +47,10 @@ if (options.reset) {
 }
 
 for (const instance of config.users) {
-  const bootstrap = prepareInstanceEnvironment(config, instance, { forceBootstrap: options.reset });
+  const bootstrap = prepareInstanceEnvironment(config, instance, {
+    forceBootstrap: options.reset,
+    skipBootstrap: options.sharedAuth,
+  });
   if (bootstrap.seeded) {
     console.log(`[kordi] ${instance.id}: bootstrapped auth fixture -> ${bootstrap.authTargetPath}`);
   }
@@ -49,8 +60,11 @@ await assertPortsAvailable(config.users);
 
 console.log(`[kordi] Launching ${config.users.length} isolated desktop instance(s)...`);
 for (const instance of config.users) {
+  const authPath = options.sharedAuth ? instance.bootstrap?.authFile : null;
   launchDetachedInstance(instance, {
-    inheritedEnv: process.env,
+    inheritedEnv: authPath
+      ? { ...process.env, KORDI_AUTH_PATH: authPath }
+      : process.env,
     clean: !options.reset && instance.cleanOnLaunch,
   });
 
@@ -59,7 +73,8 @@ for (const instance of config.users) {
   console.log(`         data:  ${instance.dataDir}`);
   console.log(`         log:   ${instance.logFile}`);
   if (instance.bootstrap?.authSummary) {
-    console.log(`         auth:  source=${instance.bootstrap.authSource} providers=${instance.bootstrap.authSummary.providerIds.join(',') || 'none'} mode=${instance.bootstrap.authMode}`);
+    const authMode = options.sharedAuth ? `shared-path=${instance.bootstrap.authFile}` : `mode=${instance.bootstrap.authMode}`;
+    console.log(`         auth:  source=${instance.bootstrap.authSource} providers=${instance.bootstrap.authSummary.providerIds.join(',') || 'none'} ${authMode}`);
   }
 
   await sleep(750);

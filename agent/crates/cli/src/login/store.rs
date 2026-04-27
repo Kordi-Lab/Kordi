@@ -1,6 +1,9 @@
 use super::*;
+use std::sync::{LazyLock, Mutex};
 
 const AUTH_STORE_VERSION: u32 = 2;
+
+static AUTH_STORE_PROCESS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub(super) struct AuthStore {
@@ -660,6 +663,9 @@ impl std::fmt::Debug for AuthEntry {
 }
 
 pub(super) fn save_auth(store: &AuthStore) -> Result<()> {
+    let _guard = AUTH_STORE_PROCESS_LOCK
+        .lock()
+        .expect("auth store process lock");
     let path = auth_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -668,14 +674,32 @@ pub(super) fn save_auth(store: &AuthStore) -> Result<()> {
     let mut persisted = store.clone();
     migrate_loaded_store(&mut persisted);
     let content = serde_json::to_string_pretty(&persisted)?;
-    std::fs::write(&path, &content)?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("auth.json");
+    let tmp_path = path.with_file_name(format!(
+        ".{file_name}.tmp-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::write(&tmp_path, &content)?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&path, perms)?;
+        std::fs::set_permissions(&tmp_path, perms)?;
     }
+
+    #[cfg(windows)]
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+    }
+
+    std::fs::rename(&tmp_path, &path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp_path);
+    })?;
 
     Ok(())
 }

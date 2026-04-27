@@ -21,6 +21,7 @@ Options:
   --title <name>          Window title. Defaults to Kordi (<instance>)
   --data-dir <path>       Root directory for isolated instance data.
                           Default: app/desktop/.multi-instance-data/<instance>
+  KORDI_AUTH_PATH=<path>  Optional env override for a shared auth.json path.
   --clean                 Remove the target data dir before launch.
   --dry-run               Print the env/config that would be used and exit.
   --help                  Show this help.
@@ -156,6 +157,9 @@ console.log(`[kordi] Data dir: ${dataDir}`);
 console.log(`[kordi] Profile: ${profile}`);
 console.log(`[kordi] Port: ${port}`);
 console.log(`[kordi] KORDI_STORAGE_ROOT=${env.KORDI_STORAGE_ROOT}`);
+if (env.KORDI_AUTH_PATH) {
+  console.log(`[kordi] KORDI_AUTH_PATH=${env.KORDI_AUTH_PATH}`);
+}
 console.log(`[kordi] BRIDGES_HOME=${env.BRIDGES_HOME}`);
 console.log(`[kordi] BRIDGES_PROJECTS_DIR=${env.BRIDGES_PROJECTS_DIR}`);
 

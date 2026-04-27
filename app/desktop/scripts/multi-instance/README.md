@@ -32,6 +32,8 @@ users:
 
 By default, `authSource: shared` copies your existing shared desktop/CLI auth store from `~/.kordi/auth.json` (or legacy `~/.bb-agent/auth.json`) into each isolated instance, so you do not need to re-auth every time.
 
+Use `--shared-auth` when you want every launched instance to read and update the same configured auth file by path. This keeps each instance's sessions, artifacts, bridge data, and logs isolated under its own `KORDI_STORAGE_ROOT`, while `KORDI_AUTH_PATH` points all instances at the shared auth store.
+
 You can still override a specific user with `authFile` to point at a local `auth.json`-compatible fixture. Keep real secrets in local-only files, not committed source.
 
 - `authMode: if-missing` seeds auth only for a fresh instance
@@ -49,6 +51,14 @@ pnpm dev:desktop:multi -- --users user1,user2
 ```bash
 pnpm dev:desktop:multi -- --reset --users user1,user2
 ```
+
+## Launch from clean state with shared auth path
+
+```bash
+pnpm dev:desktop:multi -- --reset --shared-auth --users user1,user2
+```
+
+This clears each user's isolated app data, but does not copy auth into each data dir. Instead, each process gets `KORDI_AUTH_PATH` set to the resolved shared auth file.
 
 ## Reset only
 
@@ -100,7 +110,9 @@ This happens:
 - or on every launch if `authMode: always`
 - or after `--reset`, which clears the instance first and then reapplies bootstrap
 
-The launcher prints only redacted provider summaries, not credential values.
+When `--shared-auth` is used, this copy step is skipped and the resolved auth file is passed to each instance as `KORDI_AUTH_PATH` instead.
+
+The launcher prints only redacted provider summaries and paths, not credential values.
 
 ## Smoke test readiness checks
 
