@@ -17,7 +17,6 @@ import type {
   DesktopBridgeProject,
   DesktopBridgeState,
   DesktopChatProjectInfo,
-  DesktopProjectSettings,
   DesktopChatSlashCommand,
   DesktopChatState,
   DesktopChatTurnSnapshot,
@@ -175,11 +174,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   handleRemoveAuthProfile: (providerId: string, profileId: string) => Promise<void>;
   handleLogoutProvider: (providerId: string) => Promise<void>;
-  projectSettingsDraft: DesktopProjectSettings | null;
-  isDesktopProjectSaving: boolean;
-  desktopProjectError: string | null;
-  handleSaveProjectSettings: () => Promise<void>;
-  updateProjectSettingsDraft: (apply: (current: DesktopProjectSettings) => DesktopProjectSettings) => void;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
 
@@ -254,7 +248,6 @@ export type AssembleKordiShellSlotsArgs = {
   isProjectBridgeBusy: boolean;
   bridgeInvite: DesktopBridgeInvite | null;
   handleCreateProjectBridgeInvite: () => Promise<void>;
-  openProjectSettings: () => void;
   activeConv: Conversation;
   activeConvHasSubtitle: boolean;
   activeLastMessage: Message;
@@ -407,11 +400,6 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectAuthChoice'
   | 'handleRemoveAuthProfile'
   | 'handleLogoutProvider'
-  | 'projectSettingsDraft'
-  | 'isDesktopProjectSaving'
-  | 'desktopProjectError'
-  | 'handleSaveProjectSettings'
-  | 'updateProjectSettingsDraft'
   | 'handleCreateProjectSession'
   | 'themeMode'
   | 'setThemeMode'
@@ -507,7 +495,6 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleCreateProjectBridgeInvite'
   | 'setActiveNav'
   | 'setActiveConvId'
-  | 'openProjectSettings'
   | 'getStatusBadgeClass'
   | 'activeConv'
   | 'activeConvHasSubtitle'

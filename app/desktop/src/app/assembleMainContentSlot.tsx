@@ -119,11 +119,6 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         handleSelectAuthChoice: args.handleSelectAuthChoice,
         handleRemoveAuthProfile: args.handleRemoveAuthProfile,
         handleLogoutProvider: args.handleLogoutProvider,
-        projectSettingsDraft: args.projectSettingsDraft,
-        isDesktopProjectSaving: args.isDesktopProjectSaving,
-        desktopProjectError: args.desktopProjectError,
-        handleSaveProjectSettings: args.handleSaveProjectSettings,
-        updateProjectSettingsDraft: args.updateProjectSettingsDraft,
         themeMode: args.themeMode,
         setThemeMode: args.setThemeMode,
       }}

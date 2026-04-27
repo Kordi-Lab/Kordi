@@ -62,12 +62,9 @@ function previewErrorCopy(error: string, artifact: SessionArtifact | null) {
     };
   }
 
-  const isProjectSettings = artifact?.path.endsWith('/.kordi/settings.json') || artifact?.path === '.kordi/settings.json';
   return {
     title: 'File is not on disk yet',
-    description: isProjectSettings
-      ? 'Project settings are created after you save project info, context, system prompt, or shared sources. This project can still have sessions before that settings file exists.'
-      : 'Kordi tracked this related path from the project/session, but the file does not currently exist. It may have been moved, deleted, or not created by the agent yet.',
+    description: 'Kordi tracked this related path from the project/session, but the file does not currently exist. It may have been moved, deleted, or not created by the agent yet.',
   };
 }
 

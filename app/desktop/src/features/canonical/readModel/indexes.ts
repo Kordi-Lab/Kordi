@@ -64,19 +64,30 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
 
   const canonicalParticipantsBySessionId = new Map<string, ConversationParticipant[]>();
   for (const [sessionId, participants] of participantsBySessionId) {
+    const seenParticipantKeys = new Set<string>();
     const details = participants.flatMap((participant) => {
       const identity = identityById.get(participant.identityId);
       if (!identity) return [];
       const presence = presenceByIdentityId.get(identity.id);
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+      const name = ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName;
+      const ownerName = owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null;
+      const participantKey = [
+        identity.kind,
+        participant.role,
+        name.trim().toLowerCase(),
+        ownerName?.trim().toLowerCase() ?? '',
+      ].join('\u0000');
+      if (seenParticipantKeys.has(participantKey)) return [];
+      seenParticipantKeys.add(participantKey);
       return [{
         id: identity.id,
-        name: ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName,
+        name,
         kind: identity.kind,
         role: participant.role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
-        ownerName: owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null,
+        ownerName,
         bridgeHostId: identity.sourceHostId,
         bridgeNodeId: identity.bridgeNodeId,
         humanId: identity.humanId,

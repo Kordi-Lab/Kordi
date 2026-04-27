@@ -214,7 +214,7 @@ function ChatDetailPanelView({
     return (
       <div className="app-detail-sheet">
         <section className="app-detail-section">
-          <div className="app-detail-kicker">Session info</div>
+          <div className="app-detail-kicker">Overview</div>
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -224,7 +224,6 @@ function ChatDetailPanelView({
               <TypeBadge type={activeConv.type} compact />
             </div>
             <div className="app-inspector-meta-list">
-              <MetaRow label="Session ID" value={activeConv.canonicalSessionId ?? activeConv.id} valueClassName="max-w-[11rem] truncate" />
               {activeConv.canonicalStoragePath ? <MetaRow label="Local DB" value={activeConv.canonicalStoragePath} valueClassName="max-w-[11rem] truncate" /> : null}
               {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
               {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}

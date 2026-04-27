@@ -23,7 +23,6 @@ import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscrip
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { useBridgeState } from '@/features/bridge/useBridgeState';
-import { useProjectSettingsState } from '@/features/projects/useProjectSettingsState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
@@ -236,22 +235,6 @@ export function useKordiAppModel() {
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
     setActiveLoginProviderId,
     clearDesktopAuthError,
-  });
-
-  const {
-    projectSettingsDraft,
-    isDesktopProjectSaving,
-    desktopProjectError,
-    updateProjectSettingsDraft,
-    handleSaveProjectSettings,
-  } = useProjectSettingsState({
-    isNativeShell,
-    activeNav,
-    activeProjectId,
-    activeProjectSessionId,
-    activeChatSessionId: desktopChatState?.activeSessionId,
-    projects: desktopChatState?.projects,
-    refreshDesktopChat,
   });
 
   const {
@@ -619,11 +602,6 @@ export function useKordiAppModel() {
     if (normalized.includes('pending') || normalized.includes('approval')) return 'app-badge-attention';
     return 'app-badge-neutral';
   };
-
-  const openProjectSettings = useCallback(() => {
-    setActiveNav('settings');
-    settingsUi.setActiveSettingsSectionId('projects');
-  }, [setActiveNav, settingsUi]);
 
   const {
     handleAddBridgeContact,
@@ -1078,11 +1056,6 @@ export function useKordiAppModel() {
     handleSelectAuthChoice,
     handleRemoveAuthProfile,
     handleLogoutProvider,
-    projectSettingsDraft,
-    isDesktopProjectSaving,
-    desktopProjectError,
-    handleSaveProjectSettings,
-    updateProjectSettingsDraft,
     themeMode: settingsUi.themeMode,
     setThemeMode: settingsUi.setThemeMode,
     showRightDetailRail,
@@ -1156,7 +1129,6 @@ export function useKordiAppModel() {
     isProjectBridgeBusy,
     bridgeInvite,
     handleCreateProjectBridgeInvite,
-    openProjectSettings,
     activeConv,
     activeConvHasSubtitle,
     activeLastMessage,

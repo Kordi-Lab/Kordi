@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -166,6 +166,52 @@ fn artifact_base_path(base_root: Option<&str>) -> Result<PathBuf, String> {
         .unwrap_or_else(chat_cwd)
 }
 
+fn project_root_is_set(base_root: Option<&str>) -> bool {
+    base_root
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir | Component::Normal(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn ensure_artifact_path_within_base(
+    resolved_path: PathBuf,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
+    if !project_root_is_set(base_root) {
+        return Ok(resolved_path);
+    }
+
+    let base_path = artifact_base_path(base_root)?;
+    let base_path =
+        std::fs::canonicalize(&base_path).unwrap_or_else(|_| normalize_path_lexically(&base_path));
+    let canonical_path = std::fs::canonicalize(&resolved_path)
+        .unwrap_or_else(|_| normalize_path_lexically(&resolved_path));
+    if !canonical_path.starts_with(&base_path) {
+        return Err(format!(
+            "Artifact path is outside the project root: {}",
+            resolved_path.display()
+        ));
+    }
+
+    Ok(resolved_path)
+}
+
 fn resolve_artifact_preview_path(
     raw_path: &str,
     base_root: Option<&str>,
@@ -176,11 +222,13 @@ fn resolve_artifact_preview_path(
     }
 
     let candidate = expand_home_project_path(trimmed);
-    if candidate.is_absolute() {
-        return Ok(candidate);
-    }
+    let resolved_path = if candidate.is_absolute() {
+        candidate
+    } else {
+        artifact_base_path(base_root)?.join(candidate)
+    };
 
-    Ok(artifact_base_path(base_root)?.join(candidate))
+    ensure_artifact_path_within_base(resolved_path, base_root)
 }
 
 fn resolve_artifact_directory_path(
@@ -889,10 +937,7 @@ pub async fn desktop_chat_artifact_directory(
     let directory_path = std::fs::canonicalize(&directory_path).unwrap_or(directory_path);
     let base_path = artifact_base_path(base_root.as_deref())?;
     let base_path = std::fs::canonicalize(&base_path).unwrap_or(base_path);
-    let has_project_root = base_root
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
+    let has_project_root = project_root_is_set(base_root.as_deref());
     if has_project_root && !directory_path.starts_with(&base_path) {
         return Err(format!(
             "Folder is outside the project root: {}",

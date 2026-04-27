@@ -51,7 +51,6 @@ type ProjectDetailPanelProps = {
   bridgeInvite: DesktopBridgeInvite | null;
   onCreateProjectBridgeInvite: () => void;
   onOpenBridgeHosts: () => void;
-  onOpenProjectSettings: () => void;
   onSetTasksTab: () => void;
   getStatusBadgeClass: (value: string) => string;
   artifacts: SessionArtifact[];
@@ -114,10 +113,6 @@ function relatedProjectArtifacts(project: ProjectWorkspace): SessionArtifact[] {
     pushFile(source.path, name, source.detail?.trim() || 'Shared source for this project');
   }
 
-  if (project.root?.trim()) {
-    pushFile(`${project.root.replace(/\/$/, '')}/.kordi/settings.json`, 'Project settings', 'Created after saving project info, context, prompts, or shared source configuration');
-  }
-
   return artifacts;
 }
 
@@ -146,7 +141,6 @@ export function ProjectDetailPanel({
   bridgeInvite,
   onCreateProjectBridgeInvite,
   onOpenBridgeHosts,
-  onOpenProjectSettings,
   onSetTasksTab,
   getStatusBadgeClass,
   artifacts,
@@ -167,11 +161,6 @@ export function ProjectDetailPanel({
               <div className="app-inspector-text-block">{activeProject.sharedContext ?? activeProject.summary}</div>
               {activeProject.backgroundSystem ? <div className="mt-2 app-inspector-subtext">{activeProject.backgroundSystem}</div> : null}
             </EmphasisBlock>
-            <div className="app-inspector-actions">
-              <Button variant="secondary" className="justify-start rounded-[14px] border-0 px-3 py-2 text-[12px]" onClick={onOpenProjectSettings}>
-                Edit project info
-              </Button>
-            </div>
             <div className="app-inspector-inline-meta">
               <span><strong>Shared sources:</strong>&nbsp;{activeProject.sharedSources?.length ?? 0}</span>
               {activeProject.root ? <span className="min-w-0"><strong>Root:</strong>&nbsp;<span className="truncate">{activeProject.root}</span></span> : null}
@@ -196,7 +185,6 @@ export function ProjectDetailPanel({
             <div className="app-inspector-meta-list">
               <MetaRow label="Bridge" value={activeProject.bridge} />
               <MetaRow label="Sessions" value={activeProject.sessions.length} />
-              <MetaRow label="Session ID" value={activeProjectSession.id || '—'} valueClassName="max-w-[10rem] truncate font-mono text-[11px]" />
               <MetaRow label="Shared sources" value={activeProject.sharedSources?.length ?? activeProject.artifacts} />
             </div>
           </div>
@@ -304,7 +292,6 @@ export function ProjectDetailPanel({
           <div className="app-detail-kicker">Latest activity</div>
           <div className="app-inspector-meta-list">
             <MetaRow label="Last active" value={activeProjectSession.lastActive} />
-            <MetaRow label="Session ID" value={activeProjectSession.id || '—'} valueClassName="max-w-[10rem] truncate font-mono text-[11px]" />
             <MetaRow label="Latest message" value={activeProjectLastMessage?.sender} valueClassName="max-w-[10rem] truncate" />
             <MetaRow
               label="Session status"

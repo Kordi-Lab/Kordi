@@ -268,9 +268,6 @@ export function ProjectsPage({
             </div>
             <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-300">
               <span className="truncate">{activeProject.name}</span>
-              {activeProjectSession.id ? (
-                <span className="min-w-0 truncate font-mono text-[11px] text-slate-500" title={activeProjectSession.id}>session {activeProjectSession.id}</span>
-              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
               <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {activeProject.bridge}</span>
