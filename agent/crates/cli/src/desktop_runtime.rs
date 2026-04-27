@@ -1290,20 +1290,11 @@ fn repo_relative_display_path(root: &std::path::Path, path: &std::path::Path) ->
         .map(|relative| relative.display().to_string())
 }
 
-fn infer_agent_label(cwd: &std::path::Path) -> String {
-    Settings::load_project(cwd)
-        .project_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| {
-            discover_workspace_root(cwd)
-                .file_name()
-                .and_then(|value| value.to_str())
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| "Local agent".to_string())
+fn infer_agent_label(_cwd: &std::path::Path) -> String {
+    // The desktop runtime's built-in local agent has a stable product identity.
+    // Project names describe workspace grouping, not the agent itself; bridge
+    // agents can still provide custom labels through bridge configuration.
+    "Kordi".to_string()
 }
 
 fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
@@ -2461,6 +2452,14 @@ mod tests {
             ..row
         };
         assert_eq!(session_row_display_name(&row), None);
+    }
+
+    #[test]
+    fn local_desktop_agent_label_is_not_inferred_from_project_name() {
+        assert_eq!(
+            infer_agent_label(std::path::Path::new("/tmp/any-project")),
+            "Kordi"
+        );
     }
 
     #[test]
