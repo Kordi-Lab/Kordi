@@ -60,7 +60,11 @@ function appendOptimisticSessionConfigMessage({
   const parsedModel = nextModelValue ? parseModelSelection(nextModelValue) : null;
   const timeLabel = formatDesktopEventTime();
   const timestampMs = Date.now();
-  const modelChanged = Boolean(nextModelValue && nextModelValue !== current.activeSession.model);
+  const modelChanged = Boolean(
+    parsedModel
+      && (parsedModel.provider !== current.activeSession.provider
+        || parsedModel.modelId !== current.activeSession.model),
+  );
   const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== current.activeSession.thinking);
   const systemMessage = {
     role: 'system' as const,
