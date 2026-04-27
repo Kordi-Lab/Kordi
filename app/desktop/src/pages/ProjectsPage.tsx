@@ -321,28 +321,13 @@ export function ProjectsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {isNativeShell && activeProject.sessions.length === 0 ? (
-              <div className="mx-auto mt-10 max-w-lg rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-panel-bg)] p-6 text-center shadow-[var(--app-shadow-soft)]">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--app-control-bg)] text-[color:var(--utility-foreground)]">
-                  <FolderOpen className="h-6 w-6" />
-                </div>
-                <div className="text-[16px] font-medium text-[color:var(--utility-foreground)]">No sessions in this project yet</div>
-                <p className="mt-2 text-[13px] leading-6 text-[color:var(--utility-muted-text)]">
-                  Start a session now, or write a first message below and Kordi will create one in {activeProject.name} automatically.
-                </p>
-                <Button type="button" className="mt-4 rounded-full px-4" onClick={onCreateProjectSession}>
-                  New session
-                </Button>
-              </div>
-            ) : (
-              activeProjectSession.messages.map((msg, idx) => (
-                <MessageBubble
-                  key={`${activeProjectSession.id}-${msg.time}-${idx}`}
-                  msg={msg}
-                  onOpenSource={onOpenSource}
-                />
-              ))
-            )}
+            {activeProjectSession.messages.map((msg, idx) => (
+              <MessageBubble
+                key={`${activeProjectSession.id}-${msg.time}-${idx}`}
+                msg={msg}
+                onOpenSource={onOpenSource}
+              />
+            ))}
             {desktopLiveTurn && !desktopLiveTurn.completed && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
           </motion.div>
         </ScrollArea>

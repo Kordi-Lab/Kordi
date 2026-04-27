@@ -21,9 +21,23 @@ pub struct DesktopProjectSettings {
 }
 
 fn resolve_project_root(project_root: Option<String>) -> Result<PathBuf, String> {
-    let base = project_root
-        .map(PathBuf::from)
-        .unwrap_or(std::env::current_dir().map_err(|err| err.to_string())?);
+    if let Some(raw_root) = project_root
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let candidate = expand_home_path(raw_root);
+        let resolved = if candidate.is_absolute() {
+            candidate
+        } else {
+            std::env::current_dir()
+                .map_err(|err| err.to_string())?
+                .join(candidate)
+        };
+        return Ok(std::fs::canonicalize(&resolved).unwrap_or(resolved));
+    }
+
+    let base = std::env::current_dir().map_err(|err| err.to_string())?;
     Ok(kordi_core::config::project_root(&base).unwrap_or(base))
 }
 
@@ -119,26 +133,43 @@ fn default_new_project_parent() -> PathBuf {
         })
 }
 
+fn exact_project_settings_path(root: &std::path::Path) -> PathBuf {
+    root.join(".kordi").join("settings.json")
+}
+
+fn load_exact_project_settings(root: &std::path::Path) -> Settings {
+    let preferred = exact_project_settings_path(root);
+    let legacy = root.join(".bb-agent").join("settings.json");
+    let path = if preferred.exists() {
+        preferred
+    } else if legacy.exists() {
+        legacy
+    } else {
+        preferred
+    };
+    Settings::load_from_file(&path)
+}
+
+fn save_exact_project_settings(root: &std::path::Path, settings: &Settings) -> Result<(), String> {
+    settings
+        .save_to_file(&exact_project_settings_path(root))
+        .map_err(|err| err.to_string())
+}
+
 fn register_project_folder(root: &std::path::Path, name: Option<&str>) -> Result<(), String> {
     kordi_cli::desktop_runtime::register_project(root, name).map_err(|err| err.to_string())?;
     if let Some(name) = name.map(str::trim).filter(|value| !value.is_empty()) {
-        let mut settings = Settings::load_project(root);
-        if settings
-            .project_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-        {
+        let mut settings = load_exact_project_settings(root);
+        if settings.project_name.as_deref().map(str::trim) != Some(name) {
             settings.project_name = Some(name.to_string());
-            settings.save_project(root).map_err(|err| err.to_string())?;
+            save_exact_project_settings(root, &settings)?;
         }
     }
     Ok(())
 }
 
 fn load_project_settings_for_root(root: &std::path::Path) -> DesktopProjectSettings {
-    let settings = Settings::load_project(root);
+    let settings = load_exact_project_settings(root);
     let name = settings
         .project_name
         .as_deref()
@@ -227,7 +258,7 @@ pub fn desktop_save_project_settings(
     shared_sources: Vec<DesktopProjectSource>,
 ) -> Result<DesktopProjectSettings, String> {
     let root = resolve_project_root(project_root)?;
-    let mut settings = Settings::load_project(&root);
+    let mut settings = load_exact_project_settings(&root);
 
     settings.project_name = Some(name.trim().to_string()).filter(|value| !value.is_empty());
     settings.project_context = Some(context.trim().to_string()).filter(|value| !value.is_empty());
@@ -261,9 +292,7 @@ pub fn desktop_save_project_settings(
         })
         .collect();
 
-    settings
-        .save_project(&root)
-        .map_err(|err| err.to_string())?;
+    save_exact_project_settings(&root, &settings)?;
     register_project_folder(&root, Some(&name))?;
     Ok(load_project_settings_for_root(&root))
 }
