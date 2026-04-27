@@ -829,12 +829,13 @@ pub async fn desktop_chat_new_project_session(
     runtime
         .materialize_session()
         .map_err(|err| err.to_string())?;
-    let title = title
+    if let Some(title) = title
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("New session");
-    runtime.set_name(title).map_err(|err| err.to_string())?;
+    {
+        runtime.set_name(title).map_err(|err| err.to_string())?;
+    }
     let session_id = runtime.session_id().to_string();
     kordi_cli::desktop_runtime::move_session_to_project(&session_id, &resolved_project_root)
         .map_err(|err| err.to_string())?;

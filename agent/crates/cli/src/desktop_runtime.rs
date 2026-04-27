@@ -686,15 +686,27 @@ fn session_activity_label(
     format_db_timestamp(&session_last_activity_timestamp(conn, row))
 }
 
+fn is_placeholder_project_session_name(row: &kordi_session::store::SessionRow) -> bool {
+    row.session_scope == "project"
+        && row
+            .name
+            .as_deref()
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("New session"))
+}
+
+fn session_row_display_name(row: &kordi_session::store::SessionRow) -> Option<String> {
+    if is_placeholder_project_session_name(row) {
+        return None;
+    }
+    row.name.clone().filter(|value| !value.trim().is_empty())
+}
+
 fn session_summary_from_row(
     conn: &rusqlite::Connection,
     row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
     let updated_at_label = session_activity_label(conn, &row);
-    let title = row
-        .name
-        .clone()
-        .filter(|value| !value.trim().is_empty())
+    let title = session_row_display_name(&row)
         .unwrap_or_else(|| format!("Session {}", short_session_id(&row.session_id)));
     let subtitle = match kordi_session::context::build_context(conn, &row.session_id) {
         Ok(context) => context
@@ -1141,11 +1153,7 @@ fn maybe_name_session_from_prompt(
     let Some(row) = kordi_session::store::get_session(conn, session_id)? else {
         return Ok(());
     };
-    if row
-        .name
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
+    if session_row_display_name(&row).is_some() {
         return Ok(());
     }
 
@@ -1407,13 +1415,12 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
 
     let title = session_row
         .as_ref()
-        .and_then(|row| row.name.clone())
-        .filter(|value| !value.trim().is_empty())
+        .and_then(session_row_display_name)
         .unwrap_or_else(|| {
-            if messages.is_empty() {
-                "New session".to_string()
-            } else {
+            if setup.session_created {
                 format!("Session {}", short_session_id(&setup.session_id))
+            } else {
+                "New session".to_string()
             }
         });
     let subtitle = session_focus_subtitle(&messages).unwrap_or_default();
