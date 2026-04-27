@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import { contactRequests, settingsSections } from '@/kordi-app/data';
@@ -15,6 +15,36 @@ import type {
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+
+function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
+  if (!turn) return '';
+  return [
+    turn.id,
+    turn.sessionId,
+    turn.completed ? 'completed' : 'running',
+    ...turn.tools.map((tool) => [
+      tool.id,
+      tool.name,
+      tool.status,
+      tool.arguments,
+      tool.isError ? 'error' : 'ok',
+    ].join('\u0000')),
+  ].join('\u0001');
+}
+
+function useArtifactLiveTurn(turn?: DesktopChatTurnSnapshot | null) {
+  const signature = liveTurnArtifactSignature(turn);
+  const stableTurnRef = useRef<{ signature: string; turn: DesktopChatTurnSnapshot | null }>({
+    signature,
+    turn: turn ?? null,
+  });
+
+  if (stableTurnRef.current.signature !== signature) {
+    stableTurnRef.current = { signature, turn: turn ?? null };
+  }
+
+  return stableTurnRef.current.turn;
+}
 
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
@@ -63,6 +93,8 @@ export function useKordiDesktopActivity({
   const activeChatLiveTurn = desktopLiveTurnsBySession[activeConv.id] ?? null;
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
+  const activeChatArtifactLiveTurn = useArtifactLiveTurn(activeChatLiveTurn);
+  const activeProjectArtifactLiveTurn = useArtifactLiveTurn(activeProjectLiveTurn);
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
     : activeNav === 'chats' && activeConversationIsBridge
@@ -70,12 +102,12 @@ export function useKordiDesktopActivity({
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(
-    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatLiveTurn),
-    [activeChatLiveTurn, activeConv.messages, activeConversationIsBridge],
+    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn),
+    [activeChatArtifactLiveTurn, activeConv.messages, activeConversationIsBridge],
   );
   const activeProjectArtifacts = useMemo(
-    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectLiveTurn),
-    [activeProjectLiveTurn, activeProjectSession.messages],
+    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn),
+    [activeProjectArtifactLiveTurn, activeProjectSession.messages],
   );
   const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
   const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;
