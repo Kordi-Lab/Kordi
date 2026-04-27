@@ -94,6 +94,7 @@ type ProjectsPageProps = {
   isEditingDesktopSessionTitle: boolean;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   onRenameDesktopSession: (baselineName: string) => Promise<void>;
+  onCreateProjectSession: () => void;
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
@@ -146,6 +147,7 @@ export function ProjectsPage({
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
   onRenameDesktopSession,
+  onCreateProjectSession,
   chatTranscriptScrollRef,
   onTranscriptScroll,
   onOpenSource,
@@ -264,7 +266,9 @@ export function ProjectsPage({
                 {activeProject.status}
               </Badge>
             </div>
-            <div className="mb-1 truncate text-[12px] text-slate-300">{activeProject.name}</div>
+            <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-300">
+              <span className="truncate">{activeProject.name}</span>
+            </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
               <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {activeProject.bridge}</span>
               <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> {activeProject.people.length + activeProject.agents.length} members</span>
@@ -274,6 +278,17 @@ export function ProjectsPage({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-start">
+          {isNativeShell && activeProject.root ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onCreateProjectSession}
+              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+              title="Create a new session in this project"
+            >
+              New session
+            </Button>
+          ) : null}
           {showRightDetailRail && (
             <Button
               type="button"
@@ -304,13 +319,28 @@ export function ProjectsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {activeProjectSession.messages.map((msg, idx) => (
-              <MessageBubble
-                key={`${activeProjectSession.id}-${msg.time}-${idx}`}
-                msg={msg}
-                onOpenSource={onOpenSource}
-              />
-            ))}
+            {isNativeShell && activeProject.sessions.length === 0 ? (
+              <div className="mx-auto mt-10 max-w-lg rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-panel-bg)] p-6 text-center shadow-[var(--app-shadow-soft)]">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[color:var(--app-control-bg)] text-[color:var(--utility-foreground)]">
+                  <FolderOpen className="h-6 w-6" />
+                </div>
+                <div className="text-[16px] font-medium text-[color:var(--utility-foreground)]">No sessions in this project yet</div>
+                <p className="mt-2 text-[13px] leading-6 text-[color:var(--utility-muted-text)]">
+                  Start a session now, or write a first message below and Kordi will create one in {activeProject.name} automatically.
+                </p>
+                <Button type="button" className="mt-4 rounded-full px-4" onClick={onCreateProjectSession}>
+                  New session
+                </Button>
+              </div>
+            ) : (
+              activeProjectSession.messages.map((msg, idx) => (
+                <MessageBubble
+                  key={`${activeProjectSession.id}-${msg.time}-${idx}`}
+                  msg={msg}
+                  onOpenSource={onOpenSource}
+                />
+              ))
+            )}
             {desktopLiveTurn && !desktopLiveTurn.completed && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
           </motion.div>
         </ScrollArea>

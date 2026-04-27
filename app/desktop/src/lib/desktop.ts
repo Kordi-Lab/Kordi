@@ -2,6 +2,7 @@ import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
+  DesktopArtifactDirectory,
   DesktopArtifactPreview,
   DesktopAuthAttemptSnapshot,
   DesktopAuthState,
@@ -289,8 +290,20 @@ export async function saveDesktopProjectSettings(
   });
 }
 
+export async function createDesktopProjectFromFolder(folderPath: string, name?: string) {
+  return invokeDesktop<DesktopProjectSettings>('desktop_project_create_from_folder', { folderPath, name });
+}
+
+export async function createDesktopProject(name: string, parentDir?: string) {
+  return invokeDesktop<DesktopProjectSettings>('desktop_project_create_new', { name, parentDir });
+}
+
 export async function createDesktopChatSession() {
   return invokeDesktop<DesktopChatState>('desktop_chat_new_session');
+}
+
+export async function createDesktopProjectSession(projectRoot: string, title?: string) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_new_project_session', { projectRoot, title });
 }
 
 export async function prepareDesktopChatDraftSession() {
@@ -341,8 +354,12 @@ export async function fetchDesktopChatTurnState(turnId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_turn_state', { turnId });
 }
 
-export async function fetchDesktopChatArtifactPreview(path: string) {
-  return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path });
+export async function fetchDesktopChatArtifactPreview(path: string, baseRoot?: string | null) {
+  return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path, baseRoot });
+}
+
+export async function fetchDesktopChatArtifactDirectory(path?: string | null, baseRoot?: string | null) {
+  return invokeDesktop<DesktopArtifactDirectory>('desktop_chat_artifact_directory', { path, baseRoot });
 }
 
 export type OpenDesktopAuthPopupOptions = {

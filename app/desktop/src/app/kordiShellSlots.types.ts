@@ -17,7 +17,6 @@ import type {
   DesktopBridgeProject,
   DesktopBridgeState,
   DesktopChatProjectInfo,
-  DesktopProjectSettings,
   DesktopChatSlashCommand,
   DesktopChatState,
   DesktopChatTurnSnapshot,
@@ -74,7 +73,7 @@ export type AssembleKordiShellSlotsArgs = {
   setProjectSearch: Dispatch<SetStateAction<string>>;
   filteredProjects: Project[];
   projectSelectedSessionIds: Record<string, string>;
-  selectProject: (projectId: string) => void;
+  selectProject: (projectId: string, sessionId?: string) => void;
   expandedProjectIds: Record<string, boolean>;
   setExpandedProjectIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   groupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -91,6 +90,9 @@ export type AssembleKordiShellSlotsArgs = {
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
+  handleCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void>;
+  handleCreateProject: (name: string, parentDir?: string) => Promise<void>;
+  handleCreateProjectSession: () => Promise<void>;
   handleSelectProjectSession: (projectId: string, sessionId: string) => Promise<void>;
 
   filteredGroupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -172,11 +174,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   handleRemoveAuthProfile: (providerId: string, profileId: string) => Promise<void>;
   handleLogoutProvider: (providerId: string) => Promise<void>;
-  projectSettingsDraft: DesktopProjectSettings | null;
-  isDesktopProjectSaving: boolean;
-  desktopProjectError: string | null;
-  handleSaveProjectSettings: () => Promise<void>;
-  updateProjectSettingsDraft: (apply: (current: DesktopProjectSettings) => DesktopProjectSettings) => void;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
 
@@ -251,7 +248,6 @@ export type AssembleKordiShellSlotsArgs = {
   isProjectBridgeBusy: boolean;
   bridgeInvite: DesktopBridgeInvite | null;
   handleCreateProjectBridgeInvite: () => Promise<void>;
-  openProjectSettings: () => void;
   activeConv: Conversation;
   activeConvHasSubtitle: boolean;
   activeLastMessage: Message;
@@ -297,6 +293,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleArchiveChatSession'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
+  | 'handleCreateProjectFromFolder'
+  | 'handleCreateProject'
   | 'runtimeProjects'
   | 'projectSearch'
   | 'setProjectSearch'
@@ -402,11 +400,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectAuthChoice'
   | 'handleRemoveAuthProfile'
   | 'handleLogoutProvider'
-  | 'projectSettingsDraft'
-  | 'isDesktopProjectSaving'
-  | 'desktopProjectError'
-  | 'handleSaveProjectSettings'
-  | 'updateProjectSettingsDraft'
+  | 'handleCreateProjectSession'
   | 'themeMode'
   | 'setThemeMode'
   | 'collapseChatSessions'
@@ -501,7 +495,6 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleCreateProjectBridgeInvite'
   | 'setActiveNav'
   | 'setActiveConvId'
-  | 'openProjectSettings'
   | 'getStatusBadgeClass'
   | 'activeConv'
   | 'activeConvHasSubtitle'

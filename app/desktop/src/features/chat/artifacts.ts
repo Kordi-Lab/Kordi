@@ -27,6 +27,15 @@ function isGeneratedArtifactTool(toolName: string) {
   return normalized.includes('write') || normalized.includes('edit') || normalized.includes('patch');
 }
 
+function isRelatedFileTool(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  return isGeneratedArtifactTool(normalized)
+    || normalized.includes('read')
+    || normalized.includes('open')
+    || normalized.includes('view')
+    || normalized.includes('file');
+}
+
 function parseToolArguments(raw: string) {
   if (!raw.trim()) return null;
 
@@ -39,15 +48,25 @@ function parseToolArguments(raw: string) {
 }
 
 function collectToolArtifactPaths(toolName: string, argumentsJson: string) {
-  if (!isGeneratedArtifactTool(toolName)) return [];
+  if (!isRelatedFileTool(toolName)) return [];
 
   const parsed = parseToolArguments(argumentsJson);
-  const path = typeof parsed?.path === 'string' ? parsed.path.trim() : '';
-  return path ? [path] : [];
+  if (!parsed) return [];
+
+  const paths = ['path', 'file_path', 'filepath', 'file', 'target_file']
+    .map((key) => parsed[key])
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(paths));
 }
 
 function buildArtifactSummary(toolName: string, live: boolean) {
   const normalized = toolName.trim().toLowerCase();
+  if (!isGeneratedArtifactTool(normalized)) {
+    return live ? `Referenced by ${toolName} • in progress` : `Referenced by ${toolName}`;
+  }
   const action = normalized.includes('edit') || normalized.includes('patch') ? 'Updated with' : 'Created with';
   return live ? `${action} ${toolName} • in progress` : `${action} ${toolName}`;
 }

@@ -17,7 +17,6 @@ export type SettingsSectionId =
   | 'general'
   | 'appearance'
   | 'configuration'
-  | 'projects'
   | 'auth'
   | 'personalization'
   | 'usage'
@@ -126,14 +125,6 @@ export const settingsSections: SettingsSection[] = [
       { label: 'Default bridge', value: 'Alpha', hint: 'New sessions and contacts inherit this bridge first.' },
       { label: 'Approval policy', value: 'Restricted outbound only', hint: 'Requests approval before sensitive external actions.' },
     ],
-  },
-  {
-    id: 'projects',
-    label: 'Project memory',
-    icon: FolderOpen,
-    title: 'Project Memory',
-    description: 'Shared context, standing instructions, and reference sources that every session in this project can reuse.',
-    items: [],
   },
   {
     id: 'auth',

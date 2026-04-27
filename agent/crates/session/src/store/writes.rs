@@ -148,6 +148,26 @@ pub(super) fn update_session_scope(
     Ok(())
 }
 
+pub(super) fn upsert_project(
+    conn: &Connection,
+    project_id: &str,
+    root: &str,
+    name: Option<&str>,
+) -> Result<()> {
+    let trimmed_name = name.map(str::trim).filter(|value| !value.is_empty());
+    conn.execute(
+        "INSERT INTO projects (project_id, root, name, created_at, updated_at, archived_at)
+         VALUES (?1, ?2, ?3, datetime('now'), datetime('now'), NULL)
+         ON CONFLICT(root) DO UPDATE SET
+             project_id = excluded.project_id,
+             name = COALESCE(excluded.name, projects.name),
+             updated_at = datetime('now'),
+             archived_at = NULL",
+        params![project_id, root, trimmed_name],
+    )?;
+    Ok(())
+}
+
 pub(super) fn delete_session(conn: &Connection, session_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM entries WHERE session_id = ?1",

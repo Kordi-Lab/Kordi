@@ -40,6 +40,8 @@ export type UseComposerControllerArgs = {
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
   activeProjectId: string;
   activeProjectSessionId: string;
+  activeProjectRoot?: string | null;
+  selectProjectSession: (projectId: string, sessionId: string) => void;
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
   canonicalHumanIdentityId?: string | null;

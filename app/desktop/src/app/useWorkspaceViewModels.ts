@@ -722,8 +722,8 @@ export function useWorkspaceViewModels({
     sharedSources: [],
     sessions: [{
       id: '',
-      name: 'No project session',
-      summary: 'Chats stay in Chats until you explicitly create or move them into a project.',
+      name: 'Start a project session',
+      summary: 'Write below or create a session to persist work under this project.',
       lastActive: '--:--',
       status: 'Draft',
       participants: ['Me', 'Kordi'],

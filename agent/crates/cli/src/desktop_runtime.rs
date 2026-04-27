@@ -686,16 +686,68 @@ fn session_activity_label(
     format_db_timestamp(&session_last_activity_timestamp(conn, row))
 }
 
+fn is_placeholder_session_name(row: &kordi_session::store::SessionRow) -> bool {
+    row.name.as_deref().is_some_and(|value| {
+        let trimmed = value.trim();
+        trimmed.eq_ignore_ascii_case("New session")
+            || trimmed
+                .eq_ignore_ascii_case(&format!("Session {}", short_session_id(&row.session_id)))
+    })
+}
+
+fn session_row_display_name(row: &kordi_session::store::SessionRow) -> Option<String> {
+    if is_placeholder_session_name(row) {
+        return None;
+    }
+    row.name.clone().filter(|value| !value.trim().is_empty())
+}
+
+fn session_title_from_seed(value: &str) -> Option<String> {
+    let title = value
+        .split_whitespace()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!title.is_empty()).then(|| truncate_chars(&title, 60))
+}
+
+fn session_title_from_messages(messages: &[DesktopChatMessage]) -> Option<String> {
+    messages
+        .iter()
+        .find(|message| message.role == "user")
+        .and_then(|message| {
+            session_title_from_seed(&message.text).or_else(|| {
+                attachment_summary_from_metadata(&message.attachments)
+                    .and_then(|value| session_title_from_seed(&value))
+            })
+        })
+}
+
+fn repair_session_title_from_history(
+    conn: &rusqlite::Connection,
+    row: &kordi_session::store::SessionRow,
+) -> Result<Option<String>> {
+    if let Some(title) = session_row_display_name(row) {
+        return Ok(Some(title));
+    }
+    if row.entry_count <= 0 {
+        return Ok(None);
+    }
+    let Some(title) = session_title_from_messages(&load_session_messages(conn, &row.session_id)?)
+    else {
+        return Ok(None);
+    };
+    kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
+    Ok(Some(title))
+}
+
 fn session_summary_from_row(
     conn: &rusqlite::Connection,
     row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
     let updated_at_label = session_activity_label(conn, &row);
-    let title = row
-        .name
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| format!("Session {}", short_session_id(&row.session_id)));
+    let title =
+        repair_session_title_from_history(conn, &row)?.unwrap_or_else(|| "New session".to_string());
     let subtitle = match kordi_session::context::build_context(conn, &row.session_id) {
         Ok(context) => context
             .model
@@ -764,13 +816,94 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
         .collect()
 }
 
+fn project_group_id(project_root: &std::path::Path) -> String {
+    format!("project:{}", project_root.display())
+}
+
+fn project_group_from_root(
+    project_root: &std::path::Path,
+    registered_name: Option<&str>,
+) -> DesktopChatProjectGroup {
+    let settings = Settings::load_project(project_root);
+    let project_name = settings
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            registered_name
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .map(ToString::to_string)
+        .or_else(|| {
+            project_root
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Project".to_string());
+    let summary = settings
+        .project_context
+        .clone()
+        .or_else(|| settings.project_system_prompt.clone())
+        .unwrap_or_else(|| project_root.display().to_string());
+    let background_system = settings.project_system_prompt.clone();
+    let shared_sources = settings
+        .project_shared_sources
+        .iter()
+        .map(|source| DesktopChatProjectSource {
+            label: source.label.clone(),
+            path: source.path.clone(),
+            detail: source.detail.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    DesktopChatProjectGroup {
+        id: project_group_id(project_root),
+        name: project_name,
+        root: project_root.display().to_string(),
+        summary,
+        background_system,
+        shared_sources,
+        sessions: Vec::new(),
+    }
+}
+
+pub fn register_project(
+    project_root: &std::path::Path,
+    name: Option<&str>,
+) -> Result<DesktopChatProjectGroup> {
+    let conn = open_sessions_db()?;
+    let group_id = project_group_id(project_root);
+    kordi_session::store::upsert_project(
+        &conn,
+        &group_id,
+        &project_root.display().to_string(),
+        name,
+    )?;
+    Ok(project_group_from_root(project_root, name))
+}
+
 pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProjectGroup>> {
     let conn = open_sessions_db()?;
     let rows = kordi_session::store::list_all_sessions(&conn)?;
+    let registered_projects = kordi_session::store::list_projects(&conn)?;
     let mut groups: std::collections::BTreeMap<String, DesktopChatProjectGroup> =
         std::collections::BTreeMap::new();
     let mut group_sort_keys = std::collections::HashMap::<String, i64>::new();
     let mut session_sort_keys = std::collections::HashMap::<String, i64>::new();
+
+    for project in registered_projects {
+        let project_root = std::path::PathBuf::from(project.root.trim());
+        let group_id = project_group_id(&project_root);
+        groups
+            .entry(group_id.clone())
+            .or_insert_with(|| project_group_from_root(&project_root, project.name.as_deref()));
+        group_sort_keys
+            .entry(group_id)
+            .or_insert_with(|| parse_db_timestamp_millis(&project.updated_at).unwrap_or_default());
+    }
 
     for row in rows {
         if row.session_scope != "project" {
@@ -788,49 +921,12 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
         let sort_ts = session_sort_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
         let project_root = std::path::PathBuf::from(project_root_value);
-        let group_id = format!("project:{}", project_root.display());
-        let settings = Settings::load_project(&project_root);
-        let project_name = settings
-            .project_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .or_else(|| {
-                project_root
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .map(ToString::to_string)
-            })
-            .unwrap_or_else(|| "Project".to_string());
-        let summary = settings
-            .project_context
-            .clone()
-            .or_else(|| settings.project_system_prompt.clone())
-            .unwrap_or_else(|| project_root.display().to_string());
-        let background_system = settings.project_system_prompt.clone();
-        let shared_sources = settings
-            .project_shared_sources
-            .iter()
-            .map(|source| DesktopChatProjectSource {
-                label: source.label.clone(),
-                path: source.path.clone(),
-                detail: source.detail.clone(),
-            })
-            .collect::<Vec<_>>();
+        let group_id = project_group_id(&project_root);
         let summary_row = session_summary_from_row(&conn, row)?;
 
         let entry = groups
             .entry(group_id.clone())
-            .or_insert_with(|| DesktopChatProjectGroup {
-                id: group_id.clone(),
-                name: project_name,
-                root: project_root.display().to_string(),
-                summary,
-                background_system,
-                shared_sources,
-                sessions: Vec::new(),
-            });
+            .or_insert_with(|| project_group_from_root(&project_root, None));
         entry.sessions.push(summary_row);
         session_sort_keys.insert(session_id, sort_ts);
         group_sort_keys
@@ -888,6 +984,8 @@ pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path)
         bail!("Session not found: {session_id}");
     };
     let project_root_str = project_root.display().to_string();
+    let group_id = project_group_id(project_root);
+    kordi_session::store::upsert_project(&conn, &group_id, &project_root_str, None)?;
     kordi_session::store::update_session_scope(
         &conn,
         session_id,
@@ -1095,23 +1193,12 @@ fn maybe_name_session_from_prompt(
     let Some(row) = kordi_session::store::get_session(conn, session_id)? else {
         return Ok(());
     };
-    if row
-        .name
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
+    if session_row_display_name(&row).is_some() {
         return Ok(());
     }
 
-    let title = prompt
-        .split_whitespace()
-        .take(8)
-        .collect::<Vec<_>>()
-        .join(" ");
-    let title = if title.is_empty() {
-        format!("Session {}", short_session_id(session_id))
-    } else {
-        truncate_chars(&title, 60)
+    let Some(title) = session_title_from_seed(prompt) else {
+        return Ok(());
     };
     kordi_session::store::set_session_name(conn, session_id, Some(&title))?;
     Ok(())
@@ -1359,17 +1446,13 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
         Vec::new()
     };
 
-    let title = session_row
-        .as_ref()
-        .and_then(|row| row.name.clone())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| {
-            if messages.is_empty() {
-                "New session".to_string()
-            } else {
-                format!("Session {}", short_session_id(&setup.session_id))
-            }
-        });
+    let title = if let Some(row) = session_row.as_ref() {
+        repair_session_title_from_history(&setup.conn, row)?
+            .or_else(|| session_title_from_messages(&messages))
+            .unwrap_or_else(|| "New session".to_string())
+    } else {
+        "New session".to_string()
+    };
     let subtitle = session_focus_subtitle(&messages).unwrap_or_default();
     let updated_at_label = session_row
         .as_ref()
@@ -2331,6 +2414,41 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+
+    #[test]
+    fn session_title_seed_matches_chat_title_rules() {
+        assert_eq!(
+            session_title_from_seed(
+                "  plan the project session naming behavior with enough extra words  "
+            )
+            .as_deref(),
+            Some("plan the project session naming behavior with enough")
+        );
+        assert_eq!(session_title_from_seed("   "), None);
+    }
+
+    #[test]
+    fn placeholder_session_names_are_not_real_titles() {
+        let row = kordi_session::store::SessionRow {
+            session_id: "abcdef12-3456".to_string(),
+            cwd: "/tmp/kordi".to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            name: Some("Session abcdef12".to_string()),
+            leaf_id: None,
+            entry_count: 0,
+            parent_session_id: None,
+            session_scope: "project".to_string(),
+            project_root: Some("/tmp/project".to_string()),
+        };
+        assert_eq!(session_row_display_name(&row), None);
+
+        let row = kordi_session::store::SessionRow {
+            name: Some("New session".to_string()),
+            ..row
+        };
+        assert_eq!(session_row_display_name(&row), None);
+    }
 
     #[test]
     fn load_session_messages_preserves_failed_assistant_error() -> Result<()> {

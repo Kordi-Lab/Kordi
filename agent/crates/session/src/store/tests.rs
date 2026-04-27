@@ -139,6 +139,18 @@ fn test_session_scope_filters_chat_list_and_delete_removes_rows() {
         Some("/tmp/project"),
     )
     .unwrap();
+    upsert_project(
+        &conn,
+        "project:/tmp/project",
+        "/tmp/project",
+        Some("Test Project"),
+    )
+    .unwrap();
+
+    let projects = list_projects(&conn).unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].root, "/tmp/project");
+    assert_eq!(projects[0].name.as_deref(), Some("Test Project"));
 
     let sessions = list_sessions(&conn, "/tmp/test").unwrap();
     assert_eq!(sessions.len(), 1);

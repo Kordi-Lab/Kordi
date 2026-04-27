@@ -47,7 +47,6 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             void args.handleCreateProjectBridgeInvite();
           }}
           onOpenBridgeHosts={() => args.setActiveNav('bridge')}
-          onOpenProjectSettings={args.openProjectSettings}
           onSetTasksTab={() => args.setActiveDetailTab('tasks')}
           getStatusBadgeClass={args.getStatusBadgeClass}
           artifacts={args.activeProjectArtifacts}

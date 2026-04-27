@@ -25,14 +25,13 @@ export function useWorkspaceController({
   const latestProjectSelectionRef = useRef<{ projectId: string; sessionId: string } | null>(null);
 
   const selectProject = useCallback((projectId: string, sessionId?: string) => {
+    const nextSessionId = sessionId ?? '';
     latestProjectSelectionRef.current = {
       projectId,
-      sessionId: sessionId ?? '',
+      sessionId: nextSessionId,
     };
     setActiveProjectId(projectId);
-    if (sessionId) {
-      setActiveProjectSessionId(sessionId);
-    }
+    setActiveProjectSessionId(nextSessionId);
   }, []);
 
   const selectProjectSession = useCallback((projectId: string, sessionId: string) => {

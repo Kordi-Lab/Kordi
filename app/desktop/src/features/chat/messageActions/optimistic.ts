@@ -68,40 +68,63 @@ export function appendOptimisticOutboundMessage(
   };
 
   const activeSessionMatches = current.activeSession.id === targetSessionId;
+  const activeProjectRoot = activeSessionMatches ? current.activeSession.project?.root?.trim() : undefined;
   const existingSummary = current.sessions.find((session) => session.id === targetSessionId);
+  const existingProject = current.projects.find((project) => project.sessions.some((session) => session.id === targetSessionId));
+  const existingProjectSummary = existingProject?.sessions.find((session) => session.id === targetSessionId);
+  const isProjectSession = Boolean(activeProjectRoot || existingProjectSummary);
   const nextMessageCount = activeSessionMatches
     ? current.activeSession.messageCount + 1
-    : (existingSummary?.messageCount ?? 0) + 1;
+    : (existingSummary?.messageCount ?? existingProjectSummary?.messageCount ?? 0) + 1;
   const baselineTitle = activeSessionMatches
     ? current.activeSession.title
-    : existingSummary?.title ?? 'New session';
+    : existingSummary?.title ?? existingProjectSummary?.title ?? 'New session';
   const nextTitle = baselineTitle.trim() === 'New session'
     ? optimisticSessionTitleFromMessage(messageText, attachments, baselineTitle)
     : baselineTitle;
-  const nextSessions = current.sessions.some((session) => session.id === targetSessionId)
-    ? current.sessions.map((session) =>
-        session.id === targetSessionId
-          ? {
-              ...session,
-              subtitle: previewText,
-              updatedAtLabel: sentAt,
-              messageCount: nextMessageCount,
-              draft: false,
-            }
-          : session,
-      )
-    : [{
-        id: targetSessionId,
-        title: nextTitle,
-        subtitle: previewText,
-        updatedAtLabel: sentAt,
-        messageCount: nextMessageCount,
-        draft: false,
-      }, ...current.sessions];
+  const optimisticSummary = {
+    id: targetSessionId,
+    title: nextTitle,
+    subtitle: previewText,
+    updatedAtLabel: sentAt,
+    messageCount: nextMessageCount,
+    draft: false,
+  };
+  const nextSessions = isProjectSession
+    ? current.sessions.filter((session) => session.id !== targetSessionId)
+    : current.sessions.some((session) => session.id === targetSessionId)
+      ? current.sessions.map((session) =>
+          session.id === targetSessionId
+            ? {
+                ...session,
+                ...optimisticSummary,
+              }
+            : session,
+        )
+      : [optimisticSummary, ...current.sessions];
+  const nextProjects = !isProjectSession
+    ? current.projects
+    : current.projects.map((project) => {
+        const projectMatches = project.sessions.some((session) => session.id === targetSessionId)
+          || Boolean(activeProjectRoot && project.root === activeProjectRoot);
+        if (!projectMatches) return project;
+        const sessions = project.sessions.some((session) => session.id === targetSessionId)
+          ? project.sessions.map((session) => (
+              session.id === targetSessionId
+                ? {
+                    ...session,
+                    ...optimisticSummary,
+                  }
+                : session
+            ))
+          : [optimisticSummary, ...project.sessions];
+        return { ...project, sessions };
+      });
 
   return {
     ...current,
     sessions: nextSessions,
+    projects: nextProjects,
     activeSession:
       activeSessionMatches
         ? {

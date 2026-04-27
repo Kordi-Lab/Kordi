@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -91,6 +91,24 @@ pub struct DesktopChatArtifactPreview {
     pub truncated: bool,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopArtifactDirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub is_directory: bool,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopArtifactDirectory {
+    pub path: String,
+    pub parent_path: Option<String>,
+    pub entries: Vec<DesktopArtifactDirectoryEntry>,
+}
+
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
 }
@@ -139,17 +157,113 @@ fn attachment_storage_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn resolve_artifact_preview_path(raw_path: &str) -> Result<PathBuf, String> {
+fn artifact_base_path(base_root: Option<&str>) -> Result<PathBuf, String> {
+    base_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(expand_home_project_path)
+        .map(Ok)
+        .unwrap_or_else(chat_cwd)
+}
+
+fn project_root_is_set(base_root: Option<&str>) -> bool {
+    base_root
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir | Component::Normal(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn ensure_artifact_path_within_base(
+    resolved_path: PathBuf,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
+    if !project_root_is_set(base_root) {
+        return Ok(resolved_path);
+    }
+
+    let base_path = artifact_base_path(base_root)?;
+    let base_path =
+        std::fs::canonicalize(&base_path).unwrap_or_else(|_| normalize_path_lexically(&base_path));
+    let canonical_path = std::fs::canonicalize(&resolved_path)
+        .unwrap_or_else(|_| normalize_path_lexically(&resolved_path));
+    if !canonical_path.starts_with(&base_path) {
+        return Err(format!(
+            "Artifact path is outside the project root: {}",
+            resolved_path.display()
+        ));
+    }
+
+    Ok(resolved_path)
+}
+
+fn resolve_artifact_preview_path(
+    raw_path: &str,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
     let trimmed = raw_path.trim();
     if trimmed.is_empty() {
         return Err("Artifact path is required".to_string());
     }
 
-    let candidate = PathBuf::from(trimmed);
+    let candidate = expand_home_project_path(trimmed);
+    let resolved_path = if candidate.is_absolute() {
+        candidate
+    } else {
+        artifact_base_path(base_root)?.join(candidate)
+    };
+
+    ensure_artifact_path_within_base(resolved_path, base_root)
+}
+
+fn resolve_artifact_directory_path(
+    raw_path: Option<&str>,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
+    let base = artifact_base_path(base_root)?;
+    let Some(trimmed) = raw_path.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(base);
+    };
+
+    let candidate = expand_home_project_path(trimmed);
     if candidate.is_absolute() {
         Ok(candidate)
     } else {
-        Ok(chat_cwd()?.join(candidate))
+        Ok(base.join(candidate))
+    }
+}
+
+fn artifact_file_kind(path: &Path) -> &'static str {
+    let Some(extension) = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_lowercase)
+    else {
+        return "file";
+    };
+    match extension.as_str() {
+        "c" | "cc" | "cpp" | "cs" | "css" | "go" | "h" | "hpp" | "html" | "java" | "js"
+        | "json" | "jsx" | "kt" | "mjs" | "php" | "py" | "rb" | "rs" | "scss" | "sh" | "sql"
+        | "swift" | "toml" | "ts" | "tsx" | "vue" | "xml" | "yaml" | "yml" => "code",
+        "adoc" | "csv" | "ipynb" | "markdown" | "md" | "mdx" | "pdf" | "rst" | "rtf" | "txt" => {
+            "document"
+        }
+        _ => "file",
     }
 }
 
@@ -252,15 +366,10 @@ fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
 fn filter_blank_draft_projects(
     projects: Vec<DesktopChatProjectGroup>,
 ) -> Vec<DesktopChatProjectGroup> {
+    // Project creation itself is explicit, and the Projects page can now create an
+    // empty project session before the first message. Keep those draft project
+    // rows visible so a user-created project session does not become an orphan.
     projects
-        .into_iter()
-        .map(|mut project| {
-            project
-                .sessions
-                .retain(|session| !is_blank_draft_summary(session));
-            project
-        })
-        .collect()
 }
 
 async fn ensure_transient_draft_runtime(
@@ -747,12 +856,22 @@ pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Resul
 #[tauri::command]
 pub async fn desktop_chat_artifact_preview(
     path: String,
+    base_root: Option<String>,
 ) -> Result<DesktopChatArtifactPreview, String> {
     const MAX_PREVIEW_BYTES: usize = 64 * 1024;
     const MAX_PREVIEW_LINES: usize = 400;
 
-    let resolved_path = resolve_artifact_preview_path(&path)?;
-    let bytes = std::fs::read(&resolved_path).map_err(|err| err.to_string())?;
+    let resolved_path = resolve_artifact_preview_path(&path, base_root.as_deref())?;
+    let bytes = std::fs::read(&resolved_path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            format!("Artifact file not found: {}", resolved_path.display())
+        } else {
+            format!(
+                "Unable to read artifact preview for {}: {err}",
+                resolved_path.display()
+            )
+        }
+    })?;
     let mut truncated = bytes.len() > MAX_PREVIEW_BYTES;
     let preview_bytes = if truncated {
         &bytes[..MAX_PREVIEW_BYTES]
@@ -790,6 +909,89 @@ pub async fn desktop_chat_artifact_preview(
 }
 
 #[tauri::command]
+pub async fn desktop_chat_artifact_directory(
+    path: Option<String>,
+    base_root: Option<String>,
+) -> Result<DesktopArtifactDirectory, String> {
+    const MAX_DIRECTORY_ENTRIES: usize = 500;
+
+    let requested_path = resolve_artifact_directory_path(path.as_deref(), base_root.as_deref())?;
+    let directory_path = if requested_path.is_file() {
+        requested_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "Artifact file has no parent folder".to_string())?
+    } else {
+        requested_path
+    };
+    if !directory_path.exists() {
+        return Err(format!("Folder not found: {}", directory_path.display()));
+    }
+    if !directory_path.is_dir() {
+        return Err(format!(
+            "Path is not a folder: {}",
+            directory_path.display()
+        ));
+    }
+
+    let directory_path = std::fs::canonicalize(&directory_path).unwrap_or(directory_path);
+    let base_path = artifact_base_path(base_root.as_deref())?;
+    let base_path = std::fs::canonicalize(&base_path).unwrap_or(base_path);
+    let has_project_root = project_root_is_set(base_root.as_deref());
+    if has_project_root && !directory_path.starts_with(&base_path) {
+        return Err(format!(
+            "Folder is outside the project root: {}",
+            directory_path.display()
+        ));
+    }
+    let parent_path = directory_path.parent().and_then(|parent| {
+        if directory_path == base_path || !parent.starts_with(&base_path) {
+            None
+        } else {
+            Some(parent.display().to_string())
+        }
+    });
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&directory_path).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let entry_path = entry.path();
+        let name = entry.file_name().to_string_lossy().trim().to_string();
+        if name.is_empty() || name == ".DS_Store" {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|err| err.to_string())?;
+        let is_directory = metadata.is_dir();
+        entries.push(DesktopArtifactDirectoryEntry {
+            name,
+            path: entry_path.display().to_string(),
+            kind: if is_directory {
+                "directory"
+            } else {
+                artifact_file_kind(&entry_path)
+            }
+            .to_string(),
+            is_directory,
+            size_bytes: (!is_directory).then_some(metadata.len()),
+        });
+    }
+
+    entries.sort_by(|left, right| {
+        right
+            .is_directory
+            .cmp(&left.is_directory)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    entries.truncate(MAX_DIRECTORY_ENTRIES);
+
+    Ok(DesktopArtifactDirectory {
+        path: directory_path.display().to_string(),
+        parent_path,
+        entries,
+    })
+}
+
+#[tauri::command]
 pub async fn desktop_chat_state(
     manager: State<'_, DesktopChatManager>,
     active_session_id: Option<String>,
@@ -805,6 +1007,45 @@ pub async fn desktop_chat_new_session(
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     let session_id = materialize_transient_draft_runtime(&manager, &cwd).await?;
+    build_chat_state(&manager, &cwd, session_id).await
+}
+
+#[tauri::command]
+pub async fn desktop_chat_new_project_session(
+    manager: State<'_, DesktopChatManager>,
+    project_root: String,
+    title: Option<String>,
+) -> Result<DesktopChatState, String> {
+    let cwd = chat_cwd()?;
+    let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
+    kordi_cli::desktop_runtime::register_project(&resolved_project_root, None)
+        .map_err(|err| err.to_string())?;
+
+    let mut runtime = DesktopRuntimeSession::create_new(resolved_project_root.clone())
+        .await
+        .map_err(|err| err.to_string())?;
+    runtime
+        .materialize_session()
+        .map_err(|err| err.to_string())?;
+    if let Some(title) = title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        runtime.set_name(title).map_err(|err| err.to_string())?;
+    }
+    let session_id = runtime.session_id().to_string();
+    kordi_cli::desktop_runtime::move_session_to_project(&session_id, &resolved_project_root)
+        .map_err(|err| err.to_string())?;
+
+    {
+        let mut sessions = manager.sessions.lock().await;
+        sessions.insert(
+            session_id.clone(),
+            Arc::new(tokio::sync::Mutex::new(runtime)),
+        );
+    }
+
     build_chat_state(&manager, &cwd, session_id).await
 }
 
@@ -918,6 +1159,21 @@ fn resolve_session_action_fallback_target(
     Ok(next_chat_session_id.unwrap_or_else(|| TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string()))
 }
 
+fn expand_home_project_path(raw_path: &str) -> std::path::PathBuf {
+    if raw_path == "~" {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(raw_path));
+    }
+    if let Some(rest) = raw_path.strip_prefix("~/") {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| std::path::PathBuf::from(raw_path));
+    }
+    std::path::PathBuf::from(raw_path)
+}
+
 fn resolve_project_root_input(
     cwd: &std::path::Path,
     raw_project_root: &str,
@@ -927,7 +1183,7 @@ fn resolve_project_root_input(
         return Err("Project folder is required".to_string());
     }
 
-    let candidate = std::path::PathBuf::from(trimmed);
+    let candidate = expand_home_project_path(trimmed);
     let resolved = if candidate.is_absolute() {
         candidate
     } else {
@@ -1024,6 +1280,8 @@ pub async fn desktop_chat_move_session_to_project(
     }
 
     let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
+    kordi_cli::desktop_runtime::register_project(&resolved_project_root, None)
+        .map_err(|err| err.to_string())?;
     manager.sessions.lock().await.remove(&target.id);
     kordi_cli::desktop_runtime::move_session_to_project(&target.id, &resolved_project_root)
         .map_err(|err| err.to_string())?;

@@ -34,6 +34,16 @@ pub struct SessionRow {
     pub project_root: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectRow {
+    pub project_id: String,
+    pub root: String,
+    pub name: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForkSessionResult {
     pub session_id: String,
@@ -104,6 +114,19 @@ pub fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionRow>> {
 
 pub fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
     queries::list_all_sessions(conn)
+}
+
+pub fn list_projects(conn: &Connection) -> Result<Vec<ProjectRow>> {
+    queries::list_projects(conn)
+}
+
+pub fn upsert_project(
+    conn: &Connection,
+    project_id: &str,
+    root: &str,
+    name: Option<&str>,
+) -> Result<()> {
+    writes::upsert_project(conn, project_id, root, name)
 }
 
 pub fn get_last_message_timestamp(conn: &Connection, session_id: &str) -> Result<Option<String>> {

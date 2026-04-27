@@ -193,3 +193,128 @@ export function MoveSessionDialog({
     </div>
   );
 }
+
+type ProjectCreateDialogProps = {
+  onCancel: () => void;
+  onCreateFromFolder: (folderPath: string, name?: string) => Promise<void> | void;
+  onCreateNew: (name: string, parentDir?: string) => Promise<void> | void;
+};
+
+export function ProjectCreateDialog({
+  onCancel,
+  onCreateFromFolder,
+  onCreateNew,
+}: ProjectCreateDialogProps) {
+  const [mode, setMode] = useState<'folder' | 'new'>('folder');
+  const [folderPath, setFolderPath] = useState('');
+  const [folderName, setFolderName] = useState('');
+  const [newName, setNewName] = useState('');
+  const [parentDir, setParentDir] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = async () => {
+    try {
+      setError(null);
+      setIsSubmitting(true);
+      await (mode === 'folder'
+        ? onCreateFromFolder(folderPath.trim(), folderName.trim() || undefined)
+        : onCreateNew(newName.trim(), parentDir.trim() || undefined));
+      onCancel();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to create project');
+      setIsSubmitting(false);
+    }
+  };
+
+  const canSubmit = mode === 'folder' ? folderPath.trim().length > 0 : newName.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
+      <div className="app-modal-panel w-full max-w-xl rounded-[28px] border border-[color:var(--app-divider)] p-5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="text-[16px] font-semibold">Create project</div>
+        <div className="mt-2 text-[13px] leading-6 text-[color:var(--utility-muted-text)]">
+          Projects group sessions by a shared local folder. Every session under a project uses the same project context and settings.
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--app-control-bg)] p-1">
+          <button
+            type="button"
+            onClick={() => setMode('folder')}
+            className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'folder' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
+          >
+            From local folder
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('new')}
+            className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'new' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
+          >
+            New folder
+          </button>
+        </div>
+
+        {mode === 'folder' ? (
+          <div className="mt-4 space-y-3">
+            <label className="block">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Folder path</span>
+              <input
+                value={folderPath}
+                onChange={(event) => setFolderPath(event.target.value)}
+                placeholder="/Users/you/work/project"
+                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+              />
+              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Use a folder path without spaces.</span>
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Display name optional</span>
+              <input
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+                placeholder="Use folder name"
+                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+              />
+            </label>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <label className="block">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Project name</span>
+              <input
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="Website refresh"
+                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Parent folder optional</span>
+              <input
+                value={parentDir}
+                onChange={(event) => setParentDir(event.target.value)}
+                placeholder="Defaults to ~/KordiProjects"
+                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+              />
+              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Kordi-created project paths cannot contain spaces.</span>
+            </label>
+          </div>
+        )}
+
+        {error ? <div className="mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
+
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+          <Button
+            className="rounded-full px-4"
+            disabled={!canSubmit || isSubmitting}
+            onClick={() => {
+              void submit();
+            }}
+          >
+            {isSubmitting ? 'Creating…' : 'Create project'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

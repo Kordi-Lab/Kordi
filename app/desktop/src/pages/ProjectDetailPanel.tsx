@@ -51,7 +51,6 @@ type ProjectDetailPanelProps = {
   bridgeInvite: DesktopBridgeInvite | null;
   onCreateProjectBridgeInvite: () => void;
   onOpenBridgeHosts: () => void;
-  onOpenProjectSettings: () => void;
   onSetTasksTab: () => void;
   getStatusBadgeClass: (value: string) => string;
   artifacts: SessionArtifact[];
@@ -83,6 +82,53 @@ function EmphasisBlock({ title, children, className = '' }: { title?: string; ch
   );
 }
 
+function projectFileKind(path: string): SessionArtifact['kind'] {
+  const extension = path.split('.').pop()?.trim().toLowerCase();
+  if (!extension) return 'file';
+  if (['c', 'cc', 'cpp', 'cs', 'css', 'go', 'h', 'hpp', 'html', 'java', 'js', 'json', 'jsx', 'kt', 'mjs', 'php', 'py', 'rb', 'rs', 'scss', 'sh', 'sql', 'swift', 'toml', 'ts', 'tsx', 'vue', 'xml', 'yaml', 'yml'].includes(extension)) return 'code';
+  if (['adoc', 'csv', 'ipynb', 'markdown', 'md', 'mdx', 'pdf', 'rst', 'rtf', 'txt'].includes(extension)) return 'document';
+  return 'file';
+}
+
+function relatedProjectArtifacts(project: ProjectWorkspace): SessionArtifact[] {
+  const artifacts: SessionArtifact[] = [];
+  const seenPaths = new Set<string>();
+  const pushFile = (path: string, name: string, summary: string) => {
+    const normalizedPath = path.trim();
+    if (!normalizedPath || seenPaths.has(normalizedPath)) return;
+    seenPaths.add(normalizedPath);
+    artifacts.push({
+      id: normalizedPath,
+      path: normalizedPath,
+      name,
+      kind: projectFileKind(normalizedPath),
+      summary,
+      timeLabel: 'Related',
+    });
+  };
+
+  for (const source of project.sharedSources ?? []) {
+    if (!source.path?.trim()) continue;
+    const name = source.label?.trim() || source.path.split('/').pop() || source.path;
+    pushFile(source.path, name, source.detail?.trim() || 'Shared source for this project');
+  }
+
+  return artifacts;
+}
+
+function mergeArtifacts(primary: SessionArtifact[], related: SessionArtifact[]) {
+  const byId = new Map<string, SessionArtifact>();
+  for (const artifact of primary) {
+    byId.set(artifact.id, artifact);
+  }
+  for (const artifact of related) {
+    if (!byId.has(artifact.id)) {
+      byId.set(artifact.id, artifact);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 export function ProjectDetailPanel({
   isNativeShell,
   activeDetailTab,
@@ -95,7 +141,6 @@ export function ProjectDetailPanel({
   bridgeInvite,
   onCreateProjectBridgeInvite,
   onOpenBridgeHosts,
-  onOpenProjectSettings,
   onSetTasksTab,
   getStatusBadgeClass,
   artifacts,
@@ -104,6 +149,7 @@ export function ProjectDetailPanel({
 }: ProjectDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
+  const projectArtifacts = mergeArtifacts(artifacts, relatedProjectArtifacts(activeProject));
 
   if (activeDetailTab === 'info') {
     return (
@@ -115,11 +161,6 @@ export function ProjectDetailPanel({
               <div className="app-inspector-text-block">{activeProject.sharedContext ?? activeProject.summary}</div>
               {activeProject.backgroundSystem ? <div className="mt-2 app-inspector-subtext">{activeProject.backgroundSystem}</div> : null}
             </EmphasisBlock>
-            <div className="app-inspector-actions">
-              <Button variant="secondary" className="justify-start rounded-[14px] border-0 px-3 py-2 text-[12px]" onClick={onOpenProjectSettings}>
-                Edit project info
-              </Button>
-            </div>
             <div className="app-inspector-inline-meta">
               <span><strong>Shared sources:</strong>&nbsp;{activeProject.sharedSources?.length ?? 0}</span>
               {activeProject.root ? <span className="min-w-0"><strong>Root:</strong>&nbsp;<span className="truncate">{activeProject.root}</span></span> : null}
@@ -271,10 +312,12 @@ export function ProjectDetailPanel({
       <div className="app-detail-sheet">
         <ArtifactInspector
           isNativeShell={isNativeShell}
-          artifacts={artifacts}
+          artifacts={projectArtifacts}
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
-          emptyMessage="No generated code or docs in this project session yet."
+          previewBaseRoot={activeProject.root}
+          folderBrowserRoot={activeProject.root}
+          emptyMessage="No generated or related project files yet."
           footer={
             <section className="app-detail-section">
               <div className="app-detail-kicker">Shared information sources</div>

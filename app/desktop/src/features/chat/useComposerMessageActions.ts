@@ -29,6 +29,8 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeConvBridgeTarget'
   | 'activeProjectId'
   | 'activeProjectSessionId'
+  | 'activeProjectRoot'
+  | 'selectProjectSession'
   | 'desktopChatState'
   | 'desktopBridgeState'
   | 'canonicalHumanIdentityId'
@@ -77,6 +79,8 @@ export function useComposerMessageActions({
   activeConvBridgeTarget,
   activeProjectId,
   activeProjectSessionId,
+  activeProjectRoot,
+  selectProjectSession,
   desktopChatState,
   desktopBridgeState,
   canonicalHumanIdentityId,
@@ -213,6 +217,8 @@ export function useComposerMessageActions({
     activeConvMessages,
     activeProjectId,
     activeProjectSessionId,
+    activeProjectRoot,
+    selectProjectSession,
     appendProjectDraft,
     attachmentSummaryText,
     canonicalHumanIdentityId,

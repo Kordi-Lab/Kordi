@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
   MoveSessionDialog,
+  ProjectCreateDialog,
   SessionContextMenu,
   type SessionActionTarget,
   type SessionContextMenuTarget,
@@ -115,6 +116,8 @@ type WorkspaceSidebarProps = {
   onArchiveChatSession: (sessionId: string) => void;
   onDeleteChatSession: (sessionId: string) => void;
   onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
+  onCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void> | void;
+  onCreateProject: (name: string, parentDir?: string) => Promise<void> | void;
   runtimeProjects: ProjectItem[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;
@@ -248,6 +251,8 @@ export function WorkspaceSidebar({
   onArchiveChatSession,
   onDeleteChatSession,
   onMoveChatSessionToProject,
+  onCreateProjectFromFolder,
+  onCreateProject,
   runtimeProjects,
   projectSearch,
   setProjectSearch,
@@ -275,6 +280,7 @@ export function WorkspaceSidebar({
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
+  const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
 
   useEffect(() => {
@@ -488,7 +494,15 @@ export function WorkspaceSidebar({
                       <div className="text-[15px] font-semibold text-white">Projects</div>
                       <div className="mt-0.5 text-[11px] text-slate-400">{runtimeProjects.length} workspaces with shared context and sessions</div>
                     </div>
-                    <Button size="icon" variant="secondary" className="app-icon-button h-8 w-8 rounded-lg border-0">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="secondary"
+                      className="app-icon-button h-8 w-8 rounded-lg border-0"
+                      title="Create project"
+                      aria-label="Create project"
+                      onClick={() => setIsCreateProjectDialogOpen(true)}
+                    >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -572,6 +586,9 @@ export function WorkspaceSidebar({
                                               {session.summary}
                                             </div>
                                           ) : null}
+                                          <div className={cn('mt-px truncate font-mono text-[10px] leading-[0.95rem]', isActiveSession ? 'text-slate-400' : 'text-slate-600')} title={session.id}>
+                                            id {session.id}
+                                          </div>
                                         </div>
                                       </button>
                                     );
@@ -749,6 +766,14 @@ export function WorkspaceSidebar({
           projects={runtimeProjects}
           onCancel={closeSessionDialogs}
           onMoveToProject={onMoveChatSessionToProject}
+        />
+      ) : null}
+
+      {isCreateProjectDialogOpen ? (
+        <ProjectCreateDialog
+          onCancel={() => setIsCreateProjectDialogOpen(false)}
+          onCreateFromFolder={onCreateProjectFromFolder}
+          onCreateNew={onCreateProject}
         />
       ) : null}
     </>

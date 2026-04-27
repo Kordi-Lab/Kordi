@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Braces, FileText, FolderOpen, LoaderCircle } from 'lucide-react';
+import { Braces, ChevronLeft, FileText, FolderOpen, LoaderCircle } from 'lucide-react';
 
-import type { DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
-import { fetchDesktopChatArtifactPreview } from '@/lib/desktop';
+import { MarkdownCodeBlock } from '@/kordi-app/components';
+import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
+import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
 type ArtifactInspectorProps = {
@@ -11,6 +12,8 @@ type ArtifactInspectorProps = {
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
   emptyMessage: string;
+  previewBaseRoot?: string | null;
+  folderBrowserRoot?: string | null;
   footer?: ReactNode;
 };
 
@@ -20,23 +23,67 @@ function artifactIcon(kind: SessionArtifact['kind']) {
   return FolderOpen;
 }
 
+function languageFromPath(path: string) {
+  const extension = path.split('.').pop()?.trim().toLowerCase();
+  if (!extension) return 'text';
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) return 'javascript';
+  if (['ts', 'tsx'].includes(extension)) return 'typescript';
+  if (['sh', 'zsh', 'bash'].includes(extension)) return 'bash';
+  if (extension === 'rs') return 'rust';
+  if (['yaml', 'yml'].includes(extension)) return 'yaml';
+  if (extension === 'md') return 'markdown';
+  return extension;
+}
+
 function renderPreview(preview: DesktopArtifactPreview) {
   if (preview.lines.length === 0) {
     return <div className="px-4 py-4 text-[12px] text-slate-400">This artifact is empty.</div>;
   }
 
+  const source = preview.lines.map((line) => line.text).join('\n');
   return (
-    <div className="font-mono text-[12px] leading-7">
-      {preview.lines.map((line) => (
-        <div key={`${preview.path}-${line.number}`} className="grid grid-cols-[56px_minmax(0,1fr)] px-4">
-          <div className="select-none pr-3 text-right text-slate-500">{line.number}</div>
-          <code className="block min-w-0 overflow-hidden text-ellipsis whitespace-pre-wrap break-words text-slate-200">
-            {line.text}
-          </code>
-        </div>
-      ))}
+    <div className="p-3">
+      <MarkdownCodeBlock
+        language={languageFromPath(preview.path)}
+        code={source}
+        maxHeightClass="max-h-[32rem]"
+        wrapLines
+      />
     </div>
   );
+}
+
+function previewErrorCopy(error: string, artifact: SessionArtifact | null) {
+  const missing = /not found|no such file|os error 2/i.test(error);
+  if (!missing) {
+    return {
+      title: 'Unable to preview this file',
+      description: error,
+    };
+  }
+
+  return {
+    title: 'File is not on disk yet',
+    description: 'Kordi tracked this related path from the project/session, but the file does not currently exist. It may have been moved, deleted, or not created by the agent yet.',
+  };
+}
+
+function formatFileSize(value?: number | null) {
+  if (!value) return 'File';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function artifactFromDirectoryEntry(entry: DesktopArtifactDirectoryEntry): SessionArtifact {
+  return {
+    id: `folder:${entry.path}`,
+    path: entry.path,
+    name: entry.name,
+    kind: entry.kind === 'directory' ? 'file' : entry.kind,
+    summary: `Project folder file • ${formatFileSize(entry.sizeBytes)}`,
+    timeLabel: 'Folder',
+  };
 }
 
 export function ArtifactInspector({
@@ -45,20 +92,37 @@ export function ArtifactInspector({
   activeArtifactId,
   onSelectArtifact,
   emptyMessage,
+  previewBaseRoot,
+  folderBrowserRoot,
   footer,
 }: ArtifactInspectorProps) {
   const [previewCache, setPreviewCache] = useState<Record<string, DesktopArtifactPreview>>({});
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [browserPath, setBrowserPath] = useState<string | null>(null);
+  const [browserDirectory, setBrowserDirectory] = useState<DesktopArtifactDirectory | null>(null);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [isBrowserLoading, setIsBrowserLoading] = useState(false);
+  const [browserSelectedArtifact, setBrowserSelectedArtifact] = useState<SessionArtifact | null>(null);
+
+  const folderBrowserRootPath = folderBrowserRoot?.trim() ?? '';
+  const effectiveBrowserPath = useMemo(() => {
+    if (!browserPath || !folderBrowserRootPath) return browserPath;
+    return browserPath === folderBrowserRootPath || browserPath.startsWith(`${folderBrowserRootPath}/`)
+      ? browserPath
+      : null;
+  }, [browserPath, folderBrowserRootPath]);
 
   const activeArtifact = useMemo(
     () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null,
     [activeArtifactId, artifacts],
   );
-  const activePreviewKey = activeArtifact
-    ? `${activeArtifact.id}:${activeArtifact.timeLabel ?? ''}:${activeArtifact.live ? 'live' : 'ready'}`
+  const previewArtifact = browserSelectedArtifact ?? activeArtifact;
+  const activePreviewKey = previewArtifact
+    ? `${previewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
     : null;
   const cachedPreview = activePreviewKey ? previewCache[activePreviewKey] ?? null : null;
+  const previewErrorDetails = previewError ? previewErrorCopy(previewError, previewArtifact) : null;
 
   useEffect(() => {
     if (artifacts.length === 0) {
@@ -76,9 +140,46 @@ export function ArtifactInspector({
   }, [activeArtifactId, artifacts, onSelectArtifact]);
 
   useEffect(() => {
+    setBrowserPath(null);
+    setBrowserSelectedArtifact(null);
+    setBrowserDirectory(null);
+    setBrowserError(null);
+  }, [folderBrowserRootPath]);
+
+  useEffect(() => {
+    if (!folderBrowserRootPath || !isNativeShell) {
+      setBrowserDirectory(null);
+      setBrowserError(null);
+      setIsBrowserLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setBrowserError(null);
+    setIsBrowserLoading(true);
+
+    fetchDesktopChatArtifactDirectory(effectiveBrowserPath, folderBrowserRootPath)
+      .then((directory) => {
+        if (cancelled) return;
+        setBrowserDirectory(directory);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setBrowserError(error instanceof Error ? error.message : 'Unable to browse project folder');
+      })
+      .finally(() => {
+        if (!cancelled) setIsBrowserLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveBrowserPath, folderBrowserRootPath, isNativeShell]);
+
+  useEffect(() => {
     setPreviewError(null);
 
-    if (!activeArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview) {
+    if (!previewArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview) {
       setIsPreviewLoading(false);
       return;
     }
@@ -86,7 +187,7 @@ export function ArtifactInspector({
     let cancelled = false;
     setIsPreviewLoading(true);
 
-    fetchDesktopChatArtifactPreview(activeArtifact.path)
+    fetchDesktopChatArtifactPreview(previewArtifact.path, previewBaseRoot)
       .then((preview) => {
         if (cancelled) return;
         setPreviewCache((current) => ({
@@ -107,12 +208,87 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activeArtifact?.id, activeArtifact?.path, activePreviewKey, cachedPreview, isNativeShell]);
+  }, [activePreviewKey, cachedPreview, isNativeShell, previewArtifact?.id, previewArtifact?.path, previewBaseRoot]);
 
   return (
     <>
+      {folderBrowserRootPath ? (
+        <section className="app-detail-section">
+          <div className="app-detail-kicker">Project folder</div>
+          <div className="app-inspector-emphasis">
+            <div className="break-all font-mono text-[11px] text-[color:var(--utility-foreground)]">
+              {browserDirectory?.path ?? folderBrowserRootPath}
+            </div>
+            <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">
+              Browse the full project folder. Open folders to inspect their files; select a file to preview it here.
+            </div>
+          </div>
+          {isBrowserLoading ? (
+            <div className="mt-2 flex items-center gap-2 rounded-[14px] border border-[color:var(--app-divider)] px-3 py-2 text-[12px] text-[color:var(--utility-muted-text)]">
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Loading folder…
+            </div>
+          ) : browserError ? (
+            <div className="mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{browserError}</div>
+          ) : browserDirectory ? (
+            <div className="app-inspector-list mt-2">
+              {browserDirectory.parentPath ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrowserSelectedArtifact(null);
+                    setBrowserPath(browserDirectory.parentPath ?? null);
+                  }}
+                  className="app-inspector-source-row w-full text-left transition hover:bg-white/[0.02]"
+                >
+                  <div className="flex items-center gap-2 text-[12px] text-[color:var(--utility-foreground)]">
+                    <ChevronLeft className="h-3.5 w-3.5" /> Parent folder
+                  </div>
+                </button>
+              ) : null}
+              {browserDirectory.entries.length > 0 ? browserDirectory.entries.map((entry) => {
+                const Icon = entry.isDirectory ? FolderOpen : artifactIcon(entry.kind === 'directory' ? 'file' : entry.kind);
+                const isSelected = browserSelectedArtifact?.path === entry.path;
+                return (
+                  <button
+                    key={entry.path}
+                    type="button"
+                    onClick={() => {
+                      if (entry.isDirectory) {
+                        setBrowserSelectedArtifact(null);
+                        setBrowserPath(entry.path);
+                        return;
+                      }
+                      setBrowserSelectedArtifact(artifactFromDirectoryEntry(entry));
+                    }}
+                    className={cn(
+                      'app-inspector-source-row w-full text-left transition',
+                      isSelected ? 'bg-white/[0.04] ring-1 ring-white/10' : 'hover:bg-white/[0.02]',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                          <div className="min-w-0 truncate app-inspector-heading">{entry.name}</div>
+                        </div>
+                        <div className="mt-1 break-all app-inspector-subtext">{entry.path}</div>
+                      </div>
+                      <div className="shrink-0 text-[10px] text-slate-500">
+                        {entry.isDirectory ? 'Folder' : formatFileSize(entry.sizeBytes)}
+                      </div>
+                    </div>
+                  </button>
+                );
+              }) : (
+                <div className="app-inspector-empty">This folder is empty.</div>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="app-detail-section">
-        <div className="app-detail-kicker">Generated artifacts</div>
+        <div className="app-detail-kicker">Artifacts and related files</div>
         {artifacts.length > 0 ? (
           <div className="app-inspector-list">
             {artifacts.map((artifact) => {
@@ -123,7 +299,10 @@ export function ArtifactInspector({
                 <button
                   key={artifact.id}
                   type="button"
-                  onClick={() => onSelectArtifact(artifact.id)}
+                  onClick={() => {
+                    setBrowserSelectedArtifact(null);
+                    onSelectArtifact(artifact.id);
+                  }}
                   className={cn(
                     'app-inspector-source-row w-full text-left transition',
                     isActive ? 'bg-white/[0.04] ring-1 ring-white/10' : 'hover:bg-white/[0.02]',
@@ -154,20 +333,23 @@ export function ArtifactInspector({
         )}
       </section>
 
-      {activeArtifact ? (
+      {previewArtifact ? (
         <section className="app-detail-section">
           <div className="app-detail-kicker">Preview</div>
           <div className="app-code-panel overflow-hidden rounded-[20px] shadow-[var(--app-shadow-soft)]">
             <div className="app-code-toolbar border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
-              <div className="truncate">{activeArtifact.path}</div>
+              <div className="truncate">{previewArtifact.path}</div>
             </div>
             {isPreviewLoading ? (
               <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
                 <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                 Loading artifact preview…
               </div>
-            ) : previewError ? (
-              <div className="px-4 py-4 text-[12px] text-rose-200">{previewError}</div>
+            ) : previewErrorDetails ? (
+              <div className="px-4 py-4">
+                <div className="text-[13px] font-medium text-[color:var(--utility-foreground)]">{previewErrorDetails.title}</div>
+                <div className="mt-1 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{previewErrorDetails.description}</div>
+              </div>
             ) : cachedPreview ? (
               <>
                 {renderPreview(cachedPreview)}
