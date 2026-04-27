@@ -13,21 +13,18 @@ import {
   createDesktopChatSession,
   fetchDesktopChatTurnState,
   openDesktopBridgeConversation,
-  runDesktopChatSkillCommand,
   sendDesktopBridgeMessage,
   startDesktopChatMessage,
 } from '@/lib/desktop';
 
 import {
-  desktopHotkeyHelpText,
-  desktopSlashHelpText,
   formatDesktopEventTime,
-  isSharedLocalSlashCommand,
   resizeComposerTextarea,
 } from './composerController.shared';
 import type { AttachmentItem, UseComposerControllerArgs } from './composerController.types';
 import { isLocalDraftChatConversationId } from './draftSessions';
 import {
+  appendDesktopSystemMessageToState,
   appendOptimisticBridgeMessage,
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
@@ -46,6 +43,7 @@ import {
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
   relaySharedSessionMessage,
+  runLocalSlashCommand,
   renderProjectContext,
   renderRecentMessageContext,
   resolveMentionedBridgeTarget,
@@ -169,120 +167,35 @@ export function useComposerMessageActions({
   }, [desktopBridgeState?.conversations, pendingBridgeOutreach, setIsDesktopChatSending]);
 
   const appendDesktopSystemMessage = useCallback((text: string) => {
-    const timeLabel = formatDesktopEventTime();
-    setDesktopChatState((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        activeSession: {
-          ...current.activeSession,
-          messages: [
-            ...current.activeSession.messages,
-            {
-              role: 'system',
-              sender: 'Kordi',
-              text,
-              timeLabel,
-              timestampMs: Date.now(),
-            },
-          ],
-        },
-      };
-    });
+    appendDesktopSystemMessageToState({ setDesktopChatState }, text);
   }, [setDesktopChatState]);
 
-  const handleLocalSlashCommand = useCallback(async (rawText: string, scope: ComposerScope = 'chat') => {
-    const text = rawText.trim();
-    const command = text.split(/\s+/, 1)[0] ?? text;
-    if (!isSharedLocalSlashCommand(command)) {
-      return false;
-    }
-
-    const args = text.slice(command.length).trim();
-
-    switch (command) {
-      case '/new':
-        await handleCreateChatSession();
-        return true;
-      case '/settings':
-        setActiveNav('settings');
-        return true;
-      case '/login':
-      case '/logout':
-        setActiveNav('settings');
-        setActiveSettingsSectionId('auth');
-        return true;
-      case '/session':
-        setIsDetailPanelCollapsed(false);
-        setActiveDetailTab('info');
-        return true;
-      case '/model': {
-        if (args) {
-          const match = chatModelOptions.find((option) => {
-            const haystack = `${option.value} ${option.label} ${option.detail ?? ''}`.toLowerCase();
-            return haystack.includes(args.toLowerCase());
-          });
-          if (match) {
-            await selectComposerValue(scope, 'model', match.value);
-            return true;
-          }
-        }
-        setOpenComposerSelector({ scope, type: 'model' });
-        return true;
-      }
-      case '/name': {
-        if (!desktopChatState?.activeSessionId && !isLocalDraftChatConversationId(activeConvId)) {
-          return true;
-        }
-        const activeSessionTitle = isLocalDraftChatConversationId(activeConvId)
-          ? 'New session'
-          : desktopChatState?.activeSession.title ?? 'New session';
-        if (args) {
-          setDesktopSessionRenameDraft(args);
-          await handleRenameDesktopSession(activeSessionTitle);
-        } else {
-          setDesktopSessionRenameDraft(activeSessionTitle);
-          setIsEditingDesktopSessionTitle(true);
-        }
-        return true;
-      }
-      case '/copy': {
-        const lastAssistant = [...activeConvMessages].reverse().find((message) => message.role === 'owned-agent');
-        if (!lastAssistant?.text?.trim()) {
-          appendDesktopSystemMessage('No assistant response available to copy yet.');
-          return true;
-        }
-        await navigator.clipboard.writeText(lastAssistant.text);
-        appendDesktopSystemMessage('Copied the latest assistant response to your clipboard.');
-        return true;
-      }
-      case '/help':
-        appendDesktopSystemMessage(desktopSlashHelpText());
-        return true;
-      case '/hotkeys':
-        appendDesktopSystemMessage(desktopHotkeyHelpText());
-        return true;
-      case '/reload':
-        await Promise.all([refreshDesktopChat(desktopChatState?.activeSessionId), refreshDesktopAuth()]);
-        appendDesktopSystemMessage('Reloaded desktop chat state, auth, and slash commands.');
-        return true;
-      case '/skill': {
-        if (!desktopChatState?.activeSessionId) return true;
-        const note = await runDesktopChatSkillCommand(desktopChatState.activeSessionId, text);
-        await refreshDesktopChat(desktopChatState.activeSessionId);
-        appendDesktopSystemMessage(note);
-        return true;
-      }
-      default:
-        appendDesktopSystemMessage(`${command} is not wired on desktop yet.`);
-        return true;
-    }
-  }, [
+  const handleLocalSlashCommand = useCallback((rawText: string, scope: ComposerScope = 'chat') => runLocalSlashCommand({
+    rawText,
+    scope,
+    activeConvId,
     activeConvMessages,
     appendDesktopSystemMessage,
     chatModelOptions,
-    desktopChatState?.activeSession.title,
-    desktopChatState?.activeSessionId,
+    desktopChatState,
+    handleCreateChatSession,
+    handleRenameDesktopSession,
+    refreshDesktopAuth,
+    refreshDesktopChat,
+    selectComposerValue,
+    setActiveDetailTab,
+    setActiveNav,
+    setActiveSettingsSectionId,
+    setDesktopSessionRenameDraft,
+    setIsDetailPanelCollapsed,
+    setIsEditingDesktopSessionTitle,
+    setOpenComposerSelector,
+  }), [
+    activeConvId,
+    activeConvMessages,
+    appendDesktopSystemMessage,
+    chatModelOptions,
+    desktopChatState,
     handleCreateChatSession,
     handleRenameDesktopSession,
     refreshDesktopAuth,
