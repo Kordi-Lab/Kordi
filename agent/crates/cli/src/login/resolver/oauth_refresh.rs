@@ -71,12 +71,14 @@ fn resolve_stored_profile_auth(
             let credential_provider = provider_storage_key(&normalized, profile.method);
             let credential = if *expires > now_ms + 60_000 {
                 access.clone()
-            } else if !refresh.is_empty() {
-                try_refresh_sync(&credential_provider, refresh.as_str())
-                    .unwrap_or_else(|| access.clone())
+            } else if !refresh.trim().is_empty() {
+                try_refresh_sync(&credential_provider, refresh.as_str())?
             } else {
-                access.clone()
+                return None;
             };
+            if credential.trim().is_empty() {
+                return None;
+            }
             Some(ResolvedProviderAuth {
                 source: AuthSource::KordiAuth,
                 credential_provider,
@@ -183,8 +185,11 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
     let store = load_auth();
     let explicit_active_profile = store.active_auth_profiles.get(&normalized).cloned();
     let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
-    if explicit_active_profile.is_none()
-        && let Some(method) = explicit_active_method
+    if let Some(profile_id) = explicit_active_profile.as_deref() {
+        let profile = stored_auth_profile_by_id(&store, &normalized, profile_id)?;
+        return resolve_stored_profile_auth(&normalized, profile);
+    }
+    if let Some(method) = explicit_active_method
         && let Some(auth) = resolve_env_provider_auth(&normalized, method)
     {
         return Some(auth);
@@ -512,7 +517,7 @@ async fn do_refresh(provider: &str, refresh_token: &str) -> Option<String> {
 mod tests {
     use super::{ResolvedProviderAuth, resolve_provider_auth, resolve_provider_auth_choice};
     use crate::login::ProviderAuthMethod;
-    use crate::login::store::{AuthEntry, AuthStore, save_auth};
+    use crate::login::store::{AuthEntry, AuthProfile, AuthStore, save_auth};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -613,6 +618,93 @@ mod tests {
         assert_eq!(resolved.method, ProviderAuthMethod::ApiKey);
         assert_eq!(resolved.credential, "env-openai-key");
         unsafe { std::env::remove_var("OPENAI_API_KEY") };
+    }
+
+    #[test]
+    fn expired_oauth_without_refresh_is_not_used() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+
+        let mut providers = HashMap::new();
+        providers.insert(
+            "anthropic-oauth".to_string(),
+            AuthEntry::OAuth {
+                access: "expired-oauth-access".to_string(),
+                refresh: String::new(),
+                expires: 1,
+                extra: serde_json::json!({}),
+            },
+        );
+        providers.insert(
+            "anthropic".to_string(),
+            AuthEntry::ApiKey {
+                key: "api-key-secret".to_string(),
+            },
+        );
+        save_auth(&AuthStore {
+            last_provider: Some("anthropic".to_string()),
+            active_auth_methods: HashMap::from([(
+                "anthropic".to_string(),
+                ProviderAuthMethod::OAuth,
+            )]),
+            providers,
+            ..AuthStore::default()
+        })
+        .expect("save auth");
+
+        let resolved = resolve_provider_auth("anthropic").expect("resolved auth");
+        assert_eq!(resolved.method, ProviderAuthMethod::ApiKey);
+        assert_eq!(resolved.credential, "api-key-secret");
+    }
+
+    #[test]
+    fn explicit_expired_oauth_profile_does_not_fall_back_to_api_key() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+
+        save_auth(&AuthStore {
+            last_provider: Some("anthropic".to_string()),
+            active_auth_methods: HashMap::from([(
+                "anthropic".to_string(),
+                ProviderAuthMethod::OAuth,
+            )]),
+            active_auth_profiles: HashMap::from([(
+                "anthropic".to_string(),
+                "anthropic-oauth-profile".to_string(),
+            )]),
+            profiles: HashMap::from([(
+                "anthropic".to_string(),
+                vec![
+                    AuthProfile {
+                        id: "anthropic-api-profile".to_string(),
+                        method: ProviderAuthMethod::ApiKey,
+                        created_at_ms: Some(10),
+                        updated_at_ms: Some(10),
+                        entry: AuthEntry::ApiKey {
+                            key: "api-key-secret".to_string(),
+                        },
+                    },
+                    AuthProfile {
+                        id: "anthropic-oauth-profile".to_string(),
+                        method: ProviderAuthMethod::OAuth,
+                        created_at_ms: Some(20),
+                        updated_at_ms: Some(20),
+                        entry: AuthEntry::OAuth {
+                            access: "expired-oauth-access".to_string(),
+                            refresh: String::new(),
+                            expires: 1,
+                            extra: serde_json::json!({}),
+                        },
+                    },
+                ],
+            )]),
+            ..AuthStore::default()
+        })
+        .expect("save auth");
+
+        assert!(resolve_provider_auth("anthropic").is_none());
     }
 
     #[test]

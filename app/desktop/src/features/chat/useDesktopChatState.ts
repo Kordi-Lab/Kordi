@@ -11,7 +11,7 @@ type UseDesktopChatStateArgs = {
 
 function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, finishedAt: string): DesktopChatMessage {
   const assistantText = turn.assistantText.trim();
-  const fallbackText = turn.error?.trim() ?? '';
+  const fallbackText = turn.error?.trim() || turn.message?.trim() || '';
 
   return {
     role: 'assistant',
@@ -20,6 +20,7 @@ function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, fi
     detail: undefined,
     timeLabel: finishedAt,
     timestampMs: Date.now(),
+    failed: !turn.succeeded && turn.status !== 'cancelled',
     thinkingText: turn.thinkingText,
     tools: turn.tools,
   };
@@ -138,6 +139,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const latestDesktopRefreshRequestRef = useRef(0);
   const visibleLocalSessionIdRef = useRef<string | null>(null);
   const desktopLiveTurnsBySessionRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
+  const watchedDesktopTurnIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedInitialDesktopChatRef = useRef(false);
 
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
@@ -401,11 +403,14 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
   const watchDesktopLiveTurn = useCallback(
     async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {
+      const turnId = typeof turnOrSnapshot === 'string' ? turnOrSnapshot : turnOrSnapshot.id;
+      if (watchedDesktopTurnIdsRef.current.has(turnId)) return;
+      watchedDesktopTurnIdsRef.current.add(turnId);
       const initialTurn = typeof turnOrSnapshot === 'string' ? null : turnOrSnapshot;
 
       try {
         let nextTurn = initialTurn ?? await fetchDesktopChatTurnState(
-          typeof turnOrSnapshot === 'string' ? turnOrSnapshot : turnOrSnapshot.id,
+          turnId,
         );
         setDesktopLiveTurnsBySession((current) => (
           liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
@@ -431,7 +436,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId
           || (!visibleSessionId && latestDesktopSessionIdRef.current === nextTurn.sessionId);
 
-        if (isVisibleCompletedSession) {
+        const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
+
+        if (isVisibleCompletedSession && !turnFailed) {
           try {
             await refreshDesktopChat(nextTurn.sessionId);
             setDesktopLiveTurnsBySession((current) => {
@@ -443,11 +450,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
             mergeCompletedDesktopTurn(nextTurn);
           }
         } else {
+          // Provider/request failures are part of the active conversation. Keep
+          // them inline in the transcript instead of promoting them to the
+          // sidebar-wide desktopChatError banner.
+          if (turnFailed) {
+            setDesktopChatError(null);
+          }
           mergeCompletedDesktopTurn(nextTurn);
-        }
-
-        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && isVisibleCompletedSession) {
-          setDesktopChatError(nextTurn.error ?? nextTurn.message);
         }
       } catch (error) {
         if (initialTurn?.sessionId) {
@@ -460,10 +469,20 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         if (!initialTurn?.sessionId || visibleLocalSessionIdRef.current === initialTurn.sessionId) {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to stream chat turn');
         }
+      } finally {
+        watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
     [mergeCompletedDesktopTurn, refreshDesktopChat],
   );
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    for (const turn of Object.values(desktopLiveTurnsBySession)) {
+      if (turn.completed || turn.id.startsWith('local-agent-starting:')) continue;
+      void watchDesktopLiveTurn(turn);
+    }
+  }, [desktopLiveTurnsBySession, isNativeShell, watchDesktopLiveTurn]);
 
   return {
     desktopChatState,

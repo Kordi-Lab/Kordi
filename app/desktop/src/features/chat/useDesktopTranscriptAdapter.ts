@@ -15,9 +15,10 @@ type UseDesktopTranscriptAdapterArgs = {
 export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopTranscriptAdapterArgs = {}) {
   const mapDesktopMessages = useCallback((sessionId: string, messages: DesktopChatMessage[]): Message[] => (
     messages.flatMap((message, index) => {
+      const failedAssistant = message.role === 'assistant' && message.failed === true;
       const hasHistoricalTurn =
         message.role === 'assistant'
-        && (((message.thinkingText ?? '').trim().length > 0) || ((message.tools?.length ?? 0) > 0));
+        && (failedAssistant || ((message.thinkingText ?? '').trim().length > 0) || ((message.tools?.length ?? 0) > 0));
       const assistantText = message.text.trim();
 
       if (message.role === 'assistant' && !hasHistoricalTurn && assistantText.length === 0) {
@@ -60,14 +61,14 @@ export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopT
                 id: `${sessionId}-historical-${message.timestampMs}-${index}`,
                 sessionId,
                 prompt: '',
-                status: (message.tools ?? []).some((tool) => tool.isError) ? 'failed' : 'succeeded',
-                message: 'Response complete',
-                assistantText: message.text,
+                status: failedAssistant || (message.tools ?? []).some((tool) => tool.isError) ? 'failed' : 'succeeded',
+                message: failedAssistant ? (message.detail ?? 'Request failed') : 'Response complete',
+                assistantText: failedAssistant ? '' : message.text,
                 thinkingText: message.thinkingText ?? '',
                 tools: message.tools ?? [],
                 completed: true,
-                succeeded: !(message.tools ?? []).some((tool) => tool.isError),
-                error: undefined,
+                succeeded: !failedAssistant && !(message.tools ?? []).some((tool) => tool.isError),
+                error: failedAssistant ? message.text : undefined,
               }
             : undefined,
       }];

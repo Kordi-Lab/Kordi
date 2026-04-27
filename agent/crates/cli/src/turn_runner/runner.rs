@@ -23,7 +23,9 @@ use super::TurnConfig;
 use super::TurnEvent;
 use super::hooks::send_extension_event_safe;
 use super::panic::catch_contained_panics;
-use super::persistence::{append_assistant_message, append_custom_message};
+use super::persistence::{
+    append_assistant_error_message, append_assistant_message, append_custom_message,
+};
 use super::tools::{ToolExecutionEnv, append_cancelled_tool_results, execute_tool_calls};
 
 struct StreamCollection {
@@ -179,7 +181,22 @@ pub(crate) async fn run_turn_inner(
             let state = tracker.state().clone();
             prepare_request_metrics(&state, &request_metrics_snapshot(&request))?
         };
-        let stream = collect_stream_events(config, event_tx, request).await?;
+        let stream = match collect_stream_events(config, event_tx, request).await {
+            Ok(stream) => stream,
+            Err(error) => {
+                if !config.cancel.is_cancelled() {
+                    let message = error.to_string();
+                    let _ = append_assistant_error_message(
+                        &config.conn,
+                        &config.session_id,
+                        &config.model,
+                        &message,
+                    )
+                    .await;
+                }
+                return Err(error);
+            }
+        };
 
         if let Some(message) = stream.context_overflow_error {
             if overflow_recovery_attempted {
@@ -404,6 +421,14 @@ async fn collect_stream_events(
     event_tx: &mpsc::UnboundedSender<TurnEvent>,
     request: CompletionRequest,
 ) -> Result<StreamCollection> {
+    if config.api_key.trim().is_empty()
+        && provider_requires_credentials(&config.model.provider, &config.base_url)
+    {
+        let message = missing_credentials_message(&config.model.provider);
+        let _ = event_tx.send(TurnEvent::Error(message.clone()));
+        return Err(anyhow::anyhow!(message));
+    }
+
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
     let provider = config.provider.clone();
     let stream_cancel = config.cancel.clone();
@@ -522,6 +547,36 @@ async fn collect_stream_events(
         first_text_delta_at_ms,
         cancelled,
     })
+}
+
+fn provider_requires_credentials(provider: &str, base_url: &str) -> bool {
+    let normalized = crate::login::normalize_provider_for_model_selection(provider);
+    if base_url.contains("localhost") || base_url.contains("127.0.0.1") {
+        return false;
+    }
+    matches!(
+        normalized.as_str(),
+        "anthropic" | "openai" | "google" | "groq" | "xai" | "openrouter" | "github-copilot"
+    )
+}
+
+fn missing_credentials_message(provider: &str) -> String {
+    let normalized = crate::login::normalize_provider_for_model_selection(provider);
+    let active_method = crate::login::active_auth_method(&normalized);
+
+    match (normalized.as_str(), active_method) {
+        ("anthropic", Some(crate::login::ProviderAuthMethod::OAuth)) =>
+            "Claude OAuth credentials are not usable. The saved Claude subscription token is expired or could not be refreshed; sign in to Claude again, or switch this provider to an Anthropic API key.".to_string(),
+        ("anthropic", _) =>
+            "No Anthropic credentials are available. Add an Anthropic API key or sign in with Claude subscription access.".to_string(),
+        ("openai", Some(crate::login::ProviderAuthMethod::OAuth)) =>
+            "ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.".to_string(),
+        ("openai", _) =>
+            "No OpenAI credentials are available. Add OPENAI_API_KEY or sign in with ChatGPT account access.".to_string(),
+        ("google", _) =>
+            "No Google credentials are available. Add GOOGLE_API_KEY or GEMINI_API_KEY.".to_string(),
+        (other, _) => format!("No credentials are available for provider '{other}'. Configure credentials before sending a message."),
+    }
 }
 
 fn request_metrics_snapshot(request: &CompletionRequest) -> RequestMetricsSnapshot {

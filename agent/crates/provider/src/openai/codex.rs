@@ -36,6 +36,34 @@ fn oauth_usage_info(usage: &Value) -> UsageInfo {
     }
 }
 
+fn codex_error_message(event: &Value, fallback: &str) -> String {
+    event
+        .get("message")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            event
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(|value| value.as_str())
+        })
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|response| response.get("error"))
+                .and_then(|error| error.get("message"))
+                .and_then(|value| value.as_str())
+        })
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|response| response.get("incomplete_details"))
+                .and_then(|details| details.get("reason"))
+                .and_then(|value| value.as_str())
+        })
+        .map(ToString::to_string)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 impl OpenAiProvider {
     pub(super) async fn stream_codex_oauth(
         &self,
@@ -52,6 +80,7 @@ impl OpenAiProvider {
             "instructions": request.system_prompt,
             "input": convert_messages_for_codex(&request.messages),
             "text": { "verbosity": "medium" },
+            "include": ["reasoning.encrypted_content"],
             "tool_choice": "auto",
             "parallel_tool_calls": false,
         });
@@ -218,12 +247,26 @@ impl OpenAiProvider {
                             }
                         }
                     }
-                    "response.completed" => {
+                    "response.completed" | "response.done" | "response.incomplete" => {
                         if let Some(usage) = event.get("response").and_then(|r| r.get("usage")) {
                             let _ = tx.send(StreamEvent::Usage(oauth_usage_info(usage)));
                         }
                         let _ = tx.send(StreamEvent::Done);
                         return Ok(());
+                    }
+                    "response.failed" => {
+                        let message = codex_error_message(&event, "Codex response failed");
+                        let _ = tx.send(StreamEvent::Error {
+                            message: message.clone(),
+                        });
+                        return Err(KordiError::Provider(message));
+                    }
+                    "error" => {
+                        let message = codex_error_message(&event, "Codex stream error");
+                        let _ = tx.send(StreamEvent::Error {
+                            message: message.clone(),
+                        });
+                        return Err(KordiError::Provider(message));
                     }
                     _ => {}
                 }

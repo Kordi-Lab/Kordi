@@ -106,6 +106,31 @@ pub(super) async fn append_custom_message(
     Ok(())
 }
 
+pub(super) async fn append_assistant_error_message(
+    conn: &Arc<Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    model: &Model,
+    message: &str,
+) -> Result<()> {
+    let conn = conn.lock().await;
+    let assistant_entry = SessionEntry::Message {
+        base: next_entry_base(&conn, session_id),
+        message: AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: message.to_string(),
+            }],
+            provider: model.provider.clone(),
+            model: model.id.clone(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Error,
+            error_message: Some(message.to_string()),
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, session_id, &assistant_entry)?;
+    Ok(())
+}
+
 pub(super) fn append_assistant_message(
     conn: &rusqlite::Connection,
     session_id: &str,

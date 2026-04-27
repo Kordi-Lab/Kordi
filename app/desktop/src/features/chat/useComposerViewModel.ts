@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import { buildAuthDisplayProviders } from '@/kordi-app/auth/model';
+import { buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type {
   ComposerScope,
@@ -92,17 +92,24 @@ export function useComposerViewModel({
           active: false,
         }];
       })
-      .filter((option) => providerLabels.has(option.providerId) || chatModelOptions.some((model) => model.provider === option.providerId));
+      .filter((option) => {
+        const modelProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
+        return providerLabels.has(modelProviderId) || chatModelOptions.some((model) => model.provider === modelProviderId);
+      });
   }, [chatModelOptions, desktopAuthState]);
 
   const preferredModelValueForProvider = useCallback((providerId: string) => {
-    const providerModels = chatModelOptions.filter((option) => option.provider === providerId);
+    const modelProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
+    const providerModels = chatModelOptions.filter((option) => option.provider === modelProviderId);
     if (providerModels.length === 0) return null;
 
-    const preferredNeedles = providerId === 'anthropic'
+    const preferOpenAiSubscriptionModels = providerId === 'openai-codex';
+    const preferredNeedles = modelProviderId === 'anthropic'
       ? ['claude-opus-4-7', 'claude-opus-4.7', 'claude-opus-4-6', 'claude-opus']
-      : providerId === 'openai'
-        ? ['gpt-5.4', 'gpt-5-4', 'gpt-5']
+      : modelProviderId === 'openai'
+        ? (preferOpenAiSubscriptionModels
+            ? ['gpt-5.5', 'gpt-5-5', 'gpt-5.4', 'gpt-5']
+            : ['gpt-5.4', 'gpt-5-4', 'gpt-5'])
         : [];
 
     for (const needle of preferredNeedles) {

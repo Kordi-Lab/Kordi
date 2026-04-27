@@ -13,6 +13,7 @@ use kordi_monitor::{
 use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -55,6 +56,10 @@ pub struct DesktopChatStoredTool {
     pub is_error: bool,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
@@ -67,6 +72,34 @@ static DESKTOP_MODEL_OPTIONS_CACHE: OnceLock<
 fn desktop_model_options_cache()
 -> &'static StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>> {
     DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
+fn desktop_model_options_cache_key(cwd: &Path) -> String {
+    let mut parts = vec![cwd.display().to_string()];
+    for provider in login::authenticated_providers() {
+        let active_method = login::active_auth_method(&provider)
+            .map(|method| method.footer_label().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let active_option = login::provider_auth_option_summaries(&provider)
+            .into_iter()
+            .find(|option| option.active);
+        let active_source = active_option
+            .as_ref()
+            .map(|option| option.source.label().to_string())
+            .unwrap_or_else(|| "implicit".to_string());
+        let active_identity = active_option
+            .and_then(|option| {
+                option
+                    .profile_id
+                    .or(option.account_label)
+                    .or(option.authority)
+            })
+            .unwrap_or_else(|| "env-or-default".to_string());
+        parts.push(format!(
+            "auth:{provider}:{active_method}:{active_source}:{active_identity}"
+        ));
+    }
+    parts.join("|")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +122,8 @@ pub struct DesktopChatMessage {
     pub detail: Option<String>,
     pub time_label: String,
     pub timestamp_ms: i64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub failed: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<DesktopChatAttachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -863,7 +898,7 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
 }
 
 pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopChatModelOption> {
-    let cache_key = cwd.display().to_string();
+    let cache_key = desktop_model_options_cache_key(cwd);
     if let Some(cached_options) = desktop_model_options_cache().lock().ok().and_then(|cache| {
         cache
             .get(&cache_key)
@@ -1358,6 +1393,8 @@ struct HistoricalTurnBuilder {
     tools: Vec<DesktopChatStoredTool>,
     tool_index_by_id: HashMap<String, usize>,
     detail: Option<String>,
+    error_message: Option<String>,
+    failed: bool,
     timestamp_ms: i64,
 }
 
@@ -1366,6 +1403,7 @@ impl HistoricalTurnBuilder {
         self.assistant_text_parts.is_empty()
             && self.thinking_parts.is_empty()
             && self.tools.is_empty()
+            && self.error_message.is_none()
     }
 
     fn touch_timestamp(&mut self, timestamp_ms: i64) {
@@ -1386,13 +1424,19 @@ fn flush_historical_turn(
 
     let assistant_text = turn.assistant_text_parts.join("\n\n");
     let thinking_text = turn.thinking_parts.join("\n\n");
+    let visible_text = if assistant_text.trim().is_empty() && turn.failed {
+        turn.error_message.clone().unwrap_or_default()
+    } else {
+        assistant_text
+    };
     out.push(DesktopChatMessage {
         role: "assistant".to_string(),
         sender: Some("Kordi".to_string()),
-        text: assistant_text,
+        text: visible_text,
         detail: turn.detail,
         time_label: format_message_timestamp(turn.timestamp_ms),
         timestamp_ms: turn.timestamp_ms,
+        failed: turn.failed,
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
         tools: turn.tools,
@@ -1601,6 +1645,7 @@ fn load_session_messages(
                         detail: None,
                         time_label: format_message_timestamp(user.timestamp),
                         timestamp_ms: user.timestamp,
+                        failed: false,
                         attachments: image_attachments_from_blocks(&user.content),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -1610,18 +1655,23 @@ fn load_session_messages(
                     let turn = current_turn.get_or_insert_with(HistoricalTurnBuilder::default);
                     turn.touch_timestamp(message.timestamp);
 
+                    let stop_reason_label = match &message.stop_reason {
+                        kordi_core::types::StopReason::Stop => "completed",
+                        kordi_core::types::StopReason::Length => "length limit",
+                        kordi_core::types::StopReason::ToolUse => "tool use",
+                        kordi_core::types::StopReason::Error => "error",
+                        kordi_core::types::StopReason::Aborted => "aborted",
+                    };
                     turn.detail = Some(format!(
                         "{}/{} • {}",
-                        message.provider,
-                        message.model,
-                        match &message.stop_reason {
-                            kordi_core::types::StopReason::Stop => "completed",
-                            kordi_core::types::StopReason::Length => "length limit",
-                            kordi_core::types::StopReason::ToolUse => "tool use",
-                            kordi_core::types::StopReason::Error => "error",
-                            kordi_core::types::StopReason::Aborted => "aborted",
-                        }
+                        message.provider, message.model, stop_reason_label,
                     ));
+                    if message.stop_reason == kordi_core::types::StopReason::Error {
+                        turn.failed = true;
+                        if let Some(error_message) = message.error_message.as_deref() {
+                            turn.error_message = Some(error_message.to_string());
+                        }
+                    }
 
                     for item in message.content {
                         match item {
@@ -1736,6 +1786,8 @@ fn load_session_messages(
                         }],
                         tool_index_by_id: HashMap::new(),
                         detail: Some("bash".to_string()),
+                        error_message: None,
+                        failed: false,
                         timestamp_ms: message.timestamp,
                     });
                     flush_historical_turn(&mut out, &mut current_turn);
@@ -1750,6 +1802,7 @@ fn load_session_messages(
                             detail: Some(message.custom_type),
                             time_label: format_message_timestamp(message.timestamp),
                             timestamp_ms: message.timestamp,
+                            failed: false,
                             attachments: Vec::new(),
                             thinking_text: None,
                             tools: Vec::new(),
@@ -1765,6 +1818,7 @@ fn load_session_messages(
                         detail: Some("Branch summary".to_string()),
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
+                        failed: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -1782,6 +1836,7 @@ fn load_session_messages(
                         )),
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
+                        failed: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -1801,6 +1856,7 @@ fn load_session_messages(
                     detail: Some("Model updated".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    failed: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -1821,6 +1877,7 @@ fn load_session_messages(
                     detail: Some("Thinking updated".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    failed: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -1853,6 +1910,7 @@ fn load_session_messages(
                         detail: Some(custom_type),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        failed: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -1876,6 +1934,7 @@ fn load_session_messages(
                     )),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    failed: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -1890,6 +1949,7 @@ fn load_session_messages(
                     detail: Some("Branch summary".to_string()),
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
+                    failed: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -1905,6 +1965,7 @@ fn load_session_messages(
                         detail: Some("Session updated".to_string()),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        failed: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -1921,6 +1982,7 @@ fn load_session_messages(
                         detail: Some("Label updated".to_string()),
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
+                        failed: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -2236,4 +2298,68 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
     }
     let truncated = value.chars().take(max_chars).collect::<String>();
     format!("{truncated}…")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+
+    #[test]
+    fn load_session_messages_preserves_failed_assistant_error() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-error-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+
+        let user_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: None,
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::User(UserMessage {
+                content: vec![ContentBlock::Text {
+                    text: "hi".to_string(),
+                }],
+                timestamp: 1_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &user_entry)?;
+
+        let error_text = "Claude OAuth credentials are not usable.";
+        let assistant_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: crate::turn_runner::get_leaf_raw(&conn, session_id),
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::Assistant(AssistantMessage {
+                content: vec![AssistantContent::Text {
+                    text: error_text.to_string(),
+                }],
+                provider: "anthropic".to_string(),
+                model: "claude-opus-4-6".to_string(),
+                usage: Usage::default(),
+                stop_reason: StopReason::Error,
+                error_message: Some(error_text.to_string()),
+                timestamp: 2_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &assistant_entry)?;
+
+        let messages = load_session_messages(&conn, session_id)?;
+        assert_eq!(messages.len(), 2);
+        let assistant = messages.last().expect("assistant message");
+        assert_eq!(assistant.role, "assistant");
+        assert!(assistant.failed);
+        assert_eq!(assistant.text, error_text);
+        assert!(
+            assistant
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("error")
+        );
+        Ok(())
+    }
 }

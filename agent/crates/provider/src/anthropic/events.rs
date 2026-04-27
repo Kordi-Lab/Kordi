@@ -61,6 +61,32 @@ fn non_empty_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
+pub(super) fn sse_error_message(event: &Value) -> Option<String> {
+    if event_type(event) != Some("error") {
+        return None;
+    }
+
+    let error = event.get("error");
+    let message = error
+        .and_then(|error| error.get("message"))
+        .and_then(|value| value.as_str())
+        .or_else(|| event.get("message").and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let error_type = error
+        .and_then(|error| error.get("type"))
+        .and_then(|value| value.as_str())
+        .or_else(|| event.get("error_type").and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    match (error_type, message) {
+        (Some(error_type), Some(message)) => Some(format!("{error_type}: {message}")),
+        (None, Some(message)) => Some(message.to_string()),
+        _ => Some(event.to_string()),
+    }
+}
+
 impl AnthropicEventState {
     fn track_block(&mut self, index: u64, id: &str, kind: BlockKind) {
         self.block_id_map.insert(
@@ -236,6 +262,12 @@ impl AnthropicEventState {
             Some("message_stop") => {
                 let _ = tx.send(StreamEvent::Done);
             }
+            Some("error") => {
+                let _ = tx.send(StreamEvent::Error {
+                    message: sse_error_message(event)
+                        .unwrap_or_else(|| "Anthropic stream error".to_string()),
+                });
+            }
             _ => {}
         }
     }
@@ -252,6 +284,34 @@ mod tests {
             events.push(event);
         }
         events
+    }
+
+    #[test]
+    fn parses_anthropic_error_events() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
+            &json!({
+                "type": "error",
+                "error": {
+                    "type": "authentication_error",
+                    "message": "Invalid authentication credentials"
+                }
+            }),
+            &tx,
+            CacheMetricsSource::Official,
+        );
+        drop(tx);
+
+        match rx.blocking_recv().expect("error event") {
+            StreamEvent::Error { message } => {
+                assert_eq!(
+                    message,
+                    "authentication_error: Invalid authentication credentials"
+                );
+            }
+            other => panic!("expected StreamEvent::Error, got {:?}", other),
+        }
     }
 
     #[test]
