@@ -421,9 +421,11 @@ impl DesktopRuntimeSession {
         let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
         let model =
             resolve_model_candidate(&settings, requested_model, Some(&self.setup.model.provider))?;
+        let changed =
+            self.setup.model.provider != model.provider || self.setup.model.id != model.id;
         self.setup.model = model;
         refresh_provider_runtime_fields(&mut self.setup);
-        if self.setup.session_created {
+        if changed && self.setup.session_created {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
         }
         Ok(())
@@ -432,8 +434,9 @@ impl DesktopRuntimeSession {
     pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
         let thinking = ThinkingLevel::parse(requested_thinking)
             .ok_or_else(|| anyhow!("Unknown thinking level: {requested_thinking}"))?;
+        let changed = self.setup.thinking_level != thinking.as_str();
         self.setup.thinking_level = thinking.as_str().to_string();
-        if self.setup.session_created {
+        if changed && self.setup.session_created {
             append_thinking_level_change_entry(&self.setup.conn, &self.setup.session_id, thinking)?;
         }
         Ok(())
@@ -1017,10 +1020,9 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
 
     let cwd = setup.tool_ctx.cwd.display().to_string();
     kordi_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
-    append_model_change_entry(&setup.conn, &setup.session_id, &setup.model)?;
-    let initial_thinking =
-        ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Medium);
-    append_thinking_level_change_entry(&setup.conn, &setup.session_id, initial_thinking)?;
+    // Do not persist the session's initial model/thinking defaults as transcript
+    // entries. They are runtime defaults, not user-visible actions; only explicit
+    // changes after the session exists should render as inline system chips.
     setup.session_created = true;
     Ok(())
 }
