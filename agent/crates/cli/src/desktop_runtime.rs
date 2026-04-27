@@ -451,16 +451,29 @@ impl DesktopRuntimeSession {
         let changed =
             self.setup.model.provider != model.provider || self.setup.model.id != model.id;
         self.setup.model = model;
+        let disable_unsupported_thinking =
+            !self.setup.model.reasoning && self.setup.thinking_level != "off";
+        if disable_unsupported_thinking {
+            self.setup.thinking_level = "off".to_string();
+        }
         refresh_provider_runtime_fields(&mut self.setup);
         if changed && self.setup.session_created {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
+        }
+        if disable_unsupported_thinking && self.setup.session_created {
+            append_thinking_level_change_entry(
+                &self.setup.conn,
+                &self.setup.session_id,
+                ThinkingLevel::Off,
+            )?;
         }
         Ok(())
     }
 
     pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
-        let thinking = ThinkingLevel::parse(requested_thinking)
+        let requested = ThinkingLevel::parse(requested_thinking)
             .ok_or_else(|| anyhow!("Unknown thinking level: {requested_thinking}"))?;
+        let thinking = effective_thinking_for_model(requested, &self.setup.model);
         let changed = self.setup.thinking_level != thinking.as_str();
         self.setup.thinking_level = thinking.as_str().to_string();
         if changed && self.setup.session_created {
@@ -1024,6 +1037,22 @@ pub fn delete_session_forever(session_id: &str) -> Result<()> {
     kordi_session::store::delete_session(&conn, session_id)
 }
 
+fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
+    if requested.reasoning_enabled() && !model.reasoning {
+        ThinkingLevel::Off
+    } else {
+        requested
+    }
+}
+
+fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+    if thinking_level == "off" || !model.reasoning {
+        None
+    } else {
+        Some(thinking_level.to_string())
+    }
+}
+
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
     DesktopChatModelOption {
         provider: model.provider.clone(),
@@ -1289,6 +1318,8 @@ fn build_turn_config(
     };
     let tool_registry = std::mem::take(&mut setup.tool_registry);
 
+    let request_thinking = request_thinking_for_model(&setup.thinking_level, &setup.model);
+
     Ok(TurnConfig {
         conn: sibling_conn,
         session_id: setup.session_id.clone(),
@@ -1315,11 +1346,7 @@ fn build_turn_config(
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },
-        thinking: if setup.thinking_level == "off" {
-            None
-        } else {
-            Some(setup.thinking_level.clone())
-        },
+        thinking: request_thinking,
         retry_enabled: setup.retry_enabled,
         retry_max_retries: setup.retry_max_retries,
         retry_base_delay_ms: setup.retry_base_delay_ms,
@@ -2520,6 +2547,37 @@ mod tests {
         assert_eq!(model.provider, "ollama");
         assert_eq!(model.id, "llama3.2:latest");
         Ok(())
+    }
+
+    fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {
+        Model {
+            id: id.to_string(),
+            name: id.to_string(),
+            provider: provider.to_string(),
+            api: kordi_provider::registry::ApiType::OpenaiCompletions,
+            context_window: 4096,
+            max_tokens: 1024,
+            reasoning,
+            input: vec![kordi_provider::registry::ModelInput::Text],
+            base_url: None,
+            cost: kordi_provider::registry::CostConfig::default(),
+        }
+    }
+
+    #[test]
+    fn non_reasoning_models_do_not_send_thinking_controls() {
+        let model = test_model("ollama", "qwen:1.8b-chat", false);
+        assert_eq!(request_thinking_for_model("medium", &model), None);
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::Medium, &model),
+            ThinkingLevel::Off
+        );
+
+        let reasoning_model = test_model("openai", "gpt-5", true);
+        assert_eq!(
+            request_thinking_for_model("medium", &reasoning_model).as_deref(),
+            Some("medium")
+        );
     }
 
     #[test]
