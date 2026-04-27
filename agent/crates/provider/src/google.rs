@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::{CompletionRequest, Provider, RequestOptions, StreamEvent, retry::with_retry};
@@ -28,7 +29,11 @@ impl Default for GoogleProvider {
 impl GoogleProvider {
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(Duration::from_secs(30))
+                .read_timeout(Duration::from_secs(300))
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 }

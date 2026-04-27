@@ -14,6 +14,7 @@ const REDIRECT_URI: &str = "http://localhost:53692/callback";
 const CALLBACK_PORT: u16 = 53692;
 const CALLBACK_PATH: &str = "/callback";
 const SCOPES: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
+const CLAUDE_CODE_USER_AGENT: &str = "claude-cli/2.1.75";
 
 // ── Token response ──────────────────────────────────────────────────
 
@@ -111,11 +112,17 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
 /// Refresh an existing Anthropic OAuth token.
 pub async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredentials> {
     // Anthropic expects a JSON body for token refresh requests.
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(TOKEN_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
+        .header("User-Agent", CLAUDE_CODE_USER_AGENT)
+        .header("x-app", "cli")
         .json(&serde_json::json!({
             "grant_type": "refresh_token",
             "client_id": CLIENT_ID,
@@ -149,11 +156,17 @@ pub async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredent
 
 async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthCredentials> {
     // Anthropic expects a JSON body (not form-encoded) for code exchange.
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(TOKEN_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
+        .header("User-Agent", CLAUDE_CODE_USER_AGENT)
+        .header("x-app", "cli")
         .json(&serde_json::json!({
             "grant_type": "authorization_code",
             "client_id": CLIENT_ID,

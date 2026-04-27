@@ -211,6 +211,10 @@ export function ComposerMentionMenu({
   );
 }
 
+function normalizeComposerProviderId(providerId: string) {
+  return providerId === 'openai-codex' ? 'openai' : providerId;
+}
+
 function providerDisplayLabel(providerId: string) {
   switch (providerId) {
     case 'anthropic':
@@ -263,10 +267,10 @@ export function ComposerModelControls({
   const parsedSelection = selection.model.split('/');
   const fallbackProviderValue = parsedSelection[0] ?? '';
   const fallbackModelLabel = parsedSelection.slice(1).join('/').trim() || selection.model;
-  const selectedProviderValue = selectedModelOption?.provider ?? fallbackProviderValue;
+  const selectedProviderValue = selectedModelOption?.provider ?? normalizeComposerProviderId(fallbackProviderValue);
   const selectedProviderOption = providerOptions.find(
-    (option) => option.providerId === selectedProviderValue && option.active,
-  ) ?? providerOptions.find((option) => option.providerId === selectedProviderValue) ?? null;
+    (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
+  ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
   const selectedProviderLabel = selectedModelOption?.providerLabel
     ?? providerDisplayLabel(selectedProviderValue)
     ?? selectedProviderOption?.selectionLabel

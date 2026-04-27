@@ -111,7 +111,11 @@ pub async fn login_openai_codex(callbacks: OAuthCallbacks) -> Result<OAuthCreden
 
 /// Refresh an existing OpenAI Codex OAuth token.
 pub async fn refresh_openai_codex_token(refresh_token: &str) -> Result<OAuthCredentials> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(TOKEN_URL)
         .form(&[
@@ -152,7 +156,11 @@ pub async fn refresh_openai_codex_token(refresh_token: &str) -> Result<OAuthCred
 // ── Internals ───────────────────────────────────────────────────────
 
 async fn exchange_code(code: &str, verifier: &str) -> Result<OAuthCredentials> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(TOKEN_URL)
         .form(&[

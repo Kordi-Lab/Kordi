@@ -837,11 +837,8 @@ mod tests {
                 .as_deref()
                 .is_some_and(|detail| detail.contains("active: OAuth • acct_primary • saved "))
         );
-        assert!(
-            menu.2[1]
-                .detail
-                .as_deref()
-                .is_some_and(|detail| detail.contains("active: API key • saved "))
-        );
+        assert!(menu.2[1].detail.as_deref().is_some_and(|detail| {
+            detail.contains("active: API key") && detail.contains("saved ")
+        }));
     }
 }

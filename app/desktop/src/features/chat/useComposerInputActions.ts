@@ -244,16 +244,18 @@ export function useComposerInputActions({
 
     const currentProviderId = resolveComposerProviderId(scope, composerSelections[scope].model);
     const normalizedProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
-    if (normalizedProviderId !== currentProviderId) {
-      const nextModelValue = desktopChatState?.modelOptions.find((option) => option.provider === normalizedProviderId)?.value;
-      if (nextModelValue) {
-        await selectComposerValue(scope, 'model', nextModelValue);
-        return;
-      }
+    const nextModelValue = preferredModelValueForProvider(providerId) ?? preferredModelValueForProvider(normalizedProviderId);
+    const currentModelValue = composerSelections[scope].model.toLowerCase();
+    const shouldSwitchModelForAuth = normalizedProviderId !== currentProviderId
+      || providerId === 'openai-codex'
+      || (providerId === 'openai' && currentProviderId === 'openai' && currentModelValue.includes('gpt-5.5'));
+    if (shouldSwitchModelForAuth && nextModelValue && nextModelValue !== composerSelections[scope].model) {
+      await selectComposerValue(scope, 'model', nextModelValue);
+      return;
     }
 
     setOpenComposerSelector((current: ComposerSelectorState) => (current?.scope === scope && current.type === 'auth' ? null : current));
-  }, [composerSelections, desktopChatState?.modelOptions, handleSelectAuthChoice, resolveComposerProviderId, selectComposerValue, setOpenComposerSelector]);
+  }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, resolveComposerProviderId, selectComposerValue, setOpenComposerSelector]);
 
   const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption) => {
     const normalizedProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
@@ -263,8 +265,14 @@ export function useComposerInputActions({
       await handleSelectAuthChoice(option.providerId, choice);
     }
 
+    const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
+    if (nextModelValue) {
+      await selectComposerValue(scope, 'model', nextModelValue);
+      return;
+    }
+
     await selectComposerValue(scope, 'provider', normalizedProviderId);
-  }, [handleSelectAuthChoice, selectComposerValue]);
+  }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement) => {
     setComposerDrafts((current: ComposerDraftState) => ({

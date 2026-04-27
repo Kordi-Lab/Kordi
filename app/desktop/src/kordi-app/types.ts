@@ -556,6 +556,7 @@ export type DesktopChatMessage = {
   detail?: string | null;
   timeLabel: string;
   timestampMs: number;
+  failed?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];
   thinkingText?: string | null;

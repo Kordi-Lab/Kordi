@@ -4,13 +4,14 @@ use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use events::AnthropicEventState;
+use events::{AnthropicEventState, sse_error_message};
 use kordi_core::types::CacheMetricsSource;
 
 /// Anthropic Messages API provider.
@@ -27,7 +28,11 @@ impl Default for AnthropicProvider {
 impl AnthropicProvider {
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(Duration::from_secs(30))
+                .read_timeout(Duration::from_secs(300))
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 }
@@ -210,22 +215,44 @@ impl Provider for AnthropicProvider {
                 chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-            while let Some(pos) = buffer.find("\n\n") {
+            while let Some((pos, delimiter_len)) = next_sse_block_delimiter(&buffer) {
                 let block = buffer[..pos].to_string();
-                buffer = buffer[pos + 2..].to_string();
+                buffer = buffer[pos + delimiter_len..].to_string();
+                let event_name = sse_block_event_name(&block);
 
                 for line in block.lines() {
-                    if let Some(data) = line.strip_prefix("data: ") {
+                    let line = line.trim_end_matches('\r');
+                    if let Some(data) = line.strip_prefix("data:").map(str::trim_start) {
                         if data == "[DONE]" {
                             let _ = tx.send(StreamEvent::Done);
                             return Ok(());
                         }
-                        if let Ok(event) = serde_json::from_str::<Value>(data) {
-                            event_state.process_sse_event(
-                                &event,
-                                &tx,
-                                cache_metrics_source_for_auth_mode(&options.auth_mode),
-                            );
+                        match serde_json::from_str::<Value>(data) {
+                            Ok(event) => {
+                                if event_name == Some("error")
+                                    || sse_error_message(&event).is_some()
+                                {
+                                    let message = sse_error_message(&event)
+                                        .unwrap_or_else(|| data.to_string());
+                                    let _ = tx.send(StreamEvent::Error {
+                                        message: message.clone(),
+                                    });
+                                    return Err(KordiError::Provider(message));
+                                }
+                                event_state.process_sse_event(
+                                    &event,
+                                    &tx,
+                                    cache_metrics_source_for_auth_mode(&options.auth_mode),
+                                );
+                            }
+                            Err(_) if event_name == Some("error") => {
+                                let message = data.to_string();
+                                let _ = tx.send(StreamEvent::Error {
+                                    message: message.clone(),
+                                });
+                                return Err(KordiError::Provider(message));
+                            }
+                            Err(_) => {}
                         }
                     }
                 }
@@ -242,6 +269,24 @@ fn cache_metrics_source_for_auth_mode(auth_mode: &ProviderAuthMode) -> CacheMetr
         ProviderAuthMode::ApiKey => CacheMetricsSource::Official,
         ProviderAuthMode::OAuth => CacheMetricsSource::Estimated,
     }
+}
+
+fn next_sse_block_delimiter(buffer: &str) -> Option<(usize, usize)> {
+    match (buffer.find("\n\n"), buffer.find("\r\n\r\n")) {
+        (Some(lf), Some(crlf)) if crlf < lf => Some((crlf, 4)),
+        (Some(lf), _) => Some((lf, 2)),
+        (None, Some(crlf)) => Some((crlf, 4)),
+        (None, None) => None,
+    }
+}
+
+fn sse_block_event_name(block: &str) -> Option<&str> {
+    block.lines().find_map(|line| {
+        line.trim_end_matches('\r')
+            .strip_prefix("event:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
 }
 
 fn anthropic_cache_control() -> Value {
@@ -294,7 +339,8 @@ fn supports_adaptive_thinking(model: &str) -> bool {
 mod tests {
     use super::{
         CacheMetricsSource, ProviderAuthMode, apply_cache_control_to_last_user_message,
-        cache_metrics_source_for_auth_mode, system_text_block,
+        cache_metrics_source_for_auth_mode, next_sse_block_delimiter, sse_block_event_name,
+        system_text_block,
     };
     use serde_json::json;
 
@@ -307,6 +353,22 @@ mod tests {
         assert_eq!(
             cache_metrics_source_for_auth_mode(&ProviderAuthMode::OAuth),
             CacheMetricsSource::Estimated
+        );
+    }
+
+    #[test]
+    fn parses_lf_and_crlf_sse_block_boundaries() {
+        assert_eq!(
+            next_sse_block_delimiter("event: ping\n\nrest"),
+            Some((11, 2))
+        );
+        assert_eq!(
+            next_sse_block_delimiter("event: ping\r\n\r\nrest"),
+            Some((11, 4))
+        );
+        assert_eq!(
+            sse_block_event_name("event: error\r\ndata: boom"),
+            Some("error")
         );
     }
 
