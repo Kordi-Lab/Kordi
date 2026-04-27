@@ -44,6 +44,25 @@ import {
   visibleBridgePeople,
 } from './viewModels/helpers';
 
+function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
+  const id = identityId?.trim();
+  if (!state || !id) return null;
+  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
+}
+
+function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
+  if (!state) return null;
+  const activeAgentSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
+  if (activeAgentSeed) return activeAgentSeed;
+  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
+  if (!profileHumanIdentityId) return null;
+  return state.identities.find((identity) => (
+    identity.kind === 'agent'
+    && identity.source === 'local'
+    && identity.ownerIdentityId === profileHumanIdentityId
+  ))?.avatarKey?.trim() || null;
+}
+
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
 
 function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
@@ -178,13 +197,14 @@ export function useWorkspaceViewModels({
       ?? activeHost?.agents.find((agent) => agent.isDefault)
       ?? activeHost?.agents[0]
       ?? null;
-    const localAgentAvatarSeed = activeHostAgent?.id
+    const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
+      || activeHostAgent?.id
       || activeHost?.activeAgentId
       || activeHostAgent?.nodeId
       || activeHost?.nodeId
       || getLocalAgentAvatarSeed(localAgentLabel);
-    const localHumanAvatarSeed = activeHost?.humanId
-      || canonicalSessionState?.profile.humanIdentityId
+    const localHumanAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+      || activeHost?.humanId
       || canonicalSessionState?.profile.id
       || getLocalProfileAvatarSeed();
 
@@ -219,8 +239,9 @@ export function useWorkspaceViewModels({
         bridges: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
-        participants: ['You', 'Kordi'],
+        participants: ['Me', 'Kordi'],
         participantAvatarSeeds: {
+          Me: localHumanAvatarSeed,
           You: localHumanAvatarSeed,
           [localAgentLabel]: localAgentAvatarSeed,
           Kordi: localAgentAvatarSeed,
@@ -234,7 +255,7 @@ export function useWorkspaceViewModels({
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState?.profile.humanIdentityId, canonicalSessionState?.profile.id, desktopBridgeState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState, desktopBridgeState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -277,18 +298,18 @@ export function useWorkspaceViewModels({
       name: 'New session',
       type: 'owned-agent' as const,
       subtitle: isDesktopChatLoading
-        ? 'Opening your local chat history…'
+        ? 'Opening my local chat history…'
         : 'Blank drafts stay local until the first real send.',
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
       directness: 'Direct chat',
-      participants: ['You', 'Kordi'],
+      participants: ['Me', 'Kordi'],
       bridgeTarget: undefined,
       messages: [{
         role: 'system' as const,
         text: isDesktopChatLoading
-          ? 'Opening your local chat history…'
+          ? 'Opening my local chat history…'
           : 'Type a message to start a new chat. Blank drafts disappear until you send something.',
         time: '--:--',
       }],
@@ -358,8 +379,8 @@ export function useWorkspaceViewModels({
         bridges: [label],
         status: host.connected ? 'Owned' : 'Offline',
         discoverableOn: [label],
-        detail: `Chat directly with your local Kordi agent. Bridge host: ${label}${host.nodeId ? ` • ${host.nodeId}` : ''}`,
-        owner: 'You',
+        detail: `Chat directly with my local Kordi agent. Bridge host: ${label}${host.nodeId ? ` • ${host.nodeId}` : ''}`,
+        owner: 'Me',
         bridgeHostId: host.id,
         bridgePeerNodeId: host.nodeId ?? undefined,
         bridgePeerRuntime: 'kordi-desktop',
@@ -433,8 +454,8 @@ export function useWorkspaceViewModels({
         bridges: ['Local'],
         status: 'Owned',
         discoverableOn: ['Local'],
-        detail: `Chat directly with your local Kordi agent • ${localAgent.workspaceRoot}`,
-        owner: 'You',
+        detail: `Chat directly with my local Kordi agent • ${localAgent.workspaceRoot}`,
+        owner: 'Me',
         avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
       });
     }
@@ -635,7 +656,7 @@ export function useWorkspaceViewModels({
           const outreachMessages = (outreachThreadsByParentSession.get(sessionId) ?? []).flatMap((thread) => thread.inlineMessages);
           const legacyMessages = [...baseMessages, ...outreachMessages];
           const messages = canonicalReadModel ? canonicalReadModel.preferMessages(sessionId, legacyMessages) : legacyMessages;
-          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['You', 'Kordi']) : ['You', 'Kordi'];
+          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'Kordi']) : ['Me', 'Kordi'];
 
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
@@ -705,7 +726,7 @@ export function useWorkspaceViewModels({
       summary: 'Chats stay in Chats until you explicitly create or move them into a project.',
       lastActive: '--:--',
       status: 'Draft',
-      participants: ['You', 'Kordi'],
+      participants: ['Me', 'Kordi'],
       artifacts: 0,
       tasks: 0,
       unread: 0,

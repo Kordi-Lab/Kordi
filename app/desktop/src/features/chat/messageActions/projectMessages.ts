@@ -84,7 +84,7 @@ export function useProjectMessageActions({
                           ...session.messages,
                           {
                             role: 'user',
-                            sender: 'You',
+                            sender: 'Me',
                             text,
                             attachments: toOptimisticAttachments(chatComposerAttachments),
                             time: sentAt,

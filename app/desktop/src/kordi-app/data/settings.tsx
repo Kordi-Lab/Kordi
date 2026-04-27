@@ -148,7 +148,7 @@ export const settingsSections: SettingsSection[] = [
     label: 'Personalization',
     icon: User,
     title: 'Personalization',
-    description: 'Your display identity, profile defaults, and workspace preferences that follow you across chats and projects.',
+    description: 'My display identity, profile defaults, and workspace preferences that follow me across chats and projects.',
     items: [
       { label: 'Display name', value: DEFAULT_BRIDGE_OWNER_NAME, hint: 'Shown to peers and their agents in shared spaces.' },
       { label: 'Primary contact ID', value: 'contact://primary-user', hint: 'Used for direct reachability and trusted introductions.' },

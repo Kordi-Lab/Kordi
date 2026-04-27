@@ -71,12 +71,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       return [{
         id: identity.id,
-        name: ownerScopedAgentName(identity, identityById) ?? identity.displayName,
+        name: ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName,
         kind: identity.kind,
         role: participant.role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
-        ownerName: owner?.displayName ?? null,
+        ownerName: owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null,
         bridgeHostId: identity.sourceHostId,
         bridgeNodeId: identity.bridgeNodeId,
         humanId: identity.humanId,
@@ -122,7 +122,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     if (!target || target.kind !== 'agent') continue;
     processingDelegationMessagesBySessionId.set(
       exchange.sessionId,
-      [...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), processingAgentMessage(exchange, target, identityById)],
+      [...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId)],
     );
   }
 

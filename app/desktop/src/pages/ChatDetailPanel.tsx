@@ -8,6 +8,7 @@ import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, use
 import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
   id: string;
@@ -30,6 +31,11 @@ type ActiveConversation = {
     profileImageUrl?: string | null;
     presenceStatus?: string | null;
     presenceDetail?: string | null;
+    source?: string | null;
+    bridgeHostId?: string | null;
+    bridgeNodeId?: string | null;
+    humanId?: string | null;
+    agentId?: string | null;
   }>;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
@@ -54,7 +60,7 @@ function participantAvatarSeed(activeConv: ActiveConversation, participant: stri
     return localProfileSeed || getLocalProfileAvatarSeed();
   }
   if (isAgent) {
-    if (/^(kordi|agent|assistant|my agent)$/i.test(normalizedParticipant)) {
+    if (/^(kordi|agent|assistant|my\s+.+)$/i.test(normalizedParticipant)) {
       return localAgentSeed || normalizedParticipant;
     }
     if (identity?.localAgentName && normalizedParticipant === identity.localAgentName) {
@@ -72,6 +78,47 @@ function participantAvatarSeed(activeConv: ActiveConversation, participant: stri
     return identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName;
   }
   return normalizedParticipant;
+}
+
+function canonicalParticipantOwnerIsSelf(activeConv: ActiveConversation, participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
+  if (isSelfReferenceName(participant.ownerName)) return true;
+  const ownerIdentityId = participant.ownerIdentityId?.trim();
+  if (!ownerIdentityId) return false;
+  return activeConv.canonicalParticipants?.some((candidate) => (
+    candidate.id === ownerIdentityId
+    && (candidate.role === 'self' || isSelfReferenceName(candidate.name))
+  )) ?? false;
+}
+
+function canonicalParticipantDisplayName(activeConv: ActiveConversation, participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
+  const isSelfHuman = participant.kind !== 'agent' && (participant.role === 'self' || isSelfReferenceName(participant.name));
+  if (isSelfHuman) return selfDisplayName(participant.name, true);
+  if (participant.kind === 'agent' && canonicalParticipantOwnerIsSelf(activeConv, participant)) {
+    return firstPersonPossessiveLabel(participant.name, participant.ownerName);
+  }
+  return selfDisplayName(participant.name);
+}
+
+function canonicalParticipantOwnerLabel(activeConv: ActiveConversation, participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
+  if (!participant.ownerName) return null;
+  return selfObjectLabel(participant.ownerName, canonicalParticipantOwnerIsSelf(activeConv, participant));
+}
+
+function canonicalParticipantAvatarSeed(
+  activeConv: ActiveConversation,
+  participant: NonNullable<ActiveConversation['canonicalParticipants']>[number],
+  localProfileSeed?: string,
+  localAgentSeed?: string,
+) {
+  const fallbackSeed = participant.avatarKey?.trim() || participant.name;
+  const isSelfHuman = participant.kind !== 'agent' && (participant.role === 'self' || isSelfReferenceName(participant.name));
+  if (isSelfHuman) return localProfileSeed || fallbackSeed;
+
+  const isLocalOwnedAgent = participant.kind === 'agent'
+    && (participant.source === 'local' || canonicalParticipantOwnerIsSelf(activeConv, participant));
+  if (isLocalOwnedAgent) return localAgentSeed || fallbackSeed;
+
+  return fallbackSeed;
 }
 
 type ProjectSource = {
@@ -198,20 +245,22 @@ export function ChatDetailPanel({
               const status = participant.presenceStatus && participant.presenceStatus !== 'offline'
                 ? participant.presenceStatus
                 : participant.role;
+              const displayName = canonicalParticipantDisplayName(activeConv, participant);
+              const ownerLabel = canonicalParticipantOwnerLabel(activeConv, participant);
 
               return (
                 <div key={participant.id} className="app-inspector-list-row">
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={participant.avatarKey ?? participant.name}
+                      seed={canonicalParticipantAvatarSeed(activeConv, participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
                       imageUrl={participant.profileImageUrl}
-                      name={participant.name}
+                      name={displayName}
                       className="h-7 w-7 border border-white/10"
                     />
                     <span className="min-w-0">
-                      <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{participant.name}</span>
-                      {participant.ownerName ? <span className="block truncate text-[11px] text-slate-500">Owner: {participant.ownerName}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
+                      <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
+                      {ownerLabel ? <span className="block truncate text-[11px] text-slate-500">Owner: {ownerLabel}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
                     </span>
                   </span>
                   <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
@@ -220,7 +269,8 @@ export function ChatDetailPanel({
                 </div>
               );
             }) : activeConv.participants.map((participant) => {
-              const isAgent = activeConv.type !== 'person' && /agent|bot|assistant/i.test(participant);
+              const displayName = selfDisplayName(participant);
+              const isAgent = activeConv.type !== 'person' && /agent|bot|assistant|kordi/i.test(participant);
 
               return (
                 <div key={participant} className="app-inspector-list-row">
@@ -228,10 +278,10 @@ export function ChatDetailPanel({
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
                       seed={participantAvatarSeed(activeConv, participant, isAgent, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
-                      name={participant}
+                      name={displayName}
                       className="h-7 w-7 border border-white/10"
                     />
-                    <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{participant}</span>
+                    <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
                   </span>
                   <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
                     Active

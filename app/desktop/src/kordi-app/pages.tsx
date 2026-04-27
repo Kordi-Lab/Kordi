@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Eye, Plus, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { selfObjectLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { BridgeChip, ContactRequestRow, ContactRow } from './components';
 import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
@@ -207,7 +208,7 @@ export function ContactsPage({
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Badge className={cn('rounded-full px-2.5 py-1', getStatusBadgeClass(activeContact.status))}>{activeContact.status}</Badge>
                           <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                            Owner: {activeContact.owner}
+                            Owner: {selfObjectLabel(activeContact.owner)}
                           </Badge>
                         </div>
                       </div>
