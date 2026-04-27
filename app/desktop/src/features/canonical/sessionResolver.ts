@@ -125,6 +125,10 @@ export function buildProjectRoutingGroups(
       .filter((session) => session.status === 'archived')
       .map((session) => session.id),
   );
+  const messageCountBySessionId = new Map<string, number>();
+  for (const message of canonicalState?.messages ?? []) {
+    messageCountBySessionId.set(message.sessionId, (messageCountBySessionId.get(message.sessionId) ?? 0) + 1);
+  }
 
   const addGroup = (groupId: string, timestampMs: number, persisted = false) => {
     if (!sessionIdsByGroupId.has(groupId)) {
@@ -159,6 +163,10 @@ export function buildProjectRoutingGroups(
 
   for (const session of canonicalState?.sessions ?? []) {
     if (session.kind !== 'project' || session.status === 'archived') continue;
+    const title = session.title.trim().toLowerCase();
+    const isBlankPlaceholder = (messageCountBySessionId.get(session.id) ?? 0) === 0
+      && (!title || title === 'new session' || title === 'session');
+    if (isBlankPlaceholder) continue;
     const groupId = normalizeCanonicalProjectGroupId(
       session.projectId,
       projectRootFromMetadata(session),

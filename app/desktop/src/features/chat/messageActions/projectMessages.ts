@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { Project } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach, createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
+import { isProjectDraftSessionId } from '../draftSessions';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
@@ -68,7 +69,7 @@ export function useProjectMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    let resolvedProjectSessionId = activeProjectSessionId;
+    let resolvedProjectSessionId = isProjectDraftSessionId(activeProjectSessionId) ? '' : activeProjectSessionId;
     let resolvedDesktopChatState = desktopChatState;
     const ensureProjectSession = async () => {
       if (resolvedProjectSessionId) {

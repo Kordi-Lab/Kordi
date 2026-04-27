@@ -185,6 +185,8 @@ export function ProjectsPage({
   hasAnyAuth,
   onOpenAuthSettings,
 }: ProjectsPageProps) {
+  const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
+
   if (isNativeShell && !activeProject.id) {
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -463,7 +465,9 @@ export function ProjectsPage({
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    onSendProjectMessage(event.currentTarget.value);
+                    if (canSubmitProjectMessage) {
+                      onSendProjectMessage(event.currentTarget.value);
+                    }
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
@@ -520,9 +524,11 @@ export function ProjectsPage({
                     onStopDesktopChatTurn();
                     return;
                   }
-                  onSendProjectMessage();
+                  if (canSubmitProjectMessage) {
+                    onSendProjectMessage();
+                  }
                 }}
-                disabled={isDesktopChatSending && desktopLiveTurn?.sessionId === activeProjectSession.id ? !desktopLiveTurn || desktopLiveTurn.completed : false}
+                disabled={isDesktopChatSending && desktopLiveTurn?.sessionId === activeProjectSession.id ? !desktopLiveTurn || desktopLiveTurn.completed : !canSubmitProjectMessage}
               >
                 {isDesktopChatSending && desktopLiveTurn?.sessionId === activeProjectSession.id ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
               </Button>

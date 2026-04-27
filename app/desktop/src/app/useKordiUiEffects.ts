@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+import { isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
@@ -228,6 +229,8 @@ export function useKordiUiEffects({
 
   useEffect(() => {
     if (!isNativeShell || !desktopAuthState) return;
+
+    if (activeNav === 'projects' && isProjectDraftSessionId(activeProjectSessionId)) return;
 
     const sessionId = activeNav === 'projects'
       ? (activeProjectSessionId || desktopChatState?.activeSessionId)

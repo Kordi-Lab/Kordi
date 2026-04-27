@@ -14,7 +14,7 @@ import type {
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
-import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 
 function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
   if (!turn) return '';
@@ -124,7 +124,7 @@ export function useKordiDesktopActivity({
   useEffect(() => {
     const activeChatSessionId = activeConv.id;
     const visibleLocalSessionId = activeNav === 'projects'
-      ? (activeProjectSessionId || null)
+      ? (isProjectDraftSessionId(activeProjectSessionId) ? null : activeProjectSessionId || null)
       : activeNav === 'chats'
         && !activeConversationIsBridge
         && !activeChatSessionId.startsWith('bridge:')

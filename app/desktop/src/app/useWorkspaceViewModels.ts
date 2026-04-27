@@ -11,7 +11,7 @@ import {
   resolveProjectSelection,
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
-import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -744,9 +744,24 @@ export function useWorkspaceViewModels({
   const activeProject = runtimeProjects.find((project) => project.id === resolvedProjectSelection?.projectId)
     ?? runtimeProjects.find((project) => project.id === activeProjectId)
     ?? fallbackProject;
-  const activeProjectSession = activeProject.sessions.find((session) => session.id === resolvedProjectSelection?.sessionId)
-    ?? activeProject.sessions[0]
-    ?? emptyNativeProject.sessions[0];
+  const nativeProjectDraftSession = {
+    id: activeProjectSessionId,
+    name: 'New session',
+    summary: 'Blank project drafts stay local until the first real send.',
+    lastActive: 'Draft',
+    status: 'Draft',
+    participants: ['Me', 'Kordi'],
+    artifacts: activeProject.artifacts,
+    tasks: activeProject.tasks,
+    unread: 0,
+    statusIndicator: undefined,
+    messages: [] as Message[],
+  };
+  const activeProjectSession = isNativeShell && isProjectDraftSessionId(activeProjectSessionId)
+    ? nativeProjectDraftSession
+    : activeProject.sessions.find((session) => session.id === resolvedProjectSelection?.sessionId)
+      ?? activeProject.sessions[0]
+      ?? emptyNativeProject.sessions[0];
   const activeProjectLastMessage = activeProjectSession.messages[activeProjectSession.messages.length - 1];
 
   const activeBridgeHost = useMemo<DesktopBridgeHost | null>(() => {
