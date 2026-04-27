@@ -24,7 +24,9 @@ use crate::extensions::{
     build_skill_system_prompt_section, load_runtime_extension_support,
 };
 use crate::login;
-use crate::runtime_model::{build_runtime_config, resolve_or_synthesize_model};
+use crate::runtime_model::{
+    build_runtime_config_with_settings, resolve_or_synthesize_model_with_settings,
+};
 use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
 use kordi_monitor::RequestMetricsTracker;
@@ -77,14 +79,15 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let mut registry = ModelRegistry::new();
     registry.load_custom_models(&settings);
     login::add_cached_github_copilot_models(&mut registry);
-    let model = resolve_or_synthesize_model(&registry, &provider_name, &model_id);
+    let model =
+        resolve_or_synthesize_model_with_settings(&registry, &settings, &provider_name, &model_id);
 
+    let runtime = build_runtime_config_with_settings(&model, &settings, None);
     let auth = if cli.api_key.is_some() {
         None
     } else {
-        login::resolve_provider_auth(&provider_name)
+        runtime.auth.clone()
     };
-    let runtime = build_runtime_config(&model, auth.clone());
     let api_key = cli
         .api_key
         .clone()

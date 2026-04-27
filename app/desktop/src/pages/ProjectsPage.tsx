@@ -292,7 +292,7 @@ export function ProjectsPage({
       {!hasAnyAuth ? (
         <AuthNoticeBanner
           title="No provider connected yet"
-          description="Connect a provider before running project conversations. Open Authentication to sign in or save an API key."
+          description="Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations."
           onAction={onOpenAuthSettings}
         />
       ) : null}

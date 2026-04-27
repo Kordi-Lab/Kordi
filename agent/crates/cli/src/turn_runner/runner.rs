@@ -551,7 +551,7 @@ async fn collect_stream_events(
 
 fn provider_requires_credentials(provider: &str, base_url: &str) -> bool {
     let normalized = crate::login::normalize_provider_for_model_selection(provider);
-    if base_url.contains("localhost") || base_url.contains("127.0.0.1") {
+    if crate::login::provider_allows_no_auth(&normalized, Some(base_url)) {
         return false;
     }
     matches!(

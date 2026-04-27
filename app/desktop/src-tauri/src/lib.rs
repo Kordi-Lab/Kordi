@@ -116,6 +116,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_update_presence,
             auth::desktop_auth_state,
             auth::desktop_save_api_key,
+            auth::desktop_set_local_provider_port,
             auth::desktop_logout,
             auth::desktop_remove_auth_profile,
             auth::desktop_set_active_auth_profile,

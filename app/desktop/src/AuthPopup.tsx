@@ -56,6 +56,8 @@ function authPopupTitle(provider: DesktopAuthProvider | null, providerId: string
   if (providerId === 'anthropic' && mode === 'api-key') return 'Anthropic API key';
   if (providerId === 'openai-codex' && mode === 'oauth') return 'ChatGPT sign-in';
   if (providerId === 'openai' && mode === 'api-key') return 'OpenAI API key';
+  if (providerId === 'lm-studio' && mode === 'api-key') return 'LM Studio optional API key';
+  if (providerId === 'ollama' && mode === 'api-key') return 'Ollama optional API key';
   return provider ? `${provider.label} ${mode === 'oauth' ? 'sign-in' : 'API key'}` : 'Authentication';
 }
 
@@ -72,6 +74,12 @@ function authPopupDescription(providerId: string, mode: 'oauth' | 'api-key') {
   if (providerId === 'openai' && mode === 'api-key') {
     return 'Paste your OpenAI API key and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
   }
+  if (providerId === 'lm-studio' && mode === 'api-key') {
+    return 'The default LM Studio local server does not need a key. Paste one only if you enabled API-key protection in LM Studio.';
+  }
+  if (providerId === 'ollama' && mode === 'api-key') {
+    return 'The default Ollama local server does not need a key. Paste one only if your Ollama-compatible endpoint requires authorization.';
+  }
   return mode === 'oauth'
     ? 'Finish browser sign-in here. Kordi will save the result and refresh Settings automatically.'
     : 'Paste the API key here and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
@@ -80,6 +88,7 @@ function authPopupDescription(providerId: string, mode: 'oauth' | 'api-key') {
 function authPopupPrimaryActionLabel(providerId: string, mode: 'oauth' | 'api-key') {
   if (providerId === 'anthropic' && mode === 'oauth') return 'Open Claude sign-in';
   if (providerId === 'anthropic' && mode === 'api-key') return 'Save Anthropic key';
+  if ((providerId === 'lm-studio' || providerId === 'ollama') && mode === 'api-key') return 'Save optional key';
   if (mode === 'oauth') return 'Open sign-in';
   return 'Save key';
 }

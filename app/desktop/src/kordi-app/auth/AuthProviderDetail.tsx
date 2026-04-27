@@ -1,9 +1,17 @@
-import { useRef, useState } from 'react';
-import type { ButtonHTMLAttributes, CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { useState } from 'react';
 import { formatDesktopDateTime } from '@/lib/time';
-import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { AuthDisplayProvider } from './model';
+import {
+  AuthActionButton,
+  DetailRow,
+  DetailSection,
+  SectionDivider,
+  authActiveBadgeClass,
+  authButtonDangerClass,
+  authButtonNeutralClass,
+} from './AuthDetailPrimitives';
+import { LocalProviderSetup, localProviderEndpoint } from './LocalProviderSetup';
 
 type AuthProviderDetailProps = {
   provider: AuthDisplayProvider | null;
@@ -18,6 +26,7 @@ type AuthProviderDetailProps = {
   onSelectAuthChoice: (providerId: string, choice: string) => void;
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
+  onRefreshAuth: () => void;
 };
 
 function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string) {
@@ -25,6 +34,9 @@ function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string
 }
 
 function signInMethodButtonLabel(providerId: string, mode: 'oauth' | 'api-key', hasOptions: boolean) {
+  if ((providerId === 'lm-studio' || providerId === 'ollama') && mode === 'api-key') {
+    return hasOptions ? 'Add another optional key' : 'Save optional key';
+  }
   if (providerId === 'anthropic' && mode === 'api-key') {
     return hasOptions ? 'Add another API key' : 'Add API key';
   }
@@ -32,55 +44,6 @@ function signInMethodButtonLabel(providerId: string, mode: 'oauth' | 'api-key', 
     return mode === 'oauth' ? 'Add another account' : 'Add another key';
   }
   return mode === 'oauth' ? 'Sign in' : 'Add key';
-}
-
-function DetailSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="app-auth-detail-section overflow-hidden rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="border-b border-white/8 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">{title}</div>
-      <div>{children}</div>
-    </section>
-  );
-}
-
-function DetailRow({
-  title,
-  meta,
-  detail,
-  trailing,
-  multiline = false,
-}: {
-  title: ReactNode;
-  meta?: ReactNode;
-  detail?: ReactNode;
-  trailing?: ReactNode;
-  multiline?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        'grid items-center gap-3 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto]',
-        multiline && 'sm:items-start',
-      )}
-    >
-      <div className="min-w-0">
-        <div className="text-[13px] font-medium text-white">{title}</div>
-        {meta && <div className="mt-1 text-[11px] leading-5 text-slate-500">{meta}</div>}
-        {detail && <div className="mt-1 text-[11px] leading-5 text-slate-400">{detail}</div>}
-      </div>
-      {trailing && <div className="relative z-10 flex flex-wrap items-center gap-1.5 pointer-events-auto sm:justify-end">{trailing}</div>}
-    </div>
-  );
-}
-
-function SectionDivider() {
-  return <div className="mx-4 h-px bg-white/8" />;
 }
 
 function formatAuthTimestamp(timestampMs?: number | null) {
@@ -110,84 +73,6 @@ function buildProfileMeta(option: {
     .join(' • ');
 }
 
-function stopEventPropagation(event: { stopPropagation: () => void }) {
-  event.stopPropagation();
-}
-
-const nonDragStyle: CSSProperties = { WebkitAppRegion: 'no-drag' as const };
-
-type AuthActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
-
-const authButtonBaseClass =
-  'inline-flex h-8.5 items-center justify-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[12px] font-medium tracking-[-0.01em] transition-all duration-150 disabled:pointer-events-none disabled:opacity-50 cursor-pointer';
-
-const authButtonNeutralClass =
-  'border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.065),rgba(255,255,255,0.035))] text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_10px_24px_rgba(0,0,0,0.16)] hover:border-white/14 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.085),rgba(255,255,255,0.05))]';
-
-const authButtonDangerClass =
-  'border border-rose-400/20 bg-[linear-gradient(180deg,rgba(244,63,94,0.16),rgba(190,24,93,0.12))] text-rose-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_24px_rgba(0,0,0,0.16)] hover:border-rose-300/28 hover:bg-[linear-gradient(180deg,rgba(244,63,94,0.22),rgba(190,24,93,0.16))]';
-
-const authActiveBadgeClass =
-  'inline-flex h-8.5 items-center justify-center rounded-full border border-violet-400/26 bg-[linear-gradient(180deg,rgba(139,92,246,0.22),rgba(91,33,182,0.16))] px-3.5 text-[12px] font-medium tracking-[-0.01em] text-violet-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]';
-
-function AuthActionButton({
-  className,
-  style,
-  onClick,
-  onMouseDown,
-  onMouseUp,
-  onPointerDown,
-  onPointerUp,
-  type = 'button',
-  ...props
-}: AuthActionButtonProps) {
-  const lastPressAtRef = useRef(0);
-
-  const triggerPress = (
-    event: ReactMouseEvent<HTMLButtonElement> | ReactPointerEvent<HTMLButtonElement>,
-  ) => {
-    if (props.disabled) return;
-    const now = Date.now();
-    if (now - lastPressAtRef.current < 250) return;
-    lastPressAtRef.current = now;
-    onClick?.(event as unknown as ReactMouseEvent<HTMLButtonElement>);
-  };
-
-  return (
-    <button
-      {...props}
-      type={type}
-      onClick={(event) => {
-        stopEventPropagation(event);
-        triggerPress(event);
-      }}
-      className={cn(
-        authButtonBaseClass,
-        className,
-      )}
-      style={{ ...nonDragStyle, ...style }}
-      onMouseDown={(event) => {
-        stopEventPropagation(event);
-        onMouseDown?.(event);
-      }}
-      onMouseUp={(event) => {
-        stopEventPropagation(event);
-        onMouseUp?.(event);
-        triggerPress(event);
-      }}
-      onPointerDown={(event) => {
-        stopEventPropagation(event);
-        onPointerDown?.(event);
-      }}
-      onPointerUp={(event) => {
-        stopEventPropagation(event);
-        onPointerUp?.(event);
-        triggerPress(event);
-      }}
-    />
-  );
-}
-
 export function AuthProviderDetail({
   provider,
   rawProviders,
@@ -197,6 +82,7 @@ export function AuthProviderDetail({
   onSelectAuthChoice,
   onRemoveAuthProfile,
   onLogoutProvider,
+  onRefreshAuth,
 }: AuthProviderDetailProps) {
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string | null>(null);
   const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null);
@@ -211,6 +97,7 @@ export function AuthProviderDetail({
   }
 
   const hasSavedProfiles = provider.methods.some((method) => method.options.some((option) => !!option.profileId));
+  const localEndpoint = localProviderEndpoint(provider);
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -260,9 +147,19 @@ export function AuthProviderDetail({
             <DetailRow title="Current GitHub host" detail={provider.authority || 'github.com'} />
           </>
         )}
+        {localEndpoint && (
+          <>
+            <SectionDivider />
+            <DetailRow
+              title="Local OpenAI-compatible endpoint"
+              detail={<span className="break-all font-mono text-[11px] text-slate-300">{localEndpoint}</span>}
+              multiline
+            />
+          </>
+        )}
       </DetailSection>
 
-      <DetailSection title="Ways to connect">
+      <DetailSection title={localEndpoint ? 'Local server setup' : 'Ways to connect'}>
         {provider.id === 'github-copilot' ? (
           (() => {
             const raw = findRawProvider(rawProviders, 'github-copilot');
@@ -305,6 +202,13 @@ export function AuthProviderDetail({
               </>
             );
           })()
+        ) : localEndpoint ? (
+          <LocalProviderSetup
+            provider={provider}
+            rawProviders={rawProviders}
+            onOpenLogin={onOpenLogin}
+            onRefreshAuth={onRefreshAuth}
+          />
         ) : (
           provider.methods.map((method, index) => {
             const raw = findRawProvider(rawProviders, method.providerId);
@@ -398,7 +302,9 @@ export function AuthProviderDetail({
               ))
             ) : (
               <div className="px-4 pb-3 pt-2 text-[11px] leading-5 text-slate-400">
-                No saved {method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.
+                {localEndpoint && method.mode === 'api-key'
+                  ? 'No saved key needed for the default local server.'
+                  : `No saved ${method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.`}
               </div>
             )}
           </div>
@@ -410,7 +316,9 @@ export function AuthProviderDetail({
         <SectionDivider />
         <DetailRow
           title="Remove saved access"
-          detail="Delete saved accounts and keys for this provider from Kordi's shared auth store. Environment variables are not removed here."
+          detail={localEndpoint
+            ? 'Delete optional saved API keys for this local provider from Kordi\'s shared auth store. The local endpoint itself is not changed.'
+            : 'Delete saved accounts and keys for this provider from Kordi\'s shared auth store. Environment variables are not removed here.'}
           trailing={
             confirmRemoveAll ? (
               <>

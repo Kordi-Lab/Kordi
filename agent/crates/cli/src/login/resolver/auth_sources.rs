@@ -38,6 +38,8 @@ fn env_auth_methods_for_provider(provider: &str) -> Vec<ProviderAuthMethod> {
             .collect(),
         other => {
             let env_keys: &[&str] = match other {
+                "lm-studio" => &["LM_STUDIO_API_KEY"],
+                "ollama" => &["OLLAMA_API_KEY"],
                 "google" => &["GOOGLE_API_KEY", "GEMINI_API_KEY"],
                 "groq" => &["GROQ_API_KEY"],
                 "xai" => &["XAI_API_KEY"],
@@ -181,6 +183,9 @@ fn render_auth_option_summary(summary: &ProviderAuthOptionSummary) -> String {
 pub fn provider_model_selection_detail(provider: &str) -> String {
     let options = provider_auth_option_summaries(provider);
     if options.is_empty() {
+        if provider_allows_no_auth(provider, local_openai_provider_base_url(provider)) {
+            return "[local endpoint; no API key required]".to_string();
+        }
         return "[not authenticated]".to_string();
     }
     options
@@ -199,6 +204,8 @@ pub fn provider_auth_status_summary(provider: &str) -> String {
         "[OAuth configured]".to_string()
     } else if has_api_key {
         "[API key configured]".to_string()
+    } else if provider_allows_no_auth(provider, local_openai_provider_base_url(provider)) {
+        "[local endpoint; no API key required]".to_string()
     } else {
         "[not authenticated]".to_string()
     };
@@ -258,29 +265,97 @@ pub fn auth_source(provider: &str) -> Option<AuthSource> {
 
 pub fn provider_has_auth(provider: &str) -> bool {
     auth_source(provider).is_some()
+        || provider_allows_no_auth(provider, local_openai_provider_base_url(provider))
+}
+
+fn push_unique_provider(out: &mut Vec<String>, provider: &str) {
+    let normalized = normalize_provider_for_model_selection(provider);
+    if !out.iter().any(|existing| existing == &normalized) {
+        out.push(normalized);
+    }
+}
+
+fn settings_provider_base_url<'a>(settings: &'a Settings, provider: &str) -> Option<&'a str> {
+    settings.providers.as_ref()?.iter().find_map(|configured| {
+        provider_names_match(provider, &configured.name)
+            .then_some(configured.base_url.as_deref())
+            .flatten()
+    })
+}
+
+fn settings_model_base_url<'a>(settings: &'a Settings, provider: &str) -> Option<&'a str> {
+    settings.models.as_ref()?.iter().find_map(|model| {
+        provider_names_match(provider, &model.provider)
+            .then_some(model.base_url.as_deref())
+            .flatten()
+    })
+}
+
+fn settings_provider_has_env_auth(settings: &Settings, provider: &str) -> bool {
+    settings.providers.as_ref().is_some_and(|providers| {
+        providers.iter().any(|configured| {
+            provider_names_match(provider, &configured.name)
+                && configured.api_key_env.as_deref().is_some_and(|env_key| {
+                    std::env::var(env_key)
+                        .map(|value| !value.trim().is_empty())
+                        .unwrap_or(false)
+                })
+        })
+    })
+}
+
+pub fn provider_configured_for_settings(settings: &Settings, provider: &str) -> bool {
+    provider_has_auth(provider)
+        || settings_provider_has_env_auth(settings, provider)
+        || provider_allows_no_auth(
+            provider,
+            settings_provider_base_url(settings, provider)
+                .or_else(|| settings_model_base_url(settings, provider))
+                .or_else(|| local_openai_provider_base_url(provider)),
+        )
 }
 
 pub fn authenticated_providers() -> Vec<String> {
     let mut out = Vec::new();
     for provider in known_providers().iter().map(|(name, _, _)| *name) {
-        if !provider_has_auth(provider) {
-            continue;
-        }
-        let normalized = normalize_provider_for_model_selection(provider);
-        if !out.iter().any(|existing| existing == &normalized) {
-            out.push(normalized);
+        if provider_has_auth(provider) {
+            push_unique_provider(&mut out, provider);
         }
     }
+    out
+}
+
+pub fn authenticated_providers_for_settings(settings: &Settings) -> Vec<String> {
+    let mut out = authenticated_providers();
+
+    if let Some(providers) = &settings.providers {
+        for provider in providers {
+            if provider_configured_for_settings(settings, &provider.name) {
+                push_unique_provider(&mut out, &provider.name);
+            }
+        }
+    }
+
+    if let Some(models) = &settings.models {
+        for model in models {
+            if provider_configured_for_settings(settings, &model.provider) {
+                push_unique_provider(&mut out, &model.provider);
+            }
+        }
+    }
+
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthSource, auth_source, provider_auth_option_summaries, provider_auth_status_summary,
-        provider_model_selection_detail,
+        AuthSource, auth_source, authenticated_providers_for_settings,
+        provider_auth_option_summaries, provider_auth_status_summary,
+        provider_configured_for_settings, provider_model_selection_detail,
     };
     use crate::login::ProviderAuthMethod;
+    use kordi_core::settings::{ProviderOverride, Settings};
     use serde_json::json;
     use std::sync::Mutex;
 
@@ -338,6 +413,47 @@ mod tests {
         let detail = provider_model_selection_detail("openai");
         assert!(detail.contains("active: OAuth • acct_primary • saved "));
         assert!(detail.contains("API key (env)"));
+    }
+
+    #[test]
+    fn local_openai_providers_are_available_without_saved_auth() {
+        let settings = Settings::default();
+
+        assert_eq!(
+            provider_model_selection_detail("lm-studio"),
+            "[local endpoint; no API key required]"
+        );
+        assert_eq!(
+            provider_auth_status_summary("ollama"),
+            "[local endpoint; no API key required]"
+        );
+        assert!(provider_configured_for_settings(&settings, "lm-studio"));
+        assert!(
+            authenticated_providers_for_settings(&settings)
+                .iter()
+                .any(|provider| provider == "lm-studio")
+        );
+    }
+
+    #[test]
+    fn loopback_provider_settings_are_available_without_api_keys() {
+        let settings = Settings {
+            providers: Some(vec![ProviderOverride {
+                name: "vllm-local".to_string(),
+                base_url: Some("http://localhost:8000/v1".to_string()),
+                api_key_env: None,
+                api: Some("openai".to_string()),
+                headers: None,
+            }]),
+            ..Settings::default()
+        };
+
+        assert!(provider_configured_for_settings(&settings, "vllm-local"));
+        assert!(
+            authenticated_providers_for_settings(&settings)
+                .iter()
+                .any(|provider| provider == "vllm-local")
+        );
     }
 
     #[test]

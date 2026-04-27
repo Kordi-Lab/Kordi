@@ -19,6 +19,8 @@ It is the reference for:
 |----------|-------------|--------|
 | **Anthropic** | OAuth or `ANTHROPIC_API_KEY` | Claude Opus, Sonnet, Haiku |
 | **OpenAI** | OAuth or `OPENAI_API_KEY` | GPT-4o, GPT-4.1, o1, o3, o4-mini |
+| **LM Studio** | No key for local server; optional `LM_STUDIO_API_KEY` | Models loaded in the LM Studio app (`http://localhost:1234/v1`) |
+| **Ollama** | No key for local server; optional `OLLAMA_API_KEY` | Installed Ollama models (`http://localhost:11434/v1`) |
 | **GitHub Copilot** | OAuth/device flow or `GH_COPILOT_TOKEN` | Copilot chat models |
 | **Google** | `GOOGLE_API_KEY` | Gemini 2.5 Pro, Flash |
 | **Groq** | `GROQ_API_KEY` | Llama, Mixtral |
@@ -58,6 +60,20 @@ kordi login xai
 kordi login openrouter
 ```
 
+### Local OpenAI-compatible servers
+
+LM Studio and Ollama are available without a saved API key when their local OpenAI-compatible servers are running:
+
+```bash
+# LM Studio: start the local server in the macOS app, then select one of its live models.
+kordi --provider lm-studio --model qwen3-coder-30b
+
+# Ollama: install/start Ollama and use its OpenAI-compatible endpoint.
+kordi --provider ollama --model llama3.2
+```
+
+Kordi discovers live model ids from `/v1/models` for these local providers and does not send an `Authorization` header unless an optional key is configured. In the desktop app, open **Settings → Authentication → LM Studio/Ollama** to adjust the local port if your server is not using the default `1234` or `11434` port.
+
 ### Environment Variables
 
 Set directly without `kordi login`:
@@ -69,6 +85,8 @@ export GOOGLE_API_KEY="..."
 export GROQ_API_KEY="..."
 export XAI_API_KEY="..."
 export OPENROUTER_API_KEY="..."
+export LM_STUDIO_API_KEY="..."                # Optional: only if your local server requires it
+export OLLAMA_API_KEY="..."                   # Optional: only if your local server requires it
 export GH_COPILOT_TOKEN="..."                 # Direct Copilot runtime token
 export GITHUB_COPILOT_TOKEN="..."             # Equivalent env fallback
 export GITHUB_COPILOT_CLIENT_SECRET="..."     # Optional: only needed for GitHub OAuth refresh support
@@ -183,6 +201,20 @@ Define entirely new providers:
 Then use:
 ```bash
 kordi --provider my-corp --model our-model
+```
+
+For local/self-hosted OpenAI-compatible servers, `base_url` can point at a loopback endpoint and the API key may be omitted:
+
+```json
+{
+  "providers": [
+    {
+      "name": "vllm-local",
+      "base_url": "http://localhost:8000/v1",
+      "api": "openai"
+    }
+  ]
+}
 ```
 
 ## API Types

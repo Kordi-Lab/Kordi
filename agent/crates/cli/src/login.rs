@@ -21,17 +21,19 @@ use store::{
 
 pub use cli::{handle_login, handle_logout, run_oauth_login, try_open_browser};
 pub use providers::{
-    ProviderAuthMethod, is_oauth_provider, known_providers, normalize_provider_for_model_selection,
-    provider_api_key_variant, provider_auth_method, provider_display_name, provider_login_hint,
-    provider_meta, provider_oauth_variant,
+    ProviderAuthMethod, is_local_openai_provider, is_loopback_base_url, is_oauth_provider,
+    known_providers, local_openai_provider_base_url, normalize_provider_for_model_selection,
+    provider_allows_no_auth, provider_api_key_variant, provider_auth_method, provider_display_name,
+    provider_login_hint, provider_meta, provider_names_match, provider_oauth_variant,
 };
+#[allow(unused_imports)]
 pub use resolver::{
     AuthSource, ProviderAuthOptionSummary, ResolvedProviderAuth, add_cached_github_copilot_models,
     auth_source, authenticated_model_candidates, authenticated_providers,
-    available_model_for_provider, preferred_available_model_for_provider,
-    preferred_startup_provider_and_model, provider_auth_option_summaries,
-    provider_auth_status_summary, provider_model_selection_detail, resolve_provider_auth,
-    resolve_provider_auth_choice,
+    authenticated_providers_for_settings, available_model_for_provider,
+    preferred_available_model_for_provider, preferred_startup_provider_and_model,
+    provider_auth_option_summaries, provider_auth_status_summary, provider_configured_for_settings,
+    provider_model_selection_detail, resolve_provider_auth, resolve_provider_auth_choice,
 };
 
 #[cfg(test)]

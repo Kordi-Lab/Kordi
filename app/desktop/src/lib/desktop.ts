@@ -81,6 +81,10 @@ export async function saveDesktopApiKey(provider: string, key: string) {
   return invokeDesktop<DesktopAuthState>('desktop_save_api_key', { provider, key });
 }
 
+export async function setDesktopLocalProviderPort(provider: string, port: number) {
+  return invokeDesktop<DesktopAuthState>('desktop_set_local_provider_port', { provider, port });
+}
+
 export async function logoutDesktopProvider(provider: string) {
   return invokeDesktop<DesktopAuthState>('desktop_logout', { provider });
 }

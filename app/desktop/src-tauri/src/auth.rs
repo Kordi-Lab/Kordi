@@ -1,3 +1,5 @@
+mod local_providers;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +35,7 @@ pub struct DesktopAuthProvider {
     pub supports_api_key: bool,
     pub configured: bool,
     pub authority: Option<String>,
+    pub base_url: Option<String>,
     pub options: Vec<DesktopAuthOption>,
 }
 
@@ -194,7 +197,8 @@ fn auth_option_detail(
 }
 
 fn build_auth_state() -> DesktopAuthState {
-    let providers = kordi_cli::login::known_providers()
+    let settings = kordi_core::settings::Settings::load_global();
+    let provider_entries = kordi_cli::login::known_providers()
         .iter()
         .map(|(provider, env_var, help_url)| {
             let options = kordi_cli::login::provider_auth_option_summaries(provider)
@@ -219,27 +223,52 @@ fn build_auth_state() -> DesktopAuthState {
                 .collect::<Vec<_>>();
             let copilot_status =
                 (*provider == "github-copilot").then(kordi_cli::login::github_copilot_status);
-            DesktopAuthProvider {
-                id: (*provider).to_string(),
-                label: kordi_cli::login::provider_display_name(provider).into_owned(),
-                status_summary: kordi_cli::login::provider_auth_status_summary(provider),
-                login_hint: kordi_cli::login::provider_login_hint(provider),
-                env_var: (*env_var).to_string(),
-                help_url: (*help_url).to_string(),
-                supports_oauth: kordi_cli::login::provider_oauth_variant(provider).is_some(),
-                supports_api_key: kordi_cli::login::provider_api_key_variant(provider).is_some(),
-                configured: !options.is_empty(),
-                authority: copilot_status.and_then(|status| status.authority),
-                options,
-            }
+            let local_provider = kordi_cli::login::is_local_openai_provider(provider);
+            let has_explicit_local_config = local_provider
+                && (!options.is_empty()
+                    || local_providers::has_explicit_settings(&settings, provider));
+            let configured = if local_provider {
+                has_explicit_local_config
+            } else {
+                !options.is_empty()
+                    || kordi_cli::login::provider_configured_for_settings(&settings, provider)
+            };
+            let satisfies_startup_gate = if local_provider {
+                has_explicit_local_config
+            } else {
+                configured
+            };
+            (
+                DesktopAuthProvider {
+                    id: (*provider).to_string(),
+                    label: kordi_cli::login::provider_display_name(provider).into_owned(),
+                    status_summary: kordi_cli::login::provider_auth_status_summary(provider),
+                    login_hint: kordi_cli::login::provider_login_hint(provider),
+                    env_var: (*env_var).to_string(),
+                    help_url: (*help_url).to_string(),
+                    supports_oauth: kordi_cli::login::provider_oauth_variant(provider).is_some(),
+                    supports_api_key: kordi_cli::login::provider_api_key_variant(provider)
+                        .is_some(),
+                    configured,
+                    authority: copilot_status.and_then(|status| status.authority),
+                    base_url: local_providers::desktop_provider_base_url(&settings, provider),
+                    options,
+                },
+                satisfies_startup_gate,
+            )
         })
+        .collect::<Vec<_>>();
+    let has_any_auth = provider_entries
+        .iter()
+        .any(|(_, satisfies_startup_gate)| *satisfies_startup_gate);
+    let providers = provider_entries
+        .into_iter()
+        .map(|(provider, _)| provider)
         .collect::<Vec<_>>();
 
     DesktopAuthState {
         auth_path: kordi_cli::login::auth_path().display().to_string(),
-        has_any_auth: providers
-            .iter()
-            .any(|provider| !provider.options.is_empty()),
+        has_any_auth,
         providers,
     }
 }
@@ -275,6 +304,36 @@ pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuth
     }
     kordi_cli::login::save_api_key(provider, key.trim().to_string())
         .map_err(|err| err.to_string())?;
+    Ok(build_auth_state())
+}
+
+#[tauri::command]
+pub fn desktop_set_local_provider_port(
+    provider: String,
+    port: u32,
+) -> Result<DesktopAuthState, String> {
+    let normalized = kordi_cli::login::normalize_provider_for_model_selection(provider.trim());
+    let base_url = local_providers::base_url_for_port(&normalized, port)?;
+    let mut settings = kordi_core::settings::Settings::load_global();
+    let providers = settings.providers.get_or_insert_with(Vec::new);
+
+    if let Some(existing) = providers
+        .iter_mut()
+        .find(|entry| kordi_cli::login::provider_names_match(&normalized, &entry.name))
+    {
+        existing.name = normalized;
+        existing.base_url = Some(base_url);
+    } else {
+        providers.push(kordi_core::settings::ProviderOverride {
+            name: normalized,
+            base_url: Some(base_url),
+            api_key_env: None,
+            api: None,
+            headers: None,
+        });
+    }
+
+    settings.save_global().map_err(|err| err.to_string())?;
     Ok(build_auth_state())
 }
 

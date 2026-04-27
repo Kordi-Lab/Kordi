@@ -45,9 +45,9 @@ impl ModelRegistry {
                     .api
                     .as_deref()
                     .map(|a| match a {
-                        "anthropic-messages" => ApiType::AnthropicMessages,
+                        "anthropic" | "anthropic-messages" => ApiType::AnthropicMessages,
                         "openai-responses" => ApiType::OpenaiResponses,
-                        "google-generative" => ApiType::GoogleGenerative,
+                        "google" | "google-generative" => ApiType::GoogleGenerative,
                         _ => ApiType::OpenaiCompletions,
                     })
                     .unwrap_or(ApiType::OpenaiCompletions);

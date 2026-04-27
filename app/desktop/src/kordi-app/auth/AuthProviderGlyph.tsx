@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Atom, Bot, Code2, Compass, Globe2, Sparkles, Zap } from 'lucide-react';
+import { Atom, Bot, Code2, Compass, Cpu, Globe2, Server, Sparkles, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type AuthProviderGlyphProps = {
@@ -24,6 +24,14 @@ const providerGlyphMeta: Record<string, { icon: ComponentType<{ className?: stri
   'github-copilot': {
     icon: Code2,
     className: 'bg-[linear-gradient(180deg,rgba(139,154,255,0.3),rgba(53,62,130,0.24))] text-indigo-100 border-indigo-200/18',
+  },
+  'lm-studio': {
+    icon: Cpu,
+    className: 'bg-[linear-gradient(180deg,rgba(251,191,36,0.28),rgba(120,53,15,0.24))] text-yellow-100 border-yellow-200/18',
+  },
+  ollama: {
+    icon: Server,
+    className: 'bg-[linear-gradient(180deg,rgba(148,163,184,0.28),rgba(51,65,85,0.24))] text-slate-100 border-slate-200/18',
   },
   google: {
     icon: Globe2,

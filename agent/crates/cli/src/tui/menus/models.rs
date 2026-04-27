@@ -267,7 +267,12 @@ impl TuiController {
         thinking_override: Option<ThinkingLevel>,
         auth: Option<crate::login::ResolvedProviderAuth>,
     ) {
-        let runtime = crate::runtime_model::build_runtime_config(&model, auth.clone());
+        let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
+        let runtime = crate::runtime_model::build_runtime_config_with_settings(
+            &model,
+            &settings,
+            auth.clone(),
+        );
         let display = format!("{}/{}", model.provider, model.id);
 
         self.runtime_host.session_mut().set_model(ModelRef {

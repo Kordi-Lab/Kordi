@@ -1,7 +1,7 @@
 use super::*;
 
 pub fn authenticated_model_candidates(settings: &Settings) -> Vec<Model> {
-    let available = authenticated_providers();
+    let available = authenticated_providers_for_settings(settings);
     if available.is_empty() {
         return Vec::new();
     }
@@ -143,7 +143,7 @@ pub fn preferred_startup_provider_and_model(
         }
     }
 
-    for provider in authenticated_providers() {
+    for provider in authenticated_providers_for_settings(settings) {
         if let Some(model) = preferred_available_model_for_provider(settings, &provider) {
             return Some((provider, model));
         }

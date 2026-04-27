@@ -8,7 +8,8 @@ mod oauth_refresh;
 
 pub use auth_sources::{
     AuthSource, ProviderAuthOptionSummary, add_cached_github_copilot_models, auth_source,
-    authenticated_providers, provider_auth_option_summaries, provider_auth_status_summary,
+    authenticated_providers, authenticated_providers_for_settings, provider_auth_option_summaries,
+    provider_auth_status_summary, provider_configured_for_settings,
     provider_model_selection_detail,
 };
 pub use models::{

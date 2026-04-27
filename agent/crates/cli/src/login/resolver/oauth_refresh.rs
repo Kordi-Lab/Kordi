@@ -127,6 +127,30 @@ fn resolve_env_provider_auth(
                 account_label: None,
                 authority: None,
             }),
+        ("lm-studio", ProviderAuthMethod::ApiKey) => std::env::var("LM_STUDIO_API_KEY")
+            .ok()
+            .filter(|val| !val.is_empty())
+            .map(|val| ResolvedProviderAuth {
+                source: AuthSource::EnvVar,
+                credential_provider: normalized.clone(),
+                method,
+                credential: val,
+                account_id: None,
+                account_label: None,
+                authority: None,
+            }),
+        ("ollama", ProviderAuthMethod::ApiKey) => std::env::var("OLLAMA_API_KEY")
+            .ok()
+            .filter(|val| !val.is_empty())
+            .map(|val| ResolvedProviderAuth {
+                source: AuthSource::EnvVar,
+                credential_provider: normalized.clone(),
+                method,
+                credential: val,
+                account_id: None,
+                account_label: None,
+                authority: None,
+            }),
         ("google", ProviderAuthMethod::ApiKey) => ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
             .into_iter()
             .find_map(|key| std::env::var(key).ok().filter(|val| !val.is_empty()))

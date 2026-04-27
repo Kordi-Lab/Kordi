@@ -273,7 +273,7 @@ export function ChatsPage({
       {!hasAnyAuth && !activeConversationIsBridge ? (
         <AuthNoticeBanner
           title="No provider connected yet"
-          description="Connect a provider before starting AI chats. You can add browser sign-in or an API key in Authentication."
+          description="Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server in Authentication before starting AI chats."
           onAction={onOpenAuthSettings}
         />
       ) : null}

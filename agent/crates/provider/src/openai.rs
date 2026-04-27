@@ -56,6 +56,18 @@ fn is_standard_openai_api_base(base_url: &str) -> bool {
     trimmed == "https://api.openai.com/v1" || trimmed == "https://api.openai.com"
 }
 
+pub(super) fn apply_bearer_auth(
+    builder: reqwest::RequestBuilder,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        builder
+    } else {
+        builder.header("Authorization", format!("Bearer {api_key}"))
+    }
+}
+
 fn format_github_copilot_error(status: reqwest::StatusCode, body: &str, model: &str) -> String {
     let lower = body.to_ascii_lowercase();
     let mut lines = vec![format!("HTTP {status}: {body}")];
@@ -194,11 +206,12 @@ impl Provider for OpenAiProvider {
             options.cancel.clone(),
             options.retry_callback.clone(),
             || {
-                let mut r = self
-                    .client
-                    .post(&url)
-                    .header("Authorization", format!("Bearer {}", options.api_key))
-                    .header("Content-Type", "application/json");
+                let mut r = apply_bearer_auth(
+                    self.client
+                        .post(&url)
+                        .header("Content-Type", "application/json"),
+                    &options.api_key,
+                );
                 for (k, v) in &options.headers {
                     r = r.header(k.as_str(), v.as_str());
                 }
@@ -292,5 +305,38 @@ impl Provider for OpenAiProvider {
         }
         let _ = tx.send(StreamEvent::Done);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_bearer_auth;
+    use reqwest::Client;
+
+    #[test]
+    fn bearer_auth_is_omitted_when_api_key_is_empty() {
+        let request = apply_bearer_auth(Client::new().get("http://localhost/v1/models"), "")
+            .build()
+            .expect("request builds");
+
+        assert!(request.headers().get("Authorization").is_none());
+    }
+
+    #[test]
+    fn bearer_auth_is_added_when_api_key_is_present() {
+        let request = apply_bearer_auth(
+            Client::new().get("http://localhost/v1/models"),
+            " local-secret ",
+        )
+        .build()
+        .expect("request builds");
+
+        assert_eq!(
+            request
+                .headers()
+                .get("Authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer local-secret")
+        );
     }
 }

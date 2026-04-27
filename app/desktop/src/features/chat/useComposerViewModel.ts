@@ -131,6 +131,8 @@ export function useComposerViewModel({
       'groq',
       'openai',
       'openai-codex',
+      'lm-studio',
+      'ollama',
       'openrouter',
       'xai',
       'github-copilot',
@@ -142,6 +144,8 @@ export function useComposerViewModel({
     if (normalized.includes('claude')) return 'anthropic';
     if (normalized.includes('gemini')) return 'google';
     if (normalized.includes('groq')) return 'groq';
+    if (normalized.includes('lm-studio') || normalized.includes('lm studio')) return 'lm-studio';
+    if (normalized.includes('ollama')) return 'ollama';
     if (normalized.includes('openrouter')) return 'openrouter';
     if (normalized.includes('xai') || normalized.includes('grok')) return 'xai';
     if (normalized.includes('copilot')) return 'github-copilot';

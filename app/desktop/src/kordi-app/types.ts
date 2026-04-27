@@ -302,6 +302,7 @@ export type DesktopAuthProvider = {
   supportsApiKey: boolean;
   configured: boolean;
   authority?: string | null;
+  baseUrl?: string | null;
   options: DesktopAuthOption[];
 };
 

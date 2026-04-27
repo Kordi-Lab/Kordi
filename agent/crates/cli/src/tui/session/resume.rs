@@ -107,12 +107,15 @@ impl TuiController {
                     registry.load_custom_models(&settings);
                     crate::login::add_cached_github_copilot_models(&mut registry);
                     {
-                        let model = crate::runtime_model::resolve_or_synthesize_model(
+                        let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
                             &registry,
+                            &settings,
                             &model_info.provider,
                             &model_info.model_id,
                         );
-                        let runtime = crate::runtime_model::resolve_runtime_config(&model);
+                        let runtime = crate::runtime_model::resolve_runtime_config_with_settings(
+                            &model, &settings,
+                        );
 
                         self.runtime_host.session_mut().set_model(ModelRef {
                             provider: model.provider.clone(),
