@@ -1,3 +1,4 @@
+export * from './chatMessages';
 export * from './context';
 export * from './mentions';
 export * from './optimistic';
