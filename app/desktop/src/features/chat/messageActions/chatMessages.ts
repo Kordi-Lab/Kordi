@@ -500,8 +500,10 @@ export function useChatMessageActions({
             : null;
           const turn = await startDesktopChatMessage(resolvedSessionId, runtimeMessageText, attachmentPaths);
           const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+          let processingRelayPromise: Promise<void> | null = null;
           if (localAgentRelayTarget) {
-            void relaySharedSessionMessage(
+            await userRelayPromise;
+            processingRelayPromise = relaySharedSessionMessage(
               localAgentRelayTarget.target,
               localAgentRelayTarget.parentSessionId,
               'processing...',
@@ -518,9 +520,9 @@ export function useChatMessageActions({
                 setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
               });
           }
-          return { turn, userRelayPromise, localAgentBridgeRequestId };
+          return { turn, processingRelayPromise, localAgentBridgeRequestId };
         })
-        .then(({ turn, userRelayPromise, localAgentBridgeRequestId }) => {
+        .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
           if (!localAgentRelayTarget) {
             void watchDesktopLiveTurn(turn);
             return;
@@ -529,13 +531,13 @@ export function useChatMessageActions({
           void (async () => {
             try {
               await watchDesktopLiveTurn(turn);
+              await processingRelayPromise;
               const completedTurn = await fetchDesktopChatTurnState(turn.id);
               const assistantText = stripLeadingAddressMentions(
                 completedTurn.assistantText.trim(),
                 localHumanAddressLabels(desktopBridgeState),
               );
               if (!completedTurn.succeeded || !assistantText) return;
-              await userRelayPromise;
               const nextState = await relaySharedSessionMessage(
                 localAgentRelayTarget.target,
                 localAgentRelayTarget.parentSessionId,

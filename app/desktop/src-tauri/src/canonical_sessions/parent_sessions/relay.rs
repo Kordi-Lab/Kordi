@@ -13,6 +13,13 @@ use super::super::{
 };
 use super::participants::ensure_parent_session_participants;
 
+fn is_processing_placeholder_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.eq_ignore_ascii_case("processing")
+        || trimmed.eq_ignore_ascii_case("processing...")
+        || trimmed.eq_ignore_ascii_case("processing…")
+}
+
 pub(super) fn sync_parent_session_relay_join_event(
     conn: &Connection,
     parent_session_id: &str,
@@ -181,6 +188,14 @@ pub(super) fn sync_parent_session_relay_messages(
             continue;
         }
         if message.text.trim().is_empty() {
+            continue;
+        }
+        let is_processing_placeholder = message
+            .delivery_state
+            .as_deref()
+            .is_some_and(|state| state.eq_ignore_ascii_case("processing"))
+            && is_processing_placeholder_text(&message.text);
+        if relay_is_local_agent_response && is_outbound && is_processing_placeholder {
             continue;
         }
 

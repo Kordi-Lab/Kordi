@@ -30,6 +30,7 @@ type CanonicalConversationLike = {
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
   bridgeTarget?: ConversationBridgeTarget | null;
+  statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   name: string;
   subtitle: string;
@@ -122,7 +123,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         messages,
         updatedAtLabel: latestTime,
-        statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : undefined,
+        statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
         bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, canonicalParticipants),
         canonicalParticipantCount: (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,

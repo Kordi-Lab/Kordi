@@ -60,13 +60,13 @@ export function useKordiDesktopActivity({
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = activeConversationIsBridge ? null : (desktopLiveTurnsBySession[activeConv.id] ?? null);
+  const activeChatLiveTurn = desktopLiveTurnsBySession[activeConv.id] ?? null;
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
     : activeNav === 'chats' && activeConversationIsBridge
-      ? isDesktopBridgeSending
+      ? isDesktopBridgeSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(
