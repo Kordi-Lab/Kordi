@@ -413,9 +413,16 @@ fn looks_like_embedding_model_id(value: &str) -> bool {
 
     model_part.contains("embedding")
         || model_part.contains("embed-text")
+        || model_part.contains("-embed")
         || model_part.starts_with("text-embedding")
         || model_part.starts_with("embed-")
         || model_part.starts_with("nomic-embed")
+        || model_part.starts_with("mxbai-embed")
+        || model_part.starts_with("all-minilm")
+        || model_part.starts_with("bge-")
+        || model_part.starts_with("bge_")
+        || model_part.starts_with("paraphrase-")
+        || model_part.starts_with("snowflake-arctic-embed")
 }
 
 #[cfg(test)]
@@ -464,6 +471,8 @@ mod tests {
         assert!(looks_like_embedding_model_id(
             "nomic-ai/nomic-embed-text-v1.5"
         ));
+        assert!(looks_like_embedding_model_id("all-minilm:latest"));
+        assert!(looks_like_embedding_model_id("bge-m3:latest"));
         assert!(!looks_like_model_id("text-embedding-3-large"));
     }
 

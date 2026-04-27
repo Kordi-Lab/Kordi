@@ -102,7 +102,7 @@ export function AuthProviderDetail({
 
   const hasSavedProfiles = provider.methods.some((method) => method.options.some((option) => !!option.profileId));
   const localEndpoint = localProviderEndpoint(provider);
-  const isLmStudioLocal = provider.id === 'lm-studio' && !!localEndpoint;
+  const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -164,7 +164,7 @@ export function AuthProviderDetail({
         )}
       </DetailSection>
 
-      <DetailSection title={isLmStudioLocal ? 'Local model control center' : localEndpoint ? 'Local server setup' : 'Ways to connect'}>
+      <DetailSection title={isLocalModelControl ? 'Local model control center' : localEndpoint ? 'Local server setup' : 'Ways to connect'}>
         {provider.id === 'github-copilot' ? (
           (() => {
             const raw = findRawProvider(rawProviders, 'github-copilot');
@@ -243,7 +243,7 @@ export function AuthProviderDetail({
         )}
       </DetailSection>
 
-      {!isLmStudioLocal ? (
+      {!isLocalModelControl ? (
         <>
           <DetailSection title="Saved accounts and keys">
             {provider.methods.map((method, methodIndex) => (

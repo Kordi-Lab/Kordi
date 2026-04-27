@@ -11,6 +11,7 @@ import {
   nonDragStyle,
 } from './AuthDetailPrimitives';
 import { LmStudioModelControlCenter } from './LmStudioModelControlCenter';
+import { OllamaModelControlCenter } from './OllamaModelControlCenter';
 
 type LocalProviderSetupProps = {
   provider: AuthDisplayProvider;
@@ -70,7 +71,7 @@ function localProviderServerInstructions(providerId: string, label: string, base
       installDetail: 'Install Ollama from the official download page, then run a model locally before selecting it in Kordi.',
       installCommand: null,
       installUrl: 'https://ollama.com/download',
-      docsUrl: 'https://docs.ollama.com',
+      docsUrl: 'https://docs.ollama.com/openai',
       docsLabel: 'Open docs',
     };
   }
@@ -153,6 +154,18 @@ export function LocalProviderSetup({
   if (provider.id === 'lm-studio') {
     return (
       <LmStudioModelControlCenter
+        endpoint={baseUrl}
+        port={localServer.port}
+        onRefreshAuth={onRefreshAuth}
+        onSaved={onDismissGate}
+        onEnterChat={onEnterChat}
+      />
+    );
+  }
+
+  if (provider.id === 'ollama') {
+    return (
+      <OllamaModelControlCenter
         endpoint={baseUrl}
         port={localServer.port}
         onRefreshAuth={onRefreshAuth}

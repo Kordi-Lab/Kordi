@@ -138,16 +138,30 @@ async fn ensure_provider_ready_for_send(
     model: &str,
     cwd: &std::path::Path,
 ) -> Result<(), String> {
-    if provider != "lm-studio" {
+    if provider != "lm-studio" && provider != "ollama" {
         return Ok(());
     }
 
     if model.trim().is_empty() {
-        return Err("LM Studio selected, but no local model is selected.".to_string());
+        let label = if provider == "ollama" {
+            "Ollama"
+        } else {
+            "LM Studio"
+        };
+        return Err(format!("{label} selected, but no local model is selected."));
     }
 
     let settings = Settings::load_merged(cwd);
-    crate::auth::lm_studio::ensure_server_running(lm_studio_port(&settings))
+    if provider == "ollama" {
+        crate::auth::ollama::ensure_server_running(local_provider_port(&settings, "ollama"))
+            .await
+            .map_err(|err| format!(
+                "Ollama selected, but its local server is not running. Open Authentication → Ollama and start the local server, or start it from Ollama. {err}"
+            ))?;
+        return Ok(());
+    }
+
+    crate::auth::lm_studio::ensure_server_running(local_provider_port(&settings, "lm-studio"))
         .await
         .map_err(|err| format!(
             "LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio. {err}"
@@ -770,6 +784,7 @@ async fn authenticated_model_options_with_local_runtime(
 ) -> Vec<DesktopChatModelOption> {
     let mut options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
     merge_lm_studio_running_model_options(cwd, &mut options).await;
+    merge_ollama_running_model_options(cwd, &mut options).await;
     options
 }
 
@@ -801,19 +816,55 @@ async fn merge_lm_studio_running_model_options(
     }
 }
 
-fn lm_studio_port(settings: &Settings) -> Option<u32> {
-    let base_url = lm_studio_base_url(settings);
+async fn merge_ollama_running_model_options(
+    cwd: &std::path::Path,
+    options: &mut Vec<DesktopChatModelOption>,
+) {
+    let settings = Settings::load_merged(cwd);
+    let base_url = local_provider_base_url(&settings, "ollama", "http://localhost:11434/v1");
+    let Ok(model_ids) = crate::auth::ollama::running_model_ids_for_base_url(&base_url).await else {
+        return;
+    };
+
+    for model_id in model_ids {
+        if options
+            .iter()
+            .any(|option| option.provider == "ollama" && option.label == model_id)
+        {
+            continue;
+        }
+        options.push(DesktopChatModelOption {
+            provider: "ollama".to_string(),
+            provider_label: "Ollama".to_string(),
+            value: format!("ollama/{model_id}"),
+            label: model_id.clone(),
+            detail: "Ollama • running local model".to_string(),
+        });
+    }
+}
+
+fn local_provider_port(settings: &Settings, provider: &str) -> Option<u32> {
+    let fallback = if provider == "ollama" {
+        "http://localhost:11434/v1"
+    } else {
+        "http://localhost:1234/v1"
+    };
+    let base_url = local_provider_base_url(settings, provider, fallback);
     let url = reqwest::Url::parse(&base_url).ok()?;
     url.port().map(u32::from)
 }
 
 fn lm_studio_base_url(settings: &Settings) -> String {
+    local_provider_base_url(settings, "lm-studio", "http://localhost:1234/v1")
+}
+
+fn local_provider_base_url(settings: &Settings, provider_name: &str, fallback: &str) -> String {
     settings
         .providers
         .as_ref()
         .and_then(|providers| {
             providers.iter().find_map(|provider| {
-                kordi_cli::login::provider_names_match("lm-studio", &provider.name)
+                kordi_cli::login::provider_names_match(provider_name, &provider.name)
                     .then(|| provider.base_url.as_deref().map(str::trim))
                     .flatten()
                     .filter(|value| !value.is_empty())
@@ -823,7 +874,7 @@ fn lm_studio_base_url(settings: &Settings) -> String {
         .or_else(|| {
             settings.models.as_ref().and_then(|models| {
                 models.iter().find_map(|model| {
-                    kordi_cli::login::provider_names_match("lm-studio", &model.provider)
+                    kordi_cli::login::provider_names_match(provider_name, &model.provider)
                         .then(|| model.base_url.as_deref().map(str::trim))
                         .flatten()
                         .filter(|value| !value.is_empty())
@@ -832,9 +883,9 @@ fn lm_studio_base_url(settings: &Settings) -> String {
             })
         })
         .or_else(|| {
-            kordi_cli::login::local_openai_provider_base_url("lm-studio").map(ToString::to_string)
+            kordi_cli::login::local_openai_provider_base_url(provider_name).map(ToString::to_string)
         })
-        .unwrap_or_else(|| "http://localhost:1234/v1".to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 async fn build_chat_state(

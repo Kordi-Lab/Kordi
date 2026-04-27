@@ -1,5 +1,6 @@
 pub mod lm_studio;
 mod local_providers;
+pub mod ollama;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

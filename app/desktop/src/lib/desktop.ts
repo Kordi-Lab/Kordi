@@ -82,12 +82,16 @@ export async function saveDesktopApiKey(provider: string, key: string) {
   return invokeDesktop<DesktopAuthState>('desktop_save_api_key', { provider, key });
 }
 
-export type DesktopLmStudioCommandResult = {
+export type DesktopLocalModelCommandResult = {
   command: string;
   statusCode?: number | null;
   stdout: string;
   stderr: string;
 };
+
+export type DesktopLmStudioCommandResult = DesktopLocalModelCommandResult;
+
+export type DesktopOllamaCommandResult = DesktopLocalModelCommandResult;
 
 export type DesktopLmStudioCatalogVariant = {
   id: string;
@@ -129,6 +133,51 @@ export type DesktopLmStudioCatalogModel = {
   sizes: string[];
   updated?: string | null;
   variants: DesktopLmStudioCatalogVariant[];
+};
+
+export type DesktopOllamaCatalogVariant = {
+  id: string;
+  name: string;
+  url: string;
+  size?: string | null;
+  context?: string | null;
+  input?: string | null;
+};
+
+export type DesktopOllamaCatalogModel = {
+  id: string;
+  name: string;
+  url: string;
+  description?: string | null;
+  sizes: string[];
+  pulls?: string | null;
+  tags?: string | null;
+  variants: DesktopOllamaCatalogVariant[];
+};
+
+export type DesktopOllamaInstalledModel = {
+  id: string;
+  name: string;
+  size?: string | null;
+  family?: string | null;
+  parameterSize?: string | null;
+  quantization?: string | null;
+  modifiedAt?: string | null;
+};
+
+export type DesktopOllamaEnvironment = {
+  appPath?: string | null;
+  appVersion?: string | null;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  cliSource?: string | null;
+  notes: string[];
+};
+
+export type DesktopOllamaServerStatus = {
+  running: boolean;
+  detail: string;
+  version?: string | null;
 };
 
 export async function setDesktopLocalProviderPort(provider: string, port: number, model?: string | null) {
@@ -185,6 +234,54 @@ export async function loadLmStudioModelDesktop(model: string) {
 
 export async function stopLmStudioModelDesktop(model: string) {
   return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_stop_model', { model });
+}
+
+export async function fetchOllamaEnvironmentDesktop() {
+  return invokeDesktop<DesktopOllamaEnvironment>('desktop_ollama_environment');
+}
+
+export async function fetchOllamaServerStatusDesktop(baseUrl: string) {
+  return invokeDesktop<DesktopOllamaServerStatus>('desktop_ollama_server_status', { baseUrl });
+}
+
+export async function startOllamaServerDesktop(port?: number | null) {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_start_server', { port });
+}
+
+export async function openOllamaAppDesktop() {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_open_app');
+}
+
+export async function fetchOllamaCatalogModelsDesktop() {
+  return invokeDesktop<DesktopOllamaCatalogModel[]>('desktop_ollama_catalog_models');
+}
+
+export async function fetchOllamaCatalogVariantsDesktop(model: string) {
+  return invokeDesktop<DesktopOllamaCatalogVariant[]>('desktop_ollama_catalog_variants', { model });
+}
+
+export async function fetchOllamaInstalledModelsDesktop(baseUrl: string) {
+  return invokeDesktop<DesktopOllamaInstalledModel[]>('desktop_ollama_installed_models', { baseUrl });
+}
+
+export async function fetchOllamaRunningModelIdsDesktop(baseUrl: string) {
+  return invokeDesktop<string[]>('desktop_ollama_running_model_ids', { baseUrl });
+}
+
+export async function pullOllamaModelDesktop(baseUrl: string, model: string) {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_pull_model', { baseUrl, model });
+}
+
+export async function loadOllamaModelDesktop(baseUrl: string, model: string) {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_load_model', { baseUrl, model });
+}
+
+export async function stopOllamaModelDesktop(baseUrl: string, model: string) {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_stop_model', { baseUrl, model });
+}
+
+export async function deleteOllamaModelDesktop(baseUrl: string, model: string) {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_delete_model', { baseUrl, model });
 }
 
 export async function logoutDesktopProvider(provider: string) {

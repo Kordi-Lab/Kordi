@@ -20,11 +20,7 @@ const KNOWN_PROVIDERS: &[(&str, &str, &str)] = &[
         "LM_STUDIO_API_KEY",
         "https://lmstudio.ai/docs/app/api/endpoints/openai",
     ),
-    (
-        "ollama",
-        "OLLAMA_API_KEY",
-        "https://github.com/ollama/ollama/blob/main/docs/openai.md",
-    ),
+    ("ollama", "OLLAMA_API_KEY", "https://docs.ollama.com/openai"),
     (
         "google",
         "GOOGLE_API_KEY",

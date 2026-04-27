@@ -55,7 +55,7 @@ function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthP
       ? 'Run against LM Studio’s local OpenAI-compatible server. No API key is required unless you enabled one in LM Studio.'
       : 'Run against Ollama’s local OpenAI-compatible server. The default local server does not need an API key.',
     envVar: providerId === 'lm-studio' ? 'LM_STUDIO_API_KEY' : 'OLLAMA_API_KEY',
-    helpUrl: providerId === 'lm-studio' ? 'https://lmstudio.ai/docs/app/api/endpoints/openai' : 'https://docs.ollama.com',
+    helpUrl: providerId === 'lm-studio' ? 'https://lmstudio.ai/docs/app/api/endpoints/openai' : 'https://docs.ollama.com/openai',
     supportsOAuth: false,
     supportsApiKey: true,
     configured: false,
