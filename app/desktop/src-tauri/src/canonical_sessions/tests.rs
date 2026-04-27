@@ -624,6 +624,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 thinking_text: None,
                 tools: Vec::new(),
                 attachments: Vec::new(),
+                failed: false,
             }],
         },
         local_agent: kordi_cli::desktop_runtime::DesktopChatAgentProfile {
@@ -700,6 +701,7 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
         thinking_text: None,
         tools: Vec::new(),
         attachments: Vec::new(),
+        failed: false,
     };
 
     assert!(should_skip_shared_local_agent_runtime_prompt(

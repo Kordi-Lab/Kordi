@@ -7,16 +7,19 @@ use super::lookup::{
     scoped_conversation_id,
 };
 use super::merge::delivery_state_rank;
+use super::outreach_metadata::{
+    reconcile_conversation_outreach_delivery_state, reconcile_message_outreach_for_storage,
+    reconcile_message_outreach_metadata,
+};
 use super::records::{
-    load_conversation_record, load_conversation_store_from_db, store_conversation_record,
-    upsert_conversation_record,
+    load_conversation_record, load_conversation_store_from_db, optional_json, parse_optional_json,
+    store_conversation_record, upsert_conversation_record,
 };
 use super::schema::{migrate_legacy_conversation_json, open_conversation_db, sqlite_error};
 use crate::bridge::constants::{
-    is_inbound_message_direction, BRIDGE_DELIVERY_STATE_RESPONDED,
-    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-    BRIDGE_MESSAGE_ID_PREFIX,
+    is_inbound_message_direction, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_ID_PREFIX,
 };
 use crate::bridge::{
     DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
@@ -143,6 +146,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
         })
     });
 
+    let conversation_id_for_message = conversation.id.clone();
     if let Some(index) = existing_message {
         let message = &mut conversation.messages[index];
         let should_apply_update = delivery_state
@@ -153,19 +157,43 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
             })
             .unwrap_or(true);
         if should_apply_update {
+            let previous_text = message.text.clone();
             message.sender = sender.or_else(|| message.sender.clone());
             message.text = text;
             message.timestamp_ms = timestamp_ms;
-            if delivery_state.is_some() {
-                message.delivery_state = delivery_state;
+            if let Some(delivery_state) = delivery_state {
+                message.delivery_state = Some(delivery_state);
             }
             if message.outreach.is_none() {
                 message.outreach = message_outreach.clone();
+            }
+            if let Some(outreach) = message.outreach.as_mut() {
+                reconcile_message_outreach_for_storage(
+                    outreach,
+                    &conversation_id_for_message,
+                    message.request_id.as_deref(),
+                    message.delivery_state.as_deref(),
+                    &message.text,
+                    Some(&previous_text),
+                    timestamp_ms,
+                );
             }
         }
     } else {
         if increment_unread {
             conversation.unread_count += 1;
+        }
+        let mut outreach = message_outreach;
+        if let Some(outreach) = outreach.as_mut() {
+            reconcile_message_outreach_for_storage(
+                outreach,
+                &conversation_id_for_message,
+                request_id.as_deref(),
+                delivery_state.as_deref(),
+                &text,
+                None,
+                timestamp_ms,
+            );
         }
         conversation
             .messages
@@ -177,7 +205,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
                 timestamp_ms,
                 request_id,
                 delivery_state,
-                outreach: message_outreach,
+                outreach,
             });
     }
 
@@ -190,22 +218,14 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
             direction,
             BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE | BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
         ) && matches_request
-            && outreach.status != "cancelled"
         {
-            match delivery_state_for_status.as_deref() {
-                Some(BRIDGE_DELIVERY_STATE_RESPONDED) => {
-                    outreach.status = "completed".to_string();
-                    outreach.updated_at_ms = timestamp_ms;
-                    outreach.completed_at_ms = Some(timestamp_ms);
-                    outreach.error = None;
-                }
-                Some("processing_failed") => {
-                    outreach.status = "failed".to_string();
-                    outreach.updated_at_ms = timestamp_ms;
-                    outreach.completed_at_ms = Some(timestamp_ms);
-                    outreach.error = Some(text_for_status.clone());
-                }
-                _ => {}
+            if let Some(delivery_state) = delivery_state_for_status.as_deref() {
+                reconcile_conversation_outreach_delivery_state(
+                    outreach,
+                    delivery_state,
+                    Some(&text_for_status),
+                    timestamp_ms,
+                );
             }
         }
 
@@ -243,7 +263,7 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
 
     let mut statement = tx
         .prepare(
-            "SELECT id, conversation_id, delivery_state FROM bridge_messages\n             WHERE request_id = ?1",
+            "SELECT id, conversation_id, delivery_state, text, outreach_metadata FROM bridge_messages\n             WHERE request_id = ?1",
         )
         .map_err(sqlite_error)?;
     let rows = statement
@@ -252,25 +272,38 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                parse_optional_json(row.get::<_, Option<String>>(4)?)?,
             ))
         })
         .map_err(sqlite_error)?;
 
     let mut updates = Vec::new();
     for row in rows {
-        let (message_id, conversation_id, current_state) = row.map_err(sqlite_error)?;
+        let (message_id, conversation_id, current_state, text, outreach) =
+            row.map_err(sqlite_error)?;
         if delivery_state_rank(Some(delivery_state))
             >= delivery_state_rank(current_state.as_deref())
         {
-            updates.push((message_id, conversation_id));
+            updates.push((message_id, conversation_id, text, outreach));
         }
     }
     drop(statement);
 
-    for (message_id, conversation_id) in updates {
+    for (message_id, conversation_id, text, mut outreach) in updates {
+        if let Some(outreach) = outreach.as_mut() {
+            reconcile_message_outreach_metadata(
+                outreach,
+                Some(delivery_state),
+                Some(&text),
+                None,
+                now,
+            );
+        }
+        let outreach_metadata = optional_json(&outreach)?;
         tx.execute(
-            "UPDATE bridge_messages SET delivery_state = ?1 WHERE id = ?2",
-            params![delivery_state, message_id],
+            "UPDATE bridge_messages SET delivery_state = ?1, outreach_metadata = ?2 WHERE id = ?3",
+            params![delivery_state, outreach_metadata, message_id],
         )
         .map_err(sqlite_error)?;
 
@@ -284,30 +317,12 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
             };
             if let Some(outreach) = conversation.outreach.as_mut() {
                 if outreach.bridge_request_id.as_deref() == Some(request_id) {
-                    match delivery_state {
-                        "cancelled" => {
-                            outreach.status = "cancelled".to_string();
-                            outreach.updated_at_ms = now;
-                            outreach.completed_at_ms = Some(now);
-                            outreach.error = Some("Cancelled by user".to_string());
-                        }
-                        "processing_failed" if outreach.status != "cancelled" => {
-                            outreach.status = "failed".to_string();
-                            outreach.updated_at_ms = now;
-                            outreach.completed_at_ms = Some(now);
-                        }
-                        "responded" if outreach.status != "cancelled" => {
-                            outreach.status = "completed".to_string();
-                            outreach.updated_at_ms = now;
-                            outreach.completed_at_ms = Some(now);
-                            outreach.error = None;
-                        }
-                        "processing" if outreach.status != "cancelled" => {
-                            outreach.status = "processing".to_string();
-                            outreach.updated_at_ms = now;
-                        }
-                        _ => {}
-                    }
+                    reconcile_conversation_outreach_delivery_state(
+                        outreach,
+                        delivery_state,
+                        Some(&text),
+                        now,
+                    );
                 }
             }
             store_conversation_record(&tx, conversation)?;
