@@ -820,11 +820,24 @@ fn project_group_id(project_root: &std::path::Path) -> String {
     format!("project:{}", project_root.display())
 }
 
+fn exact_project_settings(project_root: &std::path::Path) -> Settings {
+    let preferred = project_root.join(".kordi").join("settings.json");
+    let legacy = project_root.join(".bb-agent").join("settings.json");
+    let path = if preferred.exists() {
+        preferred
+    } else if legacy.exists() {
+        legacy
+    } else {
+        preferred
+    };
+    Settings::load_from_file(&path)
+}
+
 fn project_group_from_root(
     project_root: &std::path::Path,
     registered_name: Option<&str>,
 ) -> DesktopChatProjectGroup {
-    let settings = Settings::load_project(project_root);
+    let settings = exact_project_settings(project_root);
     let project_name = settings
         .project_name
         .as_deref()
@@ -1392,7 +1405,7 @@ fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSe
 }
 
 fn load_project_info(project_root: &std::path::Path) -> Option<DesktopChatProjectInfo> {
-    let settings = Settings::load_project(project_root);
+    let settings = exact_project_settings(project_root);
     let name = settings
         .project_name
         .as_deref()
