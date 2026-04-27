@@ -843,6 +843,7 @@ pub async fn desktop_chat_update_session_config(
             .set_thinking(thinking)
             .map_err(|err| err.to_string())?;
     }
+    drop(session);
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -864,6 +865,7 @@ pub async fn desktop_chat_rename_session(
     };
     let mut session = session.lock().await;
     session.set_name(&name).map_err(|err| err.to_string())?;
+    drop(session);
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -1058,6 +1060,7 @@ pub async fn desktop_chat_send_message(
         .send_message(text, Vec::new())
         .await
         .map_err(|err| err.to_string())?;
+    drop(session);
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
