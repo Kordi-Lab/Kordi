@@ -202,6 +202,7 @@ mod tests {
             bridge_host_id: "bridge_host".to_string(),
             bridge_conversation_id: None,
             bridge_request_id: Some("bridge_req".to_string()),
+            delivery_state: None,
             target_node_id: "kd_remote".to_string(),
             target_human_id: Some("kh_remote".to_string()),
             target_agent_id: Some("ka_remote".to_string()),

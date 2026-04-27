@@ -748,6 +748,8 @@ export type DesktopBridgeCreateOutreachRequest = {
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
   parentMessageId?: string | null;
+  bridgeRequestId?: string | null;
+  deliveryState?: string | null;
   projectId?: string | null;
   projectName?: string | null;
 };

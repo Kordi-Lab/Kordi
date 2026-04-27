@@ -528,6 +528,7 @@ fn outreach_context_snapshot_is_session_scoped() {
         bridge_host_id: "host-1".to_string(),
         bridge_conversation_id: Some("bridge:host-1:remote".to_string()),
         bridge_request_id: Some("bridge_req_test".to_string()),
+        delivery_state: None,
         target_node_id: "kd_remote".to_string(),
         target_human_id: Some("kh_remote".to_string()),
         target_agent_id: Some("ka_remote".to_string()),
@@ -686,6 +687,39 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
 }
 
 #[test]
+fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message() {
+    let message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "user".to_string(),
+        sender: Some("You".to_string()),
+        text: "@Kordi hi do a review".to_string(),
+        detail: None,
+        time_label: "Now".to_string(),
+        timestamp_ms: 1,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+    };
+
+    assert!(should_skip_shared_local_agent_runtime_prompt(
+        "session:bridge:humans:test",
+        &message,
+    ));
+    assert!(!should_skip_shared_local_agent_runtime_prompt(
+        "session:local:test",
+        &message,
+    ));
+
+    let normal_message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        text: "hello".to_string(),
+        ..message
+    };
+    assert!(!should_skip_shared_local_agent_runtime_prompt(
+        "session:bridge:humans:test",
+        &normal_message,
+    ));
+}
+
+#[test]
 fn message_scoped_outreach_groups_include_same_request_response_without_message_outreach() {
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-agent".to_string(),
@@ -697,6 +731,7 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
         bridge_host_id: "bridge-local".to_string(),
         bridge_conversation_id: Some("bridge:local:remote".to_string()),
         bridge_request_id: Some("bridge_req_weather".to_string()),
+        delivery_state: None,
         target_node_id: "kd_remote".to_string(),
         target_human_id: Some("kh_remote".to_string()),
         target_agent_id: Some("ka_remote".to_string()),
@@ -927,6 +962,7 @@ fn snapshot_you_sender_uses_remote_human_name_for_receiver() {
         bridge_host_id: "bridge-local".to_string(),
         bridge_conversation_id: None,
         bridge_request_id: Some("bridge_req".to_string()),
+        delivery_state: None,
         target_node_id: "kd_local".to_string(),
         target_human_id: Some("kh_local".to_string()),
         target_agent_id: None,

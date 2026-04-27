@@ -27,6 +27,8 @@ export async function relaySharedSessionMessage(
   parentSessionTitle?: string | null,
   parentMessageId?: string | null,
   parentTurnId?: string | null,
+  deliveryState?: string | null,
+  bridgeRequestId?: string | null,
 ) {
   return createDesktopBridgeOutreach({
     hostId: target.hostId,
@@ -46,6 +48,8 @@ export async function relaySharedSessionMessage(
     parentSessionMessages: [],
     parentTurnId,
     parentMessageId,
+    bridgeRequestId,
+    deliveryState,
     projectId: null,
     projectName: null,
   });

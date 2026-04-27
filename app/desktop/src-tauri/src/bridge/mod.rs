@@ -205,6 +205,8 @@ pub struct DesktopBridgeOutreachMetadata {
     pub bridge_conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_state: Option<String>,
     pub target_node_id: String,
     pub target_human_id: Option<String>,
     pub target_agent_id: Option<String>,
@@ -395,6 +397,8 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
+    pub bridge_request_id: Option<String>,
+    pub delivery_state: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
 }

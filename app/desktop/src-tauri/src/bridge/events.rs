@@ -319,6 +319,11 @@ pub(super) fn outreach_metadata_for_event(
         bridge_host_id: host.id.clone(),
         bridge_conversation_id: None,
         bridge_request_id: event.request_id.clone(),
+        delivery_state: event
+            .payload
+            .get("deliveryState")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
         target_node_id: host.node_id.clone(),
         target_human_id: Some(local_human_id),
         target_agent_id,

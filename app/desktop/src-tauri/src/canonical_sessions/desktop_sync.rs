@@ -35,6 +35,19 @@ fn should_skip_desktop_runtime_status_message(
     text.starts_with("Switched model to ") || text.starts_with("Thinking set to ")
 }
 
+pub(super) fn should_skip_shared_local_agent_runtime_prompt(
+    session_id: &str,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> bool {
+    if !session_id.starts_with("session:bridge:") {
+        return false;
+    }
+    if !message.role.trim().eq_ignore_ascii_case("user") {
+        return false;
+    }
+    message.text.trim_start().starts_with("@Kordi")
+}
+
 fn sync_desktop_chat_message(
     conn: &Connection,
     session_id: &str,
@@ -43,7 +56,9 @@ fn sync_desktop_chat_message(
     index: usize,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> Result<(), String> {
-    if should_skip_desktop_runtime_status_message(message) {
+    if should_skip_desktop_runtime_status_message(message)
+        || should_skip_shared_local_agent_runtime_prompt(session_id, message)
+    {
         return Ok(());
     }
     let normalized_role = message.role.trim().to_lowercase();

@@ -215,6 +215,8 @@ fn outbound_payload(
             })
     });
 
+    let delivery_state = outreach.and_then(|outreach| outreach.delivery_state.as_deref());
+
     if message_type == BRIDGE_MESSAGE_TYPE_ASK {
         let mut payload = serde_json::json!({ "question": message });
         if let Some(context_text) = context_text {
@@ -225,6 +227,9 @@ fn outbound_payload(
         }
         if let Some(session_thread) = session_thread.clone() {
             payload["sessionThread"] = session_thread;
+        }
+        if let Some(delivery_state) = delivery_state {
+            payload["deliveryState"] = serde_json::json!(delivery_state);
         }
 
         serde_json::json!({
@@ -249,6 +254,9 @@ fn outbound_payload(
         }
         if let Some(session_thread) = session_thread {
             payload["sessionThread"] = session_thread;
+        }
+        if let Some(delivery_state) = delivery_state {
+            payload["deliveryState"] = serde_json::json!(delivery_state);
         }
 
         serde_json::json!({
@@ -414,12 +422,14 @@ pub(super) async fn desktop_bridge_send_message_impl(
     }
 
     let (store, _conversations, context) = load_conversation_context(&conversation_id)?;
-    let request_id = format!("{}{}", BRIDGE_REQUEST_ID_PREFIX, Uuid::new_v4().simple());
     let fresh_outreach_for_message = context.conversation.outreach.clone().filter(|outreach| {
-        outreach.bridge_request_id.is_none()
-            && outreach.request_text.trim() == message
+        outreach.request_text.trim() == message
             && now_ms().saturating_sub(outreach.created_at_ms) < 30_000
     });
+    let request_id = fresh_outreach_for_message
+        .as_ref()
+        .and_then(|outreach| outreach.bridge_request_id.clone())
+        .unwrap_or_else(|| format!("{}{}", BRIDGE_REQUEST_ID_PREFIX, Uuid::new_v4().simple()));
     let payload = outbound_payload(
         &context,
         &request_id,
@@ -476,12 +486,15 @@ pub(super) async fn desktop_bridge_send_message_impl(
         context.conversation.project_id.clone(),
         context.conversation.project_name.clone(),
         context.conversation.identity.clone(),
-        fresh_outreach_for_message,
+        fresh_outreach_for_message.clone(),
         BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
         Some(sender_name),
         message.to_string(),
         Some(request_id),
-        Some(BRIDGE_DELIVERY_STATE_SENT.to_string()),
+        fresh_outreach_for_message
+            .as_ref()
+            .and_then(|outreach| outreach.delivery_state.clone())
+            .or_else(|| Some(BRIDGE_DELIVERY_STATE_SENT.to_string())),
         false,
     )?;
     let conversations = mark_bridge_conversation_read_in_storage(&conversation_id)?;

@@ -47,6 +47,8 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
     let request_target_runtime = clean(&request.target_runtime);
     let request_target_human_id = clean(&request.target_human_id);
     let request_target_agent_id = clean(&request.target_agent_id);
+    let request_bridge_request_id = clean(&request.bridge_request_id);
+    let request_delivery_state = clean(&request.delivery_state);
 
     let bridge_store = load_bridge_store();
     let host = bridge_store
@@ -165,7 +167,8 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
         parent_message_id: request.parent_message_id.clone(),
         bridge_host_id: request.host_id.clone(),
         bridge_conversation_id: Some(conversation.id.clone()),
-        bridge_request_id: None,
+        bridge_request_id: request_bridge_request_id,
+        delivery_state: request_delivery_state,
         target_node_id: request.target_node_id.clone(),
         target_human_id: target_human_id.clone(),
         target_agent_id: target_agent_id.clone(),

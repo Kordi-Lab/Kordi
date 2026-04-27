@@ -208,6 +208,8 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
             parent_session_messages: Vec::new(),
             parent_turn_id: request.parent_turn_id.clone(),
             parent_message_id: request.parent_message_id.clone(),
+            bridge_request_id: None,
+            delivery_state: None,
             project_id: request.project_id.clone(),
             project_name,
         },

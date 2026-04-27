@@ -182,6 +182,12 @@ fn append_inbound_event_message_to_storage(
     let identity_snapshot = identity_snapshot_for_event(host, event, &peer_runtime);
     let outreach = outreach_metadata_for_event(host, event, &peer_runtime);
 
+    let payload_delivery_state = event
+        .payload
+        .get("deliveryState")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+
     append_conversation_message_to_storage(
         &host.id,
         &event.from_node_id,
@@ -207,7 +213,7 @@ fn append_inbound_event_message_to_storage(
                 "processing".to_string()
             })
         } else {
-            None
+            payload_delivery_state
         },
         true,
     )?;

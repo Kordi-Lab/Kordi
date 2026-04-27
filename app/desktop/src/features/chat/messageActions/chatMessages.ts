@@ -421,6 +421,9 @@ export function useChatMessageActions({
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
+      const willRelayToLocalAgent = chatComposerAttachments.length === 0
+        && activeConvBridgeTarget
+        && mentionsLocalAgent(text, desktopChatState, desktopBridgeState);
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -428,10 +431,9 @@ export function useChatMessageActions({
         chatComposerAttachments,
         sentAt,
         'desktop-chat-ui',
+        willRelayToLocalAgent ? 'sent' : 'sending',
       );
-      const localAgentRelayTarget = chatComposerAttachments.length === 0
-        && activeConvBridgeTarget
-        && mentionsLocalAgent(text, desktopChatState, desktopBridgeState)
+      const localAgentRelayTarget = willRelayToLocalAgent && activeConvBridgeTarget
         ? {
             target: activeConvBridgeTarget,
             parentSessionId: parentSessionIdForMessage,
@@ -497,9 +499,28 @@ export function useChatMessageActions({
               })
             : null;
           const turn = await startDesktopChatMessage(resolvedSessionId, runtimeMessageText, attachmentPaths);
-          return { turn, userRelayPromise };
+          const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+          if (localAgentRelayTarget) {
+            void relaySharedSessionMessage(
+              localAgentRelayTarget.target,
+              localAgentRelayTarget.parentSessionId,
+              'processing...',
+              localAgentRelayTarget.parentSessionTitle,
+              localAgentRelayTarget.parentMessageId,
+              turn.id,
+              'processing',
+              localAgentBridgeRequestId,
+            )
+              .then((nextState) => {
+                setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+              })
+              .catch((error: unknown) => {
+                setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
+              });
+          }
+          return { turn, userRelayPromise, localAgentBridgeRequestId };
         })
-        .then(({ turn, userRelayPromise }) => {
+        .then(({ turn, userRelayPromise, localAgentBridgeRequestId }) => {
           if (!localAgentRelayTarget) {
             void watchDesktopLiveTurn(turn);
             return;
@@ -522,6 +543,8 @@ export function useChatMessageActions({
                 localAgentRelayTarget.parentSessionTitle,
                 localAgentRelayTarget.parentMessageId,
                 completedTurn.id,
+                'responded',
+                localAgentBridgeRequestId,
               );
               setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
             } finally {
