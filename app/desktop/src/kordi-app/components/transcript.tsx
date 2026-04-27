@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -736,13 +736,33 @@ function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: boolean) 
   return visibleTurnRef.current;
 }
 
+function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!shouldShow) {
+      setVisible(false);
+      return undefined;
+    }
+
+    setVisible(false);
+    const timeout = window.setTimeout(() => {
+      setVisible(true);
+    }, delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [delayMs, shouldShow, turnId]);
+
+  return shouldShow && visible;
+}
+
 function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const showLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
+  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
+  const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id);
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -849,8 +869,8 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
       })}
 
       {hasAssistant ? (
-        <div className="flex w-full flex-col items-start gap-0.5 py-0.5">
-          <div className="app-chat-bubble-peer min-w-0 overflow-hidden w-full max-w-[min(100%,42rem)] rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
+        <div className="flex w-full max-w-[min(100%,42rem)] flex-col items-start gap-0.5 py-0.5">
+          <div className="app-chat-bubble-peer min-w-0 w-fit max-w-full overflow-hidden rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
             <MarkdownContent text={visibleTurn.assistantText} />
           </div>
         </div>
