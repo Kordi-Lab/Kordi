@@ -291,7 +291,7 @@ export function ProjectCreateDialog({
               <input
                 value={parentDir}
                 onChange={(event) => setParentDir(event.target.value)}
-                placeholder="Defaults to ~/Kordi Projects"
+                placeholder="Defaults to ~/KordiProjects"
                 className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               />
             </label>

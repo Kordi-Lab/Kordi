@@ -2,6 +2,7 @@ import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
+  DesktopArtifactDirectory,
   DesktopArtifactPreview,
   DesktopAuthAttemptSnapshot,
   DesktopAuthState,
@@ -355,6 +356,10 @@ export async function fetchDesktopChatTurnState(turnId: string) {
 
 export async function fetchDesktopChatArtifactPreview(path: string, baseRoot?: string | null) {
   return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path, baseRoot });
+}
+
+export async function fetchDesktopChatArtifactDirectory(path?: string | null, baseRoot?: string | null) {
+  return invokeDesktop<DesktopArtifactDirectory>('desktop_chat_artifact_directory', { path, baseRoot });
 }
 
 export type OpenDesktopAuthPopupOptions = {

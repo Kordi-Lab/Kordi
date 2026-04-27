@@ -129,6 +129,7 @@ pub fn run() {
             auth::desktop_cancel_auth_attempt,
             chat::desktop_chat_store_attachment,
             chat::desktop_chat_artifact_preview,
+            chat::desktop_chat_artifact_directory,
             chat::desktop_chat_state,
             chat::desktop_chat_new_session,
             chat::desktop_chat_new_project_session,

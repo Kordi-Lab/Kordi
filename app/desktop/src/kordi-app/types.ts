@@ -49,6 +49,20 @@ export type DesktopArtifactPreview = {
   truncated: boolean;
 };
 
+export type DesktopArtifactDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: 'directory' | SessionArtifact['kind'];
+  isDirectory: boolean;
+  sizeBytes?: number | null;
+};
+
+export type DesktopArtifactDirectory = {
+  path: string;
+  parentPath?: string | null;
+  entries: DesktopArtifactDirectoryEntry[];
+};
+
 export type EditFilePreview = {
   path: string;
   additions: number;

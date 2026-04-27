@@ -90,13 +90,16 @@ fn sanitize_project_slug(value: &str) -> String {
 }
 
 fn default_new_project_parent() -> PathBuf {
+    // Avoid spaces in app-managed project paths so generated shell commands,
+    // file references, and agent prompts stay simple and copy-safe.
+    const DEFAULT_PROJECTS_DIR: &str = "KordiProjects";
     std::env::var_os("HOME")
         .map(PathBuf::from)
-        .map(|home| home.join("Kordi Projects"))
+        .map(|home| home.join(DEFAULT_PROJECTS_DIR))
         .unwrap_or_else(|| {
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
-                .join("Kordi Projects")
+                .join(DEFAULT_PROJECTS_DIR)
         })
 }
 

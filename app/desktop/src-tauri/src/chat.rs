@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -91,6 +91,24 @@ pub struct DesktopChatArtifactPreview {
     pub truncated: bool,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopArtifactDirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub is_directory: bool,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopArtifactDirectory {
+    pub path: String,
+    pub parent_path: Option<String>,
+    pub entries: Vec<DesktopArtifactDirectoryEntry>,
+}
+
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
 }
@@ -139,6 +157,15 @@ fn attachment_storage_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn artifact_base_path(base_root: Option<&str>) -> Result<PathBuf, String> {
+    base_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(expand_home_project_path)
+        .map(Ok)
+        .unwrap_or_else(chat_cwd)
+}
+
 fn resolve_artifact_preview_path(
     raw_path: &str,
     base_root: Option<&str>,
@@ -153,12 +180,43 @@ fn resolve_artifact_preview_path(
         return Ok(candidate);
     }
 
-    let base = base_root
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(expand_home_project_path)
-        .unwrap_or(chat_cwd()?);
-    Ok(base.join(candidate))
+    Ok(artifact_base_path(base_root)?.join(candidate))
+}
+
+fn resolve_artifact_directory_path(
+    raw_path: Option<&str>,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
+    let base = artifact_base_path(base_root)?;
+    let Some(trimmed) = raw_path.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(base);
+    };
+
+    let candidate = expand_home_project_path(trimmed);
+    if candidate.is_absolute() {
+        Ok(candidate)
+    } else {
+        Ok(base.join(candidate))
+    }
+}
+
+fn artifact_file_kind(path: &Path) -> &'static str {
+    let Some(extension) = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_lowercase)
+    else {
+        return "file";
+    };
+    match extension.as_str() {
+        "c" | "cc" | "cpp" | "cs" | "css" | "go" | "h" | "hpp" | "html" | "java" | "js"
+        | "json" | "jsx" | "kt" | "mjs" | "php" | "py" | "rb" | "rs" | "scss" | "sh" | "sql"
+        | "swift" | "toml" | "ts" | "tsx" | "vue" | "xml" | "yaml" | "yml" => "code",
+        "adoc" | "csv" | "ipynb" | "markdown" | "md" | "mdx" | "pdf" | "rst" | "rtf" | "txt" => {
+            "document"
+        }
+        _ => "file",
+    }
 }
 
 fn snapshot_turn(
@@ -799,6 +857,82 @@ pub async fn desktop_chat_artifact_preview(
         path: resolved_path.display().to_string(),
         lines,
         truncated,
+    })
+}
+
+#[tauri::command]
+pub async fn desktop_chat_artifact_directory(
+    path: Option<String>,
+    base_root: Option<String>,
+) -> Result<DesktopArtifactDirectory, String> {
+    const MAX_DIRECTORY_ENTRIES: usize = 500;
+
+    let requested_path = resolve_artifact_directory_path(path.as_deref(), base_root.as_deref())?;
+    let directory_path = if requested_path.is_file() {
+        requested_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "Artifact file has no parent folder".to_string())?
+    } else {
+        requested_path
+    };
+    if !directory_path.exists() {
+        return Err(format!("Folder not found: {}", directory_path.display()));
+    }
+    if !directory_path.is_dir() {
+        return Err(format!(
+            "Path is not a folder: {}",
+            directory_path.display()
+        ));
+    }
+
+    let directory_path = std::fs::canonicalize(&directory_path).unwrap_or(directory_path);
+    let base_path = artifact_base_path(base_root.as_deref())?;
+    let base_path = std::fs::canonicalize(&base_path).unwrap_or(base_path);
+    let parent_path = directory_path.parent().and_then(|parent| {
+        if directory_path == base_path || !parent.starts_with(&base_path) {
+            None
+        } else {
+            Some(parent.display().to_string())
+        }
+    });
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&directory_path).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let entry_path = entry.path();
+        let name = entry.file_name().to_string_lossy().trim().to_string();
+        if name.is_empty() || name == ".DS_Store" {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|err| err.to_string())?;
+        let is_directory = metadata.is_dir();
+        entries.push(DesktopArtifactDirectoryEntry {
+            name,
+            path: entry_path.display().to_string(),
+            kind: if is_directory {
+                "directory"
+            } else {
+                artifact_file_kind(&entry_path)
+            }
+            .to_string(),
+            is_directory,
+            size_bytes: (!is_directory).then_some(metadata.len()),
+        });
+    }
+
+    entries.sort_by(|left, right| {
+        right
+            .is_directory
+            .cmp(&left.is_directory)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    entries.truncate(MAX_DIRECTORY_ENTRIES);
+
+    Ok(DesktopArtifactDirectory {
+        path: directory_path.display().to_string(),
+        parent_path,
+        entries,
     })
 }
 

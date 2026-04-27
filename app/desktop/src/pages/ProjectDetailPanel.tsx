@@ -329,6 +329,7 @@ export function ProjectDetailPanel({
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
           previewBaseRoot={activeProject.root}
+          folderBrowserRoot={activeProject.root}
           emptyMessage="No generated or related project files yet."
           footer={
             <section className="app-detail-section">
