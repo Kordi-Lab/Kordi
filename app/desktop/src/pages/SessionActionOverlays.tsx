@@ -1,0 +1,195 @@
+import { useMemo, useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+
+export type SessionContextMenuTarget = {
+  sessionId: string;
+  sessionName: string;
+  x: number;
+  y: number;
+};
+
+export type SessionActionTarget = {
+  sessionId: string;
+  sessionName: string;
+};
+
+export type SessionMoveProjectTarget = {
+  id: string;
+  name: string;
+  root?: string;
+};
+
+type SessionContextMenuProps = {
+  target: SessionContextMenuTarget;
+  onClose: () => void;
+  onMove: (target: SessionActionTarget) => void;
+  onArchive: (sessionId: string) => void;
+  onDelete: (target: SessionActionTarget) => void;
+};
+
+export function SessionContextMenu({
+  target,
+  onClose,
+  onMove,
+  onArchive,
+  onDelete,
+}: SessionContextMenuProps) {
+  return (
+    <div className="fixed inset-0 z-50" onMouseDown={onClose}>
+      <div
+        className="app-modal-panel absolute w-[220px] rounded-[20px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 shadow-[var(--app-shadow-float)]"
+        style={{
+          left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
+          top: Math.max(12, Math.min(target.y, window.innerHeight - 220)),
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+          onClick={() => {
+            onClose();
+            onMove({ sessionId: target.sessionId, sessionName: target.sessionName });
+          }}
+        >
+          Move to project…
+        </button>
+        <button
+          type="button"
+          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+          onClick={() => {
+            onArchive(target.sessionId);
+            onClose();
+          }}
+        >
+          Not show here
+        </button>
+        <button
+          type="button"
+          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-rose-100 transition hover:bg-rose-500/10"
+          onClick={() => {
+            onClose();
+            onDelete({ sessionId: target.sessionId, sessionName: target.sessionName });
+          }}
+        >
+          Delete forever…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type DeleteSessionDialogProps = {
+  target: SessionActionTarget;
+  onCancel: () => void;
+  onConfirm: (sessionId: string) => void;
+};
+
+export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessionDialogProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
+      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="text-[16px] font-semibold">Delete forever?</div>
+        <div className="mt-2 text-[13px] leading-6 text-slate-400">
+          This permanently removes <span className="font-medium text-slate-200">{target.sessionName}</span> from local runtime storage and canonical session storage. This cannot be undone.
+        </div>
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+          <Button
+            className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
+            onClick={() => {
+              onConfirm(target.sessionId);
+              onCancel();
+            }}
+          >
+            Delete forever
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type MoveSessionDialogProps = {
+  target: SessionActionTarget;
+  projects: SessionMoveProjectTarget[];
+  onCancel: () => void;
+  onMoveToProject: (sessionId: string, projectRoot: string) => void;
+};
+
+export function MoveSessionDialog({
+  target,
+  projects,
+  onCancel,
+  onMoveToProject,
+}: MoveSessionDialogProps) {
+  const [newProjectRootDraft, setNewProjectRootDraft] = useState('');
+  const existingProjectTargets = useMemo(
+    () => projects.filter((project) => Boolean(project.root?.trim())),
+    [projects],
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
+      <div className="app-modal-panel w-full max-w-lg rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="text-[16px] font-semibold">Move to project</div>
+        <div className="mt-2 text-[13px] leading-6 text-slate-400">
+          Move <span className="font-medium text-slate-200">{target.sessionName}</span> out of Chats and into an explicit project folder.
+        </div>
+
+        <div className="mt-4">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">Existing projects</div>
+          <div className="mt-2 grid gap-2">
+            {existingProjectTargets.length > 0 ? existingProjectTargets.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:bg-white/[0.05]"
+                onClick={() => {
+                  const projectRoot = project.root?.trim();
+                  if (!projectRoot) return;
+                  onMoveToProject(target.sessionId, projectRoot);
+                  onCancel();
+                }}
+              >
+                <div className="text-[13px] font-medium text-white">{project.name}</div>
+                <div className="mt-1 truncate text-[11px] text-slate-400">{project.root}</div>
+              </button>
+            )) : (
+              <div className="rounded-[18px] border border-dashed border-white/10 px-4 py-3 text-[12px] text-slate-500">
+                No explicit projects yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">Create new project folder</div>
+          <input
+            value={newProjectRootDraft}
+            onChange={(event) => setNewProjectRootDraft(event.target.value)}
+            placeholder="Enter a folder path"
+            className="mt-2 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[13px] text-white outline-none placeholder:text-slate-500"
+          />
+          <div className="mt-1 text-[11px] text-slate-500">Relative paths resolve from the current desktop workspace.</div>
+        </div>
+
+        <div className="mt-5 flex justify-between gap-3">
+          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+          <Button
+            className="rounded-full px-4"
+            disabled={!newProjectRootDraft.trim()}
+            onClick={() => {
+              if (!newProjectRootDraft.trim()) return;
+              onMoveToProject(target.sessionId, newProjectRootDraft.trim());
+              onCancel();
+            }}
+          >
+            Create and move
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

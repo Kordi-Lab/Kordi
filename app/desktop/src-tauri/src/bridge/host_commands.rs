@@ -24,7 +24,14 @@ const SERVE_ONLY_CONTACTS_MESSAGE: &str =
 pub(super) async fn desktop_bridge_state_impl(
     manager: &DesktopBridgeManager,
 ) -> Result<DesktopBridgeState, String> {
-    Ok(build_current_bridge_state(manager).await)
+    let state = build_current_bridge_state(manager).await;
+    if let Err(error) = crate::canonical_sessions::sync_bridge_state_identities(&state) {
+        eprintln!("Unable to sync bridge identities into canonical sessions: {error}");
+    }
+    if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
+        eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
+    }
+    Ok(state)
 }
 
 fn run_file_manager_command(command: &mut Command) -> Result<(), String> {

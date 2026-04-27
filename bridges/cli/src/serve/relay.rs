@@ -293,10 +293,14 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                 };
                 if let Some(peer_tx) = peer_tx {
                     let _ = peer_tx.send(Message::Text(json));
-                    if let Some(ack) = maybe_delivery_event_frame(&dst_node_id, &request_bytes, "delivered") {
+                    if let Some(ack) =
+                        maybe_delivery_event_frame(&dst_node_id, &request_bytes, "delivered")
+                    {
                         let _ = tx.send(ack);
                     }
-                } else if let Some(ack) = maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed") {
+                } else if let Some(ack) =
+                    maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
+                {
                     let _ = tx.send(ack);
                 }
             }

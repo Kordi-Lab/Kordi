@@ -147,7 +147,9 @@ impl Tool for BrowserFetchTool {
 
 fn validate_input(input: &BrowserFetchInput) -> KordiResult<()> {
     if input.url.trim().is_empty() {
-        return Err(KordiError::Tool("browser_fetch url must be non-empty".into()));
+        return Err(KordiError::Tool(
+            "browser_fetch url must be non-empty".into(),
+        ));
     }
     validate_optional_max_chars("browser_fetch", input.max_chars)?;
     validate_optional_timeout("browser_fetch", input.timeout)?;

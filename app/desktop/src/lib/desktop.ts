@@ -1,4 +1,21 @@
-import type { DesktopArtifactPreview, DesktopAuthAttemptSnapshot, DesktopAuthState, DesktopBridgeInvite, DesktopBridgeState, DesktopChatProjectSource, DesktopChatState, DesktopChatTurnSnapshot, DesktopProjectSettings } from '@/kordi-app/types';
+import type {
+  AppendCanonicalMessageRequest,
+  CanonicalSessionState,
+  CreateCanonicalDelegatedExchangeRequest,
+  DesktopArtifactPreview,
+  DesktopAuthAttemptSnapshot,
+  DesktopAuthState,
+  DesktopBridgeCreateOutreachRequest,
+  DesktopBridgeInvite,
+  DesktopBridgeState,
+  DesktopChatProjectSource,
+  DesktopChatState,
+  DesktopChatTurnSnapshot,
+  DesktopProjectSettings,
+  OpenCanonicalSessionRequest,
+  UpdateCanonicalPresenceRequest,
+  UpsertCanonicalIdentityRequest,
+} from '@/kordi-app/types';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -202,12 +219,49 @@ export async function sendDesktopBridgeMessage(conversationId: string, text: str
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_send_message', { conversationId, text });
 }
 
+export async function createDesktopBridgeOutreach(request: DesktopBridgeCreateOutreachRequest) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_create_outreach', { request });
+}
+
+export async function cancelDesktopBridgeOutreach(conversationId: string, requestId?: string | null) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_cancel_outreach', { conversationId, requestId });
+}
+
 export async function sendDesktopBridgePresence(conversationId: string, kind: 'typing' | 'heartbeat') {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_send_presence', { conversationId, kind });
 }
 
 export async function pollDesktopBridgeMailbox() {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_poll_mailbox');
+}
+
+export async function fetchCanonicalSessionState() {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_session_state');
+}
+
+export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_identity', { request });
+}
+
+export async function openOrCreateCanonicalSession(request: OpenCanonicalSessionRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_open_or_create_session', { request });
+}
+
+export async function appendCanonicalMessage(request: AppendCanonicalMessageRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_append_message', { request });
+}
+
+export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
+  return invokeDesktop<string>('desktop_canonical_append_message_fast', { request });
+}
+
+export async function createCanonicalDelegatedExchange(request: CreateCanonicalDelegatedExchangeRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_create_delegated_exchange', { request });
+}
+
+export async function updateCanonicalPresence(request: UpdateCanonicalPresenceRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_update_presence', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {
@@ -235,12 +289,28 @@ export async function createDesktopChatSession() {
   return invokeDesktop<DesktopChatState>('desktop_chat_new_session');
 }
 
+export async function prepareDesktopChatDraftSession() {
+  return invokeDesktop<void>('desktop_chat_prepare_draft_session');
+}
+
 export async function updateDesktopChatSessionConfig(sessionId: string, model?: string, thinking?: string) {
   return invokeDesktop<DesktopChatState>('desktop_chat_update_session_config', { sessionId, model, thinking });
 }
 
 export async function renameDesktopChatSession(sessionId: string, name: string) {
   return invokeDesktop<DesktopChatState>('desktop_chat_rename_session', { sessionId, name });
+}
+
+export async function archiveDesktopChatSession(sessionId: string, activeSessionId?: string) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_archive_session', { sessionId, activeSessionId });
+}
+
+export async function deleteDesktopChatSessionForever(sessionId: string, activeSessionId?: string) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_delete_session_forever', { sessionId, activeSessionId });
+}
+
+export async function moveDesktopChatSessionToProject(sessionId: string, projectRoot: string) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_move_session_to_project', { sessionId, projectRoot });
 }
 
 export async function sendDesktopChatMessage(sessionId: string, text: string) {

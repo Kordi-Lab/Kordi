@@ -72,6 +72,10 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           artifacts={args.activeChatArtifacts}
           activeArtifactId={args.activeArtifactId}
           onSelectArtifact={args.setActiveArtifactId}
+          onOpenOutreachThread={(conversationId) => {
+            args.setActiveNav('chats');
+            args.setActiveConvId(conversationId);
+          }}
         />
       )}
     </RightDetailRail>

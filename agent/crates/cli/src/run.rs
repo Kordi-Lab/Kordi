@@ -126,6 +126,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             headers: headers.clone(),
             enabled: true,
         }),
+        reach_out: None,
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
     };
@@ -220,7 +221,9 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         last_result = Some(run_print_turn(&turn_config, message).await?);
     }
 
-    let _ = commands.send_event(&kordi_hooks::Event::SessionShutdown).await;
+    let _ = commands
+        .send_event(&kordi_hooks::Event::SessionShutdown)
+        .await;
     if let Some(last_result) = last_result {
         if last_result.is_error() {
             return Err(anyhow!(last_result.error_message.clone().unwrap_or_else(

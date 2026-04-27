@@ -270,8 +270,8 @@ fn append_file_lists(summary: &mut String, read_files: &[String], modified_files
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kordi_core::types::{EntryBase, EntryId, UserMessage};
     use chrono::Utc;
+    use kordi_core::types::{EntryBase, EntryId, UserMessage};
 
     #[test]
     fn prompt_includes_blocked_section() {

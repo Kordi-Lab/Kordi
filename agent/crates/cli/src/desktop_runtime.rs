@@ -13,7 +13,8 @@ use kordi_monitor::{
 use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use crate::login;
@@ -55,6 +56,18 @@ pub struct DesktopChatStoredTool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
+const DESKTOP_MODEL_OPTIONS_CACHE_TTL: Duration = Duration::from_secs(300);
+
+static DESKTOP_MODEL_OPTIONS_CACHE: OnceLock<
+    StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>>,
+> = OnceLock::new();
+
+fn desktop_model_options_cache()
+-> &'static StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>> {
+    DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,12 +196,22 @@ impl DesktopRuntimeSession {
         Ok(Self { setup })
     }
 
+    pub async fn create_with_id(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
+        let (_runtime_host, _ui, mut setup) =
+            prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
+        setup.session_id = session_id.to_string();
+        setup.session_created = false;
+        Ok(Self { setup })
+    }
+
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
+        let runtime_cwd = runtime_cwd_for_session(cwd, session_id)?;
         let entry = SessionBootstrapOptions {
             session: Some(session_id.to_string()),
             ..SessionBootstrapOptions::default()
         };
-        let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        let (_runtime_host, _ui, setup) =
+            prepare_session_runtime_for_cwd(runtime_cwd, entry).await?;
         Ok(Self { setup })
     }
 
@@ -381,6 +404,25 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
+    pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
+        self.setup.tool_ctx.reach_out = runtime;
+    }
+
+    pub fn set_bridge_outreach_prompt_context(&mut self, context: Option<String>) {
+        let base_prompt = strip_bridge_outreach_prompt_context(&self.setup.system_prompt);
+        let Some(context) = context
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            self.setup.system_prompt = base_prompt;
+            return;
+        };
+        self.setup.system_prompt = format!(
+            "{base_prompt}{DESKTOP_BRIDGE_OUTREACH_CONTEXT_START}\n{context}\n{DESKTOP_BRIDGE_OUTREACH_CONTEXT_END}"
+        );
+    }
+
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {
         let name = requested_name.trim();
         if name.is_empty() {
@@ -393,6 +435,10 @@ impl DesktopRuntimeSession {
             Some(name),
         )?;
         Ok(())
+    }
+
+    pub fn materialize_session(&mut self) -> Result<()> {
+        ensure_session_row_created(&mut self.setup)
     }
 
     pub async fn send_message(
@@ -528,6 +574,19 @@ impl DesktopRuntimeSession {
     }
 }
 
+fn strip_bridge_outreach_prompt_context(prompt: &str) -> String {
+    let Some(start) = prompt.find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_START) else {
+        return prompt.to_string();
+    };
+    let Some(end_relative) = prompt[start..].find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_END) else {
+        return prompt.to_string();
+    };
+    let end = start + end_relative + DESKTOP_BRIDGE_OUTREACH_CONTEXT_END.len();
+    format!("{}{}", &prompt[..start], &prompt[end..])
+        .trim_end()
+        .to_string()
+}
+
 fn parse_db_timestamp_millis(value: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.timestamp_millis())
@@ -608,6 +667,34 @@ fn open_sessions_db() -> Result<rusqlite::Connection> {
     ))
 }
 
+fn runtime_cwd_for_session(
+    fallback_cwd: std::path::PathBuf,
+    session_id: &str,
+) -> Result<std::path::PathBuf> {
+    let conn = open_sessions_db()?;
+    let Some(row) = kordi_session::store::get_session(&conn, session_id)? else {
+        return Ok(fallback_cwd);
+    };
+
+    if row.session_scope == "project" {
+        if let Some(project_root) = row
+            .project_root
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(std::path::PathBuf::from(project_root));
+        }
+    }
+
+    let row_cwd = row.cwd.trim();
+    if row_cwd.is_empty() {
+        Ok(fallback_cwd)
+    } else {
+        Ok(std::path::PathBuf::from(row_cwd))
+    }
+}
+
 pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSessionSummary>> {
     let conn = open_sessions_db()?;
     let cwd_str = cwd.display().to_string();
@@ -632,13 +719,23 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
     let mut session_sort_keys = std::collections::HashMap::<String, i64>::new();
 
     for row in rows {
+        if row.session_scope != "project" {
+            continue;
+        }
+        let Some(project_root_value) = row
+            .project_root
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+
         let sort_ts = session_sort_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
-        let session_cwd = std::path::PathBuf::from(&row.cwd);
-        let project_root =
-            kordi_core::config::project_root(&session_cwd).unwrap_or_else(|| session_cwd.clone());
+        let project_root = std::path::PathBuf::from(project_root_value);
         let group_id = format!("project:{}", project_root.display());
-        let settings = Settings::load_project(&session_cwd);
+        let settings = Settings::load_project(&project_root);
         let project_name = settings
             .project_name
             .as_deref()
@@ -717,6 +814,40 @@ pub fn session_exists(session_id: &str) -> Result<bool> {
     Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
 }
 
+pub fn hide_session(session_id: &str) -> Result<()> {
+    let conn = open_sessions_db()?;
+    let Some(row) = kordi_session::store::get_session(&conn, session_id)? else {
+        bail!("Session not found: {session_id}");
+    };
+    kordi_session::store::update_session_scope(
+        &conn,
+        session_id,
+        "hidden",
+        &row.cwd,
+        row.project_root.as_deref(),
+    )
+}
+
+pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path) -> Result<()> {
+    let conn = open_sessions_db()?;
+    let Some(_row) = kordi_session::store::get_session(&conn, session_id)? else {
+        bail!("Session not found: {session_id}");
+    };
+    let project_root_str = project_root.display().to_string();
+    kordi_session::store::update_session_scope(
+        &conn,
+        session_id,
+        "project",
+        &project_root_str,
+        Some(&project_root_str),
+    )
+}
+
+pub fn delete_session_forever(session_id: &str) -> Result<()> {
+    let conn = open_sessions_db()?;
+    kordi_session::store::delete_session(&conn, session_id)
+}
+
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
     DesktopChatModelOption {
         provider: model.provider.clone(),
@@ -732,6 +863,16 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
 }
 
 pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopChatModelOption> {
+    let cache_key = cwd.display().to_string();
+    if let Some(cached_options) = desktop_model_options_cache().lock().ok().and_then(|cache| {
+        cache
+            .get(&cache_key)
+            .filter(|(cached_at, _)| cached_at.elapsed() <= DESKTOP_MODEL_OPTIONS_CACHE_TTL)
+            .map(|(_, options)| options.clone())
+    }) {
+        return cached_options;
+    }
+
     let settings = Settings::load_merged(cwd);
     let mut models = crate::live_models::authenticated_model_candidates_with_live(&settings).await;
     models.sort_by(|left, right| {
@@ -740,7 +881,16 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
             .then_with(|| left.id.cmp(&right.id))
     });
 
-    models.iter().map(desktop_model_option_from_model).collect()
+    let options = models
+        .iter()
+        .map(desktop_model_option_from_model)
+        .collect::<Vec<_>>();
+
+    if let Ok(mut cache) = desktop_model_options_cache().lock() {
+        cache.insert(cache_key, (Instant::now(), options.clone()));
+    }
+
+    options
 }
 
 fn synthesize_live_model_candidate(
@@ -940,6 +1090,7 @@ fn build_turn_config(
             execution_policy: setup.tool_ctx.execution_policy,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
+            reach_out: setup.tool_ctx.reach_out.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },
@@ -1091,9 +1242,8 @@ fn build_summary_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSe
     })
 }
 
-fn load_project_info(cwd: &std::path::Path) -> Option<DesktopChatProjectInfo> {
-    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let settings = Settings::load_project(cwd);
+fn load_project_info(project_root: &std::path::Path) -> Option<DesktopChatProjectInfo> {
+    let settings = Settings::load_project(project_root);
     let name = settings
         .project_name
         .as_deref()
@@ -1165,6 +1315,13 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
         .unwrap_or_else(|| "Draft".to_string());
 
     let context_window_status = current_context_window_status(setup);
+    let project = session_row
+        .as_ref()
+        .filter(|row| row.session_scope == "project")
+        .and_then(|row| row.project_root.as_deref())
+        .map(std::path::PathBuf::from)
+        .as_deref()
+        .and_then(load_project_info);
 
     Ok(DesktopChatSessionDetail {
         id: setup.session_id.clone(),
@@ -1189,7 +1346,7 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
             compaction_threshold_percent:
                 kordi_session::compaction::AUTO_COMPACTION_THRESHOLD_PERCENT,
         },
-        project: load_project_info(&setup.tool_ctx.cwd),
+        project,
         messages,
     })
 }

@@ -1,9 +1,11 @@
 use anyhow::Result;
+use chrono::Utc;
 use kordi_core::agent_session::ThinkingLevel;
-use kordi_core::types::{AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage};
+use kordi_core::types::{
+    AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage,
+};
 use kordi_session::store;
 use kordi_tui::tui::TuiCommand;
-use chrono::Utc;
 
 use super::super::controller::{PendingImage, TuiController};
 use super::{HIDDEN_DISPATCH_PREFIX, build_tui_transcript};

@@ -1,9 +1,14 @@
 mod constants;
+mod conversation_actions;
 mod conversation_commands;
+mod conversation_open;
 mod conversations;
+mod events;
 mod host_commands;
 mod local_server;
+mod mailbox;
 mod network;
+mod outreach;
 mod project_commands;
 mod realtime;
 mod server_commands;
@@ -18,6 +23,8 @@ use uuid::Uuid;
 
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
 use self::local_server::LocalBridgeServerRuntime;
+
+pub(crate) use self::outreach::desktop_bridge_reach_out_impl;
 
 #[allow(unused_imports)]
 use self::conversations::{
@@ -42,13 +49,14 @@ use self::state::{
 #[allow(unused_imports)]
 use self::storage::{
     append_conversation_message_to_storage, bridge_conversation_id, bridge_hosts_match,
-    delete_bridge_host_secrets, delete_conversations_for_host, desktop_bridge_config_path,
-    desktop_bridge_conversations_path, format_time_label, format_time_label_with_seconds,
-    hosted_bridge_dir, korde_dir, legacy_bridge_config_path, load_bridge_store,
-    load_conversation_store, load_legacy_bridge_config, mark_bridge_conversation_read_in_storage,
-    normalize_imported_bridge_host, normalize_server_url, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, now_ms, parse_imported_bridge_store, save_bridge_store,
-    save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
+    bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
+    desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
+    format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
+    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
+    mark_bridge_conversation_read_in_storage, normalize_imported_bridge_host, normalize_server_url,
+    note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
+    parse_imported_bridge_store, save_bridge_store, save_conversation_store,
+    update_message_delivery_state_in_storage, write_bridge_store_export,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -150,6 +158,10 @@ struct DesktopBridgeConversationRecord {
     peer_last_typing_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     peer_last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    identity: Option<DesktopBridgeIdentitySnapshot>,
     #[serde(default)]
     messages: Vec<DesktopBridgeConversationMessageRecord>,
 }
@@ -165,6 +177,72 @@ struct DesktopBridgeConversationMessageRecord {
     request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     delivery_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeSessionThreadMessage {
+    pub role: String,
+    pub sender: Option<String>,
+    pub text: String,
+    pub time_label: Option<String>,
+    pub index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeOutreachMetadata {
+    pub target_kind: String,
+    pub parent_session_id: Option<String>,
+    pub parent_session_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub bridge_host_id: String,
+    pub bridge_conversation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_state: Option<String>,
+    pub target_node_id: String,
+    pub target_human_id: Option<String>,
+    pub target_agent_id: Option<String>,
+    pub target_display_name: String,
+    pub target_owner_name: Option<String>,
+    pub target_runtime: Option<String>,
+    pub request_text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_text: Option<String>,
+    pub context_text: Option<String>,
+    pub context_policy: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub status: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub completed_at_ms: Option<i64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeIdentitySnapshot {
+    pub bridge_host_id: String,
+    pub local_human_id: String,
+    pub local_human_name: String,
+    pub local_agent_id: Option<String>,
+    pub local_agent_name: Option<String>,
+    pub local_agent_node_id: Option<String>,
+    pub remote_human_id: Option<String>,
+    pub remote_human_name: Option<String>,
+    pub remote_human_node_id: Option<String>,
+    pub remote_agent_id: Option<String>,
+    pub remote_agent_name: Option<String>,
+    pub remote_agent_node_id: Option<String>,
+    pub remote_agent_runtime: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,13 +312,17 @@ pub struct DesktopBridgeConversationMessage {
     pub text: String,
     pub time_label: String,
     pub timestamp_ms: i64,
+    pub request_id: Option<String>,
     pub delivery_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outreach: Option<DesktopBridgeOutreachMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopBridgeConversation {
     pub id: String,
+    pub canonical_session_id: String,
     pub host_id: String,
     pub peer_node_id: String,
     pub peer_display_name: Option<String>,
@@ -256,6 +338,8 @@ pub struct DesktopBridgeConversation {
     pub awaiting_reply: bool,
     pub peer_typing: bool,
     pub peer_last_heartbeat_label: Option<String>,
+    pub outreach: Option<DesktopBridgeOutreachMetadata>,
+    pub identity: Option<DesktopBridgeIdentitySnapshot>,
     pub messages: Vec<DesktopBridgeConversationMessage>,
 }
 
@@ -292,11 +376,85 @@ pub struct DesktopBridgeInvite {
     pub share_text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeCreateOutreachRequest {
+    pub host_id: String,
+    pub target_node_id: String,
+    pub target_kind: String,
+    pub request_text: String,
+    pub target_display_name: Option<String>,
+    pub target_owner_name: Option<String>,
+    pub target_runtime: Option<String>,
+    pub target_human_id: Option<String>,
+    pub target_agent_id: Option<String>,
+    pub trigger_text: Option<String>,
+    pub context_text: Option<String>,
+    pub context_policy: Option<String>,
+    pub parent_session_id: Option<String>,
+    pub parent_session_title: Option<String>,
+    #[serde(default)]
+    pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub bridge_request_id: Option<String>,
+    pub delivery_state: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct DesktopBridgeManager {
     local_server: Arc<tokio::sync::Mutex<LocalBridgeServerRuntime>>,
     realtime: Arc<tokio::sync::Mutex<realtime::RealtimeBridgeRuntime>>,
     app_handle: Arc<tokio::sync::RwLock<Option<tauri::AppHandle>>>,
+}
+
+pub(crate) async fn desktop_bridge_outreach_prompt_context(
+    manager: &DesktopBridgeManager,
+) -> Option<String> {
+    let state = build_current_bridge_state(manager).await;
+    let active_host_id = state.active_host_id.as_deref();
+    let mut target_lines = Vec::new();
+
+    for host in &state.hosts {
+        let host_label = format!("{} / {}", host.display_name, host.owner_name);
+        for peer in &host.visible_peers {
+            let target_kind = if self::constants::is_agent_like_runtime(&peer.runtime) {
+                "bridge-agent"
+            } else {
+                "bridge-person"
+            };
+            let name = peer
+                .display_name
+                .as_deref()
+                .or(peer.owner_name.as_deref())
+                .unwrap_or(&peer.node_id);
+            let owner = peer.owner_name.as_deref().unwrap_or("unknown owner");
+            let active = if Some(host.id.as_str()) == active_host_id {
+                "active host"
+            } else {
+                "available host"
+            };
+            target_lines.push(format!(
+                "- {target_kind}: target=\"{name}\" owner=\"{owner}\" runtime=\"{}\" nodeId=\"{}\" via=\"{host_label}\" ({active})",
+                peer.runtime, peer.node_id
+            ));
+        }
+    }
+
+    if target_lines.is_empty() {
+        return Some(
+            "Bridge outreach: reach_out is available, but no bridge agents or people are currently visible. Ask the user to connect or expose a bridge target before using it."
+                .to_string(),
+        );
+    }
+
+    target_lines.truncate(50);
+    Some(format!(
+        "Bridge outreach is available through the reach_out tool only for explicit non-local @Person/@Agent mentions in the current user message. Use it only when the current user message names one of the visible bridge targets below; never use it for @Kordi/the local agent and do not proactively contact participants. Outreach is allowed without asking for approval, creates a visible/resumable bridge conversation, and returns the remote reply when possible.\n\nVisible bridge targets:\n{}",
+        target_lines.join("\n")
+    ))
 }
 
 impl Default for DesktopBridgeManager {
@@ -722,7 +880,7 @@ pub async fn desktop_bridge_open_conversation(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_open_conversation_impl(
+    conversation_open::desktop_bridge_open_conversation_impl(
         &manager,
         host_id,
         peer_node_id,
@@ -740,7 +898,7 @@ pub async fn desktop_bridge_mark_conversation_read(
     manager: State<'_, DesktopBridgeManager>,
     conversation_id: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
+    conversation_actions::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
         .await
 }
 
@@ -750,7 +908,25 @@ pub async fn desktop_bridge_send_message(
     conversation_id: String,
     text: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
+    conversation_actions::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_create_outreach(
+    manager: State<'_, DesktopBridgeManager>,
+    request: DesktopBridgeCreateOutreachRequest,
+) -> Result<DesktopBridgeState, String> {
+    conversation_commands::desktop_bridge_create_outreach_impl(&manager, request).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_cancel_outreach(
+    manager: State<'_, DesktopBridgeManager>,
+    conversation_id: String,
+    request_id: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    conversation_actions::desktop_bridge_cancel_outreach_impl(&manager, conversation_id, request_id)
+        .await
 }
 
 #[tauri::command]
@@ -759,7 +935,7 @@ pub async fn desktop_bridge_send_presence(
     conversation_id: String,
     kind: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
+    conversation_actions::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
 }
 
 #[tauri::command]
@@ -767,5 +943,5 @@ pub async fn desktop_bridge_poll_mailbox(
     manager: State<'_, DesktopBridgeManager>,
     chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
+    mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
 }

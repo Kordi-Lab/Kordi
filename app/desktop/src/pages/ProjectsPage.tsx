@@ -20,12 +20,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
   LiveChatTurnCard,
   MessageBubble,
   type ComposerAuthOption,
+  type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
@@ -97,9 +99,11 @@ type ProjectsPageProps = {
   onOpenSource: (file: EditFilePreview) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
+  filteredProjectMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
+  acceptProjectMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -123,7 +127,7 @@ type ProjectsPageProps = {
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
-  onSendProjectMessage: () => void;
+  onSendProjectMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
 };
@@ -147,9 +151,11 @@ export function ProjectsPage({
   onOpenSource,
   desktopLiveTurn,
   filteredProjectSlashCommands,
+  filteredProjectMentionTargets,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptProjectSlashCommand,
+  acceptProjectMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -177,6 +183,30 @@ export function ProjectsPage({
   hasAnyAuth,
   onOpenAuthSettings,
 }: ProjectsPageProps) {
+  if (isNativeShell && !activeProject.id) {
+    return (
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="app-page-header shrink-0 flex items-start justify-between gap-3 px-4 py-2.5 shadow-[inset_0_-1px_0_var(--app-divider)]">
+          <div>
+            <div className="text-[17px] font-semibold text-white">Projects</div>
+            <div className="mt-1 text-[12px] text-slate-400">Projects should start explicitly from the + menu, not from ordinary chats.</div>
+          </div>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="max-w-md rounded-[24px] border border-white/10 bg-white/[0.03] p-6 text-center text-slate-300">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white">
+              <FolderOpen className="h-6 w-6" />
+            </div>
+            <div className="text-[16px] font-medium text-white">No project yet</div>
+            <p className="mt-2 text-[13px] leading-6 text-slate-400">
+              Normal sessions stay in Chats by default. Use the + menu to start a project from scratch or from an existing folder.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="app-page-header shrink-0 flex items-start justify-between gap-3 px-4 py-2.5 shadow-[inset_0_-1px_0_var(--app-divider)]">
@@ -295,6 +325,12 @@ export function ProjectsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)}
                 onSelect={acceptProjectSlashCommand}
               />
+            ) : filteredProjectMentionTargets.length > 0 ? (
+              <ComposerMentionMenu
+                items={filteredProjectMentionTargets}
+                selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)}
+                onSelect={acceptProjectMentionTarget}
+              />
             ) : null}
             <div
               className={cn(
@@ -365,14 +401,39 @@ export function ProjectsPage({
                       return;
                     }
                   }
+                  if (filteredProjectMentionTargets.length > 0) {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
+                      return;
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
+                      return;
+                    }
+                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
+                      return;
+                    }
+                  }
                   if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
                     event.preventDefault();
                     setProjectComposerText('/');
                     return;
                   }
+                  if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
+                    event.preventDefault();
+                    setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
+                    return;
+                  }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    onSendProjectMessage();
+                    onSendProjectMessage(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"

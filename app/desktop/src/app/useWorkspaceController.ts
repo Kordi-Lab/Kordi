@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { DetailTab, DesktopChatProjectGroup, NavId, Project } from '@/kordi-app/types';
+import { resolveProjectSelection, type ProjectRoutingGroup } from '@/features/canonical/sessionResolver';
+import type { DetailTab, NavId, Project } from '@/kordi-app/types';
 
 type UseWorkspaceControllerArgs = {
   initialProjects: Project[];
-  desktopProjects?: DesktopChatProjectGroup[];
+  projectRoutingGroups?: ProjectRoutingGroup[];
   isNativeShell: boolean;
 };
 
 export function useWorkspaceController({
   initialProjects,
-  desktopProjects,
+  projectRoutingGroups,
   isNativeShell,
 }: UseWorkspaceControllerArgs) {
   const [activeNav, setActiveNav] = useState<NavId>('chats');
@@ -42,37 +43,24 @@ export function useWorkspaceController({
   }, []);
 
   useEffect(() => {
-    if (!isNativeShell || !desktopProjects?.length) return;
-
-    const firstProject = desktopProjects[0];
-    if (!firstProject) return;
+    if (!isNativeShell || !projectRoutingGroups?.length) return;
 
     const latestSelection = latestProjectSelectionRef.current;
-    const preferredProjectId = latestSelection?.projectId ?? activeProjectId;
-    const resolvedProject = desktopProjects.find((project) => project.id === preferredProjectId)
-      ?? desktopProjects.find((project) => project.id === activeProjectId)
-      ?? firstProject;
+    const resolvedSelection = resolveProjectSelection(
+      projectRoutingGroups,
+      latestSelection?.projectId ?? activeProjectId,
+      latestSelection?.sessionId ?? activeProjectSessionId,
+      projectSelectedSessionIds,
+    );
+    if (!resolvedSelection) return;
 
-    const rememberedSessionId = projectSelectedSessionIds[resolvedProject.id];
-    const preferredSessionId =
-      (latestSelection && latestSelection.projectId === resolvedProject.id && resolvedProject.sessions.some((session) => session.id === latestSelection.sessionId)
-        ? latestSelection.sessionId
-        : undefined)
-      ?? (resolvedProject.id === activeProjectId && resolvedProject.sessions.some((session) => session.id === activeProjectSessionId)
-        ? activeProjectSessionId
-        : undefined)
-      ?? (rememberedSessionId && resolvedProject.sessions.some((session) => session.id === rememberedSessionId)
-        ? rememberedSessionId
-        : undefined)
-      ?? resolvedProject.sessions[0]?.id;
-
-    if (resolvedProject.id !== activeProjectId) {
-      setActiveProjectId(resolvedProject.id);
+    if (resolvedSelection.projectId !== activeProjectId) {
+      setActiveProjectId(resolvedSelection.projectId);
     }
-    if (preferredSessionId && preferredSessionId !== activeProjectSessionId) {
-      setActiveProjectSessionId(preferredSessionId);
+    if (resolvedSelection.sessionId !== activeProjectSessionId) {
+      setActiveProjectSessionId(resolvedSelection.sessionId);
     }
-  }, [activeProjectId, activeProjectSessionId, desktopProjects, isNativeShell, projectSelectedSessionIds]);
+  }, [activeProjectId, activeProjectSessionId, isNativeShell, projectRoutingGroups, projectSelectedSessionIds]);
 
   useEffect(() => {
     if (!activeProjectId || !activeProjectSessionId) return;

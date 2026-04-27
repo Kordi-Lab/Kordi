@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -29,7 +29,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
+import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import type {
   Contact,
@@ -38,6 +38,7 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageMention,
 } from '../types';
 
 function looksLikeTerminalTable(text: string) {
@@ -179,6 +180,92 @@ function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
 }
 
+function ProcessingStatusCircle({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-current/25 border-t-current text-white/75',
+        'animate-spin motion-reduce:animate-none',
+        className,
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
+function mentionPill(label: string, key: string) {
+  return (
+    <span
+      key={key}
+      className="inline-flex translate-y-[-1px] items-center rounded-full border border-sky-300/25 bg-sky-300/12 px-1.5 py-0.5 text-[0.92em] font-medium text-sky-100"
+    >
+      {label}
+    </span>
+  );
+}
+
+function isMentionBoundary(text: string, index: number, length: number) {
+  const before = text[index - 1] ?? '';
+  const after = text[index + length] ?? '';
+  return (!before || /\s/.test(before)) && (!after || /[\s:;,.!?—-]/.test(after));
+}
+
+function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
+  const labels = (mentions ?? [])
+    .map((mention) => mention.label.trim())
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+
+  if (labels.length > 0) {
+    type Range = { start: number; end: number; label: string };
+    const ranges: Range[] = [];
+
+    const normalizedText = text.toLowerCase();
+    labels.forEach((label) => {
+      const needle = `@${label}`;
+      const normalizedNeedle = needle.toLowerCase();
+      let searchFrom = 0;
+      while (searchFrom < text.length) {
+        const start = normalizedText.indexOf(normalizedNeedle, searchFrom);
+        if (start === -1) break;
+        const end = start + needle.length;
+        const overlaps = ranges.some((range) => start < range.end && end > range.start);
+        if (!overlaps && isMentionBoundary(text, start, needle.length)) {
+          ranges.push({ start, end, label: needle });
+        }
+        searchFrom = end;
+      }
+    });
+
+    if (ranges.length > 0) {
+      const ordered = ranges.sort((left, right) => left.start - right.start);
+      const parts: ReactNode[] = [];
+      let cursor = 0;
+      ordered.forEach((range, index) => {
+        if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+        parts.push(mentionPill(range.label, `${range.label}-${range.start}-${index}`));
+        cursor = range.end;
+      });
+      if (cursor < text.length) parts.push(text.slice(cursor));
+      return parts;
+    }
+  }
+
+  const parts = text.split(/(@[^@\n]{1,96}?['’]s Kordi)(?=\s|$|[:;,.!?—-])/g);
+  if (parts.length > 1) {
+    return parts.map((part, index) => {
+      if (!part.startsWith('@')) return part;
+      return mentionPill(part, `${part}-${index}`);
+    });
+  }
+
+  const legacyParts = text.split(/(@[^\s@]+)/g);
+  return legacyParts.map((part, index) => {
+    if (!part.startsWith('@')) return part;
+    return mentionPill(part, `${part}-${index}`);
+  });
+}
+
 function MessageDeliveryGlyph({ status }: { status: string }) {
   const normalized = status.trim().toLowerCase();
 
@@ -295,6 +382,8 @@ function AttachmentPreview({ msg }: { msg: Message }) {
 
 export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
+  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
 
   if (msg.role === 'system') {
     return (
@@ -425,8 +514,23 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   }
 
   if (msg.turn) {
+    const compactProcessing = !msg.turn.completed && !msg.turn.assistantText.trim();
+    if (compactProcessing) {
+      const statusText = msg.turn.message?.trim() || 'Working…';
+      return (
+        <div className="flex w-full max-w-[min(100%,42rem)] flex-col items-start gap-1 py-1">
+          <div className="app-message-meta px-1">
+            {msg.sender} • {msg.time}
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[0.025] px-2.5 py-1 text-[11px] font-medium text-slate-300 shadow-sm">
+            <ProcessingStatusCircle />
+            <span>{statusText}</span>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="flex w-full max-w-[min(100%,66rem)] flex-col items-start gap-0.5 py-0.5">
+      <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -448,7 +552,11 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = msg.sender || (isOwnHumanMessage ? 'You' : avatarKind === 'agent' ? 'Agent' : 'Person');
-  const avatarSeed = isOwnHumanMessage ? 'local-human-profile' : `${avatarKind}:${avatarName}`;
+  const avatarSeed = isOwnHumanMessage
+    ? currentLocalProfileAvatarSeed
+    : msg.role === 'owned-agent'
+      ? currentLocalAgentAvatarSeed
+      : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -476,9 +584,9 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
         )}>
         {showCompactFooter ? (
           showInlineCompactFooter ? (
-            <div className="flex flex-col">
-              <div className="whitespace-pre-wrap break-words leading-[1.45]">
-                {msg.text}
+            <div className="flex items-end justify-between gap-2">
+              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-[1.45]">
+                {renderTextWithMentionPills(msg.text, msg.mentions)}
               </div>
               <div className={cn(
                 'mt-1 flex items-center justify-end gap-1 whitespace-nowrap text-[10px] leading-none tabular-nums',
@@ -495,7 +603,7 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
             <>
               <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
                 {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words">{msg.text}</div> : null}
+                {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions)}</div> : null}
               </div>
               <MessageFooter
                 time={msg.time}
@@ -532,6 +640,9 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
 
+  if (normalized === 'reach_out') {
+    return { icon: ArrowRightLeft, label: '@ participant', argumentsLabel: 'Request', resultLabel: 'Participant response' };
+  }
   if (normalized.includes('web_fetch')) {
     return { icon: Globe };
   }
@@ -560,35 +671,84 @@ function toolDisplayConfig(toolName: string) {
   return { icon: Wrench };
 }
 
+function longerText(current: string, next: string) {
+  return next.length >= current.length ? next : current;
+}
+
+function mergeVisibleToolSnapshot(
+  current: DesktopChatTurnSnapshot['tools'][number],
+  next: DesktopChatTurnSnapshot['tools'][number],
+): DesktopChatTurnSnapshot['tools'][number] {
+  return {
+    ...current,
+    ...next,
+    arguments: longerText(current.arguments ?? '', next.arguments ?? ''),
+    liveOutput: longerText(current.liveOutput ?? '', next.liveOutput ?? ''),
+    resultText: next.resultText || current.resultText,
+    detail: next.detail || current.detail,
+  };
+}
+
+function mergeVisibleLiveTurn(
+  current: DesktopChatTurnSnapshot,
+  next: DesktopChatTurnSnapshot,
+): DesktopChatTurnSnapshot {
+  const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
+  return {
+    ...current,
+    ...next,
+    assistantText: next.completed ? next.assistantText : longerText(current.assistantText, next.assistantText),
+    thinkingText: next.completed ? next.thinkingText : longerText(current.thinkingText, next.thinkingText),
+    tools: next.tools.map((tool) => {
+      const existing = currentToolsById.get(tool.id);
+      return existing && !next.completed ? mergeVisibleToolSnapshot(existing, tool) : tool;
+    }),
+  };
+}
+
+function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: boolean) {
+  const visibleTurnRef = useRef<DesktopChatTurnSnapshot>(turn);
+  if (historical || turn.completed || visibleTurnRef.current.id !== turn.id) {
+    visibleTurnRef.current = turn;
+  } else {
+    visibleTurnRef.current = mergeVisibleLiveTurn(visibleTurnRef.current, turn);
+  }
+  return visibleTurnRef.current;
+}
+
 export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
-  const hasAssistant = turn.assistantText.trim().length > 0;
-  const hasThinking = turn.thinkingText.trim().length > 0;
-  const showLiveStatusHeader = !historical && !turn.completed && !(turn.status === 'writing' && hasAssistant);
-  const isCompressionStatus = turn.status === 'compacting' || turn.status === 'compacted' || turn.status === 'compaction_failed';
-  const liveStatusText =
-    turn.status === 'cancelling'
+  const visibleTurn = useVisibleLiveTurn(turn, historical);
+  const hasAssistant = visibleTurn.assistantText.trim().length > 0;
+  const hasThinking = visibleTurn.thinkingText.trim().length > 0;
+  const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
+  const showLiveStatusHeader = !historical && !visibleTurn.completed && !hasAssistant && !isCompressionStatus;
+  const liveStatusText = visibleTurn.message?.trim().length
+    ? visibleTurn.message
+    : visibleTurn.status === 'cancelling'
       ? 'Stopping…'
-      : turn.status === 'retrying'
+      : visibleTurn.status === 'retrying'
         ? 'Retrying…'
-        : turn.status === 'compacting'
+        : visibleTurn.status === 'compacting'
           ? 'Compressing conversation…'
-          : turn.status === 'compacted'
+          : visibleTurn.status === 'compacted'
             ? 'Conversation compressed. Continuing…'
-            : turn.status === 'compaction_failed'
+            : visibleTurn.status === 'compaction_failed'
               ? 'Compression needs attention'
-              : turn.status === 'typing'
+              : visibleTurn.status === 'typing'
                 ? 'Typing…'
-            : turn.status === 'writing'
-              ? 'Replying…'
-              : 'Working…';
+                : visibleTurn.status === 'writing'
+                  ? 'Replying…'
+                  : visibleTurn.status === 'streaming' || visibleTurn.status === 'starting'
+                    ? 'Replying…'
+                    : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="w-full max-w-[min(100%,66rem)] space-y-1.5 pb-1.5">
+    <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
       {showLiveStatusHeader ? (
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          <ProcessingStatusCircle className="h-3.5 w-3.5" />
           <span className="text-slate-300">{liveStatusText}</span>
         </div>
       ) : null}
@@ -596,22 +756,22 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
       {isCompressionStatus ? (
         <div className={cn(
           'rounded-2xl border px-4 py-3 text-sm',
-          turn.status === 'compaction_failed'
+          visibleTurn.status === 'compaction_failed'
             ? 'border-rose-500/20 bg-rose-500/10 text-rose-100'
-            : turn.status === 'compacted'
+            : visibleTurn.status === 'compacted'
               ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
               : 'border-amber-400/25 bg-amber-400/10 text-amber-50',
         )}>
           <div className="flex items-center gap-2 font-medium">
-            {turn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : turn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            <span>{turn.status === 'compacting' ? 'Compressing conversation…' : turn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
+            {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+            <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
           </div>
           <div className="mt-1.5 text-[12px] leading-5 opacity-80">
-            {turn.status === 'compacting'
+            {visibleTurn.status === 'compacting'
               ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
-              : turn.status === 'compacted'
+              : visibleTurn.status === 'compacted'
                 ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
-                : (turn.error ?? turn.message)}
+                : (visibleTurn.error ?? visibleTurn.message)}
           </div>
         </div>
       ) : null}
@@ -626,20 +786,20 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
           badge={<span className="app-transcript-section-toggle text-[10px] text-slate-600">{expandedThinking ? 'Hide' : 'Show'}</span>}
         >
           <div className="pr-1">
-            <MarkdownContent text={turn.thinkingText} tone="muted" className="text-[12.5px] leading-[1.55rem]" />
+            <MarkdownContent text={visibleTurn.thinkingText} tone="muted" className="text-[12.5px] leading-[1.55rem]" />
           </div>
         </TimelineSection>
       ) : null}
 
-      {turn.tools.map((tool) => {
-        const expanded = expandedTools[tool.id] ?? !turn.completed;
+      {visibleTurn.tools.map((tool) => {
+        const expanded = expandedTools[tool.id] ?? !visibleTurn.completed;
         const toolDisplay = toolDisplayConfig(tool.name);
 
         return (
           <TimelineSection
             key={tool.id}
             icon={toolDisplay.icon}
-            title={tool.name}
+            title={toolDisplay.label ?? tool.name}
             meta={tool.detail ?? tool.status}
             expanded={expanded}
             onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !expanded }))}
@@ -659,9 +819,9 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
             }
           >
             <div>
-              {tool.arguments ? <ToolTranscriptBlock label="Arguments" icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
+              {tool.arguments ? <ToolTranscriptBlock label={toolDisplay.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
               {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
-              {tool.resultText ? <ToolTranscriptBlock label="Result" icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
+              {tool.resultText ? <ToolTranscriptBlock label={toolDisplay.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
             </div>
           </TimelineSection>
         );
@@ -669,14 +829,14 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
 
       {hasAssistant ? (
         <div className="flex w-full flex-col items-start gap-0.5 py-0.5">
-          <div className="app-chat-bubble-peer min-w-0 overflow-hidden w-full max-w-none rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
-            <MarkdownContent text={turn.assistantText} />
+          <div className="app-chat-bubble-peer min-w-0 overflow-hidden w-full max-w-[min(100%,42rem)] rounded-[18px] px-3.5 py-2 text-[13px] shadow-sm">
+            <MarkdownContent text={visibleTurn.assistantText} />
           </div>
         </div>
       ) : null}
 
-      {turn.error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{turn.error}</div>
+      {visibleTurn.error ? (
+        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{visibleTurn.error}</div>
       ) : null}
     </div>
   );
@@ -704,7 +864,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
-        seed={contact.bridgePeerNodeId ?? contact.id}
+        seed={contact.avatarSeed ?? contact.bridgePeerNodeId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
         className="h-10 w-10 border border-white/10"

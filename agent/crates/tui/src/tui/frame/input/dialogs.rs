@@ -330,7 +330,19 @@ pub(crate) fn render_approval_input(
 
     let inner_height = height.saturating_sub(2);
     let (content, approval_cursor) = approval_input_content(dialog, width.max(1));
-    let visible_start = 0;
+    let focused_row = approval_cursor
+        .as_ref()
+        .map(|(row, _, _)| *row)
+        .unwrap_or(0);
+    let max_visible_start = content.len().saturating_sub(inner_height);
+    let visible_start = if inner_height == 0 {
+        0
+    } else {
+        focused_row
+            .saturating_add(1)
+            .saturating_sub(inner_height)
+            .min(max_visible_start)
+    };
     let visible_end = (visible_start + inner_height).min(content.len());
     let visible_slice = &content[visible_start..visible_end];
     let lines_above = visible_start;

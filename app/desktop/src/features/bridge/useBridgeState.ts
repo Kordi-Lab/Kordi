@@ -80,16 +80,44 @@ function isBridgeSettingsDraft(value: unknown): value is BridgeSettingsDraft {
     && typeof draft.ownerName === 'string';
 }
 
+function mergeBridgeMessage(
+  current: DesktopBridgeConversationMessage,
+  next: DesktopBridgeConversationMessage,
+): DesktopBridgeConversationMessage {
+  const currentText = current.text ?? '';
+  const nextText = next.text ?? '';
+  const shouldKeepCurrentText = next.deliveryState === 'processing'
+    && currentText.length > nextText.length;
+
+  return {
+    ...current,
+    ...next,
+    text: shouldKeepCurrentText ? currentText : nextText,
+    timeLabel: next.timeLabel || current.timeLabel,
+    timestampMs: Math.max(current.timestampMs, next.timestampMs),
+    deliveryState: next.deliveryState ?? current.deliveryState,
+  };
+}
+
 function mergeConversationMessages(
   current: DesktopBridgeConversationMessage[],
   next: DesktopBridgeConversationMessage[],
 ) {
-  if (next.length >= current.length) {
-    return next;
+  const currentById = new Map(current.map((message) => [message.id, message]));
+  const merged = next.map((message) => {
+    const existing = currentById.get(message.id);
+    return existing ? mergeBridgeMessage(existing, message) : message;
+  });
+
+  if (current.length <= next.length) {
+    return merged;
   }
 
-  const nextById = new Map(next.map((message) => [message.id, message]));
-  return current.map((message) => nextById.get(message.id) ?? message);
+  const nextIds = new Set(next.map((message) => message.id));
+  return current.map((message) => {
+    const incoming = nextIds.has(message.id) ? next.find((candidate) => candidate.id === message.id) : undefined;
+    return incoming ? mergeBridgeMessage(message, incoming) : message;
+  });
 }
 
 function mergeBridgeConversation(

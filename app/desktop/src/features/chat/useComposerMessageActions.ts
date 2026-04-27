@@ -1,33 +1,38 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { ComposerScope, DesktopBridgeState, DesktopChatState, Project, QueuedDesktopChatMessage } from '@/kordi-app/types';
+import type { ComposerScope } from '@/kordi-app/types';
 import {
+  cancelDesktopBridgeOutreach,
   cancelDesktopChatTurn,
-  runDesktopChatSkillCommand,
-  sendDesktopBridgeMessage,
-  startDesktopChatMessage,
 } from '@/lib/desktop';
 
+import { resizeComposerTextarea } from './composerController.shared';
+import type { UseComposerControllerArgs } from './composerController.types';
 import {
-  desktopHotkeyHelpText,
-  desktopSlashHelpText,
-  formatDesktopEventTime,
-  isSharedLocalSlashCommand,
-  resizeComposerTextarea,
-} from './composerController.shared';
-import type { AttachmentItem, UseComposerControllerArgs } from './composerController.types';
+  appendDesktopSystemMessageToState,
+  insertMentionIntoDraft,
+  runLocalSlashCommand,
+  type PendingBridgeOutreach,
+  useChatMessageActions,
+  useProjectMessageActions,
+} from './messageActions';
+
 
 type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
   | 'activeConversationIsBridge'
   | 'activeConvId'
+  | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
+  | 'activeConvBridgeTarget'
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'desktopChatState'
+  | 'desktopBridgeState'
+  | 'canonicalHumanIdentityId'
+  | 'setCanonicalSessionState'
   | 'desktopLiveTurn'
   | 'composerDrafts'
   | 'setComposerDrafts'
@@ -48,13 +53,14 @@ type UseComposerMessageActionsArgs = Pick<
   | 'setIsEditingDesktopSessionTitle'
   | 'setDesktopChatState'
   | 'setDesktopChatError'
+  | 'isDesktopChatSending'
   | 'setIsDesktopChatSending'
   | 'setPendingUserChatMessage'
-  | 'queuedDesktopMessagesBySession'
-  | 'setQueuedDesktopMessagesBySession'
+  | 'setDesktopLiveTurnsBySession'
   | 'setDesktopBridgeState'
   | 'watchDesktopLiveTurn'
   | 'shouldAutoFollowChatRef'
+  | 'setActiveConvId'
 > & {
   attachmentSummaryText: (text: string) => string;
   selectComposerValue: (scope: ComposerScope, type: 'model', value: string) => Promise<void>;
@@ -62,152 +68,19 @@ type UseComposerMessageActionsArgs = Pick<
   appendChatDraft: (value: string) => void;
 };
 
-function toOptimisticAttachments(attachments: AttachmentItem[]) {
-  return attachments.map((attachment) => ({
-    kind: attachment.kind,
-    name: attachment.name,
-    formatLabel: attachment.formatLabel,
-    previewUrl: attachment.previewUrl,
-  }));
-}
-
-function appendOptimisticOutboundMessage(
-  current: DesktopChatState,
-  targetSessionId: string,
-  previewText: string,
-  messageText: string,
-  attachments: AttachmentItem[],
-  sentAt: string,
-) {
-  const optimisticMessage = {
-    role: 'user' as const,
-    sender: 'You',
-    text: messageText,
-    attachments: toOptimisticAttachments(attachments),
-    timeLabel: sentAt,
-    timestampMs: Date.now(),
-  };
-
-  return {
-    ...current,
-    sessions: current.sessions.map((session) =>
-      session.id === targetSessionId
-        ? {
-            ...session,
-            subtitle: previewText,
-            updatedAtLabel: sentAt,
-            messageCount: session.messageCount + 1,
-          }
-        : session,
-    ),
-    activeSession:
-      current.activeSession.id === targetSessionId
-        ? {
-            ...current.activeSession,
-            subtitle: previewText,
-            updatedAtLabel: sentAt,
-            messageCount: current.activeSession.messageCount + 1,
-            messages: [...current.activeSession.messages, optimisticMessage],
-          }
-        : current.activeSession,
-  };
-}
-
-function appendOptimisticBridgeMessage(
-  current: DesktopBridgeState | null,
-  conversationId: string,
-  text: string,
-  sentAt: string,
-  optimisticMessageId: string,
-): DesktopBridgeState | null {
-  if (!current) return current;
-
-  const timestampMs = Date.now();
-  const nextConversations = current.conversations.map((conversation) => {
-    if (conversation.id !== conversationId) return conversation;
-    return {
-      ...conversation,
-      subtitle: text,
-      updatedAtMs: timestampMs,
-      updatedAtLabel: sentAt,
-      awaitingReply: true,
-      messages: [
-        ...conversation.messages,
-        {
-          id: optimisticMessageId,
-          direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
-          sender: 'You',
-          text,
-          timeLabel: sentAt,
-          timestampMs,
-          deliveryState: 'sending',
-        },
-      ],
-    };
-  }).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-
-  return {
-    ...current,
-    conversations: nextConversations,
-  };
-}
-
-function removeQueuedDesktopMessage(
-  current: Record<string, QueuedDesktopChatMessage[]>,
-  sessionId: string,
-  messageId: string,
-) {
-  const queue = current[sessionId] ?? [];
-  const nextQueue = queue.filter((message) => message.id !== messageId);
-  if (nextQueue.length === queue.length) return current;
-  if (nextQueue.length === 0) {
-    const { [sessionId]: _removed, ...rest } = current;
-    return rest;
-  }
-  return { ...current, [sessionId]: nextQueue };
-}
-
-function restoreQueuedDesktopMessage(
-  current: Record<string, QueuedDesktopChatMessage[]>,
-  message: QueuedDesktopChatMessage,
-) {
-  const queue = current[message.sessionId] ?? [];
-  if (queue.some((queued) => queued.id === message.id)) return current;
-  return { ...current, [message.sessionId]: [message, ...queue] };
-}
-
-function markOptimisticBridgeMessageFailed(
-  current: DesktopBridgeState | null,
-  conversationId: string,
-  optimisticMessageId: string,
-): DesktopBridgeState | null {
-  if (!current) return current;
-
-  return {
-    ...current,
-    conversations: current.conversations.map((conversation) => {
-      if (conversation.id !== conversationId) return conversation;
-      return {
-        ...conversation,
-        awaitingReply: false,
-        messages: conversation.messages.map((message) => (
-          message.id === optimisticMessageId
-            ? { ...message, deliveryState: 'failed' }
-            : message
-        )),
-      };
-    }),
-  };
-}
-
 export function useComposerMessageActions({
   isNativeShell,
   activeConversationIsBridge,
   activeConvId,
+  activeConvCanonicalSessionId,
   activeConvMessages,
+  activeConvBridgeTarget,
   activeProjectId,
   activeProjectSessionId,
   desktopChatState,
+  desktopBridgeState,
+  canonicalHumanIdentityId,
+  setCanonicalSessionState,
   desktopLiveTurn,
   composerDrafts,
   setComposerDrafts,
@@ -228,205 +101,67 @@ export function useComposerMessageActions({
   setIsEditingDesktopSessionTitle,
   setDesktopChatState,
   setDesktopChatError,
+  isDesktopChatSending,
   setIsDesktopChatSending,
   setPendingUserChatMessage,
-  queuedDesktopMessagesBySession,
-  setQueuedDesktopMessagesBySession,
+  setDesktopLiveTurnsBySession,
   setDesktopBridgeState,
   watchDesktopLiveTurn,
   shouldAutoFollowChatRef,
+  setActiveConvId,
   attachmentSummaryText,
   selectComposerValue,
   appendProjectDraft,
   appendChatDraft,
 }: UseComposerMessageActionsArgs) {
-  const isFlushingQueuedDesktopMessageRef = useRef(false);
-
-  const queueDesktopMessage = useCallback((
-    scope: 'chat' | 'project',
-    sessionId: string,
-    text: string,
-    attachments: AttachmentItem[],
-  ) => {
-    const queued = {
-      id: `queued-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      sessionId,
-      scope,
-      text,
-      time: formatDesktopEventTime(),
-      attachments: attachments.map((attachment) => ({ ...attachment })),
-    };
-    setQueuedDesktopMessagesBySession((current) => ({
-      ...current,
-      [sessionId]: [...(current[sessionId] ?? []), queued],
-    }));
-    setComposerDrafts((current) => ({ ...current, [scope]: '' }));
-    setChatComposerAttachments([]);
-    resizeComposerTextarea(
-      scope === 'project'
-        ? 'textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]'
-        : 'textarea[placeholder="Message a person, an agent, or delegate a task…"]',
-    );
-    shouldAutoFollowChatRef.current = true;
-  }, [setChatComposerAttachments, setComposerDrafts, setQueuedDesktopMessagesBySession, shouldAutoFollowChatRef]);
-
-  const sendQueuedDesktopMessage = useCallback(async (queued: QueuedDesktopChatMessage) => {
-    const sentAt = formatDesktopEventTime();
-    const attachmentPaths = queued.attachments.map((item) => item.path);
-    const previewText = attachmentSummaryText(queued.text);
-    setDesktopChatState((current) => (
-      current
-        ? appendOptimisticOutboundMessage(current, queued.sessionId, previewText, queued.text, queued.attachments, sentAt)
-        : current
-    ));
-    const turn = await startDesktopChatMessage(queued.sessionId, queued.text, attachmentPaths);
-    void watchDesktopLiveTurn(turn);
-  }, [attachmentSummaryText, setDesktopChatState, watchDesktopLiveTurn]);
+  const [pendingBridgeOutreach, setPendingBridgeOutreach] = useState<PendingBridgeOutreach | null>(null);
+  const pendingBridgeOutreachRef = useRef<PendingBridgeOutreach | null>(null);
+  const pendingBridgeCancelRequestedRef = useRef(false);
 
   useEffect(() => {
-    if (!isNativeShell || activeConversationIsBridge) return;
-    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
-    if (isFlushingQueuedDesktopMessageRef.current) return;
+    pendingBridgeOutreachRef.current = pendingBridgeOutreach;
+  }, [pendingBridgeOutreach]);
 
-    const targetSessionId = activeConvId && !activeConvId.startsWith('bridge:')
-      ? activeConvId
-      : desktopChatState?.activeSessionId;
-    if (!targetSessionId) return;
-
-    const nextQueued = queuedDesktopMessagesBySession[targetSessionId]?.[0];
-    if (!nextQueued) return;
-
-    isFlushingQueuedDesktopMessageRef.current = true;
-    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessage(current, targetSessionId, nextQueued.id));
-    sendQueuedDesktopMessage(nextQueued)
-      .catch((error) => {
-        setQueuedDesktopMessagesBySession((current) => restoreQueuedDesktopMessage(current, nextQueued));
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued message');
-      })
-      .finally(() => {
-        isFlushingQueuedDesktopMessageRef.current = false;
-      });
-  }, [
-    activeConversationIsBridge,
-    activeConvId,
-    desktopChatState?.activeSessionId,
-    desktopLiveTurn,
-    isNativeShell,
-    queuedDesktopMessagesBySession,
-    sendQueuedDesktopMessage,
-    setDesktopChatError,
-    setQueuedDesktopMessagesBySession,
-  ]);
+  useEffect(() => {
+    if (!pendingBridgeOutreach) return;
+    const conversation = desktopBridgeState?.conversations.find((candidate) => candidate.id === pendingBridgeOutreach.conversationId);
+    const status = conversation?.outreach?.status?.trim().toLowerCase();
+    if (status && ['completed', 'complete', 'failed', 'cancelled', 'timeout'].includes(status)) {
+      setPendingBridgeOutreach(null);
+      setIsDesktopChatSending(false);
+    }
+  }, [desktopBridgeState?.conversations, pendingBridgeOutreach, setIsDesktopChatSending]);
 
   const appendDesktopSystemMessage = useCallback((text: string) => {
-    const timeLabel = formatDesktopEventTime();
-    setDesktopChatState((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        activeSession: {
-          ...current.activeSession,
-          messages: [
-            ...current.activeSession.messages,
-            {
-              role: 'system',
-              sender: 'Kordi',
-              text,
-              timeLabel,
-              timestampMs: Date.now(),
-            },
-          ],
-        },
-      };
-    });
+    appendDesktopSystemMessageToState({ setDesktopChatState }, text);
   }, [setDesktopChatState]);
 
-  const handleLocalSlashCommand = useCallback(async (rawText: string, scope: ComposerScope = 'chat') => {
-    const text = rawText.trim();
-    const command = text.split(/\s+/, 1)[0] ?? text;
-    if (!isSharedLocalSlashCommand(command)) {
-      return false;
-    }
-
-    const args = text.slice(command.length).trim();
-
-    switch (command) {
-      case '/new':
-        await handleCreateChatSession();
-        return true;
-      case '/settings':
-        setActiveNav('settings');
-        return true;
-      case '/login':
-      case '/logout':
-        setActiveNav('settings');
-        setActiveSettingsSectionId('auth');
-        return true;
-      case '/session':
-        setIsDetailPanelCollapsed(false);
-        setActiveDetailTab('info');
-        return true;
-      case '/model': {
-        if (args) {
-          const match = chatModelOptions.find((option) => {
-            const haystack = `${option.value} ${option.label} ${option.detail ?? ''}`.toLowerCase();
-            return haystack.includes(args.toLowerCase());
-          });
-          if (match) {
-            await selectComposerValue(scope, 'model', match.value);
-            return true;
-          }
-        }
-        setOpenComposerSelector({ scope, type: 'model' });
-        return true;
-      }
-      case '/name':
-        if (!desktopChatState?.activeSessionId) return true;
-        if (args) {
-          setDesktopSessionRenameDraft(args);
-          await handleRenameDesktopSession(desktopChatState.activeSession.title);
-        } else {
-          setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
-          setIsEditingDesktopSessionTitle(true);
-        }
-        return true;
-      case '/copy': {
-        const lastAssistant = [...activeConvMessages].reverse().find((message) => message.role === 'owned-agent');
-        if (!lastAssistant?.text?.trim()) {
-          appendDesktopSystemMessage('No assistant response available to copy yet.');
-          return true;
-        }
-        await navigator.clipboard.writeText(lastAssistant.text);
-        appendDesktopSystemMessage('Copied the latest assistant response to your clipboard.');
-        return true;
-      }
-      case '/help':
-        appendDesktopSystemMessage(desktopSlashHelpText());
-        return true;
-      case '/hotkeys':
-        appendDesktopSystemMessage(desktopHotkeyHelpText());
-        return true;
-      case '/reload':
-        await Promise.all([refreshDesktopChat(desktopChatState?.activeSessionId), refreshDesktopAuth()]);
-        appendDesktopSystemMessage('Reloaded desktop chat state, auth, and slash commands.');
-        return true;
-      case '/skill': {
-        if (!desktopChatState?.activeSessionId) return true;
-        const note = await runDesktopChatSkillCommand(desktopChatState.activeSessionId, text);
-        await refreshDesktopChat(desktopChatState.activeSessionId);
-        appendDesktopSystemMessage(note);
-        return true;
-      }
-      default:
-        appendDesktopSystemMessage(`${command} is not wired on desktop yet.`);
-        return true;
-    }
-  }, [
+  const handleLocalSlashCommand = useCallback((rawText: string, scope: ComposerScope = 'chat') => runLocalSlashCommand({
+    rawText,
+    scope,
+    activeConvId,
     activeConvMessages,
     appendDesktopSystemMessage,
     chatModelOptions,
-    desktopChatState?.activeSession.title,
-    desktopChatState?.activeSessionId,
+    desktopChatState,
+    handleCreateChatSession,
+    handleRenameDesktopSession,
+    refreshDesktopAuth,
+    refreshDesktopChat,
+    selectComposerValue,
+    setActiveDetailTab,
+    setActiveNav,
+    setActiveSettingsSectionId,
+    setDesktopSessionRenameDraft,
+    setIsDetailPanelCollapsed,
+    setIsEditingDesktopSessionTitle,
+    setOpenComposerSelector,
+  }), [
+    activeConvId,
+    activeConvMessages,
+    appendDesktopSystemMessage,
+    chatModelOptions,
+    desktopChatState,
     handleCreateChatSession,
     handleRenameDesktopSession,
     refreshDesktopAuth,
@@ -441,193 +176,112 @@ export function useComposerMessageActions({
     setOpenComposerSelector,
   ]);
 
-  const handleSendChatMessage = useCallback(async () => {
-    if (!isNativeShell) return;
-    const text = composerDrafts.chat.trim();
-    if (!text && chatComposerAttachments.length === 0) return;
-
-    if (activeConversationIsBridge) {
-      if (chatComposerAttachments.length > 0) {
-        setDesktopChatError('Bridge chats do not support attachments yet.');
-        return;
-      }
-      const sentAt = formatDesktopEventTime();
-      const optimisticMessageId = `bridge-pending-${Date.now()}`;
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-        setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId));
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
-        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-        const nextState = await sendDesktopBridgeMessage(activeConvId, text);
-        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-      } catch (error) {
-        setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId));
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
-      } finally {
-        setIsDesktopChatSending(false);
-      }
-      return;
-    }
-
-    const targetSessionId = activeConvId && !activeConvId.startsWith('bridge:')
-      ? activeConvId
-      : desktopChatState?.activeSessionId;
-
-    if (!targetSessionId) return;
-    if (desktopLiveTurn && !desktopLiveTurn.completed) {
-      queueDesktopMessage('chat', targetSessionId, text, chatComposerAttachments);
-      return;
-    }
-
-    if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
-      resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-      setOpenComposerSelector(null);
-      return;
-    }
-
-    try {
-      shouldAutoFollowChatRef.current = true;
-      setDesktopChatError(null);
-      if (desktopChatState?.activeSessionId !== targetSessionId) {
-        await refreshDesktopChat(targetSessionId);
-      }
-
-      const sentAt = formatDesktopEventTime();
-      const attachmentPaths = chatComposerAttachments.map((item) => item.path);
-      const previewText = attachmentSummaryText(text);
-      setPendingUserChatMessage(null);
-      setDesktopChatState((current) => (
-        current
-          ? appendOptimisticOutboundMessage(current, targetSessionId, previewText, text, chatComposerAttachments, sentAt)
-          : current
-      ));
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
-      setChatComposerAttachments([]);
-      resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-      const turn = await startDesktopChatMessage(targetSessionId, text, attachmentPaths);
-      void watchDesktopLiveTurn(turn);
-    } catch (error) {
-      setPendingUserChatMessage(null);
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
-    }
-  }, [
+  const handleSendChatMessage = useChatMessageActions({
     activeConversationIsBridge,
+    activeConvBridgeTarget,
+    activeConvCanonicalSessionId,
     activeConvId,
+    activeConvMessages,
     attachmentSummaryText,
+    canonicalHumanIdentityId,
     chatComposerAttachments,
-    composerDrafts.chat,
-    desktopChatState?.activeSessionId,
+    composerDrafts,
+    desktopBridgeState,
+    desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
     isNativeShell,
+    pendingBridgeCancelRequestedRef,
+    refreshDesktopChat,
+    setActiveConvId,
+    setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
     setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
+    setDesktopLiveTurnsBySession,
     setIsDesktopChatSending,
     setOpenComposerSelector,
+    setPendingBridgeOutreach,
     setPendingUserChatMessage,
-    queueDesktopMessage,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
-  ]);
+  });
 
-  const handleSendProjectMessage = useCallback(async () => {
-    const text = composerDrafts.project.trim();
-    if (!activeProjectSessionId || (!text && chatComposerAttachments.length === 0)) return;
-
-    if (!isNativeShell) {
-      shouldAutoFollowChatRef.current = true;
-      const sentAt = formatDesktopEventTime();
-
-      setProjectWorkspaces((current: Project[]) =>
-        current.map((project) =>
-          project.id !== activeProjectId
-            ? project
-            : {
-                ...project,
-                sessions: project.sessions.map((session) =>
-                  session.id !== activeProjectSessionId
-                    ? session
-                    : {
-                        ...session,
-                        lastActive: sentAt,
-                        messages: [
-                          ...session.messages,
-                          {
-                            role: 'user',
-                            sender: 'You',
-                            text,
-                            attachments: toOptimisticAttachments(chatComposerAttachments),
-                            time: sentAt,
-                          },
-                        ],
-                      },
-                ),
-              },
-        ),
-      );
-      appendProjectDraft('');
-      setChatComposerAttachments([]);
-      return;
-    }
-
-    if (desktopLiveTurn && !desktopLiveTurn.completed) {
-      queueDesktopMessage('project', activeProjectSessionId, text, chatComposerAttachments);
-      return;
-    }
-
-    try {
-      shouldAutoFollowChatRef.current = true;
-      setDesktopChatError(null);
-      const sentAt = formatDesktopEventTime();
-      const attachmentPaths = chatComposerAttachments.map((item) => item.path);
-      const previewText = attachmentSummaryText(text);
-      setDesktopChatState((current) => {
-        if (!current || current.activeSessionId !== activeProjectSessionId) return current;
-        return appendOptimisticOutboundMessage(current, activeProjectSessionId, previewText, text, chatComposerAttachments, sentAt);
-      });
-      appendProjectDraft('');
-      setChatComposerAttachments([]);
-      resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]');
-      const turn = await startDesktopChatMessage(activeProjectSessionId, text, attachmentPaths);
-      void watchDesktopLiveTurn(turn);
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to send project message');
-    }
-  }, [
+  const handleSendProjectMessage = useProjectMessageActions({
+    activeConvMessages,
     activeProjectId,
     activeProjectSessionId,
     appendProjectDraft,
     attachmentSummaryText,
+    canonicalHumanIdentityId,
     chatComposerAttachments,
-    composerDrafts.project,
+    composerDrafts,
+    desktopBridgeState,
+    desktopChatState,
     desktopLiveTurn,
     isNativeShell,
+    setCanonicalSessionState,
     setChatComposerAttachments,
+    setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
+    setIsDesktopChatSending,
     setProjectWorkspaces,
     shouldAutoFollowChatRef,
-    queueDesktopMessage,
     watchDesktopLiveTurn,
-  ]);
+  });
+
+  const acceptChatMentionTarget = useCallback((label: string) => {
+    setComposerDrafts((current) => ({ ...current, chat: insertMentionIntoDraft(current.chat, label) }));
+    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', insertMentionIntoDraft(composerDrafts.chat, label));
+  }, [composerDrafts.chat, setComposerDrafts]);
+
+  const acceptProjectMentionTarget = useCallback((label: string) => {
+    setComposerDrafts((current) => ({ ...current, project: insertMentionIntoDraft(current.project, label) }));
+    resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
+  }, [composerDrafts.project, setComposerDrafts]);
 
   const handleStopDesktopChatTurn = useCallback(async () => {
-    if (!desktopLiveTurn || desktopLiveTurn.completed) return;
+    const pendingOutreach = pendingBridgeOutreachRef.current;
+    if (pendingOutreach) {
+      setDesktopChatError(null);
+      setPendingBridgeOutreach(null);
+      setIsDesktopChatSending(false);
+      try {
+        const nextState = await cancelDesktopBridgeOutreach(pendingOutreach.conversationId, pendingOutreach.requestId);
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
+      }
+      return;
+    }
+
+    if (!desktopLiveTurn || desktopLiveTurn.completed) {
+      if (isDesktopChatSending) {
+        pendingBridgeCancelRequestedRef.current = true;
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
+    const stoppedSessionId = desktopLiveTurn.sessionId;
+    setDesktopChatError(null);
+    setIsDesktopChatSending(false);
+    setDesktopLiveTurnsBySession((current) => {
+      if (!current[stoppedSessionId]) return current;
+      const { [stoppedSessionId]: _removed, ...rest } = current;
+      return rest;
+    });
 
     try {
-      setDesktopChatError(null);
-      const nextTurn = await cancelDesktopChatTurn(desktopLiveTurn.id);
-      void watchDesktopLiveTurn(nextTurn);
+      await cancelDesktopChatTurn(desktopLiveTurn.id);
+      void refreshDesktopChat(stoppedSessionId).catch(() => {});
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
     }
-  }, [desktopLiveTurn, setDesktopChatError, watchDesktopLiveTurn]);
+  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopBridgeState, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending]);
 
   return {
     handleSendChatMessage,
@@ -635,5 +289,7 @@ export function useComposerMessageActions({
     handleStopDesktopChatTurn,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
+    acceptChatMentionTarget,
+    acceptProjectMentionTarget,
   };
 }

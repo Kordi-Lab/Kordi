@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   Activity,
@@ -11,11 +12,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { IdentityAvatar, type IdentityAvatarKind } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import {
+  DeleteSessionDialog,
+  MoveSessionDialog,
+  SessionContextMenu,
+  type SessionActionTarget,
+  type SessionContextMenuTarget,
+} from '@/pages/SessionActionOverlays';
 
 type ConversationItem = {
   id: string;
@@ -28,7 +36,17 @@ type ConversationItem = {
   statusIndicator?: SessionStatusIndicator;
   type?: ConversationType;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
 };
+
+const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+
+function isManageableLocalChatConversation(conversation: ConversationItem) {
+  return conversation.type === 'owned-agent'
+    && conversation.id !== 'draft:local-chat'
+    && !conversation.id.startsWith('bridge:')
+    && !conversation.id.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+}
 
 type ProjectSessionItem = {
   id: string;
@@ -42,6 +60,7 @@ type ProjectSessionItem = {
 type ProjectItem = {
   id: string;
   name: string;
+  root?: string;
   sessions: ProjectSessionItem[];
 };
 
@@ -62,24 +81,15 @@ type AgentItem = {
   role: string;
   messaging: string;
   tasks: number;
+  avatarSeed?: string | null;
   profileImageUrl?: string | null;
 };
-
-function conversationAvatarKind(conversation: ConversationItem): IdentityAvatarKind {
-  return conversation.type === 'person' ? 'human' : 'agent';
-}
-
-function conversationAvatarSeed(conversation: ConversationItem) {
-  if (conversation.type === 'owned-agent') {
-    return `agent:${conversation.participants?.find((participant) => participant !== 'You') || conversation.name || 'local-agent'}`;
-  }
-  return `${conversation.type ?? 'conversation'}:${conversation.name || conversation.id}`;
-}
 
 type BridgeHostSummary = {
   serverUrl: string;
   connected: boolean;
   nodeId?: string | null;
+  humanId?: string | null;
   visiblePeerCount: number;
 };
 
@@ -102,6 +112,9 @@ type WorkspaceSidebarProps = {
   filteredConversations: ConversationItem[];
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
+  onArchiveChatSession: (sessionId: string) => void;
+  onDeleteChatSession: (sessionId: string) => void;
+  onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
   runtimeProjects: ProjectItem[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;
@@ -119,6 +132,7 @@ type WorkspaceSidebarProps = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
   activeBridgeHost: BridgeHostSummary | null;
+  localProfileAvatarSeed?: string | null;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
@@ -231,6 +245,9 @@ export function WorkspaceSidebar({
   filteredConversations,
   activeConvId,
   onSelectChatSession,
+  onArchiveChatSession,
+  onDeleteChatSession,
+  onMoveChatSessionToProject,
   runtimeProjects,
   projectSearch,
   setProjectSearch,
@@ -248,15 +265,41 @@ export function WorkspaceSidebar({
   setActiveContactId,
   displayedAgents,
   activeBridgeHost,
+  localProfileAvatarSeed,
   onRefreshBridge,
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
+  const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
+  const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
+  const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
+  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+
+  useEffect(() => {
+    if (!sessionContextMenu) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSessionContextMenu(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [sessionContextMenu]);
+
+  const closeSessionDialogs = () => {
+    setRemoveSessionTarget(null);
+    setMoveSessionTarget(null);
+  };
 
   return (
-    <aside className={cn('app-side-shell app-workspace-sidebar overflow-hidden', isSingleWorkspacePage ? 'rounded-none' : 'rounded-bl-[22px] rounded-r-none')}>
+    <>
+      <aside className={cn('app-side-shell app-workspace-sidebar overflow-hidden', isSingleWorkspacePage ? 'rounded-none' : 'rounded-bl-[22px] rounded-r-none')}>
       <div className="flex h-full">
         <div
           className={cn(
@@ -309,7 +352,7 @@ export function WorkspaceSidebar({
             </Button>
             <IdentityAvatar
               kind="human"
-              seed="local-human-profile"
+              seed={localProfileAvatarSeed || currentLocalProfileAvatarSeed}
               name="Local profile"
               className="h-9 w-9 border border-white/10"
             />
@@ -393,18 +436,24 @@ export function WorkspaceSidebar({
                             key={conversation.id}
                             type="button"
                             onClick={() => onSelectChatSession(conversation.id)}
+                            onContextMenu={(event) => {
+                              if (!isManageableLocalChatConversation(conversation)) {
+                                return;
+                              }
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setSessionContextMenu({
+                                sessionId: conversation.id,
+                                sessionName: conversation.name,
+                                x: event.clientX,
+                                y: event.clientY,
+                              });
+                            }}
                             className={`app-session-row block w-full px-2.5 py-[0.3125rem] text-left ${
                               isActive ? 'app-session-row-active text-white' : 'text-white'
                             }`}
                           >
-                            <div className="flex items-start gap-2">
-                              <IdentityAvatar
-                                kind={conversationAvatarKind(conversation)}
-                                seed={conversationAvatarSeed(conversation)}
-                                name={conversation.name}
-                                imageUrl={conversation.profileImageUrl}
-                                className="mt-px h-7 w-7 border border-white/10"
-                              />
+                            <div className="flex items-start">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2.5">
                                   <div className="min-w-0 flex-1">
@@ -595,7 +644,7 @@ export function WorkspaceSidebar({
                               <div className="flex min-w-0 items-start gap-3">
                                 <IdentityAvatar
                                   kind="agent"
-                                  seed={agent.id}
+                                  seed={agent.avatarSeed ?? agent.id}
                                   name={agent.name}
                                   imageUrl={agent.profileImageUrl}
                                   className="h-10 w-10 border border-white/10"
@@ -674,6 +723,34 @@ export function WorkspaceSidebar({
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+
+      {sessionContextMenu ? (
+        <SessionContextMenu
+          target={sessionContextMenu}
+          onClose={() => setSessionContextMenu(null)}
+          onMove={setMoveSessionTarget}
+          onArchive={onArchiveChatSession}
+          onDelete={setRemoveSessionTarget}
+        />
+      ) : null}
+
+      {removeSessionTarget ? (
+        <DeleteSessionDialog
+          target={removeSessionTarget}
+          onCancel={closeSessionDialogs}
+          onConfirm={onDeleteChatSession}
+        />
+      ) : null}
+
+      {moveSessionTarget ? (
+        <MoveSessionDialog
+          target={moveSessionTarget}
+          projects={runtimeProjects}
+          onCancel={closeSessionDialogs}
+          onMoveToProject={onMoveChatSessionToProject}
+        />
+      ) : null}
+    </>
   );
 }

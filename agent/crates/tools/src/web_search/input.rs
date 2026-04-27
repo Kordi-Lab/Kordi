@@ -4,7 +4,9 @@ use super::{WebSearchInput, normalize_domain};
 
 pub(super) fn validate_input(input: &WebSearchInput) -> KordiResult<()> {
     if input.query.trim().is_empty() {
-        return Err(KordiError::Tool("web_search query must be non-empty".into()));
+        return Err(KordiError::Tool(
+            "web_search query must be non-empty".into(),
+        ));
     }
 
     let has_allowed = input

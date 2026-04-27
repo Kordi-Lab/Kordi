@@ -1,6 +1,6 @@
 use anyhow::Result;
-use kordi_core::types::SessionEntry;
 use chrono::Utc;
+use kordi_core::types::SessionEntry;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
@@ -54,8 +54,10 @@ pub(super) fn create_session_with_id_and_parent(
 ) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO sessions (session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id)
-         VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5)",
+        "INSERT INTO sessions (
+             session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
+             parent_session_id, session_scope, project_root
+         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, 'chat', NULL)",
         params![session_id, cwd, now, now, parent_session_id],
     )?;
     Ok(())
@@ -123,6 +125,37 @@ pub(super) fn set_session_name(
     conn.execute(
         "UPDATE sessions SET name = ?1, updated_at = datetime('now') WHERE session_id = ?2",
         params![name, session_id],
+    )?;
+    Ok(())
+}
+
+pub(super) fn update_session_scope(
+    conn: &Connection,
+    session_id: &str,
+    session_scope: &str,
+    cwd: &str,
+    project_root: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions
+         SET session_scope = ?1,
+             cwd = ?2,
+             project_root = ?3,
+             updated_at = datetime('now')
+         WHERE session_id = ?4",
+        params![session_scope, cwd, project_root, session_id],
+    )?;
+    Ok(())
+}
+
+pub(super) fn delete_session(conn: &Connection, session_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM entries WHERE session_id = ?1",
+        params![session_id],
+    )?;
+    conn.execute(
+        "DELETE FROM sessions WHERE session_id = ?1",
+        params![session_id],
     )?;
     Ok(())
 }

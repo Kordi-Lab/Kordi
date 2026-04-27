@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use kordi_core::types::CacheMetricsSource;
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -16,10 +18,11 @@ struct TrackedBlock {
     kind: BlockKind,
 }
 
-/// Track block index → block metadata for correlating deltas.
-static BLOCK_ID_MAP: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<u64, TrackedBlock>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+/// Per-stream block index → block metadata for correlating deltas.
+#[derive(Default)]
+pub(super) struct AnthropicEventState {
+    block_id_map: HashMap<u64, TrackedBlock>,
+}
 
 fn event_type(event: &Value) -> Option<&str> {
     event.get("type").and_then(|value| value.as_str())
@@ -58,17 +61,16 @@ fn non_empty_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
-fn track_block(index: u64, id: &str, kind: BlockKind) {
-    BLOCK_ID_MAP
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(
+impl AnthropicEventState {
+    fn track_block(&mut self, index: u64, id: &str, kind: BlockKind) {
+        self.block_id_map.insert(
             index,
             TrackedBlock {
                 id: id.to_string(),
                 kind,
             },
         );
+    }
 }
 
 fn server_tool_result_name(block_type: &str) -> Option<&str> {
@@ -76,174 +78,166 @@ fn server_tool_result_name(block_type: &str) -> Option<&str> {
     (!stripped.is_empty() && stripped != block_type).then_some(stripped)
 }
 
-pub(super) fn process_sse_event(
-    event: &Value,
-    tx: &mpsc::UnboundedSender<StreamEvent>,
-    cache_metrics_source: CacheMetricsSource,
-) {
-    match event_type(event) {
-        Some("message_start") => {
-            BLOCK_ID_MAP
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clear();
-            if let Some(usage) = event
-                .get("message")
-                .and_then(|message| message.get("usage"))
-            {
-                let _ = tx.send(StreamEvent::Usage(usage_info(usage, cache_metrics_source)));
-            }
-        }
-        Some("content_block_start") => {
-            let Some(block) = event.get("content_block") else {
-                return;
-            };
-            let Some(block_type) = event_type(block) else {
-                return;
-            };
-            match block_type {
-                "tool_use" => {
-                    let Some(id) = non_empty_field(block, "id") else {
-                        return;
-                    };
-                    let Some(name) = non_empty_field(block, "name") else {
-                        return;
-                    };
-                    let Some(index) = event_index(event) else {
-                        return;
-                    };
-                    track_block(index, id, BlockKind::ToolUse);
-                    let _ = tx.send(StreamEvent::ToolCallStart {
-                        id: id.to_string(),
-                        name: name.to_string(),
-                    });
-                }
-                "server_tool_use" => {
-                    let Some(id) = non_empty_field(block, "id") else {
-                        return;
-                    };
-                    let Some(name) = non_empty_field(block, "name") else {
-                        return;
-                    };
-                    let Some(index) = event_index(event) else {
-                        return;
-                    };
-                    track_block(index, id, BlockKind::ServerToolUse);
-                    let _ = tx.send(StreamEvent::ServerToolUseStart {
-                        id: id.to_string(),
-                        name: name.to_string(),
-                    });
-                }
-                other => {
-                    let Some(name) = server_tool_result_name(other) else {
-                        return;
-                    };
-                    let Some(tool_use_id) = non_empty_field(block, "tool_use_id")
-                        .or_else(|| non_empty_field(block, "source_tool_use_id"))
-                        .or_else(|| non_empty_field(block, "id"))
-                    else {
-                        return;
-                    };
-                    let is_error = block
-                        .get("is_error")
-                        .and_then(|value| value.as_bool())
-                        .unwrap_or(false)
-                        || block["error"].is_object()
-                        || block["error"].is_string()
-                        || block["status"].as_str() == Some("error");
-                    let _ = tx.send(StreamEvent::ServerToolResult {
-                        tool_use_id: tool_use_id.to_string(),
-                        name: name.to_string(),
-                        result: block.clone(),
-                        is_error,
-                    });
+impl AnthropicEventState {
+    pub(super) fn process_sse_event(
+        &mut self,
+        event: &Value,
+        tx: &mpsc::UnboundedSender<StreamEvent>,
+        cache_metrics_source: CacheMetricsSource,
+    ) {
+        match event_type(event) {
+            Some("message_start") => {
+                self.block_id_map.clear();
+                if let Some(usage) = event
+                    .get("message")
+                    .and_then(|message| message.get("usage"))
+                {
+                    let _ = tx.send(StreamEvent::Usage(usage_info(usage, cache_metrics_source)));
                 }
             }
-        }
-        Some("content_block_delta") => {
-            let Some(delta) = event.get("delta") else {
-                return;
-            };
-            match event_type(delta) {
-                Some("text_delta") => {
-                    if let Some(text) = non_empty_field(delta, "text") {
-                        let _ = tx.send(StreamEvent::TextDelta {
-                            text: text.to_string(),
+            Some("content_block_start") => {
+                let Some(block) = event.get("content_block") else {
+                    return;
+                };
+                let Some(block_type) = event_type(block) else {
+                    return;
+                };
+                match block_type {
+                    "tool_use" => {
+                        let Some(id) = non_empty_field(block, "id") else {
+                            return;
+                        };
+                        let Some(name) = non_empty_field(block, "name") else {
+                            return;
+                        };
+                        let Some(index) = event_index(event) else {
+                            return;
+                        };
+                        self.track_block(index, id, BlockKind::ToolUse);
+                        let _ = tx.send(StreamEvent::ToolCallStart {
+                            id: id.to_string(),
+                            name: name.to_string(),
+                        });
+                    }
+                    "server_tool_use" => {
+                        let Some(id) = non_empty_field(block, "id") else {
+                            return;
+                        };
+                        let Some(name) = non_empty_field(block, "name") else {
+                            return;
+                        };
+                        let Some(index) = event_index(event) else {
+                            return;
+                        };
+                        self.track_block(index, id, BlockKind::ServerToolUse);
+                        let _ = tx.send(StreamEvent::ServerToolUseStart {
+                            id: id.to_string(),
+                            name: name.to_string(),
+                        });
+                    }
+                    other => {
+                        let Some(name) = server_tool_result_name(other) else {
+                            return;
+                        };
+                        let Some(tool_use_id) = non_empty_field(block, "tool_use_id")
+                            .or_else(|| non_empty_field(block, "source_tool_use_id"))
+                            .or_else(|| non_empty_field(block, "id"))
+                        else {
+                            return;
+                        };
+                        let is_error = block
+                            .get("is_error")
+                            .and_then(|value| value.as_bool())
+                            .unwrap_or(false)
+                            || block["error"].is_object()
+                            || block["error"].is_string()
+                            || block["status"].as_str() == Some("error");
+                        let _ = tx.send(StreamEvent::ServerToolResult {
+                            tool_use_id: tool_use_id.to_string(),
+                            name: name.to_string(),
+                            result: block.clone(),
+                            is_error,
                         });
                     }
                 }
-                Some("thinking_delta") => {
-                    if let Some(text) = non_empty_field(delta, "thinking") {
-                        let _ = tx.send(StreamEvent::ThinkingDelta {
-                            text: text.to_string(),
-                        });
-                    }
-                }
-                Some("input_json_delta") => {
-                    let Some(json_str) = non_empty_field(delta, "partial_json") else {
-                        return;
-                    };
-                    let Some(index) = event_index(event) else {
-                        return;
-                    };
-                    let tracked = BLOCK_ID_MAP
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .get(&index)
-                        .cloned();
-                    match tracked {
-                        Some(TrackedBlock {
-                            id,
-                            kind: BlockKind::ToolUse,
-                        }) => {
-                            let _ = tx.send(StreamEvent::ToolCallDelta {
-                                id,
-                                arguments_delta: json_str.to_string(),
+            }
+            Some("content_block_delta") => {
+                let Some(delta) = event.get("delta") else {
+                    return;
+                };
+                match event_type(delta) {
+                    Some("text_delta") => {
+                        if let Some(text) = non_empty_field(delta, "text") {
+                            let _ = tx.send(StreamEvent::TextDelta {
+                                text: text.to_string(),
                             });
                         }
-                        Some(TrackedBlock {
-                            id,
-                            kind: BlockKind::ServerToolUse,
-                        }) => {
-                            let _ = tx.send(StreamEvent::ServerToolUseDelta {
-                                id,
-                                arguments_delta: json_str.to_string(),
+                    }
+                    Some("thinking_delta") => {
+                        if let Some(text) = non_empty_field(delta, "thinking") {
+                            let _ = tx.send(StreamEvent::ThinkingDelta {
+                                text: text.to_string(),
                             });
                         }
-                        None => {}
+                    }
+                    Some("input_json_delta") => {
+                        let Some(json_str) = non_empty_field(delta, "partial_json") else {
+                            return;
+                        };
+                        let Some(index) = event_index(event) else {
+                            return;
+                        };
+                        let tracked = self.block_id_map.get(&index).cloned();
+                        match tracked {
+                            Some(TrackedBlock {
+                                id,
+                                kind: BlockKind::ToolUse,
+                            }) => {
+                                let _ = tx.send(StreamEvent::ToolCallDelta {
+                                    id,
+                                    arguments_delta: json_str.to_string(),
+                                });
+                            }
+                            Some(TrackedBlock {
+                                id,
+                                kind: BlockKind::ServerToolUse,
+                            }) => {
+                                let _ = tx.send(StreamEvent::ServerToolUseDelta {
+                                    id,
+                                    arguments_delta: json_str.to_string(),
+                                });
+                            }
+                            None => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some("content_block_stop") => {
+                let Some(index) = event_index(event) else {
+                    return;
+                };
+                if let Some(tracked) = self.block_id_map.remove(&index) {
+                    match tracked.kind {
+                        BlockKind::ToolUse => {
+                            let _ = tx.send(StreamEvent::ToolCallEnd { id: tracked.id });
+                        }
+                        BlockKind::ServerToolUse => {
+                            let _ = tx.send(StreamEvent::ServerToolUseEnd { id: tracked.id });
+                        }
                     }
                 }
-                _ => {}
             }
-        }
-        Some("content_block_stop") => {
-            let Some(index) = event_index(event) else {
-                return;
-            };
-            if let Some(tracked) = BLOCK_ID_MAP
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .remove(&index)
-            {
-                match tracked.kind {
-                    BlockKind::ToolUse => {
-                        let _ = tx.send(StreamEvent::ToolCallEnd { id: tracked.id });
-                    }
-                    BlockKind::ServerToolUse => {
-                        let _ = tx.send(StreamEvent::ServerToolUseEnd { id: tracked.id });
-                    }
+            Some("message_delta") => {
+                if let Some(usage) = event.get("usage") {
+                    let _ = tx.send(StreamEvent::Usage(usage_info(usage, cache_metrics_source)));
                 }
             }
-        }
-        Some("message_delta") => {
-            if let Some(usage) = event.get("usage") {
-                let _ = tx.send(StreamEvent::Usage(usage_info(usage, cache_metrics_source)));
+            Some("message_stop") => {
+                let _ = tx.send(StreamEvent::Done);
             }
+            _ => {}
         }
-        Some("message_stop") => {
-            let _ = tx.send(StreamEvent::Done);
-        }
-        _ => {}
     }
 }
 
@@ -263,7 +257,8 @@ mod tests {
     #[test]
     fn parses_server_tool_use_events() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_start",
                 "index": 0,
@@ -276,7 +271,7 @@ mod tests {
             &tx,
             CacheMetricsSource::Official,
         );
-        process_sse_event(
+        state.process_sse_event(
             &json!({
                 "type": "content_block_delta",
                 "index": 0,
@@ -288,7 +283,7 @@ mod tests {
             &tx,
             CacheMetricsSource::Official,
         );
-        process_sse_event(
+        state.process_sse_event(
             &json!({
                 "type": "content_block_stop",
                 "index": 0
@@ -324,7 +319,8 @@ mod tests {
     #[test]
     fn parses_web_search_tool_result_blocks() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_start",
                 "index": 1,
@@ -360,7 +356,8 @@ mod tests {
     #[test]
     fn ignores_tool_start_events_without_required_metadata() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_start",
                 "index": 0,
@@ -379,7 +376,8 @@ mod tests {
     #[test]
     fn ignores_untracked_json_deltas_instead_of_emitting_synthetic_tool_calls() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_delta",
                 "index": 7,
@@ -397,7 +395,8 @@ mod tests {
     #[test]
     fn ignores_tool_result_blocks_without_any_tool_identifier() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_start",
                 "content_block": {
@@ -414,7 +413,8 @@ mod tests {
     #[test]
     fn message_start_clears_block_tracking_before_new_usage() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "content_block_start",
                 "index": 0,
@@ -427,7 +427,7 @@ mod tests {
             &tx,
             CacheMetricsSource::Official,
         );
-        process_sse_event(
+        state.process_sse_event(
             &json!({
                 "type": "message_start",
                 "message": {
@@ -442,7 +442,7 @@ mod tests {
             &tx,
             CacheMetricsSource::Official,
         );
-        process_sse_event(
+        state.process_sse_event(
             &json!({
                 "type": "content_block_stop",
                 "index": 0
@@ -460,7 +460,8 @@ mod tests {
     #[test]
     fn usage_events_preserve_requested_cache_metric_source() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        process_sse_event(
+        let mut state = AnthropicEventState::default();
+        state.process_sse_event(
             &json!({
                 "type": "message_start",
                 "message": {

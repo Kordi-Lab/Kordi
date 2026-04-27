@@ -1,8 +1,18 @@
-import { useCallback } from 'react';
+import { useCallback, type MutableRefObject } from 'react';
 
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
-export function useDesktopTranscriptAdapter() {
+type LocalAvatarSeedsRef = MutableRefObject<{
+  human?: string | null;
+  agent?: string | null;
+}>;
+
+type UseDesktopTranscriptAdapterArgs = {
+  localAvatarSeedsRef?: LocalAvatarSeedsRef;
+};
+
+export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopTranscriptAdapterArgs = {}) {
   const mapDesktopMessages = useCallback((sessionId: string, messages: DesktopChatMessage[]): Message[] => (
     messages.flatMap((message, index) => {
       const hasHistoricalTurn =
@@ -32,12 +42,18 @@ export function useDesktopTranscriptAdapter() {
         text: message.text,
         time: message.timeLabel,
         detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),
+        senderAvatarSeed: message.role === 'assistant'
+          ? (localAvatarSeedsRef?.current.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi'))
+          : message.role === 'user'
+            ? (localAvatarSeedsRef?.current.human?.trim() || getLocalProfileAvatarSeed())
+            : undefined,
         attachments: message.attachments?.map((attachment) => ({
           kind: attachment.kind,
           name: attachment.name,
           formatLabel: attachment.formatLabel,
           previewUrl: attachment.previewUrl,
         })),
+        mentions: message.mentions,
         turn:
           hasHistoricalTurn
             ? {
@@ -56,7 +72,7 @@ export function useDesktopTranscriptAdapter() {
             : undefined,
       }];
     })
-  ), []);
+  ), [localAvatarSeedsRef]);
 
   return {
     mapDesktopMessages,

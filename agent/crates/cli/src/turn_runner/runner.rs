@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use kordi_core::agent_loop::is_context_overflow;
 use kordi_core::agent_session::messages_to_provider;
-use kordi_core::types::AgentMessage;
+use kordi_core::types::{AgentMessage, StopReason};
 use kordi_hooks::Event;
 use kordi_monitor::{
     RequestMetricsIdentity, RequestMetricsSnapshot, RequestMetricsTiming, RequestMutationFlags,
@@ -31,6 +31,7 @@ struct StreamCollection {
     context_overflow_error: Option<String>,
     first_stream_event_at_ms: Option<i64>,
     first_text_delta_at_ms: Option<i64>,
+    cancelled: bool,
 }
 
 async fn maybe_execute_auto_compaction(
@@ -206,7 +207,17 @@ pub(crate) async fn run_turn_inner(
                 cache_metrics_source: collected.cache_metrics_source.clone(),
             },
         );
-        {
+        let has_assistant_content = !collected.text.is_empty()
+            || !collected.thinking.is_empty()
+            || !collected.tool_calls.is_empty();
+        if has_assistant_content {
+            let stop_reason = if !collected.tool_calls.is_empty() {
+                StopReason::ToolUse
+            } else if stream.cancelled || config.cancel.is_cancelled() {
+                StopReason::Aborted
+            } else {
+                StopReason::Stop
+            };
             let conn = config.conn.lock().await;
             append_assistant_message(
                 &conn,
@@ -214,6 +225,7 @@ pub(crate) async fn run_turn_inner(
                 &config.model,
                 &collected,
                 &resolved_usage,
+                stop_reason,
             )?;
         }
         overflow_recovery_attempted = false;
@@ -322,10 +334,20 @@ async fn build_request(
     let mut mutation_flags = RequestMutationFlags::default();
     mutation_flags.context_rewritten = context_rewritten;
 
+    let mut tool_defs = config.tool_registry.tool_defs().to_vec();
+    if config.tool_ctx.reach_out.is_none() {
+        tool_defs.retain(|tool| {
+            tool.get("function")
+                .and_then(|function| function.get("name"))
+                .and_then(|name| name.as_str())
+                != Some("reach_out")
+        });
+    }
+
     let mut request = CompletionRequest {
         system_prompt: system_prompt.to_string(),
         messages: provider_messages,
-        tools: config.tool_registry.tool_defs().to_vec(),
+        tools: tool_defs,
         extra_tool_schemas: vec![],
         model: config.model.id.clone(),
         max_tokens: Some(config.model.max_tokens as u32),
@@ -415,18 +437,63 @@ async fn collect_stream_events(
     let mut first_stream_event_at_ms = None;
     let mut first_text_delta_at_ms = None;
 
-    while let Some(event) = stream_rx.recv().await {
-        forward_stream_event(
-            event_tx,
-            &event,
-            &mut context_overflow_error,
-            &mut first_stream_event_at_ms,
-            &mut first_text_delta_at_ms,
-        );
-        events.push(event);
+    let drain_ready_events =
+        |stream_rx: &mut mpsc::UnboundedReceiver<StreamEvent>,
+         events: &mut Vec<StreamEvent>,
+         context_overflow_error: &mut Option<String>,
+         first_stream_event_at_ms: &mut Option<i64>,
+         first_text_delta_at_ms: &mut Option<i64>| {
+            while let Ok(event) = stream_rx.try_recv() {
+                forward_stream_event(
+                    event_tx,
+                    &event,
+                    context_overflow_error,
+                    first_stream_event_at_ms,
+                    first_text_delta_at_ms,
+                );
+                events.push(event);
+            }
+        };
 
-        if config.cancel.is_cancelled() {
-            break;
+    let mut cancelled = false;
+    loop {
+        tokio::select! {
+            _ = config.cancel.cancelled() => {
+                cancelled = true;
+                drain_ready_events(
+                    &mut stream_rx,
+                    &mut events,
+                    &mut context_overflow_error,
+                    &mut first_stream_event_at_ms,
+                    &mut first_text_delta_at_ms,
+                );
+                stream_handle.abort();
+                break;
+            }
+            maybe_event = stream_rx.recv() => {
+                let Some(event) = maybe_event else { break; };
+                forward_stream_event(
+                    event_tx,
+                    &event,
+                    &mut context_overflow_error,
+                    &mut first_stream_event_at_ms,
+                    &mut first_text_delta_at_ms,
+                );
+                events.push(event);
+
+                if config.cancel.is_cancelled() {
+                    cancelled = true;
+                    drain_ready_events(
+                        &mut stream_rx,
+                        &mut events,
+                        &mut context_overflow_error,
+                        &mut first_stream_event_at_ms,
+                        &mut first_text_delta_at_ms,
+                    );
+                    stream_handle.abort();
+                    break;
+                }
+            }
         }
     }
 
@@ -440,7 +507,7 @@ async fn collect_stream_events(
             }
         }
         Err(error) => {
-            if !config.cancel.is_cancelled() {
+            if !config.cancel.is_cancelled() && !error.is_cancelled() {
                 let message = format!("stream task failed: {error}");
                 let _ = event_tx.send(TurnEvent::Error(message.clone()));
                 return Err(anyhow::anyhow!(message));
@@ -453,6 +520,7 @@ async fn collect_stream_events(
         context_overflow_error,
         first_stream_event_at_ms,
         first_text_delta_at_ms,
+        cancelled,
     })
 }
 

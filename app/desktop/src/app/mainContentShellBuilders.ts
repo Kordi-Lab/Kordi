@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
+import { findCanonicalConversationForTarget } from '@/features/canonical/sessionResolver';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -47,6 +48,11 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
     onRemoveBridgeContact: args.handleRemoveBridgeContact,
     onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime) => {
+      const existingConversation = findCanonicalConversationForTarget(args.chatConversations, { bridgeNodeId: peerNodeId });
+      if (existingConversation) {
+        void args.handleSelectChatSession(existingConversation.id);
+        return;
+      }
       void args.handleOpenBridgeConversation(hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime);
     },
     onBridgeWizardPrimary: () => {
@@ -78,9 +84,11 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     },
     desktopLiveTurn: args.desktopLiveTurn,
     filteredProjectSlashCommands: args.filteredProjectSlashCommands,
+    filteredProjectMentionTargets: args.filteredProjectMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,
     acceptProjectSlashCommand: args.acceptProjectSlashCommand,
+    acceptProjectMentionTarget: args.acceptProjectMentionTarget,
     chatAttachmentInputRef: args.chatAttachmentInputRef,
     chatComposerAttachments: args.chatComposerAttachments,
     saveDesktopAttachments: args.saveDesktopAttachments,
@@ -135,9 +143,11 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     desktopLiveTurn: args.desktopLiveTurn,
     queuedDesktopMessages: args.activeQueuedDesktopMessages,
     filteredChatSlashCommands: args.filteredChatSlashCommands,
+    filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,
     acceptChatSlashCommand: args.acceptChatSlashCommand,
+    acceptChatMentionTarget: args.acceptChatMentionTarget,
     chatAttachmentInputRef: args.chatAttachmentInputRef,
     chatComposerAttachments: args.chatComposerAttachments,
     saveDesktopAttachments: args.saveDesktopAttachments,

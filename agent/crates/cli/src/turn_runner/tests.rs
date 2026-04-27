@@ -639,6 +639,7 @@ fn test_tool_context() -> kordi_tools::ToolContext {
         execution_policy: kordi_tools::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,
+        reach_out: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }

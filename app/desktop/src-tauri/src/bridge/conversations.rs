@@ -1,4 +1,5 @@
 use base64::Engine as _;
+use sha2::{Digest, Sha256};
 
 use super::constants::{
     is_agent_like_runtime, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
@@ -26,6 +27,37 @@ fn scoped_conversation_id(
     } else {
         base
     }
+}
+
+fn bridge_session_hash(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    hex::encode(&digest[..12])
+}
+
+fn canonical_session_id_for_record(record: &DesktopBridgeConversationRecord) -> String {
+    if is_person_runtime(&record.peer_runtime) {
+        if let Some(identity) = &record.identity {
+            if let Some(remote_human_id) = identity
+                .remote_human_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let mut participants = [identity.local_human_id.trim(), remote_human_id];
+                participants.sort_unstable();
+                return format!(
+                    "session:bridge:humans:{}",
+                    bridge_session_hash(&participants.join("|"))
+                );
+            }
+        }
+        return crate::canonical_sessions::canonical_bridge_session_id(&record.id);
+    }
+
+    // Conversation-level outreach is mutable latest-state routing metadata. It must never
+    // become the visible canonical conversation id; otherwise a direct transport chat can
+    // overwrite a stable parent shared session as a direct-agent session on the next sync.
+    crate::canonical_sessions::canonical_bridge_session_id(&record.id)
 }
 
 fn conversation_matches(
@@ -83,6 +115,8 @@ pub(super) fn upsert_bridge_conversation<'a>(
             updated_at_ms: now_ms(),
             peer_last_typing_at_ms: None,
             peer_last_heartbeat_at_ms: None,
+            outreach: None,
+            identity: None,
             messages: Vec::new(),
         });
         store.conversations.len() - 1
@@ -152,6 +186,100 @@ pub(super) fn conversation_title(record: &DesktopBridgeConversationRecord) -> St
         .unwrap_or_else(|| record.peer_node_id.clone())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::{DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata};
+
+    fn test_outreach(parent_session_id: &str) -> DesktopBridgeOutreachMetadata {
+        DesktopBridgeOutreachMetadata {
+            target_kind: "bridge-agent".to_string(),
+            parent_session_id: Some(parent_session_id.to_string()),
+            parent_session_title: Some("Shared humans".to_string()),
+            parent_session_messages: Vec::new(),
+            parent_turn_id: None,
+            parent_message_id: None,
+            bridge_host_id: "bridge_host".to_string(),
+            bridge_conversation_id: None,
+            bridge_request_id: Some("bridge_req".to_string()),
+            delivery_state: None,
+            target_node_id: "kd_remote".to_string(),
+            target_human_id: Some("kh_remote".to_string()),
+            target_agent_id: Some("ka_remote".to_string()),
+            target_display_name: "Remote Kordi".to_string(),
+            target_owner_name: Some("Remote".to_string()),
+            target_runtime: Some("kordi-desktop".to_string()),
+            request_text: "hello".to_string(),
+            trigger_text: Some("@Remote Kordi hello".to_string()),
+            context_text: None,
+            context_policy: Some("recent-window".to_string()),
+            project_id: None,
+            project_name: None,
+            status: "completed".to_string(),
+            created_at_ms: 1,
+            updated_at_ms: 2,
+            completed_at_ms: Some(2),
+            error: None,
+        }
+    }
+
+    fn test_record(peer_runtime: &str) -> DesktopBridgeConversationRecord {
+        DesktopBridgeConversationRecord {
+            id: "bridge:host:kd_remote".to_string(),
+            host_id: "host".to_string(),
+            peer_node_id: "kd_remote".to_string(),
+            peer_display_name: Some("Remote Kordi".to_string()),
+            peer_owner_name: Some("Remote".to_string()),
+            peer_runtime: peer_runtime.to_string(),
+            project_id: None,
+            project_name: None,
+            unread_count: 0,
+            updated_at_ms: 2,
+            peer_last_typing_at_ms: None,
+            peer_last_heartbeat_at_ms: None,
+            outreach: Some(test_outreach("session:bridge:humans:parent")),
+            identity: Some(DesktopBridgeIdentitySnapshot {
+                bridge_host_id: "host".to_string(),
+                local_human_id: "kh_local".to_string(),
+                local_human_name: "Local".to_string(),
+                local_agent_id: Some("ka_local".to_string()),
+                local_agent_name: Some("Local Kordi".to_string()),
+                local_agent_node_id: Some("kd_local".to_string()),
+                remote_human_id: Some("kh_remote".to_string()),
+                remote_human_name: Some("Remote".to_string()),
+                remote_human_node_id: Some("kd_remote".to_string()),
+                remote_agent_id: Some("ka_remote".to_string()),
+                remote_agent_name: Some("Remote Kordi".to_string()),
+                remote_agent_node_id: Some("kd_remote".to_string()),
+                remote_agent_runtime: Some("kordi-desktop".to_string()),
+            }),
+            messages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn agent_conversation_outreach_parent_does_not_become_canonical_session_id() {
+        let record = test_record("kordi-desktop");
+        assert_eq!(
+            canonical_session_id_for_record(&record),
+            crate::canonical_sessions::canonical_bridge_session_id(&record.id)
+        );
+        assert_ne!(
+            canonical_session_id_for_record(&record),
+            "session:bridge:humans:parent"
+        );
+    }
+
+    #[test]
+    fn person_conversation_uses_stable_human_pair_session_id() {
+        let mut record = test_record("person");
+        record.id = "bridge:host:kd_remote:person".to_string();
+        let session_id = canonical_session_id_for_record(&record);
+        assert!(session_id.starts_with("session:bridge:humans:"));
+        assert_ne!(session_id, "session:bridge:humans:parent");
+    }
+}
+
 pub(super) fn build_conversation_state(
     record: &DesktopBridgeConversationRecord,
 ) -> DesktopBridgeConversation {
@@ -165,21 +293,24 @@ pub(super) fn build_conversation_state(
             text: message.text.clone(),
             time_label: format_time_label(message.timestamp_ms),
             timestamp_ms: message.timestamp_ms,
+            request_id: message.request_id.clone(),
             delivery_state: message.delivery_state.clone(),
+            outreach: message.outreach.clone(),
         })
         .collect();
     let subtitle = messages
         .last()
         .map(|message| message.text.clone())
         .unwrap_or_default();
-    let awaiting_reply = record
-        .messages
-        .iter()
-        .rev()
-        .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
-        .and_then(|message| message.delivery_state.clone())
-        .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
-        .unwrap_or(false);
+    let awaiting_reply = is_agent_like_runtime(&record.peer_runtime)
+        && record
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
+            .and_then(|message| message.delivery_state.clone())
+            .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
+            .unwrap_or(false);
     let peer_typing = record
         .peer_last_typing_at_ms
         .map(|timestamp| now_ms().saturating_sub(timestamp) <= PEER_TYPING_WINDOW_MS)
@@ -189,6 +320,7 @@ pub(super) fn build_conversation_state(
         .map(format_time_label_with_seconds);
     DesktopBridgeConversation {
         id: record.id.clone(),
+        canonical_session_id: canonical_session_id_for_record(record),
         host_id: record.host_id.clone(),
         peer_node_id: record.peer_node_id.clone(),
         peer_display_name: record.peer_display_name.clone(),
@@ -204,6 +336,8 @@ pub(super) fn build_conversation_state(
         awaiting_reply,
         peer_typing,
         peer_last_heartbeat_label,
+        outreach: record.outreach.clone(),
+        identity: record.identity.clone(),
         messages,
     }
 }

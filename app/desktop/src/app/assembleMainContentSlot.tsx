@@ -1,14 +1,13 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } from '@/app/mainContentShellBuilders';
+import { findCanonicalConversationForTarget, findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
   const openLocalAgentChat = async () => {
     args.setActiveNav('chats');
-    const existingLocalConversation = args.chatConversations.find(
-      (conversation) => conversation.type === 'owned-agent' && !conversation.id.startsWith('bridge:'),
-    );
+    const existingLocalConversation = findOwnedAgentConversation(args.chatConversations);
     if (existingLocalConversation) {
       await args.handleSelectChatSession(existingLocalConversation.id);
       return;
@@ -49,8 +48,26 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             void openLocalAgentChat();
             return;
           }
+
+          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
+            humanId: contact.bridgeHumanId,
+            agentId: contact.classType === 'other-users-agents' ? contact.bridgeAgentId : null,
+            bridgeNodeId: contact.bridgePeerNodeId,
+          });
+          args.setContactOverlayMode(null);
+          if (existingConversation) {
+            void args.handleSelectChatSession(existingConversation.id);
+            return;
+          }
+
           if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
-          void args.handleOpenBridgeConversation(contact.bridgeHostId, contact.bridgePeerNodeId, contact.name, contact.owner, contact.bridgePeerRuntime);
+          void args.handleOpenBridgeConversation(
+            contact.bridgeHostId,
+            contact.bridgePeerNodeId,
+            contact.name,
+            contact.owner,
+            contact.classType === 'other-users' ? 'person' : contact.bridgePeerRuntime,
+          );
         },
       }}
       agentsPageProps={{
@@ -67,6 +84,16 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             void openLocalAgentChat();
             return;
           }
+
+          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
+            agentId: agent.bridgeAgentId,
+            bridgeNodeId: agent.bridgePeerNodeId,
+          });
+          if (existingConversation) {
+            void args.handleSelectChatSession(existingConversation.id);
+            return;
+          }
+
           if (!agent.bridgeHostId || !agent.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
         },
@@ -81,6 +108,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         activeSettingsSection: args.activeSettingsSection,
         authSettingsLayoutWidth: args.authSettingsLayoutWidth,
         isNativeShell: args.isNativeShell,
+        localProfileAvatarSeed: args.localProfileAvatarSeed,
         desktopAuthState: args.desktopAuthState,
         isDesktopAuthLoading: args.isDesktopAuthLoading,
         desktopAuthError: args.desktopAuthError,

@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
+import { useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { SettingsSection } from '@/kordi-app/data/settings';
 import type {
   DesktopAuthState,
@@ -24,6 +25,7 @@ type SettingsPageProps = {
   activeSettingsSection: SettingsSection;
   authSettingsLayoutWidth: number;
   isNativeShell: boolean;
+  localProfileAvatarSeed?: string | null;
   desktopAuthState: DesktopAuthState | null;
   isDesktopAuthLoading: boolean;
   desktopAuthError: string | null;
@@ -52,6 +54,7 @@ export function SettingsPage({
   activeSettingsSection,
   authSettingsLayoutWidth,
   isNativeShell,
+  localProfileAvatarSeed,
   desktopAuthState,
   isDesktopAuthLoading,
   desktopAuthError,
@@ -70,6 +73,7 @@ export function SettingsPage({
   themeMode,
   setThemeMode,
 }: SettingsPageProps) {
+  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const sectionGuide =
     activeSettingsSection.id === 'auth'
       ? 'Start with one provider. Save more later only if you want fallbacks, different billing, or separate accounts.'
@@ -167,7 +171,7 @@ export function SettingsPage({
                   </div>
                   <EditableIdentityAvatar
                     kind="human"
-                    seed="local-human-profile"
+                    seed={localProfileAvatarSeed || currentLocalProfileAvatarSeed}
                     name="Local profile"
                     label="Local profile"
                     className="h-16 w-16 border border-white/10"

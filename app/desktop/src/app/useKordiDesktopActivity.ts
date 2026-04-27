@@ -13,6 +13,8 @@ import type {
   ProjectSession,
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
+import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
@@ -58,13 +60,13 @@ export function useKordiDesktopActivity({
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = activeConversationIsBridge ? null : (desktopLiveTurnsBySession[activeConv.id] ?? null);
+  const activeChatLiveTurn = desktopLiveTurnsBySession[activeConv.id] ?? null;
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
     : activeNav === 'chats' && activeConversationIsBridge
-      ? isDesktopBridgeSending
+      ? isDesktopBridgeSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(
@@ -88,13 +90,18 @@ export function useKordiDesktopActivity({
   }, [totalUnreadMessages]);
 
   useEffect(() => {
+    const activeChatSessionId = activeConv.id;
     const visibleLocalSessionId = activeNav === 'projects'
       ? (activeProjectSessionId || null)
-      : activeNav === 'chats' && !activeConvId.startsWith('bridge:')
-        ? activeConvId
+      : activeNav === 'chats'
+        && !activeConversationIsBridge
+        && !activeChatSessionId.startsWith('bridge:')
+        && !isCanonicalBridgeSessionId(activeChatSessionId)
+        && !isLocalDraftChatConversationId(activeChatSessionId)
+        ? activeChatSessionId
         : null;
     setVisibleLocalSessionId(visibleLocalSessionId);
-  }, [activeConvId, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
+  }, [activeConv.id, activeConversationIsBridge, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
     if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {

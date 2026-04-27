@@ -111,7 +111,10 @@ fn allowed_workspace_text_write_target(path: &Path) -> bool {
     )
 }
 
-fn resolve_allowed_workspace_text_path(raw_path: &str, allow_write: bool) -> Result<PathBuf, String> {
+fn resolve_allowed_workspace_text_path(
+    raw_path: &str,
+    allow_write: bool,
+) -> Result<PathBuf, String> {
     let trimmed = raw_path.trim();
     if trimmed.is_empty() {
         return Err("Path is required".to_string());
@@ -127,7 +130,10 @@ fn resolve_allowed_workspace_text_path(raw_path: &str, allow_write: bool) -> Res
 
     if allow_write {
         if !allowed_workspace_text_write_target(relative) {
-            return Err("Writing is only allowed for repo-relative agent identity and config files".to_string());
+            return Err(
+                "Writing is only allowed for repo-relative agent identity and config files"
+                    .to_string(),
+            );
         }
     } else if !allowed_workspace_text_read_target(relative) {
         return Err("Reading is only allowed for agent identity and config files".to_string());

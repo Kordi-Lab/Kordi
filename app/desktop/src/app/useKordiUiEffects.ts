@@ -208,7 +208,7 @@ export function useKordiUiEffects({
     if (!isNativeShell || !desktopAuthState) return;
 
     const sessionId = activeNav === 'projects'
-      ? (activeProjectSessionId ?? desktopChatState?.activeSessionId)
+      ? (activeProjectSessionId || desktopChatState?.activeSessionId)
       : desktopChatState?.activeSessionId;
 
     void refreshDesktopChat(sessionId);

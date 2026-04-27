@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use kordi_core::error::KordiResult;
 use kordi_provider::{Provider, registry::Model};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, future::Future, path::PathBuf, pin::Pin, sync::Arc};
 use tokio_util::sync::CancellationToken;
@@ -118,6 +119,44 @@ pub struct WebSearchRuntime {
     pub enabled: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReachOutRequest {
+    pub target: String,
+    pub target_kind: Option<String>,
+    pub message: String,
+    pub context: Option<String>,
+    pub context_policy: String,
+    pub include_project_context: bool,
+    pub wait_for_response: bool,
+    pub timeout_seconds: Option<u64>,
+    pub parent_session_id: Option<String>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReachOutResponse {
+    pub conversation_id: String,
+    pub target_kind: String,
+    pub target_display_name: String,
+    pub target_owner_name: Option<String>,
+    pub response_text: Option<String>,
+    pub status: String,
+    pub timed_out: bool,
+}
+
+pub type ReachOutFuture = Pin<Box<dyn Future<Output = KordiResult<ReachOutResponse>> + Send>>;
+pub type ReachOutFn = Arc<dyn Fn(ReachOutRequest) -> ReachOutFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ReachOutRuntime {
+    pub reach_out: ReachOutFn,
+}
+
 /// Context available to tools during execution.
 pub struct ToolContext {
     pub cwd: PathBuf,
@@ -125,6 +164,7 @@ pub struct ToolContext {
     pub execution_policy: ExecutionPolicy,
     pub on_output: Option<OnOutputFn>,
     pub web_search: Option<WebSearchRuntime>,
+    pub reach_out: Option<ReachOutRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }

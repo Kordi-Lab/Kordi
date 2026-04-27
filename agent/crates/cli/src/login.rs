@@ -60,13 +60,14 @@ pub fn set_active_auth_choice(provider: &str, choice: &str) -> Result<bool> {
     };
 
     let mut store = load_auth();
-    store.active_auth_methods.insert(normalized.clone(), auth.method);
+    store
+        .active_auth_methods
+        .insert(normalized.clone(), auth.method);
     store.active_auth_profiles.remove(&normalized);
     store.last_provider = Some(normalized);
     save_auth(&store)?;
     Ok(true)
 }
-
 
 #[cfg(test)]
 pub(crate) fn auth_test_env_lock() -> &'static std::sync::Mutex<()> {

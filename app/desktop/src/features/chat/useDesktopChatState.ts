@@ -42,6 +42,39 @@ function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
   });
 }
 
+function liveTurnToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
+  return [
+    tool.id,
+    tool.name,
+    tool.status,
+    tool.arguments,
+    tool.liveOutput,
+    tool.resultText ?? '',
+    tool.detail ?? '',
+    String(tool.isError),
+  ].join('\u0000');
+}
+
+function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefined, right: DesktopChatTurnSnapshot) {
+  if (!left) return true;
+  if (
+    left.id !== right.id
+    || left.sessionId !== right.sessionId
+    || left.status !== right.status
+    || left.message !== right.message
+    || left.assistantText !== right.assistantText
+    || left.thinkingText !== right.thinkingText
+    || left.completed !== right.completed
+    || left.succeeded !== right.succeeded
+    || left.error !== right.error
+    || left.tools.length !== right.tools.length
+  ) {
+    return true;
+  }
+
+  return left.tools.some((tool, index) => liveTurnToolKey(tool) !== liveTurnToolKey(right.tools[index]));
+}
+
 function mergeLatestDesktopChatState(
   current: DesktopChatState | null,
   nextState: DesktopChatState,
@@ -286,7 +319,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     const completedMessage = shouldAppendAssistantMessage
       ? buildCompletedDesktopAssistantMessage(turn, finishedAt)
       : null;
-    const isBackgroundSession = !visibleLocalSessionId || visibleLocalSessionId !== turn.sessionId;
+    const isBackgroundSession = visibleLocalSessionId !== turn.sessionId
+      && latestDesktopSessionIdRef.current !== turn.sessionId;
 
     setDesktopLiveTurnsBySession((current) => {
       if (!current[turn.sessionId]) return current;
@@ -373,23 +407,46 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         let nextTurn = initialTurn ?? await fetchDesktopChatTurnState(
           typeof turnOrSnapshot === 'string' ? turnOrSnapshot : turnOrSnapshot.id,
         );
-        setDesktopLiveTurnsBySession((current) => ({
-          ...current,
-          [nextTurn.sessionId]: nextTurn,
-        }));
+        setDesktopLiveTurnsBySession((current) => (
+          liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
+            ? { ...current, [nextTurn.sessionId]: nextTurn }
+            : current
+        ));
 
         while (!nextTurn.completed) {
-          await new Promise((resolve) => window.setTimeout(resolve, 120));
+          await new Promise((resolve) => window.setTimeout(resolve, 60));
           nextTurn = await fetchDesktopChatTurnState(nextTurn.id);
-          setDesktopLiveTurnsBySession((current) => ({
-            ...current,
-            [nextTurn.sessionId]: nextTurn,
-          }));
+          if (!(nextTurn.completed && nextTurn.status === 'cancelled')) {
+            setDesktopLiveTurnsBySession((current) => (
+              liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
+                ? { ...current, [nextTurn.sessionId]: nextTurn }
+                : current
+            ));
+          }
         }
 
         setPendingUserChatMessage(null);
-        mergeCompletedDesktopTurn(nextTurn);
-        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && visibleLocalSessionIdRef.current === nextTurn.sessionId) {
+
+        const visibleSessionId = visibleLocalSessionIdRef.current;
+        const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId
+          || (!visibleSessionId && latestDesktopSessionIdRef.current === nextTurn.sessionId);
+
+        if (isVisibleCompletedSession) {
+          try {
+            await refreshDesktopChat(nextTurn.sessionId);
+            setDesktopLiveTurnsBySession((current) => {
+              if (!current[nextTurn.sessionId]) return current;
+              const { [nextTurn.sessionId]: _removed, ...rest } = current;
+              return rest;
+            });
+          } catch {
+            mergeCompletedDesktopTurn(nextTurn);
+          }
+        } else {
+          mergeCompletedDesktopTurn(nextTurn);
+        }
+
+        if (!nextTurn.succeeded && nextTurn.status !== 'cancelled' && isVisibleCompletedSession) {
           setDesktopChatError(nextTurn.error ?? nextTurn.message);
         }
       } catch (error) {
@@ -405,7 +462,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
       }
     },
-    [mergeCompletedDesktopTurn],
+    [mergeCompletedDesktopTurn, refreshDesktopChat],
   );
 
   return {

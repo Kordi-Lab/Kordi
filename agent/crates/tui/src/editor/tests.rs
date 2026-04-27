@@ -171,9 +171,11 @@ fn test_delete_word_backward_accumulates_kill_ring_in_read_order() {
 fn test_new_kill_sequence_starts_a_fresh_kill_ring_entry() {
     let mut editor = Editor::new();
     editor.set_text("alpha");
+    editor.state.cursor_col = 0;
     editor.kill_to_end(KillContinuation::NewEntry);
 
     editor.set_text("beta");
+    editor.state.cursor_col = 0;
     editor.kill_to_end(KillContinuation::NewEntry);
 
     assert_eq!(editor.kill_ring.len(), 2);

@@ -182,6 +182,7 @@ impl TuiController {
                 execution_policy: self.session_setup.tool_ctx.execution_policy,
                 on_output: None,
                 web_search: self.session_setup.tool_ctx.web_search.clone(),
+                reach_out: self.session_setup.tool_ctx.reach_out.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
             },

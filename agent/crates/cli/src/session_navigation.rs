@@ -1,7 +1,7 @@
 use anyhow::Result;
+use chrono::Utc;
 use kordi_core::types::{EntryBase, EntryId, SessionEntry};
 use kordi_provider::Provider;
-use chrono::Utc;
 use rusqlite::Connection;
 use tokio_util::sync::CancellationToken;
 
@@ -99,7 +99,9 @@ async fn navigate_tree_with_summary_impl(
         let resolved = kordi_session::tree::resolve_tree_target(conn, session_id, target_entry_id)?;
         let new_leaf_id = resolved.new_leaf_id().map(ToOwned::to_owned);
         match new_leaf_id.as_deref() {
-            Some(new_leaf_id) => kordi_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?,
+            Some(new_leaf_id) => {
+                kordi_session::store::set_leaf(conn, session_id, Some(new_leaf_id))?
+            }
             None => kordi_session::store::set_leaf(conn, session_id, None)?,
         }
         return Ok(TreeNavigateOutcome {

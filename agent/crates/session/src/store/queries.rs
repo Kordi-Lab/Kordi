@@ -81,7 +81,8 @@ pub(super) fn get_children(
 /// Get session metadata.
 pub(super) fn get_session(conn: &Connection, session_id: &str) -> Result<Option<SessionRow>> {
     let mut stmt = conn.prepare(
-        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
+        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
+                parent_session_id, session_scope, project_root
          FROM sessions WHERE session_id = ?1",
     )?;
     let row = stmt.query_row(params![session_id], |row| {
@@ -94,6 +95,8 @@ pub(super) fn get_session(conn: &Connection, session_id: &str) -> Result<Option<
             leaf_id: row.get(5)?,
             entry_count: row.get(6)?,
             parent_session_id: row.get(7)?,
+            session_scope: row.get(8)?,
+            project_root: row.get(9)?,
         })
     });
 
@@ -140,9 +143,10 @@ pub(super) fn get_last_entry_timestamp(
 /// List sessions for a given cwd, most recent first.
 pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionRow>> {
     let mut stmt = conn.prepare(
-        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
+        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
+                parent_session_id, session_scope, project_root
          FROM sessions
-         WHERE cwd = ?1
+         WHERE cwd = ?1 AND session_scope = 'chat'
          ORDER BY COALESCE(
              (SELECT timestamp FROM entries WHERE session_id = sessions.session_id AND type = 'message' ORDER BY seq DESC LIMIT 1),
              (SELECT timestamp FROM entries WHERE session_id = sessions.session_id ORDER BY seq DESC LIMIT 1),
@@ -160,6 +164,8 @@ pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionR
             leaf_id: row.get(5)?,
             entry_count: row.get(6)?,
             parent_session_id: row.get(7)?,
+            session_scope: row.get(8)?,
+            project_root: row.get(9)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -168,7 +174,8 @@ pub(super) fn list_sessions(conn: &Connection, cwd: &str) -> Result<Vec<SessionR
 /// List all sessions, most recent first.
 pub(super) fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
     let mut stmt = conn.prepare(
-        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count, parent_session_id
+        "SELECT session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
+                parent_session_id, session_scope, project_root
          FROM sessions
          ORDER BY COALESCE(
              (SELECT timestamp FROM entries WHERE session_id = sessions.session_id AND type = 'message' ORDER BY seq DESC LIMIT 1),
@@ -187,6 +194,8 @@ pub(super) fn list_all_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
             leaf_id: row.get(5)?,
             entry_count: row.get(6)?,
             parent_session_id: row.get(7)?,
+            session_scope: row.get(8)?,
+            project_root: row.get(9)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)

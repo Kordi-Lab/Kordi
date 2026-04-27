@@ -17,7 +17,10 @@ impl PluginHost {
     ///
     /// Serializes the event as a JSON-RPC request with method "event",
     /// waits for the response with the matching id.
-    pub async fn send_event(&mut self, event: &kordi_hooks::Event) -> Option<kordi_hooks::HookResult> {
+    pub async fn send_event(
+        &mut self,
+        event: &kordi_hooks::Event,
+    ) -> Option<kordi_hooks::HookResult> {
         self.send_event_with_context(event, &PluginContext::default())
             .await
     }
@@ -46,7 +49,8 @@ impl PluginHost {
         }
 
         match tokio::time::timeout(Duration::from_secs(30), self.read_response_for_id(id)).await {
-            Ok(Ok(Some(result))) => match serde_json::from_value::<kordi_hooks::HookResult>(result) {
+            Ok(Ok(Some(result))) => match serde_json::from_value::<kordi_hooks::HookResult>(result)
+            {
                 Ok(hr) => {
                     if matches!(event, kordi_hooks::Event::ToolCall(tool_call)
                         if hr.input.as_ref() == Some(tool_call.input())
@@ -169,19 +173,20 @@ impl PluginHost {
     pub(super) async fn read_message(
         &mut self,
     ) -> Result<Option<serde_json::Value>, std::io::Error> {
-        let mut line = String::new();
-        let bytes = self.stdout_reader.read_line(&mut line).await?;
-        if bytes == 0 {
-            return Ok(None);
-        }
-        match serde_json::from_str(&line) {
-            Ok(val) => Ok(Some(val)),
-            Err(e) => {
-                warn!(
-                    "Failed to parse plugin message: {e} — line: {}",
-                    line.trim()
-                );
-                Ok(None)
+        loop {
+            let mut line = String::new();
+            let bytes = self.stdout_reader.read_line(&mut line).await?;
+            if bytes == 0 {
+                return Ok(None);
+            }
+            match serde_json::from_str(&line) {
+                Ok(val) => return Ok(Some(val)),
+                Err(e) => {
+                    warn!(
+                        "Failed to parse plugin message: {e} — line: {}",
+                        line.trim()
+                    );
+                }
             }
         }
     }

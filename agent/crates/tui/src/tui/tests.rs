@@ -1,9 +1,9 @@
 use super::types::TuiNoteLevel;
 use std::time::{Duration, Instant};
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use kordi_core::types::ContentBlock;
 use kordi_session::{store::EntryRow, tree::TreeNode};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use crate::select_list::SelectItem;
 
@@ -15,8 +15,8 @@ use super::{
     tool_format::{format_tool_call_content, format_tool_call_title, format_tool_result_content},
     transcript::{BlockId, BlockKind, NewBlock, Transcript},
     types::{
-        TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiCommand,
-        TuiMode, TuiSubmission, HistoricalToolState,
+        HistoricalToolState, TuiAppConfig, TuiApprovalChoice, TuiApprovalDialog, TuiCommand,
+        TuiMode, TuiSubmission,
     },
 };
 

@@ -282,8 +282,8 @@ fn text_from_blocks(blocks: &[ContentBlock]) -> String {
 mod tests {
     use super::*;
     use crate::store;
-    use kordi_core::types::*;
     use chrono::Utc;
+    use kordi_core::types::*;
 
     fn make_user_entry(parent: Option<&str>, text: &str) -> SessionEntry {
         SessionEntry::Message {

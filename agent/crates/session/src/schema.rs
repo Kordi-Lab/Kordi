@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 2;
+const CURRENT_VERSION: i32 = 3;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -47,6 +47,15 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_session
     ON sessions(parent_session_id);
 "#;
 
+const MIGRATION_V3: &str = r#"
+ALTER TABLE sessions ADD COLUMN session_scope TEXT NOT NULL DEFAULT 'chat';
+ALTER TABLE sessions ADD COLUMN project_root TEXT;
+CREATE INDEX IF NOT EXISTS idx_sessions_scope
+    ON sessions(session_scope);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_root
+    ON sessions(project_root);
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -59,6 +68,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 2 {
         conn.execute_batch(MIGRATION_V2)?;
         set_version(conn, 2)?;
+    }
+
+    if current < 3 {
+        conn.execute_batch(MIGRATION_V3)?;
+        set_version(conn, 3)?;
     }
 
     Ok(())
@@ -103,5 +117,7 @@ mod tests {
             .collect::<std::result::Result<Vec<_>, _>>()
             .unwrap();
         assert!(columns.contains(&"parent_session_id".to_string()));
+        assert!(columns.contains(&"session_scope".to_string()));
+        assert!(columns.contains(&"project_root".to_string()));
     }
 }

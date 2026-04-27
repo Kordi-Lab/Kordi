@@ -6,7 +6,8 @@ use tokio_util::sync::CancellationToken;
 pub(crate) const STANDARD_WEB_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 pub(crate) fn parse_http_url(tool_name: &str, raw_url: &str) -> KordiResult<Url> {
-    let url = Url::parse(raw_url.trim()).map_err(|e| KordiError::Tool(format!("Invalid URL: {e}")))?;
+    let url =
+        Url::parse(raw_url.trim()).map_err(|e| KordiError::Tool(format!("Invalid URL: {e}")))?;
     match url.scheme() {
         "http" | "https" => Ok(url),
         other => Err(KordiError::Tool(format!(
@@ -22,7 +23,9 @@ pub(crate) fn validate_optional_max_chars(
     if let Some(max_chars) = max_chars
         && max_chars == 0
     {
-        return Err(KordiError::Tool(format!("{tool_name} max_chars must be > 0")));
+        return Err(KordiError::Tool(format!(
+            "{tool_name} max_chars must be > 0"
+        )));
     }
     Ok(())
 }

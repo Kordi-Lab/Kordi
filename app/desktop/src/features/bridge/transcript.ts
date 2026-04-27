@@ -1,4 +1,4 @@
-import type { Conversation, DesktopBridgeConversation, DesktopBridgeHost, Message } from '@/kordi-app/types';
+import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeHost, Message } from '@/kordi-app/types';
 import {
   BRIDGE_MESSAGE_DIRECTION_INBOUND,
   BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
@@ -24,6 +24,51 @@ function isBridgeConversationPersonChat(conversation: DesktopBridgeConversation)
     );
 }
 
+function bridgeOutboundStatusChip(deliveryState: string | null | undefined, agentHasBegunReply: boolean) {
+  const normalized = deliveryState?.trim().toLowerCase();
+  if (agentHasBegunReply && (!normalized || normalized === 'sent' || normalized === 'delivered' || normalized === 'processing')) {
+    return 'read';
+  }
+  if (normalized === 'processing' || normalized === 'handed_off_direct' || normalized === 'handed_off_mailbox') {
+    return 'read';
+  }
+  return deliveryState || 'sent';
+}
+
+function stripOutreachContextEnvelope(text: string) {
+  const match = /^Context:\s*[\s\S]*?\n\s*Request:\s*\n?([\s\S]*)$/i.exec(text.trim());
+  return match?.[1]?.trim() || text;
+}
+
+function isProcessingPlaceholderText(text: string) {
+  return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
+}
+
+function bridgeMessageDisplayText(
+  conversation: DesktopBridgeConversation,
+  message: DesktopBridgeConversationMessage,
+) {
+  const outreach = conversation.outreach;
+  const isOutreachRequest = outreach?.bridgeRequestId
+    && message.requestId === outreach.bridgeRequestId
+    && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND);
+  if (isOutreachRequest) {
+    if (outreach.triggerText?.trim()) {
+      return outreach.triggerText.trim();
+    }
+    if (outreach.targetDisplayName?.trim()) {
+      const requestText = outreach.requestText?.trim() || message.text.trim();
+      return `@${outreach.targetDisplayName.trim()}${requestText ? ` ${requestText}` : ''}`;
+    }
+  }
+  return stripOutreachContextEnvelope(message.text);
+}
+
+function isActiveOutreachStatus(status: string | null | undefined) {
+  const normalized = status?.trim().toLowerCase();
+  return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
+}
+
 export function mapBridgeConversationToViewModel(
   conversation: DesktopBridgeConversation,
   host: DesktopBridgeHost | undefined,
@@ -32,17 +77,45 @@ export function mapBridgeConversationToViewModel(
   const hostLabel = bridgeHostLabel(host);
   const isPersonChat = isBridgeConversationPersonChat(conversation);
   const isAgent = !isPersonChat && isBridgeAgentRuntime(conversation.peerRuntime);
-  const activeAgentReplyMessage = isAgent && conversation.awaitingReply
+  const activeAgentReplyMessage = conversation.awaitingReply
     ? [...conversation.messages].reverse().find((message) => (
-        message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE && message.deliveryState === 'processing'
+        (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE)
+        && message.deliveryState === 'processing'
       ))
     : undefined;
   const localHumanLabel = host?.ownerName || 'You';
   const localBridgeAgentLabel = host?.displayName || localAgentLabel;
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
   const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
+  const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
+  const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
+  const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
+  const remoteHumanAvatarSeed = conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
+  const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
+  const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
+  const participantAvatarSeeds: Record<string, string> = {
+    You: localHumanAvatarSeed,
+    [localHumanLabel]: localHumanAvatarSeed,
+    [localBridgeAgentLabel]: localAgentAvatarSeed,
+    [remoteHumanLabel]: remoteHumanAvatarSeed,
+    [remoteAgentLabel]: remoteAgentAvatarSeed,
+  };
 
+  const awaitingAgentOutreach = conversation.outreach?.targetKind === 'bridge-agent'
+    && isActiveOutreachStatus(conversation.outreach.status);
+  const outreachAgentLabel = conversation.outreach?.targetDisplayName || remoteAgentLabel;
+  const outreachAgentAvatarSeed = conversation.outreach?.targetAgentId || remoteAgentAvatarSeed;
+  const outreachPrefix = conversation.outreach && !isPersonChat
+    ? conversation.outreach.targetKind === 'bridge-person'
+      ? 'Person outreach'
+      : 'Agent outreach'
+    : null;
   const messages: Message[] = conversation.messages.map((message) => {
+    const rawDisplayText = bridgeMessageDisplayText(conversation, message);
+    const isProcessingAgentPlaceholder = message.deliveryState === 'processing'
+      && isProcessingPlaceholderText(rawDisplayText)
+      && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE);
+    const displayText = isProcessingAgentPlaceholder ? '' : rawDisplayText;
     const isOutboundHuman = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND;
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
@@ -57,33 +130,43 @@ export function mapBridgeConversationToViewModel(
             : remoteAgentLabel
       : (message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND ? localHumanLabel : remoteHumanLabel);
     const senderType = (isOutboundHuman || isInboundHuman || !isAgent) ? 'human' : 'agent';
-    const outboundStatus = [message.deliveryState || (conversation.awaitingReply ? 'awaiting reply' : 'sent')]
+    const senderAvatarSeed = isAgent
+      ? isOutboundHuman
+        ? localHumanAvatarSeed
+        : isInboundHuman
+          ? remoteHumanAvatarSeed
+          : isLocalAgentResponse
+            ? localAgentAvatarSeed
+            : remoteAgentAvatarSeed
+      : message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+        ? localHumanAvatarSeed
+        : remoteHumanAvatarSeed;
+    const agentHasBegunReply = Boolean(activeAgentReplyMessage) || conversation.peerTyping;
+    const outboundStatus = [bridgeOutboundStatusChip(message.deliveryState, agentHasBegunReply)]
       .filter(Boolean);
-    const suppressOutboundLiveStatus = isOutboundHuman
-      && isAgent
-      && ['processing', 'awaiting reply'].includes((outboundStatus[0] ?? '').toLowerCase());
-    const isLiveInboundAgentReply = isRemoteAgentResponse && message.deliveryState === 'processing';
+    const isLiveAgentReply = (isRemoteAgentResponse || isLocalAgentResponse) && message.deliveryState === 'processing';
 
-    if (isLiveInboundAgentReply) {
+    if (isRemoteAgentResponse || isLocalAgentResponse) {
       return {
-        role: 'external-agent' as const,
-        sender: remoteAgentLabel,
+        role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
+        sender: isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel,
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
-        text: message.text,
+        senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
+        text: '',
         time: message.timeLabel,
         turn: {
           id: `bridge-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
           prompt: '',
-          status: message.text.trim() ? 'writing' : 'typing',
-          message: message.text.trim() ? 'Replying…' : 'Typing…',
-          assistantText: message.text,
+          status: isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : 'complete',
+          message: isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : 'Complete',
+          assistantText: displayText,
           thinkingText: '',
           tools: [],
-          completed: false,
-          succeeded: false,
+          completed: !isLiveAgentReply,
+          succeeded: !isLiveAgentReply,
           error: null,
         },
       };
@@ -103,10 +186,11 @@ export function mapBridgeConversationToViewModel(
       senderType,
       isOwnMessage: isOutboundHuman,
       showSenderMeta: isAgent,
-      text: message.text,
+      senderAvatarSeed,
+      text: displayText,
       time: message.timeLabel,
       statusChips: isOutboundHuman
-        ? (suppressOutboundLiveStatus ? [] : outboundStatus)
+        ? outboundStatus
         : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
           ? ['typing']
           : [],
@@ -114,21 +198,22 @@ export function mapBridgeConversationToViewModel(
     };
   });
 
-  if (isAgent && conversation.awaitingReply && !activeAgentReplyMessage) {
+  if (((isAgent && conversation.awaitingReply) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     messages.push({
       role: 'external-agent',
-      sender: remoteAgentLabel,
+      sender: awaitingAgentOutreach ? outreachAgentLabel : remoteAgentLabel,
       senderType: 'agent',
       isOwnMessage: false,
       showSenderMeta: true,
+      senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : remoteAgentAvatarSeed,
       text: '',
       time: conversation.updatedAtLabel,
       turn: {
-        id: `bridge-live-turn:${conversation.id}:typing`,
+        id: `bridge-live-turn:${conversation.id}:processing`,
         sessionId: conversation.id,
         prompt: '',
-        status: conversation.peerTyping ? 'typing' : 'writing',
-        message: conversation.peerTyping ? 'Typing…' : 'Replying…',
+        status: conversation.peerTyping ? 'typing' : 'processing',
+        message: conversation.peerTyping ? 'Typing…' : 'Processing…',
         assistantText: '',
         thinkingText: '',
         tools: [],
@@ -139,21 +224,39 @@ export function mapBridgeConversationToViewModel(
     });
   }
 
+  const bridgeTarget: ConversationBridgeTarget = {
+    hostId: conversation.hostId,
+    nodeId: conversation.peerNodeId,
+    displayName: conversation.peerDisplayName,
+    ownerName: conversation.peerOwnerName,
+    runtime: conversation.peerRuntime,
+    humanId: conversation.identity?.remoteHumanId,
+    agentId: conversation.identity?.remoteAgentId,
+  };
+
   return {
     id: conversation.id,
+    canonicalSessionId: conversation.canonicalSessionId,
     name: conversation.title,
     type: isAgent ? 'external-agent' : 'person',
-    subtitle: conversation.projectName
-      ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
-      : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
+    subtitle: outreachPrefix
+      ? `${outreachPrefix}${conversation.projectName ? ` • ${conversation.projectName}` : ''} • ${conversation.subtitle || conversation.outreach?.requestText || 'Waiting for reply'}`
+      : conversation.projectName
+        ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
+        : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
     unread: conversation.unreadCount,
     bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Bridge',
-    directness: isPersonChat ? 'Direct person chat' : 'Agent thread',
+    directness: outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
     participants: isAgent
       ? ['You', remoteHumanLabel, remoteAgentLabel]
       : ['You', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
+    outreach: conversation.outreach,
+    identity: conversation.identity,
+    avatarSeed: conversationAvatarSeed,
+    participantAvatarSeeds,
+    bridgeTarget,
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

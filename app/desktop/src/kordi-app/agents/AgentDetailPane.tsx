@@ -133,7 +133,7 @@ export function AgentDetailPane({
           <div className="flex min-w-0 items-start gap-3">
             <EditableIdentityAvatar
               kind="agent"
-              seed={activeAgent.id}
+              seed={activeAgent.avatarSeed ?? activeAgent.id}
               name={activeAgent.name}
               imageUrl={activeAgent.profileImageUrl}
               label={`${activeAgent.name} avatar`}

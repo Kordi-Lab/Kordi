@@ -7,11 +7,9 @@ use crate::tui::frame::build_frame;
 use crate::tui::renderer::TuiRenderer;
 use crate::tui::scheduler::{RenderIntent, RenderScheduler};
 use crate::tui::terminal::{TuiEvent, TuiTerminal, spawn_event_reader};
-use crate::tui::types::{
-    TuiAppConfig, TuiCommand, TuiOutcome, TuiSubmission,
-};
+use crate::tui::types::{TuiAppConfig, TuiCommand, TuiOutcome, TuiSubmission};
 
-use super::{TuiState, Size};
+use super::{Size, TuiState};
 
 pub async fn run(config: TuiAppConfig) -> io::Result<TuiOutcome> {
     let (_command_tx, command_rx) = mpsc::unbounded_channel();
@@ -255,10 +253,7 @@ fn render_now(
     renderer.render(terminal, &frame)
 }
 
-fn flush_submissions(
-    state: &mut TuiState,
-    submission_tx: &mpsc::UnboundedSender<TuiSubmission>,
-) {
+fn flush_submissions(state: &mut TuiState, submission_tx: &mpsc::UnboundedSender<TuiSubmission>) {
     for submitted in state.take_pending_submissions() {
         if submission_tx.send(submitted).is_err() {
             break;

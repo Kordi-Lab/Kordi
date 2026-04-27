@@ -293,6 +293,8 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
+    static PATH_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn make_ctx(dir: &Path) -> ToolContext {
         ToolContext {
             cwd: dir.to_path_buf(),
@@ -300,6 +302,7 @@ mod tests {
             execution_policy: crate::ExecutionPolicy::Yolo,
             on_output: None,
             web_search: None,
+            reach_out: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: Some(Arc::new(|_| {
                 Box::pin(async {
@@ -313,6 +316,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_collects_stdout_and_stderr_without_deadlock() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let result = tool
@@ -337,6 +341,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_streams_stdout_and_stderr_chunks_to_on_output() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let streamed = Arc::new(Mutex::new(String::new()));
@@ -372,6 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_redacts_live_streamed_secrets_and_final_output() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let streamed = Arc::new(Mutex::new(String::new()));
@@ -417,6 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_redacts_offloaded_artifact_output() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let command =
@@ -439,6 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_truncates_long_output_by_line_count_without_artifact() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
 
@@ -471,6 +479,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_rejects_invalid_timeout() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let err = tool
@@ -490,6 +499,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_timeout_sets_timed_out_detail() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let result = tool
@@ -512,6 +522,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_cancellation_sets_cancelled_detail() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let cancel = CancellationToken::new();
@@ -540,6 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_denies_approval_needed_commands_in_noninteractive_mode() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let result = tool
@@ -575,6 +587,7 @@ mod tests {
 
     #[tokio::test]
     async fn bash_requests_approval_for_non_read_only_commands() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let approval_calls = Arc::new(AtomicUsize::new(0));
@@ -611,6 +624,7 @@ mod tests {
 
     #[tokio::test]
     async fn safety_mode_requires_sandbox_backend_without_falling_back() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool;
         let original_path = std::env::var_os("PATH");

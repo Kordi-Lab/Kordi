@@ -3,7 +3,7 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
@@ -102,6 +102,9 @@ export function ProjectDetailPanel({
   activeArtifactId,
   onSelectArtifact,
 }: ProjectDetailPanelProps) {
+  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
+
   if (activeDetailTab === 'info') {
     return (
       <div className="app-detail-sheet">
@@ -214,7 +217,7 @@ export function ProjectDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={`${activeProject.id}:${member}`}
+                      seed={/^(you|me)$/i.test(member) ? (currentLocalProfileAvatarSeed || getLocalProfileAvatarSeed()) : isAgent ? (currentLocalAgentAvatarSeed || getLocalAgentAvatarSeed(member)) : member}
                       name={member}
                       className="h-7 w-7 border border-white/10"
                     />

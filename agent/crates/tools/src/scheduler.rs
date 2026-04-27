@@ -1,5 +1,5 @@
-use kordi_core::error::{KordiError, KordiResult};
 use futures::future::join_all;
+use kordi_core::error::{KordiError, KordiResult};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -181,6 +181,7 @@ mod tests {
             execution_policy: crate::ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,
+            reach_out: None,
             execution_mode: crate::ToolExecutionMode::Interactive,
             request_approval: None,
         }

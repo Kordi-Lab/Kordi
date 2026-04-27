@@ -36,6 +36,10 @@ function buildBridgeConversationId(hostId: string, peerNodeId: string, peerRunti
   return `bridge:${hostId}:${peerNodeId}${projectId ? `:${projectId}` : ''}${peerRuntime?.trim().toLowerCase() === 'person' ? ':person' : ''}`;
 }
 
+function buildCanonicalBridgeSessionId(conversationId: string) {
+  return `session:bridge:${conversationId}`;
+}
+
 function optimisticBridgeConversation({
   hostId,
   peerNodeId,
@@ -64,8 +68,11 @@ function optimisticBridgeConversation({
     minute: '2-digit',
   }).format(new Date(timestampMs));
 
+  const conversationId = buildBridgeConversationId(hostId, peerNodeId, peerRuntime, project?.id);
+
   return {
-    id: buildBridgeConversationId(hostId, peerNodeId, peerRuntime, project?.id),
+    id: conversationId,
+    canonicalSessionId: buildCanonicalBridgeSessionId(conversationId),
     hostId,
     peerNodeId,
     peerDisplayName: peerDisplayName ?? null,

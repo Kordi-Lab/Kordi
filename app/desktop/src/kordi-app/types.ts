@@ -64,11 +64,21 @@ export type MessageAttachment = {
   mimeType?: string | null;
 };
 
+export type MessageMention = {
+  label: string;
+  targetKind?: 'bridge-agent' | 'bridge-person' | string;
+  bridgeHostId?: string | null;
+  nodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+};
+
 export type Message = {
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;
+  senderAvatarSeed?: string | null;
   isOwnMessage?: boolean;
   showSenderMeta?: boolean;
   text: string;
@@ -76,6 +86,7 @@ export type Message = {
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];
+  mentions?: MessageMention[];
   turn?: DesktopChatTurnSnapshot;
   edit?: {
     files: EditFilePreview[];
@@ -88,8 +99,53 @@ export type SessionStatusIndicator = {
   live?: boolean;
 };
 
+export type OutreachThreadSummary = {
+  id: string;
+  title: string;
+  subtitle: string;
+  targetKind: 'bridge-agent' | 'bridge-person' | string;
+  targetDisplayName: string;
+  status: string;
+  updatedAtLabel?: string;
+};
+
+export type ConversationParticipant = {
+  id: string;
+  name: string;
+  kind: 'human' | 'agent' | string;
+  role: string;
+  source?: string | null;
+  ownerIdentityId?: string | null;
+  ownerName?: string | null;
+  bridgeHostId?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
+  presenceStatus?: string | null;
+  presenceDetail?: string | null;
+};
+
+export type ConversationBridgeTarget = {
+  hostId: string;
+  nodeId: string;
+  displayName?: string | null;
+  ownerName?: string | null;
+  runtime?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+};
+
 export type Conversation = {
   id: string;
+  canonicalSessionId?: string;
+  canonicalStoragePath?: string;
+  canonicalParticipantCount?: number;
+  canonicalMessageCount?: number;
+  canonicalDelegatedExchangeCount?: number;
+  canonicalContextSnapshotCount?: number;
+  canonicalPresenceSummary?: string;
   name: string;
   type: ConversationType;
   subtitle: string;
@@ -98,6 +154,7 @@ export type Conversation = {
   trust: string;
   directness: string;
   participants: string[];
+  canonicalParticipants?: ConversationParticipant[];
   messages: Message[];
   contextWindowStatus?: DesktopChatContextWindowStatus;
   cacheMonitorText?: string | null;
@@ -106,6 +163,12 @@ export type Conversation = {
   updatedAtLabel?: string;
   statusIndicator?: SessionStatusIndicator;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
+  participantAvatarSeeds?: Record<string, string>;
+  bridgeTarget?: ConversationBridgeTarget | null;
+  outreach?: DesktopBridgeOutreachMetadata | null;
+  identity?: DesktopBridgeIdentitySnapshot | null;
+  outreachThreads?: OutreachThreadSummary[];
 };
 
 export type Contact = {
@@ -123,6 +186,9 @@ export type Contact = {
   bridgeHostId?: string;
   bridgePeerNodeId?: string;
   bridgePeerRuntime?: string;
+  bridgeHumanId?: string | null;
+  bridgeAgentId?: string | null;
+  avatarSeed?: string | null;
   profileImageUrl?: string | null;
 };
 
@@ -167,6 +233,7 @@ export type Agent = {
   isBridgeDefault?: boolean;
   isBridgeActive?: boolean;
   isBridgeRegistered?: boolean;
+  avatarSeed?: string | null;
   profileImageUrl?: string | null;
 };
 
@@ -237,6 +304,209 @@ export type DesktopAuthProvider = {
   options: DesktopAuthOption[];
 };
 
+export type CanonicalLocalProfile = {
+  id: string;
+  displayName?: string | null;
+  humanIdentityId?: string | null;
+  activeAgentIdentityId?: string | null;
+  storageRoot: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalIdentity = {
+  id: string;
+  kind: 'human' | 'agent' | string;
+  displayName: string;
+  ownerIdentityId?: string | null;
+  source: 'local' | 'bridge' | 'imported' | string;
+  sourceHostId?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  avatarKey: string;
+  profileImageUrl?: string | null;
+  metadata?: unknown;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalSession = {
+  id: string;
+  kind: 'self-agent' | 'direct-person' | 'direct-agent' | 'relationship' | 'group' | 'project' | string;
+  title: string;
+  status: 'active' | 'archived' | 'draft' | string;
+  createdByIdentityId: string;
+  primaryIdentityId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  relationshipIdentityId?: string | null;
+  metadata?: unknown;
+  createdAtMs: number;
+  updatedAtMs: number;
+  lastMessageAtMs?: number | null;
+};
+
+export type CanonicalSessionParticipant = {
+  sessionId: string;
+  identityId: string;
+  role: 'self' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
+  state: 'active' | 'invited' | 'pending' | 'left' | string;
+  addedByIdentityId?: string | null;
+  addedAtMs: number;
+  lastSeenAtMs?: number | null;
+  lastReadMessageId?: string | null;
+  metadata?: unknown;
+};
+
+export type CanonicalSessionMessage = {
+  id: string;
+  sessionId: string;
+  senderIdentityId: string;
+  senderRole: 'user' | 'owned-agent' | 'external-agent' | 'person' | 'system' | string;
+  messageKind: 'text' | 'agent-turn' | 'delegation-request' | 'delegation-response' | 'system' | 'status' | string;
+  contentText: string;
+  content?: unknown;
+  parentMessageId?: string | null;
+  delegatedExchangeId?: string | null;
+  status: 'draft' | 'sending' | 'sent' | 'delivered' | 'read' | 'processing' | 'complete' | 'failed' | string;
+  sequenceNum: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+  contentHash?: string | null;
+  sourceTransport?: string | null;
+  sourceEventId?: string | null;
+};
+
+export type CanonicalDelegatedExchange = {
+  id: string;
+  sessionId: string;
+  initiatorIdentityId: string;
+  targetIdentityId: string;
+  triggerMessageId?: string | null;
+  requestMessageId?: string | null;
+  responseMessageId?: string | null;
+  transport: 'bridge' | 'local' | 'internal' | string;
+  bridgeHostId?: string | null;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  contextPolicy: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string;
+  status: 'pending' | 'sending' | 'processing' | 'complete' | 'failed' | 'cancelled' | 'timeout' | string;
+  error?: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type CanonicalPresence = {
+  identityId: string;
+  status: 'online' | 'offline' | 'away' | 'typing' | 'running' | 'replying' | 'error' | string;
+  sessionId?: string | null;
+  detail?: string | null;
+  updatedAtMs: number;
+  expiresAtMs?: number | null;
+};
+
+export type CanonicalContextSnapshot = {
+  id: string;
+  profileId: string;
+  sessionId: string;
+  agentIdentityId: string;
+  provider: string;
+  model: string;
+  promptHash: string;
+  projectContextHash?: string | null;
+  participantHash: string;
+  uptoMessageId?: string | null;
+  messageRangeHash: string;
+  summaryText?: string | null;
+  summaryJson?: unknown;
+  tokenCount?: number | null;
+  createdAtMs: number;
+  invalidatedAtMs?: number | null;
+};
+
+export type CanonicalSessionState = {
+  storagePath: string;
+  profile: CanonicalLocalProfile;
+  identities: CanonicalIdentity[];
+  sessions: CanonicalSession[];
+  participants: CanonicalSessionParticipant[];
+  messages: CanonicalSessionMessage[];
+  delegatedExchanges: CanonicalDelegatedExchange[];
+  presence: CanonicalPresence[];
+  contextSnapshots: CanonicalContextSnapshot[];
+};
+
+export type UpsertCanonicalIdentityRequest = {
+  id?: string | null;
+  kind: 'human' | 'agent';
+  displayName: string;
+  ownerIdentityId?: string | null;
+  source?: 'local' | 'bridge' | 'imported' | string | null;
+  sourceHostId?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
+  metadata?: unknown;
+};
+
+export type OpenCanonicalSessionRequest = {
+  id?: string | null;
+  kind: 'self-agent' | 'direct-person' | 'direct-agent' | 'relationship' | 'group' | 'project';
+  title?: string | null;
+  status?: 'active' | 'archived' | 'draft' | string | null;
+  createdByIdentityId: string;
+  primaryIdentityId?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  relationshipIdentityId?: string | null;
+  participantIdentityIds: string[];
+  metadata?: unknown;
+};
+
+export type AppendCanonicalMessageRequest = {
+  id?: string | null;
+  sessionId: string;
+  senderIdentityId: string;
+  senderRole: 'user' | 'owned-agent' | 'external-agent' | 'person' | 'system' | string;
+  messageKind: 'text' | 'agent-turn' | 'delegation-request' | 'delegation-response' | 'system' | 'status' | string;
+  contentText: string;
+  content?: unknown;
+  createdAtMs?: number | null;
+  parentMessageId?: string | null;
+  delegatedExchangeId?: string | null;
+  status?: string | null;
+  sourceTransport?: string | null;
+  sourceEventId?: string | null;
+};
+
+export type CreateCanonicalDelegatedExchangeRequest = {
+  id?: string | null;
+  sessionId: string;
+  initiatorIdentityId: string;
+  targetIdentityId: string;
+  triggerMessageId?: string | null;
+  requestMessageId?: string | null;
+  responseMessageId?: string | null;
+  transport?: 'bridge' | 'local' | 'internal' | string | null;
+  bridgeHostId?: string | null;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
+  status?: string | null;
+  error?: string | null;
+};
+
+export type UpdateCanonicalPresenceRequest = {
+  identityId: string;
+  status: 'online' | 'offline' | 'away' | 'typing' | 'running' | 'replying' | 'error' | string;
+  sessionId?: string | null;
+  detail?: string | null;
+  expiresAtMs?: number | null;
+};
+
 export type DesktopAuthState = {
   authPath: string;
   hasAnyAuth: boolean;
@@ -287,6 +557,7 @@ export type DesktopChatMessage = {
   timeLabel: string;
   timestampMs: number;
   attachments?: DesktopChatAttachment[];
+  mentions?: MessageMention[];
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
 };
@@ -383,11 +654,67 @@ export type DesktopBridgeConversationMessage = {
   text: string;
   timeLabel: string;
   timestampMs: number;
+  requestId?: string | null;
   deliveryState?: string | null;
+  outreach?: DesktopBridgeOutreachMetadata | null;
+};
+
+export type DesktopBridgeSessionThreadMessage = {
+  role: Message['role'] | string;
+  sender?: string | null;
+  text: string;
+  timeLabel?: string | null;
+  index?: number | null;
+};
+
+export type DesktopBridgeOutreachMetadata = {
+  targetKind: 'bridge-agent' | 'bridge-person' | string;
+  parentSessionId?: string | null;
+  parentSessionTitle?: string | null;
+  parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
+  parentTurnId?: string | null;
+  parentMessageId?: string | null;
+  bridgeHostId: string;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  targetNodeId: string;
+  targetHumanId?: string | null;
+  targetAgentId?: string | null;
+  targetDisplayName: string;
+  targetOwnerName?: string | null;
+  targetRuntime?: string | null;
+  requestText: string;
+  triggerText?: string | null;
+  contextText?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  status: 'sending' | 'awaitingReply' | 'complete' | 'failed' | 'cancelled' | string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  completedAtMs?: number | null;
+  error?: string | null;
+};
+
+export type DesktopBridgeIdentitySnapshot = {
+  bridgeHostId: string;
+  localHumanId: string;
+  localHumanName: string;
+  localAgentId?: string | null;
+  localAgentName?: string | null;
+  localAgentNodeId?: string | null;
+  remoteHumanId?: string | null;
+  remoteHumanName?: string | null;
+  remoteHumanNodeId?: string | null;
+  remoteAgentId?: string | null;
+  remoteAgentName?: string | null;
+  remoteAgentNodeId?: string | null;
+  remoteAgentRuntime?: string | null;
 };
 
 export type DesktopBridgeConversation = {
   id: string;
+  canonicalSessionId: string;
   hostId: string;
   peerNodeId: string;
   peerDisplayName?: string | null;
@@ -403,7 +730,33 @@ export type DesktopBridgeConversation = {
   awaitingReply: boolean;
   peerTyping: boolean;
   peerLastHeartbeatLabel?: string | null;
+  outreach?: DesktopBridgeOutreachMetadata | null;
+  identity?: DesktopBridgeIdentitySnapshot | null;
   messages: DesktopBridgeConversationMessage[];
+};
+
+export type DesktopBridgeCreateOutreachRequest = {
+  hostId: string;
+  targetNodeId: string;
+  targetKind: 'bridge-agent' | 'bridge-person';
+  requestText: string;
+  targetDisplayName?: string | null;
+  targetOwnerName?: string | null;
+  targetRuntime?: string | null;
+  targetHumanId?: string | null;
+  targetAgentId?: string | null;
+  triggerText?: string | null;
+  contextText?: string | null;
+  contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
+  parentSessionId?: string | null;
+  parentSessionTitle?: string | null;
+  parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
+  parentTurnId?: string | null;
+  parentMessageId?: string | null;
+  bridgeRequestId?: string | null;
+  deliveryState?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
 };
 
 export type DesktopBridgeLocalServerStatus = {

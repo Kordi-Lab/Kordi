@@ -19,6 +19,7 @@ import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
@@ -26,6 +27,7 @@ import {
   MessageBubble,
   TypeBadge,
   type ComposerAuthOption,
+  type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
@@ -96,9 +98,11 @@ type ChatsPageProps = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
+  filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -121,7 +125,7 @@ type ChatsPageProps = {
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
-  onSendChatMessage: () => void;
+  onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
 };
@@ -147,9 +151,11 @@ export function ChatsPage({
   desktopLiveTurn,
   queuedDesktopMessages,
   filteredChatSlashCommands,
+  filteredChatMentionTargets,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptChatSlashCommand,
+  acceptChatMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -178,6 +184,10 @@ export function ChatsPage({
 }: ChatsPageProps) {
   const visibleDesktopLiveTurn = desktopLiveTurn ?? (!isNativeShell ? activeConv.previewLiveTurn ?? null : null);
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
+  const activeLiveTurnIsRunning = Boolean(
+    desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
+  );
+  const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -299,6 +309,12 @@ export function ChatsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
                 onSelect={acceptChatSlashCommand}
               />
+            ) : filteredChatMentionTargets.length > 0 ? (
+              <ComposerMentionMenu
+                items={filteredChatMentionTargets}
+                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
+                onSelect={acceptChatMentionTarget}
+              />
             ) : null}
             <div
               className={cn(
@@ -371,14 +387,39 @@ export function ChatsPage({
                       return;
                     }
                   }
+                  if (filteredChatMentionTargets.length > 0) {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
+                      return;
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
+                      return;
+                    }
+                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
+                      return;
+                    }
+                  }
                   if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
                     event.preventDefault();
                     setChatComposerText('/');
                     return;
                   }
+                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
+                    event.preventDefault();
+                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
+                    return;
+                  }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    onSendChatMessage();
+                    onSendChatMessage(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
@@ -431,18 +472,18 @@ export function ChatsPage({
               <Button
                 className={cn(
                   'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
-                  isDesktopChatSending && !activeConversationIsBridge ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
+                  composerStopMode ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
                 )}
                 onClick={() => {
-                  if (isDesktopChatSending && !activeConversationIsBridge) {
+                  if (composerStopMode) {
                     onStopDesktopChatTurn();
                     return;
                   }
                   onSendChatMessage();
                 }}
-                disabled={activeConversationIsBridge ? isDesktopChatSending : (isDesktopChatSending ? !desktopLiveTurn || desktopLiveTurn.completed : false)}
+                disabled={composerStopMode ? false : isDesktopChatSending}
               >
-                {isDesktopChatSending && !activeConversationIsBridge ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
+                {composerStopMode ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
           </div>

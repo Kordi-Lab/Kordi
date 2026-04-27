@@ -57,7 +57,10 @@ impl Tool for ReadTool {
         let path = resolve_path(&ctx.cwd, path_str);
 
         if !path.exists() {
-            return Err(KordiError::Tool(format!("File not found: {}", path.display())));
+            return Err(KordiError::Tool(format!(
+                "File not found: {}",
+                path.display()
+            )));
         }
 
         if is_image(&path) {

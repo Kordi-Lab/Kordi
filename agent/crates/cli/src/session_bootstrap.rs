@@ -436,6 +436,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             headers: headers.clone(),
             enabled: true,
         }),
+        reach_out: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };

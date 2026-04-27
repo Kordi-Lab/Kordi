@@ -262,9 +262,11 @@ impl TuiController {
     }
 
     fn current_context_status(&self) -> kordi_monitor::ContextWindowStatus {
-        let active_path =
-            kordi_session::tree::active_path(&self.session_setup.conn, &self.session_setup.session_id)
-                .ok();
+        let active_path = kordi_session::tree::active_path(
+            &self.session_setup.conn,
+            &self.session_setup.session_id,
+        )
+        .ok();
         let latest_entry_is_compaction = active_path
             .as_ref()
             .and_then(|rows| rows.last())
@@ -480,6 +482,7 @@ mod tests {
         current_auth_cache_metrics_source, estimate_active_path_context_tokens,
         permission_posture_badge, request_matches_cache_domain,
     };
+    use chrono::Utc;
     use kordi_core::types::{
         AgentMessage, AssistantContent, AssistantMessage, EntryBase, EntryId, SessionEntry,
         StopReason, Usage,
@@ -491,7 +494,6 @@ mod tests {
     };
     use kordi_session::{store, tree};
     use kordi_tools::ExecutionPolicy;
-    use chrono::Utc;
 
     #[test]
     fn permission_badge_is_compact_for_footer_use() {

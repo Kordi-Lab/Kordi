@@ -193,7 +193,7 @@ export function ContactsPage({
                     <div className="mb-4 flex items-center gap-3">
                       <EditableIdentityAvatar
                         kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
-                        seed={activeContact.bridgePeerNodeId ?? activeContact.id}
+                        seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
                         label={`${activeContact.name} avatar`}

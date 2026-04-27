@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import {
+  AtSign,
   Bot,
   Check,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  UserRound,
   Wrench,
 } from 'lucide-react';
 
@@ -50,6 +52,16 @@ export type ComposerModelOption = {
   detail?: string | null;
   provider?: string;
   providerLabel?: string;
+};
+
+export type ComposerMentionOption = {
+  value: string;
+  label: string;
+  detail?: string | null;
+  targetKind: 'bridge-agent' | 'bridge-person';
+  bridgeHostId: string;
+  nodeId: string;
+  runtime: string;
 };
 
 function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
@@ -133,6 +145,62 @@ export function ComposerSlashMenu({
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <span className="shrink-0 font-medium">{item.label}</span>
                   {item.detail ? <span className={cn('truncate text-[12px]', active ? 'text-slate-300' : 'text-slate-500')}>{item.detail}</span> : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ComposerMentionMenu({
+  items,
+  selectedIndex,
+  onSelect,
+}: {
+  items: ComposerMentionOption[];
+  selectedIndex: number;
+  onSelect: (value: string) => void;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="app-modal-panel absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] px-2 py-2 shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
+      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
+        <span>Mention participant</span>
+        <span className="normal-case tracking-normal text-slate-600">↵ / Tab select</span>
+      </div>
+      <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1 pt-1">
+        <div className="space-y-0.5">
+          {items.map((item, index) => {
+            const active = index === selectedIndex;
+            const Icon = item.targetKind === 'bridge-agent' ? Bot : UserRound;
+            return (
+              <button
+                key={`${item.bridgeHostId}-${item.nodeId}-${item.value}`}
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelect(item.value);
+                }}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left text-[13px] transition',
+                  active ? 'bg-white/[0.06] text-white' : 'text-slate-300 hover:bg-white/[0.03] hover:text-white',
+                )}
+              >
+                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.04] ring-1 ring-white/10">
+                  <Icon className={cn('h-4 w-4', item.targetKind === 'bridge-agent' ? 'text-violet-300' : 'text-sky-300')} />
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-medium"><AtSign className="mr-0.5 inline h-3.5 w-3.5 align-[-2px] text-slate-500" />{item.label}</span>
+                    <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', active ? 'bg-white/10 text-slate-200' : 'bg-white/[0.04] text-slate-500')}>
+                      {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
+                    </span>
+                  </div>
+                  {item.detail ? <div className={cn('truncate text-[12px]', active ? 'text-slate-300' : 'text-slate-500')}>{item.detail}</div> : null}
                 </div>
               </button>
             );

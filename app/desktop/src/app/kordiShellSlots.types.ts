@@ -1,6 +1,6 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 
-import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
@@ -51,6 +51,7 @@ export type AssembleKordiShellSlotsArgs = {
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
+  setActiveConvId: Dispatch<SetStateAction<string>>;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeSettingsSectionId: SettingsSectionId;
@@ -82,10 +83,14 @@ export type AssembleKordiShellSlotsArgs = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
   activeBridgeHost: DesktopBridgeHost | null;
+  localProfileAvatarSeed?: string | null;
   refreshDesktopBridge: () => Promise<void>;
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
+  handleArchiveChatSession: (sessionId: string) => Promise<void>;
+  handleDeleteChatSession: (sessionId: string) => Promise<void>;
+  handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
   handleSelectProjectSession: (projectId: string, sessionId: string) => Promise<void>;
 
   filteredGroupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -200,10 +205,14 @@ export type AssembleKordiShellSlotsArgs = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
+  filteredProjectMentionTargets: ComposerMentionOption[];
+  filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
   acceptChatSlashCommand: (value: string) => void;
+  acceptProjectMentionTarget: (value: string) => void;
+  acceptChatMentionTarget: (value: string) => void;
   chatAttachmentInputRef: MutableRefObject<HTMLInputElement | null>;
   chatComposerAttachments: AttachmentItem[];
   saveDesktopAttachments: (files: File[]) => Promise<AttachmentItem[]>;
@@ -233,8 +242,8 @@ export type AssembleKordiShellSlotsArgs = {
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
-  handleSendProjectMessage: () => void;
-  handleSendChatMessage: () => void;
+  handleSendProjectMessage: (draftOverride?: string) => void;
+  handleSendChatMessage: (draftOverride?: string) => void;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
   setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;
@@ -285,6 +294,9 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'filteredConversations'
   | 'activeConvId'
   | 'handleSelectChatSession'
+  | 'handleArchiveChatSession'
+  | 'handleDeleteChatSession'
+  | 'handleMoveChatSessionToProject'
   | 'runtimeProjects'
   | 'projectSearch'
   | 'setProjectSearch'
@@ -302,6 +314,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveContactId'
   | 'displayedAgents'
   | 'activeBridgeHost'
+  | 'localProfileAvatarSeed'
   | 'refreshDesktopBridge'
   | 'handleCopyBridgeText'
   | 'handleCreateBridgeDraft'
@@ -340,6 +353,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setIsAgentOverlayOpen'
   | 'desktopBridgeState'
   | 'activeBridgeHost'
+  | 'localProfileAvatarSeed'
   | 'activeBridgePeople'
   | 'activeBridgeAgents'
   | 'bridgeSettingsDraft'
@@ -414,9 +428,11 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveSourcePreview'
   | 'desktopLiveTurn'
   | 'filteredProjectSlashCommands'
+  | 'filteredProjectMentionTargets'
   | 'chatSlashMenuIndex'
   | 'setChatSlashMenuIndex'
   | 'acceptProjectSlashCommand'
+  | 'acceptProjectMentionTarget'
   | 'chatAttachmentInputRef'
   | 'chatComposerAttachments'
   | 'saveDesktopAttachments'
@@ -447,7 +463,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatTranscriptScrollRef'
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
+  | 'filteredChatMentionTargets'
   | 'acceptChatSlashCommand'
+  | 'acceptChatMentionTarget'
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
@@ -482,6 +500,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'bridgeInvite'
   | 'handleCreateProjectBridgeInvite'
   | 'setActiveNav'
+  | 'setActiveConvId'
   | 'openProjectSettings'
   | 'getStatusBadgeClass'
   | 'activeConv'

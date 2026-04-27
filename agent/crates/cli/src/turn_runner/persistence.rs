@@ -1,10 +1,10 @@
 use anyhow::Result;
+use chrono::Utc;
 use kordi_core::types::*;
 use kordi_monitor::ResolvedCacheUsage;
 use kordi_provider::CollectedResponse;
 use kordi_provider::registry::Model;
 use kordi_session::store;
-use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -112,6 +112,7 @@ pub(super) fn append_assistant_message(
     model: &Model,
     collected: &CollectedResponse,
     resolved_usage: &ResolvedCacheUsage,
+    stop_reason: StopReason,
 ) -> Result<()> {
     let inp = resolved_usage.effective_input_tokens;
     let out = resolved_usage.effective_output_tokens;
@@ -133,11 +134,7 @@ pub(super) fn append_assistant_message(
                 cost: calculate_cost(model, resolved_usage),
                 cache_metrics_source: Some(resolved_usage.cache_metrics_source.clone()),
             },
-            stop_reason: if collected.tool_calls.is_empty() {
-                StopReason::Stop
-            } else {
-                StopReason::ToolUse
-            },
+            stop_reason,
             error_message: None,
             timestamp: Utc::now().timestamp_millis(),
         }),

@@ -498,7 +498,7 @@ function BridgePeerCard({
       <div className="flex items-start gap-3">
         <IdentityAvatar
           kind={kind === 'person' ? 'human' : 'agent'}
-          seed={peer.agentId || peer.humanId || peer.nodeId}
+          seed={kind === 'person' ? (peer.humanId || peer.ownerName || peer.nodeId) : (peer.agentId || peer.nodeId)}
           name={title}
           imageUrl={peer.profileImageUrl}
           className="h-9 w-9 border border-white/10"

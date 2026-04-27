@@ -5,30 +5,21 @@ use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::Value;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use crate::chat::{start_bridge_agent_prompt_stream, DesktopChatManager};
-
-use super::constants::{
-    API_STYLE_SERVE, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_DIRECTION_INBOUND,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
-    BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_RESPONSE,
-};
-use super::conversation_commands::{
-    apply_bridge_event_to_storage, mailbox_payload_text, parse_bridge_event_payload,
-    sender_name_for_runtime, ParsedMailboxEvent,
-};
+use super::constants::API_STYLE_SERVE;
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
-    append_conversation_message_to_storage, build_conversation_only_bridge_state,
-    decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target, load_conversation_store,
-    relay_plaintext_message, update_message_delivery_state_in_storage, DesktopBridgeHostConfig,
+    build_conversation_only_bridge_state, encrypt_bridge_payload_for_target,
+    load_conversation_store, relay_plaintext_message, DesktopBridgeHostConfig,
     DesktopBridgeManager, DesktopBridgeStore,
 };
+
+mod local_agent;
 
 pub(super) const BRIDGE_STATE_EVENT: &str = "desktop-bridge-state";
 
@@ -151,6 +142,9 @@ async fn emit_bridge_state(
     let conversations = load_conversation_store();
     let local_server = current_local_server_status_for_runtime(local_server).await;
     let state = build_conversation_only_bridge_state(store, conversations, local_server);
+    if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
+        eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
+    }
     app.emit(BRIDGE_STATE_EVENT, state)
         .map_err(|err| err.to_string())
 }
@@ -196,343 +190,6 @@ async fn send_realtime_or_relay(
     {
         let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
     }
-}
-
-fn append_local_agent_inbound_message(
-    target: &LocalRealtimeTarget,
-    event: &ParsedMailboxEvent,
-    text: String,
-) -> Result<super::DesktopBridgeConversationStore, String> {
-    let peer_display_name = event.from_display_name.clone();
-    let peer_owner_name = event.from_owner_name.clone();
-    let peer_runtime = event
-        .from_runtime
-        .clone()
-        .unwrap_or_else(|| super::constants::DEFAULT_BRIDGE_RUNTIME.to_string());
-    let sender_name = sender_name_for_runtime(
-        &peer_runtime,
-        peer_display_name.as_deref(),
-        peer_owner_name.as_deref(),
-        &event.from_node_id,
-    );
-
-    append_conversation_message_to_storage(
-        &target.host.id,
-        &event.from_node_id,
-        peer_display_name,
-        peer_owner_name,
-        peer_runtime,
-        event.project_id.clone(),
-        None,
-        BRIDGE_MESSAGE_DIRECTION_INBOUND,
-        Some(sender_name),
-        text,
-        event.request_id.clone(),
-        Some("processing".to_string()),
-        true,
-    )
-}
-
-fn append_local_agent_outbound_response(
-    target: &LocalRealtimeTarget,
-    event: &ParsedMailboxEvent,
-    response_text: String,
-    delivery_state: &str,
-    mark_complete: bool,
-) -> Result<super::DesktopBridgeConversationStore, String> {
-    if mark_complete {
-        if let Some(request_id) = event.request_id.as_deref() {
-            let _ = update_message_delivery_state_in_storage(
-                request_id,
-                BRIDGE_DELIVERY_STATE_RESPONDED,
-            )?;
-        }
-    }
-    let peer_display_name = event.from_display_name.clone();
-    let peer_owner_name = event.from_owner_name.clone();
-    let peer_runtime = event
-        .from_runtime
-        .clone()
-        .unwrap_or_else(|| super::constants::DEFAULT_BRIDGE_RUNTIME.to_string());
-    let sender_name = sender_name_for_runtime(
-        &target.sender_runtime,
-        target.host.display_name.as_deref(),
-        target.host.owner.as_deref(),
-        &target.host.node_id,
-    );
-
-    append_conversation_message_to_storage(
-        &target.host.id,
-        &event.from_node_id,
-        peer_display_name,
-        peer_owner_name,
-        peer_runtime,
-        event.project_id.clone(),
-        None,
-        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-        Some(sender_name),
-        response_text,
-        event.request_id.clone(),
-        Some(delivery_state.to_string()),
-        false,
-    )
-}
-
-fn spawn_local_agent_response(
-    manager: DesktopBridgeManager,
-    chat_manager: DesktopChatManager,
-    app: tauri::AppHandle,
-    local_server: std::sync::Arc<tokio::sync::Mutex<super::LocalBridgeServerRuntime>>,
-    target: LocalRealtimeTarget,
-    event: ParsedMailboxEvent,
-    text: String,
-) {
-    tokio::spawn(async move {
-        let mut stream = match start_bridge_agent_prompt_stream(
-            &chat_manager,
-            &target.host.node_id,
-            &event.from_node_id,
-            text,
-        )
-        .await
-        {
-            Ok(stream) => stream,
-            Err(error) => {
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let _ = emit_after_storage_write(
-                        &app,
-                        &local_server,
-                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
-                    )
-                    .await;
-                    let failed = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
-                    });
-                    send_realtime_or_relay(
-                        &manager,
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &failed,
-                    )
-                    .await;
-                }
-                return;
-            }
-        };
-
-        let mut last_sent_text = String::new();
-        while let Some(snapshot) = stream.updates.recv().await {
-            if snapshot.assistant_text == last_sent_text && !snapshot.completed {
-                continue;
-            }
-
-            if snapshot.assistant_text.trim().is_empty() {
-                if snapshot.completed {
-                    break;
-                }
-                continue;
-            }
-
-            let is_final = snapshot.completed && snapshot.succeeded;
-            last_sent_text = snapshot.assistant_text.clone();
-            let _ = emit_after_storage_write(
-                &app,
-                &local_server,
-                append_local_agent_outbound_response(
-                    &target,
-                    &event,
-                    snapshot.assistant_text.clone(),
-                    if is_final {
-                        BRIDGE_DELIVERY_STATE_RESPONDED
-                    } else {
-                        "processing"
-                    },
-                    is_final,
-                ),
-            )
-            .await;
-
-            let response = serde_json::json!({
-                "from": target.host.node_id,
-                "fromDisplayName": target.host.display_name,
-                "fromOwnerName": target.host.owner,
-                "fromRuntime": target.sender_runtime,
-                "fromHumanId": target.host.human_id,
-                "fromAgentId": target.sender_agent_id,
-                "projectId": event.project_id,
-                "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
-                "requestId": event.request_id,
-                "payload": { "message": snapshot.assistant_text, "done": is_final },
-            });
-            send_realtime_or_relay(
-                &manager,
-                &target.host,
-                &event.from_node_id,
-                event.project_id.as_deref(),
-                &response,
-            )
-            .await;
-
-            if is_final {
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let responded = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_RESPONDED },
-                    });
-                    send_realtime_or_relay(
-                        &manager,
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &responded,
-                    )
-                    .await;
-                }
-                break;
-            }
-        }
-
-        match stream.completion.await {
-            Ok(Ok(final_snapshot)) if final_snapshot.succeeded => {}
-            Ok(Ok(final_snapshot)) => {
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let error = final_snapshot
-                        .error
-                        .unwrap_or_else(|| final_snapshot.message.clone());
-                    let _ = emit_after_storage_write(
-                        &app,
-                        &local_server,
-                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
-                    )
-                    .await;
-
-                    let failed = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
-                    });
-                    send_realtime_or_relay(
-                        &manager,
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &failed,
-                    )
-                    .await;
-                }
-            }
-            Ok(Err(error)) => {
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let _ = emit_after_storage_write(
-                        &app,
-                        &local_server,
-                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
-                    )
-                    .await;
-
-                    let failed = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
-                    });
-                    send_realtime_or_relay(
-                        &manager,
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &failed,
-                    )
-                    .await;
-                }
-            }
-            Err(error) => {
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let _ = emit_after_storage_write(
-                        &app,
-                        &local_server,
-                        update_message_delivery_state_in_storage(request_id, "processing_failed"),
-                    )
-                    .await;
-
-                    let failed = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": "processing_failed", "error": error.to_string() },
-                    });
-                    send_realtime_or_relay(
-                        &manager,
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &failed,
-                    )
-                    .await;
-                }
-            }
-        }
-    });
-}
-
-async fn handle_incoming_payload(
-    manager: &DesktopBridgeManager,
-    app: &tauri::AppHandle,
-    local_server: &std::sync::Arc<tokio::sync::Mutex<super::LocalBridgeServerRuntime>>,
-    target: &LocalRealtimeTarget,
-    payload: Value,
-) -> Result<(), String> {
-    let payload = decrypt_bridge_payload_for_host(&target.host, payload)?;
-    let Some(event) = parse_bridge_event_payload(&payload) else {
-        return Ok(());
-    };
-
-    if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
-        let text = mailbox_payload_text(&event.payload);
-        if text.trim().is_empty() {
-            return Ok(());
-        }
-
-        emit_after_storage_write(
-            app,
-            local_server,
-            append_local_agent_inbound_message(target, &event, text.clone()),
-        )
-        .await?;
-
-        if let Some(request_id) = event.request_id.as_deref() {
-            let processing = serde_json::json!({
-                "from": target.host.node_id,
-                "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                "payload": { "requestId": request_id, "state": "processing" },
-            });
-            send_realtime_or_relay(
-                manager,
-                &target.host,
-                &event.from_node_id,
-                event.project_id.as_deref(),
-                &processing,
-            )
-            .await;
-        }
-
-        let chat_manager = app.state::<DesktopChatManager>().inner().clone();
-        spawn_local_agent_response(
-            manager.clone(),
-            chat_manager,
-            app.clone(),
-            local_server.clone(),
-            target.clone(),
-            event,
-            text,
-        );
-        return Ok(());
-    }
-
-    apply_bridge_event_to_storage(&target.host, event, false).await?;
-    emit_bridge_state(app, local_server).await
 }
 
 async fn run_realtime_connection(
@@ -606,7 +263,7 @@ async fn run_realtime_connection(
                                     continue;
                                 }
                             };
-                            let _ = handle_incoming_payload(&manager, &app, &local_server, &target, payload).await;
+                            let _ = local_agent::handle_incoming_payload(&manager, &app, &local_server, &target, payload).await;
                         }
                         Some(Ok(Message::Ping(payload))) => {
                             if writer.send(Message::Pong(payload)).await.is_err() {

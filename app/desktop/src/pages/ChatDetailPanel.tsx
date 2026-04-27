@@ -1,20 +1,78 @@
 import type { ReactNode } from 'react';
 
+import { MessageSquareMore } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import type { DetailTab, SessionArtifact } from '@/kordi-app/types';
+import { Button } from '@/components/ui/button';
+import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 
 type ActiveConversation = {
+  id: string;
   name: string;
+  canonicalSessionId?: string;
+  canonicalStoragePath?: string;
+  canonicalParticipantCount?: number;
+  canonicalMessageCount?: number;
+  canonicalDelegatedExchangeCount?: number;
+  canonicalContextSnapshotCount?: number;
+  canonicalPresenceSummary?: string;
+  canonicalParticipants?: Array<{
+    id: string;
+    name: string;
+    kind: 'human' | 'agent' | string;
+    role: string;
+    ownerIdentityId?: string | null;
+    ownerName?: string | null;
+    avatarKey?: string | null;
+    profileImageUrl?: string | null;
+    presenceStatus?: string | null;
+    presenceDetail?: string | null;
+  }>;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
   bridges: string[];
   trust: string;
   directness: string;
   participants: string[];
+  outreach?: DesktopBridgeOutreachMetadata | null;
+  identity?: DesktopBridgeIdentitySnapshot | null;
+  outreachThreads?: OutreachThreadSummary[];
+  participantAvatarSeeds?: Record<string, string>;
 };
+
+function participantAvatarSeed(activeConv: ActiveConversation, participant: string, isAgent: boolean, localProfileSeed?: string, localAgentSeed?: string) {
+  const normalizedParticipant = participant.trim();
+  const explicitSeed = activeConv.participantAvatarSeeds?.[participant] ?? activeConv.participantAvatarSeeds?.[normalizedParticipant];
+  if (explicitSeed?.trim()) return explicitSeed;
+
+  const identity = activeConv.identity;
+
+  if (/^(you|me)$/i.test(normalizedParticipant)) {
+    return localProfileSeed || getLocalProfileAvatarSeed();
+  }
+  if (isAgent) {
+    if (/^(kordi|agent|assistant|my agent)$/i.test(normalizedParticipant)) {
+      return localAgentSeed || normalizedParticipant;
+    }
+    if (identity?.localAgentName && normalizedParticipant === identity.localAgentName) {
+      return identity.localAgentId || identity.localAgentNodeId || localAgentSeed || identity.localAgentName;
+    }
+    if (identity?.remoteAgentName && normalizedParticipant === identity.remoteAgentName) {
+      return identity.remoteAgentId || identity.remoteAgentNodeId || identity.remoteAgentName;
+    }
+    return normalizedParticipant;
+  }
+  if (identity?.localHumanName && normalizedParticipant === identity.localHumanName) {
+    return identity.localHumanId || identity.localHumanName;
+  }
+  if (identity?.remoteHumanName && normalizedParticipant === identity.remoteHumanName) {
+    return identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName;
+  }
+  return normalizedParticipant;
+}
 
 type ProjectSource = {
   label: string;
@@ -56,6 +114,7 @@ type ChatDetailPanelProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
+  onOpenOutreachThread?: (conversationId: string) => void;
 };
 
 type MetaRowProps = {
@@ -99,7 +158,11 @@ export function ChatDetailPanel({
   artifacts,
   activeArtifactId,
   onSelectArtifact,
+  onOpenOutreachThread,
 }: ChatDetailPanelProps) {
+  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
+
   if (activeDetailTab === 'info') {
     return (
       <div className="app-detail-sheet">
@@ -114,9 +177,15 @@ export function ChatDetailPanel({
               <TypeBadge type={activeConv.type} compact />
             </div>
             <div className="app-inspector-meta-list">
+              <MetaRow label="Session ID" value={activeConv.canonicalSessionId ?? activeConv.id} valueClassName="max-w-[11rem] truncate" />
+              {activeConv.canonicalStoragePath ? <MetaRow label="Local DB" value={activeConv.canonicalStoragePath} valueClassName="max-w-[11rem] truncate" /> : null}
+              {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
+              {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}
+              {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />
               <MetaRow label="Trust" value={activeConv.trust} />
               <MetaRow label="Mode" value={activeConv.directness} />
+              {activeConv.outreach ? <MetaRow label="Outreach status" value={activeConv.outreach.status} /> : null}
             </div>
           </div>
         </section>
@@ -124,7 +193,33 @@ export function ChatDetailPanel({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Participants</div>
           <div className="app-inspector-list">
-            {activeConv.participants.map((participant) => {
+            {activeConv.canonicalParticipants?.length ? activeConv.canonicalParticipants.map((participant) => {
+              const isAgent = participant.kind === 'agent';
+              const status = participant.presenceStatus && participant.presenceStatus !== 'offline'
+                ? participant.presenceStatus
+                : participant.role;
+
+              return (
+                <div key={participant.id} className="app-inspector-list-row">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <IdentityAvatar
+                      kind={isAgent ? 'agent' : 'human'}
+                      seed={participant.avatarKey ?? participant.name}
+                      imageUrl={participant.profileImageUrl}
+                      name={participant.name}
+                      className="h-7 w-7 border border-white/10"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{participant.name}</span>
+                      {participant.ownerName ? <span className="block truncate text-[11px] text-slate-500">Owner: {participant.ownerName}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
+                    </span>
+                  </span>
+                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
+                    {status}
+                  </Badge>
+                </div>
+              );
+            }) : activeConv.participants.map((participant) => {
               const isAgent = activeConv.type !== 'person' && /agent|bot|assistant/i.test(participant);
 
               return (
@@ -132,7 +227,7 @@ export function ChatDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={`${activeConv.name}:${participant}`}
+                      seed={participantAvatarSeed(activeConv, participant, isAgent, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
                       name={participant}
                       className="h-7 w-7 border border-white/10"
                     />
@@ -146,6 +241,59 @@ export function ChatDetailPanel({
             })}
           </div>
         </section>
+
+        {activeConv.outreachThreads && activeConv.outreachThreads.length > 0 ? (
+          <section className="app-detail-section">
+            <div className="app-detail-kicker">Outreach threads</div>
+            <div className="space-y-2">
+              {activeConv.outreachThreads.map((thread) => (
+                <button
+                  key={thread.id}
+                  type="button"
+                  onClick={() => onOpenOutreachThread?.(thread.id)}
+                  className="group w-full rounded-[18px] border border-[color:var(--app-divider)] bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.045]"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.05] text-slate-300 ring-1 ring-white/10">
+                      <MessageSquareMore className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="truncate text-[13px] font-medium text-[color:var(--utility-foreground)]">{thread.targetDisplayName || thread.title}</div>
+                        <Badge variant="outline" className="shrink-0 rounded-full border-white/10 px-1.5 py-0 text-[10px] text-slate-400">
+                          {thread.targetKind === 'bridge-person' ? 'person' : 'agent'}
+                        </Badge>
+                      </div>
+                      <div className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{thread.subtitle}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">{thread.status}{thread.updatedAtLabel ? ` • ${thread.updatedAtLabel}` : ''}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {activeConv.outreach ? (
+          <section className="app-detail-section">
+            <div className="app-detail-kicker">Outreach</div>
+            <div className="space-y-3">
+              <EmphasisBlock title={activeConv.outreach.targetKind === 'bridge-person' ? 'Person outreach' : 'Agent outreach'}>
+                <div>{activeConv.outreach.requestText}</div>
+                {activeConv.outreach.contextText ? <div className="mt-2 app-inspector-subtext">Context included by default</div> : null}
+              </EmphasisBlock>
+              <div className="app-inspector-meta-list">
+                <MetaRow label="Target" value={activeConv.outreach.targetDisplayName} />
+                <MetaRow label="Owner" value={activeConv.outreach.targetOwnerName} />
+                <MetaRow label="Parent session" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
+                <MetaRow label="Local human" value={activeConv.identity?.localHumanName} />
+                <MetaRow label="Local agent" value={activeConv.identity?.localAgentName} />
+                <MetaRow label="Remote human" value={activeConv.identity?.remoteHumanName} />
+                <MetaRow label="Remote agent" value={activeConv.identity?.remoteAgentName} />
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {activeConversationIsBridge && activeBridgeConversation ? (
           <section className="app-detail-section">
