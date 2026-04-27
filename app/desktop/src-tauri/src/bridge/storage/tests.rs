@@ -1,4 +1,5 @@
 use super::*;
+use crate::bridge::DesktopBridgeOutreachMetadata;
 
 fn memory_conversation_db() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory bridge conversation db");
@@ -45,6 +46,38 @@ fn test_message(
         request_id: request_id.map(ToString::to_string),
         delivery_state: delivery_state.map(ToString::to_string),
         outreach: None,
+    }
+}
+
+fn test_outreach(request_id: &str, delivery_state: Option<&str>) -> DesktopBridgeOutreachMetadata {
+    DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some("session:bridge:humans:test".to_string()),
+        parent_session_title: Some("Humans".to_string()),
+        parent_session_messages: Vec::new(),
+        parent_turn_id: Some("turn-1".to_string()),
+        parent_message_id: Some("parent-message-1".to_string()),
+        bridge_host_id: "host-1".to_string(),
+        bridge_conversation_id: Some("bridge:host-1:peer-1".to_string()),
+        bridge_request_id: Some(request_id.to_string()),
+        delivery_state: delivery_state.map(ToString::to_string),
+        target_node_id: "peer-1".to_string(),
+        target_human_id: Some("human-1".to_string()),
+        target_agent_id: None,
+        target_display_name: "Peer".to_string(),
+        target_owner_name: Some("Owner".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "processing...".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-relay".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: Some(1_000),
+        error: None,
     }
 }
 
@@ -195,6 +228,43 @@ fn sqlite_upsert_merges_streamed_response_by_request_and_direction() {
 }
 
 #[test]
+fn sqlite_upsert_reconciles_message_outreach_delivery_state_with_final_response() {
+    let conn = memory_conversation_db();
+    let mut partial_message = test_message(
+        "msg-partial",
+        "outbound-response",
+        "processing...",
+        1_000,
+        Some("req-stream"),
+        Some("processing"),
+    );
+    partial_message.outreach = Some(test_outreach("req-stream", Some("processing")));
+    let partial = test_conversation(vec![partial_message]);
+
+    let mut final_response = test_conversation(vec![test_message(
+        "msg-final",
+        "outbound-response",
+        "Hello world",
+        1_200,
+        Some("req-stream"),
+        Some("responded"),
+    )]);
+    final_response.updated_at_ms = 1_200;
+
+    upsert_conversation_record(&conn, &partial).expect("insert processing response");
+    upsert_conversation_record(&conn, &final_response).expect("upsert final response");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+    let message = &loaded.conversations[0].messages[0];
+    let outreach = message.outreach.as_ref().expect("message outreach");
+    assert_eq!(message.text, "Hello world");
+    assert_eq!(message.delivery_state.as_deref(), Some("responded"));
+    assert_eq!(outreach.delivery_state.as_deref(), Some("responded"));
+    assert_eq!(outreach.status, "completed");
+    assert!(outreach.request_text.is_empty());
+}
+
+#[test]
 fn sqlite_upsert_keeps_delivery_state_monotonic() {
     let conn = memory_conversation_db();
     let responded = test_conversation(vec![test_message(
@@ -266,7 +336,7 @@ fn bridge_store_export_redacts_api_keys() {
             id: "host-1".to_string(),
             coordination: "https://bridge.example.com".to_string(),
             node_id: "node-1".to_string(),
-            api_key: "secret-host-key".to_string(),
+            api_key: "test-host-key".to_string(),
             display_name: Some("Kordi".to_string()),
             owner: Some("User".to_string()),
             human_id: Some("kh_123".to_string()),
@@ -276,7 +346,7 @@ fn bridge_store_export_redacts_api_keys() {
                 id: "agent-1".to_string(),
                 label: "Kordi".to_string(),
                 node_id: "node-1".to_string(),
-                api_key: "secret-agent-key".to_string(),
+                api_key: "test-agent-key".to_string(),
                 runtime: super::default_bridge_agent_runtime(),
                 is_default: true,
             }],
@@ -327,15 +397,15 @@ fn hydrate_bridge_store_secrets_restores_redacted_config() {
     let secrets = DesktopBridgeSecretsStore {
         host_api_keys: std::collections::HashMap::from([(
             "host-1".to_string(),
-            "secret-host-key".to_string(),
+            "test-host-key".to_string(),
         )]),
         agent_api_keys: std::collections::HashMap::from([(
             "agent-1".to_string(),
-            "secret-agent-key".to_string(),
+            "test-agent-key".to_string(),
         )]),
     };
 
     assert!(!hydrate_bridge_store_secrets(&mut store, &secrets));
-    assert_eq!(store.hosts[0].api_key, "secret-host-key");
-    assert_eq!(store.hosts[0].agents[0].api_key, "secret-agent-key");
+    assert_eq!(store.hosts[0].api_key, "test-host-key");
+    assert_eq!(store.hosts[0].agents[0].api_key, "test-agent-key");
 }

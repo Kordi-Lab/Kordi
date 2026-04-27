@@ -1,3 +1,4 @@
+use super::outreach_metadata::reconcile_message_outreach_metadata;
 use crate::bridge::{DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord};
 
 pub(in crate::bridge::storage) fn delivery_state_rank(value: Option<&str>) -> i32 {
@@ -28,34 +29,48 @@ pub(in crate::bridge::storage) fn merge_conversation_message_records(
         incoming
     };
 
+    let text = if newer.text.trim().is_empty() {
+        older.text.clone()
+    } else {
+        newer.text.clone()
+    };
+    let timestamp_ms = newer.timestamp_ms.max(older.timestamp_ms);
+    let delivery_state = if delivery_state_rank(newer.delivery_state.as_deref())
+        >= delivery_state_rank(older.delivery_state.as_deref())
+    {
+        newer
+            .delivery_state
+            .clone()
+            .or_else(|| older.delivery_state.clone())
+    } else {
+        older
+            .delivery_state
+            .clone()
+            .or_else(|| newer.delivery_state.clone())
+    };
+    let mut outreach = newer.outreach.clone().or_else(|| older.outreach.clone());
+    if let Some(outreach) = outreach.as_mut() {
+        reconcile_message_outreach_metadata(
+            outreach,
+            delivery_state.as_deref(),
+            Some(&text),
+            Some(&older.text),
+            timestamp_ms,
+        );
+    }
+
     DesktopBridgeConversationMessageRecord {
         id: newer.id.clone(),
         direction: newer.direction.clone(),
         sender: newer.sender.clone().or_else(|| older.sender.clone()),
-        text: if newer.text.trim().is_empty() {
-            older.text.clone()
-        } else {
-            newer.text.clone()
-        },
-        timestamp_ms: newer.timestamp_ms.max(older.timestamp_ms),
+        text,
+        timestamp_ms,
         request_id: newer
             .request_id
             .clone()
             .or_else(|| older.request_id.clone()),
-        delivery_state: if delivery_state_rank(newer.delivery_state.as_deref())
-            >= delivery_state_rank(older.delivery_state.as_deref())
-        {
-            newer
-                .delivery_state
-                .clone()
-                .or_else(|| older.delivery_state.clone())
-        } else {
-            older
-                .delivery_state
-                .clone()
-                .or_else(|| newer.delivery_state.clone())
-        },
-        outreach: newer.outreach.clone().or_else(|| older.outreach.clone()),
+        delivery_state,
+        outreach,
     }
 }
 
@@ -91,6 +106,17 @@ pub(in crate::bridge::storage) fn merge_conversation_records(
             .or_insert_with(|| message.clone());
     }
     let mut messages: Vec<_> = messages_by_key.into_values().collect();
+    for message in &mut messages {
+        if let Some(outreach) = message.outreach.as_mut() {
+            reconcile_message_outreach_metadata(
+                outreach,
+                message.delivery_state.as_deref(),
+                Some(&message.text),
+                None,
+                message.timestamp_ms,
+            );
+        }
+    }
     messages.sort_by(|a, b| {
         a.timestamp_ms
             .cmp(&b.timestamp_ms)

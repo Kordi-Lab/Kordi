@@ -1,6 +1,7 @@
 mod actions;
 mod lookup;
 mod merge;
+mod outreach_metadata;
 mod records;
 mod schema;
 

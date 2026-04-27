@@ -4,11 +4,13 @@ use super::super::config::{
     desktop_bridge_conversations_path, ensure_owner_only_permissions,
     legacy_desktop_bridge_conversations_path,
 };
-use super::records::upsert_conversation_record;
-use crate::bridge::DesktopBridgeConversationStore;
+use super::outreach_metadata::reconcile_message_outreach_metadata;
+use super::records::{optional_json, parse_optional_json, upsert_conversation_record};
+use crate::bridge::{DesktopBridgeConversationStore, DesktopBridgeOutreachMetadata};
 
 const BRIDGE_CONVERSATION_SCHEMA_VERSION: i64 = 2;
 const BRIDGE_CONVERSATION_JSON_MIGRATION_KEY: &str = "legacy_json_migrated";
+const BRIDGE_MESSAGE_OUTREACH_RECONCILE_KEY: &str = "message_outreach_reconciled_v1";
 
 pub(in crate::bridge::storage) fn sqlite_error(err: rusqlite::Error) -> String {
     err.to_string()
@@ -121,11 +123,91 @@ pub(in crate::bridge::storage) fn mark_conversation_json_migrated(
     Ok(())
 }
 
+fn message_outreach_reconciled(conn: &Connection) -> Result<bool, String> {
+    let reconciled = conn
+        .query_row(
+            "SELECT value FROM bridge_schema_meta WHERE key = ?1",
+            params![BRIDGE_MESSAGE_OUTREACH_RECONCILE_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .is_some_and(|value| value == "1");
+    Ok(reconciled)
+}
+
+fn mark_message_outreach_reconciled(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO bridge_schema_meta(key, value) VALUES (?1, '1')\n         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![BRIDGE_MESSAGE_OUTREACH_RECONCILE_KEY],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn reconcile_persisted_message_outreach_metadata(conn: &mut Connection) -> Result<(), String> {
+    if message_outreach_reconciled(conn)? {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    let mut statement = tx
+        .prepare(
+            "SELECT id, text, timestamp_ms, delivery_state, outreach_metadata\n             FROM bridge_messages\n             WHERE delivery_state IS NOT NULL\n               AND outreach_metadata IS NOT NULL\n               AND trim(outreach_metadata) != ''",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                parse_optional_json::<DesktopBridgeOutreachMetadata>(
+                    row.get::<_, Option<String>>(4)?,
+                )?,
+            ))
+        })
+        .map_err(sqlite_error)?;
+
+    let mut updates = Vec::new();
+    for row in rows {
+        let (message_id, text, timestamp_ms, delivery_state, outreach) =
+            row.map_err(sqlite_error)?;
+        let Some(mut outreach) = outreach else {
+            continue;
+        };
+        if reconcile_message_outreach_metadata(
+            &mut outreach,
+            delivery_state.as_deref(),
+            Some(&text),
+            None,
+            timestamp_ms,
+        ) {
+            updates.push((message_id, optional_json(&Some(outreach))?));
+        }
+    }
+    drop(statement);
+
+    for (message_id, outreach_metadata) in updates {
+        tx.execute(
+            "UPDATE bridge_messages SET outreach_metadata = ?1 WHERE id = ?2",
+            params![outreach_metadata, message_id],
+        )
+        .map_err(sqlite_error)?;
+    }
+    mark_message_outreach_reconciled(&tx)?;
+    tx.commit().map_err(sqlite_error)?;
+    Ok(())
+}
+
 pub(in crate::bridge::storage) fn migrate_legacy_conversation_json(
     conn: &mut Connection,
 ) -> Result<(), String> {
     if conversation_json_migrated(conn)? {
-        return Ok(());
+        return reconcile_persisted_message_outreach_metadata(conn);
     }
 
     let legacy_path = legacy_desktop_bridge_conversations_path()?;
@@ -149,5 +231,5 @@ pub(in crate::bridge::storage) fn migrate_legacy_conversation_json(
     }
     mark_conversation_json_migrated(&tx)?;
     tx.commit().map_err(sqlite_error)?;
-    Ok(())
+    reconcile_persisted_message_outreach_metadata(conn)
 }
