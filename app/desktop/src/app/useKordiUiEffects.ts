@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
@@ -90,6 +90,8 @@ export function useKordiUiEffects({
   projectSlashQuery,
   filteredProjectSlashCommandsLength,
 }: UseKordiUiEffectsArgs) {
+  const transcriptScrollMetricsRef = useRef<{ scrollHeight: number; scrollTop: number; clientHeight: number } | null>(null);
+
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSessionId) return;
     setActiveConvId((current) => (!current || current === 'my-agent' ? desktopChatState.activeSessionId : current));
@@ -178,11 +180,31 @@ export function useKordiUiEffects({
   ]);
 
   useLayoutEffect(() => {
-    if ((activeNav !== 'chats' && activeNav !== 'projects') || !shouldAutoFollowChatRef.current) return;
+    if (activeNav !== 'chats' && activeNav !== 'projects') return;
 
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
-    container.scrollTop = container.scrollHeight;
+
+    const previousMetrics = transcriptScrollMetricsRef.current;
+    const previousDistanceFromBottom = previousMetrics
+      ? previousMetrics.scrollHeight - previousMetrics.scrollTop - previousMetrics.clientHeight
+      : 0;
+    const currentDistanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const wasNearBottomBeforeUpdate = previousDistanceFromBottom < 180;
+    const isNearBottomNow = currentDistanceFromBottom < 240;
+    const shouldFollow = shouldAutoFollowChatRef.current && (wasNearBottomBeforeUpdate || isNearBottomNow);
+
+    if (shouldFollow) {
+      container.scrollTop = container.scrollHeight;
+    } else if (shouldAutoFollowChatRef.current && !isNearBottomNow) {
+      shouldAutoFollowChatRef.current = false;
+    }
+
+    transcriptScrollMetricsRef.current = {
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+    };
   }, [
     activeNav,
     activeConvId,
