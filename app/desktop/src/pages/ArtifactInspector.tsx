@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, FileText, FolderOpen, LoaderCircle } from 'lucide-react';
 
+import { MarkdownCodeBlock } from '@/kordi-app/components';
 import type { DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,7 @@ type ArtifactInspectorProps = {
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
   emptyMessage: string;
+  previewBaseRoot?: string | null;
   footer?: ReactNode;
 };
 
@@ -20,21 +22,32 @@ function artifactIcon(kind: SessionArtifact['kind']) {
   return FolderOpen;
 }
 
+function languageFromPath(path: string) {
+  const extension = path.split('.').pop()?.trim().toLowerCase();
+  if (!extension) return 'text';
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) return 'javascript';
+  if (['ts', 'tsx'].includes(extension)) return 'typescript';
+  if (['sh', 'zsh', 'bash'].includes(extension)) return 'bash';
+  if (extension === 'rs') return 'rust';
+  if (['yaml', 'yml'].includes(extension)) return 'yaml';
+  if (extension === 'md') return 'markdown';
+  return extension;
+}
+
 function renderPreview(preview: DesktopArtifactPreview) {
   if (preview.lines.length === 0) {
     return <div className="px-4 py-4 text-[12px] text-slate-400">This artifact is empty.</div>;
   }
 
+  const source = preview.lines.map((line) => line.text).join('\n');
   return (
-    <div className="font-mono text-[12px] leading-7">
-      {preview.lines.map((line) => (
-        <div key={`${preview.path}-${line.number}`} className="grid grid-cols-[56px_minmax(0,1fr)] px-4">
-          <div className="select-none pr-3 text-right text-slate-500">{line.number}</div>
-          <code className="block min-w-0 overflow-hidden text-ellipsis whitespace-pre-wrap break-words text-slate-200">
-            {line.text}
-          </code>
-        </div>
-      ))}
+    <div className="p-3">
+      <MarkdownCodeBlock
+        language={languageFromPath(preview.path)}
+        code={source}
+        maxHeightClass="max-h-[32rem]"
+        wrapLines
+      />
     </div>
   );
 }
@@ -45,6 +58,7 @@ export function ArtifactInspector({
   activeArtifactId,
   onSelectArtifact,
   emptyMessage,
+  previewBaseRoot,
   footer,
 }: ArtifactInspectorProps) {
   const [previewCache, setPreviewCache] = useState<Record<string, DesktopArtifactPreview>>({});
@@ -56,7 +70,7 @@ export function ArtifactInspector({
     [activeArtifactId, artifacts],
   );
   const activePreviewKey = activeArtifact
-    ? `${activeArtifact.id}:${activeArtifact.timeLabel ?? ''}:${activeArtifact.live ? 'live' : 'ready'}`
+    ? `${previewBaseRoot ?? ''}:${activeArtifact.id}:${activeArtifact.timeLabel ?? ''}:${activeArtifact.live ? 'live' : 'ready'}`
     : null;
   const cachedPreview = activePreviewKey ? previewCache[activePreviewKey] ?? null : null;
 
@@ -86,7 +100,7 @@ export function ArtifactInspector({
     let cancelled = false;
     setIsPreviewLoading(true);
 
-    fetchDesktopChatArtifactPreview(activeArtifact.path)
+    fetchDesktopChatArtifactPreview(activeArtifact.path, previewBaseRoot)
       .then((preview) => {
         if (cancelled) return;
         setPreviewCache((current) => ({
@@ -107,12 +121,12 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activeArtifact?.id, activeArtifact?.path, activePreviewKey, cachedPreview, isNativeShell]);
+  }, [activeArtifact?.id, activeArtifact?.path, activePreviewKey, cachedPreview, isNativeShell, previewBaseRoot]);
 
   return (
     <>
       <section className="app-detail-section">
-        <div className="app-detail-kicker">Generated artifacts</div>
+        <div className="app-detail-kicker">Artifacts and related files</div>
         {artifacts.length > 0 ? (
           <div className="app-inspector-list">
             {artifacts.map((artifact) => {

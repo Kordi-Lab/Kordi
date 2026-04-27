@@ -586,6 +586,9 @@ export function WorkspaceSidebar({
                                               {session.summary}
                                             </div>
                                           ) : null}
+                                          <div className={cn('mt-px truncate font-mono text-[10px] leading-[0.95rem]', isActiveSession ? 'text-slate-400' : 'text-slate-600')} title={session.id}>
+                                            id {session.id}
+                                          </div>
                                         </div>
                                       </button>
                                     );

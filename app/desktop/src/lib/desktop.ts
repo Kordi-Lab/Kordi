@@ -353,8 +353,8 @@ export async function fetchDesktopChatTurnState(turnId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_turn_state', { turnId });
 }
 
-export async function fetchDesktopChatArtifactPreview(path: string) {
-  return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path });
+export async function fetchDesktopChatArtifactPreview(path: string, baseRoot?: string | null) {
+  return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path, baseRoot });
 }
 
 export type OpenDesktopAuthPopupOptions = {

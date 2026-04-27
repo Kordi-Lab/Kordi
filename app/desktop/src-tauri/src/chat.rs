@@ -139,18 +139,26 @@ fn attachment_storage_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn resolve_artifact_preview_path(raw_path: &str) -> Result<PathBuf, String> {
+fn resolve_artifact_preview_path(
+    raw_path: &str,
+    base_root: Option<&str>,
+) -> Result<PathBuf, String> {
     let trimmed = raw_path.trim();
     if trimmed.is_empty() {
         return Err("Artifact path is required".to_string());
     }
 
-    let candidate = PathBuf::from(trimmed);
+    let candidate = expand_home_project_path(trimmed);
     if candidate.is_absolute() {
-        Ok(candidate)
-    } else {
-        Ok(chat_cwd()?.join(candidate))
+        return Ok(candidate);
     }
+
+    let base = base_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(expand_home_project_path)
+        .unwrap_or(chat_cwd()?);
+    Ok(base.join(candidate))
 }
 
 fn snapshot_turn(
@@ -742,11 +750,12 @@ pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Resul
 #[tauri::command]
 pub async fn desktop_chat_artifact_preview(
     path: String,
+    base_root: Option<String>,
 ) -> Result<DesktopChatArtifactPreview, String> {
     const MAX_PREVIEW_BYTES: usize = 64 * 1024;
     const MAX_PREVIEW_LINES: usize = 400;
 
-    let resolved_path = resolve_artifact_preview_path(&path)?;
+    let resolved_path = resolve_artifact_preview_path(&path, base_root.as_deref())?;
     let bytes = std::fs::read(&resolved_path).map_err(|err| err.to_string())?;
     let mut truncated = bytes.len() > MAX_PREVIEW_BYTES;
     let preview_bytes = if truncated {
