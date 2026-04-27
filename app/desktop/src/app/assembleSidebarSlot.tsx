@@ -27,6 +27,15 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       onSelectChatSession={(sessionId) => {
         void args.handleSelectChatSession(sessionId);
       }}
+      onArchiveChatSession={(sessionId) => {
+        void args.handleArchiveChatSession(sessionId);
+      }}
+      onDeleteChatSession={(sessionId) => {
+        void args.handleDeleteChatSession(sessionId);
+      }}
+      onMoveChatSessionToProject={(sessionId, projectRoot) => {
+        void args.handleMoveChatSessionToProject(sessionId, projectRoot);
+      }}
       runtimeProjects={args.runtimeProjects}
       projectSearch={args.projectSearch}
       setProjectSearch={args.setProjectSearch}
@@ -46,7 +55,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       setActiveContactId={args.setActiveContactId}
       displayedAgents={args.displayedAgents}
       activeBridgeHost={args.activeBridgeHost}
-      localProfileAvatarSeed={args.activeBridgeHost?.humanId}
+      localProfileAvatarSeed={args.localProfileAvatarSeed}
       onRefreshBridge={() => {
         void args.refreshDesktopBridge();
       }}

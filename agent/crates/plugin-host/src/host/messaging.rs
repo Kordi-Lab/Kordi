@@ -17,7 +17,10 @@ impl PluginHost {
     ///
     /// Serializes the event as a JSON-RPC request with method "event",
     /// waits for the response with the matching id.
-    pub async fn send_event(&mut self, event: &kordi_hooks::Event) -> Option<kordi_hooks::HookResult> {
+    pub async fn send_event(
+        &mut self,
+        event: &kordi_hooks::Event,
+    ) -> Option<kordi_hooks::HookResult> {
         self.send_event_with_context(event, &PluginContext::default())
             .await
     }
@@ -46,7 +49,8 @@ impl PluginHost {
         }
 
         match tokio::time::timeout(Duration::from_secs(30), self.read_response_for_id(id)).await {
-            Ok(Ok(Some(result))) => match serde_json::from_value::<kordi_hooks::HookResult>(result) {
+            Ok(Ok(Some(result))) => match serde_json::from_value::<kordi_hooks::HookResult>(result)
+            {
                 Ok(hr) => {
                     if matches!(event, kordi_hooks::Event::ToolCall(tool_call)
                         if hr.input.as_ref() == Some(tool_call.input())

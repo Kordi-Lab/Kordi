@@ -404,16 +404,19 @@ export function ProjectsPage({
                   if (filteredProjectMentionTargets.length > 0) {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
+                      event.stopPropagation();
                       setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
                       return;
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
+                      event.stopPropagation();
                       setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
                       return;
                     }
-                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
                       event.preventDefault();
+                      event.stopPropagation();
                       acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
                       return;
                     }

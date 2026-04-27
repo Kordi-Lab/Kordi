@@ -128,11 +128,11 @@ mod tests {
         SessionCacheMetricsSource, SessionMetricsSummary, collect_session_metrics,
         render_cache_metrics_source,
     };
+    use chrono::Utc;
     use kordi_core::types::{
         AgentMessage, AssistantContent, AssistantMessage, CacheMetricsSource, ContentBlock, Cost,
         EntryBase, EntryId, SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
     };
-    use chrono::Utc;
 
     fn assistant_message() -> AgentMessage {
         AgentMessage::Assistant(AssistantMessage {

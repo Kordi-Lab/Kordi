@@ -1,7 +1,7 @@
 use super::*;
 use crate::store;
-use kordi_core::types::*;
 use chrono::Utc;
+use kordi_core::types::*;
 
 #[test]
 fn test_build_context_empty() {

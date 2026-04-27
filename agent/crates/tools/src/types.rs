@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use kordi_core::error::KordiResult;
-use kordi_provider::{registry::Model, Provider};
+use kordi_provider::{Provider, registry::Model};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, future::Future, path::PathBuf, pin::Pin, sync::Arc};

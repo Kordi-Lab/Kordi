@@ -65,7 +65,10 @@ impl Tool for LsTool {
         }
 
         if !dir.is_dir() {
-            return Err(KordiError::Tool(format!("Not a directory: {}", dir.display())));
+            return Err(KordiError::Tool(format!(
+                "Not a directory: {}",
+                dir.display()
+            )));
         }
 
         // Load .gitignore patterns for the directory

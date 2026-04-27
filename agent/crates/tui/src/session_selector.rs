@@ -1,5 +1,5 @@
-use kordi_session::store::SessionRow;
 use crossterm::event::KeyEvent;
+use kordi_session::store::SessionRow;
 
 use crate::select_list::{SelectAction, SelectItem, SelectList};
 

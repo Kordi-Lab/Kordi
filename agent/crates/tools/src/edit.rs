@@ -153,9 +153,9 @@ impl Tool for EditTool {
         }
 
         if applied > 0 {
-            tokio::fs::write(&path, &content)
-                .await
-                .map_err(|e| KordiError::Tool(format!("Failed to write {}: {e}", path.display())))?;
+            tokio::fs::write(&path, &content).await.map_err(|e| {
+                KordiError::Tool(format!("Failed to write {}: {e}", path.display()))
+            })?;
         }
 
         // Generate the diff once and reuse it

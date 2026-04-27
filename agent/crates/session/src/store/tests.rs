@@ -1,6 +1,6 @@
 use super::*;
-use kordi_core::types::*;
 use chrono::{TimeZone, Utc};
+use kordi_core::types::*;
 
 fn make_user_entry(parent: Option<&str>) -> SessionEntry {
     make_user_entry_at(parent, Utc::now())
@@ -117,6 +117,36 @@ fn test_set_leaf_does_not_update_session_timestamp() {
         .updated_at;
 
     assert_eq!(after, before);
+}
+
+#[test]
+fn test_session_scope_filters_chat_list_and_delete_removes_rows() {
+    let conn = open_memory().unwrap();
+    let chat_session_id = create_session(&conn, "/tmp/test").unwrap();
+    let hidden_session_id = create_session(&conn, "/tmp/test").unwrap();
+    let project_session_id = create_session(&conn, "/tmp/test").unwrap();
+
+    append_entry(&conn, &chat_session_id, &make_user_entry(None)).unwrap();
+    append_entry(&conn, &hidden_session_id, &make_user_entry(None)).unwrap();
+    append_entry(&conn, &project_session_id, &make_user_entry(None)).unwrap();
+
+    update_session_scope(&conn, &hidden_session_id, "hidden", "/tmp/test", None).unwrap();
+    update_session_scope(
+        &conn,
+        &project_session_id,
+        "project",
+        "/tmp/project",
+        Some("/tmp/project"),
+    )
+    .unwrap();
+
+    let sessions = list_sessions(&conn, "/tmp/test").unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id, chat_session_id);
+
+    delete_session(&conn, &chat_session_id).unwrap();
+    assert!(get_session(&conn, &chat_session_id).unwrap().is_none());
+    assert!(get_entries(&conn, &chat_session_id).unwrap().is_empty());
 }
 
 #[test]

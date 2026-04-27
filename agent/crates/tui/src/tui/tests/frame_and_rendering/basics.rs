@@ -125,14 +125,12 @@ fn local_action_status_spinner_uses_tui_color_theme() {
     let _ = state.apply_command(crate::tui::TuiCommand::SetStatusLine(
         "Resuming session...".to_string(),
     ));
-    let _ = state.apply_command(crate::tui::TuiCommand::SetLocalActionActive(
-        true,
-    ));
+    let _ = state.apply_command(crate::tui::TuiCommand::SetLocalActionActive(true));
     state.prepare_for_render();
     let frame = build_frame(&state);
     let layout = state.current_layout();
-    let status_lines = &frame.lines
-        [layout.status.y as usize..(layout.status.y + layout.status.height) as usize];
+    let status_lines =
+        &frame.lines[layout.status.y as usize..(layout.status.y + layout.status.height) as usize];
     let status_line = status_lines
         .iter()
         .find(|line| crate::utils::strip_ansi(line).contains("Resuming session..."))

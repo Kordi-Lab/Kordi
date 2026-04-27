@@ -121,14 +121,15 @@ mod tests {
 
     #[test]
     fn test_serialize_event_tool_execution_update() {
-        let event = kordi_hooks::Event::ToolExecutionUpdate(kordi_hooks::ToolExecutionUpdateEvent::new(
-            "tc1",
-            "bash",
-            serde_json::json!({"command": "ls"}),
-            serde_json::json!({
-                "details": {"schedulerState": "queued"}
-            }),
-        ));
+        let event =
+            kordi_hooks::Event::ToolExecutionUpdate(kordi_hooks::ToolExecutionUpdateEvent::new(
+                "tc1",
+                "bash",
+                serde_json::json!({"command": "ls"}),
+                serde_json::json!({
+                    "details": {"schedulerState": "queued"}
+                }),
+            ));
         let json = serialize_event(&event);
         assert_eq!(json["type"], "tool_execution_update");
         assert_eq!(json["tool_name"], "bash");

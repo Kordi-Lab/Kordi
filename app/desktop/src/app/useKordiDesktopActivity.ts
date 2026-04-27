@@ -90,16 +90,18 @@ export function useKordiDesktopActivity({
   }, [totalUnreadMessages]);
 
   useEffect(() => {
+    const activeChatSessionId = activeConv.id;
     const visibleLocalSessionId = activeNav === 'projects'
       ? (activeProjectSessionId || null)
       : activeNav === 'chats'
-        && !activeConvId.startsWith('bridge:')
-        && !isCanonicalBridgeSessionId(activeConvId)
-        && !isLocalDraftChatConversationId(activeConvId)
-        ? activeConvId
+        && !activeConversationIsBridge
+        && !activeChatSessionId.startsWith('bridge:')
+        && !isCanonicalBridgeSessionId(activeChatSessionId)
+        && !isLocalDraftChatConversationId(activeChatSessionId)
+        ? activeChatSessionId
         : null;
     setVisibleLocalSessionId(visibleLocalSessionId);
-  }, [activeConvId, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
+  }, [activeConv.id, activeConversationIsBridge, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
     if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {

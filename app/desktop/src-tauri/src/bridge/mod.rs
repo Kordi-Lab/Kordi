@@ -1,9 +1,14 @@
 mod constants;
+mod conversation_actions;
 mod conversation_commands;
+mod conversation_open;
 mod conversations;
+mod events;
 mod host_commands;
 mod local_server;
+mod mailbox;
 mod network;
+mod outreach;
 mod project_commands;
 mod realtime;
 mod server_commands;
@@ -19,7 +24,7 @@ use uuid::Uuid;
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
 use self::local_server::LocalBridgeServerRuntime;
 
-pub(crate) use self::conversation_commands::desktop_bridge_reach_out_impl;
+pub(crate) use self::outreach::desktop_bridge_reach_out_impl;
 
 #[allow(unused_imports)]
 use self::conversations::{
@@ -44,13 +49,14 @@ use self::state::{
 #[allow(unused_imports)]
 use self::storage::{
     append_conversation_message_to_storage, bridge_conversation_id, bridge_hosts_match,
-    delete_bridge_host_secrets, delete_conversations_for_host, desktop_bridge_config_path,
-    desktop_bridge_conversations_path, format_time_label, format_time_label_with_seconds,
-    hosted_bridge_dir, korde_dir, legacy_bridge_config_path, load_bridge_store,
-    load_conversation_store, load_legacy_bridge_config, mark_bridge_conversation_read_in_storage,
-    normalize_imported_bridge_host, normalize_server_url, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, now_ms, parse_imported_bridge_store, save_bridge_store,
-    save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
+    bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
+    desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
+    format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
+    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
+    mark_bridge_conversation_read_in_storage, normalize_imported_bridge_host, normalize_server_url,
+    note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
+    parse_imported_bridge_store, save_bridge_store, save_conversation_store,
+    update_message_delivery_state_in_storage, write_bridge_store_export,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -171,6 +177,18 @@ struct DesktopBridgeConversationMessageRecord {
     request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     delivery_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeSessionThreadMessage {
+    pub role: String,
+    pub sender: Option<String>,
+    pub text: String,
+    pub time_label: Option<String>,
+    pub index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,10 +196,15 @@ struct DesktopBridgeConversationMessageRecord {
 pub struct DesktopBridgeOutreachMetadata {
     pub target_kind: String,
     pub parent_session_id: Option<String>,
+    pub parent_session_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub bridge_host_id: String,
     pub bridge_conversation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_request_id: Option<String>,
     pub target_node_id: String,
     pub target_human_id: Option<String>,
     pub target_agent_id: Option<String>,
@@ -189,6 +212,8 @@ pub struct DesktopBridgeOutreachMetadata {
     pub target_owner_name: Option<String>,
     pub target_runtime: Option<String>,
     pub request_text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_text: Option<String>,
     pub context_text: Option<String>,
     pub context_policy: Option<String>,
     pub project_id: Option<String>,
@@ -285,7 +310,10 @@ pub struct DesktopBridgeConversationMessage {
     pub text: String,
     pub time_label: String,
     pub timestamp_ms: i64,
+    pub request_id: Option<String>,
     pub delivery_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outreach: Option<DesktopBridgeOutreachMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,9 +381,18 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub target_node_id: String,
     pub target_kind: String,
     pub request_text: String,
+    pub target_display_name: Option<String>,
+    pub target_owner_name: Option<String>,
+    pub target_runtime: Option<String>,
+    pub target_human_id: Option<String>,
+    pub target_agent_id: Option<String>,
+    pub trigger_text: Option<String>,
     pub context_text: Option<String>,
     pub context_policy: Option<String>,
     pub parent_session_id: Option<String>,
+    pub parent_session_title: Option<String>,
+    #[serde(default)]
+    pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub project_id: Option<String>,
@@ -411,7 +448,7 @@ pub(crate) async fn desktop_bridge_outreach_prompt_context(
 
     target_lines.truncate(50);
     Some(format!(
-        "Bridge outreach is available through the reach_out tool. Use it when a visible bridge agent or person may have useful information. Outreach is allowed without asking for approval, creates a visible/resumable bridge conversation, and returns the remote reply when possible.\n\nVisible bridge targets:\n{}",
+        "Bridge outreach is available through the reach_out tool only for explicit non-local @Person/@Agent mentions in the current user message. Use it only when the current user message names one of the visible bridge targets below; never use it for @Kordi/the local agent and do not proactively contact participants. Outreach is allowed without asking for approval, creates a visible/resumable bridge conversation, and returns the remote reply when possible.\n\nVisible bridge targets:\n{}",
         target_lines.join("\n")
     ))
 }
@@ -839,7 +876,7 @@ pub async fn desktop_bridge_open_conversation(
     project_id: Option<String>,
     project_name: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_open_conversation_impl(
+    conversation_open::desktop_bridge_open_conversation_impl(
         &manager,
         host_id,
         peer_node_id,
@@ -857,7 +894,7 @@ pub async fn desktop_bridge_mark_conversation_read(
     manager: State<'_, DesktopBridgeManager>,
     conversation_id: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
+    conversation_actions::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
         .await
 }
 
@@ -867,7 +904,7 @@ pub async fn desktop_bridge_send_message(
     conversation_id: String,
     text: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
+    conversation_actions::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
 }
 
 #[tauri::command]
@@ -879,12 +916,22 @@ pub async fn desktop_bridge_create_outreach(
 }
 
 #[tauri::command]
+pub async fn desktop_bridge_cancel_outreach(
+    manager: State<'_, DesktopBridgeManager>,
+    conversation_id: String,
+    request_id: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    conversation_actions::desktop_bridge_cancel_outreach_impl(&manager, conversation_id, request_id)
+        .await
+}
+
+#[tauri::command]
 pub async fn desktop_bridge_send_presence(
     manager: State<'_, DesktopBridgeManager>,
     conversation_id: String,
     kind: String,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
+    conversation_actions::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
 }
 
 #[tauri::command]
@@ -892,5 +939,5 @@ pub async fn desktop_bridge_poll_mailbox(
     manager: State<'_, DesktopBridgeManager>,
     chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
+    mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
 }

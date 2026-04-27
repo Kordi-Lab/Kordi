@@ -12,11 +12,13 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   CanonicalSessionState,
   Contact,
+  Conversation,
   DesktopBridgeConversation,
   DesktopBridgeHost,
   DesktopBridgePeer,
@@ -30,6 +32,19 @@ import type {
   SessionStatusIndicator,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
+import {
+  buildConversationPreview,
+  buildOutreachInlineMessages,
+  buildSessionStatusIndicator,
+  canonicalProjectDisplayName,
+  canonicalProjectRoot,
+  findBridgeProjectForWorkspace,
+  preferLatestMessages,
+  showConversationSessionIds,
+  visibleBridgePeople,
+} from './viewModels/helpers';
+
+export { findBridgeProjectForWorkspace } from './viewModels/helpers';
 
 type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
@@ -37,6 +52,7 @@ type UseWorkspaceViewModelsArgs = {
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
   canonicalSessionState: CanonicalSessionState | null;
+  hiddenSessionIds: Set<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
@@ -56,210 +72,13 @@ type UseWorkspaceViewModelsArgs = {
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
 
-function canExposeBridgePerson(peer: DesktopBridgePeer) {
-  return Boolean(
-    isBridgeAgentRuntime(peer.runtime)
-      && peer.isDefaultAgent
-      && peer.ownerName?.trim()
-      && peer.humanId?.trim(),
-  );
-}
-
-function toBridgePersonPeer(peer: DesktopBridgePeer): DesktopBridgePeer {
-  return {
-    ...peer,
-    displayName: peer.ownerName?.trim() || peer.displayName,
-    runtime: 'person',
-    agentId: undefined,
-    isDefaultAgent: false,
-  };
-}
-
-function visibleBridgePeople(peers: DesktopBridgePeer[]) {
-  const people: DesktopBridgePeer[] = [];
-  const seen = new Set<string>();
-
-  for (const peer of peers) {
-    if (!isBridgeAgentRuntime(peer.runtime)) {
-      if (seen.has(peer.nodeId)) continue;
-      seen.add(peer.nodeId);
-      people.push(peer);
-      continue;
-    }
-
-    if (!canExposeBridgePerson(peer)) continue;
-
-    const key = peer.humanId?.trim() || peer.ownerName?.trim() || peer.nodeId;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    people.push(toBridgePersonPeer(peer));
-  }
-
-  return people;
-}
-
-function normalizeBridgeProjectKey(value?: string | null) {
-  return (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-function truncateInlineText(value: string, maxChars = 96) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxChars) return normalized;
-  return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
-}
-
-function buildMessagePreview(message: Message) {
-  const text = message.text.trim();
-  if (text.length > 0) {
-    return text;
-  }
-
-  const attachments = message.attachments ?? [];
-  if (attachments.length === 0) {
-    return '';
-  }
-
-  if (attachments.length === 1) {
-    return `Attached ${attachments[0].name}`;
-  }
-
-  return `${attachments.length} attachments`;
-}
-
-function inlineRequestPreview(text: string) {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) return '';
-  return normalized.length > 140 ? `${normalized.slice(0, 137)}…` : normalized;
-}
-
-function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): Message[] {
-  const outreach = conversation.outreach;
-  if (!outreach) return [];
-
-  const isAgent = outreach.targetKind === 'bridge-agent';
-  const targetName = outreach.targetDisplayName || conversation.title;
-  const avatarSeed = isAgent
-    ? outreach.targetAgentId || outreach.targetNodeId
-    : outreach.targetHumanId || outreach.targetOwnerName || outreach.targetNodeId;
-  const requestPreview = inlineRequestPreview(outreach.requestText);
-  const joinText = isAgent ? `${targetName} joined through @` : `${targetName} was involved through @`;
-  const messages: Message[] = [{
-    role: 'system',
-    text: requestPreview ? `${joinText} — “${requestPreview}”` : joinText,
-    time: conversation.updatedAtLabel,
-  }];
-
-  for (const message of conversation.messages) {
-    if (message.direction !== 'inbound' && message.direction !== 'inbound-response') continue;
-    const isProcessingAgent = isAgent && message.deliveryState === 'processing';
-    const agentTurn = isAgent
-      ? {
-          id: `bridge-outreach-live-turn:${conversation.id}:${message.id}`,
-          sessionId: outreach.parentSessionId ?? conversation.canonicalSessionId,
-          prompt: outreach.requestText,
-          status: isProcessingAgent ? (message.text.trim() ? 'writing' : 'typing') : 'complete',
-          message: isProcessingAgent ? (message.text.trim() ? 'Replying…' : 'Typing…') : 'Complete',
-          assistantText: message.text,
-          thinkingText: '',
-          tools: [],
-          completed: !isProcessingAgent,
-          succeeded: !isProcessingAgent,
-          error: null,
-        }
-      : undefined;
-    messages.push({
-      role: isAgent ? 'external-agent' : 'person',
-      sender: targetName,
-      senderType: isAgent ? 'agent' : 'human',
-      isOwnMessage: false,
-      showSenderMeta: true,
-      senderAvatarSeed: avatarSeed,
-      text: isAgent ? '' : message.text,
-      time: message.timeLabel,
-      turn: agentTurn,
-    });
-  }
-
-  return messages;
-}
-
-function buildConversationPreview(messages: Message[], fallback?: string) {
-  const latestMessage = [...messages]
-    .reverse()
-    .find((message) => message.role !== 'system' && buildMessagePreview(message).trim().length > 0);
-
-  if (latestMessage) {
-    return truncateInlineText(buildMessagePreview(latestMessage));
-  }
-
-  return truncateInlineText(fallback ?? '', 72);
-}
-
-function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message[] | undefined, preserveCachedMessages: boolean) {
-  if (!cachedMessages || !preserveCachedMessages) return mappedMessages;
-  return cachedMessages.length > mappedMessages.length ? cachedMessages : mappedMessages;
-}
-
-function buildSessionStatusIndicator({
-  unreadCount,
-  showBackgroundActivity,
-  liveTurn,
-}: {
-  unreadCount: number;
-  showBackgroundActivity: boolean;
-  liveTurn?: DesktopChatTurnSnapshot;
-}): SessionStatusIndicator | undefined {
-  if (showBackgroundActivity && liveTurn && !liveTurn.completed) {
-    if (liveTurn.status === 'cancelling') {
-      return { label: 'Stopping', tone: 'stopped', live: true };
-    }
-
-    return { label: 'Running', tone: 'running', live: true };
-  }
-
-  if (unreadCount > 0) {
-    return { label: 'Unread', tone: 'ready' };
-  }
-
-  return undefined;
-}
-
-function canonicalProjectMetadata(session: CanonicalSessionState['sessions'][number]) {
-  return session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
-    ? session.metadata as Record<string, unknown>
-    : {};
-}
-
-function canonicalProjectRoot(session: CanonicalSessionState['sessions'][number]) {
-  const metadata = canonicalProjectMetadata(session);
-  return typeof metadata.projectRoot === 'string' && metadata.projectRoot.trim().length > 0
-    ? metadata.projectRoot.trim()
-    : projectRootFromCanonicalProjectGroupId(session.projectId);
-}
-
-function canonicalProjectDisplayName(session: CanonicalSessionState['sessions'][number]) {
-  const trimmedProjectName = session.projectName?.trim();
-  if (trimmedProjectName) return trimmedProjectName;
-  const projectRoot = canonicalProjectRoot(session);
-  return projectRoot?.split(/[\\/]/).filter(Boolean).pop() ?? 'Project';
-}
-
-export function findBridgeProjectForWorkspace(host: DesktopBridgeHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
-  if (!host) return null;
-  const rootLeaf = (projectRoot ?? '').split(/[\\/]/).filter(Boolean).pop() ?? '';
-  const candidates = new Set([
-    normalizeBridgeProjectKey(projectName),
-    normalizeBridgeProjectKey(rootLeaf),
-  ].filter(Boolean));
-  return host.projects.find((project) => candidates.has(normalizeBridgeProjectKey(project.name))) ?? null;
-}
-
 export function useWorkspaceViewModels({
   isNativeShell,
   isDesktopChatLoading,
   desktopChatState,
   desktopBridgeState,
   canonicalSessionState,
+  hiddenSessionIds,
   projectWorkspaces,
   projectSelectedSessionIds,
   activeNav,
@@ -322,6 +141,26 @@ export function useWorkspaceViewModels({
       return [];
     }
 
+    const localAgentLabel = desktopChatState.localAgent?.label || 'Kordi';
+    const activeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
+      ?? desktopBridgeState?.hosts[0]
+      ?? null;
+    const activeHostAgentId = activeHost?.activeAgentId ?? null;
+    const activeHostAgent = activeHost?.agents.find((agent) => agent.id === activeHostAgentId)
+      ?? activeHost?.agents.find((agent) => agent.isActive)
+      ?? activeHost?.agents.find((agent) => agent.isDefault)
+      ?? activeHost?.agents[0]
+      ?? null;
+    const localAgentAvatarSeed = activeHostAgent?.id
+      || activeHost?.activeAgentId
+      || activeHostAgent?.nodeId
+      || activeHost?.nodeId
+      || getLocalAgentAvatarSeed(localAgentLabel);
+    const localHumanAvatarSeed = activeHost?.humanId
+      || canonicalSessionState?.profile.humanIdentityId
+      || canonicalSessionState?.profile.id
+      || getLocalProfileAvatarSeed();
+
     return desktopChatState.sessions.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
@@ -354,26 +193,38 @@ export function useWorkspaceViewModels({
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
         participants: ['You', 'Kordi'],
+        participantAvatarSeeds: {
+          You: localHumanAvatarSeed,
+          [localAgentLabel]: localAgentAvatarSeed,
+          Kordi: localAgentAvatarSeed,
+        },
         messages,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         bridgeTarget: undefined,
+        avatarSeed: localAgentAvatarSeed,
         outreachThreads,
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState?.profile.humanIdentityId, canonicalSessionState?.profile.id, desktopBridgeState, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
     const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopBridgeState?.conversations ?? [])
-      .filter((conversation) => !conversation.outreach?.parentSessionId || conversation.id === activeConvId)
+      .filter((conversation) => !conversation.outreach?.parentSessionId)
+      .filter((conversation) => (
+        conversation.messages.length > 0
+        || Boolean(conversation.outreach)
+        || Boolean(conversation.peerDisplayName?.trim())
+        || Boolean(conversation.peerOwnerName?.trim())
+      ))
       .map((conversation) => (
         mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
       ));
-  }, [activeConvId, desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
+  }, [desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
 
   const chatConversations = useMemo(() => {
     if (!isNativeShell) {
@@ -382,10 +233,15 @@ export function useWorkspaceViewModels({
     const merged = [...bridgeChatConversations, ...localChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
     const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
-    return canonicalReadModel
+    const hydratedConversations = canonicalReadModel
       ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
       : sourceConversations;
-  }, [bridgeChatConversations, canonicalReadModel, isNativeShell, localChatConversations]);
+
+    const visibleConversations = hiddenSessionIds.size === 0
+      ? hydratedConversations
+      : hydratedConversations.filter((conversation) => !hiddenSessionIds.has(conversation.canonicalSessionId ?? conversation.id));
+    return showConversationSessionIds(visibleConversations);
+  }, [bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => ({
@@ -459,6 +315,12 @@ export function useWorkspaceViewModels({
 
     for (const host of desktopBridgeState?.hosts ?? []) {
       const label = bridgeLabel(host.serverUrl);
+      const activeHostAgent = host.agents.find((agent) => agent.id === host.activeAgentId)
+        ?? host.agents.find((agent) => agent.isActive)
+        ?? host.agents.find((agent) => agent.isDefault)
+        ?? host.agents[0]
+        ?? null;
+      const localAgentAvatarSeed = activeHostAgent?.id || host.activeAgentId || activeHostAgent?.nodeId || host.nodeId || host.id;
       byId.set(`bridge-self:${host.id}`, {
         id: `bridge-self:${host.id}`,
         name: host.displayName,
@@ -476,7 +338,7 @@ export function useWorkspaceViewModels({
         bridgePeerRuntime: 'kordi-desktop',
         bridgeHumanId: host.humanId,
         bridgeAgentId: host.activeAgentId ?? undefined,
-        avatarSeed: host.activeAgentId || host.nodeId || host.id,
+        avatarSeed: localAgentAvatarSeed,
       });
 
       for (const peer of host.visiblePeers) {
@@ -546,6 +408,7 @@ export function useWorkspaceViewModels({
         discoverableOn: ['Local'],
         detail: `Chat directly with your local Kordi agent • ${localAgent.workspaceRoot}`,
         owner: 'You',
+        avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
       });
     }
 
@@ -606,6 +469,7 @@ export function useWorkspaceViewModels({
           isBridgeDefault: agent.isDefault,
           isBridgeActive: agent.isActive,
           isBridgeRegistered: agent.registered,
+          avatarSeed: agent.id,
         });
       }
     }
@@ -635,6 +499,7 @@ export function useWorkspaceViewModels({
         exposesLoadedPlugins: true,
         isOwned: true,
         isBridgeActive: true,
+        avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
       });
     }
 

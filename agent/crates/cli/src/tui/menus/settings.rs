@@ -215,9 +215,7 @@ impl TuiController {
                     settings.color_theme = Some(value.to_string());
                     let _ = settings.save_global();
                     self.mark_local_settings_saved();
-                    self.send_command(TuiCommand::SetStatusLine(format!(
-                        "Color theme: {value}"
-                    )));
+                    self.send_command(TuiCommand::SetStatusLine(format!("Color theme: {value}")));
                 } else {
                     self.send_command(TuiCommand::SetStatusLine(format!(
                         "Unknown color theme: {value}"
@@ -233,9 +231,7 @@ impl TuiController {
                 self.session_setup.thinking_level = level.as_str().to_string();
                 self.runtime_host.session_mut().set_thinking_level(level);
                 self.publish_footer();
-                self.send_command(TuiCommand::SetStatusLine(format!(
-                    "Thinking: {value}"
-                )));
+                self.send_command(TuiCommand::SetStatusLine(format!("Thinking: {value}")));
             }
             "execution-mode" => {
                 let mode = match value {
@@ -260,9 +256,7 @@ impl TuiController {
                 )?;
                 self.mark_local_settings_saved();
                 self.publish_footer();
-                self.send_command(TuiCommand::SetStatusLine(format!(
-                    "Auto-compact: {value}"
-                )));
+                self.send_command(TuiCommand::SetStatusLine(format!("Auto-compact: {value}")));
             }
             "compaction-reserve" => {
                 let parsed = value
@@ -305,9 +299,7 @@ impl TuiController {
                     self.session_setup.retry_max_delay_ms,
                 )?;
                 self.mark_local_settings_saved();
-                self.send_command(TuiCommand::SetStatusLine(format!(
-                    "Auto-retry: {value}"
-                )));
+                self.send_command(TuiCommand::SetStatusLine(format!("Auto-retry: {value}")));
             }
             "retry-max" => {
                 let parsed = value

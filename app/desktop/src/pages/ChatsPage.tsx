@@ -149,6 +149,11 @@ export function ChatsPage({
   hasAnyAuth,
   onOpenAuthSettings,
 }: ChatsPageProps) {
+  const activeLiveTurnIsRunning = Boolean(
+    desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
+  );
+  const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="app-page-header shrink-0 flex items-start justify-between gap-3 border-b border-white/10 px-4 py-2.5">
@@ -347,16 +352,19 @@ export function ChatsPage({
                   if (filteredChatMentionTargets.length > 0) {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
+                      event.stopPropagation();
                       setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
                       return;
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
+                      event.stopPropagation();
                       setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
                       return;
                     }
-                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
                       event.preventDefault();
+                      event.stopPropagation();
                       acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
                       return;
                     }
@@ -426,18 +434,18 @@ export function ChatsPage({
               <Button
                 className={cn(
                   'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
-                  isDesktopChatSending && !activeConversationIsBridge ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
+                  composerStopMode ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
                 )}
                 onClick={() => {
-                  if (isDesktopChatSending && !activeConversationIsBridge) {
+                  if (composerStopMode) {
                     onStopDesktopChatTurn();
                     return;
                   }
                   onSendChatMessage();
                 }}
-                disabled={activeConversationIsBridge ? isDesktopChatSending : (isDesktopChatSending ? !desktopLiveTurn || desktopLiveTurn.completed : false)}
+                disabled={composerStopMode ? false : isDesktopChatSending}
               >
-                {isDesktopChatSending && !activeConversationIsBridge ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
+                {composerStopMode ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
           </div>

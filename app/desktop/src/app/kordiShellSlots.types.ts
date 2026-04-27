@@ -82,10 +82,14 @@ export type AssembleKordiShellSlotsArgs = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
   activeBridgeHost: DesktopBridgeHost | null;
+  localProfileAvatarSeed?: string | null;
   refreshDesktopBridge: () => Promise<void>;
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
+  handleArchiveChatSession: (sessionId: string) => Promise<void>;
+  handleDeleteChatSession: (sessionId: string) => Promise<void>;
+  handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
   handleSelectProjectSession: (projectId: string, sessionId: string) => Promise<void>;
 
   filteredGroupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
@@ -288,6 +292,9 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'filteredConversations'
   | 'activeConvId'
   | 'handleSelectChatSession'
+  | 'handleArchiveChatSession'
+  | 'handleDeleteChatSession'
+  | 'handleMoveChatSessionToProject'
   | 'runtimeProjects'
   | 'projectSearch'
   | 'setProjectSearch'
@@ -305,6 +312,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveContactId'
   | 'displayedAgents'
   | 'activeBridgeHost'
+  | 'localProfileAvatarSeed'
   | 'refreshDesktopBridge'
   | 'handleCopyBridgeText'
   | 'handleCreateBridgeDraft'
@@ -343,6 +351,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setIsAgentOverlayOpen'
   | 'desktopBridgeState'
   | 'activeBridgeHost'
+  | 'localProfileAvatarSeed'
   | 'activeBridgePeople'
   | 'activeBridgeAgents'
   | 'bridgeSettingsDraft'

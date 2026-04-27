@@ -122,6 +122,20 @@ pub fn set_session_name(conn: &Connection, session_id: &str, name: Option<&str>)
     writes::set_session_name(conn, session_id, name)
 }
 
+pub fn update_session_scope(
+    conn: &Connection,
+    session_id: &str,
+    session_scope: &str,
+    cwd: &str,
+    project_root: Option<&str>,
+) -> Result<()> {
+    writes::update_session_scope(conn, session_id, session_scope, cwd, project_root)
+}
+
+pub fn delete_session(conn: &Connection, session_id: &str) -> Result<()> {
+    writes::delete_session(conn, session_id)
+}
+
 pub fn parse_entry(row: &EntryRow) -> Result<kordi_core::types::SessionEntry> {
     queries::parse_entry(row)
 }

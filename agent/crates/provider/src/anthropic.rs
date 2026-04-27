@@ -10,8 +10,8 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use kordi_core::types::CacheMetricsSource;
 use events::process_sse_event;
+use kordi_core::types::CacheMetricsSource;
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {

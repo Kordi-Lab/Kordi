@@ -1,10 +1,10 @@
 use super::{build_tui_transcript, truncate_preview_text};
+use chrono::Utc;
 use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, ContentBlock, Cost, EntryBase, EntryId,
     SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
 };
 use kordi_session::store;
-use chrono::Utc;
 
 #[test]
 fn truncate_preview_text_handles_utf8_safely() {

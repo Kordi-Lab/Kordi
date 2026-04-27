@@ -2,39 +2,58 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use uuid::Uuid;
 
+mod bridge_identities;
+mod bridge_routing;
+mod bridge_sync;
 mod commands;
 mod core;
+mod desktop_sync;
 mod message_reconcile;
 mod models;
+mod parent_sessions;
 mod presence;
+mod prompt_context;
+mod sanitization;
 mod schema;
 #[cfg(test)]
 mod tests;
 
 pub use self::models::*;
+pub(crate) use self::prompt_context::{
+    bridge_agent_parent_session_prompt, local_agent_session_prompt_context,
+};
+pub(crate) use self::sanitization::sanitize_shared_agent_response_text;
+pub(crate) use commands::{archive_session, delete_session, session_exists};
 
+#[cfg(test)]
+use self::bridge_identities::{
+    bridge_human_display_name, bridge_human_identity_for_node,
+    cleanup_bridge_fallback_identity_for_session, cleanup_unmentioned_agent_participants,
+};
+#[cfg(test)]
+use self::bridge_routing::{
+    bridge_conversation_has_unrouted_direct_messages, message_scoped_outreach_groups,
+};
+pub(crate) use self::bridge_sync::{sync_bridge_state_identities, sync_bridge_state_sessions};
+pub(crate) use self::core::canonical_bridge_session_id;
 use self::core::{
     canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
+};
+pub(crate) use self::desktop_sync::sync_desktop_chat_state;
+#[cfg(test)]
+use self::desktop_sync::{
+    explicit_desktop_project_membership, should_sync_desktop_chat_detail,
+    should_sync_desktop_chat_summary, should_update_desktop_session_shell,
+};
+#[cfg(test)]
+use self::parent_sessions::{
+    store_outreach_context_snapshot, sync_parent_session_snapshot_messages,
 };
 use self::presence::update_presence_in_db;
 use self::schema::{ensure_local_profile, initialize_schema};
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 1;
-
-pub(crate) fn canonical_bridge_session_id(conversation_id: &str) -> String {
-    format!("session:bridge:{}", conversation_id.trim())
-}
-
-#[cfg(test)]
-fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
-    let normalized = project_root.trim();
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(format!("project:{normalized}"))
-    }
-}
 
 fn stable_session_id(request: &OpenCanonicalSessionRequest) -> String {
     let seed = [
@@ -61,6 +80,35 @@ fn identity_display_name(conn: &Connection, identity_id: &str) -> Result<Option<
         "SELECT display_name FROM identities WHERE id = ?1",
         params![identity_id],
         |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn shared_agent_display_name(
+    conn: &Connection,
+    identity_id: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT agent.display_name, owner.display_name
+         FROM identities agent
+         LEFT JOIN identities owner ON owner.id = agent.owner_identity_id
+         WHERE agent.id = ?1 AND agent.kind = 'agent'",
+        params![identity_id],
+        |row| {
+            let agent_name: String = row.get(0)?;
+            let owner_name: Option<String> = row.get(1)?;
+            Ok(owner_name
+                .map(|owner| {
+                    let prefix = format!("{}'s ", owner);
+                    if agent_name.starts_with(&prefix) {
+                        agent_name.clone()
+                    } else {
+                        format!("{}{}", prefix, agent_name)
+                    }
+                })
+                .unwrap_or(agent_name))
+        },
     )
     .optional()
     .map_err(|err| err.to_string())
@@ -446,6 +494,93 @@ fn upsert_participant(
     Ok(())
 }
 
+fn session_has_participant(
+    conn: &Connection,
+    session_id: &str,
+    identity_id: &str,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM session_participants
+            WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'
+         )",
+        params![session_id, identity_id],
+        |row| row.get::<_, bool>(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
+fn similar_agent_message_exists(
+    conn: &Connection,
+    session_id: &str,
+    content_text: &str,
+    source_transport: &str,
+    created_at_ms: i64,
+    match_window_ms: i64,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM session_messages
+            WHERE session_id = ?1
+              AND message_kind = 'agent-turn'
+              AND sender_role IN ('owned-agent', 'external-agent')
+              AND content_text = ?2
+              AND source_transport = ?3
+              AND ABS(created_at_ms - ?4) <= ?5
+         )",
+        params![
+            session_id,
+            content_text,
+            source_transport,
+            created_at_ms,
+            match_window_ms
+        ],
+        |row| row.get::<_, bool>(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
+fn existing_delegation_join_message_id(
+    conn: &Connection,
+    session_id: &str,
+    target_identity_id: &str,
+    target_kind: &str,
+    target_display_name: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT id
+         FROM session_messages
+         WHERE session_id = ?1
+           AND message_kind = 'status'
+           AND json_extract(content_json, '$.kind') = 'delegation-join-event'
+           AND json_extract(content_json, '$.targetKind') = ?3
+           AND (
+             json_extract(content_json, '$.targetIdentityId') = ?2
+             OR json_extract(content_json, '$.targetDisplayName') = ?4
+           )
+         ORDER BY created_at_ms ASC, sequence_num ASC
+         LIMIT 1",
+        params![
+            session_id,
+            target_identity_id,
+            target_kind,
+            target_display_name
+        ],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn session_message_count(conn: &Connection, session_id: &str) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+        params![session_id],
+        |row| row.get(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
 fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession>, String> {
     conn.query_row(
         "SELECT id, kind, title, status, created_by_identity_id, primary_identity_id, project_id,
@@ -540,7 +675,10 @@ fn append_message_in_db(
     )
     .map_err(|err| err.to_string())?;
     conn.execute(
-        "UPDATE sessions SET updated_at_ms = ?1, last_message_at_ms = ?2 WHERE id = ?3",
+        "UPDATE sessions
+         SET updated_at_ms = ?1,
+             last_message_at_ms = MAX(COALESCE(last_message_at_ms, 0), ?2)
+         WHERE id = ?3",
         params![now, created_at_ms, request.session_id],
     )
     .map_err(|err| err.to_string())?;
@@ -608,6 +746,25 @@ fn create_delegated_exchange_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("delegation:{}", Uuid::new_v4().simple()));
+    let session_id = request.session_id.clone();
+    let target_identity_id = request.target_identity_id.clone();
+    let request_message_id = clean_optional(request.request_message_id.clone());
+    let bridge_request_id = clean_optional(request.bridge_request_id.clone());
+    if bridge_request_id.is_some() {
+        if let Some(request_message_id) = request_message_id.as_deref() {
+            conn.execute(
+                "DELETE FROM delegated_exchanges
+                 WHERE session_id = ?1
+                   AND target_identity_id = ?2
+                   AND request_message_id = ?3
+                   AND bridge_request_id IS NULL
+                   AND id <> ?4
+                   AND status IN ('pending', 'sending', 'processing')",
+                params![session_id, target_identity_id, request_message_id, id],
+            )
+            .map_err(|err| err.to_string())?;
+        }
+    }
     let now = now_ms();
     conn.execute(
         "INSERT INTO delegated_exchanges(
@@ -622,16 +779,16 @@ fn create_delegated_exchange_in_db(
              updated_at_ms = excluded.updated_at_ms",
         params![
             id,
-            request.session_id,
+            session_id,
             request.initiator_identity_id,
-            request.target_identity_id,
+            target_identity_id,
             clean_optional(request.trigger_message_id),
-            clean_optional(request.request_message_id),
+            request_message_id,
             clean_optional(request.response_message_id),
             validate_status(request.transport, "bridge"),
             clean_optional(request.bridge_host_id),
             clean_optional(request.bridge_conversation_id),
-            clean_optional(request.bridge_request_id),
+            bridge_request_id,
             validate_status(request.context_policy, "recent-window"),
             validate_status(request.status, "pending"),
             clean_optional(request.error),
@@ -688,6 +845,124 @@ fn runtime_is_agent_like(runtime: &str) -> bool {
         .any(|token| normalized.contains(token))
 }
 
+fn reassign_stale_local_human_identities(
+    conn: &Connection,
+    active_human_identity_id: &str,
+) -> Result<(), String> {
+    let profile = ensure_local_profile(conn)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM identities
+             WHERE kind = 'human'
+               AND id <> ?1
+               AND (
+                    id = ?2
+                    OR (source = 'local' AND json_extract(metadata_json, '$.profileId') = ?3)
+               )",
+        )
+        .map_err(|err| err.to_string())?;
+    let stale_ids = stmt
+        .query_map(
+            params![
+                active_human_identity_id,
+                format!("human:{}", profile.id),
+                profile.id
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    for stale_id in stale_ids {
+        let mut participant_stmt = conn
+            .prepare("SELECT session_id, role FROM session_participants WHERE identity_id = ?1")
+            .map_err(|err| err.to_string())?;
+        let session_roles = participant_stmt
+            .query_map(params![stale_id.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|err| err.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+
+        for (session_id, stale_role) in session_roles {
+            let active_exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+                    params![session_id.as_str(), active_human_identity_id],
+                    |row| row.get(0),
+                )
+                .map_err(|err| err.to_string())?;
+            if active_exists > 0 {
+                if stale_role == "self" {
+                    conn.execute(
+                        "UPDATE session_participants SET role = 'self' WHERE session_id = ?1 AND identity_id = ?2",
+                        params![session_id.as_str(), active_human_identity_id],
+                    )
+                    .map_err(|err| err.to_string())?;
+                }
+                conn.execute(
+                    "DELETE FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+                    params![session_id.as_str(), stale_id.as_str()],
+                )
+                .map_err(|err| err.to_string())?;
+            } else {
+                conn.execute(
+                    "UPDATE session_participants SET identity_id = ?1 WHERE session_id = ?2 AND identity_id = ?3",
+                    params![active_human_identity_id, session_id.as_str(), stale_id.as_str()],
+                )
+                .map_err(|err| err.to_string())?;
+            }
+        }
+
+        conn.execute(
+            "UPDATE sessions SET created_by_identity_id = ?1 WHERE created_by_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE sessions SET primary_identity_id = ?1 WHERE primary_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE sessions SET relationship_identity_id = ?1 WHERE relationship_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE identities SET owner_identity_id = ?1 WHERE owner_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE session_messages SET sender_identity_id = ?1 WHERE sender_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE delegated_exchanges SET initiator_identity_id = ?1 WHERE initiator_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE delegated_exchanges SET target_identity_id = ?1 WHERE target_identity_id = ?2",
+            params![active_human_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "DELETE FROM presence WHERE identity_id = ?1",
+            params![stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute("DELETE FROM identities WHERE id = ?1", params![stale_id])
+            .map_err(|err| err.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn update_local_profile_identities(
     conn: &Connection,
     human_identity_id: Option<&str>,
@@ -711,189 +986,6 @@ fn update_local_profile_identities(
         ],
     )
     .map_err(|err| err.to_string())?;
-    Ok(())
-}
-
-pub(crate) fn sync_bridge_state_identities(
-    state: &crate::bridge::DesktopBridgeState,
-) -> Result<(), String> {
-    let conn = open_db()?;
-
-    for host in &state.hosts {
-        let host_human = upsert_identity_in_db(
-            &conn,
-            UpsertCanonicalIdentityRequest {
-                id: None,
-                kind: "human".to_string(),
-                display_name: host.owner_name.clone(),
-                owner_identity_id: None,
-                source: Some("bridge".to_string()),
-                source_host_id: Some(host.id.clone()),
-                bridge_node_id: host.node_id.clone(),
-                human_id: Some(host.human_id.clone()),
-                agent_id: None,
-                avatar_key: Some(host.human_id.clone()),
-                profile_image_url: None,
-                metadata: None,
-            },
-        )?;
-        update_presence_in_db(
-            &conn,
-            UpdateCanonicalPresenceRequest {
-                identity_id: host_human.id.clone(),
-                status: if host.connected { "online" } else { "offline" }.to_string(),
-                session_id: None,
-                detail: Some(host.server_url.clone()),
-                expires_at_ms: None,
-            },
-        )?;
-
-        let mut active_agent_identity_id = None;
-        for agent in &host.agents {
-            let agent_identity = upsert_identity_in_db(
-                &conn,
-                UpsertCanonicalIdentityRequest {
-                    id: None,
-                    kind: "agent".to_string(),
-                    display_name: agent.label.clone(),
-                    owner_identity_id: Some(host_human.id.clone()),
-                    source: Some("bridge".to_string()),
-                    source_host_id: Some(host.id.clone()),
-                    bridge_node_id: agent.node_id.clone(),
-                    human_id: Some(host.human_id.clone()),
-                    agent_id: Some(agent.id.clone()),
-                    avatar_key: Some(agent.id.clone()),
-                    profile_image_url: None,
-                    metadata: Some(serde_json::json!({
-                        "runtime": agent.runtime,
-                        "isDefault": agent.is_default,
-                        "isActive": agent.is_active,
-                        "registered": agent.registered,
-                    })),
-                },
-            )?;
-            update_presence_in_db(
-                &conn,
-                UpdateCanonicalPresenceRequest {
-                    identity_id: agent_identity.id.clone(),
-                    status: if host.connected {
-                        "available"
-                    } else {
-                        "offline"
-                    }
-                    .to_string(),
-                    session_id: None,
-                    detail: Some(agent.runtime.clone()),
-                    expires_at_ms: None,
-                },
-            )?;
-            if agent.is_active || host.active_agent_id.as_deref() == Some(agent.id.as_str()) {
-                active_agent_identity_id = Some(agent_identity.id.clone());
-            }
-        }
-
-        if state.active_host_id.as_deref() == Some(host.id.as_str()) {
-            update_local_profile_identities(
-                &conn,
-                Some(host_human.id.as_str()),
-                active_agent_identity_id.as_deref(),
-                Some(host.owner_name.as_str()),
-            )?;
-        }
-
-        for peer in &host.visible_peers {
-            let peer_human_identity_id =
-                match (peer.human_id.as_deref(), peer.owner_name.as_deref()) {
-                    (Some(human_id), Some(owner_name))
-                        if !human_id.trim().is_empty() && !owner_name.trim().is_empty() =>
-                    {
-                        Some(
-                            upsert_identity_in_db(
-                                &conn,
-                                UpsertCanonicalIdentityRequest {
-                                    id: None,
-                                    kind: "human".to_string(),
-                                    display_name: owner_name.to_string(),
-                                    owner_identity_id: None,
-                                    source: Some("bridge".to_string()),
-                                    source_host_id: Some(host.id.clone()),
-                                    bridge_node_id: Some(peer.node_id.clone()),
-                                    human_id: Some(human_id.to_string()),
-                                    agent_id: None,
-                                    avatar_key: Some(human_id.to_string()),
-                                    profile_image_url: None,
-                                    metadata: Some(serde_json::json!({
-                                        "discoveryMode": peer.discovery_mode,
-                                        "sharedProjects": peer.shared_projects,
-                                    })),
-                                },
-                            )?
-                            .id,
-                        )
-                    }
-                    _ => None,
-                };
-
-            if let Some(peer_human_identity_id) = peer_human_identity_id.as_deref() {
-                update_presence_in_db(
-                    &conn,
-                    UpdateCanonicalPresenceRequest {
-                        identity_id: peer_human_identity_id.to_string(),
-                        status: if host.connected { "online" } else { "offline" }.to_string(),
-                        session_id: None,
-                        detail: peer.discovery_mode.clone(),
-                        expires_at_ms: None,
-                    },
-                )?;
-            }
-
-            if peer.agent_id.is_some() || runtime_is_agent_like(&peer.runtime) {
-                let display_name = peer
-                    .display_name
-                    .clone()
-                    .or_else(|| peer.owner_name.clone())
-                    .unwrap_or_else(|| peer.node_id.clone());
-                let peer_agent = upsert_identity_in_db(
-                    &conn,
-                    UpsertCanonicalIdentityRequest {
-                        id: None,
-                        kind: "agent".to_string(),
-                        display_name,
-                        owner_identity_id: peer_human_identity_id,
-                        source: Some("bridge".to_string()),
-                        source_host_id: Some(host.id.clone()),
-                        bridge_node_id: Some(peer.node_id.clone()),
-                        human_id: peer.human_id.clone(),
-                        agent_id: peer.agent_id.clone(),
-                        avatar_key: peer.agent_id.clone().or_else(|| Some(peer.node_id.clone())),
-                        profile_image_url: None,
-                        metadata: Some(serde_json::json!({
-                            "runtime": peer.runtime,
-                            "isDefaultAgent": peer.is_default_agent,
-                            "discoveryMode": peer.discovery_mode,
-                            "sharedProjects": peer.shared_projects,
-                        })),
-                    },
-                )?;
-                update_presence_in_db(
-                    &conn,
-                    UpdateCanonicalPresenceRequest {
-                        identity_id: peer_agent.id,
-                        status: if host.connected {
-                            "available"
-                        } else {
-                            "offline"
-                        }
-                        .to_string(),
-                        session_id: None,
-                        detail: Some(peer.runtime.clone()),
-                        expires_at_ms: None,
-                    },
-                )?;
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -932,6 +1024,107 @@ fn local_profile_human_identity_id(
     Ok(identity.id)
 }
 
+fn local_delegate_agent_name() -> &'static str {
+    "Kordi"
+}
+
+fn local_agent_external_id(profile_id: &str, workspace_root: &str) -> String {
+    format!(
+        "local:{}",
+        hash_hex(&format!("{profile_id}|{workspace_root}"), 16)
+    )
+}
+
+fn reassign_stale_local_agent_identities(
+    conn: &Connection,
+    owner_identity_id: &str,
+    workspace_root: &str,
+    active_agent_identity_id: &str,
+) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM identities
+             WHERE kind = 'agent'
+               AND source = 'local'
+               AND owner_identity_id = ?1
+               AND id <> ?2
+               AND json_extract(metadata_json, '$.workspaceRoot') = ?3",
+        )
+        .map_err(|err| err.to_string())?;
+    let stale_ids = stmt
+        .query_map(
+            params![owner_identity_id, active_agent_identity_id, workspace_root],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    for stale_id in stale_ids {
+        let mut participant_stmt = conn
+            .prepare("SELECT session_id FROM session_participants WHERE identity_id = ?1")
+            .map_err(|err| err.to_string())?;
+        let session_ids = participant_stmt
+            .query_map(params![stale_id.as_str()], |row| row.get::<_, String>(0))
+            .map_err(|err| err.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+
+        for session_id in session_ids {
+            let active_exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+                    params![session_id.as_str(), active_agent_identity_id],
+                    |row| row.get(0),
+                )
+                .map_err(|err| err.to_string())?;
+            if active_exists > 0 {
+                conn.execute(
+                    "DELETE FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+                    params![session_id.as_str(), stale_id.as_str()],
+                )
+                .map_err(|err| err.to_string())?;
+            } else {
+                conn.execute(
+                    "UPDATE session_participants SET identity_id = ?1 WHERE session_id = ?2 AND identity_id = ?3",
+                    params![active_agent_identity_id, session_id.as_str(), stale_id.as_str()],
+                )
+                .map_err(|err| err.to_string())?;
+            }
+        }
+
+        conn.execute(
+            "UPDATE sessions SET primary_identity_id = ?1 WHERE primary_identity_id = ?2",
+            params![active_agent_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE session_messages SET sender_identity_id = ?1 WHERE sender_identity_id = ?2",
+            params![active_agent_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE context_snapshots SET agent_identity_id = ?1 WHERE agent_identity_id = ?2",
+            params![active_agent_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE delegated_exchanges SET initiator_identity_id = ?1 WHERE initiator_identity_id = ?2",
+            params![active_agent_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute(
+            "UPDATE delegated_exchanges SET target_identity_id = ?1 WHERE target_identity_id = ?2",
+            params![active_agent_identity_id, stale_id.as_str()],
+        )
+        .map_err(|err| err.to_string())?;
+        conn.execute("DELETE FROM identities WHERE id = ?1", params![stale_id])
+            .map_err(|err| err.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn local_agent_identity_id(
     conn: &Connection,
     human_identity_id: &str,
@@ -939,1039 +1132,36 @@ fn local_agent_identity_id(
     workspace_root: &str,
 ) -> Result<String, String> {
     let profile = ensure_local_profile(conn)?;
-    let label = agent_label.trim();
-    let display_name = if label.is_empty() { "Kordi" } else { label };
-    let id = format!(
-        "agent:local:{}",
-        hash_hex(
-            &format!("{}|{}|{}", profile.id, display_name, workspace_root),
-            12
-        )
-    );
+    let runtime_label = agent_label.trim();
+    let runtime_label_metadata = (!runtime_label.is_empty()).then(|| runtime_label.to_string());
+    let delegate_agent_name = local_delegate_agent_name();
+    let agent_id = local_agent_external_id(&profile.id, workspace_root);
     let identity = upsert_identity_in_db(
         conn,
         UpsertCanonicalIdentityRequest {
-            id: Some(id),
+            id: Some(format!("agent:{agent_id}")),
             kind: "agent".to_string(),
-            display_name: display_name.to_string(),
+            display_name: delegate_agent_name.to_string(),
             owner_identity_id: Some(human_identity_id.to_string()),
             source: Some("local".to_string()),
             source_host_id: None,
             bridge_node_id: None,
             human_id: None,
-            agent_id: None,
-            avatar_key: Some(format!("{}:{}", profile.id, display_name)),
+            agent_id: Some(agent_id.clone()),
+            avatar_key: Some(agent_id.clone()),
             profile_image_url: None,
             metadata: Some(serde_json::json!({
                 "profileId": profile.id,
                 "workspaceRoot": workspace_root,
+                "delegateAgentName": delegate_agent_name,
+                "runtimeLabel": runtime_label_metadata,
+                "ownerIdentityId": human_identity_id,
             })),
         },
     )?;
+    reassign_stale_local_agent_identities(conn, human_identity_id, workspace_root, &identity.id)?;
     update_local_profile_identities(conn, None, Some(identity.id.as_str()), None)?;
     Ok(identity.id)
-}
-
-fn canonical_desktop_message_source_event_id(
-    session_id: &str,
-    index: usize,
-    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
-) -> String {
-    format!(
-        "desktop-chat:{}:{}:{}:{}:{}",
-        session_id,
-        index,
-        message.timestamp_ms,
-        message.role,
-        hash_hex(&message.text, 8)
-    )
-}
-
-fn sync_desktop_chat_message(
-    conn: &Connection,
-    session_id: &str,
-    human_identity_id: &str,
-    agent_identity_id: &str,
-    index: usize,
-    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
-) -> Result<(), String> {
-    let normalized_role = message.role.trim().to_lowercase();
-    let is_user = normalized_role == "user";
-    let is_system = normalized_role == "system";
-    let is_agent = !is_user && !is_system;
-    let sender_identity_id = if is_user {
-        human_identity_id
-    } else {
-        agent_identity_id
-    };
-    let sender_role = if is_user {
-        "user"
-    } else if is_system {
-        "system"
-    } else {
-        "owned-agent"
-    };
-    let message_kind = if is_system {
-        "system"
-    } else if is_agent || message.thinking_text.is_some() || !message.tools.is_empty() {
-        "agent-turn"
-    } else {
-        "text"
-    };
-
-    let request = AppendCanonicalMessageRequest {
-        id: None,
-        session_id: session_id.to_string(),
-        sender_identity_id: sender_identity_id.to_string(),
-        sender_role: sender_role.to_string(),
-        message_kind: message_kind.to_string(),
-        content_text: message.text.clone(),
-        content: Some(serde_json::json!({
-            "role": message.role,
-            "sender": message.sender,
-            "detail": message.detail,
-            "timeLabel": message.time_label,
-            "timestampMs": message.timestamp_ms,
-            "attachments": message.attachments,
-            "thinkingText": message.thinking_text,
-            "tools": message.tools,
-        })),
-        created_at_ms: Some(message.timestamp_ms),
-        parent_message_id: None,
-        delegated_exchange_id: None,
-        status: Some(if is_agent { "complete" } else { "sent" }.to_string()),
-        source_transport: Some("desktop-chat".to_string()),
-        source_event_id: Some(canonical_desktop_message_source_event_id(
-            session_id, index, message,
-        )),
-    };
-    if is_user {
-        message_reconcile::append_or_reconcile_message_from_sync(
-            conn,
-            request,
-            "desktop-chat-ui",
-            5_000,
-        )?;
-    } else {
-        append_message_in_db(conn, request)?;
-    };
-    Ok(())
-}
-
-fn should_sync_desktop_chat_summary(
-    summary: &kordi_cli::desktop_runtime::DesktopChatSessionSummary,
-) -> bool {
-    !(summary.draft && summary.message_count == 0)
-}
-
-fn should_sync_desktop_chat_detail(
-    detail: &kordi_cli::desktop_runtime::DesktopChatSessionDetail,
-) -> bool {
-    !(detail.draft && detail.message_count == 0 && detail.messages.is_empty())
-}
-
-fn explicit_desktop_project_membership(
-    state: &crate::chat::DesktopChatState,
-    session_id: &str,
-) -> Option<(String, String, String)> {
-    state.projects.iter().find_map(|project| {
-        project
-            .sessions
-            .iter()
-            .any(|session| session.id == session_id)
-            .then(|| (project.id.clone(), project.name.clone(), project.root.clone()))
-    })
-}
-
-pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
-    let conn = open_db()?;
-    let human_identity_id = local_profile_human_identity_id(&conn, "You")?;
-    let agent_identity_id = local_agent_identity_id(
-        &conn,
-        &human_identity_id,
-        &state.local_agent.label,
-        &state.local_agent.workspace_root,
-    )?;
-
-    for summary in state
-        .sessions
-        .iter()
-        .filter(|summary| should_sync_desktop_chat_summary(summary))
-    {
-        open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some(summary.id.clone()),
-                kind: "self-agent".to_string(),
-                title: Some(summary.title.clone()),
-                status: Some(if summary.draft { "draft" } else { "active" }.to_string()),
-                created_by_identity_id: human_identity_id.clone(),
-                primary_identity_id: Some(agent_identity_id.clone()),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: None,
-                participant_identity_ids: vec![agent_identity_id.clone()],
-                metadata: Some(serde_json::json!({
-                    "source": "desktop-chat-summary",
-                    "subtitle": summary.subtitle,
-                    "updatedAtLabel": summary.updated_at_label,
-                    "messageCount": summary.message_count,
-                })),
-            },
-        )?;
-    }
-
-    for project in &state.projects {
-        for summary in project
-            .sessions
-            .iter()
-            .filter(|summary| should_sync_desktop_chat_summary(summary))
-        {
-            open_or_create_session_in_db(
-                &conn,
-                OpenCanonicalSessionRequest {
-                    id: Some(summary.id.clone()),
-                    kind: "project".to_string(),
-                    title: Some(summary.title.clone()),
-                    status: Some(if summary.draft { "draft" } else { "active" }.to_string()),
-                    created_by_identity_id: human_identity_id.clone(),
-                    primary_identity_id: Some(agent_identity_id.clone()),
-                    project_id: Some(project.id.clone()),
-                    project_name: Some(project.name.clone()),
-                    relationship_identity_id: None,
-                    participant_identity_ids: vec![agent_identity_id.clone()],
-                    metadata: Some(serde_json::json!({
-                        "source": "desktop-project-summary",
-                        "projectRoot": project.root,
-                        "subtitle": summary.subtitle,
-                        "updatedAtLabel": summary.updated_at_label,
-                        "messageCount": summary.message_count,
-                    })),
-                },
-            )?;
-        }
-    }
-
-    let active = &state.active_session;
-    if should_sync_desktop_chat_detail(active) {
-        let explicit_project = explicit_desktop_project_membership(state, &active.id);
-        let (project_id, project_name, project_root) = explicit_project
-            .as_ref()
-            .map(|(project_id, project_name, project_root)| {
-                (
-                    Some(project_id.clone()),
-                    Some(project_name.clone()),
-                    Some(project_root.clone()),
-                )
-            })
-            .unwrap_or((None, None, None));
-        let workspace_root = active.project.as_ref().map(|project| project.root.clone());
-        open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some(active.id.clone()),
-                kind: if explicit_project.is_some() {
-                    "project".to_string()
-                } else {
-                    "self-agent".to_string()
-                },
-                title: Some(active.title.clone()),
-                status: Some(if active.draft { "draft" } else { "active" }.to_string()),
-                created_by_identity_id: human_identity_id.clone(),
-                primary_identity_id: Some(agent_identity_id.clone()),
-                project_id,
-                project_name,
-                relationship_identity_id: None,
-                participant_identity_ids: vec![agent_identity_id.clone()],
-                metadata: Some(serde_json::json!({
-                    "source": "desktop-chat-detail",
-                    "provider": active.provider,
-                    "providerLabel": active.provider_label,
-                    "model": active.model,
-                    "modelLabel": active.model_label,
-                    "thinking": active.thinking,
-                    "thinkingLabel": active.thinking_label,
-                    "projectRoot": project_root,
-                    "workspaceRoot": workspace_root,
-                })),
-            },
-        )?;
-
-        for (index, message) in active.messages.iter().enumerate() {
-            sync_desktop_chat_message(
-                &conn,
-                &active.id,
-                &human_identity_id,
-                &agent_identity_id,
-                index,
-                message,
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
-fn upsert_bridge_human_identity(
-    conn: &Connection,
-    host_id: Option<&str>,
-    display_name: &str,
-    bridge_node_id: Option<String>,
-    human_id: Option<String>,
-) -> Result<CanonicalIdentity, String> {
-    let fallback_name = display_name.trim();
-    upsert_identity_in_db(
-        conn,
-        UpsertCanonicalIdentityRequest {
-            id: None,
-            kind: "human".to_string(),
-            display_name: if fallback_name.is_empty() {
-                "Person".to_string()
-            } else {
-                fallback_name.to_string()
-            },
-            owner_identity_id: None,
-            source: Some("bridge".to_string()),
-            source_host_id: host_id.map(ToString::to_string),
-            bridge_node_id,
-            human_id: human_id.clone(),
-            agent_id: None,
-            avatar_key: human_id,
-            profile_image_url: None,
-            metadata: None,
-        },
-    )
-}
-
-fn upsert_bridge_agent_identity(
-    conn: &Connection,
-    host_id: Option<&str>,
-    display_name: &str,
-    owner_identity_id: Option<String>,
-    bridge_node_id: Option<String>,
-    human_id: Option<String>,
-    agent_id: Option<String>,
-    runtime: Option<String>,
-) -> Result<CanonicalIdentity, String> {
-    let fallback_name = display_name.trim();
-    upsert_identity_in_db(
-        conn,
-        UpsertCanonicalIdentityRequest {
-            id: None,
-            kind: "agent".to_string(),
-            display_name: if fallback_name.is_empty() {
-                "Agent".to_string()
-            } else {
-                fallback_name.to_string()
-            },
-            owner_identity_id,
-            source: Some("bridge".to_string()),
-            source_host_id: host_id.map(ToString::to_string),
-            bridge_node_id: bridge_node_id.clone(),
-            human_id,
-            agent_id: agent_id.clone(),
-            avatar_key: agent_id.or(bridge_node_id),
-            profile_image_url: None,
-            metadata: Some(serde_json::json!({ "runtime": runtime })),
-        },
-    )
-}
-
-fn bridge_host_identities(
-    conn: &Connection,
-    state: &crate::bridge::DesktopBridgeState,
-    host_id: &str,
-) -> Result<(String, Option<String>), String> {
-    if let Some(host) = state.hosts.iter().find(|host| host.id == host_id) {
-        let human_identity = upsert_bridge_human_identity(
-            conn,
-            Some(&host.id),
-            &host.owner_name,
-            host.node_id.clone(),
-            Some(host.human_id.clone()),
-        )?;
-        let active_agent = host
-            .active_agent_id
-            .as_deref()
-            .and_then(|active_id| host.agents.iter().find(|agent| agent.id == active_id))
-            .or_else(|| host.agents.iter().find(|agent| agent.is_default))
-            .or_else(|| host.agents.first());
-        let agent_identity_id = active_agent
-            .map(|agent| {
-                upsert_bridge_agent_identity(
-                    conn,
-                    Some(&host.id),
-                    &agent.label,
-                    Some(human_identity.id.clone()),
-                    agent.node_id.clone(),
-                    Some(host.human_id.clone()),
-                    Some(agent.id.clone()),
-                    Some(agent.runtime.clone()),
-                )
-                .map(|identity| identity.id)
-            })
-            .transpose()?;
-        return Ok((human_identity.id, agent_identity_id));
-    }
-
-    let profile = ensure_local_profile(conn)?;
-    let human_identity_id = match profile
-        .human_identity_id
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-    {
-        Some(identity_id) => identity_id,
-        None => local_profile_human_identity_id(conn, "You")?,
-    };
-    Ok((human_identity_id, profile.active_agent_identity_id))
-}
-
-fn bridge_peer_identities(
-    conn: &Connection,
-    state: &crate::bridge::DesktopBridgeState,
-    conversation: &crate::bridge::DesktopBridgeConversation,
-) -> Result<(Option<String>, String), String> {
-    if let Some(identity) = &conversation.identity {
-        let remote_human_identity = match (
-            identity.remote_human_id.as_deref(),
-            identity.remote_human_name.as_deref(),
-        ) {
-            (Some(human_id), Some(name)) if !human_id.trim().is_empty() => Some(
-                upsert_bridge_human_identity(
-                    conn,
-                    Some(&identity.bridge_host_id),
-                    name,
-                    identity.remote_human_node_id.clone(),
-                    Some(human_id.to_string()),
-                )?
-                .id,
-            ),
-            _ => None,
-        };
-
-        if let Some(agent_id) = identity
-            .remote_agent_id
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            let display_name = identity.remote_agent_name.as_deref().unwrap_or(agent_id);
-            let agent_identity = upsert_bridge_agent_identity(
-                conn,
-                Some(&identity.bridge_host_id),
-                display_name,
-                remote_human_identity.clone(),
-                identity.remote_agent_node_id.clone(),
-                identity.remote_human_id.clone(),
-                Some(agent_id.to_string()),
-                identity.remote_agent_runtime.clone(),
-            )?;
-            return Ok((remote_human_identity, agent_identity.id));
-        }
-
-        if let Some(human_identity_id) = remote_human_identity {
-            return Ok((Some(human_identity_id.clone()), human_identity_id));
-        }
-    }
-
-    let peer = state
-        .hosts
-        .iter()
-        .find(|host| host.id == conversation.host_id)
-        .and_then(|host| {
-            host.visible_peers
-                .iter()
-                .find(|peer| peer.node_id == conversation.peer_node_id)
-        });
-    let owner_name = conversation
-        .peer_owner_name
-        .as_deref()
-        .or_else(|| peer.and_then(|peer| peer.owner_name.as_deref()))
-        .unwrap_or(&conversation.title);
-    let display_name = conversation
-        .peer_display_name
-        .as_deref()
-        .or_else(|| peer.and_then(|peer| peer.display_name.as_deref()))
-        .unwrap_or(owner_name);
-    let human_id = peer
-        .and_then(|peer| peer.human_id.clone())
-        .filter(|value| !value.trim().is_empty());
-    let agent_id = peer
-        .and_then(|peer| peer.agent_id.clone())
-        .filter(|value| !value.trim().is_empty());
-    let is_agent = runtime_is_agent_like(&conversation.peer_runtime);
-
-    let remote_human_identity =
-        if human_id.is_some() || !is_agent || conversation.peer_owner_name.is_some() {
-            Some(
-                upsert_bridge_human_identity(
-                    conn,
-                    Some(&conversation.host_id),
-                    owner_name,
-                    Some(conversation.peer_node_id.clone()),
-                    human_id.clone(),
-                )?
-                .id,
-            )
-        } else {
-            None
-        };
-
-    if is_agent {
-        let agent_identity = upsert_bridge_agent_identity(
-            conn,
-            Some(&conversation.host_id),
-            display_name,
-            remote_human_identity.clone(),
-            Some(conversation.peer_node_id.clone()),
-            human_id,
-            agent_id,
-            Some(conversation.peer_runtime.clone()),
-        )?;
-        Ok((remote_human_identity, agent_identity.id))
-    } else if let Some(human_identity_id) = remote_human_identity {
-        Ok((Some(human_identity_id.clone()), human_identity_id))
-    } else {
-        let fallback = upsert_bridge_human_identity(
-            conn,
-            Some(&conversation.host_id),
-            &conversation.title,
-            Some(conversation.peer_node_id.clone()),
-            None,
-        )?;
-        Ok((Some(fallback.id.clone()), fallback.id))
-    }
-}
-
-fn bridge_message_sender_identity(
-    direction: &str,
-    peer_is_agent: bool,
-    local_human_identity_id: &str,
-    local_agent_identity_id: Option<&str>,
-    remote_target_identity_id: &str,
-) -> (String, String) {
-    match direction {
-        "outbound-response" => (
-            local_agent_identity_id
-                .unwrap_or(local_human_identity_id)
-                .to_string(),
-            "owned-agent".to_string(),
-        ),
-        "outbound" => (local_human_identity_id.to_string(), "user".to_string()),
-        "inbound" | "inbound-response" => (
-            remote_target_identity_id.to_string(),
-            if peer_is_agent {
-                "external-agent".to_string()
-            } else {
-                "person".to_string()
-            },
-        ),
-        _ => (remote_target_identity_id.to_string(), "person".to_string()),
-    }
-}
-
-fn canonical_bridge_message_status(delivery_state: Option<&str>) -> String {
-    match delivery_state.unwrap_or("sent").trim() {
-        "responded" => "complete".to_string(),
-        "processing" => "processing".to_string(),
-        "processing_failed" => "failed".to_string(),
-        "read" => "read".to_string(),
-        "delivered" => "delivered".to_string(),
-        "sent" => "sent".to_string(),
-        _ => "sent".to_string(),
-    }
-}
-
-pub(crate) fn sync_bridge_state_sessions(
-    state: &crate::bridge::DesktopBridgeState,
-) -> Result<(), String> {
-    let conn = open_db()?;
-
-    for conversation in &state.conversations {
-        let (local_human_identity_id, local_agent_identity_id) =
-            bridge_host_identities(&conn, state, &conversation.host_id)?;
-        let (relationship_identity_id, remote_target_identity_id) =
-            bridge_peer_identities(&conn, state, conversation)?;
-        let peer_is_agent = runtime_is_agent_like(&conversation.peer_runtime);
-        let peer_is_default_agent = state
-            .hosts
-            .iter()
-            .find(|host| host.id == conversation.host_id)
-            .and_then(|host| {
-                host.visible_peers
-                    .iter()
-                    .find(|peer| peer.node_id == conversation.peer_node_id)
-            })
-            .is_some_and(|peer| peer.is_default_agent);
-
-        if sync_bridge_outreach_into_parent_session(
-            &conn,
-            conversation,
-            &local_human_identity_id,
-            local_agent_identity_id.as_deref(),
-            relationship_identity_id.as_deref(),
-            &remote_target_identity_id,
-            peer_is_agent,
-        )? {
-            continue;
-        }
-
-        let mut participants = Vec::new();
-        if let Some(agent_identity_id) = local_agent_identity_id.clone() {
-            participants.push(agent_identity_id);
-        }
-        if let Some(relationship_identity_id) = relationship_identity_id.clone() {
-            participants.push(relationship_identity_id);
-        }
-        participants.push(remote_target_identity_id.clone());
-        participants.sort();
-        participants.dedup();
-
-        let primary_identity_id = if peer_is_agent && peer_is_default_agent {
-            relationship_identity_id
-                .clone()
-                .unwrap_or_else(|| remote_target_identity_id.clone())
-        } else {
-            remote_target_identity_id.clone()
-        };
-
-        open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some(conversation.canonical_session_id.clone()),
-                kind: if peer_is_agent {
-                    "direct-agent".to_string()
-                } else {
-                    "direct-person".to_string()
-                },
-                title: None,
-                status: Some("active".to_string()),
-                created_by_identity_id: local_human_identity_id.clone(),
-                primary_identity_id: Some(primary_identity_id),
-                project_id: conversation.project_id.clone(),
-                project_name: conversation.project_name.clone(),
-                relationship_identity_id,
-                participant_identity_ids: participants,
-                metadata: Some(serde_json::json!({
-                    "source": "desktop-bridge-conversation",
-                    "bridgeConversationId": conversation.id,
-                    "bridgeHostId": conversation.host_id,
-                    "peerNodeId": conversation.peer_node_id,
-                    "peerRuntime": conversation.peer_runtime,
-                    "outreach": conversation.outreach,
-                })),
-            },
-        )?;
-
-        for message in &conversation.messages {
-            let (sender_identity_id, sender_role) = bridge_message_sender_identity(
-                &message.direction,
-                peer_is_agent,
-                &local_human_identity_id,
-                local_agent_identity_id.as_deref(),
-                &remote_target_identity_id,
-            );
-            let message_kind = if sender_role == "external-agent" || sender_role == "owned-agent" {
-                "agent-turn"
-            } else {
-                "text"
-            };
-            let request = AppendCanonicalMessageRequest {
-                id: None,
-                session_id: conversation.canonical_session_id.clone(),
-                sender_identity_id,
-                sender_role: sender_role.clone(),
-                message_kind: message_kind.to_string(),
-                content_text: message.text.clone(),
-                content: Some(serde_json::json!({
-                    "direction": message.direction,
-                    "sender": message.sender,
-                    "timeLabel": message.time_label,
-                    "timestampMs": message.timestamp_ms,
-                    "deliveryState": message.delivery_state,
-                    "bridgeConversationId": conversation.id,
-                })),
-                created_at_ms: Some(message.timestamp_ms),
-                parent_message_id: None,
-                delegated_exchange_id: None,
-                status: Some(canonical_bridge_message_status(
-                    message.delivery_state.as_deref(),
-                )),
-                source_transport: Some("desktop-bridge".to_string()),
-                source_event_id: Some(format!("desktop-bridge:{}:{}", conversation.id, message.id)),
-            };
-            if sender_role == "user" {
-                message_reconcile::append_or_reconcile_message_from_sync(
-                    &conn,
-                    request,
-                    "desktop-bridge-ui",
-                    5_000,
-                )?;
-            } else {
-                append_message_in_db(&conn, request)?;
-            };
-        }
-    }
-
-    Ok(())
-}
-
-fn outreach_status_to_exchange_status(status: &str) -> String {
-    match status.trim() {
-        "completed" | "complete" => "complete".to_string(),
-        "failed" => "failed".to_string(),
-        "cancelled" => "cancelled".to_string(),
-        "timeout" => "timeout".to_string(),
-        "awaitingReply" | "sending" | "processing" => "processing".to_string(),
-        _ => "pending".to_string(),
-    }
-}
-
-fn ensure_parent_session_participants(
-    conn: &Connection,
-    parent_session_id: &str,
-    local_human_identity_id: &str,
-    local_agent_identity_id: Option<&str>,
-    remote_target_identity_id: &str,
-    relationship_identity_id: Option<&str>,
-) -> Result<(), String> {
-    let now = now_ms();
-    if select_session(conn, parent_session_id)?.is_none() {
-        let mut participants = Vec::new();
-        if let Some(agent_identity_id) = local_agent_identity_id {
-            participants.push(agent_identity_id.to_string());
-        }
-        if let Some(relationship_identity_id) = relationship_identity_id {
-            participants.push(relationship_identity_id.to_string());
-        }
-        participants.push(remote_target_identity_id.to_string());
-        participants.sort();
-        participants.dedup();
-
-        open_or_create_session_in_db(
-            conn,
-            OpenCanonicalSessionRequest {
-                id: Some(parent_session_id.to_string()),
-                kind: "self-agent".to_string(),
-                title: Some("Session".to_string()),
-                status: Some("active".to_string()),
-                created_by_identity_id: local_human_identity_id.to_string(),
-                primary_identity_id: local_agent_identity_id.map(ToString::to_string),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: None,
-                participant_identity_ids: participants,
-                metadata: Some(serde_json::json!({
-                    "source": "bridge-outreach-parent-fallback",
-                })),
-            },
-        )?;
-        return Ok(());
-    }
-
-    if let Some(agent_identity_id) = local_agent_identity_id {
-        upsert_participant(
-            conn,
-            parent_session_id,
-            agent_identity_id,
-            "owned-agent",
-            Some(local_human_identity_id),
-            now,
-        )?;
-    }
-    if let Some(relationship_identity_id) = relationship_identity_id {
-        upsert_participant(
-            conn,
-            parent_session_id,
-            relationship_identity_id,
-            "person",
-            Some(local_human_identity_id),
-            now,
-        )?;
-    }
-    upsert_participant(
-        conn,
-        parent_session_id,
-        remote_target_identity_id,
-        "delegate",
-        Some(local_human_identity_id),
-        now,
-    )?;
-    Ok(())
-}
-
-fn sync_bridge_outreach_into_parent_session(
-    conn: &Connection,
-    conversation: &crate::bridge::DesktopBridgeConversation,
-    local_human_identity_id: &str,
-    local_agent_identity_id: Option<&str>,
-    relationship_identity_id: Option<&str>,
-    remote_target_identity_id: &str,
-    peer_is_agent: bool,
-) -> Result<bool, String> {
-    let Some(outreach) = conversation.outreach.as_ref() else {
-        return Ok(false);
-    };
-    let Some(parent_session_id) = outreach
-        .parent_session_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(false);
-    };
-
-    ensure_parent_session_participants(
-        conn,
-        parent_session_id,
-        local_human_identity_id,
-        local_agent_identity_id,
-        remote_target_identity_id,
-        relationship_identity_id,
-    )?;
-    update_presence_in_db(
-        conn,
-        UpdateCanonicalPresenceRequest {
-            identity_id: remote_target_identity_id.to_string(),
-            status: outreach_presence_status(&outreach.status, peer_is_agent),
-            session_id: Some(parent_session_id.to_string()),
-            detail: Some(outreach.target_display_name.clone()),
-            expires_at_ms: None,
-        },
-    )?;
-
-    let delegation_id = format!("delegation:bridge:{}", conversation.id);
-    let initiator_identity_id = local_agent_identity_id.unwrap_or(local_human_identity_id);
-    let initiator_name =
-        identity_display_name(conn, initiator_identity_id)?.unwrap_or_else(|| "Kordi".to_string());
-    let context_policy = outreach
-        .context_policy
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "recent-window".to_string());
-    let base_join_text = if peer_is_agent {
-        format!(
-            "{} joined through {}",
-            outreach.target_display_name, initiator_name
-        )
-    } else {
-        format!(
-            "{} was involved by {}",
-            outreach.target_display_name, initiator_name
-        )
-    };
-    let request_preview = inline_event_preview(&outreach.request_text);
-    let join_text = if request_preview.is_empty() {
-        base_join_text
-    } else {
-        format!("{base_join_text} — “{request_preview}”")
-    };
-    store_outreach_context_snapshot(
-        conn,
-        parent_session_id,
-        initiator_identity_id,
-        remote_target_identity_id,
-        &delegation_id,
-        outreach,
-        &context_policy,
-    )?;
-    let join_message = append_message_in_db(
-        conn,
-        AppendCanonicalMessageRequest {
-            id: None,
-            session_id: parent_session_id.to_string(),
-            sender_identity_id: initiator_identity_id.to_string(),
-            sender_role: "system".to_string(),
-            message_kind: "status".to_string(),
-            content_text: join_text,
-            content: Some(serde_json::json!({
-                "kind": "delegation-join-event",
-                "bridgeConversationId": conversation.id,
-                "targetKind": outreach.target_kind,
-                "targetDisplayName": outreach.target_display_name,
-                "targetNodeId": outreach.target_node_id,
-                "initiatorIdentityId": initiator_identity_id,
-                "requestText": outreach.request_text,
-                "contextPolicy": context_policy.clone(),
-            })),
-            created_at_ms: Some(outreach.created_at_ms),
-            parent_message_id: outreach.parent_message_id.clone(),
-            delegated_exchange_id: Some(delegation_id.clone()),
-            status: Some("complete".to_string()),
-            source_transport: Some("desktop-bridge-outreach".to_string()),
-            source_event_id: Some(format!("desktop-bridge-outreach:{}:join", conversation.id)),
-        },
-    )?;
-
-    let mut response_message_id = None;
-    for message in &conversation.messages {
-        let is_remote_response =
-            matches!(message.direction.as_str(), "inbound" | "inbound-response");
-        if !is_remote_response {
-            continue;
-        }
-        let sender_role = if peer_is_agent {
-            "external-agent"
-        } else {
-            "person"
-        };
-        let canonical_message = append_message_in_db(
-            conn,
-            AppendCanonicalMessageRequest {
-                id: None,
-                session_id: parent_session_id.to_string(),
-                sender_identity_id: remote_target_identity_id.to_string(),
-                sender_role: sender_role.to_string(),
-                message_kind: if peer_is_agent { "agent-turn" } else { "text" }.to_string(),
-                content_text: message.text.clone(),
-                content: Some(serde_json::json!({
-                    "direction": message.direction,
-                    "sender": message.sender,
-                    "timeLabel": message.time_label,
-                    "timestampMs": message.timestamp_ms,
-                    "deliveryState": message.delivery_state,
-                    "bridgeConversationId": conversation.id,
-                    "delegatedExchangeId": delegation_id,
-                })),
-                created_at_ms: Some(message.timestamp_ms),
-                parent_message_id: Some(join_message.id.clone()),
-                delegated_exchange_id: Some(delegation_id.clone()),
-                status: Some(canonical_bridge_message_status(
-                    message.delivery_state.as_deref(),
-                )),
-                source_transport: Some("desktop-bridge-outreach".to_string()),
-                source_event_id: Some(format!(
-                    "desktop-bridge-outreach:{}:{}",
-                    conversation.id, message.id
-                )),
-            },
-        )?;
-        response_message_id = Some(canonical_message.id);
-    }
-
-    create_delegated_exchange_in_db(
-        conn,
-        CreateCanonicalDelegatedExchangeRequest {
-            id: Some(delegation_id),
-            session_id: parent_session_id.to_string(),
-            initiator_identity_id: initiator_identity_id.to_string(),
-            target_identity_id: remote_target_identity_id.to_string(),
-            trigger_message_id: outreach.parent_message_id.clone(),
-            request_message_id: Some(join_message.id),
-            response_message_id,
-            transport: Some("bridge".to_string()),
-            bridge_host_id: Some(conversation.host_id.clone()),
-            bridge_conversation_id: Some(conversation.id.clone()),
-            bridge_request_id: None,
-            context_policy: Some(context_policy),
-            status: Some(outreach_status_to_exchange_status(&outreach.status)),
-            error: outreach.error.clone(),
-        },
-    )?;
-
-    Ok(true)
-}
-
-fn store_outreach_context_snapshot(
-    conn: &Connection,
-    session_id: &str,
-    agent_identity_id: &str,
-    target_identity_id: &str,
-    delegation_id: &str,
-    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
-    context_policy: &str,
-) -> Result<(), String> {
-    let Some(context_text) = outreach
-        .context_text
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(());
-    };
-
-    let profile = ensure_local_profile(conn)?;
-    let prompt_hash = hash_hex(&outreach.request_text, 16);
-    let project_context_hash = outreach.project_id.as_ref().map(|project_id| {
-        hash_hex(
-            &format!(
-                "{}|{}",
-                project_id,
-                outreach.project_name.as_deref().unwrap_or_default()
-            ),
-            16,
-        )
-    });
-    let participant_hash = hash_hex(target_identity_id, 16);
-    let message_range_hash = hash_hex(&format!("{context_policy}|{context_text}"), 16);
-    let id = format!(
-        "context:{}",
-        hash_hex(
-            &format!(
-                "{}|{}|{}|{}",
-                profile.id, session_id, delegation_id, message_range_hash
-            ),
-            16,
-        )
-    );
-    let now = now_ms();
-    conn.execute(
-        "INSERT INTO context_snapshots(
-             id, profile_id, session_id, agent_identity_id, provider, model, prompt_hash, project_context_hash,
-             participant_hash, upto_message_id, message_range_hash, summary_text, summary_json, token_count, created_at_ms, invalidated_at_ms
-         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11, NULL, ?12, ?13, NULL)
-         ON CONFLICT(id) DO UPDATE SET
-             summary_text = excluded.summary_text,
-             token_count = excluded.token_count,
-             invalidated_at_ms = NULL",
-        params![
-            id,
-            profile.id,
-            session_id,
-            agent_identity_id,
-            "desktop-bridge",
-            outreach
-                .target_runtime
-                .as_deref()
-                .unwrap_or(outreach.target_kind.as_str()),
-            prompt_hash,
-            project_context_hash,
-            participant_hash,
-            message_range_hash,
-            context_text,
-            ((context_text.len() as i64) / 4).max(1),
-            now,
-        ],
-    )
-    .map_err(|err| err.to_string())?;
-    Ok(())
-}
-
-fn inline_event_preview(text: &str) -> String {
-    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.chars().count() <= 140 {
-        return normalized;
-    }
-    normalized.chars().take(137).collect::<String>() + "…"
-}
-
-fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {
-    match status {
-        "sending" | "awaitingReply" => "replying".to_string(),
-        "failed" => "error".to_string(),
-        _ if peer_is_agent => "available".to_string(),
-        _ => "online".to_string(),
-    }
-}
-
-fn query_all<T>(
-    conn: &Connection,
-    sql: &str,
-    map: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
-) -> Result<Vec<T>, String> {
-    let mut stmt = conn.prepare(sql).map_err(|err| err.to_string())?;
-    let rows = stmt.query_map([], map).map_err(|err| err.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -1998,6 +1188,13 @@ pub fn desktop_canonical_append_message(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionState, String> {
     commands::desktop_canonical_append_message(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_append_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<String, String> {
+    commands::desktop_canonical_append_message_fast(request)
 }
 
 #[tauri::command]

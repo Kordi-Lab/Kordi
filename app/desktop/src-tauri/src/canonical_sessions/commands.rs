@@ -2,12 +2,23 @@ use rusqlite::Connection;
 
 use super::{
     append_message_in_db, create_delegated_exchange_in_db, json_from_db, open_db,
-    open_or_create_session_in_db, query_all, select_delegated_exchange, select_identity,
-    select_message, select_session, update_presence_in_db, upsert_identity_in_db,
-    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
-    CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
-    OpenCanonicalSessionRequest, UpdateCanonicalPresenceRequest, UpsertCanonicalIdentityRequest,
+    open_or_create_session_in_db, select_delegated_exchange, select_identity, select_message,
+    select_session, update_presence_in_db, upsert_identity_in_db, AppendCanonicalMessageRequest,
+    CanonicalContextSnapshot, CanonicalPresence, CanonicalSessionParticipant,
+    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, OpenCanonicalSessionRequest,
+    UpdateCanonicalPresenceRequest, UpsertCanonicalIdentityRequest,
 };
+
+fn query_all<T>(
+    conn: &Connection,
+    sql: &str,
+    map: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+) -> Result<Vec<T>, String> {
+    let mut stmt = conn.prepare(sql).map_err(|err| err.to_string())?;
+    let rows = stmt.query_map([], map).map_err(|err| err.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())
+}
 
 pub(super) fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionState, String> {
     let path = super::canonical_sessions_db_path();
@@ -145,6 +156,13 @@ pub(super) fn desktop_canonical_append_message(
     load_state_from_db(&conn)
 }
 
+pub(super) fn desktop_canonical_append_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<String, String> {
+    let conn = open_db()?;
+    append_message_in_db(&conn, request).map(|message| message.id)
+}
+
 pub(super) fn desktop_canonical_create_delegated_exchange(
     request: CreateCanonicalDelegatedExchangeRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -159,4 +177,66 @@ pub(super) fn desktop_canonical_update_presence(
     let conn = open_db()?;
     update_presence_in_db(&conn, request)?;
     load_state_from_db(&conn)
+}
+
+pub(crate) fn session_exists(session_id: &str) -> Result<bool, String> {
+    let conn = open_db()?;
+    let exists = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+            rusqlite::params![session_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())?;
+    Ok(exists != 0)
+}
+
+pub(crate) fn archive_session(session_id: &str) -> Result<(), String> {
+    let conn = open_db()?;
+    conn.execute(
+        "UPDATE sessions SET status = 'archived', updated_at_ms = ?2 WHERE id = ?1",
+        rusqlite::params![session_id, super::now_ms()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn delete_session(session_id: &str) -> Result<(), String> {
+    let conn = open_db()?;
+    conn.execute(
+        "DELETE FROM kv_cache_entries WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM context_snapshots WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM presence WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM delegated_exchanges WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM session_messages WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM session_participants WHERE session_id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM sessions WHERE id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }

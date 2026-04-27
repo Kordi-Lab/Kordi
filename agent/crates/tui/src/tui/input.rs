@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    tui::events::cleanup_managed_clipboard_temp_image,
     slash_commands::matches_shared_local_slash_submission,
+    tui::events::cleanup_managed_clipboard_temp_image,
 };
 
 use super::{

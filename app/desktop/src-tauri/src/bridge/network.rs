@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
 use base64::Engine as _;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
@@ -67,12 +71,16 @@ struct ServeContactItem {
     discovery_mode: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ServeNodeKeysResponse {
     node_id: String,
     x25519_pubkey: String,
 }
+
+const SERVE_NODE_KEY_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+static SERVE_NODE_KEY_CACHE: OnceLock<Mutex<HashMap<String, (Instant, ServeNodeKeysResponse)>>> =
+    OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -196,8 +204,28 @@ async fn fetch_serve_node_keys(
     target_node_id: &str,
     project_id: Option<&str>,
 ) -> Result<ServeNodeKeysResponse, String> {
+    let trimmed_project_id = project_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let cache_key = format!(
+        "{}|{}|{}",
+        trimmed_base_url(base_url),
+        target_node_id,
+        trimmed_project_id.as_deref().unwrap_or("")
+    );
+    let cache = SERVE_NODE_KEY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut guard) = cache.lock() {
+        if let Some((cached_at, cached)) = guard.get(&cache_key) {
+            if cached_at.elapsed() < SERVE_NODE_KEY_CACHE_TTL {
+                return Ok(cached.clone());
+            }
+        }
+        guard.remove(&cache_key);
+    }
+
     let mut url = format!("{}/v1/keys/{target_node_id}", trimmed_base_url(base_url));
-    if let Some(project_id) = project_id.filter(|value| !value.trim().is_empty()) {
+    if let Some(project_id) = trimmed_project_id.as_deref() {
         url = format!("{url}?project={project_id}");
     }
     let response = send_request(
@@ -211,8 +239,15 @@ async fn fetch_serve_node_keys(
             response.status(),
         ));
     }
-    parse_json_response::<ServeNodeKeysResponse>(response, "Unable to parse bridge recipient keys")
-        .await
+    let keys = parse_json_response::<ServeNodeKeysResponse>(
+        response,
+        "Unable to parse bridge recipient keys",
+    )
+    .await?;
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(cache_key, (Instant::now(), keys.clone()));
+    }
+    Ok(keys)
 }
 
 fn encrypt_payload_for_recipient(

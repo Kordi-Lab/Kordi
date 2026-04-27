@@ -2,8 +2,8 @@ mod preview;
 
 use std::collections::HashSet;
 
-use kordi_session::tree::TreeNode;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use kordi_session::tree::TreeNode;
 
 use crate::theme::theme;
 use crate::utils::{pad_to_width, truncate_to_width};

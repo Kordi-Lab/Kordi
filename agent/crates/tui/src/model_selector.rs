@@ -1,5 +1,5 @@
-use kordi_provider::registry::{Model, ModelRegistry};
 use crossterm::event::KeyEvent;
+use kordi_provider::registry::{Model, ModelRegistry};
 
 use crate::select_list::{SelectAction, SelectItem, SelectList};
 

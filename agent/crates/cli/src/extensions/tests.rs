@@ -843,12 +843,14 @@ async fn filtered_package_loads_only_matching_resources() {
 
     // Load with filter: only review skill, no prompts
     let settings = Settings {
-        packages: vec![PackageEntry::Filtered(kordi_core::settings::PackageFilter {
-            source: package_dir.display().to_string(),
-            extensions: None,
-            skills: Some(vec!["**/review/**".to_string()]),
-            prompts: Some(vec![]),
-        })],
+        packages: vec![PackageEntry::Filtered(
+            kordi_core::settings::PackageFilter {
+                source: package_dir.display().to_string(),
+                extensions: None,
+                skills: Some(vec!["**/review/**".to_string()]),
+                prompts: Some(vec![]),
+            },
+        )],
         ..Settings::default()
     };
     let support =

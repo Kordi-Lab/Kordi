@@ -1,7 +1,7 @@
 use super::{OpenAiProvider, default_prompt_cache_key};
+use futures::StreamExt;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_core::types::CacheMetricsSource;
-use futures::StreamExt;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use tokio::sync::mpsc;

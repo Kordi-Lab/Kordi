@@ -7,6 +7,7 @@ import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
   markDesktopBridgeConversationRead,
+  prepareDesktopChatDraftSession,
   renameDesktopChatSession,
 } from '@/lib/desktop';
 
@@ -98,6 +99,7 @@ export function useDesktopSessionController({
     setActiveConvId(LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     setComposerDrafts((current) => ({ ...current, chat: '' }));
     setChatComposerAttachments([]);
+    void prepareDesktopChatDraftSession().catch(() => {});
   }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleSelectProjectSession = useCallback(async (projectId: string, sessionId: string) => {

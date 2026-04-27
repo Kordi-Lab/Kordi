@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
+  CanonicalSessionState,
   ComposerScope,
   ComposerSelectorType,
   ConversationBridgeTarget,
@@ -41,6 +42,7 @@ export type UseComposerControllerArgs = {
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
   canonicalHumanIdentityId?: string | null;
+  setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   composerSelections: ComposerSelectionState;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;
@@ -66,8 +68,10 @@ export type UseComposerControllerArgs = {
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
+  isDesktopChatSending: boolean;
   setIsDesktopChatSending: Dispatch<SetStateAction<boolean>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<PendingUserMessage>>;
+  setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;

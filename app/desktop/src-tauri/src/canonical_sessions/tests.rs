@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::Connection;
 
 use super::*;
@@ -6,6 +8,15 @@ fn test_conn() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory db");
     schema::initialize_schema(&conn).expect("initialize schema");
     conn
+}
+
+fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
+    let normalized = project_root.trim();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(format!("project:{normalized}"))
+    }
 }
 
 #[test]
@@ -32,6 +43,245 @@ fn identity_uses_canonical_human_id_and_avatar_key() {
 
     assert_eq!(identity.id, "human:kh_alice");
     assert_eq!(identity.avatar_key, "kh_alice");
+}
+
+#[test]
+fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
+    let conn = test_conn();
+    let human_identity_id = local_profile_human_identity_id(&conn, "You").expect("human identity");
+    let workspace_root = "/tmp/kordi/workspace";
+
+    let agent_identity_id = local_agent_identity_id(
+        &conn,
+        &human_identity_id,
+        "issue-63-agent-outreach",
+        workspace_root,
+    )
+    .expect("local agent identity");
+    let same_agent_identity_id = local_agent_identity_id(
+        &conn,
+        &human_identity_id,
+        "renamed-runtime-label",
+        workspace_root,
+    )
+    .expect("same local agent identity");
+
+    assert_eq!(agent_identity_id, same_agent_identity_id);
+    let identity = select_identity(&conn, &agent_identity_id)
+        .expect("select identity")
+        .expect("identity exists");
+    assert_eq!(identity.display_name, "Kordi");
+    assert_eq!(
+        identity.owner_identity_id.as_deref(),
+        Some(human_identity_id.as_str())
+    );
+    assert!(identity
+        .agent_id
+        .as_deref()
+        .unwrap_or_default()
+        .starts_with("local:"));
+    assert_eq!(identity.avatar_key, identity.agent_id.clone().unwrap());
+    assert_eq!(
+        identity
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("delegateAgentName"))
+            .and_then(|value| value.as_str()),
+        Some("Kordi"),
+    );
+}
+
+#[test]
+fn direct_person_sessions_do_not_keep_auto_agent_participants() {
+    let conn = test_conn();
+    for (id, kind, display_name, owner) in [
+        ("human:local", "human", "Local", None),
+        ("human:remote", "human", "Remote", None),
+        ("agent:local", "agent", "Kordi", Some("human:local")),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner.map(ToString::to_string),
+                source: Some("local".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: None,
+                agent_id: (kind == "agent").then(|| "local:test-agent".to_string()),
+                avatar_key: Some(id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("identity");
+    }
+
+    for session_id in ["session:no-agent", "session:mentioned-agent"] {
+        open_or_create_session_in_db(
+            &conn,
+            OpenCanonicalSessionRequest {
+                id: Some(session_id.to_string()),
+                kind: "direct-person".to_string(),
+                title: Some("Remote".to_string()),
+                status: None,
+                created_by_identity_id: "human:local".to_string(),
+                primary_identity_id: Some("human:remote".to_string()),
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: Some("human:remote".to_string()),
+                participant_identity_ids: vec![
+                    "human:remote".to_string(),
+                    "agent:local".to_string(),
+                ],
+                metadata: None,
+            },
+        )
+        .expect("session");
+    }
+
+    create_delegated_exchange_in_db(
+        &conn,
+        CreateCanonicalDelegatedExchangeRequest {
+            id: Some("delegation:test".to_string()),
+            session_id: "session:mentioned-agent".to_string(),
+            initiator_identity_id: "human:local".to_string(),
+            target_identity_id: "agent:local".to_string(),
+            trigger_message_id: None,
+            request_message_id: None,
+            response_message_id: None,
+            transport: Some("bridge".to_string()),
+            bridge_host_id: None,
+            bridge_conversation_id: None,
+            bridge_request_id: None,
+            context_policy: None,
+            status: None,
+            error: None,
+        },
+    )
+    .expect("delegation");
+
+    cleanup_unmentioned_agent_participants(&conn, "session:no-agent").expect("cleanup no-agent");
+    cleanup_unmentioned_agent_participants(&conn, "session:mentioned-agent")
+        .expect("cleanup mentioned-agent");
+
+    let no_agent_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:no-agent' AND identity_id = 'agent:local'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("no-agent count");
+    let mentioned_agent_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:mentioned-agent' AND identity_id = 'agent:local'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("mentioned-agent count");
+
+    assert_eq!(no_agent_count, 0);
+    assert_eq!(mentioned_agent_count, 1);
+}
+
+#[test]
+fn bridge_fallback_node_identity_can_be_reconciled_to_human_id() {
+    let conn = test_conn();
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: None,
+            kind: "human".to_string(),
+            display_name: "Alice".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("host-1".to_string()),
+            bridge_node_id: Some("kd_alice".to_string()),
+            human_id: None,
+            agent_id: None,
+            avatar_key: None,
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("upsert fallback identity");
+    let human = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: None,
+            kind: "human".to_string(),
+            display_name: "Alice".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("host-1".to_string()),
+            bridge_node_id: Some("kd_alice".to_string()),
+            human_id: Some("kh_alice".to_string()),
+            agent_id: None,
+            avatar_key: Some("kh_alice".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("upsert canonical human identity");
+
+    let resolved = bridge_human_identity_for_node(&conn, "host-1", "kd_alice")
+        .expect("resolve peer human")
+        .expect("human identity");
+    assert_eq!(resolved.id, human.id);
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:bridge:alice".to_string()),
+            kind: "direct-person".to_string(),
+            title: None,
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("human:bridge-node:kd_alice".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:bridge-node:kd_alice".to_string()),
+            participant_identity_ids: vec!["human:bridge-node:kd_alice".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("open fallback session");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("message:1".to_string()),
+            session_id: "session:bridge:alice".to_string(),
+            sender_identity_id: "human:bridge-node:kd_alice".to_string(),
+            sender_role: "person".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "hello".to_string(),
+            content: None,
+            created_at_ms: Some(1),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: None,
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append fallback message");
+
+    cleanup_bridge_fallback_identity_for_session(
+        &conn,
+        "session:bridge:alice",
+        "kd_alice",
+        &human.id,
+    )
+    .expect("cleanup fallback identity");
+
+    let state = commands::load_state_from_db(&conn).expect("load state");
+    assert!(state
+        .participants
+        .iter()
+        .all(|participant| participant.identity_id != "human:bridge-node:kd_alice"));
+    assert_eq!(state.messages[0].sender_identity_id, human.id);
 }
 
 #[test]
@@ -174,6 +424,81 @@ fn source_event_dedupes_messages() {
 }
 
 #[test]
+fn source_event_reconcile_updates_streamed_agent_content() {
+    let conn = test_conn();
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:stream".to_string()),
+            kind: "direct-agent".to_string(),
+            title: Some("Remote agent".to_string()),
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("agent:remote".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:remote".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("open session");
+
+    let partial = AppendCanonicalMessageRequest {
+        id: None,
+        session_id: "session:stream".to_string(),
+        sender_identity_id: "agent:remote".to_string(),
+        sender_role: "external-agent".to_string(),
+        message_kind: "agent-turn".to_string(),
+        content_text: "hiu — what can".to_string(),
+        content: Some(serde_json::json!({ "deliveryState": "processing" })),
+        created_at_ms: Some(1_000),
+        parent_message_id: None,
+        delegated_exchange_id: None,
+        status: Some("processing".to_string()),
+        source_transport: Some("desktop-bridge".to_string()),
+        source_event_id: Some("bridge:message-1".to_string()),
+    };
+    message_reconcile::append_or_reconcile_message_from_sync(
+        &conn,
+        partial,
+        "desktop-bridge-ui",
+        5_000,
+    )
+    .expect("append partial");
+
+    message_reconcile::append_or_reconcile_message_from_sync(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: None,
+            session_id: "session:stream".to_string(),
+            sender_identity_id: "agent:remote".to_string(),
+            sender_role: "external-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "hiu — what can I help with?".to_string(),
+            content: Some(serde_json::json!({ "deliveryState": "responded" })),
+            created_at_ms: Some(1_100),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("responded".to_string()),
+            source_transport: Some("desktop-bridge".to_string()),
+            source_event_id: Some("bridge:message-1".to_string()),
+        },
+        "desktop-bridge-ui",
+        5_000,
+    )
+    .expect("update final");
+
+    let state = commands::load_state_from_db(&conn).expect("load state");
+    assert_eq!(state.messages.len(), 1);
+    assert_eq!(
+        state.messages[0].content_text,
+        "hiu — what can I help with?"
+    );
+    assert_eq!(state.messages[0].status, "responded");
+}
+
+#[test]
 fn outreach_context_snapshot_is_session_scoped() {
     let conn = test_conn();
     let session = open_or_create_session_in_db(
@@ -196,10 +521,13 @@ fn outreach_context_snapshot_is_session_scoped() {
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-agent".to_string(),
         parent_session_id: Some(session.id.clone()),
+        parent_session_title: Some("Parent".to_string()),
+        parent_session_messages: Vec::new(),
         parent_turn_id: None,
         parent_message_id: None,
         bridge_host_id: "host-1".to_string(),
         bridge_conversation_id: Some("bridge:host-1:remote".to_string()),
+        bridge_request_id: Some("bridge_req_test".to_string()),
         target_node_id: "kd_remote".to_string(),
         target_human_id: Some("kh_remote".to_string()),
         target_agent_id: Some("ka_remote".to_string()),
@@ -207,6 +535,7 @@ fn outreach_context_snapshot_is_session_scoped() {
         target_owner_name: Some("Remote".to_string()),
         target_runtime: Some("kordi".to_string()),
         request_text: "Can you check this?".to_string(),
+        trigger_text: Some("@Remote Kordi Can you check this?".to_string()),
         context_text: Some("Recent parent context".to_string()),
         context_policy: Some("recent-window".to_string()),
         project_id: Some("project-1".to_string()),
@@ -354,6 +683,313 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
 
     assert!(!should_sync_desktop_chat_summary(&blank_summary));
     assert!(!should_sync_desktop_chat_detail(&blank_detail));
+}
+
+#[test]
+fn message_scoped_outreach_groups_include_same_request_response_without_message_outreach() {
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some("session:bridge:humans:test".to_string()),
+        parent_session_title: Some("hello".to_string()),
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:ui:request".to_string()),
+        bridge_host_id: "bridge-local".to_string(),
+        bridge_conversation_id: Some("bridge:local:remote".to_string()),
+        bridge_request_id: Some("bridge_req_weather".to_string()),
+        target_node_id: "kd_remote".to_string(),
+        target_human_id: Some("kh_remote".to_string()),
+        target_agent_id: Some("ka_remote".to_string()),
+        target_display_name: "user b's Kordi".to_string(),
+        target_owner_name: Some("user b".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "what is the jeddah weather".to_string(),
+        trigger_text: Some("@user b's Kordi what is the jeddah weather".to_string()),
+        context_text: None,
+        context_policy: Some("parent-session".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "processing".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: None,
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:local:remote".to_string(),
+        canonical_session_id: "session:bridge:humans:test".to_string(),
+        host_id: "bridge-local".to_string(),
+        peer_node_id: "kd_remote".to_string(),
+        peer_display_name: Some("user b's Kordi".to_string()),
+        peer_owner_name: Some("user b".to_string()),
+        peer_runtime: "kordi-desktop".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "user b's Kordi".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_000,
+        updated_at_label: "Now".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: Some(outreach.clone()),
+        identity: None,
+        messages: vec![
+            crate::bridge::DesktopBridgeConversationMessage {
+                id: "msg-request".to_string(),
+                direction: "outbound".to_string(),
+                sender: Some("User A".to_string()),
+                text: "what is the jeddah weather".to_string(),
+                time_label: "20:48".to_string(),
+                timestamp_ms: 1_000,
+                request_id: Some("bridge_req_weather".to_string()),
+                delivery_state: Some("responded".to_string()),
+                outreach: Some(outreach),
+            },
+            crate::bridge::DesktopBridgeConversationMessage {
+                id: "msg-response".to_string(),
+                direction: "inbound-response".to_string(),
+                sender: Some("user b's Kordi".to_string()),
+                text: "Jeddah right now is partly cloudy.".to_string(),
+                time_label: "20:49".to_string(),
+                timestamp_ms: 2_000,
+                request_id: Some("bridge_req_weather".to_string()),
+                delivery_state: Some("responded".to_string()),
+                outreach: None,
+            },
+        ],
+    };
+
+    let groups = message_scoped_outreach_groups(&conversation);
+
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].1.len(), 2);
+    assert!(groups[0]
+        .1
+        .iter()
+        .any(|message| message.id == "msg-response"));
+
+    let handled = groups[0]
+        .1
+        .iter()
+        .map(|message| message.id.clone())
+        .collect::<HashSet<_>>();
+    assert!(!bridge_conversation_has_unrouted_direct_messages(
+        &conversation,
+        &handled
+    ));
+
+    let mut conversation_with_direct_message = conversation.clone();
+    conversation_with_direct_message.messages.push(
+        crate::bridge::DesktopBridgeConversationMessage {
+            id: "msg-direct".to_string(),
+            direction: "inbound".to_string(),
+            sender: Some("user b".to_string()),
+            text: "plain direct message".to_string(),
+            time_label: "20:50".to_string(),
+            timestamp_ms: 3_000,
+            request_id: None,
+            delivery_state: None,
+            outreach: None,
+        },
+    );
+    assert!(bridge_conversation_has_unrouted_direct_messages(
+        &conversation_with_direct_message,
+        &handled
+    ));
+}
+
+#[test]
+fn desktop_sync_does_not_reclassify_bridge_sessions() {
+    let conn = test_conn();
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:bridge:humans:test".to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("User A".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("human:remote".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:remote".to_string()),
+            participant_identity_ids: vec!["human:remote".to_string()],
+            metadata: Some(serde_json::json!({ "source": "desktop-bridge-conversation" })),
+        },
+    )
+    .expect("open bridge session");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("local-session".to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Local".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("agent:local".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:local".to_string()],
+            metadata: Some(serde_json::json!({ "source": "desktop-chat-summary" })),
+        },
+    )
+    .expect("open desktop session");
+
+    assert!(
+        !should_update_desktop_session_shell(&conn, "session:bridge:humans:test")
+            .expect("bridge shell check")
+    );
+    assert!(
+        should_update_desktop_session_shell(&conn, "local-session").expect("desktop shell check")
+    );
+}
+
+#[test]
+fn bridge_human_display_name_strips_scoped_kordi_label() {
+    assert_eq!(bridge_human_display_name("User A's Kordi"), "User A");
+    assert_eq!(bridge_human_display_name("user b’s Kordi"), "user b");
+    assert_eq!(bridge_human_display_name("user b"), "user b");
+}
+
+#[test]
+fn snapshot_you_sender_uses_remote_human_name_for_receiver() {
+    let conn = test_conn();
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:local".to_string()),
+            kind: "human".to_string(),
+            display_name: "user b".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: None,
+            bridge_node_id: Some("kd_local".to_string()),
+            human_id: Some("kh_local".to_string()),
+            agent_id: None,
+            avatar_key: Some("kh_local".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("local human identity");
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:remote".to_string()),
+            kind: "human".to_string(),
+            display_name: "User A".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: None,
+            bridge_node_id: Some("kd_remote".to_string()),
+            human_id: Some("kh_remote".to_string()),
+            agent_id: None,
+            avatar_key: Some("kh_remote".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("remote human identity");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:snapshot".to_string()),
+            kind: "relationship".to_string(),
+            title: Some("Shared".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("human:remote".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:remote".to_string()),
+            participant_identity_ids: vec!["human:remote".to_string()],
+            metadata: Some(serde_json::json!({ "source": "bridge-session-thread" })),
+        },
+    )
+    .expect("open snapshot session");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some("session:snapshot".to_string()),
+        parent_session_title: Some("Shared".to_string()),
+        parent_session_messages: vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+            role: "user".to_string(),
+            sender: Some("You".to_string()),
+            text: "check todays weather again for jeddah".to_string(),
+            time_label: Some("22:07".to_string()),
+            index: Some(0),
+        }],
+        parent_turn_id: None,
+        parent_message_id: None,
+        bridge_host_id: "bridge-local".to_string(),
+        bridge_conversation_id: None,
+        bridge_request_id: Some("bridge_req".to_string()),
+        target_node_id: "kd_local".to_string(),
+        target_human_id: Some("kh_local".to_string()),
+        target_agent_id: None,
+        target_display_name: "user b".to_string(),
+        target_owner_name: Some("user b".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "let's talk".to_string(),
+        trigger_text: Some("@user b let's talk".to_string()),
+        context_text: None,
+        context_policy: Some("recent-window".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 2_000,
+        updated_at_ms: 2_000,
+        completed_at_ms: Some(2_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:local:remote:person".to_string(),
+        canonical_session_id: "session:snapshot".to_string(),
+        host_id: "bridge-local".to_string(),
+        peer_node_id: "kd_remote".to_string(),
+        peer_display_name: Some("User A".to_string()),
+        peer_owner_name: Some("User A".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "User A".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_000,
+        updated_at_label: "22:07".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: Some(outreach.clone()),
+        identity: None,
+        messages: Vec::new(),
+    };
+
+    sync_parent_session_snapshot_messages(
+        &conn,
+        "session:snapshot",
+        &conversation,
+        &outreach,
+        "human:local",
+        None,
+        "human:remote",
+    )
+    .expect("sync snapshot messages");
+
+    let sender: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.sender')
+             FROM session_messages
+             WHERE session_id = 'session:snapshot'
+               AND content_text = 'check todays weather again for jeddah'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("snapshot sender");
+    assert_eq!(sender, "User A");
 }
 
 #[test]

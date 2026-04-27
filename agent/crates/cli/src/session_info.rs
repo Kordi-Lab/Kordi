@@ -261,13 +261,13 @@ mod tests {
         SessionCacheMetricsSource, SessionInfoSummary, collect_session_info_summary,
         permission_posture_badge, render_session_info_text,
     };
+    use chrono::Utc;
     use kordi_core::types::{
         AgentMessage, AssistantMessage, Cost, EntryBase, EntryId, SessionEntry, StopReason, Usage,
     };
     use kordi_monitor::format_u64_with_commas;
     use kordi_session::store;
     use kordi_tools::ExecutionPolicy;
-    use chrono::Utc;
 
     use crate::login::{AuthSource, ProviderAuthMethod, ResolvedProviderAuth};
 

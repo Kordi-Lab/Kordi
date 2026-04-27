@@ -1,6 +1,6 @@
 use crate::models::*;
 use crate::paths::bridges_projects_root;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 /// Default projects root: ~/bridges-projects/
 pub fn projects_root() -> std::path::PathBuf {

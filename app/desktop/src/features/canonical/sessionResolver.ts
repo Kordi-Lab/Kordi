@@ -55,6 +55,10 @@ export function projectRootFromCanonicalProjectGroupId(projectId?: string | null
     : normalizedProjectRoot(normalizedProjectId);
 }
 
+function isStableHumanBridgeSessionId(value?: string | null) {
+  return (value ?? '').trim().startsWith('session:bridge:humans:');
+}
+
 export function findCanonicalConversationForTarget(
   conversations: Conversation[],
   target: CanonicalConversationLookupTarget,
@@ -68,13 +72,23 @@ export function findCanonicalConversationForTarget(
     const participants = conversation.canonicalParticipants ?? [];
     if (participants.length === 0) continue;
 
+    const sessionId = conversation.canonicalSessionId ?? conversation.id;
+    const stableHumanDirectSession = isStableHumanBridgeSessionId(sessionId);
+    const humanMatch = Boolean(normalizedHumanId && participants.some((participant) => participant.humanId === normalizedHumanId));
+    const agentMatch = Boolean(normalizedAgentId && participants.some((participant) => participant.agentId === normalizedAgentId));
+    const nodeMatch = Boolean(normalizedBridgeNodeId && participants.some((participant) => participant.bridgeNodeId === normalizedBridgeNodeId));
+
     let rank = Number.POSITIVE_INFINITY;
-    if (normalizedAgentId && participants.some((participant) => participant.agentId === normalizedAgentId)) {
-      rank = conversation.directness === 'Direct chat' ? 0 : 1;
-    } else if (normalizedHumanId && participants.some((participant) => participant.humanId === normalizedHumanId)) {
-      rank = conversation.directness === 'Direct chat' ? 0 : 1;
-    } else if (normalizedBridgeNodeId && participants.some((participant) => participant.bridgeNodeId === normalizedBridgeNodeId)) {
-      rank = conversation.directness === 'Direct chat' ? 2 : 3;
+
+    // Contact entry points are direct-person intents. If a stable A<->B human
+    // session already exists, prefer it over newer relationship/group sessions
+    // that merely include the same human because they were invited into context.
+    if (normalizedHumanId && humanMatch) {
+      rank = stableHumanDirectSession ? 0 : conversation.type === 'person' ? 2 : 4;
+    } else if (normalizedAgentId && agentMatch) {
+      rank = !stableHumanDirectSession && conversation.type === 'external-agent' ? 0 : 3;
+    } else if (normalizedBridgeNodeId && nodeMatch) {
+      rank = stableHumanDirectSession ? 1 : conversation.type === 'person' ? 5 : 6;
     }
 
     if (!Number.isFinite(rank)) continue;
@@ -104,6 +118,11 @@ export function buildProjectRoutingGroups(
   const sessionIdsByGroupId = new Map<string, string[]>();
   const latestTimestampByGroupId = new Map<string, number>();
   const sessionTimestampById = new Map<string, number>();
+  const archivedSessionIds = new Set(
+    (canonicalState?.sessions ?? [])
+      .filter((session) => session.status === 'archived')
+      .map((session) => session.id),
+  );
 
   const addGroup = (groupId: string, timestampMs: number) => {
     if (!sessionIdsByGroupId.has(groupId)) {
@@ -126,12 +145,13 @@ export function buildProjectRoutingGroups(
   for (const project of desktopProjects ?? []) {
     const groupId = normalizeCanonicalProjectGroupId(project.id, project.root) ?? project.id;
     for (const session of project.sessions) {
+      if (archivedSessionIds.has(session.id)) continue;
       addSession(groupId, session.id, 0);
     }
   }
 
   for (const session of canonicalState?.sessions ?? []) {
-    if (session.kind !== 'project') continue;
+    if (session.kind !== 'project' || session.status === 'archived') continue;
     const groupId = normalizeCanonicalProjectGroupId(
       session.projectId,
       projectRootFromMetadata(session),

@@ -52,7 +52,7 @@ export function AgentsSidebar({
                 <div className="flex items-start gap-3">
                   <IdentityAvatar
                     kind="agent"
-                    seed={agent.id}
+                    seed={agent.avatarSeed ?? agent.id}
                     name={agent.name}
                     imageUrl={agent.profileImageUrl}
                     className="h-9 w-9 border border-white/8"

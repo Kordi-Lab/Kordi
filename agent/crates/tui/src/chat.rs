@@ -1,5 +1,5 @@
-use kordi_core::types::*;
 use crossterm::style::{Attribute, Color, Stylize};
+use kordi_core::types::*;
 
 /// Render a message for terminal display.
 pub fn render_message(msg: &AgentMessage) -> Vec<String> {

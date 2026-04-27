@@ -74,11 +74,6 @@ pub struct DesktopChatTurnSnapshot {
     pub error: Option<String>,
 }
 
-pub(crate) struct BridgeAgentPromptStream {
-    pub updates: tokio::sync::mpsc::UnboundedReceiver<DesktopChatTurnSnapshot>,
-    pub completion: tokio::task::JoinHandle<Result<DesktopChatTurnSnapshot, String>>,
-}
-
 const TRANSIENT_LOCAL_DRAFT_SESSION_ID: &str = "draft:local-chat";
 
 #[derive(Clone, Serialize)]
@@ -268,15 +263,56 @@ fn filter_blank_draft_projects(
         .collect()
 }
 
+async fn ensure_transient_draft_runtime(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+) -> Result<DesktopSessionHandle, String> {
+    {
+        let sessions = manager.sessions.lock().await;
+        if let Some(handle) = sessions.get(TRANSIENT_LOCAL_DRAFT_SESSION_ID).cloned() {
+            return Ok(handle);
+        }
+    }
+
+    let runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
+        .await
+        .map_err(|err| err.to_string())?;
+    let handle = Arc::new(tokio::sync::Mutex::new(runtime));
+    let mut sessions = manager.sessions.lock().await;
+    Ok(sessions
+        .entry(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
+        .or_insert_with(|| handle.clone())
+        .clone())
+}
+
+async fn materialize_transient_draft_runtime(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+) -> Result<String, String> {
+    let handle = ensure_transient_draft_runtime(manager, cwd).await?;
+    let session_id = {
+        let mut runtime = handle.lock().await;
+        runtime
+            .materialize_session()
+            .map_err(|err| err.to_string())?;
+        runtime.session_id().to_string()
+    };
+
+    let mut sessions = manager.sessions.lock().await;
+    sessions.remove(TRANSIENT_LOCAL_DRAFT_SESSION_ID);
+    sessions.insert(session_id.clone(), handle);
+    Ok(session_id)
+}
+
 async fn build_transient_draft_chat_state(
+    manager: &DesktopChatManager,
     cwd: &std::path::Path,
     persisted: Vec<DesktopChatSessionSummary>,
     projects: Vec<DesktopChatProjectGroup>,
     model_options: Vec<DesktopChatModelOption>,
 ) -> Result<DesktopChatState, String> {
-    let runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
-        .await
-        .map_err(|err| err.to_string())?;
+    let runtime = ensure_transient_draft_runtime(manager, cwd).await?;
+    let runtime = runtime.lock().await;
     let mut active_session = runtime.detail().map_err(|err| err.to_string())?;
     active_session.id = TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string();
     active_session.title = "New session".to_string();
@@ -298,15 +334,152 @@ async fn build_transient_draft_chat_state(
     })
 }
 
+fn normalize_mention_label(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn mention_text_starts_with_label(text: &str, label: &str) -> bool {
+    let normalized_text = normalize_mention_label(text);
+    let normalized_label = normalize_mention_label(label);
+    if normalized_text.is_empty() || normalized_label.is_empty() {
+        return false;
+    }
+    if normalized_text == normalized_label {
+        return true;
+    }
+    let Some(rest) = normalized_text.strip_prefix(&normalized_label) else {
+        return false;
+    };
+    rest.chars().next().is_none_or(|ch| {
+        ch.is_whitespace() || matches!(ch, ':' | ';' | ',' | '.' | '!' | '?' | '—' | '-')
+    })
+}
+
+fn text_explicitly_mentions_label(text: &str, label: &str) -> bool {
+    text.match_indices('@').any(|(index, _)| {
+        let before = text[..index].chars().next_back();
+        if before.is_some_and(|ch| !ch.is_whitespace()) {
+            return false;
+        }
+        mention_text_starts_with_label(&text[index + 1..], label)
+    })
+}
+
+fn local_agent_mention_labels(
+    runtime: &DesktopRuntimeSession,
+    cwd: &std::path::Path,
+) -> Vec<String> {
+    let profile = runtime.agent_profile();
+    let mut labels = vec!["Kordi".to_string(), profile.label];
+    if let Some(name) = std::path::Path::new(&profile.workspace_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        labels.push(name.to_string());
+    }
+    if let Some(name) = cwd
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        labels.push(name.to_string());
+    }
+    labels.sort_by_key(|label| normalize_mention_label(label));
+    labels.dedup_by(|left, right| normalize_mention_label(left) == normalize_mention_label(right));
+    labels
+}
+
+fn text_mentions_non_local_target(text: &str, local_agent_labels: &[String]) -> bool {
+    text.match_indices('@').any(|(index, _)| {
+        let before = text[..index].chars().next_back();
+        if before.is_some_and(|ch| !ch.is_whitespace()) {
+            return false;
+        }
+        let after_at = &text[index + 1..];
+        if after_at.trim().is_empty() {
+            return false;
+        }
+        !local_agent_labels
+            .iter()
+            .any(|label| mention_text_starts_with_label(after_at, label))
+    })
+}
+
+fn text_mentions_local_agent(text: &str, local_agent_labels: &[String]) -> bool {
+    text.match_indices('@').any(|(index, _)| {
+        let before = text[..index].chars().next_back();
+        if before.is_some_and(|ch| !ch.is_whitespace()) {
+            return false;
+        }
+        let after_at = &text[index + 1..];
+        local_agent_labels
+            .iter()
+            .any(|label| mention_text_starts_with_label(after_at, label))
+    })
+}
+
+fn reach_out_target_allowed_by_user_text(
+    user_text: &str,
+    target: &str,
+    local_agent_labels: &[String],
+) -> bool {
+    let target = target.trim();
+    if target.is_empty() {
+        return false;
+    }
+    if local_agent_labels
+        .iter()
+        .any(|label| normalize_mention_label(label) == normalize_mention_label(target))
+    {
+        return false;
+    }
+    text_explicitly_mentions_label(user_text, target)
+}
+
 async fn prepare_desktop_session_for_send(
     runtime: &mut DesktopRuntimeSession,
     bridge_manager: DesktopBridgeManager,
     chat_manager: DesktopChatManager,
     cwd: PathBuf,
+    user_text: &str,
 ) {
-    let prompt_context = desktop_bridge_outreach_prompt_context(&bridge_manager).await;
-    runtime.set_bridge_outreach_prompt_context(prompt_context);
-    install_reach_out_runtime(runtime, bridge_manager, chat_manager, cwd);
+    let local_agent_labels = local_agent_mention_labels(runtime, &cwd);
+    let local_session_context = if text_mentions_local_agent(user_text, &local_agent_labels) {
+        crate::canonical_sessions::local_agent_session_prompt_context(Some(runtime.session_id()))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    if text_mentions_non_local_target(user_text, &local_agent_labels) {
+        let prompt_context = desktop_bridge_outreach_prompt_context(&bridge_manager).await;
+        runtime.set_bridge_outreach_prompt_context(match (local_session_context, prompt_context) {
+            (Some(local_context), Some(bridge_context)) => {
+                Some(format!("{local_context}\n\n{bridge_context}"))
+            }
+            (Some(local_context), None) => Some(local_context),
+            (None, bridge_context) => bridge_context,
+        });
+        install_reach_out_runtime(
+            runtime,
+            bridge_manager,
+            chat_manager,
+            cwd,
+            user_text.to_string(),
+            local_agent_labels,
+        );
+    } else {
+        runtime.set_bridge_outreach_prompt_context(local_session_context);
+        runtime.set_reach_out_runtime(None);
+    }
 }
 
 fn install_reach_out_runtime(
@@ -314,6 +487,8 @@ fn install_reach_out_runtime(
     bridge_manager: DesktopBridgeManager,
     chat_manager: DesktopChatManager,
     cwd: PathBuf,
+    user_text: String,
+    local_agent_labels: Vec<String>,
 ) {
     let parent_session_id = runtime.session_id().to_string();
     runtime.set_reach_out_runtime(Some(ReachOutRuntime {
@@ -322,7 +497,19 @@ fn install_reach_out_runtime(
             let chat_manager = chat_manager.clone();
             let cwd = cwd.clone();
             let parent_session_id = parent_session_id.clone();
+            let user_text = user_text.clone();
+            let local_agent_labels = local_agent_labels.clone();
             Box::pin(async move {
+                if !reach_out_target_allowed_by_user_text(
+                    &user_text,
+                    &request.target,
+                    &local_agent_labels,
+                ) {
+                    return Err(KordiError::Tool(
+                        "reach_out is only for explicit non-local @Person/@Agent mentions in the current user message; @Kordi addresses the local agent."
+                            .to_string(),
+                    ));
+                }
                 if request.parent_session_id.is_none() {
                     request.parent_session_id = Some(parent_session_id);
                 }
@@ -390,11 +577,45 @@ async fn ensure_loaded_session(
         return Ok(session_id);
     }
 
-    if let Some(session_id) = sessions.keys().next().cloned() {
-        return Ok(session_id);
+    Ok(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
+}
+
+async fn ensure_loaded_or_create_explicit_session(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+    session_id: String,
+) -> Result<String, String> {
+    if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        return ensure_loaded_session(manager, cwd, Some(session_id)).await;
     }
 
-    Ok(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
+    {
+        let sessions = manager.sessions.lock().await;
+        if sessions.contains_key(&session_id) {
+            return Ok(session_id);
+        }
+    }
+
+    let persisted =
+        kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
+    let runtime = if persisted.iter().any(|session| session.id == session_id)
+        || session_exists_globally(&session_id)?
+    {
+        DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
+            .await
+            .map_err(|err| err.to_string())?
+    } else {
+        DesktopRuntimeSession::create_with_id(cwd.to_path_buf(), &session_id)
+            .await
+            .map_err(|err| err.to_string())?
+    };
+
+    let mut sessions = manager.sessions.lock().await;
+    sessions.insert(
+        session_id.clone(),
+        Arc::new(tokio::sync::Mutex::new(runtime)),
+    );
+    Ok(session_id)
 }
 
 async fn build_chat_state(
@@ -413,7 +634,8 @@ async fn build_chat_state(
     );
     if active_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
         let state =
-            build_transient_draft_chat_state(cwd, persisted, projects, model_options).await?;
+            build_transient_draft_chat_state(manager, cwd, persisted, projects, model_options)
+                .await?;
         if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
             eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
         }
@@ -452,7 +674,7 @@ async fn build_chat_state(
     let active_exists = summaries
         .iter()
         .any(|session| session.id == active_session_id);
-    if !active_exists {
+    if !active_exists && active_session.project.is_none() {
         let active_runtime = active_runtime.lock().await;
         let summary = active_runtime.summary().map_err(|err| err.to_string())?;
         if !is_blank_draft_summary(&summary) {
@@ -473,6 +695,10 @@ async fn build_chat_state(
             continue;
         }
         let runtime = runtime.lock().await;
+        let detail = runtime.detail().map_err(|err| err.to_string())?;
+        if detail.project.is_some() {
+            continue;
+        }
         let summary = runtime.summary().map_err(|err| err.to_string())?;
         if !is_blank_draft_summary(&summary) {
             summaries.push(summary);
@@ -578,16 +804,17 @@ pub async fn desktop_chat_new_session(
     manager: State<'_, DesktopChatManager>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let mut runtime = DesktopRuntimeSession::create_new(cwd.clone())
-        .await
-        .map_err(|err| err.to_string())?;
-    runtime.materialize_session().map_err(|err| err.to_string())?;
-    let session_id = runtime.session_id().to_string();
-    manager.sessions.lock().await.insert(
-        session_id.clone(),
-        Arc::new(tokio::sync::Mutex::new(runtime)),
-    );
+    let session_id = materialize_transient_draft_runtime(&manager, &cwd).await?;
     build_chat_state(&manager, &cwd, session_id).await
+}
+
+#[tauri::command]
+pub async fn desktop_chat_prepare_draft_session(
+    manager: State<'_, DesktopChatManager>,
+) -> Result<(), String> {
+    let cwd = chat_cwd()?;
+    ensure_transient_draft_runtime(&manager, &cwd).await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -641,6 +868,166 @@ pub async fn desktop_chat_rename_session(
     build_chat_state(&manager, &cwd, target_session_id).await
 }
 
+struct SessionActionTarget {
+    id: String,
+    local_exists: bool,
+    canonical_exists: bool,
+}
+
+fn resolve_existing_session_action_target(session_id: &str) -> Result<SessionActionTarget, String> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() || session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        return Err("Session not found".to_string());
+    }
+
+    let local_exists = session_exists_globally(session_id)?;
+    let canonical_exists = crate::canonical_sessions::session_exists(session_id)?;
+    if !local_exists && !canonical_exists {
+        return Err(format!("Session not found: {session_id}"));
+    }
+
+    Ok(SessionActionTarget {
+        id: session_id.to_string(),
+        local_exists,
+        canonical_exists,
+    })
+}
+
+fn resolve_session_action_fallback_target(
+    cwd: &std::path::Path,
+    preferred_active_session_id: Option<String>,
+) -> Result<String, String> {
+    if let Some(session_id) = preferred_active_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if session_exists_globally(session_id)? {
+            return Ok(session_id.to_string());
+        }
+    }
+
+    let next_chat_session_id = kordi_cli::desktop_runtime::list_session_summaries(cwd)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .find(|session| !is_blank_draft_summary(session))
+        .map(|session| session.id);
+
+    Ok(next_chat_session_id.unwrap_or_else(|| TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string()))
+}
+
+fn resolve_project_root_input(
+    cwd: &std::path::Path,
+    raw_project_root: &str,
+) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw_project_root.trim();
+    if trimmed.is_empty() {
+        return Err("Project folder is required".to_string());
+    }
+
+    let candidate = std::path::PathBuf::from(trimmed);
+    let resolved = if candidate.is_absolute() {
+        candidate
+    } else {
+        cwd.join(candidate)
+    };
+    std::fs::create_dir_all(&resolved).map_err(|err| err.to_string())?;
+    Ok(std::fs::canonicalize(&resolved).unwrap_or(resolved))
+}
+
+#[tauri::command]
+pub async fn desktop_chat_archive_session(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+    active_session_id: Option<String>,
+) -> Result<DesktopChatState, String> {
+    let cwd = chat_cwd()?;
+    let target = resolve_existing_session_action_target(&session_id)?;
+    if session_has_running_turn(&manager, &target.id).await {
+        return Err("Stop the running task before hiding this session.".to_string());
+    }
+
+    if target.local_exists {
+        kordi_cli::desktop_runtime::hide_session(&target.id).map_err(|err| err.to_string())?;
+    }
+    manager.sessions.lock().await.remove(&target.id);
+    if target.canonical_exists {
+        crate::canonical_sessions::archive_session(&target.id)?;
+    }
+
+    let fallback_active_session_id = if active_session_id.as_deref() == Some(target.id.as_str()) {
+        None
+    } else {
+        active_session_id
+    };
+    let next_active_session_id =
+        resolve_session_action_fallback_target(&cwd, fallback_active_session_id)?;
+    build_chat_state(&manager, &cwd, next_active_session_id).await
+}
+
+#[tauri::command]
+pub async fn desktop_chat_delete_session_forever(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+    active_session_id: Option<String>,
+) -> Result<DesktopChatState, String> {
+    let cwd = chat_cwd()?;
+    let target = resolve_existing_session_action_target(&session_id)?;
+    if session_has_running_turn(&manager, &target.id).await {
+        return Err("Stop the running task before deleting this session.".to_string());
+    }
+
+    {
+        let mut turns = manager.turns.lock().await;
+        turns.retain(|_, turn| {
+            turn.snapshot
+                .lock()
+                .map(|snapshot| snapshot.session_id != target.id)
+                .unwrap_or(true)
+        });
+    }
+    manager.sessions.lock().await.remove(&target.id);
+
+    if target.local_exists {
+        kordi_cli::desktop_runtime::delete_session_forever(&target.id)
+            .map_err(|err| err.to_string())?;
+    }
+    if target.canonical_exists {
+        crate::canonical_sessions::delete_session(&target.id)?;
+    }
+
+    let fallback_active_session_id = if active_session_id.as_deref() == Some(target.id.as_str()) {
+        None
+    } else {
+        active_session_id
+    };
+    let next_active_session_id =
+        resolve_session_action_fallback_target(&cwd, fallback_active_session_id)?;
+    build_chat_state(&manager, &cwd, next_active_session_id).await
+}
+
+#[tauri::command]
+pub async fn desktop_chat_move_session_to_project(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+    project_root: String,
+) -> Result<DesktopChatState, String> {
+    let cwd = chat_cwd()?;
+    let target = resolve_existing_session_action_target(&session_id)?;
+    if session_has_running_turn(&manager, &target.id).await {
+        return Err("Stop the running task before moving this session.".to_string());
+    }
+    if !target.local_exists {
+        return Err("Only local chat sessions can be moved to a project.".to_string());
+    }
+
+    let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
+    manager.sessions.lock().await.remove(&target.id);
+    kordi_cli::desktop_runtime::move_session_to_project(&target.id, &resolved_project_root)
+        .map_err(|err| err.to_string())?;
+    build_chat_state(&manager, &cwd, target.id).await
+}
+
 #[tauri::command]
 pub async fn desktop_chat_send_message(
     manager: State<'_, DesktopChatManager>,
@@ -649,7 +1036,8 @@ pub async fn desktop_chat_send_message(
     text: String,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
+    let target_session_id =
+        ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
     let session = {
         let sessions = manager.sessions.lock().await;
         sessions
@@ -663,6 +1051,7 @@ pub async fn desktop_chat_send_message(
         bridge_manager.inner().clone(),
         manager.inner().clone(),
         cwd.clone(),
+        &text,
     )
     .await;
     session
@@ -673,37 +1062,55 @@ pub async fn desktop_chat_send_message(
     build_chat_state(&manager, &cwd, target_session_id).await
 }
 
-fn publish_bridge_agent_snapshot(
-    snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
-    updates_tx: &tokio::sync::mpsc::UnboundedSender<DesktopChatTurnSnapshot>,
-) {
-    if let Ok(next) = snapshot_turn(snapshot) {
-        let _ = updates_tx.send(next);
+async fn ensure_bridge_agent_execution_session(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+) -> Result<(String, DesktopSessionHandle), String> {
+    let persisted =
+        kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
+
+    if let Some(session_id) = persisted.first().map(|session| session.id.clone()) {
+        let mut sessions = manager.sessions.lock().await;
+        if let Some(handle) = sessions.get(&session_id).cloned() {
+            return Ok((session_id, handle));
+        }
+        let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
+            .await
+            .map_err(|err| err.to_string())?;
+        let handle = Arc::new(tokio::sync::Mutex::new(runtime));
+        sessions.insert(session_id.clone(), handle.clone());
+        return Ok((session_id, handle));
     }
+
+    let mut runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
+        .await
+        .map_err(|err| err.to_string())?;
+    runtime
+        .materialize_session()
+        .map_err(|err| err.to_string())?;
+    let session_id = runtime.session_id().to_string();
+    let handle = Arc::new(tokio::sync::Mutex::new(runtime));
+    let mut sessions = manager.sessions.lock().await;
+    sessions.insert(session_id.clone(), handle.clone());
+    Ok((session_id, handle))
 }
 
-pub(crate) async fn start_bridge_agent_prompt_stream(
+pub(crate) async fn run_bridge_agent_prompt(
     manager: &DesktopChatManager,
     local_agent_node_id: &str,
     peer_node_id: &str,
     prompt: String,
-) -> Result<BridgeAgentPromptStream, String> {
+) -> Result<DesktopChatTurnSnapshot, String> {
     let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
-    let target_session_id = ensure_loaded_session(manager, &cwd, None).await?;
-    let session = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Bridge agent session is unavailable".to_string())?
-    };
+    let (target_session_id, session) = ensure_bridge_agent_execution_session(manager, &cwd).await?;
+    let execution_session_id = target_session_id.clone();
 
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: target_session_id,
         prompt: prompt.trim().to_string(),
-        status: "starting".to_string(),
-        message: "Working…".to_string(),
+        status: "processing".to_string(),
+        message: "Processing…".to_string(),
         assistant_text: String::new(),
         thinking_text: String::new(),
         tools: Vec::new(),
@@ -711,186 +1118,69 @@ pub(crate) async fn start_bridge_agent_prompt_stream(
         succeeded: false,
         error: None,
     }));
-    let (updates_tx, updates_rx) = tokio::sync::mpsc::unbounded_channel();
-    publish_bridge_agent_snapshot(&snapshot, &updates_tx);
 
-    let snapshot_for_task = snapshot.clone();
-    let completion = tokio::spawn(async move {
+    let result = {
         let mut session = session.lock().await;
-        let updates_tx_for_task = updates_tx.clone();
-        let result = session
-            .send_message_streaming(
-                prompt,
-                Vec::new(),
-                tokio_util::sync::CancellationToken::new(),
-                |event| {
-                    match event {
-                        TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
-                            state.status = "streaming".to_string();
-                            state.message = "Working…".to_string();
-                        }),
-                        TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
-                            state.status = "writing".to_string();
-                            state.message = "Writing response…".to_string();
-                            state.assistant_text.push_str(text);
-                        }),
-                        TurnEvent::ThinkingDelta(text) => {
-                            update_turn(&snapshot_for_task, |state| {
-                                state.status = "thinking".to_string();
-                                state.message = "Thinking…".to_string();
-                                state.thinking_text.push_str(text);
-                            })
-                        }
-                        TurnEvent::ToolCallStart { id, name } => {
-                            update_turn(&snapshot_for_task, |state| {
-                                state.status = "tooling".to_string();
-                                state.message = "Working…".to_string();
-                                state.tools.push(DesktopChatToolSnapshot {
-                                    id: id.clone(),
-                                    name: name.clone(),
-                                    status: "preparing".to_string(),
-                                    arguments: String::new(),
-                                    live_output: String::new(),
-                                    result_text: None,
-                                    detail: None,
-                                    is_error: false,
-                                });
-                            })
-                        }
-                        TurnEvent::ToolCallDelta { id, args } => {
-                            update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) =
-                                    state.tools.iter_mut().find(|tool| tool.id == *id)
-                                {
-                                    tool.arguments.push_str(args);
-                                }
-                            })
-                        }
-                        TurnEvent::ToolExecuting { id } => {
-                            update_turn(&snapshot_for_task, |state| {
-                                state.status = "tooling".to_string();
-                                state.message = "Running tool…".to_string();
-                                if let Some(tool) =
-                                    state.tools.iter_mut().find(|tool| tool.id == *id)
-                                {
-                                    tool.status = "running".to_string();
-                                }
-                            })
-                        }
-                        TurnEvent::ToolOutputDelta { id, chunk } => {
-                            update_turn(&snapshot_for_task, |state| {
-                                if let Some(tool) =
-                                    state.tools.iter_mut().find(|tool| tool.id == *id)
-                                {
-                                    tool.status = "running".to_string();
-                                    tool.live_output.push_str(chunk);
-                                }
-                            })
-                        }
-                        TurnEvent::ToolResult {
-                            id,
-                            content,
-                            details,
-                            is_error,
-                            ..
-                        } => update_turn(&snapshot_for_task, |state| {
-                            state.status = "tooling".to_string();
-                            state.message = if *is_error {
-                                "Tool failed".to_string()
-                            } else {
-                                "Tool finished".to_string()
-                            };
-                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                                tool.status = if *is_error {
-                                    "error".to_string()
-                                } else {
-                                    "done".to_string()
-                                };
-                                tool.result_text = Some(content_blocks_to_text(content));
-                                tool.detail = tool_detail(details);
-                                tool.is_error = *is_error;
-                                tool.live_output.clear();
-                            }
-                        }),
-                        TurnEvent::TurnEnd => update_turn(&snapshot_for_task, |state| {
-                            state.status = "finalizing".to_string();
-                            state.message = "Finalizing response…".to_string();
-                        }),
-                        TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
-                            update_turn(&snapshot_for_task, |state| {
-                                state.status = "failed".to_string();
-                                state.message = message.clone();
-                                state.error = Some(message.clone());
-                            })
-                        }
-                        TurnEvent::AutoRetryStart {
-                            attempt,
-                            max_attempts,
-                            ..
-                        } => update_turn(&snapshot_for_task, |state| {
-                            state.status = "retrying".to_string();
-                            state.message = format!("Retrying request ({attempt}/{max_attempts})…");
-                        }),
-                        TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
-                            state.status = "streaming".to_string();
-                            state.message = "Retry complete. Continuing…".to_string();
-                        }),
-                        TurnEvent::AutoCompactionStart => {
-                            update_turn(&snapshot_for_task, |state| {
-                                state.status = "compacting".to_string();
-                                state.message = "Auto-compacting session…".to_string();
-                            })
-                        }
-                        TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
-                    }
-                    publish_bridge_agent_snapshot(&snapshot_for_task, &updates_tx_for_task);
-                },
-            )
-            .await;
+        session.send_message(prompt, Vec::new()).await
+    };
 
-        match result {
-            Ok(detail) => {
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "complete".to_string();
-                    state.message = "Response complete".to_string();
-                    state.completed = true;
-                    state.succeeded = true;
-                    if state.assistant_text.trim().is_empty() {
-                        if let Some(text) = detail
-                            .messages
-                            .iter()
-                            .rev()
-                            .find(|message| {
-                                message.role == "assistant" && !message.text.trim().is_empty()
-                            })
-                            .map(|message| message.text.clone())
-                        {
-                            state.assistant_text = text;
-                        }
-                    }
-                });
-            }
-            Err(error) => {
-                let message = error.to_string();
-                update_turn(&snapshot_for_task, |state| {
+    match result {
+        Ok(detail) => {
+            let assistant = detail
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+                .cloned();
+            update_turn(&snapshot, |state| {
+                state.status = "complete".to_string();
+                state.message = "Response complete".to_string();
+                state.completed = true;
+                state.succeeded = assistant.is_some();
+                if let Some(message) = assistant {
+                    state.assistant_text = message.text;
+                    state.thinking_text = message.thinking_text.unwrap_or_default();
+                    state.tools = message
+                        .tools
+                        .into_iter()
+                        .map(|tool| DesktopChatToolSnapshot {
+                            id: tool.id,
+                            name: tool.name,
+                            status: tool.status,
+                            arguments: tool.arguments,
+                            live_output: tool.live_output,
+                            result_text: tool.result_text,
+                            detail: tool.detail,
+                            is_error: tool.is_error,
+                        })
+                        .collect();
+                } else {
                     state.status = "failed".to_string();
-                    state.message = message.clone();
-                    state.completed = true;
-                    state.succeeded = false;
-                    state.error = Some(message.clone());
-                });
-            }
+                    state.message = "Bridge agent returned no text response".to_string();
+                    state.error = Some("Bridge agent returned no text response".to_string());
+                }
+            });
         }
+        Err(error) => {
+            let message = error.to_string();
+            update_turn(&snapshot, |state| {
+                state.status = "failed".to_string();
+                state.message = message.clone();
+                state.completed = true;
+                state.succeeded = false;
+                state.error = Some(message.clone());
+            });
+        }
+    }
 
-        let final_snapshot = snapshot_turn(&snapshot_for_task)?;
-        let _ = updates_tx.send(final_snapshot.clone());
-        Ok(final_snapshot)
-    });
+    {
+        let mut sessions = manager.sessions.lock().await;
+        sessions.remove(&execution_session_id);
+    }
+    drop(session);
+    let _ = kordi_cli::desktop_runtime::delete_session_forever(&execution_session_id);
 
-    Ok(BridgeAgentPromptStream {
-        updates: updates_rx,
-        completion,
-    })
+    snapshot_turn(&snapshot)
 }
 
 #[tauri::command]
@@ -902,7 +1192,8 @@ pub async fn desktop_chat_start_message(
     attachment_paths: Option<Vec<String>>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     let cwd = chat_cwd()?;
-    let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
+    let target_session_id =
+        ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
     prune_finished_turns(&manager).await;
     if session_has_running_turn(&manager, &target_session_id).await {
         return Err(
@@ -957,6 +1248,7 @@ pub async fn desktop_chat_start_message(
             bridge_manager_for_task,
             chat_manager_for_task,
             cwd,
+            &text,
         )
         .await;
 
@@ -1142,42 +1434,14 @@ pub async fn desktop_chat_cancel_turn(
     turn.cancel.cancel();
     update_turn(&turn.snapshot, |state| {
         if !state.completed {
-            state.status = "cancelling".to_string();
-            state.message = "Stopping response…".to_string();
+            state.status = "cancelled".to_string();
+            state.message = "Response stopped".to_string();
+            state.completed = true;
+            state.succeeded = false;
+            state.error = None;
         }
     });
     snapshot_turn(&turn.snapshot)
-}
-
-#[allow(dead_code)]
-pub(crate) async fn run_bridge_agent_prompt(
-    manager: &DesktopChatManager,
-    local_agent_node_id: &str,
-    peer_node_id: &str,
-    prompt: String,
-) -> Result<String, String> {
-    let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
-    let target_session_id = ensure_loaded_session(manager, &cwd, None).await?;
-    let session = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Bridge agent session is unavailable".to_string())?
-    };
-    let mut session = session.lock().await;
-    let detail = session
-        .send_message(prompt, Vec::new())
-        .await
-        .map_err(|err| err.to_string())?;
-
-    detail
-        .messages
-        .iter()
-        .rev()
-        .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
-        .map(|message| message.text.clone())
-        .ok_or_else(|| "Bridge agent returned no text response".to_string())
 }
 
 #[tauri::command]
@@ -1190,4 +1454,45 @@ pub async fn desktop_chat_turn_state(
         .get(&turn_id)
         .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
     snapshot_turn(&snapshot.snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_agent_mentions_do_not_enable_bridge_outreach() {
+        let labels = vec!["Kordi".to_string(), "issue-63-agent-outreach".to_string()];
+
+        assert!(!text_mentions_non_local_target("@Kordi hi", &labels));
+        assert!(!text_mentions_non_local_target(
+            "@issue-63-agent-outreach hi",
+            &labels
+        ));
+        assert!(text_mentions_non_local_target(
+            "@Shenzhehere's Kordi hi",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn reach_out_requires_current_explicit_non_local_target() {
+        let labels = vec!["Kordi".to_string(), "issue-63-agent-outreach".to_string()];
+
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Kordi hi",
+            "Kordi",
+            &labels
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Kordi hi",
+            "Shenzhehere's Kordi",
+            &labels
+        ));
+        assert!(reach_out_target_allowed_by_user_text(
+            "@Shenzhehere's Kordi hi",
+            "Shenzhehere's Kordi",
+            &labels
+        ));
+    }
 }

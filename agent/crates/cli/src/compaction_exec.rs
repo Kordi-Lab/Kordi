@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use chrono::Utc;
 use kordi_core::types::{CompactionSettings, EntryBase, EntryId, SessionEntry};
 use kordi_provider::Provider;
 use kordi_session::store::EntryRow;
-use chrono::Utc;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone)]

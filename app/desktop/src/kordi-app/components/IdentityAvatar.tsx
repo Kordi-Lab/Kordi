@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+
 import { Avatar } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
@@ -25,33 +27,103 @@ const ROBOT_METALS = ['#cbd5e1', '#94a3b8', '#a5b4fc', '#bae6fd', '#d8b4fe', '#9
 const ROBOT_ACCENTS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa'];
 const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
 const LOCAL_PROFILE_IDENTITY_SEED_KEY = 'kordi.localProfileIdentitySeed.v1';
+const LOCAL_AGENT_IDENTITY_SEED_KEY = 'kordi.localAgentIdentitySeed.v1';
+const LOCAL_AVATAR_SEEDS_CHANGE_EVENT = 'kordi-local-avatar-seeds-change';
 
-export function getLocalProfileAvatarSeed() {
-  if (typeof window === 'undefined') return 'local-human-profile';
-  const instanceScope = window.location.origin || 'desktop';
+let localProfileAvatarSeedSnapshot: string | null = null;
+let localAgentAvatarSeedSnapshot: string | null = null;
+
+function browserAvatarScope() {
+  if (typeof window === 'undefined') return 'desktop';
+  return window.location.origin || 'desktop';
+}
+
+function readLocalStorageValue(key: string) {
+  if (typeof window === 'undefined') return null;
   try {
-    const identitySeed = window.localStorage.getItem(LOCAL_PROFILE_IDENTITY_SEED_KEY)?.trim();
-    if (identitySeed) return identitySeed;
-
-    const existing = window.localStorage.getItem(LOCAL_PROFILE_AVATAR_SEED_KEY)?.trim();
-    if (existing) return `local-human-profile:${instanceScope}:${existing}`;
-    const next = window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    window.localStorage.setItem(LOCAL_PROFILE_AVATAR_SEED_KEY, next);
-    return `local-human-profile:${instanceScope}:${next}`;
+    return window.localStorage.getItem(key)?.trim() || null;
   } catch {
-    return `local-human-profile:${instanceScope}`;
+    return null;
   }
 }
 
-export function setLocalProfileAvatarSeed(seed?: string | null) {
+function writeLocalStorageValue(key: string, value?: string | null) {
   if (typeof window === 'undefined') return;
-  const normalizedSeed = seed?.trim();
-  if (!normalizedSeed) return;
+  const normalized = value?.trim();
+  if (!normalized) return;
   try {
-    window.localStorage.setItem(LOCAL_PROFILE_IDENTITY_SEED_KEY, normalizedSeed);
+    window.localStorage.setItem(key, normalized);
   } catch {
-    // Ignore storage failures; getLocalProfileAvatarSeed will fall back to the instance seed.
+    // Ignore storage failures; deterministic fallbacks keep generated avatars stable.
   }
+}
+
+function emitLocalAvatarSeedsChange() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(LOCAL_AVATAR_SEEDS_CHANGE_EVENT));
+}
+
+function subscribeLocalAvatarSeeds(onStoreChange: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(LOCAL_AVATAR_SEEDS_CHANGE_EVENT, onStoreChange);
+  window.addEventListener('storage', onStoreChange);
+  return () => {
+    window.removeEventListener(LOCAL_AVATAR_SEEDS_CHANGE_EVENT, onStoreChange);
+    window.removeEventListener('storage', onStoreChange);
+  };
+}
+
+export function getLocalProfileAvatarSeed() {
+  if (localProfileAvatarSeedSnapshot?.trim()) return localProfileAvatarSeedSnapshot;
+
+  const identitySeed = readLocalStorageValue(LOCAL_PROFILE_IDENTITY_SEED_KEY);
+  if (identitySeed) return identitySeed;
+
+  const legacySeed = readLocalStorageValue(LOCAL_PROFILE_AVATAR_SEED_KEY);
+  if (legacySeed) return `local-human-profile:${browserAvatarScope()}:${legacySeed}`;
+
+  return `local-human-profile:${browserAvatarScope()}`;
+}
+
+export function setLocalProfileAvatarSeed(seed?: string | null) {
+  const normalized = seed?.trim();
+  if (!normalized || normalized === localProfileAvatarSeedSnapshot) return;
+  localProfileAvatarSeedSnapshot = normalized;
+  writeLocalStorageValue(LOCAL_PROFILE_IDENTITY_SEED_KEY, normalized);
+  emitLocalAvatarSeedsChange();
+}
+
+export function useLocalProfileAvatarSeed() {
+  return useSyncExternalStore(
+    subscribeLocalAvatarSeeds,
+    getLocalProfileAvatarSeed,
+    () => 'local-human-profile',
+  );
+}
+
+export function getLocalAgentAvatarSeed(label?: string | null) {
+  if (localAgentAvatarSeedSnapshot?.trim()) return localAgentAvatarSeedSnapshot;
+
+  const identitySeed = readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
+  if (identitySeed) return identitySeed;
+
+  return `local-agent:${browserAvatarScope()}:${label?.trim() || 'kordi'}`;
+}
+
+export function setLocalAgentAvatarSeed(seed?: string | null) {
+  const normalized = seed?.trim();
+  if (!normalized || normalized === localAgentAvatarSeedSnapshot) return;
+  localAgentAvatarSeedSnapshot = normalized;
+  writeLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY, normalized);
+  emitLocalAvatarSeedsChange();
+}
+
+export function useLocalAgentAvatarSeed(label?: string | null) {
+  return useSyncExternalStore(
+    subscribeLocalAvatarSeeds,
+    () => getLocalAgentAvatarSeed(label),
+    () => `local-agent:desktop:${label?.trim() || 'kordi'}`,
+  );
 }
 
 function hashString(value: string) {

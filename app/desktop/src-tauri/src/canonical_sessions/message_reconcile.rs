@@ -2,7 +2,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{
     append_message_in_db, clean_optional, hash_hex, json_to_db, now_ms, select_message,
-    validate_status, AppendCanonicalMessageRequest, CanonicalSessionMessage,
+    select_message_by_source, validate_status, AppendCanonicalMessageRequest,
+    CanonicalSessionMessage,
 };
 
 pub(super) fn append_or_reconcile_message_from_sync(
@@ -12,6 +13,17 @@ pub(super) fn append_or_reconcile_message_from_sync(
     match_window_ms: i64,
 ) -> Result<CanonicalSessionMessage, String> {
     let created_at_ms = request.created_at_ms.unwrap_or_else(now_ms);
+    if let (Some(source_transport), Some(source_event_id)) = (
+        request.source_transport.as_deref(),
+        request.source_event_id.as_deref(),
+    ) {
+        if let Some(message) = select_message_by_source(conn, source_transport, source_event_id)? {
+            update_optimistic_message(conn, &message.id, &request, created_at_ms)?;
+            return select_message(conn, &message.id)?
+                .ok_or_else(|| "Unable to load updated canonical message".to_string());
+        }
+    }
+
     if let Some(message_id) = select_optimistic_message_id(
         conn,
         &request,
@@ -82,20 +94,32 @@ fn update_optimistic_message(
 
     conn.execute(
         "UPDATE session_messages
-         SET content_json = ?1,
-             status = ?2,
-             created_at_ms = ?3,
-             updated_at_ms = ?4,
-             content_hash = ?5,
-             source_transport = ?6,
-             source_event_id = ?7
-         WHERE id = ?8",
+         SET sender_identity_id = ?1,
+             sender_role = ?2,
+             message_kind = ?3,
+             content_text = ?4,
+             content_json = ?5,
+             status = ?6,
+             created_at_ms = ?7,
+             updated_at_ms = ?8,
+             content_hash = ?9,
+             parent_message_id = ?10,
+             delegated_exchange_id = ?11,
+             source_transport = ?12,
+             source_event_id = ?13
+         WHERE id = ?14",
         params![
+            request.sender_identity_id.as_str(),
+            request.sender_role.as_str(),
+            request.message_kind.as_str(),
+            request.content_text.as_str(),
             content,
             status,
             created_at_ms,
             now,
             content_hash,
+            clean_optional(request.parent_message_id.clone()),
+            clean_optional(request.delegated_exchange_id.clone()),
             clean_optional(request.source_transport.clone()),
             clean_optional(request.source_event_id.clone()),
             message_id,
@@ -103,7 +127,10 @@ fn update_optimistic_message(
     )
     .map_err(|err| err.to_string())?;
     conn.execute(
-        "UPDATE sessions SET updated_at_ms = ?1, last_message_at_ms = ?2 WHERE id = ?3",
+        "UPDATE sessions
+         SET updated_at_ms = ?1,
+             last_message_at_ms = MAX(COALESCE(last_message_at_ms, 0), ?2)
+         WHERE id = ?3",
         params![now, created_at_ms, request.session_id],
     )
     .map_err(|err| err.to_string())?;

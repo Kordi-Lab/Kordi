@@ -3,11 +3,11 @@ use super::{
     estimate_tokens_message, estimate_tokens_text, extract_file_operations, prepare_compaction,
     serialize_conversation, should_compact,
 };
+use chrono::Utc;
 use kordi_core::types::{
     AgentMessage, AssistantContent, AssistantMessage, CompactionSettings, ContentBlock, EntryBase,
     SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
 };
-use chrono::Utc;
 
 use crate::store::EntryRow;
 

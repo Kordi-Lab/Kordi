@@ -51,16 +51,23 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
 
           const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
             humanId: contact.bridgeHumanId,
-            agentId: contact.bridgeAgentId,
+            agentId: contact.classType === 'other-users-agents' ? contact.bridgeAgentId : null,
             bridgeNodeId: contact.bridgePeerNodeId,
           });
+          args.setContactOverlayMode(null);
           if (existingConversation) {
             void args.handleSelectChatSession(existingConversation.id);
             return;
           }
 
           if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
-          void args.handleOpenBridgeConversation(contact.bridgeHostId, contact.bridgePeerNodeId, contact.name, contact.owner, contact.bridgePeerRuntime);
+          void args.handleOpenBridgeConversation(
+            contact.bridgeHostId,
+            contact.bridgePeerNodeId,
+            contact.name,
+            contact.owner,
+            contact.classType === 'other-users' ? 'person' : contact.bridgePeerRuntime,
+          );
         },
       }}
       agentsPageProps={{
@@ -101,6 +108,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         activeSettingsSection: args.activeSettingsSection,
         authSettingsLayoutWidth: args.authSettingsLayoutWidth,
         isNativeShell: args.isNativeShell,
+        localProfileAvatarSeed: args.localProfileAvatarSeed,
         desktopAuthState: args.desktopAuthState,
         isDesktopAuthLoading: args.isDesktopAuthLoading,
         desktopAuthError: args.desktopAuthError,

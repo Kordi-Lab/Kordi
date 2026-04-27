@@ -23,11 +23,7 @@ impl TuiRenderer {
         self.force_full_repaint = true;
     }
 
-    pub fn render(
-        &mut self,
-        terminal: &mut TuiTerminal,
-        frame: &FrameBuffer,
-    ) -> io::Result<()> {
+    pub fn render(&mut self, terminal: &mut TuiTerminal, frame: &FrameBuffer) -> io::Result<()> {
         let mut buf = String::new();
         terminal.begin_sync(&mut buf);
         buf.push_str("\x1b[?25l");

@@ -58,6 +58,15 @@ Tables:
 - `context_snapshots`
 - `kv_cache_entries`
 
+Identity rules:
+
+- Every human and agent is an `identities` row with a canonical `identities.id` used by sessions, messages, participants, presence, delegated exchanges, context snapshots, and caches.
+- Agents must also have a stable `agent_id`. For local agents this is profile/workspace scoped (`local:<hash(profile_id|workspace_root)>`); for bridge agents it is the bridge-advertised agent id.
+- Agent display uses the delegate-facing agent name (`delegateAgentName`, currently `Kordi` for the built-in local agent), not the source/worktree/project folder name.
+- Agent ownership is explicit: `owner_identity_id` points at the owning human identity. UI participant cards should render that owner, e.g. `Kordi` with `Owner: You`.
+- Runtime/source labels such as workspace folder names are stored only as metadata (`runtimeLabel`, `workspaceRoot`) and must not become the canonical visible agent name.
+- Direct person sessions contain human participants only by default. Local/default agents must not auto-join; an agent becomes a session participant only for self-agent/direct-agent sessions or when explicitly involved through `@Agent`/delegation.
+
 The existing local runtime session DB and bridge conversation DB remain temporarily as transport/source stores while canonical reads/writes are introduced in phases.
 
 All session-linked tables use `session_id` as the durable join key. Project joins, delegated exchanges, bridge/audit records, and cache/context rows should connect to the canonical DB by `session_id`; they must not depend on mutable titles.

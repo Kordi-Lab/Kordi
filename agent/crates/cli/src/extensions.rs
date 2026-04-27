@@ -129,7 +129,8 @@ impl ExtensionCommandRegistry {
         let conn = session.conn.lock().await;
         let entries =
             kordi_session::store::get_entries(&conn, &session.session_id).unwrap_or_default();
-        let branch = kordi_session::tree::active_path(&conn, &session.session_id).unwrap_or_default();
+        let branch =
+            kordi_session::tree::active_path(&conn, &session.session_id).unwrap_or_default();
         let session_row = kordi_session::store::get_session(&conn, &session.session_id)
             .ok()
             .flatten();
@@ -212,7 +213,10 @@ impl ExtensionCommandRegistry {
         }
     }
 
-    pub(crate) async fn send_event(&self, event: &kordi_hooks::Event) -> Option<kordi_hooks::HookResult> {
+    pub(crate) async fn send_event(
+        &self,
+        event: &kordi_hooks::Event,
+    ) -> Option<kordi_hooks::HookResult> {
         let host = self.host.as_ref()?;
 
         match tokio::time::timeout(EXTENSION_EVENT_TIMEOUT, async {
@@ -240,9 +244,9 @@ impl ExtensionCommandRegistry {
         source: &str,
     ) -> Result<InputHookOutcome> {
         let Some(result) = self
-            .send_event(&kordi_hooks::Event::Input(kordi_hooks::events::InputEvent::new(
-                text, source,
-            )))
+            .send_event(&kordi_hooks::Event::Input(
+                kordi_hooks::events::InputEvent::new(text, source),
+            ))
             .await
         else {
             return Ok(InputHookOutcome {

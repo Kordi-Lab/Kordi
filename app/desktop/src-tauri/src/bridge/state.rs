@@ -104,6 +104,19 @@ async fn build_bridge_host_state(
     }
 }
 
+fn should_show_conversation_record(record: &super::DesktopBridgeConversationRecord) -> bool {
+    !record.messages.is_empty()
+        || record.outreach.is_some()
+        || record
+            .peer_display_name
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || record
+            .peer_owner_name
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
 pub(super) async fn build_bridge_state(
     mut store: DesktopBridgeStore,
     conversation_store: DesktopBridgeConversationStore,
@@ -128,6 +141,7 @@ pub(super) async fn build_bridge_state(
     let mut conversations: Vec<DesktopBridgeConversation> = conversation_store
         .conversations
         .iter()
+        .filter(|record| should_show_conversation_record(record))
         .map(|record| {
             let mut record = record.clone();
             let is_person_conversation = record.peer_runtime.trim().eq_ignore_ascii_case("person");
@@ -191,6 +205,7 @@ pub(super) fn build_conversation_only_bridge_state(
     let mut conversations: Vec<DesktopBridgeConversation> = conversation_store
         .conversations
         .iter()
+        .filter(|record| should_show_conversation_record(record))
         .map(build_conversation_state)
         .collect();
     conversations.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
