@@ -9,6 +9,7 @@ import {
   fetchOllamaInstalledModelsDesktop,
   fetchOllamaRunningModelIdsDesktop,
   fetchOllamaServerStatusDesktop,
+  installOllamaDesktop,
   loadOllamaModelDesktop,
   openDesktopExternalUrl,
   openOllamaAppDesktop,
@@ -36,6 +37,7 @@ type OllamaModelControlCenterProps = {
 
 type OllamaAction =
   | 'catalog'
+  | 'install'
   | 'setup'
   | 'server-start'
   | `pull:${string}`
@@ -43,7 +45,6 @@ type OllamaAction =
   | `stop:${string}`
   | `delete:${string}`;
 
-const OLLAMA_DOWNLOAD_URL = 'https://ollama.com/download';
 const OLLAMA_DOCS_URL = 'https://docs.ollama.com';
 const OLLAMA_OPENAI_DOCS_URL = 'https://docs.ollama.com/openai';
 const OLLAMA_LIBRARY_URL = 'https://ollama.com/library';
@@ -334,6 +335,20 @@ export function OllamaModelControlCenter({
     );
   };
 
+  const installOrUpdateOllama = async () => {
+    await runOllamaAction(
+      'install',
+      installOllamaDesktop,
+      appReady ? 'Updating Ollama' : 'Installing Ollama',
+      async () => {
+        await refreshEnvironment();
+        await refreshServerStatus();
+        await refreshInstalledModels();
+        await refreshRunningModels();
+      },
+    );
+  };
+
   const pullModel = async (modelId: string) => {
     const model = normalizeOllamaModelId(modelId);
     if (isEmbeddingModelId(model)) {
@@ -478,7 +493,7 @@ export function OllamaModelControlCenter({
             : 'Save Ollama';
 
   const primaryActionDetail = !appReady
-    ? 'Open the official Ollama download page.'
+    ? 'Download and install Ollama with the official bash installer.'
     : !serverRunning
       ? 'Open Ollama.app or start `ollama serve` in the background.'
       : !hasInstalledModels
@@ -491,7 +506,7 @@ export function OllamaModelControlCenter({
 
   const runPrimaryAction = async () => {
     if (!appReady) {
-      openHelpUrl(OLLAMA_DOWNLOAD_URL);
+      await installOrUpdateOllama();
       return;
     }
     if (!serverRunning) {
@@ -544,6 +559,16 @@ export function OllamaModelControlCenter({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <RuntimeStatusPill running={serverRunning} />
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                appReady
+                  ? 'border-emerald-300/22 bg-emerald-300/[0.08] text-emerald-100'
+                  : 'border-white/10 bg-white/[0.045] text-slate-300',
+              )}
+              >
+                {appReady ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                {appReady ? 'Installed' : 'Not installed'}
+              </span>
               <span className="rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[11px] text-slate-300">Ollama authentication</span>
             </div>
             <h3 className="mt-3 text-[17px] font-semibold tracking-tight text-white">One Ollama model, pulled locally, ready for Kordi chat.</h3>
@@ -555,10 +580,10 @@ export function OllamaModelControlCenter({
             <AuthActionButton
               className={ollamaPrimaryClass}
               onClick={() => void runPrimaryAction()}
-              disabled={activeAction === 'server-start'}
+              disabled={activeAction === 'server-start' || activeAction === 'install'}
             >
-              {activeAction === 'server-start' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-              {activeAction === 'server-start' ? 'Starting…' : primaryActionLabel}
+              {activeAction === 'server-start' || activeAction === 'install' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+              {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : activeAction === 'server-start' ? 'Starting…' : primaryActionLabel}
             </AuthActionButton>
             <div className="text-[11px] leading-4 text-slate-500">{primaryActionDetail}</div>
           </div>
@@ -590,6 +615,9 @@ export function OllamaModelControlCenter({
           <div className="flex flex-wrap gap-1.5">
             <AuthActionButton className={ollamaNeutralClass} onClick={() => void Promise.all([refreshServerStatus(), refreshInstalledModels(), refreshRunningModels()])}>
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </AuthActionButton>
+            <AuthActionButton className={appReady ? ollamaNeutralClass : ollamaPrimaryClass} onClick={() => void installOrUpdateOllama()} disabled={activeAction === 'install'}>
+              <Download className={cn('h-3.5 w-3.5', activeAction === 'install' && 'animate-pulse')} /> {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : appReady ? 'Update Ollama' : 'Install Ollama'}
             </AuthActionButton>
             <AuthActionButton className={ollamaNeutralClass} onClick={openOllama} disabled={activeAction === 'setup'}>
               <ExternalLink className="h-3.5 w-3.5" /> {activeAction === 'setup' ? 'Opening…' : 'Open app'}

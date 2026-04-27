@@ -252,6 +252,10 @@ export async function openOllamaAppDesktop() {
   return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_open_app');
 }
 
+export async function installOllamaDesktop() {
+  return invokeDesktop<DesktopOllamaCommandResult>('desktop_ollama_install');
+}
+
 export async function fetchOllamaCatalogModelsDesktop() {
   return invokeDesktop<DesktopOllamaCatalogModel[]>('desktop_ollama_catalog_models');
 }

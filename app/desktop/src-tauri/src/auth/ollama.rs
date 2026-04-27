@@ -10,6 +10,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 const OLLAMA_DOWNLOAD_URL: &str = "https://ollama.com/download";
+const OLLAMA_INSTALL_COMMAND: &str = "curl -fsSL https://ollama.com/install.sh | bash";
 const OLLAMA_LIBRARY_URL: &str = "https://ollama.com/library";
 const OLLAMA_SERVER_POLL_ATTEMPTS: usize = 20;
 const OLLAMA_SERVER_POLL_DELAY_MS: u64 = 500;
@@ -103,6 +104,19 @@ pub async fn desktop_ollama_start_server(
 #[tauri::command]
 pub async fn desktop_ollama_open_app() -> Result<DesktopOllamaCommandResult, String> {
     open_ollama_app().await
+}
+
+#[tauri::command]
+pub async fn desktop_ollama_install() -> Result<DesktopOllamaCommandResult, String> {
+    if !cfg!(target_family = "unix") {
+        return Err(
+            "One-click Ollama install is currently supported on macOS and Linux.".to_string(),
+        );
+    }
+
+    let mut command = Command::new("/bin/bash");
+    command.arg("-lc").arg(OLLAMA_INSTALL_COMMAND);
+    run_command(command, OLLAMA_INSTALL_COMMAND.to_string()).await
 }
 
 #[tauri::command]

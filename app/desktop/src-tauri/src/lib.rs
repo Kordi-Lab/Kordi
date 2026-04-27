@@ -144,6 +144,7 @@ pub fn run() {
             auth::ollama::desktop_ollama_server_status,
             auth::ollama::desktop_ollama_start_server,
             auth::ollama::desktop_ollama_open_app,
+            auth::ollama::desktop_ollama_install,
             auth::ollama::desktop_ollama_catalog_models,
             auth::ollama::desktop_ollama_catalog_variants,
             auth::ollama::desktop_ollama_installed_models,
