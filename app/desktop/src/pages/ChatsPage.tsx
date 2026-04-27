@@ -292,7 +292,7 @@ export function ChatsPage({
                 onOpenSource={onOpenSource}
               />
             ))}
-            {visibleDesktopLiveTurn && visibleDesktopLiveTurn.sessionId === activeConv.id ? <LiveChatTurnMessage turn={visibleDesktopLiveTurn} /> : null}
+            {visibleDesktopLiveTurn && !visibleDesktopLiveTurn.completed && visibleDesktopLiveTurn.sessionId === activeConv.id ? <LiveChatTurnMessage turn={visibleDesktopLiveTurn} /> : null}
             {queuedDesktopMessages.map((message) => (
               <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
             ))}
