@@ -108,6 +108,14 @@ export function ArtifactInspector({
   const [isBrowserLoading, setIsBrowserLoading] = useState(false);
   const [browserSelectedArtifact, setBrowserSelectedArtifact] = useState<SessionArtifact | null>(null);
 
+  const folderBrowserRootPath = folderBrowserRoot?.trim() ?? '';
+  const effectiveBrowserPath = useMemo(() => {
+    if (!browserPath || !folderBrowserRootPath) return browserPath;
+    return browserPath === folderBrowserRootPath || browserPath.startsWith(`${folderBrowserRootPath}/`)
+      ? browserPath
+      : null;
+  }, [browserPath, folderBrowserRootPath]);
+
   const activeArtifact = useMemo(
     () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null,
     [activeArtifactId, artifacts],
@@ -135,7 +143,14 @@ export function ArtifactInspector({
   }, [activeArtifactId, artifacts, onSelectArtifact]);
 
   useEffect(() => {
-    if (!folderBrowserRoot?.trim() || !isNativeShell) {
+    setBrowserPath(null);
+    setBrowserSelectedArtifact(null);
+    setBrowserDirectory(null);
+    setBrowserError(null);
+  }, [folderBrowserRootPath]);
+
+  useEffect(() => {
+    if (!folderBrowserRootPath || !isNativeShell) {
       setBrowserDirectory(null);
       setBrowserError(null);
       setIsBrowserLoading(false);
@@ -146,7 +161,7 @@ export function ArtifactInspector({
     setBrowserError(null);
     setIsBrowserLoading(true);
 
-    fetchDesktopChatArtifactDirectory(browserPath, folderBrowserRoot)
+    fetchDesktopChatArtifactDirectory(effectiveBrowserPath, folderBrowserRootPath)
       .then((directory) => {
         if (cancelled) return;
         setBrowserDirectory(directory);
@@ -162,7 +177,7 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [browserPath, folderBrowserRoot, isNativeShell]);
+  }, [effectiveBrowserPath, folderBrowserRootPath, isNativeShell]);
 
   useEffect(() => {
     setPreviewError(null);
@@ -200,12 +215,12 @@ export function ArtifactInspector({
 
   return (
     <>
-      {folderBrowserRoot?.trim() ? (
+      {folderBrowserRootPath ? (
         <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>
           <div className="app-inspector-emphasis">
             <div className="break-all font-mono text-[11px] text-[color:var(--utility-foreground)]">
-              {browserDirectory?.path ?? folderBrowserRoot}
+              {browserDirectory?.path ?? folderBrowserRootPath}
             </div>
             <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">
               Browse the full project folder. Open folders to inspect their files; select a file to preview it here.

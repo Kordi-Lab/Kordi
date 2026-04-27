@@ -889,6 +889,16 @@ pub async fn desktop_chat_artifact_directory(
     let directory_path = std::fs::canonicalize(&directory_path).unwrap_or(directory_path);
     let base_path = artifact_base_path(base_root.as_deref())?;
     let base_path = std::fs::canonicalize(&base_path).unwrap_or(base_path);
+    let has_project_root = base_root
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    if has_project_root && !directory_path.starts_with(&base_path) {
+        return Err(format!(
+            "Folder is outside the project root: {}",
+            directory_path.display()
+        ));
+    }
     let parent_path = directory_path.parent().and_then(|parent| {
         if directory_path == base_path || !parent.starts_with(&base_path) {
             None

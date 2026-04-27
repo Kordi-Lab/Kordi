@@ -264,6 +264,7 @@ export function ProjectCreateDialog({
                 placeholder="/Users/you/work/project"
                 className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               />
+              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Use a folder path without spaces.</span>
             </label>
             <label className="block">
               <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Display name optional</span>
@@ -294,6 +295,7 @@ export function ProjectCreateDialog({
                 placeholder="Defaults to ~/KordiProjects"
                 className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               />
+              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Kordi-created project paths cannot contain spaces.</span>
             </label>
           </div>
         )}

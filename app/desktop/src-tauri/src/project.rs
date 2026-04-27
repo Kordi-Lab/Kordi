@@ -1,6 +1,6 @@
 use kordi_core::settings::{ProjectSharedSource, Settings};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,7 +42,19 @@ fn expand_home_path(raw_path: &str) -> PathBuf {
     PathBuf::from(raw_path)
 }
 
-fn resolve_explicit_project_folder(raw_path: &str, create: bool) -> Result<PathBuf, String> {
+fn ensure_project_path_has_no_spaces(path: &Path) -> Result<(), String> {
+    if path.display().to_string().chars().any(char::is_whitespace) {
+        Err("Project folder paths cannot contain spaces. Choose or create a folder with a path like ~/KordiProjects/my-project.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn resolve_explicit_project_folder(
+    raw_path: &str,
+    create: bool,
+    require_no_spaces: bool,
+) -> Result<PathBuf, String> {
     let trimmed = raw_path.trim();
     if trimmed.is_empty() {
         return Err("Project folder is required".to_string());
@@ -56,6 +68,10 @@ fn resolve_explicit_project_folder(raw_path: &str, create: bool) -> Result<PathB
             .map_err(|err| err.to_string())?
             .join(candidate)
     };
+
+    if require_no_spaces {
+        ensure_project_path_has_no_spaces(&resolved)?;
+    }
 
     if create {
         std::fs::create_dir_all(&resolved).map_err(|err| err.to_string())?;
@@ -166,7 +182,7 @@ pub fn desktop_project_create_from_folder(
     folder_path: String,
     name: Option<String>,
 ) -> Result<DesktopProjectSettings, String> {
-    let root = resolve_explicit_project_folder(&folder_path, false)?;
+    let root = resolve_explicit_project_folder(&folder_path, false, true)?;
     let trimmed_name = name
         .as_deref()
         .map(str::trim)
@@ -189,12 +205,13 @@ pub fn desktop_project_create_new(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| resolve_explicit_project_folder(value, true))
+        .map(|value| resolve_explicit_project_folder(value, true, true))
         .transpose()?
         .unwrap_or_else(default_new_project_parent);
     std::fs::create_dir_all(&parent).map_err(|err| err.to_string())?;
 
     let root = parent.join(sanitize_project_slug(trimmed_name));
+    ensure_project_path_has_no_spaces(&root)?;
     std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     register_project_folder(&root, Some(trimmed_name))?;
