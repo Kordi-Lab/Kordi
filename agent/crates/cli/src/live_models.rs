@@ -73,7 +73,9 @@ pub async fn fetch_live_model_ids_for_provider_with_settings(
         }
         "lm-studio" | "ollama" => {
             fetch_openai_compatible_model_ids(
-                login::local_openai_provider_base_url(&normalized)?,
+                base_url_override
+                    .as_deref()
+                    .or_else(|| login::local_openai_provider_base_url(&normalized))?,
                 bearer_token,
             )
             .await
@@ -326,7 +328,9 @@ fn sanitize_model_ids_for_provider(
     ids: Vec<String>,
 ) -> Vec<String> {
     if accepts_arbitrary_safe_live_model_ids(settings, provider) {
-        sanitize_model_ids_with(ids, is_safe_model_id)
+        sanitize_model_ids_with(ids, |id| {
+            is_safe_model_id(id) && !looks_like_embedding_model_id(id)
+        })
     } else {
         sanitize_model_ids(ids)
     }
@@ -365,7 +369,7 @@ fn is_safe_model_id(value: &str) -> bool {
 }
 
 fn looks_like_model_id(value: &str) -> bool {
-    if !is_safe_model_id(value) {
+    if !is_safe_model_id(value) || looks_like_embedding_model_id(value) {
         return false;
     }
 
@@ -397,6 +401,21 @@ fn looks_like_model_id(value: &str) -> bool {
         || model_part.starts_with("codestral")
         || model_part.starts_with("starcoder")
         || model_part.starts_with("smollm")
+}
+
+fn looks_like_embedding_model_id(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    let model_part = if let Some((_, suffix)) = lower.rsplit_once('/') {
+        suffix
+    } else {
+        lower.as_str()
+    };
+
+    model_part.contains("embedding")
+        || model_part.contains("embed-text")
+        || model_part.starts_with("text-embedding")
+        || model_part.starts_with("embed-")
+        || model_part.starts_with("nomic-embed")
 }
 
 #[cfg(test)]
@@ -438,6 +457,17 @@ mod tests {
     }
 
     #[test]
+    fn embedding_model_ids_are_not_chat_model_candidates() {
+        assert!(looks_like_embedding_model_id(
+            "text-embedding-nomic-embed-text-v1.5"
+        ));
+        assert!(looks_like_embedding_model_id(
+            "nomic-ai/nomic-embed-text-v1.5"
+        ));
+        assert!(!looks_like_model_id("text-embedding-3-large"));
+    }
+
+    #[test]
     fn model_id_extraction_keeps_safe_local_catalog_ids_for_provider_filtering() {
         let value = serde_json::json!({"id": "NousResearch/Hermes-3-Llama"});
         assert_eq!(
@@ -457,6 +487,7 @@ mod tests {
             vec![
                 "qwen3-coder-30b".to_string(),
                 "NousResearch/Hermes-3-Llama".to_string(),
+                "text-embedding-nomic-embed-text-v1.5".to_string(),
             ],
         );
 
@@ -470,6 +501,11 @@ mod tests {
             merged
                 .iter()
                 .any(|model| model.id == "NousResearch/Hermes-3-Llama")
+        );
+        assert!(
+            !merged
+                .iter()
+                .any(|model| model.id == "text-embedding-nomic-embed-text-v1.5")
         );
     }
 }

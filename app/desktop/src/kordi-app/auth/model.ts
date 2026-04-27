@@ -18,6 +18,7 @@ export type AuthDisplayProvider = {
   loginHint: string;
   authority?: string | null;
   localBaseUrl?: string;
+  preferredModel?: string | null;
   methods: AuthDisplayMethod[];
 };
 
@@ -60,6 +61,7 @@ function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthP
     configured: false,
     authority: null,
     baseUrl,
+    preferredModel: null,
     options: [],
   };
 }
@@ -105,6 +107,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         .join(' • '),
       loginHint: 'Choose Claude subscription access for everyday chat, or an API key for billed automation and tooling.',
       authority: anthropic.authority,
+      preferredModel: anthropic.preferredModel,
       methods,
     });
   }
@@ -147,6 +150,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         .join(' • '),
       loginHint:
         'Pick a ChatGPT account for subscription access, an API key for billed automation, or keep both and switch later.',
+      preferredModel: openAiApi?.preferredModel ?? openAiOauth?.preferredModel,
       methods,
     });
   }
@@ -166,6 +170,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       loginHint: provider.loginHint,
       authority: provider.authority,
       localBaseUrl: isLocalProvider(id) ? (provider.baseUrl || localProviderBaseUrl(id) || undefined) : undefined,
+      preferredModel: provider.preferredModel,
       methods: [
         {
           mode,

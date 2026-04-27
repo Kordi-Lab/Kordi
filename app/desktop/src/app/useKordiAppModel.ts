@@ -728,7 +728,7 @@ export function useKordiAppModel() {
     if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
 
     const configuredProviders = buildAuthDisplayProviders(desktopAuthState)
-      .filter((provider) => provider.methods.some((method) => method.options.length > 0));
+      .filter((provider) => provider.configured);
 
     if (configuredProviders.length === 0) {
       lastAutoAuthProviderSwitchRef.current = null;

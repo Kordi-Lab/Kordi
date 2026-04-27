@@ -74,8 +74,19 @@ fn desktop_model_options_cache()
     DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
+pub fn clear_desktop_model_options_cache() {
+    if let Ok(mut cache) = desktop_model_options_cache().lock() {
+        cache.clear();
+    }
+}
+
 fn desktop_model_options_cache_key(cwd: &Path, settings: &Settings) -> String {
     let mut parts = vec![cwd.display().to_string()];
+    parts.push(format!(
+        "default:{}:{}",
+        settings.default_provider.as_deref().unwrap_or_default(),
+        settings.default_model.as_deref().unwrap_or_default()
+    ));
     for provider in login::authenticated_providers_for_settings(settings) {
         let active_method = login::active_auth_method(&provider)
             .map(|method| method.footer_label().to_string())
@@ -1040,6 +1051,30 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
     }
 
     let mut models = crate::live_models::authenticated_model_candidates_with_live(&settings).await;
+    if let (Some(default_provider), Some(default_model)) = (
+        settings.default_provider.as_deref(),
+        settings.default_model.as_deref(),
+    ) {
+        let provider = login::normalize_provider_for_model_selection(default_provider);
+        let model_id = default_model
+            .trim()
+            .strip_prefix(&format!("{provider}/"))
+            .unwrap_or_else(|| default_model.trim());
+        if !model_id.is_empty()
+            && !models
+                .iter()
+                .any(|model| model.provider == provider && model.id == model_id)
+        {
+            let mut registry = ModelRegistry::new();
+            registry.load_custom_models(&settings);
+            login::add_cached_github_copilot_models(&mut registry);
+            if let Some(model) =
+                synthesize_live_model_candidate(&registry, &settings, &provider, model_id)
+            {
+                models.push(model);
+            }
+        }
+    }
     models.sort_by(|left, right| {
         left.provider
             .cmp(&right.provider)
@@ -1066,11 +1101,7 @@ fn synthesize_live_model_candidate(
     provider: &str,
     model_id: &str,
 ) -> Option<Model> {
-    let has_template = registry
-        .list()
-        .iter()
-        .any(|model| model.provider == provider);
-    if !has_template && !login::provider_configured_for_settings(settings, provider) {
+    if !login::provider_configured_for_settings(settings, provider) {
         return None;
     }
 
@@ -1095,11 +1126,33 @@ fn resolve_model_candidate(
     registry.load_custom_models(settings);
     login::add_cached_github_copilot_models(&mut registry);
 
+    if requested.contains('/')
+        && let Some(provider) = current_provider
+    {
+        let normalized_provider = login::normalize_provider_for_model_selection(provider);
+        if login::is_local_openai_provider(&normalized_provider)
+            && !requested.starts_with(&format!("{normalized_provider}/"))
+            && let Some(model) = synthesize_live_model_candidate(
+                &registry,
+                settings,
+                &normalized_provider,
+                requested,
+            )
+        {
+            return Ok(model);
+        }
+    }
+
     if let Some((provider, model_id)) = requested.split_once('/') {
         return registry
             .find(provider, model_id)
             .cloned()
-            .or_else(|| registry.find_fuzzy(model_id, Some(provider)).cloned())
+            .filter(|_| login::provider_configured_for_settings(settings, provider))
+            .or_else(|| {
+                login::provider_configured_for_settings(settings, provider)
+                    .then(|| registry.find_fuzzy(model_id, Some(provider)).cloned())
+                    .flatten()
+            })
             .or_else(|| synthesize_live_model_candidate(&registry, settings, provider, model_id))
             .ok_or_else(|| anyhow!("Unknown model: {requested}"));
     }
@@ -2417,7 +2470,46 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kordi_core::settings::ProviderOverride;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+
+    fn lm_studio_settings() -> Settings {
+        Settings {
+            providers: Some(vec![ProviderOverride {
+                name: "lm-studio".to_string(),
+                base_url: Some("http://localhost:1234/v1".to_string()),
+                api_key_env: None,
+                api: None,
+                headers: None,
+            }]),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn local_model_id_with_publisher_slash_stays_on_current_local_provider() -> Result<()> {
+        let model = resolve_model_candidate(
+            &lm_studio_settings(),
+            "google/gemma-4-e4b",
+            Some("lm-studio"),
+        )?;
+
+        assert_eq!(model.provider, "lm-studio");
+        assert_eq!(model.id, "google/gemma-4-e4b");
+        Ok(())
+    }
+
+    #[test]
+    fn unconfigured_provider_prefix_is_not_synthesized_from_slash_model_id() {
+        let settings = Settings::default();
+        if login::provider_configured_for_settings(&settings, "google") {
+            return;
+        }
+
+        let result = resolve_model_candidate(&settings, "google/gemma-4-e4b", None);
+
+        assert!(result.is_err());
+    }
 
     #[test]
     fn session_title_seed_matches_chat_title_rules() {

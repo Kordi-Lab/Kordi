@@ -26,7 +26,9 @@ type AuthProviderDetailProps = {
   onSelectAuthChoice: (providerId: string, choice: string) => void;
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
-  onRefreshAuth: () => void;
+  onRefreshAuth: () => void | Promise<void>;
+  onDismissGate?: () => void;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
 function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string) {
@@ -83,6 +85,8 @@ export function AuthProviderDetail({
   onRemoveAuthProfile,
   onLogoutProvider,
   onRefreshAuth,
+  onDismissGate,
+  onEnterChat,
 }: AuthProviderDetailProps) {
   const [pendingDeleteProfileId, setPendingDeleteProfileId] = useState<string | null>(null);
   const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null);
@@ -98,6 +102,7 @@ export function AuthProviderDetail({
 
   const hasSavedProfiles = provider.methods.some((method) => method.options.some((option) => !!option.profileId));
   const localEndpoint = localProviderEndpoint(provider);
+  const isLmStudioLocal = provider.id === 'lm-studio' && !!localEndpoint;
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -159,7 +164,7 @@ export function AuthProviderDetail({
         )}
       </DetailSection>
 
-      <DetailSection title={localEndpoint ? 'Local server setup' : 'Ways to connect'}>
+      <DetailSection title={isLmStudioLocal ? 'Local model control center' : localEndpoint ? 'Local server setup' : 'Ways to connect'}>
         {provider.id === 'github-copilot' ? (
           (() => {
             const raw = findRawProvider(rawProviders, 'github-copilot');
@@ -208,6 +213,8 @@ export function AuthProviderDetail({
             rawProviders={rawProviders}
             onOpenLogin={onOpenLogin}
             onRefreshAuth={onRefreshAuth}
+            onDismissGate={onDismissGate}
+            onEnterChat={onEnterChat}
           />
         ) : (
           provider.methods.map((method, index) => {
@@ -236,125 +243,129 @@ export function AuthProviderDetail({
         )}
       </DetailSection>
 
-      <DetailSection title="Saved accounts and keys">
-        {provider.methods.map((method, methodIndex) => (
-          <div key={`profiles-${provider.id}-${method.mode}`}>
-            {methodIndex > 0 && <SectionDivider />}
-            <div className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
-              {method.mode === 'oauth' ? 'OAuth' : 'API key'}
-            </div>
-            {method.options.length > 0 ? (
-              method.options.map((option, optionIndex) => (
-                <div key={`${method.providerId}-${option.value}`}>
-                  {optionIndex > 0 && <SectionDivider />}
-                  <DetailRow
-                    title={option.label}
-                    meta={buildProfileMeta(option)}
-                    detail={option.detail}
-                    multiline
-                    trailing={
-                      <>
-                        {option.active ? (
-                          <div className={authActiveBadgeClass}>Active</div>
-                        ) : (
-                          <AuthActionButton
-                            type="button"
-                            className={authButtonNeutralClass}
-                            onClick={() => onSelectAuthChoice(option.providerId, option.value)}
-                          >
-                            {option.profileId ? 'Use this profile' : 'Use environment'}
-                          </AuthActionButton>
-                        )}
-                        {option.profileId ? (
-                          pendingDeleteProfileId === option.profileId && pendingDeleteProviderId === option.providerId ? (
-                            <>
-                              <AuthActionButton
-                                type="button"
-                                className={authButtonDangerClass}
-                                onClick={confirmDeleteProfile}
-                              >
-                                Confirm delete
-                              </AuthActionButton>
+      {!isLmStudioLocal ? (
+        <>
+          <DetailSection title="Saved accounts and keys">
+            {provider.methods.map((method, methodIndex) => (
+              <div key={`profiles-${provider.id}-${method.mode}`}>
+                {methodIndex > 0 && <SectionDivider />}
+                <div className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
+                  {method.mode === 'oauth' ? 'OAuth' : 'API key'}
+                </div>
+                {method.options.length > 0 ? (
+                  method.options.map((option, optionIndex) => (
+                    <div key={`${method.providerId}-${option.value}`}>
+                      {optionIndex > 0 && <SectionDivider />}
+                      <DetailRow
+                        title={option.label}
+                        meta={buildProfileMeta(option)}
+                        detail={option.detail}
+                        multiline
+                        trailing={
+                          <>
+                            {option.active ? (
+                              <div className={authActiveBadgeClass}>Active</div>
+                            ) : (
                               <AuthActionButton
                                 type="button"
                                 className={authButtonNeutralClass}
-                                onClick={cancelDeleteProfile}
+                                onClick={() => onSelectAuthChoice(option.providerId, option.value)}
                               >
-                                Cancel
+                                {option.profileId ? 'Use this profile' : 'Use environment'}
                               </AuthActionButton>
-                            </>
-                          ) : (
-                            <AuthActionButton
-                              type="button"
-                              className={authButtonDangerClass}
-                              onClick={() => requestDeleteProfile(option.providerId, option.profileId!)}
-                            >
-                              Delete
-                            </AuthActionButton>
-                          )
-                        ) : (
-                          <div className="app-badge-neutral rounded-full px-2.5 py-0.5 text-[10px] leading-none">Environment</div>
-                        )}
-                      </>
-                    }
-                  />
-                </div>
-              ))
-            ) : (
-              <div className="px-4 pb-3 pt-2 text-[11px] leading-5 text-slate-400">
-                {localEndpoint && method.mode === 'api-key'
-                  ? 'No saved key needed for the default local server.'
-                  : `No saved ${method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.`}
+                            )}
+                            {option.profileId ? (
+                              pendingDeleteProfileId === option.profileId && pendingDeleteProviderId === option.providerId ? (
+                                <>
+                                  <AuthActionButton
+                                    type="button"
+                                    className={authButtonDangerClass}
+                                    onClick={confirmDeleteProfile}
+                                  >
+                                    Confirm delete
+                                  </AuthActionButton>
+                                  <AuthActionButton
+                                    type="button"
+                                    className={authButtonNeutralClass}
+                                    onClick={cancelDeleteProfile}
+                                  >
+                                    Cancel
+                                  </AuthActionButton>
+                                </>
+                              ) : (
+                                <AuthActionButton
+                                  type="button"
+                                  className={authButtonDangerClass}
+                                  onClick={() => requestDeleteProfile(option.providerId, option.profileId!)}
+                                >
+                                  Delete
+                                </AuthActionButton>
+                              )
+                            ) : (
+                              <div className="app-badge-neutral rounded-full px-2.5 py-0.5 text-[10px] leading-none">Environment</div>
+                            )}
+                          </>
+                        }
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 pb-3 pt-2 text-[11px] leading-5 text-slate-400">
+                    {localEndpoint && method.mode === 'api-key'
+                      ? 'No saved key needed for the default local server.'
+                      : `No saved ${method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.`}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
-      </DetailSection>
+            ))}
+          </DetailSection>
 
-      <DetailSection title="Storage and cleanup">
-        <DetailRow title="Shared auth store" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
-        <SectionDivider />
-        <DetailRow
-          title="Remove saved access"
-          detail={localEndpoint
-            ? 'Delete optional saved API keys for this local provider from Kordi\'s shared auth store. The local endpoint itself is not changed.'
-            : 'Delete saved accounts and keys for this provider from Kordi\'s shared auth store. Environment variables are not removed here.'}
-          trailing={
-            confirmRemoveAll ? (
-              <>
-                <AuthActionButton
-                  type="button"
-                  className={authButtonDangerClass}
-                  onClick={handleRemoveAll}
-                >
-                  Confirm remove all
-                </AuthActionButton>
-                <AuthActionButton
-                  type="button"
-                  className={authButtonNeutralClass}
-                  onClick={() => setConfirmRemoveAll(false)}
-                >
-                  Cancel
-                </AuthActionButton>
-              </>
-            ) : (
-              <AuthActionButton
-                type="button"
-                className={authButtonDangerClass}
-                onClick={() => {
-                  setPendingDeleteProviderId(null);
-                  setPendingDeleteProfileId(null);
-                  setConfirmRemoveAll(true);
-                }}
-                disabled={!hasSavedProfiles}
-              >
-                Remove all saved access
-              </AuthActionButton>
-            )
-          }
-          multiline
-        />
-      </DetailSection>
+          <DetailSection title="Storage and cleanup">
+            <DetailRow title="Shared auth store" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
+            <SectionDivider />
+            <DetailRow
+              title="Remove saved access"
+              detail={localEndpoint
+                ? 'Delete optional saved API keys for this local provider from Kordi\'s shared auth store. The local endpoint itself is not changed.'
+                : 'Delete saved accounts and keys for this provider from Kordi\'s shared auth store. Environment variables are not removed here.'}
+              trailing={
+                confirmRemoveAll ? (
+                  <>
+                    <AuthActionButton
+                      type="button"
+                      className={authButtonDangerClass}
+                      onClick={handleRemoveAll}
+                    >
+                      Confirm remove all
+                    </AuthActionButton>
+                    <AuthActionButton
+                      type="button"
+                      className={authButtonNeutralClass}
+                      onClick={() => setConfirmRemoveAll(false)}
+                    >
+                      Cancel
+                    </AuthActionButton>
+                  </>
+                ) : (
+                  <AuthActionButton
+                    type="button"
+                    className={authButtonDangerClass}
+                    onClick={() => {
+                      setPendingDeleteProviderId(null);
+                      setPendingDeleteProfileId(null);
+                      setConfirmRemoveAll(true);
+                    }}
+                    disabled={!hasSavedProfiles}
+                  >
+                    Remove all saved access
+                  </AuthActionButton>
+                )
+              }
+              multiline
+            />
+          </DetailSection>
+        </>
+      ) : null}
       </div>
     </div>
   );

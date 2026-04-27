@@ -82,8 +82,109 @@ export async function saveDesktopApiKey(provider: string, key: string) {
   return invokeDesktop<DesktopAuthState>('desktop_save_api_key', { provider, key });
 }
 
-export async function setDesktopLocalProviderPort(provider: string, port: number) {
-  return invokeDesktop<DesktopAuthState>('desktop_set_local_provider_port', { provider, port });
+export type DesktopLmStudioCommandResult = {
+  command: string;
+  statusCode?: number | null;
+  stdout: string;
+  stderr: string;
+};
+
+export type DesktopLmStudioCatalogVariant = {
+  id: string;
+  name: string;
+  url: string;
+  size?: string | null;
+};
+
+export type DesktopLmStudioInstalledModel = {
+  id: string;
+  name: string;
+  size?: string | null;
+  path?: string | null;
+  architecture?: string | null;
+};
+
+export type DesktopLmStudioEnvironment = {
+  appPath?: string | null;
+  appVersion?: string | null;
+  homePath?: string | null;
+  binPath?: string | null;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  cliSource?: string | null;
+  cliInShellPath: boolean;
+  shellConfigPaths: string[];
+  notes: string[];
+};
+
+export type DesktopLmStudioServerStatus = {
+  running: boolean;
+  detail: string;
+};
+
+export type DesktopLmStudioCatalogModel = {
+  id: string;
+  name: string;
+  url: string;
+  sizes: string[];
+  updated?: string | null;
+  variants: DesktopLmStudioCatalogVariant[];
+};
+
+export async function setDesktopLocalProviderPort(provider: string, port: number, model?: string | null) {
+  return invokeDesktop<DesktopAuthState>('desktop_set_local_provider_port', { provider, port, model });
+}
+
+export async function fetchLmStudioCatalogModelsDesktop() {
+  return invokeDesktop<DesktopLmStudioCatalogModel[]>('desktop_lm_studio_catalog_models');
+}
+
+export async function fetchLmStudioEnvironmentDesktop() {
+  return invokeDesktop<DesktopLmStudioEnvironment>('desktop_lm_studio_environment');
+}
+
+export async function fetchLmStudioLoadedModelIdsDesktop(baseUrl: string) {
+  return invokeDesktop<string[]>('desktop_lm_studio_loaded_model_ids', { baseUrl });
+}
+
+export async function fetchLmStudioServerStatusDesktop() {
+  return invokeDesktop<DesktopLmStudioServerStatus>('desktop_lm_studio_server_status');
+}
+
+export async function startLmStudioServerDesktop(port?: number | null) {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_start_server', { port });
+}
+
+export async function stopLmStudioServerDesktop() {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_stop_server');
+}
+
+export async function fetchLmStudioInstalledModelsDesktop() {
+  return invokeDesktop<DesktopLmStudioInstalledModel[]>('desktop_lm_studio_installed_models');
+}
+
+export async function openLmStudioAppDesktop() {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_open_app');
+}
+
+export async function repairLmStudioCliPathDesktop() {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_repair_cli_path');
+}
+
+export async function installLmStudioDesktop() {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_install');
+}
+
+export async function getLmStudioModelDesktop(model: string) {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_get_model', { model });
+}
+
+export async function loadLmStudioModelDesktop(model: string) {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_load_model', { model });
+}
+
+export async function stopLmStudioModelDesktop(model: string) {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_stop_model', { model });
 }
 
 export async function logoutDesktopProvider(provider: string) {

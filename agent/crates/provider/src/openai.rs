@@ -13,7 +13,7 @@ use crate::retry::with_retry;
 use crate::transforms::{convert_messages_for_openai, strip_thinking_blocks};
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 use responses::should_use_responses_api;
-use sse::process_openai_sse;
+use sse::{openai_sse_error_message, process_openai_sse};
 
 /// OpenAI-compatible provider (works with OpenAI, Groq, Ollama, etc.)
 pub struct OpenAiProvider {
@@ -242,6 +242,7 @@ impl Provider for OpenAiProvider {
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut current_event_name: Option<String> = None;
         let mut tool_calls: Vec<(String, String, String)> = Vec::new();
 
         loop {
@@ -265,10 +266,16 @@ impl Provider for OpenAiProvider {
                 buffer = buffer[pos + 1..].to_string();
 
                 if line.is_empty() {
+                    current_event_name = None;
                     continue;
                 }
 
-                if let Some(data) = line.strip_prefix("data: ") {
+                if let Some(event_name) = line.strip_prefix("event:").map(str::trim) {
+                    current_event_name = Some(event_name.to_string());
+                    continue;
+                }
+
+                if let Some(data) = line.strip_prefix("data:").map(str::trim_start) {
                     if data == "[DONE]" {
                         for (id, name, args) in &tool_calls {
                             let _ = tx.send(StreamEvent::ToolCallStart {
@@ -285,8 +292,27 @@ impl Provider for OpenAiProvider {
                         return Ok(());
                     }
 
-                    if let Ok(event) = serde_json::from_str::<Value>(data) {
-                        process_openai_sse(&event, &tx, &mut tool_calls);
+                    match serde_json::from_str::<Value>(data) {
+                        Ok(event) => {
+                            if current_event_name.as_deref() == Some("error")
+                                || openai_sse_error_message(&event).is_some()
+                            {
+                                let message = openai_sse_error_message(&event)
+                                    .unwrap_or_else(|| data.to_string());
+                                let _ = tx.send(StreamEvent::Error { message });
+                                let _ = tx.send(StreamEvent::Done);
+                                return Ok(());
+                            }
+                            process_openai_sse(&event, &tx, &mut tool_calls);
+                        }
+                        Err(_) if current_event_name.as_deref() == Some("error") => {
+                            let _ = tx.send(StreamEvent::Error {
+                                message: data.to_string(),
+                            });
+                            let _ = tx.send(StreamEvent::Done);
+                            return Ok(());
+                        }
+                        Err(_) => {}
                     }
                 }
             }

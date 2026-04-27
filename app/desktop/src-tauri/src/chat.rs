@@ -11,6 +11,7 @@ use kordi_cli::desktop_runtime::{
     DesktopRuntimeSession,
 };
 use kordi_core::error::KordiError;
+use kordi_core::settings::Settings;
 use kordi_tools::ReachOutRuntime;
 
 use crate::bridge::{
@@ -130,6 +131,33 @@ fn sanitize_bridge_segment(value: &str) -> String {
     } else {
         sanitized
     }
+}
+
+async fn ensure_provider_ready_for_send(
+    provider: &str,
+    model: &str,
+    cwd: &std::path::Path,
+) -> Result<(), String> {
+    if provider != "lm-studio" {
+        return Ok(());
+    }
+
+    if model.trim().is_empty() {
+        return Err("LM Studio selected, but no local model is selected.".to_string());
+    }
+
+    let settings = Settings::load_merged(cwd);
+    crate::auth::lm_studio::ensure_server_running(lm_studio_port(&settings))
+        .await
+        .map_err(|err| format!(
+            "LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio. {err}"
+        ))?;
+
+    crate::auth::lm_studio::ensure_model_loaded_with_best_context(model)
+        .await
+        .map_err(|err| format!(
+            "LM Studio selected, but Kordi could not load `{model}` with a larger supported context length. {err}"
+        ))
 }
 
 fn bridge_agent_session_cwd(
@@ -737,6 +765,78 @@ async fn ensure_loaded_or_create_explicit_session(
     Ok(session_id)
 }
 
+async fn authenticated_model_options_with_local_runtime(
+    cwd: &std::path::Path,
+) -> Vec<DesktopChatModelOption> {
+    let mut options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
+    merge_lm_studio_running_model_options(cwd, &mut options).await;
+    options
+}
+
+async fn merge_lm_studio_running_model_options(
+    cwd: &std::path::Path,
+    options: &mut Vec<DesktopChatModelOption>,
+) {
+    let settings = Settings::load_merged(cwd);
+    let base_url = lm_studio_base_url(&settings);
+    let Ok(model_ids) = crate::auth::lm_studio::loaded_model_ids_for_base_url(&base_url).await
+    else {
+        return;
+    };
+
+    for model_id in model_ids {
+        if options
+            .iter()
+            .any(|option| option.provider == "lm-studio" && option.label == model_id)
+        {
+            continue;
+        }
+        options.push(DesktopChatModelOption {
+            provider: "lm-studio".to_string(),
+            provider_label: "LM Studio".to_string(),
+            value: format!("lm-studio/{model_id}"),
+            label: model_id.clone(),
+            detail: format!("LM Studio • running local model"),
+        });
+    }
+}
+
+fn lm_studio_port(settings: &Settings) -> Option<u32> {
+    let base_url = lm_studio_base_url(settings);
+    let url = reqwest::Url::parse(&base_url).ok()?;
+    url.port().map(u32::from)
+}
+
+fn lm_studio_base_url(settings: &Settings) -> String {
+    settings
+        .providers
+        .as_ref()
+        .and_then(|providers| {
+            providers.iter().find_map(|provider| {
+                kordi_cli::login::provider_names_match("lm-studio", &provider.name)
+                    .then(|| provider.base_url.as_deref().map(str::trim))
+                    .flatten()
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+            })
+        })
+        .or_else(|| {
+            settings.models.as_ref().and_then(|models| {
+                models.iter().find_map(|model| {
+                    kordi_cli::login::provider_names_match("lm-studio", &model.provider)
+                        .then(|| model.base_url.as_deref().map(str::trim))
+                        .flatten()
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string)
+                })
+            })
+        })
+        .or_else(|| {
+            kordi_cli::login::local_openai_provider_base_url("lm-studio").map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "http://localhost:1234/v1".to_string())
+}
+
 async fn build_chat_state(
     manager: &DesktopChatManager,
     cwd: &std::path::Path,
@@ -747,7 +847,7 @@ async fn build_chat_state(
         .into_iter()
         .filter(|session| !is_blank_draft_summary(session))
         .collect::<Vec<_>>();
-    let model_options = kordi_cli::desktop_runtime::authenticated_model_options(cwd).await;
+    let model_options = authenticated_model_options_with_local_runtime(cwd).await;
     let projects = filter_blank_draft_projects(
         kordi_cli::desktop_runtime::list_project_groups(cwd).map_err(|err| err.to_string())?,
     );
@@ -1076,8 +1176,14 @@ pub async fn desktop_chat_update_session_config(
     thinking: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let session = {
+    let target_session_id = if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string()
+    } else {
+        ensure_loaded_session(&manager, &cwd, Some(session_id)).await?
+    };
+    let session = if target_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        ensure_transient_draft_runtime(&manager, &cwd).await?
+    } else {
         let sessions = manager.sessions.lock().await;
         sessions
             .get(&target_session_id)
@@ -1328,6 +1434,8 @@ pub async fn desktop_chat_send_message(
         &text,
     )
     .await;
+    let detail = session.detail().map_err(|err| err.to_string())?;
+    ensure_provider_ready_for_send(&detail.provider, &detail.model, &cwd).await?;
     session
         .send_message(text, Vec::new())
         .await
@@ -1526,10 +1634,30 @@ pub async fn desktop_chat_start_message(
             &mut session,
             bridge_manager_for_task,
             chat_manager_for_task,
-            cwd,
+            cwd.clone(),
             &text,
         )
         .await;
+
+        let detail = session.detail().ok();
+        let provider = detail
+            .as_ref()
+            .map(|detail| detail.provider.as_str())
+            .unwrap_or_default();
+        let model = detail
+            .as_ref()
+            .map(|detail| detail.model.as_str())
+            .unwrap_or_default();
+        if let Err(error) = ensure_provider_ready_for_send(provider, model, &cwd).await {
+            update_turn(&snapshot_for_task, |state| {
+                state.status = "failed".to_string();
+                state.message = error.clone();
+                state.completed = true;
+                state.succeeded = false;
+                state.error = Some(error);
+            });
+            return;
+        }
 
         let result =
             session
