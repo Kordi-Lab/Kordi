@@ -348,14 +348,14 @@ fn tool_result_appears_only_when_finished_and_enter_expands_output() {
         .transcript
         .block(tool_use.children[0])
         .expect("tool result after result");
-    assert!(tool_result.content.contains("line 1"));
-    assert!(tool_result.content.contains("line 3"));
+    assert!(tool_result.content.contains("line 10"));
+    assert!(tool_result.content.contains("line 14"));
     assert!(
         tool_result
             .content
             .contains(crate::ui_hints::TOOL_EXPAND_HINT)
     );
-    assert!(!tool_result.content.contains("line 14"));
+    assert!(!tool_result.content.contains("line 2"));
 
     state.mode = TuiMode::Transcript;
     state.focused_block = Some(tool_use_id);
@@ -374,5 +374,6 @@ fn tool_result_appears_only_when_finished_and_enter_expands_output() {
             .content
             .contains(crate::ui_hints::TOOL_EXPAND_HINT)
     );
+    assert!(tool_result.content.contains("line 1"));
     assert!(tool_result.content.contains("line 14"));
 }

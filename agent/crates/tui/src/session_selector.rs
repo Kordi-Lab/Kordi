@@ -115,6 +115,8 @@ mod tests {
                 leaf_id: Some("abc123".into()),
                 entry_count: 42,
                 parent_session_id: None,
+                session_scope: "global".into(),
+                project_root: None,
             },
             SessionRow {
                 session_id: "eeee-ffff-1111-2222".into(),
@@ -125,6 +127,8 @@ mod tests {
                 leaf_id: Some("def456".into()),
                 entry_count: 7,
                 parent_session_id: None,
+                session_scope: "global".into(),
+                project_root: None,
             },
         ]
     }

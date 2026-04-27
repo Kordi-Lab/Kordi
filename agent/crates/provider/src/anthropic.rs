@@ -10,7 +10,7 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use events::process_sse_event;
+use events::AnthropicEventState;
 use kordi_core::types::CacheMetricsSource;
 
 /// Anthropic Messages API provider.
@@ -192,6 +192,7 @@ impl Provider for AnthropicProvider {
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut event_state = AnthropicEventState::default();
 
         while let Some(chunk_result) = stream.next().await {
             if options.cancel.is_cancelled() {
@@ -214,7 +215,7 @@ impl Provider for AnthropicProvider {
                             return Ok(());
                         }
                         if let Ok(event) = serde_json::from_str::<Value>(data) {
-                            process_sse_event(
+                            event_state.process_sse_event(
                                 &event,
                                 &tx,
                                 cache_metrics_source_for_auth_mode(&options.auth_mode),

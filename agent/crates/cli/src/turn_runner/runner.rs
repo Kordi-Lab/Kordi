@@ -440,11 +440,36 @@ async fn collect_stream_events(
     let mut first_stream_event_at_ms = None;
     let mut first_text_delta_at_ms = None;
 
+    let drain_ready_events =
+        |stream_rx: &mut mpsc::UnboundedReceiver<StreamEvent>,
+         events: &mut Vec<StreamEvent>,
+         context_overflow_error: &mut Option<String>,
+         first_stream_event_at_ms: &mut Option<i64>,
+         first_text_delta_at_ms: &mut Option<i64>| {
+            while let Ok(event) = stream_rx.try_recv() {
+                forward_stream_event(
+                    event_tx,
+                    &event,
+                    context_overflow_error,
+                    first_stream_event_at_ms,
+                    first_text_delta_at_ms,
+                );
+                events.push(event);
+            }
+        };
+
     let mut cancelled = false;
     loop {
         tokio::select! {
             _ = config.cancel.cancelled() => {
                 cancelled = true;
+                drain_ready_events(
+                    &mut stream_rx,
+                    &mut events,
+                    &mut context_overflow_error,
+                    &mut first_stream_event_at_ms,
+                    &mut first_text_delta_at_ms,
+                );
                 stream_handle.abort();
                 break;
             }
@@ -461,6 +486,13 @@ async fn collect_stream_events(
 
                 if config.cancel.is_cancelled() {
                     cancelled = true;
+                    drain_ready_events(
+                        &mut stream_rx,
+                        &mut events,
+                        &mut context_overflow_error,
+                        &mut first_stream_event_at_ms,
+                        &mut first_text_delta_at_ms,
+                    );
                     stream_handle.abort();
                     break;
                 }

@@ -173,19 +173,20 @@ impl PluginHost {
     pub(super) async fn read_message(
         &mut self,
     ) -> Result<Option<serde_json::Value>, std::io::Error> {
-        let mut line = String::new();
-        let bytes = self.stdout_reader.read_line(&mut line).await?;
-        if bytes == 0 {
-            return Ok(None);
-        }
-        match serde_json::from_str(&line) {
-            Ok(val) => Ok(Some(val)),
-            Err(e) => {
-                warn!(
-                    "Failed to parse plugin message: {e} — line: {}",
-                    line.trim()
-                );
-                Ok(None)
+        loop {
+            let mut line = String::new();
+            let bytes = self.stdout_reader.read_line(&mut line).await?;
+            if bytes == 0 {
+                return Ok(None);
+            }
+            match serde_json::from_str(&line) {
+                Ok(val) => return Ok(Some(val)),
+                Err(e) => {
+                    warn!(
+                        "Failed to parse plugin message: {e} — line: {}",
+                        line.trim()
+                    );
+                }
             }
         }
     }
