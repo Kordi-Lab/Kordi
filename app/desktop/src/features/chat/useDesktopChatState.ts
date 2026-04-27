@@ -56,6 +56,41 @@ function liveTurnToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
   ].join('\u0000');
 }
 
+function normalizedTranscriptText(value?: string | null) {
+  return (value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function liveTurnResponseText(turn: DesktopChatTurnSnapshot) {
+  return normalizedTranscriptText(turn.assistantText)
+    || normalizedTranscriptText(turn.error)
+    || (turn.completed ? normalizedTranscriptText(turn.message) : '');
+}
+
+function desktopAssistantMessageMatchesTurn(message: DesktopChatMessage, turn: DesktopChatTurnSnapshot) {
+  if (message.role !== 'assistant') return false;
+  const turnText = liveTurnResponseText(turn);
+  return turnText.length > 0 && normalizedTranscriptText(message.text) === turnText;
+}
+
+function transcriptMessageMatchesIncompleteLiveTurn(message: Message, turn: DesktopChatTurnSnapshot) {
+  if (message.role !== 'owned-agent') return false;
+  const turnText = liveTurnResponseText(turn);
+  return turnText.length > 0 && normalizedTranscriptText(message.text) === turnText;
+}
+
+function suppressIncompleteLiveTurnEcho(messages: Message[], turn?: DesktopChatTurnSnapshot) {
+  if (!turn || turn.completed) return messages;
+  let echoIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (transcriptMessageMatchesIncompleteLiveTurn(messages[index], turn)) {
+      echoIndex = index;
+      break;
+    }
+  }
+  if (echoIndex < 0) return messages;
+  return messages.filter((_, index) => index !== echoIndex);
+}
+
 function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefined, right: DesktopChatTurnSnapshot) {
   if (!left) return true;
   if (
@@ -323,16 +358,19 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     };
   }, [clearUnreadForSession, isNativeShell]);
 
-  const activeSessionHasVisibleLiveTurn = Boolean(
-    desktopChatState?.activeSessionId
-      && desktopLiveTurnsBySession[desktopChatState.activeSessionId],
-  );
+  const activeIncompleteLiveTurn = desktopChatState?.activeSessionId
+    ? desktopLiveTurnsBySession[desktopChatState.activeSessionId]
+    : undefined;
+  const activeSessionHasVisibleLiveTurn = Boolean(activeIncompleteLiveTurn && !activeIncompleteLiveTurn.completed);
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;
-    const mappedMessages = mapDesktopMessages(
-      desktopChatState.activeSessionId,
-      desktopChatState.activeSession.messages,
+    const mappedMessages = suppressIncompleteLiveTurnEcho(
+      mapDesktopMessages(
+        desktopChatState.activeSessionId,
+        desktopChatState.activeSession.messages,
+      ),
+      activeIncompleteLiveTurn,
     );
     const preserveExistingMessages = activeSessionHasVisibleLiveTurn;
     setCachedChatSessionMessages((current) => {
@@ -361,7 +399,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [desktopChatState.activeSessionId]: nextMessages,
       };
     });
-  }, [activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
+  }, [activeIncompleteLiveTurn, activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
     const finishedAt = formatDesktopClockTime(new Date());
@@ -383,12 +421,19 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setDesktopChatState((current) => {
       if (!current) return current;
 
+      const activeSessionAlreadyHasCompletedMessage = Boolean(
+        completedMessage
+          && current.activeSession.id === turn.sessionId
+          && current.activeSession.messages.some((message) => desktopAssistantMessageMatchesTurn(message, turn)),
+      );
+      const shouldAppendCompletedMessage = Boolean(completedMessage && !activeSessionAlreadyHasCompletedMessage);
+
       const updatedSessions = current.sessions.map((session) => {
         if (session.id !== turn.sessionId) return session;
         return {
           ...session,
           updatedAtLabel: finishedAt,
-          messageCount: completedMessage ? session.messageCount + 1 : session.messageCount,
+          messageCount: shouldAppendCompletedMessage ? session.messageCount + 1 : session.messageCount,
         };
       });
       const targetSession = updatedSessions.find((session) => session.id === turn.sessionId);
@@ -400,6 +445,17 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         return {
           ...current,
           sessions: nextSessions,
+        };
+      }
+
+      if (activeSessionAlreadyHasCompletedMessage) {
+        return {
+          ...current,
+          sessions: nextSessions,
+          activeSession: {
+            ...current.activeSession,
+            updatedAtLabel: finishedAt,
+          },
         };
       }
 
