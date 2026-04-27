@@ -739,8 +739,9 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
+  const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const showLiveStatusHeader = !historical && !visibleTurn.completed && !isCompressionStatus;
+  const showLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -889,6 +890,20 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
+);
+
+function LiveChatTurnMessageView({ turn }: { turn: DesktopChatTurnSnapshot }) {
+  return (
+    <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+      <div className="app-message-meta">Kordi</div>
+      <LiveChatTurnCard turn={turn} />
+    </div>
+  );
+}
+
+export const LiveChatTurnMessage = memo(
+  LiveChatTurnMessageView,
+  (previous, next) => previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn),
 );
 
 export function BridgeChip({ bridge }: { bridge: string }) {

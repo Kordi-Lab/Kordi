@@ -24,7 +24,7 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
-  LiveChatTurnCard,
+  LiveChatTurnMessage,
   MessageBubble,
   type ComposerAuthOption,
   type ComposerMentionOption,
@@ -311,7 +311,7 @@ export function ProjectsPage({
                 onOpenSource={onOpenSource}
               />
             ))}
-            {desktopLiveTurn && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnCard turn={desktopLiveTurn} /> : null}
+            {desktopLiveTurn && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
           </motion.div>
         </ScrollArea>
       </div>

@@ -23,7 +23,7 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
-  LiveChatTurnCard,
+  LiveChatTurnMessage,
   MessageBubble,
   TypeBadge,
   type ComposerAuthOption,
@@ -292,7 +292,7 @@ export function ChatsPage({
                 onOpenSource={onOpenSource}
               />
             ))}
-            {visibleDesktopLiveTurn && visibleDesktopLiveTurn.sessionId === activeConv.id ? <LiveChatTurnCard turn={visibleDesktopLiveTurn} /> : null}
+            {visibleDesktopLiveTurn && visibleDesktopLiveTurn.sessionId === activeConv.id ? <LiveChatTurnMessage turn={visibleDesktopLiveTurn} /> : null}
             {queuedDesktopMessages.map((message) => (
               <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
             ))}
