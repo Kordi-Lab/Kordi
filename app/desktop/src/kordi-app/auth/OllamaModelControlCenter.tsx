@@ -406,7 +406,7 @@ export function OllamaModelControlCenter({
     if (confirmDeleteModelId !== model) {
       setConfirmDeleteModelId(model);
       setActionError(null);
-      setActionMessage(`Click Remove again to delete ${model} from Ollama.`);
+      setActionMessage(`Click Remove again to stop ${model} if running, then delete it from Ollama.`);
       return;
     }
 
@@ -583,7 +583,7 @@ export function OllamaModelControlCenter({
             </div>
             <h3 className="mt-3 text-[17px] font-semibold tracking-tight text-white">One Ollama model, pulled locally, ready for Kordi chat.</h3>
             <p className="mt-1 max-w-[70ch] text-[12px] leading-5 text-slate-400">
-              Kordi uses Ollama’s OpenAI-compatible endpoint for chat, while this panel uses Ollama’s native API for model pull, run, stop, and delete controls.
+              Kordi uses Ollama’s OpenAI-compatible endpoint for chat, while this panel uses Ollama’s native API for model pull, run, stop, and removal. Removing a model stops any running copy before deleting it from disk.
             </p>
           </div>
           <div className="flex min-w-[15rem] flex-col gap-2 rounded-[18px] border border-white/8 bg-black/10 p-3">
@@ -672,7 +672,7 @@ export function OllamaModelControlCenter({
               <div className="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-[10px] text-slate-300">{installedModels.length} chat models</div>
             </div>
             <div className="mt-1 max-w-[72ch] text-[11px] leading-5 text-slate-400">
-              Run loads the model through Ollama’s native API. Embedding models are filtered out because they cannot answer chat.
+              Run loads the model through Ollama’s native API. Remove first stops a running copy, then deletes it from disk. Embedding models are filtered out because they cannot answer chat.
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">

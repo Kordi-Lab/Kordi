@@ -212,13 +212,7 @@ pub async fn desktop_ollama_stop_model(
     model: String,
 ) -> Result<DesktopOllamaCommandResult, String> {
     let model = sanitize_chat_model_arg(&model)?;
-    post_ollama_json_command(
-        &base_url,
-        "/api/generate",
-        json!({ "model": model, "prompt": "", "stream": false, "keep_alive": 0 }),
-        format!("POST /api/generate stop {model}"),
-    )
-    .await
+    stop_ollama_model_command(&base_url, &model).await
 }
 
 #[tauri::command]
@@ -227,12 +221,14 @@ pub async fn desktop_ollama_delete_model(
     model: String,
 ) -> Result<DesktopOllamaCommandResult, String> {
     let model = sanitize_chat_model_arg(&model)?;
-    post_ollama_delete_command(
-        &base_url,
-        json!({ "model": model }),
-        format!("DELETE /api/delete {model}"),
-    )
-    .await
+    ensure_server_running(port_from_base_url(&base_url)).await?;
+    let stop_result = stop_ollama_model_if_running(&base_url, &model).await?;
+    let delete_result = delete_ollama_model_command(&base_url, &model).await?;
+    Ok(combine_stop_delete_result(
+        &model,
+        stop_result.as_ref(),
+        &delete_result,
+    ))
 }
 
 pub async fn ensure_server_running(port: Option<u32>) -> Result<(), String> {
@@ -263,9 +259,11 @@ pub async fn running_model_ids_for_base_url(base_url: &str) -> Result<Vec<String
     let json = get_ollama_json(url, "Ollama running model list").await?;
     let mut ids = Vec::new();
     collect_ollama_model_ids(&json, &mut ids);
-    ids.sort_by_key(|id| id.to_lowercase());
-    ids.dedup();
-    Ok(ids)
+    let installed_models = installed_models_for_base_url(base_url).await?;
+    Ok(filter_running_model_ids_to_installed(
+        ids,
+        &installed_models,
+    ))
 }
 
 async fn installed_models_for_base_url(
@@ -415,6 +413,77 @@ async fn get_ollama_json(url: Url, label: &str) -> Result<Value, String> {
         .json::<Value>()
         .await
         .map_err(|err| format!("Unable to read {label}: {err}"))
+}
+
+async fn stop_ollama_model_command(
+    base_url: &str,
+    model: &str,
+) -> Result<DesktopOllamaCommandResult, String> {
+    post_ollama_json_command(
+        base_url,
+        "/api/generate",
+        json!({ "model": model, "prompt": "", "stream": false, "keep_alive": 0 }),
+        format!("POST /api/generate stop {model}"),
+    )
+    .await
+}
+
+async fn stop_ollama_model_if_running(
+    base_url: &str,
+    model: &str,
+) -> Result<Option<DesktopOllamaCommandResult>, String> {
+    let target = canonical_ollama_model_id(model);
+    let running_ids = running_model_ids_for_base_url(base_url).await?;
+    if !running_ids
+        .iter()
+        .any(|id| canonical_ollama_model_id(id) == target)
+    {
+        return Ok(None);
+    }
+
+    stop_ollama_model_command(base_url, model).await.map(Some)
+}
+
+async fn delete_ollama_model_command(
+    base_url: &str,
+    model: &str,
+) -> Result<DesktopOllamaCommandResult, String> {
+    post_ollama_delete_command(
+        base_url,
+        json!({ "model": model }),
+        format!("DELETE /api/delete {model}"),
+    )
+    .await
+}
+
+fn combine_stop_delete_result(
+    model: &str,
+    stop_result: Option<&DesktopOllamaCommandResult>,
+    delete_result: &DesktopOllamaCommandResult,
+) -> DesktopOllamaCommandResult {
+    let command = stop_result
+        .map(|result| format!("{} && {}", result.command, delete_result.command))
+        .unwrap_or_else(|| delete_result.command.clone());
+    let mut stderr = Vec::new();
+    if let Some(result) = stop_result {
+        if !result.stderr.trim().is_empty() {
+            stderr.push(result.stderr.trim().to_string());
+        }
+    }
+    if !delete_result.stderr.trim().is_empty() {
+        stderr.push(delete_result.stderr.trim().to_string());
+    }
+
+    DesktopOllamaCommandResult {
+        command,
+        status_code: delete_result.status_code,
+        stdout: if stop_result.is_some() {
+            format!("Stopped running copy of {model}.\nDeleted {model} from Ollama.")
+        } else {
+            format!("Deleted {model} from Ollama.")
+        },
+        stderr: stderr.join("\n"),
+    }
 }
 
 async fn post_ollama_json_command(
@@ -673,6 +742,20 @@ fn collect_installed_models(value: &Value, models: &mut Vec<DesktopOllamaInstall
         }
         _ => {}
     }
+}
+
+fn filter_running_model_ids_to_installed(
+    mut running_ids: Vec<String>,
+    installed_models: &[DesktopOllamaInstalledModel],
+) -> Vec<String> {
+    let installed_ids = installed_models
+        .iter()
+        .map(|model| canonical_ollama_model_id(&model.id))
+        .collect::<HashSet<_>>();
+    running_ids.retain(|id| installed_ids.contains(&canonical_ollama_model_id(id)));
+    running_ids.sort_by_key(|id| id.to_lowercase());
+    running_ids.dedup();
+    running_ids
 }
 
 fn installed_model_from_object(object: &Map<String, Value>) -> Option<DesktopOllamaInstalledModel> {
@@ -1154,6 +1237,82 @@ mod tests {
     fn ollama_api_endpoint_rewrites_openai_base_to_native_api_path() {
         let url = ollama_api_endpoint("http://localhost:11434/v1", "/api/tags").unwrap();
         assert_eq!(url.as_str(), "http://localhost:11434/api/tags");
+    }
+
+    #[test]
+    fn stop_delete_result_reports_both_runtime_and_disk_cleanup() {
+        let stop_result = DesktopOllamaCommandResult {
+            command: "POST /api/generate stop qwen3:latest".to_string(),
+            status_code: Some(200),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        let delete_result = DesktopOllamaCommandResult {
+            command: "DELETE /api/delete qwen3:latest".to_string(),
+            status_code: Some(200),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+
+        let result = combine_stop_delete_result("qwen3:latest", Some(&stop_result), &delete_result);
+
+        assert_eq!(
+            result.command,
+            "POST /api/generate stop qwen3:latest && DELETE /api/delete qwen3:latest"
+        );
+        assert_eq!(
+            result.stdout,
+            "Stopped running copy of qwen3:latest.\nDeleted qwen3:latest from Ollama."
+        );
+        assert_eq!(result.status_code, Some(200));
+    }
+
+    #[test]
+    fn stop_delete_result_reports_disk_cleanup_when_model_was_not_running() {
+        let delete_result = DesktopOllamaCommandResult {
+            command: "DELETE /api/delete qwen3:latest".to_string(),
+            status_code: Some(200),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+
+        let result = combine_stop_delete_result("qwen3:latest", None, &delete_result);
+
+        assert_eq!(result.command, "DELETE /api/delete qwen3:latest");
+        assert_eq!(result.stdout, "Deleted qwen3:latest from Ollama.");
+        assert_eq!(result.status_code, Some(200));
+    }
+
+    fn installed_model(id: &str) -> DesktopOllamaInstalledModel {
+        DesktopOllamaInstalledModel {
+            id: id.to_string(),
+            name: id.to_string(),
+            size: None,
+            family: None,
+            parameter_size: None,
+            quantization: None,
+            modified_at: None,
+        }
+    }
+
+    #[test]
+    fn running_model_filter_excludes_deleted_stale_runtime_entries() {
+        let ids = filter_running_model_ids_to_installed(
+            vec!["qwen:1.8b-chat".to_string(), "qwen3:0.6b-fp16".to_string()],
+            &[installed_model("qwen3:0.6b-fp16")],
+        );
+
+        assert_eq!(ids, vec!["qwen3:0.6b-fp16"]);
+    }
+
+    #[test]
+    fn running_model_filter_matches_implicit_latest_installed_models() {
+        let ids = filter_running_model_ids_to_installed(
+            vec!["llama3.2".to_string()],
+            &[installed_model("llama3.2:latest")],
+        );
+
+        assert_eq!(ids, vec!["llama3.2"]);
     }
 
     #[test]
