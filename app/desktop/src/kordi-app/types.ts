@@ -15,7 +15,8 @@ export type ResizeDirection =
   | 'bottom-left'
   | 'bottom-right';
 export type PanelResizeTarget = 'session' | 'detail';
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'auto' | 'dark' | 'light';
+export type ResolvedThemeMode = Exclude<ThemeMode, 'auto'>;
 export type ComposerScope = 'chat' | 'project';
 export type ComposerSelectorType = 'mode' | 'auth' | 'provider' | 'model' | 'thinking';
 

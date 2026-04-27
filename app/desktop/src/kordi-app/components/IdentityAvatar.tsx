@@ -22,9 +22,16 @@ const SKIN_TONES = ['#ffd7a8', '#f1b985', '#c98254', '#8f563b', '#5f3426', '#f6c
 const HAIR_COLORS = ['#20140f', '#3b2418', '#71411f', '#b76e32', '#f4d06f', '#1f2937', '#7c2d12'];
 const SHIRT_COLORS = ['#0f766e', '#1d4ed8', '#be123c', '#7c3aed', '#15803d', '#c2410c', '#334155'];
 
-const ROBOT_BACKGROUNDS = ['#0f172a', '#1e1b4b', '#164e63', '#312e81', '#3b0764', '#064e3b', '#431407', '#111827'];
-const ROBOT_METALS = ['#cbd5e1', '#94a3b8', '#a5b4fc', '#bae6fd', '#d8b4fe', '#99f6e4'];
-const ROBOT_ACCENTS = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa'];
+const AGENT_IDENTICON_PALETTES = [
+  { background: '#f6f8fa', foreground: '#0969da', accent: '#2da44e' },
+  { background: '#f6f8fa', foreground: '#8250df', accent: '#bf3989' },
+  { background: '#f6f8fa', foreground: '#1a7f37', accent: '#9a6700' },
+  { background: '#f6f8fa', foreground: '#bc4c00', accent: '#0969da' },
+  { background: '#0d1117', foreground: '#58a6ff', accent: '#3fb950' },
+  { background: '#0d1117', foreground: '#a371f7', accent: '#f778ba' },
+  { background: '#0d1117', foreground: '#7ee787', accent: '#d29922' },
+  { background: '#0d1117', foreground: '#ffa657', accent: '#79c0ff' },
+];
 const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
 const LOCAL_PROFILE_IDENTITY_SEED_KEY = 'kordi.localProfileIdentitySeed.v1';
 const LOCAL_AGENT_IDENTITY_SEED_KEY = 'kordi.localAgentIdentitySeed.v1';
@@ -165,17 +172,39 @@ function humanAvatarParts(seed: string) {
   };
 }
 
-function robotAvatarParts(seed: string) {
-  const random = createRandom(`agent:${seed}`);
+function agentIdenticonParts(seed: string) {
+  const random = createRandom(`agent-identicon:${seed}`);
+  const palette = pick(random, AGENT_IDENTICON_PALETTES);
+  const cells: Array<{ x: number; y: number; accent: boolean; opacity: number }> = [];
+
+  for (let y = 0; y < 5; y += 1) {
+    for (let x = 0; x < 3; x += 1) {
+      const isActive = random() > 0.42 || (x === 2 && y === 2 && random() > 0.22);
+      if (!isActive) continue;
+
+      const accent = random() > 0.78;
+      const opacity = 0.82 + random() * 0.18;
+      cells.push({ x, y, accent, opacity });
+      const mirrorX = 4 - x;
+      if (mirrorX !== x) {
+        cells.push({ x: mirrorX, y, accent, opacity });
+      }
+    }
+  }
+
+  if (cells.length < 8) {
+    cells.push(
+      { x: 1, y: 1, accent: false, opacity: 0.92 },
+      { x: 3, y: 1, accent: false, opacity: 0.92 },
+      { x: 2, y: 2, accent: true, opacity: 0.96 },
+      { x: 1, y: 3, accent: false, opacity: 0.92 },
+      { x: 3, y: 3, accent: false, opacity: 0.92 },
+    );
+  }
+
   return {
-    background: pick(random, ROBOT_BACKGROUNDS),
-    metal: pick(random, ROBOT_METALS),
-    accent: pick(random, ROBOT_ACCENTS),
-    dark: random() > 0.48 ? '#0f172a' : '#111827',
-    headStyle: Math.floor(random() * 4),
-    eyeStyle: Math.floor(random() * 4),
-    mouthBars: 2 + Math.floor(random() * 4),
-    antenna: Math.floor(random() * 3),
+    ...palette,
+    cells,
   };
 }
 
@@ -241,51 +270,30 @@ function PixelHumanAvatar({ seed, className }: { seed: string; className?: strin
   );
 }
 
-function RobotAvatar({ seed, className }: { seed: string; className?: string }) {
-  const parts = robotAvatarParts(seed);
-  const roundedHead = parts.headStyle % 2 === 0 ? 5 : 1;
-  const hasAntennaStem = parts.antenna !== 0;
-  const mouthBars = Array.from({ length: parts.mouthBars }, (_, index) => index);
+function AgentIdenticonAvatar({ seed, className }: { seed: string; className?: string }) {
+  const parts = agentIdenticonParts(seed);
+  const cellSize = 8;
+  const gap = 2;
+  const origin = 8;
 
   return (
     <svg className={className} viewBox="0 0 64 64" role="img" aria-hidden="true" shapeRendering="crispEdges">
       <rect width="64" height="64" fill={parts.background} />
-      <rect x="6" y="10" width="10" height="3" fill={parts.accent} opacity="0.45" />
-      <rect x="9" y="13" width="3" height="8" fill={parts.accent} opacity="0.3" />
-      <rect x="49" y="46" width="9" height="3" fill={parts.accent} opacity="0.35" />
-      <rect x="52" y="38" width="3" height="8" fill={parts.accent} opacity="0.22" />
-      <rect x="5" y="50" width="5" height="5" fill="#fff" opacity="0.08" />
-
-      {hasAntennaStem ? <rect x="31" y="8" width="2" height="8" fill={parts.accent} /> : null}
-      {parts.antenna === 1 ? <rect x="28" y="5" width="8" height="5" fill={parts.accent} /> : null}
-      {parts.antenna === 2 ? <rect x="29" y="4" width="6" height="6" fill={parts.accent} /> : null}
-
-      <rect x="24" y="48" width="16" height="7" fill={parts.metal} opacity="0.9" />
-      <rect x="18" y="53" width="28" height="11" fill={parts.dark} />
-      <rect x="21" y="55" width="22" height="5" fill={parts.accent} opacity="0.72" />
-      <rect x="11" y="28" width="6" height="12" fill={parts.dark} />
-      <rect x="47" y="28" width="6" height="12" fill={parts.dark} />
-      <rect x="14" y="16" width="36" height="32" rx={roundedHead} fill={parts.dark} />
-      <rect x="17" y="19" width="30" height="26" rx={roundedHead} fill={parts.metal} />
-      <rect x="21" y="24" width="22" height="13" fill={parts.dark} />
-
-      {parts.eyeStyle === 0 ? <rect x="24" y="28" width="5" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 0 ? <rect x="35" y="28" width="5" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 1 ? <rect x="24" y="27" width="16" height="5" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="23" y="27" width="7" height="7" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="35" y="27" width="7" height="7" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 2 ? <rect x="25" y="29" width="3" height="3" fill="#fff" opacity="0.6" /> : null}
-      {parts.eyeStyle === 2 ? <rect x="37" y="29" width="3" height="3" fill="#fff" opacity="0.6" /> : null}
-      {parts.eyeStyle === 3 ? <rect x="23" y="29" width="18" height="3" fill={parts.accent} /> : null}
-      {parts.eyeStyle === 3 ? <rect x="26" y="26" width="3" height="3" fill={parts.accent} opacity="0.7" /> : null}
-      {parts.eyeStyle === 3 ? <rect x="36" y="26" width="3" height="3" fill={parts.accent} opacity="0.7" /> : null}
-
-      <rect x="24" y="40" width="16" height="2" fill={parts.dark} opacity="0.78" />
-      {mouthBars.map((bar) => (
-        <rect key={bar} x={25 + bar * 3} y="40" width="1" height="2" fill={parts.accent} opacity="0.9" />
+      <rect width="64" height="64" fill="#ffffff" opacity={parts.background === '#0d1117' ? '0.04' : '0.22'} />
+      {parts.cells.map((cell, index) => (
+        <rect
+          key={`${cell.x}-${cell.y}-${index}`}
+          x={origin + cell.x * (cellSize + gap)}
+          y={origin + cell.y * (cellSize + gap)}
+          width={cellSize}
+          height={cellSize}
+          rx="2"
+          fill={cell.accent ? parts.accent : parts.foreground}
+          opacity={cell.opacity}
+        />
       ))}
-      <rect x="20" y="21" width="3" height="3" fill="#fff" opacity="0.35" />
-      <rect x="41" y="42" width="3" height="3" fill="#000" opacity="0.16" />
+      <circle cx="32" cy="32" r="31.5" fill="none" stroke="#ffffff" strokeOpacity="0.18" />
+      <circle cx="32" cy="32" r="31.5" fill="none" stroke="#0d1117" strokeOpacity="0.16" />
     </svg>
   );
 }
@@ -303,12 +311,15 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
 
   return (
     <Avatar
-      className={cn('bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]', className)}
+      className={cn(
+        'rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]',
+        className,
+      )}
       aria-label={label}
       data-avatar-kind={kind}
     >
       {kind === 'agent' ? (
-        <RobotAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
+        <AgentIdenticonAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
       ) : (
         <PixelHumanAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
       )}

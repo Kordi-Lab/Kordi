@@ -61,9 +61,9 @@
 .bridge-app.theme-light {
   --utility-background: rgb(255 255 255);
   --utility-foreground: rgb(31 27 25);
-  --utility-card: rgba(255, 255, 255, 0.88);
-  --utility-muted: rgba(228, 222, 214, 0.82);
-  --utility-muted-text: rgb(97 91 86);
+  --utility-card: rgba(255, 255, 255, 0.9);
+  --utility-muted: rgba(225, 218, 207, 0.88);
+  --utility-muted-text: rgb(76 70 65);
   --app-motion-fast: 200ms;
   --app-motion-base: 260ms;
   --app-motion-slow: 340ms;
@@ -79,16 +79,16 @@
   --app-left-glass-border: rgba(68, 58, 52, 0.08);
   --app-session-bg: linear-gradient(180deg, rgba(242, 238, 226, 0.94) 0%, rgba(233, 227, 214, 0.95) 100%);
   --app-main-bg: linear-gradient(180deg, rgba(246, 243, 233, 0.98) 0%, rgba(239, 234, 222, 0.98) 100%);
-  --app-card-bg: rgba(43, 35, 32, 0.04);
+  --app-card-bg: rgba(43, 35, 32, 0.055);
   --app-overlay-bg: rgba(225, 220, 213, 0.72);
   --app-modal-bg: linear-gradient(180deg, rgba(247, 244, 239, 0.98) 0%, rgba(240, 236, 230, 0.98) 100%);
   --app-code-bg: #ede8e1;
   --app-code-toolbar-bg: rgba(43, 35, 32, 0.05);
-  --app-divider: rgba(43, 35, 32, 0.1);
-  --app-control-bg: rgba(43, 35, 32, 0.05);
-  --app-control-hover: rgba(43, 35, 32, 0.075);
-  --app-control-active: rgba(43, 35, 32, 0.11);
-  --app-control-border: rgba(43, 35, 32, 0.1);
+  --app-divider: rgba(43, 35, 32, 0.15);
+  --app-control-bg: rgba(43, 35, 32, 0.085);
+  --app-control-hover: rgba(43, 35, 32, 0.12);
+  --app-control-active: rgba(43, 35, 32, 0.16);
+  --app-control-border: rgba(43, 35, 32, 0.18);
   --app-chip-active-bg: rgba(47, 41, 37, 0.88);
   --app-chip-active-border: rgba(47, 41, 37, 0.18);
   --app-chip-active-text: rgb(245 240 234);
@@ -114,6 +114,6 @@
   --app-badge-primary-text: rgb(245 240 234);
   --app-chat-bubble-user-bg: rgba(214, 208, 199, 0.88);
   --app-chat-bubble-user-text: rgb(30 27 25);
-  --app-chat-bubble-peer-bg: rgba(43, 35, 32, 0.04);
-  --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.12);
+  --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.62);
+  --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.18);
 }

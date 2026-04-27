@@ -192,7 +192,7 @@ export function SettingsPage({
                         <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
                       </div>
                       <div className="flex justify-end">
-                        <SettingsValueControl item={item} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))} />
+                        <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
                       </div>
                     </div>
                   ))}
@@ -351,7 +351,7 @@ export function SettingsPage({
                       <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
                     </div>
                     <div className="flex justify-end">
-                      <SettingsValueControl item={item} themeMode={themeMode} onToggleTheme={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))} />
+                      <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
                     </div>
                   </div>
                 ))}

@@ -48,8 +48,8 @@ export function AgentContentPane({
 }) {
   if (!activeAgent || !activeAgentConfig || !activeDetail) {
     return (
-      <section className="flex min-h-0 min-w-0 flex-col border-l border-white/6 bg-[rgba(16,17,20,0.72)] text-white">
-        <div className="flex h-full items-center justify-center px-6 text-center text-slate-400">
+      <section className="app-agent-content-pane flex min-h-0 min-w-0 flex-col">
+        <div className="app-agent-empty-state flex h-full items-center justify-center px-6 text-center text-[13px] leading-5">
           Select an item in the middle panel to preview or edit it here.
         </div>
       </section>
@@ -62,13 +62,13 @@ export function AgentContentPane({
     const hasRuntimePrompt = activeAgentConfig.systemPrompt.trim().length > 0;
 
     return (
-      <section className="flex min-h-0 min-w-0 flex-col border-l border-white/6 bg-[rgba(16,17,20,0.72)] text-white">
-        <div className="border-b border-white/6 px-5 py-4">
+      <section className="app-agent-content-pane flex min-h-0 min-w-0 flex-col">
+        <div className="app-agent-panel-header px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-medium text-slate-400">System prompt</div>
-              <div className="mt-1 truncate text-[18px] font-semibold tracking-[-0.02em] text-white">{activeAgent.name}</div>
-              <div className="mt-1 text-[12px] text-slate-500">{activeConfigPath ?? (hasRuntimePrompt ? 'Exact current runtime prompt' : 'Not exposed by bridge agent')}</div>
+              <div className="app-agent-panel-subtitle text-[12px] font-medium">System prompt</div>
+              <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
+              <div className="app-agent-row-meta mt-1 text-[12px]">{activeConfigPath ?? (hasRuntimePrompt ? 'Exact current runtime prompt' : 'Not exposed by bridge agent')}</div>
               {activeSaveFeedback ? (
                 <div
                   className={cn(
@@ -101,15 +101,15 @@ export function AgentContentPane({
                   </Button>
                 )
               ) : (
-                <div className="text-[11px] text-slate-500">Runtime-managed</div>
+                <div className="app-agent-row-meta text-[11px]">Runtime-managed</div>
               )}
             </div>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 px-5 py-5">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/8 bg-black/20">
-            <div className="border-b border-white/6 px-4 py-2 text-[11px] text-slate-500">
+          <div className="app-agent-code-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border">
+            <div className="app-agent-code-toolbar px-4 py-2 text-[11px]">
               {isEditable && activeEditingSection === 'prompt' ? 'Editing saved prompt' : hasRuntimePrompt ? 'Full prompt detail' : 'No exposed prompt'}
             </div>
             {isEditable && activeEditingSection === 'prompt' ? (
@@ -117,12 +117,12 @@ export function AgentContentPane({
                 rows={20}
                 value={activeAgentConfig.systemPrompt}
                 onChange={(event) => onPromptChange(activeAgent.id, event.target.value)}
-                className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-4 font-mono text-[12px] leading-6 text-slate-200 outline-none"
+                className="app-agent-code-text h-full min-h-0 w-full resize-none bg-transparent px-4 py-4 font-mono text-[12px] leading-6 outline-none"
                 spellCheck={false}
               />
             ) : (
               <ScrollArea className="min-h-0 flex-1">
-                <pre className="px-4 py-4 font-mono text-[12px] leading-6 text-slate-300 whitespace-pre-wrap break-words">{activeAgentConfig.systemPrompt || 'No real prompt payload is exposed for this identity.'}</pre>
+                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{activeAgentConfig.systemPrompt || 'No real prompt payload is exposed for this identity.'}</pre>
               </ScrollArea>
             )}
           </div>
@@ -135,13 +135,13 @@ export function AgentContentPane({
   const parts = filePath.split('/');
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col border-l border-white/6 bg-[rgba(16,17,20,0.72)] text-white">
-      <div className="border-b border-white/6 px-5 py-4">
+    <section className="app-agent-content-pane flex min-h-0 min-w-0 flex-col">
+      <div className="app-agent-panel-header px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-medium text-slate-400">Markdown / config detail</div>
-            <div className="mt-1 truncate text-[18px] font-semibold tracking-[-0.02em] text-white">{parts[parts.length - 1] ?? filePath}</div>
-            <div className="mt-1 text-[12px] text-slate-500">{filePath}</div>
+            <div className="app-agent-panel-subtitle text-[12px] font-medium">Markdown / config detail</div>
+            <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{parts[parts.length - 1] ?? filePath}</div>
+            <div className="app-agent-row-meta mt-1 text-[12px]">{filePath}</div>
             {activeFileSaveFeedback ? (
               <div
                 className={cn(
@@ -174,13 +174,13 @@ export function AgentContentPane({
                 </Button>
               )
             ) : (
-              <div className="text-[11px] text-slate-500">Read only</div>
+              <div className="app-agent-row-meta text-[11px]">Read only</div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="border-b border-white/6 px-5 py-4">
+      <div className="app-agent-panel-header px-5 py-4">
         <div className="grid gap-2">
           {[
             ['Name', parts[parts.length - 1] ?? filePath],
@@ -188,16 +188,16 @@ export function AgentContentPane({
             ['Source', 'Repo-relative workspace file'],
           ].map(([label, value]) => (
             <div key={label} className="flex items-start justify-between gap-3 text-[12px]">
-              <div className="text-slate-500">{label}</div>
-              <div className="max-w-[70%] text-right text-slate-200">{value}</div>
+              <div className="app-agent-row-meta">{label}</div>
+              <div className="app-agent-row-title max-w-[70%] text-right">{value}</div>
             </div>
           ))}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 px-5 py-5">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/8 bg-black/20">
-          <div className="border-b border-white/6 px-4 py-2 text-[11px] text-slate-500">
+        <div className="app-agent-code-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border">
+          <div className="app-agent-code-toolbar px-4 py-2 text-[11px]">
             {activeFilePreview.status === 'loading'
               ? 'Loading real file…'
               : activeFilePreview.status === 'error'
@@ -214,11 +214,11 @@ export function AgentContentPane({
               value={activeFileDraft}
               onChange={(event) => onFileDraftChange(event.target.value)}
               spellCheck={false}
-              className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-4 font-mono text-[12px] leading-6 text-slate-200 outline-none"
+              className="app-agent-code-text h-full min-h-0 w-full resize-none bg-transparent px-4 py-4 font-mono text-[12px] leading-6 outline-none"
             />
           ) : (
             <ScrollArea className="min-h-0 flex-1">
-              <pre className="px-4 py-4 font-mono text-[12px] leading-6 text-slate-300 whitespace-pre-wrap break-words">{activeFileDraft}</pre>
+              <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{activeFileDraft}</pre>
             </ScrollArea>
           )}
         </div>
