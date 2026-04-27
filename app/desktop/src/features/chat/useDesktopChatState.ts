@@ -139,6 +139,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const latestDesktopRefreshRequestRef = useRef(0);
   const visibleLocalSessionIdRef = useRef<string | null>(null);
   const desktopLiveTurnsBySessionRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
+  const pendingLiveTurnSnapshotsRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
+  const liveTurnCommitTimersRef = useRef<Record<string, number>>({});
   const watchedDesktopTurnIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedInitialDesktopChatRef = useRef(false);
 
@@ -165,6 +167,50 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   useEffect(() => {
     desktopLiveTurnsBySessionRef.current = desktopLiveTurnsBySession;
   }, [desktopLiveTurnsBySession]);
+
+  const clearScheduledLiveTurnSnapshot = useCallback((sessionId: string) => {
+    const timer = liveTurnCommitTimersRef.current[sessionId];
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      delete liveTurnCommitTimersRef.current[sessionId];
+    }
+    delete pendingLiveTurnSnapshotsRef.current[sessionId];
+  }, []);
+
+  const commitLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot) => {
+    setDesktopLiveTurnsBySession((current) => (
+      liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
+        ? { ...current, [nextTurn.sessionId]: nextTurn }
+        : current
+    ));
+  }, []);
+
+  const scheduleLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot, options: { immediate?: boolean } = {}) => {
+    if (options.immediate || nextTurn.completed) {
+      clearScheduledLiveTurnSnapshot(nextTurn.sessionId);
+      commitLiveTurnSnapshot(nextTurn);
+      return;
+    }
+
+    pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId] = nextTurn;
+    if (liveTurnCommitTimersRef.current[nextTurn.sessionId] !== undefined) return;
+
+    liveTurnCommitTimersRef.current[nextTurn.sessionId] = window.setTimeout(() => {
+      delete liveTurnCommitTimersRef.current[nextTurn.sessionId];
+      const pendingTurn = pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId];
+      if (!pendingTurn) return;
+      delete pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId];
+      commitLiveTurnSnapshot(pendingTurn);
+    }, 96);
+  }, [clearScheduledLiveTurnSnapshot, commitLiveTurnSnapshot]);
+
+  useEffect(() => () => {
+    for (const timer of Object.values(liveTurnCommitTimersRef.current)) {
+      window.clearTimeout(timer);
+    }
+    liveTurnCommitTimersRef.current = {};
+    pendingLiveTurnSnapshotsRef.current = {};
+  }, []);
 
   const setVisibleLocalSessionId = useCallback((sessionId?: string | null) => {
     visibleLocalSessionIdRef.current = sessionId ?? null;
@@ -277,17 +323,21 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     };
   }, [clearUnreadForSession, isNativeShell]);
 
+  const activeSessionHasVisibleLiveTurn = Boolean(
+    desktopChatState?.activeSessionId
+      && desktopLiveTurnsBySession[desktopChatState.activeSessionId],
+  );
+
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;
     const mappedMessages = mapDesktopMessages(
       desktopChatState.activeSessionId,
       desktopChatState.activeSession.messages,
     );
-    const activeLiveTurn = desktopLiveTurnsBySession[desktopChatState.activeSessionId];
-    const preserveExistingMessages = Boolean(activeLiveTurn && !activeLiveTurn.completed);
+    const preserveExistingMessages = activeSessionHasVisibleLiveTurn;
     setCachedChatSessionMessages((current) => {
       const existingMessages = current[desktopChatState.activeSessionId];
-      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length > mappedMessages.length
+      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length >= mappedMessages.length
         ? existingMessages
         : mappedMessages;
       if (existingMessages === nextMessages) {
@@ -300,7 +350,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     });
     setCachedProjectSessionMessages((current) => {
       const existingMessages = current[desktopChatState.activeSessionId];
-      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length > mappedMessages.length
+      const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length >= mappedMessages.length
         ? existingMessages
         : mappedMessages;
       if (existingMessages === nextMessages) {
@@ -311,7 +361,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [desktopChatState.activeSessionId]: nextMessages,
       };
     });
-  }, [desktopChatState?.activeSession, desktopChatState?.activeSessionId, desktopLiveTurnsBySession, isNativeShell, mapDesktopMessages]);
+  }, [activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
     const finishedAt = formatDesktopClockTime(new Date());
@@ -412,21 +462,15 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         let nextTurn = initialTurn ?? await fetchDesktopChatTurnState(
           turnId,
         );
-        setDesktopLiveTurnsBySession((current) => (
-          liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
-            ? { ...current, [nextTurn.sessionId]: nextTurn }
-            : current
-        ));
+        scheduleLiveTurnSnapshot(nextTurn, { immediate: true });
 
         while (!nextTurn.completed) {
           await new Promise((resolve) => window.setTimeout(resolve, 60));
           nextTurn = await fetchDesktopChatTurnState(nextTurn.id);
-          if (!(nextTurn.completed && nextTurn.status === 'cancelled')) {
-            setDesktopLiveTurnsBySession((current) => (
-              liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
-                ? { ...current, [nextTurn.sessionId]: nextTurn }
-                : current
-            ));
+          if (nextTurn.completed && nextTurn.status === 'cancelled') {
+            clearScheduledLiveTurnSnapshot(nextTurn.sessionId);
+          } else {
+            scheduleLiveTurnSnapshot(nextTurn, { immediate: nextTurn.completed });
           }
         }
 
@@ -460,6 +504,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
       } catch (error) {
         if (initialTurn?.sessionId) {
+          clearScheduledLiveTurnSnapshot(initialTurn.sessionId);
           setDesktopLiveTurnsBySession((current) => {
             if (!current[initialTurn.sessionId]) return current;
             const { [initialTurn.sessionId]: _removed, ...rest } = current;
@@ -473,7 +518,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [mergeCompletedDesktopTurn, refreshDesktopChat],
+    [clearScheduledLiveTurnSnapshot, mergeCompletedDesktopTurn, refreshDesktopChat, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

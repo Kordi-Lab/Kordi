@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
@@ -45,6 +45,21 @@ import {
 } from './viewModels/helpers';
 
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
+
+function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
+  return Object.entries(liveTurns)
+    .map(([sessionId, turn]) => [
+      sessionId,
+      turn.id,
+      turn.status,
+      turn.completed ? 'completed' : 'running',
+      turn.succeeded ? 'succeeded' : 'pending',
+      turn.error ? 'error' : 'ok',
+      turn.tools.map((tool) => `${tool.id}:${tool.status}:${tool.isError ? 'error' : 'ok'}`).join(','),
+    ].join('\u0000'))
+    .sort()
+    .join('\u0001');
+}
 
 type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
@@ -98,6 +113,18 @@ export function useWorkspaceViewModels({
   mapDesktopMessages,
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
+  const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
+  const desktopLiveTurnsForViewModelRef = useRef({
+    key: desktopLiveTurnViewModelKey,
+    value: desktopLiveTurnsBySession,
+  });
+  if (desktopLiveTurnsForViewModelRef.current.key !== desktopLiveTurnViewModelKey) {
+    desktopLiveTurnsForViewModelRef.current = {
+      key: desktopLiveTurnViewModelKey,
+      value: desktopLiveTurnsBySession,
+    };
+  }
+  const desktopLiveTurnsForViewModel = desktopLiveTurnsForViewModelRef.current.value;
 
   const outreachThreadsByParentSession = useMemo(() => {
     const grouped = new Map<string, Array<{
@@ -168,14 +195,14 @@ export function useWorkspaceViewModels({
         ? preferLatestMessages(
             mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
             cachedChatSessionMessages[session.id],
-            Boolean(desktopLiveTurnsBySession[session.id] && !desktopLiveTurnsBySession[session.id].completed),
+            Boolean(desktopLiveTurnsForViewModel[session.id]),
           )
         : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
       const statusIndicator = buildSessionStatusIndicator({
         unreadCount,
         showBackgroundActivity: !isVisibleSession,
-        liveTurn: desktopLiveTurnsBySession[session.id],
+        liveTurn: desktopLiveTurnsForViewModel[session.id],
       });
 
       const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
@@ -207,7 +234,7 @@ export function useWorkspaceViewModels({
         _updatedAtMs: undefined as number | undefined,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState?.profile.humanIdentityId, canonicalSessionState?.profile.id, desktopBridgeState, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState?.profile.humanIdentityId, canonicalSessionState?.profile.id, desktopBridgeState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -599,7 +626,7 @@ export function useWorkspaceViewModels({
               ? preferLatestMessages(
                   mapDesktopMessages(sessionId, desktopChatState.activeSession.messages),
                   cachedProjectSessionMessages[sessionId],
-                  Boolean(desktopLiveTurnsBySession[sessionId] && !desktopLiveTurnsBySession[sessionId].completed),
+                  Boolean(desktopLiveTurnsForViewModel[sessionId]),
                 )
               : cachedProjectSessionMessages[sessionId]
                 ?? (desktopSession
@@ -626,14 +653,14 @@ export function useWorkspaceViewModels({
             statusIndicator: buildSessionStatusIndicator({
               unreadCount,
               showBackgroundActivity: !isVisibleSession,
-              liveTurn: desktopLiveTurnsBySession[sessionId],
+              liveTurn: desktopLiveTurnsForViewModel[sessionId],
             }),
             messages,
           };
         }),
       };
     });
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsBySession, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();

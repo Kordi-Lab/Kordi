@@ -192,7 +192,7 @@ export function dedupeAdjacentAgentTurns(messages: Message[]) {
 export function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message[] | undefined, preserveCachedMessages: boolean) {
   const messages = !cachedMessages || !preserveCachedMessages
     ? mappedMessages
-    : cachedMessages.length > mappedMessages.length
+    : cachedMessages.length >= mappedMessages.length
       ? cachedMessages
       : mappedMessages;
   return dedupeAdjacentAgentTurns(messages);

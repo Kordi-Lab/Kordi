@@ -47,7 +47,7 @@ export function useKordiShellViewModel({
 
   const isChatScrolledNearBottom = useCallback((container: HTMLDivElement) => {
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    return distanceFromBottom < 96;
+    return distanceFromBottom < 140;
   }, []);
 
   const onProjectTranscriptScroll = useCallback(() => {

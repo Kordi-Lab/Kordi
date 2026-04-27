@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { memo, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -380,7 +380,7 @@ function AttachmentPreview({ msg }: { msg: Message }) {
   );
 }
 
-export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
+function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
@@ -514,21 +514,6 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   }
 
   if (msg.turn) {
-    const compactProcessing = !msg.turn.completed && !msg.turn.assistantText.trim();
-    if (compactProcessing) {
-      const statusText = msg.turn.message?.trim() || 'Working…';
-      return (
-        <div className="flex w-full max-w-[min(100%,42rem)] flex-col items-start gap-1 py-1">
-          <div className="app-message-meta px-1">
-            {msg.sender} • {msg.time}
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[0.025] px-2.5 py-1 text-[11px] font-medium text-slate-300 shadow-sm">
-            <ProcessingStatusCircle />
-            <span>{statusText}</span>
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
@@ -640,6 +625,31 @@ export function MessageBubble({ msg, onOpenSource }: { msg: Message; onOpenSourc
   );
 }
 
+function messageSnapshotKey(msg: Message) {
+  return [
+    msg.role,
+    msg.sender ?? '',
+    msg.senderType ?? '',
+    msg.isOwnMessage ? 'own' : 'peer',
+    msg.showSenderMeta ? 'meta' : '',
+    msg.text,
+    msg.time,
+    msg.detail ?? '',
+    msg.senderAvatarSeed ?? '',
+    msg.senderProfileImageUrl ?? '',
+    msg.statusChips?.join(',') ?? '',
+    msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? ''].join(':')).join('|') ?? '',
+    msg.mentions?.map((mention) => mention.label).join('|') ?? '',
+    msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
+    msg.edit?.files.map((file) => [file.path, file.additions, file.deletions, file.lines.length].join(':')).join('|') ?? '',
+  ].join('\u0001');
+}
+
+export const MessageBubble = memo(
+  MessageBubbleView,
+  (previous, next) => previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg),
+);
+
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
 
@@ -697,21 +707,27 @@ function mergeVisibleLiveTurn(
   next: DesktopChatTurnSnapshot,
 ): DesktopChatTurnSnapshot {
   const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
+  const nextToolIds = new Set(next.tools.map((tool) => tool.id));
+  const mergedTools = next.tools.map((tool) => {
+    const existing = currentToolsById.get(tool.id);
+    return existing ? mergeVisibleToolSnapshot(existing, tool) : tool;
+  });
+
   return {
     ...current,
     ...next,
-    assistantText: next.completed ? next.assistantText : longerText(current.assistantText, next.assistantText),
-    thinkingText: next.completed ? next.thinkingText : longerText(current.thinkingText, next.thinkingText),
-    tools: next.tools.map((tool) => {
-      const existing = currentToolsById.get(tool.id);
-      return existing && !next.completed ? mergeVisibleToolSnapshot(existing, tool) : tool;
-    }),
+    assistantText: longerText(current.assistantText, next.assistantText),
+    thinkingText: longerText(current.thinkingText, next.thinkingText),
+    tools: [
+      ...mergedTools,
+      ...current.tools.filter((tool) => !nextToolIds.has(tool.id)),
+    ],
   };
 }
 
 function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: boolean) {
   const visibleTurnRef = useRef<DesktopChatTurnSnapshot>(turn);
-  if (historical || turn.completed || visibleTurnRef.current.id !== turn.id) {
+  if (historical || visibleTurnRef.current.id !== turn.id) {
     visibleTurnRef.current = turn;
   } else {
     visibleTurnRef.current = mergeVisibleLiveTurn(visibleTurnRef.current, turn);
@@ -719,12 +735,12 @@ function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: boolean) 
   return visibleTurnRef.current;
 }
 
-export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
+function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const showLiveStatusHeader = !historical && !visibleTurn.completed && !hasAssistant && !isCompressionStatus;
+  const showLiveStatusHeader = !historical && !visibleTurn.completed && !isCompressionStatus;
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -748,7 +764,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5">
+    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
       {showLiveStatusHeader ? (
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <ProcessingStatusCircle className="h-3.5 w-3.5" />
@@ -795,7 +811,7 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
       ) : null}
 
       {visibleTurn.tools.map((tool) => {
-        const expanded = expandedTools[tool.id] ?? !visibleTurn.completed;
+        const expanded = expandedTools[tool.id] ?? !historical;
         const toolDisplay = toolDisplayConfig(tool.name);
 
         return (
@@ -844,6 +860,36 @@ export function LiveChatTurnCard({ turn, historical = false }: { turn: DesktopCh
     </div>
   );
 }
+
+function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
+  return [
+    turn.id,
+    turn.sessionId,
+    turn.status,
+    turn.message,
+    turn.assistantText,
+    turn.thinkingText,
+    turn.completed ? 'completed' : 'running',
+    turn.succeeded ? 'succeeded' : 'pending',
+    turn.error ?? '',
+    ...turn.tools.map((tool) => [
+      tool.id,
+      tool.name,
+      tool.status,
+      tool.arguments,
+      tool.liveOutput,
+      tool.resultText ?? '',
+      tool.detail ?? '',
+      tool.isError ? 'error' : 'ok',
+    ].join('\u0000')),
+  ].join('\u0001');
+}
+
+export const LiveChatTurnCard = memo(
+  LiveChatTurnCardView,
+  (previous, next) => previous.historical === next.historical
+    && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
+);
 
 export function BridgeChip({ bridge }: { bridge: string }) {
   return <Badge variant="outline" className="app-control-chip rounded-full">{bridge}</Badge>;
