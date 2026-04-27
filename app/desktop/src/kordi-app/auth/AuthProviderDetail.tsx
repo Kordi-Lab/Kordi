@@ -240,7 +240,7 @@ export function AuthProviderDetail({
 
   return (
     <div
-      className="relative z-10 block min-h-0 w-full min-w-0 max-w-none self-stretch pointer-events-auto"
+      className="relative z-10 block h-full min-h-0 w-full min-w-0 max-w-none self-stretch overflow-y-auto pr-1 pointer-events-auto"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
       <div className="grid min-h-0 w-full gap-3.5">
