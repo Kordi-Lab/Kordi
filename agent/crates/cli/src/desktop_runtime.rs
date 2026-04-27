@@ -686,19 +686,59 @@ fn session_activity_label(
     format_db_timestamp(&session_last_activity_timestamp(conn, row))
 }
 
-fn is_placeholder_project_session_name(row: &kordi_session::store::SessionRow) -> bool {
-    row.session_scope == "project"
-        && row
-            .name
-            .as_deref()
-            .is_some_and(|value| value.trim().eq_ignore_ascii_case("New session"))
+fn is_placeholder_session_name(row: &kordi_session::store::SessionRow) -> bool {
+    row.name.as_deref().is_some_and(|value| {
+        let trimmed = value.trim();
+        trimmed.eq_ignore_ascii_case("New session")
+            || trimmed
+                .eq_ignore_ascii_case(&format!("Session {}", short_session_id(&row.session_id)))
+    })
 }
 
 fn session_row_display_name(row: &kordi_session::store::SessionRow) -> Option<String> {
-    if is_placeholder_project_session_name(row) {
+    if is_placeholder_session_name(row) {
         return None;
     }
     row.name.clone().filter(|value| !value.trim().is_empty())
+}
+
+fn session_title_from_seed(value: &str) -> Option<String> {
+    let title = value
+        .split_whitespace()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!title.is_empty()).then(|| truncate_chars(&title, 60))
+}
+
+fn session_title_from_messages(messages: &[DesktopChatMessage]) -> Option<String> {
+    messages
+        .iter()
+        .find(|message| message.role == "user")
+        .and_then(|message| {
+            session_title_from_seed(&message.text).or_else(|| {
+                attachment_summary_from_metadata(&message.attachments)
+                    .and_then(|value| session_title_from_seed(&value))
+            })
+        })
+}
+
+fn repair_session_title_from_history(
+    conn: &rusqlite::Connection,
+    row: &kordi_session::store::SessionRow,
+) -> Result<Option<String>> {
+    if let Some(title) = session_row_display_name(row) {
+        return Ok(Some(title));
+    }
+    if row.entry_count <= 0 {
+        return Ok(None);
+    }
+    let Some(title) = session_title_from_messages(&load_session_messages(conn, &row.session_id)?)
+    else {
+        return Ok(None);
+    };
+    kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
+    Ok(Some(title))
 }
 
 fn session_summary_from_row(
@@ -706,8 +746,8 @@ fn session_summary_from_row(
     row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
     let updated_at_label = session_activity_label(conn, &row);
-    let title = session_row_display_name(&row)
-        .unwrap_or_else(|| format!("Session {}", short_session_id(&row.session_id)));
+    let title =
+        repair_session_title_from_history(conn, &row)?.unwrap_or_else(|| "New session".to_string());
     let subtitle = match kordi_session::context::build_context(conn, &row.session_id) {
         Ok(context) => context
             .model
@@ -1157,15 +1197,8 @@ fn maybe_name_session_from_prompt(
         return Ok(());
     }
 
-    let title = prompt
-        .split_whitespace()
-        .take(8)
-        .collect::<Vec<_>>()
-        .join(" ");
-    let title = if title.is_empty() {
-        format!("Session {}", short_session_id(session_id))
-    } else {
-        truncate_chars(&title, 60)
+    let Some(title) = session_title_from_seed(prompt) else {
+        return Ok(());
     };
     kordi_session::store::set_session_name(conn, session_id, Some(&title))?;
     Ok(())
@@ -1413,16 +1446,13 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
         Vec::new()
     };
 
-    let title = session_row
-        .as_ref()
-        .and_then(session_row_display_name)
-        .unwrap_or_else(|| {
-            if setup.session_created {
-                format!("Session {}", short_session_id(&setup.session_id))
-            } else {
-                "New session".to_string()
-            }
-        });
+    let title = if let Some(row) = session_row.as_ref() {
+        repair_session_title_from_history(&setup.conn, row)?
+            .or_else(|| session_title_from_messages(&messages))
+            .unwrap_or_else(|| "New session".to_string())
+    } else {
+        "New session".to_string()
+    };
     let subtitle = session_focus_subtitle(&messages).unwrap_or_default();
     let updated_at_label = session_row
         .as_ref()
@@ -2384,6 +2414,41 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+
+    #[test]
+    fn session_title_seed_matches_chat_title_rules() {
+        assert_eq!(
+            session_title_from_seed(
+                "  plan the project session naming behavior with enough extra words  "
+            )
+            .as_deref(),
+            Some("plan the project session naming behavior with enough")
+        );
+        assert_eq!(session_title_from_seed("   "), None);
+    }
+
+    #[test]
+    fn placeholder_session_names_are_not_real_titles() {
+        let row = kordi_session::store::SessionRow {
+            session_id: "abcdef12-3456".to_string(),
+            cwd: "/tmp/kordi".to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            name: Some("Session abcdef12".to_string()),
+            leaf_id: None,
+            entry_count: 0,
+            parent_session_id: None,
+            session_scope: "project".to_string(),
+            project_root: Some("/tmp/project".to_string()),
+        };
+        assert_eq!(session_row_display_name(&row), None);
+
+        let row = kordi_session::store::SessionRow {
+            name: Some("New session".to_string()),
+            ..row
+        };
+        assert_eq!(session_row_display_name(&row), None);
+    }
 
     #[test]
     fn load_session_messages_preserves_failed_assistant_error() -> Result<()> {
