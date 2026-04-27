@@ -483,16 +483,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
 
         if (isVisibleCompletedSession && !turnFailed) {
-          try {
-            await refreshDesktopChat(nextTurn.sessionId);
-            setDesktopLiveTurnsBySession((current) => {
-              if (!current[nextTurn.sessionId]) return current;
-              const { [nextTurn.sessionId]: _removed, ...rest } = current;
-              return rest;
-            });
-          } catch {
-            mergeCompletedDesktopTurn(nextTurn);
-          }
+          // The visible transcript already has the final live-turn snapshot.
+          // Merge it locally instead of refetching the whole chat state, so a
+          // short response completion only swaps the live row into its final
+          // message and does not invalidate the surrounding page/detail rail.
+          mergeCompletedDesktopTurn(nextTurn);
         } else {
           // Provider/request failures are part of the active conversation. Keep
           // them inline in the transcript instead of promoting them to the
@@ -518,7 +513,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, mergeCompletedDesktopTurn, refreshDesktopChat, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, mergeCompletedDesktopTurn, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

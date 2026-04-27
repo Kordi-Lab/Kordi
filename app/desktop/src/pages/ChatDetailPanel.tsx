@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import { MessageSquareMore } from 'lucide-react';
 
@@ -188,7 +188,7 @@ function EmphasisBlock({ title, children, className = '' }: { title?: string; ch
   );
 }
 
-export function ChatDetailPanel({
+function ChatDetailPanelView({
   isNativeShell,
   activeDetailTab,
   activeConv,
@@ -462,3 +462,24 @@ export function ChatDetailPanel({
     </div>
   );
 }
+
+function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDetailPanelProps) {
+  return previous.isNativeShell === next.isNativeShell
+    && previous.activeDetailTab === next.activeDetailTab
+    && previous.activeConv === next.activeConv
+    && previous.activeConvHasSubtitle === next.activeConvHasSubtitle
+    && previous.activeLastMessage?.time === next.activeLastMessage?.time
+    && previous.activeLastMessage?.text === next.activeLastMessage?.text
+    && previous.activeConversationIsBridge === next.activeConversationIsBridge
+    && previous.activeBridgeConversationHostNodeId === next.activeBridgeConversationHostNodeId
+    && previous.activeBridgeConversationHostUrl === next.activeBridgeConversationHostUrl
+    && previous.activeBridgeConversation === next.activeBridgeConversation
+    && previous.activeBridgeAwaitingReply === next.activeBridgeAwaitingReply
+    && previous.isBridgePolling === next.isBridgePolling
+    && previous.lastBridgePollAtLabel === next.lastBridgePollAtLabel
+    && previous.activeSessionProject === next.activeSessionProject
+    && previous.artifacts === next.artifacts
+    && previous.activeArtifactId === next.activeArtifactId;
+}
+
+export const ChatDetailPanel = memo(ChatDetailPanelView, chatDetailPanelPropsEqual);
