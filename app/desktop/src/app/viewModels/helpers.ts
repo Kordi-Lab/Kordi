@@ -142,14 +142,54 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
   return messages;
 }
 
-export function debugConversationName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
+const CONVERSATION_TITLE_MAX_CHARS = 68;
+
+function isRawConversationId(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.startsWith('session:')
+    || trimmed.startsWith('bridge:')
+    || trimmed.startsWith('draft:');
+}
+
+function participantDisplayName(participants: string[]) {
+  const nonSelf = participants
+    .map((participant) => participant.trim())
+    .filter((participant) => participant.length > 0 && !/^(me|you)$/i.test(participant));
+  if (nonSelf.length === 1 && /^kordi$/i.test(nonSelf[0])) {
+    return undefined;
+  }
+  return nonSelf[0];
+}
+
+function firstUserSentence(messages: Message[]) {
+  const firstUserMessage = messages.find((message) => message.role === 'user' && message.text.trim().length > 0);
+  const text = firstUserMessage?.text.replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  const sentenceMatch = /^(.+?[.!?。！？])(?:\s|$)/u.exec(text);
+  const sentence = sentenceMatch?.[1] ?? text.split(/[\n\r]/)[0] ?? text;
+  return truncateInlineText(sentence, CONVERSATION_TITLE_MAX_CHARS);
+}
+
+export function conversationSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
   return conversation.canonicalSessionId || conversation.id;
 }
 
-export function showConversationSessionIds(conversations: Conversation[]) {
+export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name' | 'participants' | 'messages'>) {
+  const titleFromMessage = firstUserSentence(conversation.messages);
+  if (titleFromMessage) {
+    return titleFromMessage;
+  }
+  if (!isRawConversationId(conversation.name)) {
+    return conversation.name;
+  }
+  return participantDisplayName(conversation.participants) ?? 'New session';
+}
+
+export function hideRawConversationIds(conversations: Conversation[]) {
   return conversations.map((conversation) => ({
     ...conversation,
-    name: debugConversationName(conversation),
+    name: conversationDisplayName(conversation),
+    subtitle: conversationSessionId(conversation),
   }));
 }
 

@@ -237,7 +237,7 @@ export function ChatsPage({
                       setIsEditingDesktopSessionTitle(true);
                     }}
                     className="min-w-0 max-w-full truncate rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold text-white transition hover:bg-white/5"
-                    title={activeConversationIsBridge ? undefined : 'Double-click to rename session'}
+                    title={activeConv.name}
                   >
                     {activeConv.name}
                   </h2>
@@ -247,7 +247,12 @@ export function ChatsPage({
               )}
               <TypeBadge type={activeConv.type} compact />
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
+              {activeConv.subtitle.trim().length > 0 ? (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono" title={activeConv.subtitle}>
+                  <span className="truncate">{activeConv.subtitle}</span>
+                </span>
+              ) : null}
               <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {activeConv.trust}</span>
               {activeConv.bridges.map((bridge) => (
                 <span key={bridge} className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {bridge}</span>

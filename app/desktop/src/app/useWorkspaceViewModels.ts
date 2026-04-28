@@ -40,7 +40,7 @@ import {
   canonicalProjectRoot,
   findBridgeProjectForWorkspace,
   preferLatestMessages,
-  showConversationSessionIds,
+  hideRawConversationIds,
   visibleBridgePeople,
 } from './viewModels/helpers';
 
@@ -304,7 +304,7 @@ export function useWorkspaceViewModels({
     const visibleConversations = hiddenSessionIds.size === 0
       ? hydratedConversations
       : hydratedConversations.filter((conversation) => !hiddenSessionIds.has(conversation.canonicalSessionId ?? conversation.id));
-    return showConversationSessionIds(visibleConversations);
+    return hideRawConversationIds(visibleConversations);
   }, [bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
