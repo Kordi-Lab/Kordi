@@ -260,7 +260,7 @@ export function AgentDetailPane({
             )}
           </AgentInspectorSection>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="app-agent-support-grid grid gap-5">
             <AgentInspectorSection title="Loaded tools">
               {exposesLoadedTools ? (
                 <AgentConfigList items={activePersistedConfig?.loadedTools ?? activeAgent.loadedTools} emptyLabel="No tools loaded for this identity." />
@@ -292,7 +292,7 @@ export function AgentDetailPane({
               ].map(([label, value], index) => (
                 <div key={label} className={cn('app-agent-inner-list-row flex items-start justify-between gap-3 px-3 py-2.5 text-[12px]', index > 0 && 'border-t')}>
                   <div className="app-agent-row-meta">{label}</div>
-                  <div className="app-agent-row-title max-w-[60%] text-right">{value}</div>
+                  <div className="app-agent-row-title max-w-[60%] min-w-0 break-words text-right">{value}</div>
                 </div>
               ))}
             </div>

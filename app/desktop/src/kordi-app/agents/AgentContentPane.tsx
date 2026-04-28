@@ -68,7 +68,7 @@ export function AgentContentPane({
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">System prompt</div>
               <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-              <div className="app-agent-row-meta mt-1 text-[12px]">{activeConfigPath ?? (hasRuntimePrompt ? 'Exact current runtime prompt' : 'Not exposed by bridge agent')}</div>
+              <div className="app-agent-row-meta mt-1 break-words text-[12px]">{activeConfigPath ?? (hasRuntimePrompt ? 'Exact current runtime prompt' : 'Not exposed by bridge agent')}</div>
               {activeSaveFeedback ? (
                 <div
                   className={cn(
@@ -141,7 +141,7 @@ export function AgentContentPane({
           <div className="min-w-0">
             <div className="app-agent-panel-subtitle text-[12px] font-medium">Markdown / config detail</div>
             <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{parts[parts.length - 1] ?? filePath}</div>
-            <div className="app-agent-row-meta mt-1 text-[12px]">{filePath}</div>
+            <div className="app-agent-row-meta mt-1 break-words text-[12px]">{filePath}</div>
             {activeFileSaveFeedback ? (
               <div
                 className={cn(
@@ -189,7 +189,7 @@ export function AgentContentPane({
           ].map(([label, value]) => (
             <div key={label} className="flex items-start justify-between gap-3 text-[12px]">
               <div className="app-agent-row-meta">{label}</div>
-              <div className="app-agent-row-title max-w-[70%] text-right">{value}</div>
+              <div className="app-agent-row-title max-w-[70%] min-w-0 break-words text-right">{value}</div>
             </div>
           ))}
         </div>

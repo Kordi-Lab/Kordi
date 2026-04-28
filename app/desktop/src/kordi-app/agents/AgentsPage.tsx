@@ -40,7 +40,7 @@ export function AgentsPage({
 
   return (
     <div className="app-agents-page flex h-full min-h-0 min-w-0 flex-1 p-4">
-      <div className="app-agent-shell grid h-full min-h-0 w-full gap-px overflow-hidden rounded-[22px] border xl:grid-cols-[296px_minmax(360px,0.94fr)_minmax(340px,1.06fr)]">
+      <div className="app-agent-shell grid h-full min-h-0 w-full gap-px overflow-hidden rounded-[22px] border">
         <AgentsSidebar
           agents={agents}
           activeAgentId={activeAgentId}
