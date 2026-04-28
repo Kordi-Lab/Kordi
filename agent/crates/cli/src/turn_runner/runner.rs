@@ -14,6 +14,10 @@ use kordi_provider::{
     RetryCallback, StreamEvent,
 };
 use kordi_session::context;
+use sha2::{Digest, Sha256};
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -34,6 +38,143 @@ struct StreamCollection {
     first_stream_event_at_ms: Option<i64>,
     first_text_delta_at_ms: Option<i64>,
     cancelled: bool,
+}
+
+const DEFAULT_LOCAL_MODEL_OVERLOAD_TIMEOUT_SECS: u64 = 120;
+const LOCAL_MODEL_LOCK_STALE_AFTER_SECS: u64 = 10 * 60;
+const LOCAL_MODEL_LOCK_DIR: &str = "kordi-local-inference-locks";
+
+#[cfg(test)]
+static LOCAL_MODEL_OVERLOAD_TIMEOUT_OVERRIDE_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(test)]
+pub(super) fn set_local_model_overload_timeout_override_for_tests(timeout: Option<Duration>) {
+    use std::sync::atomic::Ordering;
+    LOCAL_MODEL_OVERLOAD_TIMEOUT_OVERRIDE_MS.store(
+        timeout.map(|value| value.as_millis() as u64).unwrap_or(0),
+        Ordering::SeqCst,
+    );
+}
+
+struct LocalInferenceLock {
+    path: PathBuf,
+}
+
+impl Drop for LocalInferenceLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn local_model_overload_timeout() -> Duration {
+    #[cfg(test)]
+    {
+        use std::sync::atomic::Ordering;
+        let override_ms = LOCAL_MODEL_OVERLOAD_TIMEOUT_OVERRIDE_MS.load(Ordering::SeqCst);
+        if override_ms > 0 {
+            return Duration::from_millis(override_ms);
+        }
+    }
+
+    let seconds = std::env::var("KORDI_LOCAL_MODEL_OVERLOAD_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value >= 15)
+        .unwrap_or(DEFAULT_LOCAL_MODEL_OVERLOAD_TIMEOUT_SECS);
+    Duration::from_secs(seconds)
+}
+
+fn local_request_label(config: &TurnConfig) -> Option<String> {
+    let normalized_provider =
+        crate::login::normalize_provider_for_model_selection(&config.model.provider);
+    if !crate::login::provider_allows_no_auth(&normalized_provider, Some(&config.base_url)) {
+        return None;
+    }
+
+    let provider_label = crate::login::provider_display_name(&normalized_provider);
+    Some(format!("{provider_label} `{}`", config.model.id))
+}
+
+fn local_model_overload_message(config: &TurnConfig, timeout: Duration) -> String {
+    let label =
+        local_request_label(config).unwrap_or_else(|| format!("local model `{}`", config.model.id));
+    format!(
+        "Local model overloaded or unresponsive: {label} did not produce response data for {} seconds. Kordi stopped this request to keep the app responsive. Try a smaller model, shorter context, fewer concurrent local requests, or restart the local model server.",
+        timeout.as_secs().max(1)
+    )
+}
+
+fn local_model_busy_message(config: &TurnConfig) -> String {
+    let label =
+        local_request_label(config).unwrap_or_else(|| format!("local model `{}`", config.model.id));
+    format!(
+        "Local model is busy: {label} is already running another Kordi request. To avoid overloading this machine, Kordi only allows one local inference per local server at a time. Wait for the other response to finish or stop it, then try again."
+    )
+}
+
+fn acquire_local_inference_lock(config: &TurnConfig) -> Result<Option<LocalInferenceLock>> {
+    if local_request_label(config).is_none() {
+        return Ok(None);
+    }
+
+    let lock_path = local_inference_lock_path(&config.model.provider, &config.base_url)?;
+    match create_local_lock_file(&lock_path, config) {
+        Ok(()) => Ok(Some(LocalInferenceLock { path: lock_path })),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+            if is_local_lock_stale(&lock_path) {
+                let _ = std::fs::remove_file(&lock_path);
+                if create_local_lock_file(&lock_path, config).is_ok() {
+                    return Ok(Some(LocalInferenceLock { path: lock_path }));
+                }
+            }
+            Err(anyhow::anyhow!(local_model_busy_message(config)))
+        }
+        Err(err) => Err(anyhow::anyhow!(
+            "Unable to reserve the local model server before inference: {err}"
+        )),
+    }
+}
+
+fn local_inference_lock_path(provider: &str, base_url: &str) -> Result<PathBuf> {
+    let normalized_provider = crate::login::normalize_provider_for_model_selection(provider);
+    let key = format!("{}|{}", normalized_provider, base_url.trim_end_matches('/'));
+    let digest = Sha256::digest(key.as_bytes());
+    let file_name = format!("{digest:x}.lock");
+    let dir = std::env::temp_dir().join(LOCAL_MODEL_LOCK_DIR);
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join(file_name))
+}
+
+fn create_local_lock_file(path: &Path, config: &TurnConfig) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    writeln!(file, "pid={}", std::process::id())?;
+    writeln!(file, "provider={}", config.model.provider)?;
+    writeln!(file, "model={}", config.model.id)?;
+    writeln!(file, "base_url={}", config.base_url)?;
+    Ok(())
+}
+
+fn is_local_lock_stale(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+    SystemTime::now()
+        .duration_since(modified)
+        .is_ok_and(|age| age > Duration::from_secs(LOCAL_MODEL_LOCK_STALE_AFTER_SECS))
+}
+
+async fn wait_for_optional_timeout(timeout: Option<Duration>) {
+    match timeout {
+        Some(timeout) => tokio::time::sleep(timeout).await,
+        None => std::future::pending::<()>().await,
+    }
 }
 
 async fn maybe_execute_auto_compaction(
@@ -68,7 +209,24 @@ async fn maybe_execute_auto_compaction(
     let (auth_mode, auth_account_id) =
         crate::compaction_exec::compaction_auth_options(config.auth.as_ref());
 
-    match execute_session_compaction(
+    let local_lock = match acquire_local_inference_lock(config) {
+        Ok(lock) => lock,
+        Err(err) => {
+            let message = format!("Auto-compaction failed: {err}");
+            let _ = event_tx.send(TurnEvent::Status(message.clone()));
+            append_assistant_error_message(
+                &config.conn,
+                &config.session_id,
+                &config.model,
+                &message,
+            )
+            .await?;
+            return Err(anyhow::anyhow!(message));
+        }
+    };
+    let local_timeout = local_lock.as_ref().map(|_| local_model_overload_timeout());
+
+    let compaction = execute_session_compaction(
         active_path,
         parent_id,
         db_path,
@@ -83,9 +241,19 @@ async fn maybe_execute_auto_compaction(
         &config.compaction_settings,
         None,
         CancellationToken::new(),
-    )
-    .await
-    {
+    );
+    let compaction_result = if let Some(timeout) = local_timeout {
+        match tokio::time::timeout(timeout, compaction).await {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!(local_model_overload_message(
+                config, timeout,
+            ))),
+        }
+    } else {
+        compaction.await
+    };
+
+    match compaction_result {
         Ok(result) => {
             let _ = event_tx.send(TurnEvent::Status(format!(
                 "Auto-compacted session: {} summarized, {} kept, {} tokens before",
@@ -453,6 +621,16 @@ async fn collect_stream_events(
         return Err(anyhow::anyhow!(message));
     }
 
+    let local_lock = match acquire_local_inference_lock(config) {
+        Ok(lock) => lock,
+        Err(err) => {
+            let message = err.to_string();
+            let _ = event_tx.send(TurnEvent::Error(message.clone()));
+            return Err(anyhow::anyhow!(message));
+        }
+    };
+    let local_timeout = local_lock.as_ref().map(|_| local_model_overload_timeout());
+
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
     let provider = config.provider.clone();
     let stream_cancel = config.cancel.clone();
@@ -507,6 +685,13 @@ async fn collect_stream_events(
     let mut cancelled = false;
     loop {
         tokio::select! {
+            _ = wait_for_optional_timeout(local_timeout) => {
+                let timeout = local_timeout.expect("local timeout is set for optional wait");
+                let message = local_model_overload_message(config, timeout);
+                stream_handle.abort();
+                let _ = event_tx.send(TurnEvent::Error(message.clone()));
+                return Err(anyhow::anyhow!(message));
+            }
             _ = config.cancel.cancelled() => {
                 cancelled = true;
                 drain_ready_events(
