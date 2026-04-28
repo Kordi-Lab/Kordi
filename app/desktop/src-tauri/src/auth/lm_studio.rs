@@ -483,7 +483,9 @@ fn lms_version(path: &Path) -> Option<String> {
 fn shell_command_path(command: &str) -> Option<PathBuf> {
     let script = format!("command -v {command}");
     for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        let output = Command::new(shell).arg("-lc").arg(&script).output().ok()?;
+        let Ok(output) = Command::new(shell).arg("-lc").arg(&script).output() else {
+            continue;
+        };
         if output.status.success() {
             let value = String::from_utf8_lossy(&output.stdout);
             let path = value.trim().lines().next().unwrap_or_default().trim();
@@ -997,10 +999,18 @@ fn lm_studio_rest_models_endpoint(base_url: &str) -> Result<reqwest::Url, String
 }
 
 fn validate_lm_studio_local_url(url: reqwest::Url) -> Result<reqwest::Url, String> {
-    match url.host_str() {
-        Some("localhost") | Some("127.0.0.1") | Some("::1") => Ok(url),
-        Some(host) if host.starts_with("127.") => Ok(url),
-        _ => Err("LM Studio status checks only run against localhost endpoints.".to_string()),
+    let is_loopback = matches!(url.scheme(), "http" | "https")
+        && url.host_str().is_some_and(|host| {
+            let host = host.trim_matches(|ch| ch == '[' || ch == ']');
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if is_loopback {
+        Ok(url)
+    } else {
+        Err("LM Studio status checks only run against localhost endpoints.".to_string())
     }
 }
 
@@ -1672,9 +1682,9 @@ fn truncate_output(value: &str) -> String {
 mod tests {
     use super::{
         canonical_lm_studio_model_id, collect_rest_loaded_llm_model_ids, context_search_step,
-        is_lm_studio_embedding_model_id, lm_studio_model_ids_match, load_context_fallbacks,
-        model_max_context_length_from_value, parse_installed_models, parse_loaded_model_instances,
-        parse_model_ids, server_status_from_output,
+        is_lm_studio_embedding_model_id, lm_studio_model_ids_match, lm_studio_models_endpoint,
+        load_context_fallbacks, model_max_context_length_from_value, parse_installed_models,
+        parse_loaded_model_instances, parse_model_ids, server_status_from_output,
     };
     use serde_json::json;
 
@@ -1808,6 +1818,16 @@ mod tests {
             canonical_lm_studio_model_id("google/gemma-4-e4b@q4_k_m"),
             "google/gemma-4-e4b@q4_k_m"
         );
+    }
+
+    #[test]
+    fn local_url_validation_rejects_lookalike_hosts() {
+        assert!(lm_studio_models_endpoint("http://localhost:1234/v1").is_ok());
+        assert!(lm_studio_models_endpoint("http://127.0.0.42:1234/v1").is_ok());
+        assert!(lm_studio_models_endpoint("http://[::1]:1234/v1").is_ok());
+        assert!(lm_studio_models_endpoint("file://localhost/v1").is_err());
+        assert!(lm_studio_models_endpoint("http://localhost.evil.example/v1").is_err());
+        assert!(lm_studio_models_endpoint("http://127.0.0.1.evil.example/v1").is_err());
     }
 
     #[test]

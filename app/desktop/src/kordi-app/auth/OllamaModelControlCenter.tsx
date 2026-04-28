@@ -205,6 +205,7 @@ export function OllamaModelControlCenter({
   const [isCatalogSectionExpanded, setIsCatalogSectionExpanded] = useState(false);
   const [isSetupDetailsExpanded, setIsSetupDetailsExpanded] = useState(false);
   const [confirmDeleteModelId, setConfirmDeleteModelId] = useState<string | null>(null);
+  const [confirmInstall, setConfirmInstall] = useState(false);
   const [activeAction, setActiveAction] = useState<OllamaAction | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -341,6 +342,14 @@ export function OllamaModelControlCenter({
   };
 
   const installOrUpdateOllama = async () => {
+    if (!confirmInstall) {
+      setConfirmInstall(true);
+      setActionError(null);
+      setActionMessage('Click Confirm install/update to run the official Ollama installer helper on this computer.');
+      return;
+    }
+
+    setConfirmInstall(false);
     await runOllamaAction(
       'install',
       installOllamaDesktop,
@@ -490,8 +499,16 @@ export function OllamaModelControlCenter({
     }
   };
 
+  const installActionLabel = confirmInstall ? 'Confirm install/update' : 'Install Ollama';
+  const installActionDetail = confirmInstall
+    ? 'Run the official installer helper after this second click.'
+    : 'Download and install Ollama with the official bash installer.';
+  const installButtonLabel = confirmInstall
+    ? 'Confirm install/update'
+    : appReady ? 'Update Ollama' : 'Install Ollama';
+
   const primaryActionLabel = !appReady
-    ? 'Install Ollama'
+    ? installActionLabel
     : !serverRunning
       ? 'Start local server'
       : !hasInstalledModels
@@ -503,7 +520,7 @@ export function OllamaModelControlCenter({
             : 'Save Ollama';
 
   const primaryActionDetail = !appReady
-    ? 'Download and install Ollama with the official bash installer.'
+    ? installActionDetail
     : !serverRunning
       ? 'Open Ollama.app or start `ollama serve` in the background.'
       : !hasInstalledModels
@@ -627,7 +644,7 @@ export function OllamaModelControlCenter({
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </AuthActionButton>
             <AuthActionButton className={appReady ? ollamaNeutralClass : ollamaPrimaryClass} onClick={() => void installOrUpdateOllama()} disabled={activeAction === 'install'}>
-              <Download className={cn('h-3.5 w-3.5', activeAction === 'install' && 'animate-pulse')} /> {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : appReady ? 'Update Ollama' : 'Install Ollama'}
+              <Download className={cn('h-3.5 w-3.5', activeAction === 'install' && 'animate-pulse')} /> {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : installButtonLabel}
             </AuthActionButton>
             <AuthActionButton className={ollamaNeutralClass} onClick={openOllama} disabled={activeAction === 'setup'}>
               <ExternalLink className="h-3.5 w-3.5" /> {activeAction === 'setup' ? 'Opening…' : 'Open app'}

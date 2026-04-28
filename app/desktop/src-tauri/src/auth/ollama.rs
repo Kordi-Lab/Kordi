@@ -649,7 +649,9 @@ fn ollama_version(path: &Path) -> Option<String> {
 fn shell_command_path(command: &str) -> Option<PathBuf> {
     let script = format!("command -v {command}");
     for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        let output = Command::new(shell).arg("-lc").arg(&script).output().ok()?;
+        let Ok(output) = Command::new(shell).arg("-lc").arg(&script).output() else {
+            continue;
+        };
         if output.status.success() {
             let value = String::from_utf8_lossy(&output.stdout);
             let path = value.trim().lines().next().unwrap_or_default().trim();
@@ -690,10 +692,18 @@ fn ollama_api_endpoint(base_url: &str, path: &str) -> Result<Url, String> {
 }
 
 fn validate_ollama_local_url(url: &Url) -> Result<(), String> {
-    match url.host_str() {
-        Some("localhost") | Some("127.0.0.1") | Some("::1") => Ok(()),
-        Some(host) if host.starts_with("127.") => Ok(()),
-        _ => Err("Ollama controls only run against localhost endpoints.".to_string()),
+    let is_loopback = matches!(url.scheme(), "http" | "https")
+        && url.host_str().is_some_and(|host| {
+            let host = host.trim_matches(|ch| ch == '[' || ch == ']');
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if is_loopback {
+        Ok(())
+    } else {
+        Err("Ollama controls only run against localhost endpoints.".to_string())
     }
 }
 
@@ -1237,6 +1247,16 @@ mod tests {
     fn ollama_api_endpoint_rewrites_openai_base_to_native_api_path() {
         let url = ollama_api_endpoint("http://localhost:11434/v1", "/api/tags").unwrap();
         assert_eq!(url.as_str(), "http://localhost:11434/api/tags");
+    }
+
+    #[test]
+    fn local_url_validation_rejects_lookalike_hosts() {
+        assert!(ollama_api_endpoint("http://localhost:11434/v1", "/api/tags").is_ok());
+        assert!(ollama_api_endpoint("http://127.0.0.42:11434/v1", "/api/tags").is_ok());
+        assert!(ollama_api_endpoint("http://[::1]:11434/v1", "/api/tags").is_ok());
+        assert!(ollama_api_endpoint("file://localhost/v1", "/api/tags").is_err());
+        assert!(ollama_api_endpoint("http://localhost.evil.example/v1", "/api/tags").is_err());
+        assert!(ollama_api_endpoint("http://127.0.0.1.evil.example/v1", "/api/tags").is_err());
     }
 
     #[test]
