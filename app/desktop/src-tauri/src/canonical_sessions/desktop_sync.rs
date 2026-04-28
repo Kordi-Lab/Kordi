@@ -14,12 +14,17 @@ fn canonical_desktop_message_source_event_id(
     index: usize,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> String {
+    let role = message.role.trim().to_lowercase();
+    if role != "user" {
+        return format!("desktop-chat:{session_id}:{index}:{role}:turn");
+    }
+
     format!(
         "desktop-chat:{}:{}:{}:{}:{}",
         session_id,
         index,
         message.timestamp_ms,
-        message.role,
+        role,
         hash_hex(&message.text, 8)
     )
 }

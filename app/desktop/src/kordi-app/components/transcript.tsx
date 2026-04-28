@@ -790,7 +790,7 @@ function toolDisplayConfig(toolName: string) {
 type ToolSnapshot = DesktopChatTurnSnapshot['tools'][number];
 type ToolDisplay = ReturnType<typeof toolDisplayConfig>;
 
-const TOOL_ACTIVITY_GROUP_THRESHOLD = 4;
+const TOOL_ACTIVITY_GROUP_THRESHOLD = 3;
 const TOOL_SEQUENCE_HEAD_COUNT = 4;
 
 function normalizedToolStatus(tool: ToolSnapshot) {
