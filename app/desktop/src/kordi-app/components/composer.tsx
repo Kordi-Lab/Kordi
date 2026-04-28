@@ -228,6 +228,10 @@ function providerDisplayLabel(providerId: string) {
       return 'GitHub Copilot';
     case 'groq':
       return 'Groq';
+    case 'lm-studio':
+      return 'LM Studio';
+    case 'ollama':
+      return 'Ollama';
     case 'openrouter':
       return 'OpenRouter';
     case 'xai':
@@ -265,18 +269,23 @@ export function ComposerModelControls({
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
   const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
   const parsedSelection = selection.model.split('/');
-  const fallbackProviderValue = parsedSelection[0] ?? '';
+  const fallbackProviderValue = normalizeComposerProviderId(parsedSelection[0] ?? '');
   const fallbackModelLabel = parsedSelection.slice(1).join('/').trim() || selection.model;
-  const selectedProviderValue = selectedModelOption?.provider ?? normalizeComposerProviderId(fallbackProviderValue);
+  const fallbackProviderKnown = Boolean(fallbackProviderValue) && (
+    providerOptions.some((option) => normalizeComposerProviderId(option.providerId) === fallbackProviderValue)
+    || modelOptions.some((option) => option.provider === fallbackProviderValue)
+  );
+  const selectedProviderValue = selectedModelOption?.provider ?? (fallbackProviderKnown ? fallbackProviderValue : '');
   const selectedProviderOption = providerOptions.find(
     (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
   ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
   const selectedProviderLabel = selectedModelOption?.providerLabel
-    ?? providerDisplayLabel(selectedProviderValue)
     ?? selectedProviderOption?.selectionLabel
     ?? selectedProviderOption?.label
-    ?? selectedProviderValue;
-  const filteredModelOptions = modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue);
+    ?? (selectedProviderValue ? providerDisplayLabel(selectedProviderValue) : 'Provider');
+  const filteredModelOptions = selectedProviderValue
+    ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
+    : modelOptions;
   const activeOptions = activeSelector === 'provider'
     ? providerOptions
     : activeSelector === 'model'

@@ -69,6 +69,18 @@ pub fn preferred_available_model_for_provider(
     available_model_for_provider(settings, provider, None)
 }
 
+fn provider_prefixed_model_arg(provider: &str, model: &str) -> String {
+    let trimmed = model.trim();
+    if trimmed
+        .strip_prefix(provider)
+        .is_some_and(|rest| rest.starts_with('/'))
+    {
+        trimmed.to_string()
+    } else {
+        format!("{provider}/{trimmed}")
+    }
+}
+
 fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
         "anthropic" => Some("claude-opus-4-6".to_string()),
@@ -99,10 +111,26 @@ fn preferred_model_for_provider(provider: &str) -> Option<String> {
 pub fn preferred_startup_provider_and_model(
     settings: &kordi_core::settings::Settings,
 ) -> Option<(String, String)> {
-    // If the user explicitly configured a default provider/model, honor that
-    // before any heuristic startup preference.
+    // If the user explicitly configured a default local provider/model, honor it
+    // before registry checks. Local model ids often contain a publisher slash
+    // (for example google/gemma-4-e4b), so return a provider-prefixed model arg
+    // to prevent generic provider/model parsing from treating "google" as the
+    // runtime provider.
     if let Some(provider) = settings.default_provider.as_deref() {
         let normalized = normalize_provider_for_model_selection(provider);
+        if is_local_openai_provider(&normalized)
+            && provider_configured_for_settings(settings, &normalized)
+            && let Some(model) = settings
+                .default_model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+        {
+            return Some((
+                normalized.clone(),
+                provider_prefixed_model_arg(&normalized, model),
+            ));
+        }
         if let Some(model) = resolve_available_model_for_provider(
             settings,
             &normalized,
@@ -150,4 +178,49 @@ pub fn preferred_startup_provider_and_model(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kordi_core::settings::{ProviderOverride, Settings};
+
+    fn lm_studio_settings(default_model: &str) -> Settings {
+        Settings {
+            default_provider: Some("lm-studio".to_string()),
+            default_model: Some(default_model.to_string()),
+            providers: Some(vec![ProviderOverride {
+                name: "lm-studio".to_string(),
+                base_url: Some("http://localhost:1234/v1".to_string()),
+                api_key_env: None,
+                api: None,
+                headers: None,
+            }]),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn local_default_model_with_publisher_slash_keeps_lm_studio_provider() {
+        assert_eq!(
+            preferred_startup_provider_and_model(&lm_studio_settings("google/gemma-4-e4b")),
+            Some((
+                "lm-studio".to_string(),
+                "lm-studio/google/gemma-4-e4b".to_string(),
+            )),
+        );
+    }
+
+    #[test]
+    fn local_default_model_does_not_double_prefix_provider() {
+        assert_eq!(
+            preferred_startup_provider_and_model(&lm_studio_settings(
+                "lm-studio/google/gemma-4-e4b"
+            )),
+            Some((
+                "lm-studio".to_string(),
+                "lm-studio/google/gemma-4-e4b".to_string(),
+            )),
+        );
+    }
 }

@@ -1,4 +1,6 @@
+pub mod lm_studio;
 mod local_providers;
+pub mod ollama;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -36,6 +38,7 @@ pub struct DesktopAuthProvider {
     pub configured: bool,
     pub authority: Option<String>,
     pub base_url: Option<String>,
+    pub preferred_model: Option<String>,
     pub options: Vec<DesktopAuthOption>,
 }
 
@@ -238,6 +241,27 @@ fn build_auth_state() -> DesktopAuthState {
             } else {
                 configured
             };
+            let normalized_provider =
+                kordi_cli::login::normalize_provider_for_model_selection(provider);
+            let preferred_model =
+                settings
+                    .default_provider
+                    .as_deref()
+                    .and_then(|default_provider| {
+                        let normalized_default =
+                            kordi_cli::login::normalize_provider_for_model_selection(
+                                default_provider,
+                            );
+                        kordi_cli::login::provider_names_match(
+                            &normalized_provider,
+                            &normalized_default,
+                        )
+                        .then(|| settings.default_model.as_deref())
+                        .flatten()
+                        .map(str::trim)
+                        .filter(|model| !model.is_empty())
+                        .map(ToString::to_string)
+                    });
             (
                 DesktopAuthProvider {
                     id: (*provider).to_string(),
@@ -252,6 +276,7 @@ fn build_auth_state() -> DesktopAuthState {
                     configured,
                     authority: copilot_status.and_then(|status| status.authority),
                     base_url: local_providers::desktop_provider_base_url(&settings, provider),
+                    preferred_model,
                     options,
                 },
                 satisfies_startup_gate,
@@ -304,6 +329,7 @@ pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuth
     }
     kordi_cli::login::save_api_key(provider, key.trim().to_string())
         .map_err(|err| err.to_string())?;
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 
@@ -311,6 +337,7 @@ pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuth
 pub fn desktop_set_local_provider_port(
     provider: String,
     port: u32,
+    model: Option<String>,
 ) -> Result<DesktopAuthState, String> {
     let normalized = kordi_cli::login::normalize_provider_for_model_selection(provider.trim());
     let base_url = local_providers::base_url_for_port(&normalized, port)?;
@@ -321,11 +348,11 @@ pub fn desktop_set_local_provider_port(
         .iter_mut()
         .find(|entry| kordi_cli::login::provider_names_match(&normalized, &entry.name))
     {
-        existing.name = normalized;
+        existing.name = normalized.clone();
         existing.base_url = Some(base_url);
     } else {
         providers.push(kordi_core::settings::ProviderOverride {
-            name: normalized,
+            name: normalized.clone(),
             base_url: Some(base_url),
             api_key_env: None,
             api: None,
@@ -333,13 +360,28 @@ pub fn desktop_set_local_provider_port(
         });
     }
 
+    if let Some(model) = model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let model = model
+            .strip_prefix(&format!("{normalized}/"))
+            .map(|_| model.to_string())
+            .unwrap_or_else(|| format!("{normalized}/{model}"));
+        settings.default_provider = Some(normalized.clone());
+        settings.default_model = Some(model);
+    }
+
     settings.save_global().map_err(|err| err.to_string())?;
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 
 #[tauri::command]
 pub fn desktop_logout(provider: String) -> Result<DesktopAuthState, String> {
     kordi_cli::login::remove_auth(&provider).map_err(|err| err.to_string())?;
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 
@@ -353,6 +395,7 @@ pub fn desktop_remove_auth_profile(
     if !removed {
         return Err(format!("Unknown auth profile for {provider}"));
     }
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 
@@ -366,6 +409,7 @@ pub fn desktop_set_active_auth_profile(
     if !selected {
         return Err(format!("Unknown auth profile for {provider}"));
     }
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 
@@ -379,6 +423,7 @@ pub fn desktop_set_active_auth_choice(
     if !selected {
         return Err(format!("Unknown auth choice for {provider}: {choice}"));
     }
+    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
     Ok(build_auth_state())
 }
 

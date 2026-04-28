@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { normalizeSelectedProviderId } from '@/kordi-app/auth/model';
+import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { storeDesktopChatAttachment, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import { isProjectDraftSessionId } from './draftSessions';
@@ -277,8 +277,14 @@ export function useComposerInputActions({
       return;
     }
 
+    if (isLocalProvider(normalizedProviderId)) {
+      setDesktopChatError('Run and save a local model from Authentication before selecting this provider.');
+      setOpenComposerSelector(null);
+      return;
+    }
+
     await selectComposerValue(scope, 'provider', normalizedProviderId);
-  }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue]);
+  }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement) => {
     setComposerDrafts((current: ComposerDraftState) => ({

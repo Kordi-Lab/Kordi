@@ -118,7 +118,8 @@ export function useKordiDesktopActivity({
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) Kordi` : 'Kordi';
+    const baseTitle = import.meta.env.VITE_KORDI_WINDOW_TITLE?.trim() || 'Kordi';
+    document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) ${baseTitle}` : baseTitle;
   }, [totalUnreadMessages]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import { AuthProviderDetail } from './AuthProviderDetail';
@@ -38,6 +39,7 @@ export type AuthPageProps = {
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
   onDismissGate?: () => void;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
 function AuthNavigationControls({
@@ -97,6 +99,7 @@ export function AuthPage({
   onRemoveAuthProfile,
   onLogoutProvider,
   onDismissGate,
+  onEnterChat,
 }: AuthPageProps) {
   const showHero = variant === 'gate';
   const showNativeNote = !isNativeShell && variant === 'settings';
@@ -179,6 +182,7 @@ export function AuthPage({
           configuredCount={configuredCount}
           onSelectProvider={openProviderDetail}
           onRefresh={onRefresh}
+          onEnterChat={onEnterChat ?? onDismissGate}
         />
       );
     }
@@ -194,6 +198,8 @@ export function AuthPage({
         onRemoveAuthProfile={onRemoveAuthProfile}
         onLogoutProvider={onLogoutProvider}
         onRefreshAuth={onRefresh}
+        onDismissGate={onDismissGate}
+        onEnterChat={onEnterChat}
       />
     );
   }, [
@@ -207,6 +213,8 @@ export function AuthPage({
     onRefresh,
     onSelectAuthChoice,
     onRemoveAuthProfile,
+    onDismissGate,
+    onEnterChat,
     openProviderDetail,
     provider,
     showDetailPage,
@@ -312,9 +320,15 @@ export function AuthPage({
               <div className="mt-6 text-[12px] text-slate-400">You can always come back from Settings → Authentication.</div>
             </div>
 
-            <div className="min-h-0 min-w-0 p-5" style={{ WebkitAppRegion: 'no-drag' as const }}>
+            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-5" style={{ WebkitAppRegion: 'no-drag' as const }}>
               {detailHeader}
-              <div className="flex min-h-0 min-w-0 w-full max-w-none flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+              {showDetailPage ? (
+                <ScrollArea className="min-h-0 flex-1 pr-1">
+                  <div className="flex min-h-0 min-w-0 w-full max-w-none flex-col pb-2" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+                </ScrollArea>
+              ) : (
+                <div className="flex min-h-0 min-w-0 w-full max-w-none flex-1 flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+              )}
             </div>
           </div>
         </div>

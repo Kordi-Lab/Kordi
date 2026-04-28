@@ -728,7 +728,7 @@ export function useKordiAppModel() {
     if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
 
     const configuredProviders = buildAuthDisplayProviders(desktopAuthState)
-      .filter((provider) => provider.methods.some((method) => method.options.length > 0));
+      .filter((provider) => provider.configured);
 
     if (configuredProviders.length === 0) {
       lastAutoAuthProviderSwitchRef.current = null;
@@ -738,8 +738,11 @@ export function useKordiAppModel() {
     const normalizedCurrentProvider =
       normalizeSelectedProviderId(desktopChatState.activeSession.provider) ?? desktopChatState.activeSession.provider;
     const currentProviderIsConfigured = configuredProviders.some((provider) => provider.id === normalizedCurrentProvider);
+    const currentProviderHasRuntimeModels = desktopChatState.modelOptions.some((option) => (
+      (normalizeSelectedProviderId(option.provider) ?? option.provider) === normalizedCurrentProvider
+    ));
 
-    if (currentProviderIsConfigured) {
+    if (currentProviderIsConfigured || currentProviderHasRuntimeModels) {
       lastAutoAuthProviderSwitchRef.current = null;
       return;
     }
@@ -773,6 +776,7 @@ export function useKordiAppModel() {
     desktopAuthState,
     desktopChatState?.activeSession.provider,
     desktopChatState?.activeSessionId,
+    desktopChatState?.modelOptions,
     isNativeShell,
     preferredModelValueForProvider,
     selectComposerValue,

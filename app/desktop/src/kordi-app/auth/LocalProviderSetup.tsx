@@ -10,12 +10,16 @@ import {
   authButtonNeutralClass,
   nonDragStyle,
 } from './AuthDetailPrimitives';
+import { LmStudioModelControlCenter } from './LmStudioModelControlCenter';
+import { OllamaModelControlCenter } from './OllamaModelControlCenter';
 
 type LocalProviderSetupProps = {
   provider: AuthDisplayProvider;
   rawProviders: DesktopAuthProvider[];
   onOpenLogin: (provider: DesktopAuthProvider, mode: 'oauth' | 'api-key') => void;
-  onRefreshAuth: () => void;
+  onRefreshAuth: () => void | Promise<void>;
+  onDismissGate?: () => void;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
 function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string) {
@@ -49,9 +53,9 @@ function localProviderServerInstructions(providerId: string, label: string, base
       optionalKey: 'Only save a key here if you enabled API-key protection in LM Studio.',
       port,
       installTitle: 'Install LM Studio',
-      installDetail: 'Install LM Studio, then start its local server from the app. The command below is the install helper published by LM Studio.',
+      installDetail: 'Install LM Studio from the official installer, then start its local server from the app. The terminal helper below is available as an advanced fallback.',
       installCommand: 'curl -fsSL https://lmstudio.ai/install.sh | bash',
-      installUrl: 'https://lmstudio.ai',
+      installUrl: 'https://lmstudio.ai/download',
       docsUrl: 'https://lmstudio.ai/docs/app/api/endpoints/openai',
       docsLabel: 'Open API docs',
     };
@@ -67,7 +71,7 @@ function localProviderServerInstructions(providerId: string, label: string, base
       installDetail: 'Install Ollama from the official download page, then run a model locally before selecting it in Kordi.',
       installCommand: null,
       installUrl: 'https://ollama.com/download',
-      docsUrl: 'https://docs.ollama.com',
+      docsUrl: 'https://docs.ollama.com/openai',
       docsLabel: 'Open docs',
     };
   }
@@ -97,6 +101,8 @@ export function LocalProviderSetup({
   rawProviders,
   onOpenLogin,
   onRefreshAuth,
+  onDismissGate,
+  onEnterChat,
 }: LocalProviderSetupProps) {
   const baseUrl = provider.localBaseUrl;
   const [copiedInstallCommand, setCopiedInstallCommand] = useState(false);
@@ -127,7 +133,7 @@ export function LocalProviderSetup({
       setIsSavingLocalPort(true);
       setLocalPortError(null);
       await setDesktopLocalProviderPort(provider.id, parsedPort);
-      onRefreshAuth();
+      await Promise.resolve(onRefreshAuth());
     } catch (error) {
       setLocalPortError(error instanceof Error ? error.message : 'Unable to save local provider port.');
     } finally {
@@ -144,6 +150,30 @@ export function LocalProviderSetup({
       console.error('Unable to copy local provider install command', error);
     }
   };
+
+  if (provider.id === 'lm-studio') {
+    return (
+      <LmStudioModelControlCenter
+        endpoint={baseUrl}
+        port={localServer.port}
+        onRefreshAuth={onRefreshAuth}
+        onSaved={onDismissGate}
+        onEnterChat={onEnterChat}
+      />
+    );
+  }
+
+  if (provider.id === 'ollama') {
+    return (
+      <OllamaModelControlCenter
+        endpoint={baseUrl}
+        port={localServer.port}
+        onRefreshAuth={onRefreshAuth}
+        onSaved={onDismissGate}
+        onEnterChat={onEnterChat}
+      />
+    );
+  }
 
   return (
     <>
@@ -169,10 +199,10 @@ export function LocalProviderSetup({
           <>
             <AuthActionButton
               type="button"
-              className={authButtonNeutralClass}
+              className={provider.id === 'lm-studio' ? 'border border-emerald-300/24 bg-[linear-gradient(180deg,rgba(52,211,153,0.18),rgba(20,184,166,0.11))] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_10px_24px_rgba(0,0,0,0.16)] hover:border-emerald-200/32 hover:bg-[linear-gradient(180deg,rgba(52,211,153,0.24),rgba(20,184,166,0.15))]' : authButtonNeutralClass}
               onClick={() => openLocalProviderHelp(localServer.installUrl)}
             >
-              Open install help
+              {provider.id === 'lm-studio' ? 'Download page' : 'Open install help'}
             </AuthActionButton>
             {localServer.installCommand ? (
               <AuthActionButton

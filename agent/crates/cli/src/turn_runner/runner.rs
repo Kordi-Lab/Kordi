@@ -213,6 +213,17 @@ pub(crate) async fn run_turn_inner(
             break;
         }
 
+        if let Some(message) = first_stream_error(&stream.events) {
+            let _ = append_assistant_error_message(
+                &config.conn,
+                &config.session_id,
+                &config.model,
+                &message,
+            )
+            .await;
+            return Err(anyhow::anyhow!(message));
+        }
+
         let collected = CollectedResponse::from_events(&stream.events);
         let resolved_usage = resolve_cache_usage(
             &prepared_metrics,
@@ -577,6 +588,13 @@ fn missing_credentials_message(provider: &str) -> String {
             "No Google credentials are available. Add GOOGLE_API_KEY or GEMINI_API_KEY.".to_string(),
         (other, _) => format!("No credentials are available for provider '{other}'. Configure credentials before sending a message."),
     }
+}
+
+fn first_stream_error(events: &[StreamEvent]) -> Option<String> {
+    events.iter().find_map(|event| match event {
+        StreamEvent::Error { message } if !is_context_overflow(message) => Some(message.clone()),
+        _ => None,
+    })
 }
 
 fn request_metrics_snapshot(request: &CompletionRequest) -> RequestMetricsSnapshot {

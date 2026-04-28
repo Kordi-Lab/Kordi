@@ -114,10 +114,11 @@ if (!Number.isInteger(port) || port <= 0 || port > 65535) {
 }
 
 const profileKey = sanitizeIdentifierPart(options.profile || 'dev') || 'dev';
+const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 const title = options.title || `Kordi (${options.profile})`;
 const identifier = options.identifier || `io.kordi.desktop.${profileKey}`;
 const devUrl = `http://${options.host}:${port}`;
-const beforeDevCommand = `npm run dev:web -- --host ${options.host} --port ${port} --strictPort`;
+const beforeDevCommand = `VITE_KORDI_WINDOW_TITLE=${shellQuote(title)} npm run dev:web -- --host ${options.host} --port ${port} --strictPort`;
 
 const baseConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
 const nextConfig = {
