@@ -173,11 +173,37 @@ export function duplicateAgentTurnKey(message: Message) {
   return [message.role, message.sender ?? '', message.time, assistantText, thinkingText, toolSignature].join('\u0000');
 }
 
+function transcriptToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
+  return tool.id?.trim() || [tool.name, tool.status, tool.arguments, tool.resultText ?? '', tool.isError ? 'error' : 'ok'].join('\u0000');
+}
+
+function agentTurnIsSubsumedByNext(current: Message, next: Message) {
+  if (!current.turn || !next.turn) return false;
+  if (current.role !== next.role || current.sender !== next.sender || current.time !== next.time) return false;
+  if (!current.turn.completed || !next.turn.completed) return false;
+  if (next.turn.assistantText.trim().length === 0) return false;
+  if (current.turn.assistantText.trim().length > 0 && current.turn.assistantText.trim() !== next.turn.assistantText.trim()) return false;
+
+  const currentThinking = current.turn.thinkingText.trim();
+  const nextThinking = next.turn.thinkingText.trim();
+  if (currentThinking.length > 0 && !nextThinking.includes(currentThinking)) return false;
+
+  if (current.turn.tools.length === 0) return false;
+  const nextToolKeys = new Set(next.turn.tools.map(transcriptToolKey));
+  return current.turn.tools.every((tool) => nextToolKeys.has(transcriptToolKey(tool)));
+}
+
 export function dedupeAdjacentAgentTurns(messages: Message[]) {
   const deduped: Message[] = [];
   let previousAgentTurnKey: string | null = null;
 
-  for (const message of messages) {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    const next = messages[index + 1];
+    if (next && agentTurnIsSubsumedByNext(message, next)) {
+      continue;
+    }
+
     const key = duplicateAgentTurnKey(message);
     if (key && key === previousAgentTurnKey) {
       continue;
