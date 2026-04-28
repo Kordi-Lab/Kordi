@@ -251,6 +251,44 @@ pub struct DesktopRuntimeSession {
     setup: SessionRuntimeSetup,
 }
 
+pub struct DesktopRuntimeTurn {
+    event_rx: mpsc::UnboundedReceiver<TurnEvent>,
+    handle: tokio::task::JoinHandle<(TurnConfig, Result<()>)>,
+}
+
+pub struct DesktopRuntimeTurnResult {
+    returned_config: TurnConfig,
+    turn_result: Result<()>,
+    turn_error: Option<String>,
+}
+
+impl DesktopRuntimeTurn {
+    pub async fn run<F>(mut self, mut on_event: F) -> Result<DesktopRuntimeTurnResult>
+    where
+        F: FnMut(&TurnEvent),
+    {
+        let mut turn_error: Option<String> = None;
+        while let Some(event) = self.event_rx.recv().await {
+            on_event(&event);
+            match &event {
+                TurnEvent::ContextOverflow { message } => turn_error = Some(message.clone()),
+                TurnEvent::Error(message) => turn_error = Some(message.clone()),
+                _ => {}
+            }
+        }
+
+        let (returned_config, turn_result) = self
+            .handle
+            .await
+            .map_err(|err| anyhow!("turn task failed: {err}"))?;
+        Ok(DesktopRuntimeTurnResult {
+            returned_config,
+            turn_result,
+            turn_error,
+        })
+    }
+}
+
 impl DesktopRuntimeSession {
     pub async fn create_new(cwd: std::path::PathBuf) -> Result<Self> {
         let (_runtime_host, _ui, setup) =
@@ -533,16 +571,12 @@ impl DesktopRuntimeSession {
         .await
     }
 
-    pub async fn send_message_streaming<F>(
+    pub async fn begin_message_streaming(
         &mut self,
         prompt: String,
         attachment_paths: Vec<String>,
         cancel: tokio_util::sync::CancellationToken,
-        mut on_event: F,
-    ) -> Result<DesktopChatSessionDetail>
-    where
-        F: FnMut(&TurnEvent),
-    {
+    ) -> Result<DesktopRuntimeTurn> {
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() && attachment_paths.is_empty() {
             bail!("Message cannot be empty");
@@ -624,31 +658,45 @@ impl DesktopRuntimeSession {
         refresh_provider_runtime_fields(&mut self.setup);
 
         let turn_config = build_turn_config(&mut self.setup, cancel)?;
-        let (turn_event_tx, mut turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
-        let turn_handle =
+        let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
+        let handle =
             tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
 
-        let mut turn_error: Option<String> = None;
-        while let Some(event) = turn_event_rx.recv().await {
-            on_event(&event);
-            match &event {
-                TurnEvent::ContextOverflow { message } => turn_error = Some(message.clone()),
-                TurnEvent::Error(message) => turn_error = Some(message.clone()),
-                _ => {}
-            }
-        }
+        Ok(DesktopRuntimeTurn {
+            event_rx: turn_event_rx,
+            handle,
+        })
+    }
 
-        let (returned_config, turn_result) = turn_handle
-            .await
-            .map_err(|err| anyhow!("turn task failed: {err}"))?;
-        self.setup.tool_registry = returned_config.tool_registry;
+    pub fn finish_message_streaming(
+        &mut self,
+        result: DesktopRuntimeTurnResult,
+    ) -> Result<DesktopChatSessionDetail> {
+        self.setup.tool_registry = result.returned_config.tool_registry;
 
-        turn_result?;
-        if let Some(message) = turn_error {
+        result.turn_result?;
+        if let Some(message) = result.turn_error {
             bail!(message);
         }
 
         self.detail()
+    }
+
+    pub async fn send_message_streaming<F>(
+        &mut self,
+        prompt: String,
+        attachment_paths: Vec<String>,
+        cancel: tokio_util::sync::CancellationToken,
+        on_event: F,
+    ) -> Result<DesktopChatSessionDetail>
+    where
+        F: FnMut(&TurnEvent),
+    {
+        let turn = self
+            .begin_message_streaming(prompt, attachment_paths, cancel)
+            .await?;
+        let result = turn.run(on_event).await?;
+        self.finish_message_streaming(result)
     }
 }
 

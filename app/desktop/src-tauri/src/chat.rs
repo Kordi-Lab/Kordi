@@ -336,6 +336,130 @@ fn is_auto_compaction_failure_status(message: &str) -> bool {
     message.starts_with("Auto-compaction failed:")
 }
 
+fn apply_desktop_turn_event(snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>, event: &TurnEvent) {
+    match event {
+        TurnEvent::TurnStart { .. } => update_turn(snapshot, |state| {
+            state.status = "streaming".to_string();
+            state.message = "Working…".to_string();
+            state.error = None;
+        }),
+        TurnEvent::TextDelta(text) => update_turn(snapshot, |state| {
+            state.status = "writing".to_string();
+            state.message = "Writing response…".to_string();
+            state.error = None;
+            state.assistant_text.push_str(text);
+        }),
+        TurnEvent::ThinkingDelta(text) => update_turn(snapshot, |state| {
+            state.status = "thinking".to_string();
+            state.message = "Thinking…".to_string();
+            state.error = None;
+            state.thinking_text.push_str(text);
+        }),
+        TurnEvent::ToolCallStart { id, name } => update_turn(snapshot, |state| {
+            state.status = "tooling".to_string();
+            state.message = "Working…".to_string();
+            state.error = None;
+            state.tools.push(DesktopChatToolSnapshot {
+                id: id.clone(),
+                name: name.clone(),
+                status: "preparing".to_string(),
+                arguments: String::new(),
+                live_output: String::new(),
+                result_text: None,
+                detail: None,
+                is_error: false,
+            });
+        }),
+        TurnEvent::ToolCallDelta { id, args } => update_turn(snapshot, |state| {
+            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                tool.arguments.push_str(args);
+            }
+        }),
+        TurnEvent::ToolExecuting { id } => update_turn(snapshot, |state| {
+            state.status = "tooling".to_string();
+            state.message = "Running tool…".to_string();
+            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                tool.status = "running".to_string();
+            }
+        }),
+        TurnEvent::ToolOutputDelta { id, chunk } => update_turn(snapshot, |state| {
+            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                tool.status = "running".to_string();
+                tool.live_output.push_str(chunk);
+            }
+        }),
+        TurnEvent::ToolResult {
+            id,
+            content,
+            details,
+            is_error,
+            ..
+        } => update_turn(snapshot, |state| {
+            state.status = "tooling".to_string();
+            state.message = if *is_error {
+                "Tool failed".to_string()
+            } else {
+                "Tool finished".to_string()
+            };
+            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
+                tool.status = if *is_error {
+                    "error".to_string()
+                } else {
+                    "done".to_string()
+                };
+                tool.result_text = Some(content_blocks_to_text(content));
+                tool.detail = tool_detail(details);
+                tool.is_error = *is_error;
+                tool.live_output.clear();
+            }
+        }),
+        TurnEvent::TurnEnd => update_turn(snapshot, |state| {
+            state.status = "finalizing".to_string();
+            state.message = "Finalizing response…".to_string();
+        }),
+        TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
+            update_turn(snapshot, |state| {
+                state.status = "failed".to_string();
+                state.message = message.clone();
+                state.error = Some(message.clone());
+            })
+        }
+        TurnEvent::AutoRetryStart {
+            attempt,
+            max_attempts,
+            ..
+        } => update_turn(snapshot, |state| {
+            state.status = "retrying".to_string();
+            state.message = format!("Retrying request ({attempt}/{max_attempts})…");
+        }),
+        TurnEvent::AutoRetryEnd => update_turn(snapshot, |state| {
+            state.status = "streaming".to_string();
+            state.message = "Retry complete. Continuing…".to_string();
+            state.error = None;
+        }),
+        TurnEvent::AutoCompactionStart => update_turn(snapshot, |state| {
+            state.status = "compacting".to_string();
+            state.message = "Compressing conversation…".to_string();
+        }),
+        TurnEvent::Status(message) if is_auto_compaction_success_status(message) => {
+            update_turn(snapshot, |state| {
+                state.status = "compacted".to_string();
+                state.message = "Conversation compressed. Continuing…".to_string();
+                state.error = None;
+                state.transcript_refresh_required = true;
+            })
+        }
+        TurnEvent::Status(message) if is_auto_compaction_failure_status(message) => {
+            update_turn(snapshot, |state| {
+                state.status = "compaction_failed".to_string();
+                state.message = message.clone();
+                state.error = Some(message.clone());
+            })
+        }
+        TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
+    }
+}
+
 fn turn_matches_running_session(
     snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
     session_id: &str,
@@ -1242,6 +1366,14 @@ pub async fn desktop_chat_update_session_config(
     } else {
         ensure_loaded_session(&manager, &cwd, Some(session_id)).await?
     };
+    if target_session_id != TRANSIENT_LOCAL_DRAFT_SESSION_ID
+        && session_has_running_turn(&manager, &target_session_id).await
+    {
+        return Err(
+            "Stop the running task before changing this session's model or thinking level."
+                .to_string(),
+        );
+    }
     let session = if target_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
         ensure_transient_draft_runtime(&manager, &cwd).await?
     } else {
@@ -1486,22 +1618,37 @@ pub async fn desktop_chat_send_message(
             .cloned()
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
-    let mut session = session.lock().await;
-    prepare_desktop_session_for_send(
-        &mut session,
-        bridge_manager.inner().clone(),
-        manager.inner().clone(),
-        cwd.clone(),
-        &text,
-    )
-    .await;
-    let detail = session.detail().map_err(|err| err.to_string())?;
-    ensure_provider_ready_for_send(&detail.provider, &detail.model, &cwd).await?;
-    session
-        .send_message(text, Vec::new())
-        .await
-        .map_err(|err| err.to_string())?;
-    drop(session);
+    let session_handle = session;
+    let (provider, model) = {
+        let mut session = session_handle.lock().await;
+        prepare_desktop_session_for_send(
+            &mut session,
+            bridge_manager.inner().clone(),
+            manager.inner().clone(),
+            cwd.clone(),
+            &text,
+        )
+        .await;
+        let detail = session.detail().map_err(|err| err.to_string())?;
+        (detail.provider, detail.model)
+    };
+    ensure_provider_ready_for_send(&provider, &model, &cwd).await?;
+
+    let turn = {
+        let mut session = session_handle.lock().await;
+        session
+            .begin_message_streaming(text, Vec::new(), tokio_util::sync::CancellationToken::new())
+            .await
+            .map_err(|err| err.to_string())?
+    };
+
+    let result = turn.run(|_| {}).await.map_err(|err| err.to_string())?;
+    {
+        let mut session = session_handle.lock().await;
+        session
+            .finish_message_streaming(result)
+            .map_err(|err| err.to_string())?;
+    }
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
@@ -1691,27 +1838,32 @@ pub async fn desktop_chat_start_message(
     let snapshot_for_task = snapshot.clone();
     let bridge_manager_for_task = bridge_manager.inner().clone();
     let chat_manager_for_task = manager.inner().clone();
+    let session_handle = session;
     tokio::spawn(async move {
-        let mut session = session.lock().await;
-        prepare_desktop_session_for_send(
-            &mut session,
-            bridge_manager_for_task,
-            chat_manager_for_task,
-            cwd.clone(),
-            &text,
-        )
-        .await;
+        let (provider, model) = {
+            let mut session = session_handle.lock().await;
+            prepare_desktop_session_for_send(
+                &mut session,
+                bridge_manager_for_task,
+                chat_manager_for_task,
+                cwd.clone(),
+                &text,
+            )
+            .await;
 
-        let detail = session.detail().ok();
-        let provider = detail
-            .as_ref()
-            .map(|detail| detail.provider.as_str())
-            .unwrap_or_default();
-        let model = detail
-            .as_ref()
-            .map(|detail| detail.model.as_str())
-            .unwrap_or_default();
-        if let Err(error) = ensure_provider_ready_for_send(provider, model, &cwd).await {
+            let detail = session.detail().ok();
+            let provider = detail
+                .as_ref()
+                .map(|detail| detail.provider.clone())
+                .unwrap_or_default();
+            let model = detail
+                .as_ref()
+                .map(|detail| detail.model.clone())
+                .unwrap_or_default();
+            (provider, model)
+        };
+
+        if let Err(error) = ensure_provider_ready_for_send(&provider, &model, &cwd).await {
             update_turn(&snapshot_for_task, |state| {
                 state.status = "failed".to_string();
                 state.message = error.clone();
@@ -1722,137 +1874,35 @@ pub async fn desktop_chat_start_message(
             return;
         }
 
-        let result =
-            session
-                .send_message_streaming(text, attachment_paths, cancel.clone(), |event| match event
-                {
-                    TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
-                        state.status = "streaming".to_string();
-                        state.message = "Working…".to_string();
-                        state.error = None;
-                    }),
-                    TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
-                        state.status = "writing".to_string();
-                        state.message = "Writing response…".to_string();
-                        state.error = None;
-                        state.assistant_text.push_str(text);
-                    }),
-                    TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
-                        state.status = "thinking".to_string();
-                        state.message = "Thinking…".to_string();
-                        state.error = None;
-                        state.thinking_text.push_str(text);
-                    }),
-                    TurnEvent::ToolCallStart { id, name } => {
-                        update_turn(&snapshot_for_task, |state| {
-                            state.status = "tooling".to_string();
-                            state.message = "Working…".to_string();
-                            state.error = None;
-                            state.tools.push(DesktopChatToolSnapshot {
-                                id: id.clone(),
-                                name: name.clone(),
-                                status: "preparing".to_string(),
-                                arguments: String::new(),
-                                live_output: String::new(),
-                                result_text: None,
-                                detail: None,
-                                is_error: false,
-                            });
-                        })
-                    }
-                    TurnEvent::ToolCallDelta { id, args } => {
-                        update_turn(&snapshot_for_task, |state| {
-                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                                tool.arguments.push_str(args);
-                            }
-                        })
-                    }
-                    TurnEvent::ToolExecuting { id } => update_turn(&snapshot_for_task, |state| {
-                        state.status = "tooling".to_string();
-                        state.message = "Running tool…".to_string();
-                        if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                            tool.status = "running".to_string();
-                        }
-                    }),
-                    TurnEvent::ToolOutputDelta { id, chunk } => {
-                        update_turn(&snapshot_for_task, |state| {
-                            if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                                tool.status = "running".to_string();
-                                tool.live_output.push_str(chunk);
-                            }
-                        })
-                    }
-                    TurnEvent::ToolResult {
-                        id,
-                        content,
-                        details,
-                        is_error,
-                        ..
-                    } => update_turn(&snapshot_for_task, |state| {
-                        state.status = "tooling".to_string();
-                        state.message = if *is_error {
-                            "Tool failed".to_string()
-                        } else {
-                            "Tool finished".to_string()
-                        };
-                        if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
-                            tool.status = if *is_error {
-                                "error".to_string()
-                            } else {
-                                "done".to_string()
-                            };
-                            tool.result_text = Some(content_blocks_to_text(content));
-                            tool.detail = tool_detail(details);
-                            tool.is_error = *is_error;
-                            tool.live_output.clear();
-                        }
-                    }),
-                    TurnEvent::TurnEnd => update_turn(&snapshot_for_task, |state| {
-                        state.status = "finalizing".to_string();
-                        state.message = "Finalizing response…".to_string();
-                    }),
-                    TurnEvent::ContextOverflow { message } | TurnEvent::Error(message) => {
-                        update_turn(&snapshot_for_task, |state| {
-                            state.status = "failed".to_string();
-                            state.message = message.clone();
-                            state.error = Some(message.clone());
-                        })
-                    }
-                    TurnEvent::AutoRetryStart {
-                        attempt,
-                        max_attempts,
-                        ..
-                    } => update_turn(&snapshot_for_task, |state| {
-                        state.status = "retrying".to_string();
-                        state.message = format!("Retrying request ({attempt}/{max_attempts})…");
-                    }),
-                    TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
-                        state.status = "streaming".to_string();
-                        state.message = "Retry complete. Continuing…".to_string();
-                        state.error = None;
-                    }),
-                    TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
-                        state.status = "compacting".to_string();
-                        state.message = "Compressing conversation…".to_string();
-                    }),
-                    TurnEvent::Status(message) if is_auto_compaction_success_status(message) => {
-                        update_turn(&snapshot_for_task, |state| {
-                            state.status = "compacted".to_string();
-                            state.message = "Conversation compressed. Continuing…".to_string();
-                            state.error = None;
-                            state.transcript_refresh_required = true;
-                        })
-                    }
-                    TurnEvent::Status(message) if is_auto_compaction_failure_status(message) => {
-                        update_turn(&snapshot_for_task, |state| {
-                            state.status = "compaction_failed".to_string();
-                            state.message = message.clone();
-                            state.error = Some(message.clone());
-                        })
-                    }
-                    TurnEvent::Done { .. } | TurnEvent::Status(_) => {}
-                })
-                .await;
+        let mut session = session_handle.lock().await;
+        let turn = match session
+            .begin_message_streaming(text, attachment_paths, cancel.clone())
+            .await
+        {
+            Ok(turn) => turn,
+            Err(err) => {
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "failed".to_string();
+                    state.message = "Chat request failed".to_string();
+                    state.completed = true;
+                    state.succeeded = false;
+                    state.error = Some(err.to_string());
+                });
+                return;
+            }
+        };
+        drop(session);
+
+        let turn_result = turn
+            .run(|event| apply_desktop_turn_event(&snapshot_for_task, event))
+            .await;
+        let result = match turn_result {
+            Ok(turn_result) => {
+                let mut session = session_handle.lock().await;
+                session.finish_message_streaming(turn_result)
+            }
+            Err(err) => Err(err),
+        };
 
         match result {
             Ok(_) if cancel.is_cancelled() => update_turn(&snapshot_for_task, |state| {
