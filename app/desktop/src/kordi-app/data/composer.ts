@@ -15,4 +15,11 @@ export const composerModeOptions = {
   project: ['Post update', 'Ask project agent', 'Start new session', 'Share artifact'],
 } as const;
 
-export const composerThinkingOptions = ['Minimal', 'Low', 'Medium', 'High', 'Extra High'] as const;
+export const composerThinkingOptions = [
+  { value: 'off', label: 'Off' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra High' },
+] as const;

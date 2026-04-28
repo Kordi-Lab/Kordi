@@ -27,6 +27,7 @@ export type MinimalModelOption = {
   detail?: string | null;
   provider?: string | null;
   providerLabel?: string | null;
+  thinkingLevels?: string[];
 };
 export type MinimalProviderOption = { providerId: string; value: string };
 export type PendingUserMessage = { text: string; time: string } | null;

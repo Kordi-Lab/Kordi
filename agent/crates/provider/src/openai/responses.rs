@@ -151,6 +151,7 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
 
 fn responses_reasoning_effort(thinking: &str) -> &'static str {
     match thinking {
+        "off" => "none",
         "low" | "minimal" => "low",
         "medium" => "medium",
         "high" | "xhigh" => "high",

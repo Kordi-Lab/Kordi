@@ -55,8 +55,8 @@ export function useKordiLocalUiState() {
   const [isEditingDesktopSessionTitle, setIsEditingDesktopSessionTitle] = useState(false);
 
   const [composerSelections, setComposerSelections] = useState<Record<ComposerScope, { mode: string; model: string; thinking: string }>>({
-    chat: { mode: 'Send as Me', model: 'GPT-5.4', thinking: 'Extra High' },
-    project: { mode: 'Post update', model: 'GPT-5.4', thinking: 'High' },
+    chat: { mode: 'Send as Me', model: 'GPT-5.4', thinking: 'xhigh' },
+    project: { mode: 'Post update', model: 'GPT-5.4', thinking: 'high' },
   });
   const [composerDrafts, setComposerDrafts] = useState<Record<ComposerScope, string>>({
     chat: '',

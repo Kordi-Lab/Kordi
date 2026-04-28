@@ -945,7 +945,12 @@ async fn merge_lm_studio_running_model_options(
             provider_label: "LM Studio".to_string(),
             value: format!("lm-studio/{model_id}"),
             label: model_id.clone(),
-            detail: format!("LM Studio • running local model"),
+            detail: "LM Studio • running local model".to_string(),
+            thinking_levels: kordi_cli::desktop_runtime::desktop_thinking_levels_for_model_id(
+                &settings,
+                "lm-studio",
+                &model_id,
+            ),
         });
     }
 }
@@ -973,6 +978,9 @@ async fn merge_ollama_running_model_options(
             value: format!("ollama/{model_id}"),
             label: model_id.clone(),
             detail: "Ollama • running local model".to_string(),
+            thinking_levels: kordi_cli::desktop_runtime::desktop_thinking_levels_for_model_id(
+                &settings, "ollama", &model_id,
+            ),
         });
     }
 }
