@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -127,21 +127,42 @@ function ToolTranscriptBlock({
   );
 }
 
+function ActiveSheenTitle({ text }: { text: string }) {
+  return (
+    <span className="app-transcript-sheen-title" aria-label={text}>
+      {Array.from(text).map((character, index) => (
+        <span
+          key={`${character}-${index}`}
+          aria-hidden="true"
+          className="app-transcript-sheen-title-char"
+          style={{ '--char-index': index } as CSSProperties}
+        >
+          {character === ' ' ? '\u00A0' : character}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function TimelineSection({
   icon,
   title,
   meta,
+  metaTone,
   badge,
   expanded,
   onToggle,
+  activeTitle,
   children,
 }: {
   icon: ComponentType<{ className?: string }>;
   title: string;
   meta?: string;
+  metaTone?: 'done' | 'error' | 'running';
   badge?: ReactNode;
   expanded: boolean;
   onToggle: () => void;
+  activeTitle?: boolean;
   children?: ReactNode;
 }) {
   const Icon = icon;
@@ -156,8 +177,10 @@ function TimelineSection({
         <div className="flex min-w-0 items-center gap-1.5">
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />}
           <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          <span className="app-transcript-section-title truncate text-[13px] font-medium text-slate-100">{title}</span>
-          {meta ? <span className="app-transcript-section-meta truncate text-[10px] text-slate-400">{meta}</span> : null}
+          <span className="app-transcript-section-title truncate text-[13px] font-medium text-slate-100">
+            {activeTitle ? <ActiveSheenTitle text={title} /> : title}
+          </span>
+          {meta ? <span className={cn('app-transcript-section-meta truncate text-[10px] text-slate-400', metaTone && `app-transcript-status-text-${metaTone}`)}>{meta}</span> : null}
         </div>
         {badge ? <div className="shrink-0">{badge}</div> : null}
       </button>
@@ -764,6 +787,284 @@ function toolDisplayConfig(toolName: string) {
   return { icon: Wrench };
 }
 
+type ToolSnapshot = DesktopChatTurnSnapshot['tools'][number];
+type ToolDisplay = ReturnType<typeof toolDisplayConfig>;
+
+const TOOL_ACTIVITY_GROUP_THRESHOLD = 4;
+const TOOL_SEQUENCE_HEAD_COUNT = 4;
+
+function normalizedToolStatus(tool: ToolSnapshot) {
+  return (tool.isError ? 'error' : tool.status || 'pending').trim().toLowerCase();
+}
+
+function isFailedTool(tool: ToolSnapshot) {
+  const status = normalizedToolStatus(tool);
+  return tool.isError || status === 'error' || status.includes('failed');
+}
+
+function isDoneTool(tool: ToolSnapshot) {
+  const status = normalizedToolStatus(tool);
+  return !isFailedTool(tool) && (status === 'done' || status === 'complete' || status === 'completed');
+}
+
+function isRunningTool(tool: ToolSnapshot) {
+  return !isDoneTool(tool) && !isFailedTool(tool);
+}
+
+function statusLabelForTool(tool: ToolSnapshot) {
+  if (isFailedTool(tool)) return 'error';
+  if (isDoneTool(tool)) return 'done';
+  const status = normalizedToolStatus(tool);
+  return status || 'running';
+}
+
+function toolStatusTone(tool: ToolSnapshot): 'done' | 'error' | 'running' {
+  if (isFailedTool(tool)) return 'error';
+  if (isDoneTool(tool)) return 'done';
+  return 'running';
+}
+
+function toolMetaText(tool: ToolSnapshot) {
+  return tool.detail || tool.status;
+}
+
+function toolPrimaryMetaText(tool: ToolSnapshot) {
+  return tool.detail?.split(' • ')[0] || tool.status;
+}
+
+function toolDisplayName(tool: ToolSnapshot) {
+  const display = toolDisplayConfig(tool.name);
+  return display.label ?? tool.name;
+}
+
+function firstDurationMs(detail?: string | null) {
+  const match = detail?.match(/(\d+(?:\.\d+)?)\s*(ms|s)\b/i);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]);
+  if (!Number.isFinite(value)) return null;
+  return match[2].toLowerCase() === 's' ? value * 1000 : value;
+}
+
+function formatDuration(ms: number) {
+  if (ms >= 1000) {
+    const seconds = ms / 1000;
+    return `${seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(2).replace(/0$/, '')}s`;
+  }
+  return `${Math.round(ms)}ms`;
+}
+
+function totalToolDurationLabel(tools: ToolSnapshot[]) {
+  const total = tools.reduce((sum, tool) => sum + (firstDurationMs(tool.detail) ?? 0), 0);
+  return total > 0 ? formatDuration(total) : null;
+}
+
+function findLastTool(tools: ToolSnapshot[], predicate: (tool: ToolSnapshot) => boolean) {
+  for (let index = tools.length - 1; index >= 0; index -= 1) {
+    if (predicate(tools[index])) return tools[index];
+  }
+  return null;
+}
+
+function toolDetailsAvailable(tool: ToolSnapshot) {
+  return Boolean(tool.arguments || tool.liveOutput || tool.resultText);
+}
+
+function ToolDetailBlocks({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
+  return (
+    <div>
+      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
+      {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
+      {tool.resultText ? <ToolTranscriptBlock label={display.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
+    </div>
+  );
+}
+
+function ToolActivitySummary({ tools }: { tools: ToolSnapshot[] }) {
+  const doneCount = tools.filter(isDoneTool).length;
+  const runningCount = tools.filter(isRunningTool).length;
+  const failedCount = tools.filter(isFailedTool).length;
+  const duration = totalToolDurationLabel(tools);
+  const parts = [`${tools.length} steps`];
+
+  if (failedCount > 0 || runningCount > 0) {
+    if (doneCount > 0) parts.push(`${doneCount} done`);
+    if (runningCount > 0) parts.push(`${runningCount} running`);
+    if (failedCount > 0) parts.push(`${failedCount} ${failedCount === 1 ? 'issue' : 'issues'}`);
+  } else {
+    parts.push('all done');
+  }
+  if (duration) parts.push(duration);
+
+  return <>{parts.join(' · ')}</>;
+}
+
+function ToolActivityPin({ tool, kind }: { tool: ToolSnapshot; kind: 'running' | 'error' }) {
+  const label = kind === 'running' ? 'Running now' : 'Needs attention';
+  const meta = tool.detail || statusLabelForTool(tool);
+
+  return (
+    <div className={cn('app-transcript-tool-pin', kind === 'running' ? 'app-transcript-tool-pin-running' : 'app-transcript-tool-pin-error')}>
+      <span className="min-w-0 truncate">
+        {label}: <strong>{toolDisplayName(tool)}</strong>
+      </span>
+      <span className="shrink-0 truncate text-right">{meta}</span>
+    </div>
+  );
+}
+
+function ToolActivityRow({
+  tool,
+  expanded,
+  onToggle,
+}: {
+  tool: ToolSnapshot;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const display = toolDisplayConfig(tool.name);
+  const Icon = display.icon;
+  const hasDetails = toolDetailsAvailable(tool);
+  const status = statusLabelForTool(tool);
+  const tone = toolStatusTone(tool);
+  const metaText = toolMetaText(tool);
+  const primaryMeta = toolPrimaryMetaText(tool);
+
+  return (
+    <div className="app-transcript-tool-row">
+      <button
+        type="button"
+        onClick={hasDetails ? onToggle : undefined}
+        aria-expanded={hasDetails ? expanded : undefined}
+        aria-label={`${display.label ?? tool.name}, ${status}${metaText ? `, ${metaText}` : ''}`}
+        className={cn('app-transcript-tool-row-button', !hasDetails && 'cursor-default')}
+      >
+        <span className="app-transcript-tool-row-icon" aria-hidden="true">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="app-transcript-tool-row-name truncate">
+          {isRunningTool(tool) ? <ActiveSheenTitle text={display.label ?? tool.name} /> : (display.label ?? tool.name)}
+        </span>
+        <span className="app-transcript-tool-row-detail truncate">{metaText}</span>
+        <span className={cn('app-transcript-tool-row-time truncate', `app-transcript-status-text-${tone}`)}>{primaryMeta}</span>
+      </button>
+      {expanded && hasDetails ? (
+        <div className="app-transcript-tool-row-detail-block">
+          <ToolDetailBlocks tool={tool} display={display} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ToolActivityGroup({
+  tools,
+  active,
+  expandedTools,
+  setExpandedTools,
+}: {
+  tools: ToolSnapshot[];
+  active?: boolean;
+  expandedTools: Record<string, boolean>;
+  setExpandedTools: Dispatch<SetStateAction<Record<string, boolean>>>;
+}) {
+  const [expandedActivity, setExpandedActivity] = useState(false);
+  const currentTool = findLastTool(tools, isRunningTool) ?? tools[tools.length - 1];
+  const runningTool = findLastTool(tools, isRunningTool);
+  const failedTools = tools.filter(isFailedTool);
+  const shownSequence = tools.length > TOOL_SEQUENCE_HEAD_COUNT + 2
+    ? [...tools.slice(0, TOOL_SEQUENCE_HEAD_COUNT), tools[tools.length - 1]]
+    : tools;
+  const hiddenSequenceCount = tools.length > TOOL_SEQUENCE_HEAD_COUNT + 2
+    ? tools.length - TOOL_SEQUENCE_HEAD_COUNT - 1
+    : 0;
+  const latestLabel = runningTool ? 'Current' : 'Latest';
+  const latestMeta = currentTool ? toolMetaText(currentTool) : '';
+  const latestTone = currentTool ? toolStatusTone(currentTool) : null;
+
+  function setAllRows(nextExpanded: boolean) {
+    setExpandedTools((current) => {
+      const next = { ...current };
+      tools.forEach((tool) => {
+        if (toolDetailsAvailable(tool)) next[tool.id] = nextExpanded;
+      });
+      return next;
+    });
+  }
+
+  return (
+    <section className={cn('app-transcript-tool-activity', expandedActivity && 'app-transcript-tool-activity-open')}>
+      <button
+        type="button"
+        onClick={() => setExpandedActivity((current) => !current)}
+        aria-expanded={expandedActivity}
+        className="app-transcript-tool-activity-button"
+      >
+        {expandedActivity ? <ChevronDown className="h-4 w-4 shrink-0 app-transcript-tool-chevron" /> : <ChevronRight className="h-4 w-4 shrink-0 app-transcript-tool-chevron" />}
+        <Wrench className="h-3.5 w-3.5 shrink-0 app-transcript-tool-activity-icon" />
+        <span className="app-transcript-tool-activity-summary min-w-0">
+          <span className="app-transcript-tool-activity-line min-w-0">
+            <strong>{active ? <ActiveSheenTitle text="Tool activity" /> : 'Tool activity'}</strong>
+            <span><ToolActivitySummary tools={tools} /></span>
+          </span>
+          {currentTool ? (
+            <span className="app-transcript-tool-activity-latest truncate">
+              {latestLabel}: <strong>{toolDisplayName(currentTool)}</strong>{latestMeta ? (
+                <>
+                  {' · '}
+                  <span className={latestTone ? `app-transcript-status-text-${latestTone}` : undefined}>{latestMeta}</span>
+                </>
+              ) : null}
+            </span>
+          ) : null}
+          <span className="app-transcript-tool-sequence" aria-label="Compact tool sequence">
+            {shownSequence.map((tool, index) => (
+              <span key={`${tool.id}-${index}`} className="app-transcript-tool-sequence-chip">{toolDisplayName(tool)}</span>
+            ))}
+            {hiddenSequenceCount > 0 ? <span className="app-transcript-tool-sequence-more">+{hiddenSequenceCount} hidden</span> : null}
+          </span>
+        </span>
+        <span className="app-transcript-section-toggle app-transcript-tool-activity-toggle">{expandedActivity ? 'Hide' : 'Show'}</span>
+      </button>
+
+      {!expandedActivity && (runningTool || failedTools.length > 0) ? (
+        <div className="app-transcript-tool-pins">
+          {runningTool ? <ToolActivityPin tool={runningTool} kind="running" /> : null}
+          {failedTools.slice(0, 2).map((tool) => (
+            <ToolActivityPin key={tool.id} tool={tool} kind="error" />
+          ))}
+          {failedTools.length > 2 ? (
+            <div className="app-transcript-tool-pin app-transcript-tool-pin-error">
+              <span>{failedTools.length - 2} more issues hidden in tool activity</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {expandedActivity ? (
+        <div className="app-transcript-tool-activity-details">
+          <div className="app-transcript-tool-activity-toolbar">
+            <span>Complete tool chain · details open per row</span>
+            <span className="app-transcript-tool-activity-toolbar-actions">
+              <button type="button" onClick={() => setAllRows(false)} className="app-transcript-tool-activity-action">Collapse rows</button>
+              <button type="button" onClick={() => setAllRows(true)} className="app-transcript-tool-activity-action">Expand rows</button>
+            </span>
+          </div>
+          <div className="app-transcript-tool-list">
+            {tools.map((tool) => (
+              <ToolActivityRow
+                key={tool.id}
+                tool={tool}
+                expanded={expandedTools[tool.id] ?? false}
+                onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !(current[tool.id] ?? false) }))}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function longerText(current: string, next: string) {
   return next.length >= current.length ? next : current;
 }
@@ -863,6 +1164,8 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
                     : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+  const liveTurnActive = !historical && !visibleTurn.completed;
+  const thinkingActive = liveTurnActive && (visibleTurn.status === 'thinking' || (hasThinking && visibleTurn.tools.length === 0 && !hasAssistant));
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
@@ -903,6 +1206,7 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
           meta="Reasoning trace"
           expanded={expandedThinking}
           onToggle={() => setExpandedThinking((current) => !current)}
+          activeTitle={thinkingActive}
           badge={<span className="app-transcript-section-toggle text-[10px] text-slate-600">{expandedThinking ? 'Hide' : 'Show'}</span>}
         >
           <div className="pr-1">
@@ -911,7 +1215,14 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
         </TimelineSection>
       ) : null}
 
-      {visibleTurn.tools.map((tool) => {
+      {visibleTurn.tools.length >= TOOL_ACTIVITY_GROUP_THRESHOLD ? (
+        <ToolActivityGroup
+          tools={visibleTurn.tools}
+          active={liveTurnActive && visibleTurn.tools.some(isRunningTool)}
+          expandedTools={expandedTools}
+          setExpandedTools={setExpandedTools}
+        />
+      ) : visibleTurn.tools.map((tool) => {
         const expanded = expandedTools[tool.id] ?? !historical;
         const toolDisplay = toolDisplayConfig(tool.name);
 
@@ -920,29 +1231,13 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
             key={tool.id}
             icon={toolDisplay.icon}
             title={toolDisplay.label ?? tool.name}
-            meta={tool.detail ?? tool.status}
+            meta={toolMetaText(tool)}
+            metaTone={toolStatusTone(tool)}
             expanded={expanded}
             onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !expanded }))}
-            badge={
-              <div
-                className={cn(
-                  'app-transcript-tool-badge rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium uppercase tracking-[0.08em] leading-none',
-                  tool.status === 'error'
-                    ? 'app-transcript-tool-badge-error border-rose-400/10 bg-rose-500/6 text-rose-300/75'
-                    : tool.status === 'done'
-                      ? 'app-transcript-tool-badge-done border-emerald-400/10 bg-emerald-500/6 text-emerald-300/75'
-                      : 'app-transcript-tool-badge-neutral border-white/8 bg-white/[0.03] text-slate-400',
-                )}
-              >
-                {tool.status}
-              </div>
-            }
+            activeTitle={liveTurnActive && isRunningTool(tool)}
           >
-            <div>
-              {tool.arguments ? <ToolTranscriptBlock label={toolDisplay.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
-              {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
-              {tool.resultText ? <ToolTranscriptBlock label={toolDisplay.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
-            </div>
+            <ToolDetailBlocks tool={tool} display={toolDisplay} />
           </TimelineSection>
         );
       })}

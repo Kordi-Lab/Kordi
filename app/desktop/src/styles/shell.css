@@ -1247,6 +1247,323 @@
   line-height: 1.1;
 }
 
+@keyframes app-transcript-title-wave {
+  0%,
+  100% {
+    color: color-mix(in oklab, var(--utility-foreground) 80%, var(--utility-muted-text));
+    text-shadow: 0 0 0 transparent;
+    transform: translate3d(0, 0, 0);
+  }
+
+  34% {
+    color: rgb(255 255 255);
+    text-shadow:
+      0 0 8px rgba(255, 255, 255, 0.42),
+      0 0 18px rgba(52, 211, 153, 0.34);
+    transform: translate3d(0, -0.5px, 0);
+  }
+
+  52% {
+    color: rgb(187 247 208);
+    text-shadow:
+      0 0 10px rgba(187, 247, 208, 0.50),
+      0 0 24px rgba(52, 211, 153, 0.38);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.app-transcript-sheen-title {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.app-transcript-sheen-title-char {
+  display: inline-block;
+  color: color-mix(in oklab, var(--utility-foreground) 82%, var(--utility-muted-text));
+  animation: app-transcript-title-wave 1.35s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation-delay: calc(var(--char-index) * 54ms);
+  will-change: color, text-shadow, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-transcript-sheen-title-char {
+    animation: none;
+    color: var(--utility-foreground);
+    text-shadow: none;
+  }
+}
+
+.app-transcript-tool-activity {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 2px;
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
+}
+
+.app-transcript-tool-activity-button {
+  display: grid;
+  grid-template-columns: 18px 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 4px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--utility-muted-text);
+  text-align: left;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-transcript-tool-activity-button:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 54%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-transcript-tool-chevron,
+.app-transcript-tool-activity-icon {
+  margin-top: 1px;
+  color: color-mix(in oklab, var(--utility-muted-text) 86%, transparent);
+}
+
+.app-transcript-tool-activity-summary {
+  display: grid;
+  gap: 4px;
+}
+
+.app-transcript-tool-activity-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-transcript-tool-activity-line strong {
+  color: var(--utility-foreground);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.app-transcript-tool-activity-line span,
+.app-transcript-tool-activity-latest {
+  color: var(--utility-muted-text);
+  font-size: 11px;
+}
+
+.app-transcript-tool-activity-latest strong {
+  color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
+  font-weight: 650;
+}
+
+.app-transcript-tool-sequence {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.app-transcript-tool-sequence-chip,
+.app-transcript-tool-sequence-more {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--utility-muted-text);
+  font-size: 10.5px;
+  line-height: 1.15;
+}
+
+.app-transcript-tool-sequence-more {
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, transparent);
+}
+
+.app-transcript-tool-activity-toggle {
+  margin-top: 2px;
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, transparent);
+  font-size: 10px;
+}
+
+.app-transcript-tool-pins {
+  display: grid;
+  gap: 4px;
+  padding: 0 0 3px 52px;
+}
+
+.app-transcript-tool-pin {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 52%, transparent);
+  color: var(--utility-muted-text);
+  font-size: 11px;
+}
+
+.app-transcript-tool-pin strong {
+  color: var(--utility-foreground);
+  font-weight: 650;
+}
+
+.app-transcript-tool-pin-running {
+  color: rgb(251 191 36);
+}
+
+.app-transcript-tool-pin-error {
+  color: rgb(251 113 133);
+}
+
+.app-transcript-tool-activity-details {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 0 52px;
+}
+
+.app-transcript-tool-activity-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+  font-size: 11px;
+}
+
+.app-transcript-tool-activity-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.app-transcript-tool-activity-action {
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 76%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 8px;
+  color: var(--utility-muted-text);
+  font-size: 11px;
+  line-height: 1.2;
+  transition:
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    background-color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-transcript-tool-activity-action:hover {
+  border-color: color-mix(in oklab, var(--utility-muted-text) 70%, var(--app-control-border));
+  background: color-mix(in oklab, var(--app-control-bg) 58%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-transcript-tool-list {
+  display: grid;
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 56%, transparent);
+}
+
+.app-transcript-tool-row {
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 50%, transparent);
+}
+
+.app-transcript-tool-row-button {
+  display: grid;
+  grid-template-columns: 24px minmax(70px, 112px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--utility-muted-text);
+  text-align: left;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-transcript-tool-row-button:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 52%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-transcript-tool-row-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--app-control-bg) 58%, transparent);
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);
+}
+
+.app-transcript-tool-row-name {
+  color: var(--utility-foreground);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.app-transcript-tool-row-detail,
+.app-transcript-tool-row-time {
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
+  font-size: 11px;
+}
+
+.app-transcript-tool-row-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.app-transcript-status-text-done {
+  color: rgb(52 211 153) !important;
+}
+
+.app-transcript-status-text-error {
+  color: rgb(251 113 133) !important;
+}
+
+.app-transcript-status-text-running {
+  color: rgb(251 191 36) !important;
+}
+
+.app-transcript-tool-row-detail-block {
+  padding: 0 0 8px 32px;
+}
+
+@media (max-width: 720px) {
+  .app-transcript-tool-activity-button {
+    grid-template-columns: 18px 22px minmax(0, 1fr);
+  }
+
+  .app-transcript-tool-activity-toggle {
+    display: none;
+  }
+
+  .app-transcript-tool-pins,
+  .app-transcript-tool-activity-details {
+    padding-left: 38px;
+  }
+
+  .app-transcript-tool-activity-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-transcript-tool-row-button {
+    grid-template-columns: 24px minmax(62px, 90px) minmax(0, 1fr);
+  }
+
+  .app-transcript-tool-row-time {
+    display: none;
+  }
+}
+
 .app-detail-rail {
   border-right: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
   background: transparent;
