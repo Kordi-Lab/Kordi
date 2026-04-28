@@ -1,3 +1,5 @@
+use crate::types::ThinkingLevel;
+
 pub fn parse_model_arg(
     provider: Option<&str>,
     model: Option<&str>,
@@ -18,9 +20,8 @@ pub fn parse_model_arg(
 
     let (model_part, thinking) = if let Some(pos) = model_str.rfind(':') {
         let level = &model_str[pos + 1..];
-        let valid = ["off", "low", "medium", "high", "minimal", "xhigh"];
-        if valid.contains(&level) {
-            (&model_str[..pos], Some(level.to_string()))
+        if let Some(level) = ThinkingLevel::parse(level) {
+            (&model_str[..pos], Some(level.as_str().to_string()))
         } else {
             (model_str, None)
         }

@@ -184,6 +184,7 @@ impl Provider for OpenAiProvider {
 
         if let Some(ref thinking) = request.thinking {
             let effort = match thinking.as_str() {
+                "off" => "none",
                 "low" | "minimal" => "low",
                 "medium" => "medium",
                 "high" | "xhigh" => "high",

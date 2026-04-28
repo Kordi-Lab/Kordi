@@ -40,6 +40,7 @@ export function useComposerViewModel({
       detail: option.detail,
       provider: option.provider,
       providerLabel: option.providerLabel,
+      thinkingLevels: option.thinkingLevels,
     }));
 
     for (const provider of authDisplayProviders) {
@@ -57,6 +58,7 @@ export function useComposerViewModel({
         detail: `${provider.label} • saved local model`,
         provider: providerId,
         providerLabel: provider.label,
+        thinkingLevels: ['off'],
       });
     }
 
@@ -70,6 +72,7 @@ export function useComposerViewModel({
         detail: `${provider === 'lm-studio' ? 'LM Studio' : 'Ollama'} • selected local model`,
         provider,
         providerLabel: provider === 'lm-studio' ? 'LM Studio' : 'Ollama',
+        thinkingLevels: ['off'],
       });
     }
 

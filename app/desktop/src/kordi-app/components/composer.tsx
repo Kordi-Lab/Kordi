@@ -52,6 +52,7 @@ export type ComposerModelOption = {
   detail?: string | null;
   provider?: string;
   providerLabel?: string;
+  thinkingLevels?: string[];
 };
 
 export type ComposerMentionOption = {
@@ -211,6 +212,12 @@ export function ComposerMentionMenu({
   );
 }
 
+function composerThinkingLabel(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]/g, '');
+  return composerThinkingOptions.find((option) => option.value.replace(/[\s_-]/g, '') === normalized)?.label
+    ?? (normalized === 'extrahigh' ? 'Extra High' : value);
+}
+
 function normalizeComposerProviderId(providerId: string) {
   return providerId === 'openai-codex' ? 'openai' : providerId;
 }
@@ -286,12 +293,21 @@ export function ComposerModelControls({
   const filteredModelOptions = selectedProviderValue
     ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
     : modelOptions;
+  const selectedThinkingLevels = selectedModelOption?.thinkingLevels?.length
+    ? selectedModelOption.thinkingLevels
+    : composerThinkingOptions.map((option) => option.value);
+  const thinkingOptions = selectedThinkingLevels.map((value) => ({
+    value,
+    label: composerThinkingLabel(value),
+    detail: null,
+  }));
   const activeOptions = activeSelector === 'provider'
     ? providerOptions
     : activeSelector === 'model'
       ? filteredModelOptions
-      : composerThinkingOptions.map((option) => ({ value: option, label: option, detail: null }));
+      : thinkingOptions;
   const selectedModel = selectedModelOption?.label ?? fallbackModelLabel;
+  const selectedThinkingLabel = composerThinkingLabel(selection.thinking);
 
   return (
     <div className="relative flex shrink-0 items-center gap-1.5">
@@ -316,7 +332,7 @@ export function ComposerModelControls({
         onClick={() => onToggleSelector(scope, 'thinking')}
         className="inline-flex w-[6.5rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
       >
-        <span className="truncate text-left">{selection.thinking}</span>
+        <span className="truncate text-left">{selectedThinkingLabel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       {activeSelector && activeSelector !== 'mode' && (

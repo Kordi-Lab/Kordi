@@ -1,3 +1,5 @@
+use kordi_core::types::ThinkingLevel;
+
 use crate::registry::{Model, ModelRegistry};
 
 /// Parse a model argument. Supports:
@@ -11,9 +13,8 @@ pub fn parse_model_arg(input: &str) -> (Option<String>, String, Option<String>) 
     // Split thinking level (must be a known level after the last ':')
     let (model_part, thinking) = if let Some(pos) = input.rfind(':') {
         let level = &input[pos + 1..];
-        let valid = ["off", "low", "medium", "high", "minimal", "xhigh"];
-        if valid.contains(&level) {
-            (&input[..pos], Some(level.to_string()))
+        if let Some(level) = ThinkingLevel::parse(level) {
+            (&input[..pos], Some(level.as_str().to_string()))
         } else {
             (input, None)
         }

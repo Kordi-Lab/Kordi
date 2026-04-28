@@ -69,7 +69,7 @@ export function formatDesktopEventTime() {
 }
 
 export function formatThinkingSelectionLabel(value: string) {
-  switch (value) {
+  switch (value.trim().toLowerCase().replace(/[\s_-]/g, '')) {
     case 'off':
       return 'Off';
     case 'minimal':
@@ -81,6 +81,7 @@ export function formatThinkingSelectionLabel(value: string) {
     case 'high':
       return 'High';
     case 'xhigh':
+    case 'extrahigh':
       return 'Extra High';
     default:
       return value;

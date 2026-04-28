@@ -162,19 +162,32 @@ pub enum ThinkingLevel {
     Low,
     Medium,
     High,
-    #[serde(rename = "xhigh", alias = "xHigh")]
+    #[serde(
+        rename = "xhigh",
+        alias = "xHigh",
+        alias = "Extra High",
+        alias = "extra high",
+        alias = "extra-high",
+        alias = "extra_high",
+        alias = "x-high"
+    )]
     XHigh,
 }
 
 impl ThinkingLevel {
     pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        match value
+            .trim()
+            .to_ascii_lowercase()
+            .replace([' ', '-', '_'], "")
+            .as_str()
+        {
             "off" => Some(Self::Off),
             "minimal" => Some(Self::Minimal),
             "low" => Some(Self::Low),
             "medium" => Some(Self::Medium),
             "high" => Some(Self::High),
-            "xhigh" => Some(Self::XHigh),
+            "xhigh" | "extrahigh" => Some(Self::XHigh),
             _ => None,
         }
     }
@@ -272,9 +285,32 @@ mod tests {
     }
 
     #[test]
+    fn thinking_level_parse_accepts_extra_high_aliases() {
+        for alias in [
+            "Extra High",
+            "extra high",
+            "extra-high",
+            "extra_high",
+            "x-high",
+            "xHigh",
+        ] {
+            assert_eq!(ThinkingLevel::parse(alias), Some(ThinkingLevel::XHigh));
+        }
+    }
+
+    #[test]
     fn thinking_level_serde_accepts_legacy_xhigh_alias() {
-        let parsed: ThinkingLevel = serde_json::from_str("\"xHigh\"").unwrap();
-        assert_eq!(parsed, ThinkingLevel::XHigh);
+        for alias in [
+            "xHigh",
+            "Extra High",
+            "extra high",
+            "extra-high",
+            "extra_high",
+            "x-high",
+        ] {
+            let parsed: ThinkingLevel = serde_json::from_str(&format!("\"{alias}\"")).unwrap();
+            assert_eq!(parsed, ThinkingLevel::XHigh);
+        }
         assert_eq!(
             serde_json::to_string(&ThinkingLevel::XHigh).unwrap(),
             "\"xhigh\""

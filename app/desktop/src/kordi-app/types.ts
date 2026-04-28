@@ -551,6 +551,7 @@ export type DesktopChatModelOption = {
   value: string;
   label: string;
   detail: string;
+  thinkingLevels: string[];
 };
 
 export type DesktopChatSlashCommand = {
@@ -830,6 +831,7 @@ export type DesktopChatSessionDetail = {
   modelLabel: string;
   thinking: string;
   thinkingLabel: string;
+  thinkingLevels: string[];
   updatedAtLabel: string;
   messageCount: number;
   draft: boolean;

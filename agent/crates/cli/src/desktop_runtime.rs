@@ -33,6 +33,7 @@ pub struct DesktopChatModelOption {
     pub value: String,
     pub label: String,
     pub detail: String,
+    pub thinking_levels: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -109,6 +110,18 @@ fn desktop_model_options_cache_key(cwd: &Path, settings: &Settings) -> String {
         parts.push(format!(
             "auth:{provider}:{active_method}:{active_source}:{active_identity}"
         ));
+    }
+    if let Some(models) = &settings.models {
+        for model in models {
+            parts.push(format!(
+                "model:{}:{}:{}:{}:{}",
+                model.provider,
+                model.id,
+                model.reasoning.unwrap_or(false),
+                model.api.as_deref().unwrap_or_default(),
+                model.base_url.as_deref().unwrap_or_default()
+            ));
+        }
     }
     if let Some(providers) = &settings.providers {
         for provider in providers {
@@ -237,6 +250,7 @@ pub struct DesktopChatSessionDetail {
     pub model_label: String,
     pub thinking: String,
     pub thinking_label: String,
+    pub thinking_levels: Vec<String>,
     pub updated_at_label: String,
     pub message_count: usize,
     pub draft: bool,
@@ -291,8 +305,9 @@ impl DesktopRuntimeTurn {
 
 impl DesktopRuntimeSession {
     pub async fn create_new(cwd: std::path::PathBuf) -> Result<Self> {
-        let (_runtime_host, _ui, setup) =
+        let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
+        normalize_setup_thinking(&mut setup);
         Ok(Self { setup })
     }
 
@@ -301,6 +316,7 @@ impl DesktopRuntimeSession {
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
         setup.session_id = session_id.to_string();
         setup.session_created = false;
+        normalize_setup_thinking(&mut setup);
         Ok(Self { setup })
     }
 
@@ -310,8 +326,9 @@ impl DesktopRuntimeSession {
             session: Some(session_id.to_string()),
             ..SessionBootstrapOptions::default()
         };
-        let (_runtime_host, _ui, setup) =
+        let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(runtime_cwd, entry).await?;
+        normalize_setup_thinking(&mut setup);
         Ok(Self { setup })
     }
 
@@ -489,20 +506,23 @@ impl DesktopRuntimeSession {
         let changed =
             self.setup.model.provider != model.provider || self.setup.model.id != model.id;
         self.setup.model = model;
-        let disable_unsupported_thinking =
-            !self.setup.model.reasoning && self.setup.thinking_level != "off";
-        if disable_unsupported_thinking {
-            self.setup.thinking_level = "off".to_string();
+        let requested_thinking =
+            ThinkingLevel::parse(&self.setup.thinking_level).unwrap_or(ThinkingLevel::Off);
+        let effective_thinking =
+            effective_thinking_for_model(requested_thinking, &self.setup.model);
+        let thinking_changed = self.setup.thinking_level != effective_thinking.as_str();
+        if thinking_changed {
+            self.setup.thinking_level = effective_thinking.as_str().to_string();
         }
         refresh_provider_runtime_fields(&mut self.setup);
         if changed && self.setup.session_created {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
         }
-        if disable_unsupported_thinking && self.setup.session_created {
+        if thinking_changed && self.setup.session_created {
             append_thinking_level_change_entry(
                 &self.setup.conn,
                 &self.setup.session_id,
-                ThinkingLevel::Off,
+                effective_thinking,
             )?;
         }
         Ok(())
@@ -1085,20 +1105,111 @@ pub fn delete_session_forever(session_id: &str) -> Result<()> {
     kordi_session::store::delete_session(&conn, session_id)
 }
 
+const STANDARD_THINKING_LEVELS: [ThinkingLevel; 5] = [
+    ThinkingLevel::Off,
+    ThinkingLevel::Minimal,
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
+const XHIGH_THINKING_LEVELS: [ThinkingLevel; 6] = [
+    ThinkingLevel::Off,
+    ThinkingLevel::Minimal,
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+    ThinkingLevel::XHigh,
+];
+
+fn normalized_model_capability_id(model: &Model) -> String {
+    [
+        model.provider.as_str(),
+        model.id.as_str(),
+        model.name.as_str(),
+    ]
+    .join("/")
+    .to_ascii_lowercase()
+    .replace([' ', '_'], "-")
+}
+
+fn model_supports_reasoning_controls(model: &Model) -> bool {
+    model.reasoning
+}
+
+fn supports_xhigh(model: &Model) -> bool {
+    if !model_supports_reasoning_controls(model) || login::is_local_openai_provider(&model.provider)
+    {
+        return false;
+    }
+
+    let id = normalized_model_capability_id(model);
+    [
+        "gpt-5.2", "gpt-5-2", "gpt-5.3", "gpt-5-3", "gpt-5.4", "gpt-5-4", "gpt-5.5", "gpt-5-5",
+    ]
+    .iter()
+    .any(|needle| id.contains(needle))
+        || ((id.contains("claude-opus-4-6") || id.contains("claude-opus-4.6"))
+            || (id.contains("claude-opus-4-7") || id.contains("claude-opus-4.7")))
+        || (id.contains("deepseek")
+            && (id.contains("v4-pro") || id.contains("v4pro") || id.contains("v4/pro")))
+}
+
+fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel] {
+    if !model_supports_reasoning_controls(model) {
+        &[ThinkingLevel::Off]
+    } else if supports_xhigh(model) {
+        &XHIGH_THINKING_LEVELS
+    } else {
+        &STANDARD_THINKING_LEVELS
+    }
+}
+
+pub fn desktop_thinking_levels_for_model(model: &Model) -> Vec<String> {
+    available_thinking_levels_for_model(model)
+        .iter()
+        .map(|level| level.as_str().to_string())
+        .collect()
+}
+
+pub fn desktop_thinking_levels_for_model_id(
+    settings: &Settings,
+    provider: &str,
+    model_id: &str,
+) -> Vec<String> {
+    let mut registry = ModelRegistry::new();
+    registry.load_custom_models(settings);
+    login::add_cached_github_copilot_models(&mut registry);
+    let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
+        &registry, settings, provider, model_id,
+    );
+    desktop_thinking_levels_for_model(&model)
+}
+
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
-    if requested.reasoning_enabled() && !model.reasoning {
-        ThinkingLevel::Off
+    if !available_thinking_levels_for_model(model).contains(&requested) {
+        if requested == ThinkingLevel::XHigh && model_supports_reasoning_controls(model) {
+            ThinkingLevel::High
+        } else {
+            ThinkingLevel::Off
+        }
     } else {
         requested
     }
 }
 
+fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
+    let requested = ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Off);
+    setup.thinking_level = effective_thinking_for_model(requested, &setup.model)
+        .as_str()
+        .to_string();
+}
+
 fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
-    if thinking_level == "off" || !model.reasoning {
-        None
-    } else {
-        Some(thinking_level.to_string())
-    }
+    let requested = ThinkingLevel::parse(thinking_level).unwrap_or(ThinkingLevel::Off);
+    let effective = effective_thinking_for_model(requested, model);
+    effective
+        .reasoning_enabled()
+        .then(|| effective.as_str().to_string())
 }
 
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
@@ -1112,6 +1223,7 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
             login::provider_display_name(&model.provider),
             model.name
         ),
+        thinking_levels: desktop_thinking_levels_for_model(model),
     }
 }
 
@@ -1616,6 +1728,7 @@ fn build_detail_from_setup(setup: &SessionRuntimeSetup) -> Result<DesktopChatSes
         model_label: setup.model.id.clone(),
         thinking: setup.thinking_level.clone(),
         thinking_label: thinking_label(&setup.thinking_level),
+        thinking_levels: desktop_thinking_levels_for_model(&setup.model),
         updated_at_label,
         message_count: messages.len(),
         draft: !setup.session_created,
@@ -2489,14 +2602,14 @@ fn session_focus_subtitle(messages: &[DesktopChatMessage]) -> Option<String> {
 }
 
 fn thinking_label(value: &str) -> String {
-    match value {
-        "off" => "Off".to_string(),
-        "minimal" => "Minimal".to_string(),
-        "low" => "Low".to_string(),
-        "medium" => "Medium".to_string(),
-        "high" => "High".to_string(),
-        "xhigh" => "Extra High".to_string(),
-        other => other.to_string(),
+    match ThinkingLevel::parse(value) {
+        Some(ThinkingLevel::Off) => "Off".to_string(),
+        Some(ThinkingLevel::Minimal) => "Minimal".to_string(),
+        Some(ThinkingLevel::Low) => "Low".to_string(),
+        Some(ThinkingLevel::Medium) => "Medium".to_string(),
+        Some(ThinkingLevel::High) => "High".to_string(),
+        Some(ThinkingLevel::XHigh) => "Extra High".to_string(),
+        None => value.to_string(),
     }
 }
 
@@ -2615,6 +2728,7 @@ mod tests {
     #[test]
     fn non_reasoning_models_do_not_send_thinking_controls() {
         let model = test_model("ollama", "qwen:1.8b-chat", false);
+        assert_eq!(desktop_thinking_levels_for_model(&model), vec!["off"]);
         assert_eq!(request_thinking_for_model("medium", &model), None);
         assert_eq!(
             effective_thinking_for_model(ThinkingLevel::Medium, &model),
@@ -2623,8 +2737,49 @@ mod tests {
 
         let reasoning_model = test_model("openai", "gpt-5", true);
         assert_eq!(
+            desktop_thinking_levels_for_model(&reasoning_model),
+            vec!["off", "minimal", "low", "medium", "high"]
+        );
+        assert_eq!(
             request_thinking_for_model("medium", &reasoning_model).as_deref(),
             Some("medium")
+        );
+    }
+
+    #[test]
+    fn xhigh_is_exposed_only_for_supported_model_families() {
+        let gpt = test_model("openai", "gpt-5.4", true);
+        assert_eq!(
+            desktop_thinking_levels_for_model(&gpt),
+            vec!["off", "minimal", "low", "medium", "high", "xhigh"]
+        );
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::XHigh, &gpt),
+            ThinkingLevel::XHigh
+        );
+        assert_eq!(
+            request_thinking_for_model("Extra High", &gpt).as_deref(),
+            Some("xhigh")
+        );
+
+        let standard = test_model("openai", "gpt-5.1-codex", true);
+        assert_eq!(
+            desktop_thinking_levels_for_model(&standard),
+            vec!["off", "minimal", "low", "medium", "high"]
+        );
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::XHigh, &standard),
+            ThinkingLevel::High
+        );
+
+        let local = test_model("lm-studio", "gpt-oss-20b", true);
+        assert_eq!(
+            desktop_thinking_levels_for_model(&local),
+            vec!["off", "minimal", "low", "medium", "high"]
+        );
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::XHigh, &local),
+            ThinkingLevel::High
         );
     }
 

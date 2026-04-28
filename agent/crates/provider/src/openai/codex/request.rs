@@ -18,6 +18,7 @@ pub(super) fn resolve_codex_url(base_url: &str) -> String {
 
 pub(super) fn codex_reasoning_effort(thinking: &str) -> &'static str {
     match thinking {
+        "off" => "none",
         "low" | "minimal" => "low",
         "medium" => "medium",
         "high" | "xhigh" => "high",
