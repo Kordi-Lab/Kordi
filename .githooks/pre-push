@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${KORDI_SKIP_HOOKS:-}" = "1" ]; then
+  echo "Skipping Kordi pre-push hook because KORDI_SKIP_HOOKS=1."
+  exit 0
+fi
+
+command -v cargo >/dev/null || { echo "cargo is required for pre-push checks." >&2; exit 1; }
+command -v pnpm >/dev/null || { echo "pnpm is required for pre-push checks." >&2; exit 1; }
+
+echo "Running Kordi pre-push checks..."
+
+echo "• Session crate tests"
+cargo test -p kordi-session
+
+echo "• CLI lib tests"
+cargo test -p kordi-cli --lib
+
+echo "• Desktop runtime tests"
+cargo test -p kordi-cli desktop_runtime --no-default-features
+
+echo "• Desktop web build"
+pnpm --dir app/desktop build
+
+echo "• Repository hygiene"
+bash scripts/check-hygiene.sh
+
+echo "Kordi pre-push checks passed."

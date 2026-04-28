@@ -62,9 +62,9 @@ export function useKordiShellViewModel({
     shouldAutoFollowChatRef.current = isChatScrolledNearBottom(container);
   }, [chatTranscriptScrollRef, isChatScrolledNearBottom, shouldAutoFollowChatRef]);
 
-  const wrappedSelectComposerValue = useCallback((scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => {
-    void selectComposerValue(scope, type, value);
-  }, [selectComposerValue]);
+  const wrappedSelectComposerValue = useCallback((scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => (
+    selectComposerValue(scope, type, value)
+  ), [selectComposerValue]);
 
   const wrappedSelectComposerAuthChoice = useCallback((scope: ComposerScope, providerId: string, choice: string) => {
     void selectComposerAuthChoice(scope, providerId, choice);

@@ -31,6 +31,7 @@ type SettingsPageProps = {
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   handleRemoveAuthProfile: (providerId: string, profileId: string) => Promise<void>;
   handleLogoutProvider: (providerId: string) => Promise<void>;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
 };
@@ -55,6 +56,7 @@ export function SettingsPage({
   handleSelectAuthChoice,
   handleRemoveAuthProfile,
   handleLogoutProvider,
+  onEnterChat,
   themeMode,
   setThemeMode,
 }: SettingsPageProps) {
@@ -146,6 +148,7 @@ export function SettingsPage({
                 onLogoutProvider={(providerId) => {
                   void handleLogoutProvider(providerId);
                 }}
+                onEnterChat={onEnterChat}
               />
             ) : activeSettingsSection.id === 'personalization' ? (
               <div className="space-y-3.5">

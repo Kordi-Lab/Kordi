@@ -317,6 +317,7 @@ export type DesktopAuthProvider = {
   configured: boolean;
   authority?: string | null;
   baseUrl?: string | null;
+  preferredModel?: string | null;
   options: DesktopAuthOption[];
 };
 

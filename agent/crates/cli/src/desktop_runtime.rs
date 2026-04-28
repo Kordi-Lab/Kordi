@@ -74,8 +74,19 @@ fn desktop_model_options_cache()
     DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
+pub fn clear_desktop_model_options_cache() {
+    if let Ok(mut cache) = desktop_model_options_cache().lock() {
+        cache.clear();
+    }
+}
+
 fn desktop_model_options_cache_key(cwd: &Path, settings: &Settings) -> String {
     let mut parts = vec![cwd.display().to_string()];
+    parts.push(format!(
+        "default:{}:{}",
+        settings.default_provider.as_deref().unwrap_or_default(),
+        settings.default_model.as_deref().unwrap_or_default()
+    ));
     for provider in login::authenticated_providers_for_settings(settings) {
         let active_method = login::active_auth_method(&provider)
             .map(|method| method.footer_label().to_string())
@@ -440,16 +451,29 @@ impl DesktopRuntimeSession {
         let changed =
             self.setup.model.provider != model.provider || self.setup.model.id != model.id;
         self.setup.model = model;
+        let disable_unsupported_thinking =
+            !self.setup.model.reasoning && self.setup.thinking_level != "off";
+        if disable_unsupported_thinking {
+            self.setup.thinking_level = "off".to_string();
+        }
         refresh_provider_runtime_fields(&mut self.setup);
         if changed && self.setup.session_created {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
+        }
+        if disable_unsupported_thinking && self.setup.session_created {
+            append_thinking_level_change_entry(
+                &self.setup.conn,
+                &self.setup.session_id,
+                ThinkingLevel::Off,
+            )?;
         }
         Ok(())
     }
 
     pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
-        let thinking = ThinkingLevel::parse(requested_thinking)
+        let requested = ThinkingLevel::parse(requested_thinking)
             .ok_or_else(|| anyhow!("Unknown thinking level: {requested_thinking}"))?;
+        let thinking = effective_thinking_for_model(requested, &self.setup.model);
         let changed = self.setup.thinking_level != thinking.as_str();
         self.setup.thinking_level = thinking.as_str().to_string();
         if changed && self.setup.session_created {
@@ -1013,6 +1037,22 @@ pub fn delete_session_forever(session_id: &str) -> Result<()> {
     kordi_session::store::delete_session(&conn, session_id)
 }
 
+fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
+    if requested.reasoning_enabled() && !model.reasoning {
+        ThinkingLevel::Off
+    } else {
+        requested
+    }
+}
+
+fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+    if thinking_level == "off" || !model.reasoning {
+        None
+    } else {
+        Some(thinking_level.to_string())
+    }
+}
+
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
     DesktopChatModelOption {
         provider: model.provider.clone(),
@@ -1040,6 +1080,30 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
     }
 
     let mut models = crate::live_models::authenticated_model_candidates_with_live(&settings).await;
+    if let (Some(default_provider), Some(default_model)) = (
+        settings.default_provider.as_deref(),
+        settings.default_model.as_deref(),
+    ) {
+        let provider = login::normalize_provider_for_model_selection(default_provider);
+        let model_id = default_model
+            .trim()
+            .strip_prefix(&format!("{provider}/"))
+            .unwrap_or_else(|| default_model.trim());
+        if !model_id.is_empty()
+            && !models
+                .iter()
+                .any(|model| model.provider == provider && model.id == model_id)
+        {
+            let mut registry = ModelRegistry::new();
+            registry.load_custom_models(&settings);
+            login::add_cached_github_copilot_models(&mut registry);
+            if let Some(model) =
+                synthesize_live_model_candidate(&registry, &settings, &provider, model_id)
+            {
+                models.push(model);
+            }
+        }
+    }
     models.sort_by(|left, right| {
         left.provider
             .cmp(&right.provider)
@@ -1066,11 +1130,7 @@ fn synthesize_live_model_candidate(
     provider: &str,
     model_id: &str,
 ) -> Option<Model> {
-    let has_template = registry
-        .list()
-        .iter()
-        .any(|model| model.provider == provider);
-    if !has_template && !login::provider_configured_for_settings(settings, provider) {
+    if !login::provider_configured_for_settings(settings, provider) {
         return None;
     }
 
@@ -1095,11 +1155,39 @@ fn resolve_model_candidate(
     registry.load_custom_models(settings);
     login::add_cached_github_copilot_models(&mut registry);
 
+    let requested_prefix_is_configured_provider = requested
+        .split_once('/')
+        .map(|(provider, _)| login::normalize_provider_for_model_selection(provider))
+        .is_some_and(|provider| login::provider_configured_for_settings(settings, &provider));
+
+    if requested.contains('/')
+        && let Some(provider) = current_provider
+    {
+        let normalized_provider = login::normalize_provider_for_model_selection(provider);
+        if login::is_local_openai_provider(&normalized_provider)
+            && !requested_prefix_is_configured_provider
+            && !requested.starts_with(&format!("{normalized_provider}/"))
+            && let Some(model) = synthesize_live_model_candidate(
+                &registry,
+                settings,
+                &normalized_provider,
+                requested,
+            )
+        {
+            return Ok(model);
+        }
+    }
+
     if let Some((provider, model_id)) = requested.split_once('/') {
         return registry
             .find(provider, model_id)
             .cloned()
-            .or_else(|| registry.find_fuzzy(model_id, Some(provider)).cloned())
+            .filter(|_| login::provider_configured_for_settings(settings, provider))
+            .or_else(|| {
+                login::provider_configured_for_settings(settings, provider)
+                    .then(|| registry.find_fuzzy(model_id, Some(provider)).cloned())
+                    .flatten()
+            })
             .or_else(|| synthesize_live_model_candidate(&registry, settings, provider, model_id))
             .ok_or_else(|| anyhow!("Unknown model: {requested}"));
     }
@@ -1230,6 +1318,8 @@ fn build_turn_config(
     };
     let tool_registry = std::mem::take(&mut setup.tool_registry);
 
+    let request_thinking = request_thinking_for_model(&setup.thinking_level, &setup.model);
+
     Ok(TurnConfig {
         conn: sibling_conn,
         session_id: setup.session_id.clone(),
@@ -1256,11 +1346,7 @@ fn build_turn_config(
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },
-        thinking: if setup.thinking_level == "off" {
-            None
-        } else {
-            Some(setup.thinking_level.clone())
-        },
+        thinking: request_thinking,
         retry_enabled: setup.retry_enabled,
         retry_max_retries: setup.retry_max_retries,
         retry_base_delay_ms: setup.retry_base_delay_ms,
@@ -2417,7 +2503,122 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kordi_core::settings::ProviderOverride;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+
+    fn local_provider_settings(provider: &str, base_url: &str) -> Settings {
+        Settings {
+            providers: Some(vec![ProviderOverride {
+                name: provider.to_string(),
+                base_url: Some(base_url.to_string()),
+                api_key_env: None,
+                api: None,
+                headers: None,
+            }]),
+            ..Settings::default()
+        }
+    }
+
+    fn lm_studio_settings() -> Settings {
+        local_provider_settings("lm-studio", "http://localhost:1234/v1")
+    }
+
+    #[test]
+    fn local_model_id_with_publisher_slash_stays_on_current_local_provider() -> Result<()> {
+        let model = resolve_model_candidate(
+            &lm_studio_settings(),
+            "google/gemma-4-e4b",
+            Some("lm-studio"),
+        )?;
+
+        assert_eq!(model.provider, "lm-studio");
+        assert_eq!(model.id, "google/gemma-4-e4b");
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_model_selection_resolves_to_ollama_provider() -> Result<()> {
+        let model = resolve_model_candidate(
+            &local_provider_settings("ollama", "http://localhost:11434/v1"),
+            "ollama/llama3.2:latest",
+            Some("anthropic"),
+        )?;
+
+        assert_eq!(model.provider, "ollama");
+        assert_eq!(model.id, "llama3.2:latest");
+        Ok(())
+    }
+
+    fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {
+        Model {
+            id: id.to_string(),
+            name: id.to_string(),
+            provider: provider.to_string(),
+            api: kordi_provider::registry::ApiType::OpenaiCompletions,
+            context_window: 4096,
+            max_tokens: 1024,
+            reasoning,
+            input: vec![kordi_provider::registry::ModelInput::Text],
+            base_url: None,
+            cost: kordi_provider::registry::CostConfig::default(),
+        }
+    }
+
+    #[test]
+    fn non_reasoning_models_do_not_send_thinking_controls() {
+        let model = test_model("ollama", "qwen:1.8b-chat", false);
+        assert_eq!(request_thinking_for_model("medium", &model), None);
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::Medium, &model),
+            ThinkingLevel::Off
+        );
+
+        let reasoning_model = test_model("openai", "gpt-5", true);
+        assert_eq!(
+            request_thinking_for_model("medium", &reasoning_model).as_deref(),
+            Some("medium")
+        );
+    }
+
+    #[test]
+    fn ollama_selection_is_not_absorbed_by_current_lm_studio_provider() -> Result<()> {
+        let settings = Settings {
+            providers: Some(vec![
+                ProviderOverride {
+                    name: "lm-studio".to_string(),
+                    base_url: Some("http://localhost:1234/v1".to_string()),
+                    api_key_env: None,
+                    api: None,
+                    headers: None,
+                },
+                ProviderOverride {
+                    name: "ollama".to_string(),
+                    base_url: Some("http://localhost:11434/v1".to_string()),
+                    api_key_env: None,
+                    api: None,
+                    headers: None,
+                },
+            ]),
+            ..Settings::default()
+        };
+        let model = resolve_model_candidate(&settings, "ollama/qwen:1.8b-chat", Some("lm-studio"))?;
+
+        assert_eq!(model.provider, "ollama");
+        assert_eq!(model.id, "qwen:1.8b-chat");
+        Ok(())
+    }
+
+    #[test]
+    fn unconfigured_provider_prefix_is_not_synthesized_from_slash_model_id() {
+        let settings = Settings::default();
+        if login::provider_configured_for_settings(&settings, "google") {
+            return;
+        }
+
+        let result = resolve_model_candidate(&settings, "google/gemma-4-e4b", None);
+
+        assert!(result.is_err());
+    }
 
     #[test]
     fn session_title_seed_matches_chat_title_rules() {

@@ -12,6 +12,7 @@ type AuthProviderListProps = {
   configuredCount: number;
   onSelectProvider: (providerId: string) => void;
   onRefresh: () => void;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
 export function AuthProviderList({
@@ -20,6 +21,7 @@ export function AuthProviderList({
   configuredCount,
   onSelectProvider,
   onRefresh,
+  onEnterChat,
 }: AuthProviderListProps) {
   return (
     <div
@@ -31,11 +33,11 @@ export function AuthProviderList({
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[13px] font-medium text-white">Choose a provider</div>
             <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-300">
-              {configuredCount} ready of {providers.length}
+              {configuredCount} saved of {providers.length}
             </div>
           </div>
           <div className="mt-1 max-w-[40ch] text-[11px] leading-5 text-slate-400">
-            Pick a cloud provider or local model server. LM Studio and Ollama are ready without a saved key once their local servers are running.
+            Pick a cloud provider or local model server. Local models need no API key, but save the endpoint once so Kordi can use it for chat.
           </div>
         </div>
         <Button
@@ -49,6 +51,28 @@ export function AuthProviderList({
           Refresh
         </Button>
       </div>
+
+      {configuredCount > 0 ? (
+        <div className="mb-3 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.06] px-3.5 py-3 text-[12px] leading-5 text-emerald-50/90">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-medium text-white">Provider saved — you can start chatting.</div>
+              <div className="mt-0.5 text-[11px] text-emerald-50/75">Enter chat now, or configure another source from the list below.</div>
+            </div>
+            {onEnterChat ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="app-control-chip h-8.5 shrink-0 rounded-full border-0 px-3.5 text-[12px]"
+                onClick={() => { void onEnterChat(); }}
+                style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
+              >
+                Enter chat
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
         <div className="w-full overflow-hidden rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">

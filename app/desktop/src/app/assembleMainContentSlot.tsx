@@ -1,18 +1,27 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } from '@/app/mainContentShellBuilders';
 import { findCanonicalConversationForTarget, findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
+import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
-  const openLocalAgentChat = async () => {
+  const openLocalAgentChat = async (preferredModelValue?: string) => {
     args.setActiveNav('chats');
     const existingLocalConversation = findOwnedAgentConversation(args.chatConversations);
-    if (existingLocalConversation) {
-      await args.handleSelectChatSession(existingLocalConversation.id);
+
+    if (!preferredModelValue) {
+      if (existingLocalConversation) {
+        await args.handleSelectChatSession(existingLocalConversation.id);
+      } else {
+        await args.handleCreateChatSession();
+      }
       return;
     }
-    await args.handleCreateChatSession();
+
+    const sessionId = existingLocalConversation?.id ?? (await createDesktopChatSession()).activeSessionId;
+    await updateDesktopChatSessionConfig(sessionId, preferredModelValue);
+    await args.handleSelectChatSession(sessionId);
   };
 
   return (
@@ -119,6 +128,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         handleSelectAuthChoice: args.handleSelectAuthChoice,
         handleRemoveAuthProfile: args.handleRemoveAuthProfile,
         handleLogoutProvider: args.handleLogoutProvider,
+        onEnterChat: openLocalAgentChat,
         themeMode: args.themeMode,
         setThemeMode: args.setThemeMode,
       }}

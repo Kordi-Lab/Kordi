@@ -228,7 +228,7 @@ export type AssembleKordiShellSlotsArgs = {
   composerSelectionChat: ComposerSelection;
   openComposerSelector: ComposerSelectorState;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void | Promise<void>;
   composerAuthLabelProject: string;
   composerAuthLabelChat: string;
   composerAuthOptionsProject: ComposerAuthOption[];

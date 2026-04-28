@@ -120,6 +120,24 @@ pub(crate) struct SessionRuntimeSetup {
     pub request_metrics_log_path: Option<std::path::PathBuf>,
 }
 
+pub(crate) fn resolve_tool_selection_for_runtime(
+    preference: &ToolSelectionPreference,
+    settings_tools: Option<&[String]>,
+    provider_name: &str,
+) -> ToolSelection {
+    let selection = preference.resolve(settings_tools);
+    // LM Studio's OpenAI-compatible tool support injects tool definitions into the model prompt.
+    // Keep local providers lightweight by default; users can still opt into tools via settings or
+    // explicit CLI flags.
+    if matches!(preference, ToolSelectionPreference::UseSettings)
+        && settings_tools.is_none()
+        && login::is_local_openai_provider(provider_name)
+    {
+        return ToolSelection::None;
+    }
+    selection
+}
+
 fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> Option<String> {
     if sources.is_empty() {
         return None;
@@ -418,7 +436,11 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let sibling_conn = crate::turn_runner::open_sibling_conn(&conn)?;
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
-    let tool_selection = entry.tool_selection.resolve(settings.tools.as_deref());
+    let tool_selection = resolve_tool_selection_for_runtime(
+        &entry.tool_selection,
+        settings.tools.as_deref(),
+        &provider_name,
+    );
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection.clone());
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let project_system_section =
@@ -555,9 +577,9 @@ fn resolve_startup_session_id(
 mod tests {
     use super::{
         SessionBootstrapOptions, prompt_label_for_cli, resolve_startup_session_id,
-        resolve_thinking_level,
+        resolve_thinking_level, resolve_tool_selection_for_runtime,
     };
-    use crate::tool_registry::{ToolSelectionPreference, build_tool_defs};
+    use crate::tool_registry::{ToolSelection, ToolSelectionPreference, build_tool_defs};
     use async_trait::async_trait;
     use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::error::KordiResult;
@@ -691,6 +713,50 @@ mod tests {
         assert_eq!(options.messages, vec!["hello", "world"]);
         assert_eq!(options.prompt_label, "default+append");
         assert_eq!(options.tool_selection, ToolSelectionPreference::UseSettings);
+    }
+
+    #[test]
+    fn local_openai_providers_default_to_no_tools_when_settings_do_not_opt_in() {
+        assert_eq!(
+            resolve_tool_selection_for_runtime(
+                &ToolSelectionPreference::UseSettings,
+                None,
+                "lm-studio",
+            ),
+            ToolSelection::None
+        );
+        assert_eq!(
+            resolve_tool_selection_for_runtime(
+                &ToolSelectionPreference::UseSettings,
+                None,
+                "ollama"
+            ),
+            ToolSelection::None
+        );
+        assert_eq!(
+            resolve_tool_selection_for_runtime(
+                &ToolSelectionPreference::UseSettings,
+                None,
+                "openai"
+            ),
+            ToolSelection::All
+        );
+        assert_eq!(
+            resolve_tool_selection_for_runtime(
+                &ToolSelectionPreference::UseSettings,
+                Some(&["read".to_string()]),
+                "lm-studio",
+            ),
+            ToolSelection::Only(vec!["read".to_string()])
+        );
+        assert_eq!(
+            resolve_tool_selection_for_runtime(
+                &ToolSelectionPreference::Only(vec!["bash".to_string()]),
+                None,
+                "lm-studio",
+            ),
+            ToolSelection::Only(vec!["bash".to_string()])
+        );
     }
 
     #[test]

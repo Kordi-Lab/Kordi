@@ -20,11 +20,7 @@ const KNOWN_PROVIDERS: &[(&str, &str, &str)] = &[
         "LM_STUDIO_API_KEY",
         "https://lmstudio.ai/docs/app/api/endpoints/openai",
     ),
-    (
-        "ollama",
-        "OLLAMA_API_KEY",
-        "https://github.com/ollama/ollama/blob/main/docs/openai.md",
-    ),
+    ("ollama", "OLLAMA_API_KEY", "https://docs.ollama.com/openai"),
     (
         "google",
         "GOOGLE_API_KEY",
@@ -62,17 +58,28 @@ pub fn is_local_openai_provider(provider: &str) -> bool {
 }
 
 pub fn is_loopback_base_url(base_url: &str) -> bool {
-    let lower = base_url.trim().to_ascii_lowercase();
-    lower.starts_with("http://localhost")
-        || lower.starts_with("https://localhost")
-        || lower.starts_with("http://127.0.0.1")
-        || lower.starts_with("https://127.0.0.1")
-        || lower.starts_with("http://[::1]")
-        || lower.starts_with("https://[::1]")
+    let Ok(url) = url::Url::parse(base_url.trim()) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    let host = host.trim_matches(|ch| ch == '[' || ch == ']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
 }
 
 pub fn provider_allows_no_auth(provider: &str, base_url: Option<&str>) -> bool {
-    is_local_openai_provider(provider) || base_url.is_some_and(is_loopback_base_url)
+    if is_local_openai_provider(provider) {
+        return base_url.map(is_loopback_base_url).unwrap_or(true);
+    }
+    base_url.is_some_and(is_loopback_base_url)
 }
 
 pub fn normalize_provider_for_model_selection(provider: &str) -> String {
@@ -331,8 +338,20 @@ mod tests {
         );
         assert!(is_local_openai_provider("lm-studio"));
         assert!(is_loopback_base_url("http://127.0.0.1:8000/v1"));
+        assert!(is_loopback_base_url("http://127.0.0.42:8000/v1"));
         assert!(is_loopback_base_url("http://[::1]:1234/v1"));
+        assert!(!is_loopback_base_url("file://localhost/v1"));
+        assert!(!is_loopback_base_url("http://localhost.evil.example/v1"));
+        assert!(!is_loopback_base_url("http://127.0.0.1.evil.example/v1"));
         assert!(provider_allows_no_auth("lm-studio", None));
+        assert!(provider_allows_no_auth(
+            "lm-studio",
+            Some("http://localhost:1234/v1")
+        ));
+        assert!(!provider_allows_no_auth(
+            "lm-studio",
+            Some("https://models.example.com/v1")
+        ));
         assert!(provider_allows_no_auth(
             "custom-local",
             Some("http://localhost:8000/v1")

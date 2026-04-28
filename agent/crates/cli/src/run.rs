@@ -109,7 +109,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         None,
     );
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
-    let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings);
+    let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings, &provider_name);
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let system_prompt = format!("{system_prompt}{skill_section}");
@@ -270,7 +270,11 @@ fn resolve_session_id(
     store::create_session(conn, cwd_str)
 }
 
-fn tool_selection_from_cli_and_settings(cli: &Cli, settings: &Settings) -> ToolSelection {
+fn tool_selection_from_cli_and_settings(
+    cli: &Cli,
+    settings: &Settings,
+    provider_name: &str,
+) -> ToolSelection {
     let preference = if cli.no_tools {
         ToolSelectionPreference::None
     } else if let Some(tools) = &cli.tools {
@@ -286,7 +290,11 @@ fn tool_selection_from_cli_and_settings(cli: &Cli, settings: &Settings) -> ToolS
         ToolSelectionPreference::UseSettings
     };
 
-    preference.resolve(settings.tools.as_deref())
+    crate::session_bootstrap::resolve_tool_selection_for_runtime(
+        &preference,
+        settings.tools.as_deref(),
+        provider_name,
+    )
 }
 
 fn load_images_from_paths(paths: &[std::path::PathBuf]) -> Result<Vec<ImageContent>> {

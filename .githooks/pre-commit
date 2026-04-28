@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${KORDI_SKIP_HOOKS:-}" = "1" ]; then
+  echo "Skipping Kordi pre-commit hook because KORDI_SKIP_HOOKS=1."
+  exit 0
+fi
+
+command -v cargo >/dev/null || { echo "cargo is required for pre-commit checks." >&2; exit 1; }
+command -v pnpm >/dev/null || { echo "pnpm is required for pre-commit checks." >&2; exit 1; }
+
+echo "Running Kordi pre-commit checks..."
+
+echo "• Rust format"
+cargo fmt --all -- --check
+
+echo "• Staged whitespace"
+git diff --check --cached
+
+echo "• Desktop typecheck"
+pnpm --dir app/desktop typecheck
+
+echo "• Desktop lint"
+pnpm --dir app/desktop lint
+
+echo "Kordi pre-commit checks passed."

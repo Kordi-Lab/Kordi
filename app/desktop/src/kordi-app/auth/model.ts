@@ -18,6 +18,7 @@ export type AuthDisplayProvider = {
   loginHint: string;
   authority?: string | null;
   localBaseUrl?: string;
+  preferredModel?: string | null;
   methods: AuthDisplayMethod[];
 };
 
@@ -54,12 +55,13 @@ function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthP
       ? 'Run against LM Studio’s local OpenAI-compatible server. No API key is required unless you enabled one in LM Studio.'
       : 'Run against Ollama’s local OpenAI-compatible server. The default local server does not need an API key.',
     envVar: providerId === 'lm-studio' ? 'LM_STUDIO_API_KEY' : 'OLLAMA_API_KEY',
-    helpUrl: providerId === 'lm-studio' ? 'https://lmstudio.ai/docs/app/api/endpoints/openai' : 'https://docs.ollama.com',
+    helpUrl: providerId === 'lm-studio' ? 'https://lmstudio.ai/docs/app/api/endpoints/openai' : 'https://docs.ollama.com/openai',
     supportsOAuth: false,
     supportsApiKey: true,
     configured: false,
     authority: null,
     baseUrl,
+    preferredModel: null,
     options: [],
   };
 }
@@ -105,6 +107,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         .join(' • '),
       loginHint: 'Choose Claude subscription access for everyday chat, or an API key for billed automation and tooling.',
       authority: anthropic.authority,
+      preferredModel: anthropic.preferredModel,
       methods,
     });
   }
@@ -147,6 +150,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         .join(' • '),
       loginHint:
         'Pick a ChatGPT account for subscription access, an API key for billed automation, or keep both and switch later.',
+      preferredModel: openAiApi?.preferredModel ?? openAiOauth?.preferredModel,
       methods,
     });
   }
@@ -166,6 +170,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       loginHint: provider.loginHint,
       authority: provider.authority,
       localBaseUrl: isLocalProvider(id) ? (provider.baseUrl || localProviderBaseUrl(id) || undefined) : undefined,
+      preferredModel: provider.preferredModel,
       methods: [
         {
           mode,
