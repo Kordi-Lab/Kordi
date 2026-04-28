@@ -506,14 +506,14 @@ export function ComposerRuntimeStatus({
           </div>
           {contextStatus.autoCompaction ? (
             <div className="mt-3 space-y-1 text-[11px] text-[color:var(--utility-foreground)]">
-              <div>Auto-compresses at {thresholdPercent}% context usage.</div>
+              <div>Auto-compresses before Kordi responds once usage reaches {thresholdPercent}%.</div>
               {isCompressionReady ? (
                 <div className="rounded-md border border-orange-400/35 bg-orange-400/10 px-2 py-1 text-orange-200">
-                  The next request will compress this conversation first.
+                  Send your next message to compress this conversation first.
                 </div>
               ) : isNearCompression ? (
                 <div className="rounded-md border border-yellow-400/30 bg-yellow-400/10 px-2 py-1 text-yellow-100">
-                  Near the compression threshold.
+                  Near the compression threshold. Kordi will compress before a future response.
                 </div>
               ) : (
                 <div className="text-[color:var(--utility-muted-text)]">Plenty of context remains.</div>

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use kordi_core::types::{CompactionSettings, EntryBase, EntryId, SessionEntry};
-use kordi_provider::Provider;
+use kordi_provider::{Provider, ProviderAuthMode};
 use kordi_session::store::EntryRow;
 use tokio_util::sync::CancellationToken;
 
@@ -14,6 +14,19 @@ pub(crate) struct ExecutedCompaction {
     pub kept_count: usize,
 }
 
+pub(crate) fn compaction_auth_options(
+    auth: Option<&crate::login::ResolvedProviderAuth>,
+) -> (ProviderAuthMode, Option<String>) {
+    let auth_mode = auth
+        .map(|auth| match auth.method {
+            crate::login::ProviderAuthMethod::OAuth => ProviderAuthMode::OAuth,
+            crate::login::ProviderAuthMethod::ApiKey => ProviderAuthMode::ApiKey,
+        })
+        .unwrap_or(ProviderAuthMode::ApiKey);
+    let auth_account_id = auth.and_then(|auth| auth.account_id.clone());
+    (auth_mode, auth_account_id)
+}
+
 pub(crate) async fn execute_session_compaction(
     entries: Vec<EntryRow>,
     parent_id: Option<EntryId>,
@@ -22,6 +35,8 @@ pub(crate) async fn execute_session_compaction(
     provider: Arc<dyn Provider>,
     model_id: &str,
     api_key: &str,
+    auth_mode: ProviderAuthMode,
+    auth_account_id: Option<String>,
     base_url: &str,
     headers: &std::collections::HashMap<String, String>,
     settings: &CompactionSettings,
@@ -39,6 +54,8 @@ pub(crate) async fn execute_session_compaction(
         provider: provider.as_ref(),
         model: model_id,
         api_key,
+        auth_mode,
+        auth_account_id: auth_account_id.as_deref(),
         base_url,
         headers,
         custom_instructions,
@@ -74,4 +91,42 @@ pub(crate) async fn execute_session_compaction(
         summarized_count,
         kept_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolved_auth(
+        method: crate::login::ProviderAuthMethod,
+        account_id: Option<&str>,
+    ) -> crate::login::ResolvedProviderAuth {
+        crate::login::ResolvedProviderAuth {
+            source: crate::login::AuthSource::KordiAuth,
+            credential_provider: "openai".to_string(),
+            method,
+            credential: "credential".to_string(),
+            account_id: account_id.map(ToString::to_string),
+            account_label: None,
+            authority: None,
+        }
+    }
+
+    #[test]
+    fn compaction_auth_options_preserve_oauth_account() {
+        let auth = resolved_auth(crate::login::ProviderAuthMethod::OAuth, Some("acct-123"));
+
+        let (mode, account_id) = compaction_auth_options(Some(&auth));
+
+        assert_eq!(mode, ProviderAuthMode::OAuth);
+        assert_eq!(account_id.as_deref(), Some("acct-123"));
+    }
+
+    #[test]
+    fn compaction_auth_options_default_to_api_key() {
+        let (mode, account_id) = compaction_auth_options(None);
+
+        assert_eq!(mode, ProviderAuthMode::ApiKey);
+        assert_eq!(account_id, None);
+    }
 }

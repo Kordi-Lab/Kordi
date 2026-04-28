@@ -65,6 +65,9 @@ async fn maybe_execute_auto_compaction(
 
     let _ = event_tx.send(TurnEvent::AutoCompactionStart);
 
+    let (auth_mode, auth_account_id) =
+        crate::compaction_exec::compaction_auth_options(config.auth.as_ref());
+
     match execute_session_compaction(
         active_path,
         parent_id,
@@ -73,6 +76,8 @@ async fn maybe_execute_auto_compaction(
         config.provider.clone(),
         &config.model.id,
         &config.api_key,
+        auth_mode,
+        auth_account_id,
         &config.base_url,
         &config.headers,
         &config.compaction_settings,
@@ -90,8 +95,16 @@ async fn maybe_execute_auto_compaction(
         }
         Err(err) if err.to_string() == "Nothing to compact" => Ok(false),
         Err(err) => {
-            let _ = event_tx.send(TurnEvent::Status(format!("Auto-compaction failed: {err}")));
-            Ok(false)
+            let message = format!("Auto-compaction failed: {err}");
+            let _ = event_tx.send(TurnEvent::Status(message.clone()));
+            append_assistant_error_message(
+                &config.conn,
+                &config.session_id,
+                &config.model,
+                &message,
+            )
+            .await?;
+            Err(anyhow::anyhow!(message))
         }
     }
 }

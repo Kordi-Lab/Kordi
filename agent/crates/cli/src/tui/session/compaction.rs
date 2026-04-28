@@ -53,6 +53,8 @@ impl TuiController {
         let provider = self.session_setup.provider.clone();
         let model_id = self.session_setup.model.id.clone();
         let api_key = self.session_setup.api_key.clone();
+        let (auth_mode, auth_account_id) =
+            crate::compaction_exec::compaction_auth_options(self.session_setup.auth.as_ref());
         let base_url = self.session_setup.base_url.clone();
         let headers = self.session_setup.headers.clone();
         let manual_compaction_tx = self.manual_compaction_tx.clone();
@@ -67,6 +69,8 @@ impl TuiController {
                 provider,
                 &model_id,
                 &api_key,
+                auth_mode,
+                auth_account_id,
                 &base_url,
                 &headers,
                 &settings,

@@ -231,6 +231,11 @@ struct PreemptiveCompactionProvider {
     stream_count: Arc<AtomicUsize>,
 }
 
+struct FailingCompactionProvider {
+    complete_count: Arc<AtomicUsize>,
+    stream_count: Arc<AtomicUsize>,
+}
+
 struct ErrorAwareToolProvider {
     call_count: AtomicUsize,
 }
@@ -300,6 +305,38 @@ impl Provider for PreemptiveCompactionProvider {
         self.stream_count.fetch_add(1, Ordering::SeqCst);
         let _ = tx.send(StreamEvent::TextDelta {
             text: "answer after compression".to_string(),
+        });
+        let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Provider for FailingCompactionProvider {
+    fn name(&self) -> &str {
+        "failing-compaction-provider"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        self.complete_count.fetch_add(1, Ordering::SeqCst);
+        Err(kordi_core::error::KordiError::Provider(
+            "summarizer unavailable".to_string(),
+        ))
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        self.stream_count.fetch_add(1, Ordering::SeqCst);
+        let _ = tx.send(StreamEvent::TextDelta {
+            text: "should not send uncompressed".to_string(),
         });
         let _ = tx.send(StreamEvent::Done);
         Ok(())
@@ -1304,6 +1341,121 @@ async fn run_turn_auto_compacts_at_ninety_percent_before_provider_request() {
     let append_conn = store::open_db(&db_path).expect("reopen db");
     let path = kordi_session::tree::active_path(&append_conn, &session_id).expect("active path");
     assert!(path.iter().any(|row| row.entry_type == "compaction"));
+}
+
+#[tokio::test]
+async fn run_turn_stops_when_required_auto_compaction_fails() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let db_path = dir.path().join("session.db");
+    let conn = store::open_db(&db_path).expect("db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+
+    let old_user = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("old00001".into()),
+            parent_id: None,
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::User(UserMessage {
+            content: vec![ContentBlock::Text {
+                text: "old context".repeat(100),
+            }],
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, &session_id, &old_user).expect("append old user");
+
+    let latest_assistant = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId("asst0002".into()),
+            parent_id: Some(kordi_core::types::EntryId("old00001".into())),
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "ready".to_string(),
+            }],
+            provider: "dummy".to_string(),
+            model: "dummy-model".to_string(),
+            usage: Usage {
+                total_tokens: 900,
+                ..Default::default()
+            },
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, &session_id, &latest_assistant).expect("append assistant");
+
+    let complete_count = Arc::new(AtomicUsize::new(0));
+    let stream_count = Arc::new(AtomicUsize::new(0));
+    let provider = Arc::new(FailingCompactionProvider {
+        complete_count: complete_count.clone(),
+        stream_count: stream_count.clone(),
+    });
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id: session_id.clone(),
+        system_prompt: "system".to_string(),
+        model: test_model(1_000),
+        provider,
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings {
+            enabled: true,
+            reserve_tokens: 0,
+            keep_recent_tokens: 1,
+        },
+        tool_registry: ToolRegistry::default(),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(config, event_tx, "continue".to_string()).await;
+    let error = result.expect_err("turn should fail when compaction fails");
+
+    assert!(
+        error.to_string().contains("Auto-compaction failed:")
+            && error.to_string().contains("summarizer unavailable"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(complete_count.load(Ordering::SeqCst), 1);
+    assert_eq!(stream_count.load(Ordering::SeqCst), 0);
+
+    let events = std::iter::from_fn(|| event_rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, TurnEvent::AutoCompactionStart))
+    );
+    assert!(events.iter().any(|event| matches!(event, TurnEvent::Status(message) if message.starts_with("Auto-compaction failed:"))));
+
+    let append_conn = store::open_db(&db_path).expect("reopen db");
+    let path = kordi_session::tree::active_path(&append_conn, &session_id).expect("active path");
+    let latest = path.last().expect("persisted error message");
+    let entry = store::parse_entry(latest).expect("parse latest");
+    assert!(matches!(
+        entry,
+        SessionEntry::Message {
+            message: AgentMessage::Assistant(AssistantMessage {
+                stop_reason: StopReason::Error,
+                ..
+            }),
+            ..
+        }
+    ));
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{file_ops::extract_file_operations, serialize::serialize_conversation, types::*};
 use kordi_core::types::{AgentMessage, SessionEntry};
-use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent};
+use kordi_provider::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 use tokio_util::sync::CancellationToken;
 
 // =============================================================================
@@ -50,6 +50,8 @@ pub struct CompactionRequest<'a> {
     pub provider: &'a dyn Provider,
     pub model: &'a str,
     pub api_key: &'a str,
+    pub auth_mode: ProviderAuthMode,
+    pub auth_account_id: Option<&'a str>,
     pub base_url: &'a str,
     pub headers: &'a HashMap<String, String>,
     pub custom_instructions: Option<&'a str>,
@@ -64,6 +66,8 @@ pub async fn compact(request: CompactionRequest<'_>) -> anyhow::Result<Compactio
         provider,
         model,
         api_key,
+        auth_mode,
+        auth_account_id,
         base_url,
         headers,
         custom_instructions,
@@ -119,8 +123,8 @@ pub async fn compact(request: CompactionRequest<'_>) -> anyhow::Result<Compactio
 
     let options = RequestOptions {
         api_key: api_key.to_string(),
-        auth_mode: kordi_provider::ProviderAuthMode::ApiKey,
-        auth_account_id: None,
+        auth_mode,
+        auth_account_id: auth_account_id.map(ToString::to_string),
         base_url: base_url.to_string(),
         headers: headers.clone(),
         cancel,
