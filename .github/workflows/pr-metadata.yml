@@ -1,0 +1,80 @@
+name: PR metadata
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  linked-issue:
+    name: Require linked issue
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR body for a related issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          body=$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")
+
+          matches=$(
+            printf '%s\n' "$body" |
+              grep -Eio '((close[sd]?|fix(e[sd])?|resolve[sd]?|refs?|related to|part of)[[:space:]:]+(https://github\.com/Kordi-AI/Kordi/issues/[0-9]+|Kordi-AI/Kordi#[0-9]+|#[0-9]+)|https://github\.com/Kordi-AI/Kordi/issues/[0-9]+)' || true
+          )
+
+          issue_numbers=$(
+            printf '%s\n' "$matches" |
+              grep -Eo 'issues/[0-9]+|#[0-9]+' |
+              grep -Eo '[0-9]+' |
+              sort -u || true
+          )
+
+          if [[ -z "$issue_numbers" ]]; then
+            cat <<'MESSAGE' >&2
+          Every Kordi PR must link a related issue before review.
+
+          Add one of these to the PR body:
+          - Closes #123
+          - Fixes #123
+          - Resolves #123
+          - Refs #123
+          - Related to #123
+          - https://github.com/Kordi-AI/Kordi/issues/123
+
+          If no suitable issue exists yet, create the issue first, then update this PR.
+          MESSAGE
+            exit 1
+          fi
+
+          valid_issue=""
+          while IFS= read -r number; do
+            [[ -z "$number" ]] && continue
+            issue_json=$(gh issue view "$number" -R "$REPOSITORY" --json number,title,state,url 2>/dev/null || true)
+            issue_url=$(jq -r '.url // empty' <<<"$issue_json")
+            if [[ "$issue_url" == *"/issues/"* ]]; then
+              valid_issue="$number"
+              echo "Linked issue verified: $issue_url"
+              break
+            fi
+          done <<< "$issue_numbers"
+
+          if [[ -z "$valid_issue" ]]; then
+            cat <<'MESSAGE' >&2
+          The PR body references numbers, but none resolve to a repository issue.
+          Link an actual issue, not only another PR.
+          MESSAGE
+            exit 1
+          fi
