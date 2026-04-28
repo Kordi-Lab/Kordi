@@ -692,6 +692,31 @@
   color: rgb(159 18 57) !important;
 }
 
+.bridge-app.theme-light .app-transcript-sheen-title-char {
+  color: rgb(30 41 59);
+}
+
+.bridge-app.theme-light .app-transcript-tool-pin-running,
+.bridge-app.theme-light .app-transcript-status-text-running {
+  color: rgb(146 64 14) !important;
+}
+
+.bridge-app.theme-light .app-transcript-tool-pin-error,
+.bridge-app.theme-light .app-transcript-status-text-error {
+  color: rgb(159 18 57) !important;
+}
+
+.bridge-app.theme-light .app-transcript-status-text-done {
+  color: rgb(6 95 70) !important;
+}
+
+.bridge-app.theme-light .app-transcript-tool-activity-line strong,
+.bridge-app.theme-light .app-transcript-tool-activity-latest strong,
+.bridge-app.theme-light .app-transcript-tool-row-name,
+.bridge-app.theme-light .app-transcript-tool-pin strong {
+  color: rgb(30 41 59) !important;
+}
+
 .bridge-app.theme-light .app-markdown-muted-heading {
   color: rgb(71 85 105) !important;
 }
