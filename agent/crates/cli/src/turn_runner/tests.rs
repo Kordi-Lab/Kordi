@@ -236,6 +236,10 @@ struct FailingCompactionProvider {
     stream_count: Arc<AtomicUsize>,
 }
 
+struct StalledLocalProvider {
+    stream_count: Arc<AtomicUsize>,
+}
+
 struct ErrorAwareToolProvider {
     call_count: AtomicUsize,
 }
@@ -339,6 +343,32 @@ impl Provider for FailingCompactionProvider {
             text: "should not send uncompressed".to_string(),
         });
         let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Provider for StalledLocalProvider {
+    fn name(&self) -> &str {
+        "stalled-local-provider"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        _tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        self.stream_count.fetch_add(1, Ordering::SeqCst);
+        std::future::pending::<()>().await;
         Ok(())
     }
 }
@@ -680,6 +710,19 @@ fn test_tool_context() -> kordi_tools::ToolContext {
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }
+}
+
+struct LocalModelTimeoutOverrideGuard;
+
+impl Drop for LocalModelTimeoutOverrideGuard {
+    fn drop(&mut self) {
+        super::runner::set_local_model_overload_timeout_override_for_tests(None);
+    }
+}
+
+fn set_local_model_timeout_override(timeout: Duration) -> LocalModelTimeoutOverrideGuard {
+    super::runner::set_local_model_overload_timeout_override_for_tests(Some(timeout));
+    LocalModelTimeoutOverrideGuard
 }
 
 #[tokio::test]
@@ -1451,6 +1494,80 @@ async fn run_turn_stops_when_required_auto_compaction_fails() {
         SessionEntry::Message {
             message: AgentMessage::Assistant(AssistantMessage {
                 stop_reason: StopReason::Error,
+                ..
+            }),
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn run_turn_reports_local_model_overload_when_stream_stalls() {
+    let _timeout_override = set_local_model_timeout_override(Duration::from_millis(25));
+    let conn = store::open_memory().expect("memory db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let stream_count = Arc::new(AtomicUsize::new(0));
+    let mut model = test_model(128_000);
+    model.provider = "ollama".to_string();
+    model.id = "llama3.2".to_string();
+    model.name = "llama3.2".to_string();
+
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id: session_id.clone(),
+        system_prompt: "system".to_string(),
+        model,
+        provider: Arc::new(StalledLocalProvider {
+            stream_count: stream_count.clone(),
+        }),
+        auth: None,
+        api_key: String::new(),
+        base_url: format!("http://127.0.0.1:11434/v1/{}", uuid::Uuid::new_v4()),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
+        tool_registry: ToolRegistry::default(),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (returned_config, result) = timeout(
+        Duration::from_secs(2),
+        run_turn(config, event_tx, "hello".to_string()),
+    )
+    .await
+    .expect("local overload watchdog should finish the turn");
+    let error = result.expect_err("stalled local provider should fail the turn");
+
+    assert!(
+        error
+            .to_string()
+            .contains("Local model overloaded or unresponsive"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(stream_count.load(Ordering::SeqCst), 1);
+
+    let events = std::iter::from_fn(|| event_rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(events.iter().any(|event| matches!(event, TurnEvent::Error(message) if message.contains("Local model overloaded or unresponsive"))));
+
+    let conn = returned_config.conn.lock().await;
+    let path = kordi_session::tree::active_path(&conn, &session_id).expect("active path");
+    let latest = path.last().expect("persisted error message");
+    let entry = store::parse_entry(latest).expect("parse latest");
+    assert!(matches!(
+        entry,
+        SessionEntry::Message {
+            message: AgentMessage::Assistant(AssistantMessage {
+                stop_reason: StopReason::Error,
+                error_message: Some(_),
                 ..
             }),
             ..
