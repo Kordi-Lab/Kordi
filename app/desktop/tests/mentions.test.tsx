@@ -7,21 +7,37 @@ import {
   mentionHandleForLabel,
   outreachIdentityForBridgeTarget,
   resolveMentionedBridgeTarget,
-} from './mentions';
-import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
+} from '../src/features/chat/messageActions/mentions';
+import type { DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
-function bridgeStateWithPeers(peers: DesktopBridgeState['hosts'][number]['visiblePeers']): DesktopBridgeState {
+function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'nodeId' | 'runtime'>): DesktopBridgePeer {
   return {
+    endpoint: `https://${overrides.nodeId}.example`,
+    sharedProjects: [],
+    ...overrides,
+  };
+}
+
+function bridgeStateWithPeers(peers: DesktopBridgePeer[]): DesktopBridgeState {
+  return {
+    configPath: '/tmp/bridges.json',
+    legacyConfigPath: '/tmp/legacy-bridges.json',
+    conversationsPath: '/tmp/conversations.json',
+    conversations: [],
+    localServer: { running: true, serverUrl: 'http://127.0.0.1:1234' },
     activeHostId: 'host-1',
     hosts: [{
       id: 'host-1',
+      registered: true,
+      connected: true,
+      serverUrl: 'http://127.0.0.1:1234',
       displayName: 'Host One',
       ownerName: 'Host Owner',
-      nodeId: 'host-node-1',
+      endpoint: 'https://host.example',
+      tokenPresent: true,
       humanId: 'host-human-1',
-      inviteCode: null,
-      inviteExpiresAt: null,
-      configPath: null,
+      discoveryMode: 'manual',
+      nodeId: 'host-node-1',
       activeAgentId: 'agent-local',
       agents: [{
         id: 'agent-local',
@@ -30,20 +46,13 @@ function bridgeStateWithPeers(peers: DesktopBridgeState['hosts'][number]['visibl
         runtime: 'kordi-local',
         isDefault: true,
         isActive: true,
+        registered: true,
       }],
       visiblePeers: peers,
-      conversations: [],
+      visiblePeerCount: peers.length,
+      projects: [],
     }],
-    activeConversationId: null,
-    activeConversation: null,
-    settings: {
-      displayName: 'Host Owner',
-      enableMdns: true,
-      enableDerp: true,
-      allowLanDiscovery: true,
-      allowRelayFallback: true,
-    },
-  } as DesktopBridgeState;
+  };
 }
 
 test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
@@ -55,7 +64,7 @@ test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
 
 test('buildBridgeMentionCandidates creates unique stable handles for sanitized collisions', () => {
   const bridgeState = bridgeStateWithPeers([
-    {
+    peer({
       nodeId: 'node-alpha-111',
       displayName: 'Ann Lee',
       ownerName: 'Ann Lee',
@@ -63,8 +72,8 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
       humanId: 'human-alpha-222',
       agentId: null,
       isDefaultAgent: false,
-    },
-    {
+    }),
+    peer({
       nodeId: 'node-beta-333',
       displayName: 'Ann-Lee',
       ownerName: 'Ann-Lee',
@@ -72,7 +81,7 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
       humanId: 'human-beta-444',
       agentId: null,
       isDefaultAgent: false,
-    },
+    }),
   ]);
 
   const annCandidates = buildBridgeMentionCandidates(bridgeState)
@@ -87,7 +96,7 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
 
 test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete candidates', () => {
   const bridgeState = bridgeStateWithPeers([
-    {
+    peer({
       nodeId: 'node-alpha-111',
       displayName: 'Ann Lee',
       ownerName: 'Ann Lee',
@@ -95,8 +104,8 @@ test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete c
       humanId: 'human-alpha-222',
       agentId: null,
       isDefaultAgent: false,
-    },
-    {
+    }),
+    peer({
       nodeId: 'node-beta-333',
       displayName: 'Ann-Lee',
       ownerName: 'Ann-Lee',
@@ -104,7 +113,7 @@ test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete c
       humanId: 'human-beta-444',
       agentId: null,
       isDefaultAgent: false,
-    },
+    }),
   ]);
 
   const target = resolveMentionedBridgeTarget('@AnnLeehumanbet please review', bridgeState);
@@ -117,7 +126,7 @@ test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete c
 
 test('outreach identity preserves display label while mention metadata stores safe handle', () => {
   const bridgeState = bridgeStateWithPeers([
-    {
+    peer({
       nodeId: 'node-kordi-1',
       displayName: "Alice's Kordi",
       ownerName: 'Alice',
@@ -125,7 +134,7 @@ test('outreach identity preserves display label while mention metadata stores sa
       humanId: 'human-alice',
       agentId: 'agent-alice',
       isDefaultAgent: true,
-    },
+    }),
   ]);
 
   const target = resolveMentionedBridgeTarget('@AlicesKordi summarize this', bridgeState);
@@ -137,7 +146,7 @@ test('outreach identity preserves display label while mention metadata stores sa
 
 test('legacy display-label matching works only when unambiguous', () => {
   const unambiguousState = bridgeStateWithPeers([
-    {
+    peer({
       nodeId: 'node-alice-1',
       displayName: "Alice's Kordi",
       ownerName: 'Alice',
@@ -145,7 +154,7 @@ test('legacy display-label matching works only when unambiguous', () => {
       humanId: 'human-alice',
       agentId: 'agent-alice',
       isDefaultAgent: true,
-    },
+    }),
   ]);
 
   assert.equal(
@@ -154,7 +163,7 @@ test('legacy display-label matching works only when unambiguous', () => {
   );
 
   const ambiguousState = bridgeStateWithPeers([
-    {
+    peer({
       nodeId: 'node-a-1',
       displayName: "Alice's Kordi",
       ownerName: 'Alice',
@@ -162,8 +171,8 @@ test('legacy display-label matching works only when unambiguous', () => {
       humanId: 'human-a',
       agentId: 'agent-a',
       isDefaultAgent: true,
-    },
-    {
+    }),
+    peer({
       nodeId: 'node-a-2',
       displayName: "Alice's Kordi",
       ownerName: 'Alice',
@@ -171,7 +180,7 @@ test('legacy display-label matching works only when unambiguous', () => {
       humanId: 'human-b',
       agentId: 'agent-b',
       isDefaultAgent: true,
-    },
+    }),
   ]);
 
   assert.equal(resolveMentionedBridgeTarget("@Alice's Kordi summarize", ambiguousState), null);
@@ -187,6 +196,6 @@ test('local agent labels include sanitized aliases', () => {
 
   assert.deepEqual(
     localAgentMentionLabels(chatState, bridgeStateWithPeers([])),
-    ['Kordi', 'OwnersKordi', 'HostOne', 'HostOwnersKordi', 'agentlocal', 'localnode1', 'MyProject'],
+    ['Kordi', 'OwnersKordi', 'HostOne', 'MyKordi', 'MyOwnersKordi', 'HostOwnersKordi', 'HostOwnersOwnersKordi', 'agentlocal', 'localnode1', 'MyProject'],
   );
 });

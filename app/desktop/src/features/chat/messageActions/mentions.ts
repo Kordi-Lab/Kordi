@@ -41,6 +41,15 @@ export function mentionedPersonIsActiveBridgeTarget(
 }
 
 
+export type BridgeMentionCandidate = {
+  host: DesktopBridgeState['hosts'][number];
+  peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
+  handle: string;
+  normalizedHandle: string;
+  displayLabel: string;
+  targetKind: 'bridge-person' | 'bridge-agent';
+};
+
 function safeMentionCharacters(value: string) {
   return value.normalize('NFKC').match(/[\p{L}\p{N}]+/gu)?.join('') ?? '';
 }
@@ -52,6 +61,80 @@ export function mentionHandleForLabel(value: string, fallback = 'Participant') {
 
 export function normalizeMentionLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function identitySuffixForCandidate(candidate: Pick<BridgeMentionCandidate, 'peer' | 'handle'>) {
+  const source = candidate.peer.humanId?.trim()
+    || candidate.peer.agentId?.trim()
+    || candidate.peer.nodeId?.trim()
+    || candidate.handle;
+  return safeMentionCharacters(source).slice(0, 8) || 'target';
+}
+
+function uniqueHandle(baseHandle: string, suffix: string) {
+  const cleanSuffix = safeMentionCharacters(suffix) || 'target';
+  const availableBaseLength = Math.max(1, 64 - cleanSuffix.length);
+  return `${baseHandle.slice(0, availableBaseLength)}${cleanSuffix}`;
+}
+
+export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
+  if (!bridgeState) return [];
+
+  const rawCandidates: BridgeMentionCandidate[] = [];
+
+  for (const host of bridgeState.hosts) {
+    for (const peer of host.visiblePeers) {
+      const isAgent = isBridgeAgentRuntime(peer.runtime);
+      const seenForPeer = new Set<string>();
+      const pushLabel = (value: string | null | undefined, targetKind: BridgeMentionCandidate['targetKind']) => {
+        const displayLabel = value?.trim();
+        if (!displayLabel) return;
+        const handle = mentionHandleForLabel(displayLabel, peer.nodeId);
+        const dedupeKey = `${targetKind}:${normalizeMentionLabel(handle)}:${normalizeMentionLabel(displayLabel)}`;
+        if (seenForPeer.has(dedupeKey)) return;
+        seenForPeer.add(dedupeKey);
+        rawCandidates.push({
+          host,
+          peer,
+          targetKind,
+          displayLabel,
+          handle,
+          normalizedHandle: normalizeMentionLabel(handle),
+        });
+      };
+
+      if (isAgent && peer.humanId?.trim()) {
+        pushLabel(peer.ownerName, 'bridge-person');
+      }
+      pushLabel(peer.displayName, isAgent ? 'bridge-agent' : 'bridge-person');
+      if (!isAgent) {
+        pushLabel(peer.ownerName, 'bridge-person');
+      }
+      pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
+    }
+  }
+
+  const handleCounts = new Map<string, number>();
+  for (const candidate of rawCandidates) {
+    handleCounts.set(candidate.normalizedHandle, (handleCounts.get(candidate.normalizedHandle) ?? 0) + 1);
+  }
+
+  const usedHandles = new Set<string>();
+  return rawCandidates.map((candidate) => {
+    let handle = candidate.handle;
+    if ((handleCounts.get(candidate.normalizedHandle) ?? 0) > 1) {
+      handle = uniqueHandle(candidate.handle, identitySuffixForCandidate(candidate));
+    }
+    let normalizedHandle = normalizeMentionLabel(handle);
+    let collisionIndex = 2;
+    while (usedHandles.has(normalizedHandle)) {
+      handle = uniqueHandle(candidate.handle, `${identitySuffixForCandidate(candidate)}${collisionIndex}`);
+      normalizedHandle = normalizeMentionLabel(handle);
+      collisionIndex += 1;
+    }
+    usedHandles.add(normalizedHandle);
+    return { ...candidate, handle, normalizedHandle };
+  });
 }
 
 export function scopedAgentLabel(ownerName: string | null | undefined, agentLabel: string | null | undefined, ownerIsSelf = false) {
@@ -179,46 +262,10 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
 }
 
 export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopBridgeState | null) {
-  if (!bridgeState) return null;
+  const candidates = buildBridgeMentionCandidates(bridgeState);
+  if (candidates.length === 0) return null;
   const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
   if (mentionMatches.length === 0) return null;
-
-  type MentionCandidate = {
-    host: DesktopBridgeState['hosts'][number];
-    peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
-    label: { label: string; normalized: string; displayLabel: string };
-    targetKind: 'bridge-person' | 'bridge-agent';
-  };
-
-  const candidates = bridgeState.hosts.flatMap((host) => host.visiblePeers.flatMap((peer) => {
-    const isAgent = isBridgeAgentRuntime(peer.runtime);
-    const seen = new Set<string>();
-    const labels: MentionCandidate[] = [];
-    const pushLabel = (value: string | null | undefined, targetKind: MentionCandidate['targetKind']) => {
-      const displayLabel = value?.trim();
-      if (!displayLabel) return;
-      const label = mentionHandleForLabel(displayLabel, peer.nodeId);
-      const dedupeKey = `${targetKind}:${normalizeMentionLabel(label)}`;
-      if (seen.has(dedupeKey)) return;
-      seen.add(dedupeKey);
-      labels.push({
-        host,
-        peer,
-        targetKind,
-        label: { label, normalized: normalizeMentionLabel(label), displayLabel },
-      });
-    };
-
-    if (isAgent && peer.humanId?.trim()) {
-      pushLabel(peer.ownerName, 'bridge-person');
-    }
-    pushLabel(peer.displayName, isAgent ? 'bridge-agent' : 'bridge-person');
-    if (!isAgent) {
-      pushLabel(peer.ownerName, 'bridge-person');
-    }
-    pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
-    return labels;
-  }));
 
   for (const mention of mentionMatches) {
     const mentionStart = (mention.index ?? 0) + mention[1].length;
@@ -226,12 +273,21 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
     const leadingWhitespace = rawAfterAt.length - rawAfterAt.trimStart().length;
     const afterAt = rawAfterAt.trimStart();
     if (!afterAt) continue;
-    const match = candidates
-      .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.label.label))
-      .sort((left, right) => right.label.normalized.length - left.label.normalized.length)[0];
+
+    const safeMatches = candidates
+      .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.handle))
+      .sort((left, right) => right.normalizedHandle.length - left.normalizedHandle.length);
+
+    const legacyMatches = safeMatches.length > 0
+      ? []
+      : candidates.filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.displayLabel));
+
+    const legacyNormalizedKeys = new Set(legacyMatches.map((candidate) => `${candidate.targetKind}:${candidate.host.id}:${candidate.peer.nodeId}`));
+    const match = safeMatches[0] ?? (legacyNormalizedKeys.size === 1 ? legacyMatches[0] : null);
     if (!match) continue;
 
-    let mentionEnd = mentionStart + 1 + leadingWhitespace + match.label.label.length;
+    const matchedLabel = safeMatches.length > 0 ? match.handle : match.displayLabel;
+    let mentionEnd = mentionStart + 1 + leadingWhitespace + matchedLabel.length;
     if (/[:;,.!?—-]/.test(text[mentionEnd] ?? '')) {
       mentionEnd += 1;
     }
@@ -241,8 +297,8 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
     return {
       host: match.host,
       peer: match.peer,
-      label: match.label.label,
-      displayLabel: match.label.displayLabel,
+      label: match.handle,
+      displayLabel: match.displayLabel,
       targetKind: match.targetKind,
       requestText,
     };
