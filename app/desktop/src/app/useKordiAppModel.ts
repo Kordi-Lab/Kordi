@@ -17,6 +17,7 @@ import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonical
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
+import { mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -66,7 +67,7 @@ type MentionQuery = {
 };
 
 function currentMentionQuery(text: string): MentionQuery | null {
-  const match = /(^|\s)@([^@\n\r]*)$/.exec(text);
+  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(text);
   if (!match) return null;
   const raw = match[2];
   if (raw.length > 96) return null;
@@ -350,18 +351,20 @@ export function useKordiAppModel() {
       const localAgentLabel = ownerName
         ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
         : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
+      const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
       pushOption({
-        value: localAgentLabel,
-        label: localAgentLabel,
+        value: localAgentHandle,
+        label: localAgentHandle,
         detail: [
           'My agent',
+          localAgentLabel !== localAgentHandle ? localAgentLabel : null,
           activeAgent?.id ? `agent ${activeAgent.id}` : null,
           activeAgent?.nodeId ? `node ${activeAgent.nodeId}` : null,
           activeAgent?.runtime,
         ].filter((value): value is string => Boolean(value)).join(' • '),
         targetKind: 'bridge-agent',
         bridgeHostId: activeHost?.id ?? 'local',
-        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentLabel}`,
+        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
         runtime: activeAgent?.runtime ?? 'kordi-local',
       });
     }
@@ -373,10 +376,11 @@ export function useKordiAppModel() {
         const agentLabel = peer.displayName?.trim() || owner || peer.nodeId;
 
         if (isAgent && peer.isDefaultAgent && owner && peer.humanId?.trim()) {
+          const ownerHandle = mentionHandleForLabel(owner, peer.humanId ?? peer.nodeId);
           pushOption({
-            value: owner,
-            label: owner,
-            detail: ['Bridge person', `Owns ${agentLabel}`, host.displayName || host.ownerName].filter(Boolean).join(' • '),
+            value: ownerHandle,
+            label: ownerHandle,
+            detail: ['Bridge person', owner !== ownerHandle ? owner : null, `Owns ${agentLabel}`, host.displayName || host.ownerName].filter(Boolean).join(' • '),
             targetKind: 'bridge-person',
             bridgeHostId: host.id,
             nodeId: peer.nodeId,
@@ -384,11 +388,13 @@ export function useKordiAppModel() {
           });
         }
 
+        const agentHandle = mentionHandleForLabel(agentLabel, peer.agentId ?? peer.nodeId);
         pushOption({
-          value: agentLabel,
-          label: agentLabel,
+          value: agentHandle,
+          label: agentHandle,
           detail: [
             isAgent ? 'Bridge agent' : 'Bridge person',
+            agentLabel !== agentHandle ? agentLabel : null,
             owner && owner !== agentLabel ? owner : null,
             host.displayName || host.ownerName,
             peer.runtime,

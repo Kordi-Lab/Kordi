@@ -23,7 +23,7 @@ export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | n
 
 export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeTarget) {
   return {
-    targetDisplayName: target.label,
+    targetDisplayName: target.displayLabel,
     targetOwnerName: target.peer.ownerName ?? null,
     targetRuntime: target.peer.runtime,
     targetHumanId: target.peer.humanId ?? null,
@@ -40,6 +40,15 @@ export function mentionedPersonIsActiveBridgeTarget(
   return target.peer.nodeId === activeTarget.nodeId;
 }
 
+
+function safeMentionCharacters(value: string) {
+  return value.normalize('NFKC').match(/[\p{L}\p{N}]+/gu)?.join('') ?? '';
+}
+
+export function mentionHandleForLabel(value: string, fallback = 'Participant') {
+  const handle = safeMentionCharacters(value) || safeMentionCharacters(fallback) || 'Participant';
+  return handle.slice(0, 64);
+}
 
 export function normalizeMentionLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -78,7 +87,7 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
 }
 
 export function localAgentMentionLabels(state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
-  return [
+  const labels = [
     'Kordi',
     state?.localAgent?.label,
     ...localBridgeAgentLabels(bridgeState),
@@ -86,9 +95,14 @@ export function localAgentMentionLabels(state: DesktopChatState | null, bridgeSt
       const parts = state?.localAgent?.workspaceRoot?.split(/[\\/]/).filter(Boolean) ?? [];
       return parts[parts.length - 1];
     })(),
-  ]
-    .map((label) => label?.trim())
-    .filter((label): label is string => Boolean(label));
+  ];
+
+  return Array.from(new Set(
+    labels
+      .map((label) => label?.trim())
+      .filter((label): label is string => Boolean(label))
+      .map((label) => mentionHandleForLabel(label, 'Kordi')),
+  ));
 }
 
 export function mentionsLocalAgent(text: string, state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
@@ -172,7 +186,7 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
   type MentionCandidate = {
     host: DesktopBridgeState['hosts'][number];
     peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
-    label: { label: string; normalized: string };
+    label: { label: string; normalized: string; displayLabel: string };
     targetKind: 'bridge-person' | 'bridge-agent';
   };
 
@@ -181,8 +195,9 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
     const seen = new Set<string>();
     const labels: MentionCandidate[] = [];
     const pushLabel = (value: string | null | undefined, targetKind: MentionCandidate['targetKind']) => {
-      const label = value?.trim();
-      if (!label) return;
+      const displayLabel = value?.trim();
+      if (!displayLabel) return;
+      const label = mentionHandleForLabel(displayLabel, peer.nodeId);
       const dedupeKey = `${targetKind}:${normalizeMentionLabel(label)}`;
       if (seen.has(dedupeKey)) return;
       seen.add(dedupeKey);
@@ -190,7 +205,7 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
         host,
         peer,
         targetKind,
-        label: { label, normalized: normalizeMentionLabel(label) },
+        label: { label, normalized: normalizeMentionLabel(label), displayLabel },
       });
     };
 
@@ -227,6 +242,7 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
       host: match.host,
       peer: match.peer,
       label: match.label.label,
+      displayLabel: match.label.displayLabel,
       targetKind: match.targetKind,
       requestText,
     };
@@ -237,7 +253,7 @@ export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopB
 
 export function insertMentionIntoDraft(current: string, label: string) {
   const mention = `@${label}`;
-  const match = /(^|\s)@([^@\n\r]*)$/.exec(current);
+  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(current);
   if (match && typeof match.index === 'number') {
     return `${current.slice(0, match.index)}${match[1]}${mention} `;
   }
