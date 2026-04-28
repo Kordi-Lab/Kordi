@@ -1118,7 +1118,14 @@
   background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
 }
 
+.app-agents-page {
+  container: agents-page / inline-size;
+}
+
 .app-agent-shell {
+  grid-template-areas: 'sidebar detail content';
+  grid-template-columns: minmax(252px, 296px) minmax(0, 0.94fr) minmax(0, 1.06fr);
+  grid-template-rows: minmax(0, 1fr);
   border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
   background: color-mix(in oklab, var(--app-divider) 92%, transparent);
   color: var(--utility-foreground);
@@ -1127,20 +1134,76 @@
 .app-agent-sidebar,
 .app-agent-detail-pane,
 .app-agent-content-pane {
+  min-width: 0;
   color: var(--utility-foreground);
 }
 
 .app-agent-sidebar {
+  grid-area: sidebar;
   background: color-mix(in oklab, var(--utility-card) 62%, var(--utility-background));
 }
 
 .app-agent-detail-pane {
+  grid-area: detail;
   background: color-mix(in oklab, var(--app-card-bg) 56%, var(--utility-background));
 }
 
 .app-agent-content-pane {
+  grid-area: content;
   border-left: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 72%, var(--utility-background));
+}
+
+.app-agent-support-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+@container agents-page (max-width: 1180px) {
+  .app-agent-shell {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@container agents-page (max-width: 900px) {
+  .app-agent-shell {
+    grid-template-columns: minmax(188px, 220px) minmax(0, 1fr) minmax(0, 1fr);
+    border-radius: 18px;
+  }
+}
+
+@container agents-page (max-width: 720px) {
+  .app-agent-shell {
+    grid-template-columns: minmax(160px, 188px) minmax(0, 0.98fr) minmax(0, 1.02fr);
+    border-radius: 14px;
+  }
+
+  .app-agent-panel-header {
+    padding: 14px 16px;
+  }
+
+  .app-agent-detail-pane [class*='px-5'],
+  .app-agent-content-pane [class*='px-5'] {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .app-agent-detail-pane [class*='py-5'],
+  .app-agent-content-pane [class*='py-5'] {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-agents-page {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 620px) {
+  .app-agents-page {
+    padding: 8px;
+  }
 }
 
 .app-agent-panel-header {
