@@ -31,6 +31,15 @@
     "build:rust": "cargo build --workspace",
     "check:rust": "cargo check --workspace",
     "test:rust": "cargo test --workspace",
+    "check:frontend": "pnpm --dir app/desktop typecheck && pnpm --dir app/desktop lint && pnpm --dir app/desktop build",
+    "check:rust:fmt": "cargo fmt --all -- --check",
+    "check:rust:clippy": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo clippy --workspace --all-targets -- -A clippy::never_loop",
+    "check:rust:test:core": "cargo test -p kordi-session && cargo test -p kordi-cli --lib && cargo test -p kordi-cli desktop_runtime --no-default-features",
+    "check:rust:test:desktop": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo test -p kordi-desktop --no-default-features",
+    "check:rust:test": "pnpm check:rust:test:core && pnpm check:rust:test:desktop",
+    "check:hygiene": "git diff --check",
+    "check:ci": "pnpm check:frontend && pnpm check:rust:fmt && pnpm check:rust:clippy && pnpm check:rust:test && pnpm check:hygiene",
+    "hooks:install": "bash scripts/setup-git-hooks.sh",
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust"
   }
 }
