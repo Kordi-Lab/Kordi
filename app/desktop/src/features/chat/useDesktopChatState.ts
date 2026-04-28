@@ -56,6 +56,49 @@ function liveTurnToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
   ].join('\u0000');
 }
 
+function longerLiveText(current: string, next: string) {
+  return next.length >= current.length ? next : current;
+}
+
+function mergeDesktopTurnToolSnapshot(
+  current: DesktopChatTurnSnapshot['tools'][number],
+  next: DesktopChatTurnSnapshot['tools'][number],
+): DesktopChatTurnSnapshot['tools'][number] {
+  return {
+    ...current,
+    ...next,
+    arguments: longerLiveText(current.arguments ?? '', next.arguments ?? ''),
+    liveOutput: longerLiveText(current.liveOutput ?? '', next.liveOutput ?? ''),
+    resultText: next.resultText || current.resultText,
+    detail: next.detail || current.detail,
+  };
+}
+
+function mergeDesktopTurnSnapshot(
+  current: DesktopChatTurnSnapshot | undefined,
+  next: DesktopChatTurnSnapshot,
+): DesktopChatTurnSnapshot {
+  if (!current || current.id !== next.id) return next;
+
+  const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
+  const nextToolIds = new Set(next.tools.map((tool) => tool.id));
+  const mergedTools = next.tools.map((tool) => {
+    const existing = currentToolsById.get(tool.id);
+    return existing ? mergeDesktopTurnToolSnapshot(existing, tool) : tool;
+  });
+
+  return {
+    ...current,
+    ...next,
+    assistantText: longerLiveText(current.assistantText, next.assistantText),
+    thinkingText: longerLiveText(current.thinkingText, next.thinkingText),
+    tools: [
+      ...mergedTools,
+      ...current.tools.filter((tool) => !nextToolIds.has(tool.id)),
+    ],
+  };
+}
+
 function normalizedTranscriptText(value?: string | null) {
   return (value ?? '').trim().replace(/\s+/g, ' ');
 }
@@ -66,16 +109,44 @@ function liveTurnResponseText(turn: DesktopChatTurnSnapshot) {
     || (turn.completed ? normalizedTranscriptText(turn.message) : '');
 }
 
+function turnHasHistoricalArtifacts(turn: DesktopChatTurnSnapshot) {
+  return turn.thinkingText.trim().length > 0 || turn.tools.length > 0;
+}
+
 function desktopAssistantMessageMatchesTurn(message: DesktopChatMessage, turn: DesktopChatTurnSnapshot) {
   if (message.role !== 'assistant') return false;
   const turnText = liveTurnResponseText(turn);
-  return turnText.length > 0 && normalizedTranscriptText(message.text) === turnText;
+  if (turnText.length > 0 && normalizedTranscriptText(message.text) !== turnText) return false;
+  if (turnText.length === 0 && !turnHasHistoricalArtifacts(turn)) return false;
+
+  const turnThinking = normalizedTranscriptText(turn.thinkingText);
+  if (turnThinking.length > 0 && normalizedTranscriptText(message.thinkingText) !== turnThinking) {
+    return false;
+  }
+
+  if (turn.tools.length > 0 && (message.tools?.length ?? 0) < turn.tools.length) {
+    return false;
+  }
+
+  return true;
+}
+
+function desktopStateIncludesCompletedTurn(state: DesktopChatState, turn: DesktopChatTurnSnapshot) {
+  return state.activeSession.id === turn.sessionId
+    && state.activeSession.messages.some((message) => desktopAssistantMessageMatchesTurn(message, turn));
 }
 
 function transcriptMessageMatchesIncompleteLiveTurn(message: Message, turn: DesktopChatTurnSnapshot) {
   if (message.role !== 'owned-agent') return false;
   const turnText = liveTurnResponseText(turn);
-  return turnText.length > 0 && normalizedTranscriptText(message.text) === turnText;
+  if (turnText.length > 0 && normalizedTranscriptText(message.text) === turnText) return true;
+
+  const turnThinking = normalizedTranscriptText(turn.thinkingText);
+  if (turnThinking.length > 0 && normalizedTranscriptText(message.turn?.thinkingText) === turnThinking) {
+    return true;
+  }
+
+  return turn.tools.length > 0 && (message.turn?.tools.length ?? 0) >= turn.tools.length;
 }
 
 function suppressIncompleteLiveTurnEcho(messages: Message[], turn?: DesktopChatTurnSnapshot) {
@@ -214,15 +285,21 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   }, []);
 
   const commitLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot) => {
+    const mergedTurn = mergeDesktopTurnSnapshot(
+      desktopLiveTurnsBySessionRef.current[nextTurn.sessionId],
+      nextTurn,
+    );
     desktopLiveTurnsBySessionRef.current = {
       ...desktopLiveTurnsBySessionRef.current,
-      [nextTurn.sessionId]: nextTurn,
+      [mergedTurn.sessionId]: mergedTurn,
     };
-    setDesktopLiveTurnsBySession((current) => (
-      liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
-        ? { ...current, [nextTurn.sessionId]: nextTurn }
-        : current
-    ));
+    setDesktopLiveTurnsBySession((current) => {
+      const currentTurn = current[mergedTurn.sessionId];
+      const nextMergedTurn = mergeDesktopTurnSnapshot(currentTurn, mergedTurn);
+      return liveTurnSnapshotChanged(currentTurn, nextMergedTurn)
+        ? { ...current, [nextMergedTurn.sessionId]: nextMergedTurn }
+        : current;
+    });
   }, []);
 
   const scheduleLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot, options: { immediate?: boolean } = {}) => {
@@ -232,7 +309,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       return;
     }
 
-    pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId] = nextTurn;
+    pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId] = mergeDesktopTurnSnapshot(
+      pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId]
+        ?? desktopLiveTurnsBySessionRef.current[nextTurn.sessionId],
+      nextTurn,
+    );
     if (liveTurnCommitTimersRef.current[nextTurn.sessionId] !== undefined) return;
 
     liveTurnCommitTimersRef.current[nextTurn.sessionId] = window.setTimeout(() => {
@@ -288,6 +369,41 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     }
     setDesktopChatError(null);
   }, [clearUnreadForSession]);
+
+  const refreshCompletedDesktopTurnTranscript = useCallback(async (turn: DesktopChatTurnSnapshot) => {
+    const requestId = latestDesktopRefreshRequestRef.current + 1;
+    latestDesktopRefreshRequestRef.current = requestId;
+
+    const nextState = await fetchDesktopChatState(turn.sessionId);
+    if (!nextState) {
+      throw new Error('Unable to load completed transcript');
+    }
+    if (latestDesktopRefreshRequestRef.current !== requestId) {
+      throw new Error('Completed transcript refresh was superseded');
+    }
+    if (nextState.activeSessionId !== turn.sessionId) {
+      throw new Error('Completed transcript refresh returned another session');
+    }
+    if (!desktopStateIncludesCompletedTurn(nextState, turn)) {
+      throw new Error('Completed transcript is not available yet');
+    }
+
+    const mappedMessages = mapDesktopMessages(nextState.activeSessionId, nextState.activeSession.messages);
+    latestDesktopSessionIdRef.current = nextState.activeSessionId;
+    setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, false));
+    setCachedChatSessionMessages((current) => ({
+      ...current,
+      [nextState.activeSessionId]: mappedMessages,
+    }));
+    setCachedProjectSessionMessages((current) => ({
+      ...current,
+      [nextState.activeSessionId]: mappedMessages,
+    }));
+    if (visibleLocalSessionIdRef.current === nextState.activeSessionId) {
+      clearUnreadForSession(nextState.activeSessionId);
+    }
+    setDesktopChatError(null);
+  }, [clearUnreadForSession, mapDesktopMessages]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -544,6 +660,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
             // historical assistant message is appended/refreshed. Keep the last
             // incomplete snapshot visible until mergeCompletedDesktopTurn swaps
             // it atomically for the completed transcript message.
+            nextTurn = mergeDesktopTurnSnapshot(
+              mergeDesktopTurnSnapshot(
+                desktopLiveTurnsBySessionRef.current[nextTurn.sessionId],
+                pendingLiveTurnSnapshotsRef.current[nextTurn.sessionId] ?? nextTurn,
+              ),
+              nextTurn,
+            );
             clearScheduledLiveTurnSnapshot(nextTurn.sessionId);
           } else {
             scheduleLiveTurnSnapshot(nextTurn);
@@ -558,14 +681,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
         const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
 
-        if (isVisibleCompletedSession && !turnFailed && nextTurn.transcriptRefreshRequired) {
+        if (isVisibleCompletedSession && !turnFailed && (nextTurn.transcriptRefreshRequired || turnHasHistoricalArtifacts(nextTurn))) {
           try {
-            await refreshDesktopChat(nextTurn.sessionId);
+            await refreshCompletedDesktopTurnTranscript(nextTurn);
             removeLiveTurnSnapshot(nextTurn.sessionId);
             clearUnreadForSession(nextTurn.sessionId);
-          } catch (error) {
+          } catch {
             mergeCompletedDesktopTurn(nextTurn);
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to refresh compressed transcript');
           }
         } else {
           // Provider/request failures are part of the active conversation. Keep
@@ -587,7 +709,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshDesktopChat, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

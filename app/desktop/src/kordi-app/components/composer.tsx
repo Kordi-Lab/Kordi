@@ -215,7 +215,19 @@ export function ComposerMentionMenu({
 function composerThinkingLabel(value: string) {
   const normalized = value.trim().toLowerCase().replace(/[\s_-]/g, '');
   return composerThinkingOptions.find((option) => option.value.replace(/[\s_-]/g, '') === normalized)?.label
-    ?? (normalized === 'extrahigh' ? 'Extra High' : value);
+    ?? (normalized === 'auto' || normalized === 'thinking'
+      ? 'Default'
+      : normalized === 'extrahigh'
+        ? 'Extra High'
+        : value);
+}
+
+function fallbackComposerThinkingValue(levels: string[], requested: string) {
+  if (levels.includes(requested)) return requested;
+  if (levels.includes('off')) return 'off';
+  if (levels.includes('default')) return 'default';
+  if (levels.includes('medium')) return 'medium';
+  return levels[0] ?? requested;
 }
 
 function normalizeComposerProviderId(providerId: string) {
@@ -307,7 +319,8 @@ export function ComposerModelControls({
       ? filteredModelOptions
       : thinkingOptions;
   const selectedModel = selectedModelOption?.label ?? fallbackModelLabel;
-  const selectedThinkingLabel = composerThinkingLabel(selection.thinking);
+  const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
+  const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
 
   return (
     <div className="relative flex shrink-0 items-center gap-1.5">
@@ -411,7 +424,7 @@ export function ComposerModelControls({
               })
             ) : (
               activeOptions.map((option, index) => {
-                const isSelected = selection.model === option.value || selection.thinking === option.value;
+                const isSelected = selection.model === option.value || selectedThinkingValue === option.value;
                 return (
                   <Fragment key={option.value}>
                     <button

@@ -107,7 +107,9 @@ impl Provider for AnthropicProvider {
             body["tools"] = json!(tools);
         }
 
-        if let Some(ref thinking) = request.thinking {
+        if let Some(ref thinking) = request.thinking
+            && thinking.as_str() != "default"
+        {
             if supports_adaptive_thinking(&request.model) {
                 let effort = match thinking.as_str() {
                     "minimal" | "low" => "low",

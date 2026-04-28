@@ -11,12 +11,31 @@ import { stringValue } from './messageMapping';
 
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
 
+function transcriptTurnRichness(messages: Message[]) {
+  return messages.reduce(
+    (richness, message) => ({
+      thinkingLength: richness.thinkingLength + (message.turn?.thinkingText.trim().length ?? 0),
+      toolCount: richness.toolCount + (message.turn?.tools.length ?? 0),
+    }),
+    { thinkingLength: 0, toolCount: 0 },
+  );
+}
+
 export function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessages: Message[]) {
   if (canonicalMessages.length === 0) return false;
   const existingHasLiveTurn = existingMessages.some((message) => message.turn && !message.turn.completed);
   if (existingHasLiveTurn) {
     const canonicalHasLiveTurn = canonicalMessages.some((message) => message.turn && !message.turn.completed);
     if (!canonicalHasLiveTurn && canonicalMessages.length <= existingMessages.length) return false;
+  }
+
+  const existingRichness = transcriptTurnRichness(existingMessages);
+  const canonicalRichness = transcriptTurnRichness(canonicalMessages);
+  if (
+    existingRichness.thinkingLength > canonicalRichness.thinkingLength
+    || existingRichness.toolCount > canonicalRichness.toolCount
+  ) {
+    return false;
   }
 
   const placeholderOnly = existingMessages.length === 1

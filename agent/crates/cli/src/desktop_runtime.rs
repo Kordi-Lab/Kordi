@@ -1105,6 +1105,13 @@ pub fn delete_session_forever(session_id: &str) -> Result<()> {
     kordi_session::store::delete_session(&conn, session_id)
 }
 
+const OFF_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Off];
+const DEFAULT_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Default];
+const LOCAL_EFFORT_THINKING_LEVELS: [ThinkingLevel; 3] = [
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
 const STANDARD_THINKING_LEVELS: [ThinkingLevel; 5] = [
     ThinkingLevel::Off,
     ThinkingLevel::Minimal,
@@ -1121,6 +1128,15 @@ const XHIGH_THINKING_LEVELS: [ThinkingLevel; 6] = [
     ThinkingLevel::XHigh,
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThinkingControlMode {
+    OffOnly,
+    DefaultOnly,
+    LocalEffort,
+    Standard,
+    XHigh,
+}
+
 fn normalized_model_capability_id(model: &Model) -> String {
     [
         model.provider.as_str(),
@@ -1132,13 +1148,76 @@ fn normalized_model_capability_id(model: &Model) -> String {
     .replace([' ', '_'], "-")
 }
 
-fn model_supports_reasoning_controls(model: &Model) -> bool {
-    model.reasoning
+fn normalized_local_provider_id(provider: &str) -> String {
+    login::normalize_provider_for_model_selection(provider)
+}
+
+fn is_ollama_model(model: &Model) -> bool {
+    normalized_local_provider_id(&model.provider) == "ollama"
+}
+
+fn local_model_matches_any(model: &Model, needles: &[&str]) -> bool {
+    let id = normalized_model_capability_id(model);
+    needles.iter().any(|needle| id.contains(needle))
+}
+
+// Ollama documents GPT-OSS as the local family with tunable `think` levels
+// (`low`/`medium`/`high`) and no fully disabled mode. Other known local
+// thinking families only expose a provider/model default in Kordi so we avoid
+// presenting unsupported effort controls.
+fn local_model_supports_effort_levels(model: &Model) -> bool {
+    if !is_ollama_model(model) {
+        return false;
+    }
+    local_model_matches_any(model, &["gpt-oss", "gptoss"])
+}
+
+fn local_model_supports_default_thinking(model: &Model) -> bool {
+    local_model_matches_any(
+        model,
+        &[
+            "thinking",
+            "reasoning",
+            "reasoner",
+            "qwen3",
+            "qwen-3",
+            "qwq",
+            "deepseek-r1",
+            "deepseek-v3.1",
+            "deepseek-v3-1",
+            "deepseek-v31",
+            "gemma-3n",
+            "gemma3n",
+            "gemma-4",
+            "gemma4",
+            "magistral",
+            "phi-4-reasoning",
+            "phi4-reasoning",
+            "seed-oss",
+            "seedoss",
+            "glm-z1",
+            "glmz1",
+        ],
+    ) || (!is_ollama_model(model) && local_model_matches_any(model, &["gpt-oss", "gptoss"]))
+        || model.reasoning
+}
+
+fn local_thinking_control_mode(model: &Model) -> Option<ThinkingControlMode> {
+    if !login::is_local_openai_provider(&model.provider) {
+        return None;
+    }
+
+    if local_model_supports_effort_levels(model) {
+        Some(ThinkingControlMode::LocalEffort)
+    } else if local_model_supports_default_thinking(model) {
+        Some(ThinkingControlMode::DefaultOnly)
+    } else {
+        Some(ThinkingControlMode::OffOnly)
+    }
 }
 
 fn supports_xhigh(model: &Model) -> bool {
-    if !model_supports_reasoning_controls(model) || login::is_local_openai_provider(&model.provider)
-    {
+    if !model.reasoning || login::is_local_openai_provider(&model.provider) {
         return false;
     }
 
@@ -1154,13 +1233,27 @@ fn supports_xhigh(model: &Model) -> bool {
             && (id.contains("v4-pro") || id.contains("v4pro") || id.contains("v4/pro")))
 }
 
-fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel] {
-    if !model_supports_reasoning_controls(model) {
-        &[ThinkingLevel::Off]
+fn thinking_control_mode_for_model(model: &Model) -> ThinkingControlMode {
+    if let Some(mode) = local_thinking_control_mode(model) {
+        return mode;
+    }
+
+    if !model.reasoning {
+        ThinkingControlMode::OffOnly
     } else if supports_xhigh(model) {
-        &XHIGH_THINKING_LEVELS
+        ThinkingControlMode::XHigh
     } else {
-        &STANDARD_THINKING_LEVELS
+        ThinkingControlMode::Standard
+    }
+}
+
+fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel] {
+    match thinking_control_mode_for_model(model) {
+        ThinkingControlMode::OffOnly => &OFF_ONLY_THINKING_LEVELS,
+        ThinkingControlMode::DefaultOnly => &DEFAULT_ONLY_THINKING_LEVELS,
+        ThinkingControlMode::LocalEffort => &LOCAL_EFFORT_THINKING_LEVELS,
+        ThinkingControlMode::Standard => &STANDARD_THINKING_LEVELS,
+        ThinkingControlMode::XHigh => &XHIGH_THINKING_LEVELS,
     }
 }
 
@@ -1185,15 +1278,26 @@ pub fn desktop_thinking_levels_for_model_id(
     desktop_thinking_levels_for_model(&model)
 }
 
-fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
-    if !available_thinking_levels_for_model(model).contains(&requested) {
-        if requested == ThinkingLevel::XHigh && model_supports_reasoning_controls(model) {
-            ThinkingLevel::High
-        } else {
-            ThinkingLevel::Off
-        }
+fn fallback_thinking_for_levels(levels: &[ThinkingLevel]) -> ThinkingLevel {
+    if levels.contains(&ThinkingLevel::Off) {
+        ThinkingLevel::Off
+    } else if levels.contains(&ThinkingLevel::Default) {
+        ThinkingLevel::Default
+    } else if levels.contains(&ThinkingLevel::Medium) {
+        ThinkingLevel::Medium
     } else {
+        levels.first().copied().unwrap_or(ThinkingLevel::Off)
+    }
+}
+
+fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
+    let levels = available_thinking_levels_for_model(model);
+    if levels.contains(&requested) {
         requested
+    } else if requested == ThinkingLevel::XHigh && levels.contains(&ThinkingLevel::High) {
+        ThinkingLevel::High
+    } else {
+        fallback_thinking_for_levels(levels)
     }
 }
 
@@ -1207,9 +1311,12 @@ fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
 fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
     let requested = ThinkingLevel::parse(thinking_level).unwrap_or(ThinkingLevel::Off);
     let effective = effective_thinking_for_model(requested, model);
-    effective
-        .reasoning_enabled()
-        .then(|| effective.as_str().to_string())
+    match effective {
+        ThinkingLevel::Off | ThinkingLevel::Default => None,
+        other => other
+            .reasoning_enabled()
+            .then(|| other.as_str().to_string()),
+    }
 }
 
 fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
@@ -2604,6 +2711,7 @@ fn session_focus_subtitle(messages: &[DesktopChatMessage]) -> Option<String> {
 fn thinking_label(value: &str) -> String {
     match ThinkingLevel::parse(value) {
         Some(ThinkingLevel::Off) => "Off".to_string(),
+        Some(ThinkingLevel::Default) => "Default".to_string(),
         Some(ThinkingLevel::Minimal) => "Minimal".to_string(),
         Some(ThinkingLevel::Low) => "Low".to_string(),
         Some(ThinkingLevel::Medium) => "Medium".to_string(),
@@ -2773,14 +2881,47 @@ mod tests {
         );
 
         let local = test_model("lm-studio", "gpt-oss-20b", true);
-        assert_eq!(
-            desktop_thinking_levels_for_model(&local),
-            vec!["off", "minimal", "low", "medium", "high"]
-        );
+        assert_eq!(desktop_thinking_levels_for_model(&local), vec!["default"]);
         assert_eq!(
             effective_thinking_for_model(ThinkingLevel::XHigh, &local),
-            ThinkingLevel::High
+            ThinkingLevel::Default
         );
+    }
+
+    #[test]
+    fn local_thinking_models_expose_only_documented_controls() {
+        let qwen3 = test_model("ollama", "qwen3:30b", false);
+        assert_eq!(desktop_thinking_levels_for_model(&qwen3), vec!["default"]);
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::High, &qwen3),
+            ThinkingLevel::Default
+        );
+        assert_eq!(request_thinking_for_model("default", &qwen3), None);
+
+        let gpt_oss = test_model("ollama", "gpt-oss:20b", false);
+        assert_eq!(
+            desktop_thinking_levels_for_model(&gpt_oss),
+            vec!["low", "medium", "high"]
+        );
+        assert_eq!(
+            effective_thinking_for_model(ThinkingLevel::Off, &gpt_oss),
+            ThinkingLevel::Medium
+        );
+        assert_eq!(
+            request_thinking_for_model("high", &gpt_oss).as_deref(),
+            Some("high")
+        );
+
+        let lm_studio_r1 = test_model("lm-studio", "deepseek-r1-distill-qwen-7b", false);
+        assert_eq!(
+            desktop_thinking_levels_for_model(&lm_studio_r1),
+            vec!["default"]
+        );
+        assert_eq!(request_thinking_for_model("default", &lm_studio_r1), None);
+
+        let gemma = test_model("lm-studio", "google/gemma-4-e4b", false);
+        assert_eq!(desktop_thinking_levels_for_model(&gemma), vec!["default"]);
+        assert_eq!(request_thinking_for_model("off", &gemma), None);
     }
 
     #[test]

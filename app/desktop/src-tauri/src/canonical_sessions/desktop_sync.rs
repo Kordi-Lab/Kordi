@@ -5,7 +5,7 @@ use super::message_reconcile;
 use super::models::{AppendCanonicalMessageRequest, OpenCanonicalSessionRequest};
 use super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::{
-    append_message_in_db, local_agent_identity_id, local_profile_human_identity_id, open_db,
+    local_agent_identity_id, local_profile_human_identity_id, open_db,
     open_or_create_session_in_db, select_session, similar_agent_message_exists,
 };
 
@@ -118,7 +118,7 @@ fn sync_desktop_chat_message(
             "timeLabel": message.time_label,
             "timestampMs": message.timestamp_ms,
             "attachments": message.attachments,
-            "thinkingText": null,
+            "thinkingText": message.thinking_text.as_deref(),
             "tools": message.tools,
         })),
         created_at_ms: Some(message.timestamp_ms),
@@ -130,16 +130,16 @@ fn sync_desktop_chat_message(
             session_id, index, message,
         )),
     };
-    if is_user {
-        message_reconcile::append_or_reconcile_message_from_sync(
-            conn,
-            request,
-            "desktop-chat-ui",
-            5_000,
-        )?;
-    } else {
-        append_message_in_db(conn, request)?;
-    };
+    message_reconcile::append_or_reconcile_message_from_sync(
+        conn,
+        request,
+        if is_user {
+            "desktop-chat-ui"
+        } else {
+            "desktop-chat"
+        },
+        5_000,
+    )?;
     Ok(())
 }
 

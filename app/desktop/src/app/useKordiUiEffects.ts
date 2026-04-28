@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
@@ -155,13 +155,17 @@ export function useKordiUiEffects({
       setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
       setIsEditingDesktopSessionTitle(false);
     }
+    const shouldSyncChatSelection = !isLocalDraftChatConversationId(activeConvId)
+      || isLocalDraftChatConversationId(desktopChatState.activeSessionId);
     setComposerSelections((current) => ({
       ...current,
-      chat: {
-        ...current.chat,
-        model: matchingModelValue,
-        thinking: desktopChatState.activeSession.thinking,
-      },
+      chat: shouldSyncChatSelection
+        ? {
+            ...current.chat,
+            model: matchingModelValue,
+            thinking: desktopChatState.activeSession.thinking,
+          }
+        : current.chat,
       project: {
         ...current.project,
         model: desktopChatState.activeSessionId === activeProjectSessionId ? matchingModelValue : current.project.model,
@@ -170,6 +174,7 @@ export function useKordiUiEffects({
     }));
   }, [
     activeConversationIsBridge,
+    activeConvId,
     activeProjectSessionId,
     desktopChatState?.activeSession,
     desktopChatState?.activeSessionId,

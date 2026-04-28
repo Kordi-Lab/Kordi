@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 
+import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { storeDesktopChatAttachment, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
-import { isProjectDraftSessionId } from './draftSessions';
+import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
   formatDesktopEventTime,
@@ -25,6 +26,7 @@ import type {
 type UseComposerInputActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
+  | 'activeConvId'
   | 'activeProjectSessionId'
   | 'desktopChatState'
   | 'composerSelections'
@@ -152,6 +154,7 @@ function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[])
 
 export function useComposerInputActions({
   isNativeShell,
+  activeConvId,
   activeProjectSessionId,
   desktopChatState,
   composerSelections,
@@ -200,7 +203,13 @@ export function useComposerInputActions({
     }));
     setOpenComposerSelector(null);
 
-    const targetSessionId = scope === 'project' ? activeProjectSessionId : desktopChatState?.activeSessionId;
+    const targetSessionId = scope === 'project'
+      ? activeProjectSessionId
+      : isLocalDraftChatConversationId(activeConvId)
+        ? activeConvId
+        : activeConvId && !activeConvId.startsWith('bridge:') && !isCanonicalBridgeSessionId(activeConvId)
+          ? activeConvId
+          : desktopChatState?.activeSessionId;
     if (isNativeShell && targetSessionId && !isProjectDraftSessionId(targetSessionId)) {
       try {
         setDesktopChatError(null);
@@ -231,6 +240,7 @@ export function useComposerInputActions({
       }
     }
   }, [
+    activeConvId,
     activeProjectSessionId,
     chatModelOptions,
     composerSelections,

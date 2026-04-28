@@ -19,6 +19,26 @@ import {
 
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
 
+function draftDesktopChatState(current: DesktopChatState | null): DesktopChatState | null {
+  if (!current) return current;
+  return {
+    ...current,
+    activeSessionId: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+    activeSession: {
+      ...current.activeSession,
+      id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+      title: 'New session',
+      subtitle: '',
+      updatedAtLabel: 'Draft',
+      messageCount: 0,
+      draft: true,
+      cacheMonitorText: null,
+      project: null,
+      messages: [],
+    },
+  };
+}
+
 type UseDesktopSessionControllerArgs = {
   isNativeShell: boolean;
   activeConversationIsBridge: boolean;
@@ -98,10 +118,11 @@ export function useDesktopSessionController({
     setDesktopChatError(null);
     setPendingUserChatMessage(null);
     setActiveConvId(LOCAL_DRAFT_CHAT_CONVERSATION_ID);
+    setDesktopChatState((current) => draftDesktopChatState(current));
     setComposerDrafts((current) => ({ ...current, chat: '' }));
     setChatComposerAttachments([]);
     void prepareDesktopChatDraftSession().catch(() => {});
-  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleSelectProjectSession = useCallback(async (projectId: string, sessionId: string) => {
     shouldAutoFollowChatRef.current = true;
