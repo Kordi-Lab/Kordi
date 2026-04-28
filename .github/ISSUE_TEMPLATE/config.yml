@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Search existing issues first
+    url: https://github.com/Kordi-AI/Kordi/issues?q=is%3Aissue
+    about: Before creating a new issue, search open and closed issues to avoid duplicates and link related work.
   - name: Kordi project board
     url: https://github.com/orgs/Kordi-AI/projects/2
     about: Track issue status, tier, area, and active PR progress on the Kordi board.

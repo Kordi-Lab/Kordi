@@ -2,7 +2,15 @@
 
 <!-- What changed, and why? Keep this focused on the linked issue. -->
 
-## Linked issue
+## Required issue check
+
+Every PR must be connected to an issue. If no issue exists yet, create the issue first so requirements stay outside the PR.
+
+- [ ] I found and read the related issue before opening this PR.
+- [ ] If no suitable issue existed, I created one first.
+- [ ] This PR matches the issue acceptance criteria, or I updated/commented on the issue to explain the scope change.
+
+Linked issue, using one of `Closes #123`, `Fixes #123`, `Resolves #123`, `Refs #123`, or an issue URL:
 
 Closes #<!-- issue number -->
 

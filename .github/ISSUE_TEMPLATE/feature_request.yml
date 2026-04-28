@@ -8,6 +8,16 @@ body:
       value: |
         Feature issues are the source of truth for scope. Capture the user goal, MVP, and acceptance criteria before implementation starts.
   - type: textarea
+    id: existing_issue_search
+    attributes:
+      label: Existing issue search
+      description: Search open and closed issues before creating a new one. Link related issues, or write the search terms you tried and "no matching issue found".
+      placeholder: |
+        Searched: "image output", "chat images", "artifact preview"
+        Related issues: #100
+    validations:
+      required: true
+  - type: textarea
     id: summary
     attributes:
       label: Summary
@@ -112,7 +122,7 @@ body:
     attributes:
       label: Reporter checklist
       options:
-        - label: I searched existing issues and PRs first.
+        - label: I searched existing open and closed issues before creating this issue.
           required: true
         - label: I included enough acceptance criteria for implementation or planning.
           required: true

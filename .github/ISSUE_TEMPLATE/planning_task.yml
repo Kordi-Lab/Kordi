@@ -8,6 +8,16 @@ body:
       value: |
         Use this when the next useful step is research, design shaping, architecture, or issue breakdown rather than immediate code.
   - type: textarea
+    id: existing_issue_search
+    attributes:
+      label: Existing issue search
+      description: Search open and closed issues before creating a new one. Link related issues, or write the search terms you tried and "no matching issue found".
+      placeholder: |
+        Searched: "remote environment", "SSH workspace", "environment switching"
+        Related issues: #2
+    validations:
+      required: true
+  - type: textarea
     id: question
     attributes:
       label: Planning question

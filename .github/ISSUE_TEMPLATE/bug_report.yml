@@ -8,6 +8,16 @@ body:
       value: |
         Thanks for filing a bug. Please keep the issue focused and attach logs/screenshots when they help reproduce the problem.
   - type: textarea
+    id: existing_issue_search
+    attributes:
+      label: Existing issue search
+      description: Search open and closed issues before creating a new one. Link related issues, or write the search terms you tried and "no matching issue found".
+      placeholder: |
+        Searched: "stuck composer", "output state", "context usage"
+        Related issues: #109
+    validations:
+      required: true
+  - type: textarea
     id: problem
     attributes:
       label: Problem
@@ -89,7 +99,7 @@ body:
     attributes:
       label: Reporter checklist
       options:
-        - label: I searched existing issues and PRs first.
+        - label: I searched existing open and closed issues before creating this issue.
           required: true
         - label: I removed secrets, API keys, private tokens, and passphrases from logs/screenshots.
           required: true
