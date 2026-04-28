@@ -305,7 +305,7 @@ export function LmStudioModelControlCenter({
     action: LmStudioAction,
     run: () => Promise<DesktopLmStudioCommandResult>,
     successPrefix: string,
-    onSuccess?: () => void,
+    onSuccess?: () => void | Promise<void>,
   ) => {
     try {
       setActiveAction(action);
@@ -313,7 +313,7 @@ export function LmStudioModelControlCenter({
       setActionMessage(`${successPrefix}…`);
       const result = await run();
       setActionMessage(resultSummary(result));
-      onSuccess?.();
+      await Promise.resolve(onSuccess?.());
       if (action.startsWith('get:') || action.startsWith('remove:')) {
         void refreshInstalledModels();
       }
@@ -434,24 +434,28 @@ export function LmStudioModelControlCenter({
     return nextStatus?.running ?? false;
   };
 
-  const saveConnection = async (preferredModelId?: string | null) => {
+  const saveLmStudioModelPreference = async (preferredModelId?: string | null) => {
     const parsedPort = Number(port);
     if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
-      setActionMessage(null);
-      setActionError('LM Studio port must be between 1 and 65535.');
-      return;
+      throw new Error('LM Studio port must be between 1 and 65535.');
     }
 
+    const selectedModelId = preferredModelId ?? firstRunningModelId();
+    const serverReady = await ensureLocalServerRunning();
+    if (!serverReady) {
+      throw new Error('LM Studio has a loaded model, but its local server is not running. Start the local server, then save again.');
+    }
+
+    await setDesktopLocalProviderPort('lm-studio', parsedPort, selectedModelId);
+    await Promise.resolve(onRefreshAuth());
+    return selectedModelId;
+  };
+
+  const saveConnection = async (preferredModelId?: string | null) => {
     try {
       setIsSavingConnection(true);
       setActionError(null);
-      const selectedModelId = preferredModelId ?? firstRunningModelId();
-      const serverReady = await ensureLocalServerRunning();
-      if (!serverReady) {
-        throw new Error('LM Studio has a loaded model, but its local server is not running. Start the local server, then save again.');
-      }
-      await setDesktopLocalProviderPort('lm-studio', parsedPort, selectedModelId);
-      await Promise.resolve(onRefreshAuth());
+      const selectedModelId = await saveLmStudioModelPreference(preferredModelId);
       setActionMessage(onEnterChat || onSaved ? 'LM Studio saved. Opening chat…' : 'LM Studio connection saved.');
       if (onEnterChat) await onEnterChat(selectedModelId ? `lm-studio/${selectedModelId}` : undefined);
       else onSaved?.();
@@ -496,7 +500,11 @@ export function LmStudioModelControlCenter({
       `load:${modelId}`,
       () => loadLmStudioModelDesktop(modelId),
       `Running ${modelId}`,
-      () => setRunningVariantIds((current) => new Set(current).add(modelId)),
+      async () => {
+        setRunningVariantIds((current) => new Set(current).add(modelId));
+        await saveLmStudioModelPreference(modelId);
+        setActionMessage(`Running and saved LM Studio with ${modelId}.`);
+      },
     );
   };
 
@@ -675,6 +683,15 @@ export function LmStudioModelControlCenter({
               </div>
             </div>
             <div className="mt-3 flex flex-wrap justify-end gap-1.5">
+              {activeRunningModelId ? (
+                <AuthActionButton
+                  className={modelControlPrimaryClass}
+                  onClick={() => void saveConnection(activeRunningModelId)}
+                  disabled={isSavingConnection || Boolean(activeAction)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {isSavingConnection ? 'Saving…' : onEnterChat || onSaved ? 'Save & enter chat' : 'Save model'}
+                </AuthActionButton>
+              ) : null}
               <AuthActionButton
                 className={modelControlNeutralClass}
                 onClick={() => {
