@@ -103,6 +103,7 @@ function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefined, righ
     || left.completed !== right.completed
     || left.succeeded !== right.succeeded
     || left.error !== right.error
+    || Boolean(left.transcriptRefreshRequired) !== Boolean(right.transcriptRefreshRequired)
     || left.tools.length !== right.tools.length
   ) {
     return true;
@@ -213,6 +214,10 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   }, []);
 
   const commitLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot) => {
+    desktopLiveTurnsBySessionRef.current = {
+      ...desktopLiveTurnsBySessionRef.current,
+      [nextTurn.sessionId]: nextTurn,
+    };
     setDesktopLiveTurnsBySession((current) => (
       liveTurnSnapshotChanged(current[nextTurn.sessionId], nextTurn)
         ? { ...current, [nextTurn.sessionId]: nextTurn }
@@ -538,12 +543,14 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
         const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
 
-        if (isVisibleCompletedSession && !turnFailed) {
-          // The visible transcript already has the final live-turn snapshot.
-          // Merge it locally instead of refetching the whole chat state, so a
-          // short response completion only swaps the live row into its final
-          // message and does not invalidate the surrounding page/detail rail.
-          mergeCompletedDesktopTurn(nextTurn);
+        if (isVisibleCompletedSession && !turnFailed && nextTurn.transcriptRefreshRequired) {
+          try {
+            await refreshDesktopChat(nextTurn.sessionId);
+            clearUnreadForSession(nextTurn.sessionId);
+          } catch (error) {
+            mergeCompletedDesktopTurn(nextTurn);
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to refresh compressed transcript');
+          }
         } else {
           // Provider/request failures are part of the active conversation. Keep
           // them inline in the transcript instead of promoting them to the
@@ -569,7 +576,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, mergeCompletedDesktopTurn, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshDesktopChat, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

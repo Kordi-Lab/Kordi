@@ -73,6 +73,7 @@ pub struct DesktopChatTurnSnapshot {
     pub completed: bool,
     pub succeeded: bool,
     pub error: Option<String>,
+    pub transcript_refresh_required: bool,
 }
 
 const TRANSIENT_LOCAL_DRAFT_SESSION_ID: &str = "draft:local-chat";
@@ -325,6 +326,14 @@ fn update_turn(
     if let Ok(mut guard) = snapshot.lock() {
         apply(&mut guard);
     }
+}
+
+fn is_auto_compaction_success_status(message: &str) -> bool {
+    message.starts_with("Auto-compacted session:")
+}
+
+fn is_auto_compaction_failure_status(message: &str) -> bool {
+    message.starts_with("Auto-compaction failed:")
 }
 
 fn turn_matches_running_session(
@@ -1552,6 +1561,7 @@ pub(crate) async fn run_bridge_agent_prompt(
         completed: false,
         succeeded: false,
         error: None,
+        transcript_refresh_required: false,
     }));
 
     let result = {
@@ -1654,6 +1664,7 @@ pub async fn desktop_chat_start_message(
         completed: false,
         succeeded: false,
         error: None,
+        transcript_refresh_required: false,
     }));
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -1718,21 +1729,25 @@ pub async fn desktop_chat_start_message(
                     TurnEvent::TurnStart { .. } => update_turn(&snapshot_for_task, |state| {
                         state.status = "streaming".to_string();
                         state.message = "Working…".to_string();
+                        state.error = None;
                     }),
                     TurnEvent::TextDelta(text) => update_turn(&snapshot_for_task, |state| {
                         state.status = "writing".to_string();
                         state.message = "Writing response…".to_string();
+                        state.error = None;
                         state.assistant_text.push_str(text);
                     }),
                     TurnEvent::ThinkingDelta(text) => update_turn(&snapshot_for_task, |state| {
                         state.status = "thinking".to_string();
                         state.message = "Thinking…".to_string();
+                        state.error = None;
                         state.thinking_text.push_str(text);
                     }),
                     TurnEvent::ToolCallStart { id, name } => {
                         update_turn(&snapshot_for_task, |state| {
                             state.status = "tooling".to_string();
                             state.message = "Working…".to_string();
+                            state.error = None;
                             state.tools.push(DesktopChatToolSnapshot {
                                 id: id.clone(),
                                 name: name.clone(),
@@ -1814,22 +1829,21 @@ pub async fn desktop_chat_start_message(
                     TurnEvent::AutoRetryEnd => update_turn(&snapshot_for_task, |state| {
                         state.status = "streaming".to_string();
                         state.message = "Retry complete. Continuing…".to_string();
+                        state.error = None;
                     }),
                     TurnEvent::AutoCompactionStart => update_turn(&snapshot_for_task, |state| {
                         state.status = "compacting".to_string();
                         state.message = "Compressing conversation…".to_string();
                     }),
-                    TurnEvent::Status(message)
-                        if message.starts_with("Auto-compacted session:") =>
-                    {
+                    TurnEvent::Status(message) if is_auto_compaction_success_status(message) => {
                         update_turn(&snapshot_for_task, |state| {
                             state.status = "compacted".to_string();
                             state.message = "Conversation compressed. Continuing…".to_string();
+                            state.error = None;
+                            state.transcript_refresh_required = true;
                         })
                     }
-                    TurnEvent::Status(message)
-                        if message.starts_with("Auto-compaction failed:") =>
-                    {
+                    TurnEvent::Status(message) if is_auto_compaction_failure_status(message) => {
                         update_turn(&snapshot_for_task, |state| {
                             state.status = "compaction_failed".to_string();
                             state.message = message.clone();
@@ -1935,6 +1949,22 @@ pub async fn desktop_chat_turn_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_compaction_status_detection_matches_turn_runner_messages() {
+        assert!(is_auto_compaction_success_status(
+            "Auto-compacted session: 10 summarized, 5 kept, 12345 tokens before"
+        ));
+        assert!(is_auto_compaction_failure_status(
+            "Auto-compaction failed: provider quota exceeded"
+        ));
+        assert!(!is_auto_compaction_success_status(
+            "Compacted session manually"
+        ));
+        assert!(!is_auto_compaction_failure_status(
+            "Auto-compacted session: ok"
+        ));
+    }
 
     #[test]
     fn local_agent_mentions_do_not_enable_bridge_outreach() {

@@ -113,6 +113,21 @@ fn test_extract_file_operations() {
 }
 
 #[test]
+fn extract_file_operations_ignores_html_and_shell_fragments() {
+    let messages = vec![make_assistant_msg(
+        "",
+        vec![(
+            "tc1",
+            "bash",
+            serde_json::json!({"command": "python3 - <<'PY'\nhtml='</div>'\nprint(html)\nPY\ncat page.html > cleaned.html\necho nope > </div>'\necho nope > ',start)"}),
+        )],
+    )];
+
+    let (_, modified) = extract_file_operations(&messages);
+    assert_eq!(modified, vec!["cleaned.html"]);
+}
+
+#[test]
 fn test_extract_file_operations_deduplicates() {
     let messages = vec![make_assistant_msg(
         "",

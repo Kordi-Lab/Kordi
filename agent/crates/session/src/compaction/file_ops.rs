@@ -20,13 +20,21 @@ pub fn extract_file_operations(messages: &[AgentMessage]) -> (Vec<String>, Vec<S
                 {
                     match name.as_str() {
                         "read" => {
-                            if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                                read_files.insert(path.to_string());
+                            if let Some(path) = arguments
+                                .get("path")
+                                .and_then(|v| v.as_str())
+                                .and_then(sanitize_file_operation_path)
+                            {
+                                read_files.insert(path);
                             }
                         }
                         "edit" | "write" => {
-                            if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                                modified_files.insert(path.to_string());
+                            if let Some(path) = arguments
+                                .get("path")
+                                .and_then(|v| v.as_str())
+                                .and_then(sanitize_file_operation_path)
+                            {
+                                modified_files.insert(path);
                             }
                         }
                         "bash" => {
@@ -49,13 +57,35 @@ pub fn extract_file_operations(messages: &[AgentMessage]) -> (Vec<String>, Vec<S
 }
 
 /// Best-effort extraction of modified files from bash commands.
+fn sanitize_file_operation_path(path: &str) -> Option<String> {
+    let trimmed = path
+        .trim()
+        .trim_matches(|ch| matches!(ch, '\'' | '"' | '`'))
+        .trim_end_matches(|ch| matches!(ch, ',' | ';'));
+    if trimmed.is_empty()
+        || trimmed.len() > 4096
+        || trimmed == "-"
+        || trimmed.starts_with('&')
+        || trimmed.starts_with('-')
+        || trimmed.starts_with(',')
+        || trimmed.contains("\n")
+        || trimmed.contains("://")
+        || trimmed
+            .chars()
+            .any(|ch| matches!(ch, '<' | '>' | '{' | '}' | '|' | '*' | '?' | '(' | ')'))
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
 fn extract_bash_file_ops(cmd: &str, modified: &mut HashSet<String>) {
     // Detect redirect operators: > file, >> file
     for part in cmd.split_whitespace() {
         if part.starts_with('>') {
             let file = part.trim_start_matches('>');
-            if !file.is_empty() {
-                modified.insert(file.to_string());
+            if let Some(file) = sanitize_file_operation_path(file) {
+                modified.insert(file);
             }
         }
     }
@@ -67,11 +97,12 @@ fn extract_bash_file_ops(cmd: &str, modified: &mut HashSet<String>) {
             let rest = &cmd[i + 1..];
             let rest = rest.trim_start_matches('>');
             let rest = rest.trim_start();
-            if let Some(file) = rest.split_whitespace().next()
-                && !file.is_empty()
-                && !file.starts_with('&')
+            if let Some(file) = rest
+                .split_whitespace()
+                .next()
+                .and_then(sanitize_file_operation_path)
             {
-                modified.insert(file.to_string());
+                modified.insert(file);
             }
         }
     }
@@ -85,7 +116,9 @@ fn extract_bash_file_ops(cmd: &str, modified: &mut HashSet<String>) {
             if token.starts_with('-') {
                 continue;
             }
-            modified.insert(token.to_string());
+            if let Some(path) = sanitize_file_operation_path(token) {
+                modified.insert(path);
+            }
             break;
         }
     }
