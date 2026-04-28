@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Kordi project board
+    url: https://github.com/orgs/Kordi-AI/projects/2
+    about: Track issue status, tier, area, and active PR progress on the Kordi board.
+  - name: Discussions / questions
+    url: https://github.com/Kordi-AI/Kordi/issues/new?template=planning_task.yml
+    about: Use a planning task when the work needs design, investigation, or product direction before implementation.

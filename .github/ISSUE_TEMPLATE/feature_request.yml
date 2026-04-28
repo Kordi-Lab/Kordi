@@ -1,0 +1,118 @@
+name: Feature request
+description: Propose a product capability or enhancement.
+title: "Feature: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature issues are the source of truth for scope. Capture the user goal, MVP, and acceptance criteria before implementation starts.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the capability in one or two paragraphs.
+      placeholder: Add image outputs in chat and project sessions...
+    validations:
+      required: true
+  - type: textarea
+    id: user_goal
+    attributes:
+      label: User goal / problem
+      description: What user need does this solve? Why does it matter now?
+      placeholder: As a Kordi user, I want...
+    validations:
+      required: true
+  - type: textarea
+    id: desired_ux
+    attributes:
+      label: Desired UX
+      description: Describe the expected user flow, UI states, and important edge cases.
+      placeholder: |
+        - User opens ...
+        - Kordi shows ...
+        - If ... fails, Kordi should ...
+  - type: textarea
+    id: mvp
+    attributes:
+      label: MVP scope
+      description: What should the first useful version include?
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope for MVP:
+        - ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the closest area for project-board triage.
+      options:
+        - Desktop
+        - Chat
+        - Agents
+        - Projects
+        - Collaboration
+        - Models
+        - Remote
+        - Infra
+        - Design
+        - Unknown / needs triage
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier suggestion
+      description: Use this to suggest project-board tier; maintainers may adjust.
+      options:
+        - T0 - urgent / blocking
+        - T1 - high priority near-term product loop
+        - T2 - planned roadmap item
+        - T3 - longer-term polish or exploration
+    validations:
+      required: true
+  - type: textarea
+    id: technical_direction
+    attributes:
+      label: Technical direction / affected layers
+      description: List likely files, crates, APIs, data model changes, or architecture concerns if known.
+      placeholder: |
+        Likely areas:
+        - app/desktop/...
+        - agent/crates/...
+        - shared protocol / session model / settings
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use checkboxes so the PR can clearly close the issue.
+      placeholder: |
+        - [ ] User can ...
+        - [ ] UI clearly shows ...
+        - [ ] Tests or manual validation cover ...
+    validations:
+      required: true
+  - type: textarea
+    id: followups
+    attributes:
+      label: Follow-ups / non-goals
+      description: Capture useful future work separately from MVP scope.
+      placeholder: |
+        Nice to have later:
+        - ...
+
+        Non-goals:
+        - ...
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I searched existing issues and PRs first.
+          required: true
+        - label: I included enough acceptance criteria for implementation or planning.
+          required: true

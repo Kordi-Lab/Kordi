@@ -1,0 +1,88 @@
+name: Planning / design task
+description: Track investigation, architecture, design shaping, or scope breakdown before implementation.
+title: "Planning: "
+labels: ["planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the next useful step is research, design shaping, architecture, or issue breakdown rather than immediate code.
+  - type: textarea
+    id: question
+    attributes:
+      label: Planning question
+      description: What decision, design, or scope needs to be clarified?
+      placeholder: How should Kordi model active environments across local and SSH workspaces?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Link related issues/PRs/docs and summarize what is already known.
+      placeholder: |
+        Related:
+        - #...
+
+        Known constraints:
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options to evaluate
+      description: List candidate approaches or trade-offs.
+      placeholder: |
+        Option A:
+        - Pros:
+        - Cons:
+
+        Option B:
+        - Pros:
+        - Cons:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop
+        - Chat
+        - Agents
+        - Projects
+        - Collaboration
+        - Models
+        - Remote
+        - Infra
+        - Design
+        - Unknown / needs triage
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier suggestion
+      options:
+        - T0 - urgent / blocking
+        - T1 - high priority near-term product loop
+        - T2 - planned roadmap item
+        - T3 - longer-term polish or exploration
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output
+      description: What artifact should close this planning task?
+      placeholder: |
+        - [ ] Decision recorded in this issue
+        - [ ] Follow-up implementation issues opened
+        - [ ] Project board updated with status/tier/area
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / open questions
+      placeholder: |
+        - ...

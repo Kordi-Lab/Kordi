@@ -1,0 +1,95 @@
+name: Bug report
+description: Report broken behavior, regressions, crashes, or incorrect output.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please keep the issue focused and attach logs/screenshots when they help reproduce the problem.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What went wrong? What user flow is affected?
+      placeholder: The desktop composer stays in a running state after...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+      placeholder: The turn should fail or complete cleanly, and the composer should become usable again.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include the shortest known path to reproduce. If not reproducible, describe what was happening before the bug appeared.
+      placeholder: |
+        1. Open Kordi desktop
+        2. Select session/project ...
+        3. Send prompt ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the closest area for project-board triage.
+      options:
+        - Desktop
+        - Chat
+        - Agents
+        - Projects
+        - Collaboration
+        - Models
+        - Remote
+        - Infra
+        - Design
+        - Unknown / needs triage
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity / tier suggestion
+      description: Use this to suggest project-board tier; maintainers may adjust.
+      options:
+        - T0 - user-blocking / data loss / cannot continue
+        - T1 - important near-term bug
+        - T2 - planned fix / workaround exists
+        - T3 - polish / low impact
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots, or affected IDs
+      description: Paste relevant logs, screenshots, session IDs, model/provider names, storage paths, or environment details. Do not include secrets.
+      placeholder: |
+        Session ID:
+        Provider/model:
+        Logs:
+        Screenshot:
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true before this can close?
+      placeholder: |
+        - [ ] The failure path exits running state
+        - [ ] Context/session state is refreshed after resume
+        - [ ] Regression test or manual QA note added
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I searched existing issues and PRs first.
+          required: true
+        - label: I removed secrets, API keys, private tokens, and passphrases from logs/screenshots.
+          required: true
