@@ -16,13 +16,14 @@ pub(super) fn resolve_codex_url(base_url: &str) -> String {
     }
 }
 
-pub(super) fn codex_reasoning_effort(thinking: &str) -> &'static str {
+pub(super) fn codex_reasoning_effort(thinking: &str) -> Option<&'static str> {
     match thinking {
-        "off" => "none",
-        "low" | "minimal" => "low",
-        "medium" => "medium",
-        "high" | "xhigh" => "high",
-        _ => "medium",
+        "default" => None,
+        "off" => Some("none"),
+        "low" | "minimal" => Some("low"),
+        "medium" => Some("medium"),
+        "high" | "xhigh" => Some("high"),
+        _ => Some("medium"),
     }
 }
 

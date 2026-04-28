@@ -88,9 +88,11 @@ impl OpenAiProvider {
         if !request.tools.is_empty() {
             body["tools"] = json!(convert_tools_for_codex(&request.tools));
         }
-        if let Some(ref thinking) = request.thinking {
+        if let Some(ref thinking) = request.thinking
+            && let Some(effort) = codex_reasoning_effort(thinking.as_str())
+        {
             body["reasoning"] = json!({
-                "effort": codex_reasoning_effort(thinking.as_str()),
+                "effort": effort,
                 "summary": "auto"
             });
         }

@@ -53,6 +53,7 @@ function shouldKeepLegacyChatConversationExtra(
 
   return conversation.id.startsWith('bridge:')
     || isCanonicalBridgeSessionId(sessionId)
+    || conversation.bridges.some((bridge) => bridge.trim().toLowerCase() === 'local')
     || !conversation.canonicalSessionId;
 }
 

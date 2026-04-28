@@ -36,6 +36,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'canonicalHumanIdentityId'
   | 'setCanonicalSessionState'
   | 'desktopLiveTurn'
+  | 'composerSelections'
   | 'composerDrafts'
   | 'setComposerDrafts'
   | 'setProjectWorkspaces'
@@ -86,6 +87,7 @@ export function useComposerMessageActions({
   canonicalHumanIdentityId,
   setCanonicalSessionState,
   desktopLiveTurn,
+  composerSelections,
   composerDrafts,
   setComposerDrafts,
   setProjectWorkspaces,
@@ -189,6 +191,7 @@ export function useComposerMessageActions({
     attachmentSummaryText,
     canonicalHumanIdentityId,
     chatComposerAttachments,
+    composerSelections,
     composerDrafts,
     desktopBridgeState,
     desktopChatState,

@@ -182,14 +182,9 @@ impl Provider for OpenAiProvider {
             body["tools"] = json!(request.tools);
         }
 
-        if let Some(ref thinking) = request.thinking {
-            let effort = match thinking.as_str() {
-                "off" => "none",
-                "low" | "minimal" => "low",
-                "medium" => "medium",
-                "high" | "xhigh" => "high",
-                _ => "medium",
-            };
+        if let Some(ref thinking) = request.thinking
+            && let Some(effort) = openai_reasoning_effort(thinking.as_str())
+        {
             body["reasoning_effort"] = json!(effort);
         }
 
@@ -335,10 +330,29 @@ impl Provider for OpenAiProvider {
     }
 }
 
+fn openai_reasoning_effort(thinking: &str) -> Option<&'static str> {
+    match thinking {
+        "default" => None,
+        "off" => Some("none"),
+        "low" | "minimal" => Some("low"),
+        "medium" => Some("medium"),
+        "high" | "xhigh" => Some("high"),
+        _ => Some("medium"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::apply_bearer_auth;
+    use super::{apply_bearer_auth, openai_reasoning_effort};
     use reqwest::Client;
+
+    #[test]
+    fn default_thinking_omits_reasoning_effort() {
+        assert_eq!(openai_reasoning_effort("default"), None);
+        assert_eq!(openai_reasoning_effort("off"), Some("none"));
+        assert_eq!(openai_reasoning_effort("minimal"), Some("low"));
+        assert_eq!(openai_reasoning_effort("xhigh"), Some("high"));
+    }
 
     #[test]
     fn bearer_auth_is_omitted_when_api_key_is_empty() {

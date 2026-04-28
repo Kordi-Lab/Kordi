@@ -72,6 +72,10 @@ export function formatThinkingSelectionLabel(value: string) {
   switch (value.trim().toLowerCase().replace(/[\s_-]/g, '')) {
     case 'off':
       return 'Off';
+    case 'default':
+    case 'auto':
+    case 'thinking':
+      return 'Default';
     case 'minimal':
       return 'Minimal';
     case 'low':

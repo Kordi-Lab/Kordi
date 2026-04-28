@@ -134,9 +134,11 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
     if let Some(max_tokens) = request.max_tokens {
         body["max_output_tokens"] = json!(max_tokens);
     }
-    if let Some(ref thinking) = request.thinking {
+    if let Some(ref thinking) = request.thinking
+        && let Some(effort) = responses_reasoning_effort(thinking.as_str())
+    {
         body["reasoning"] = json!({
-            "effort": responses_reasoning_effort(thinking.as_str()),
+            "effort": effort,
             "summary": "auto"
         });
     }
@@ -149,13 +151,14 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
     body
 }
 
-fn responses_reasoning_effort(thinking: &str) -> &'static str {
+fn responses_reasoning_effort(thinking: &str) -> Option<&'static str> {
     match thinking {
-        "off" => "none",
-        "low" | "minimal" => "low",
-        "medium" => "medium",
-        "high" | "xhigh" => "high",
-        _ => "medium",
+        "default" => None,
+        "off" => Some("none"),
+        "low" | "minimal" => Some("low"),
+        "medium" => Some("medium"),
+        "high" | "xhigh" => Some("high"),
+        _ => Some("medium"),
     }
 }
 
@@ -608,5 +611,13 @@ mod tests {
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert_eq!(body["max_output_tokens"], 1024);
         assert_eq!(body["prompt_cache_key"], "kordi:gpt-5.4");
+    }
+
+    #[test]
+    fn responses_body_omits_reasoning_for_default_thinking() {
+        let mut request = completion_request("gpt-5.4");
+        request.thinking = Some("default".to_string());
+        let body = build_responses_request_body(&request, vec![]);
+        assert!(body.get("reasoning").is_none());
     }
 }

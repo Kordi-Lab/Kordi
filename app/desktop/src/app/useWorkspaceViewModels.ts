@@ -208,7 +208,23 @@ export function useWorkspaceViewModels({
       || canonicalSessionState?.profile.id
       || getLocalProfileAvatarSeed();
 
-    return desktopChatState.sessions.map((session) => {
+    const activeSessionSummary = !desktopChatState.activeSession.project
+      && !isLocalDraftChatConversationId(desktopChatState.activeSession.id)
+      && !desktopChatState.sessions.some((session) => session.id === desktopChatState.activeSession.id)
+      ? {
+          id: desktopChatState.activeSession.id,
+          title: desktopChatState.activeSession.title || 'New session',
+          subtitle: desktopChatState.activeSession.subtitle,
+          updatedAtLabel: desktopChatState.activeSession.updatedAtLabel,
+          messageCount: desktopChatState.activeSession.messageCount,
+          draft: desktopChatState.activeSession.draft,
+        }
+      : null;
+    const sessionSummaries = activeSessionSummary
+      ? [activeSessionSummary, ...desktopChatState.sessions]
+      : desktopChatState.sessions;
+
+    return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession

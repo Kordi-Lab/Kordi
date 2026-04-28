@@ -158,6 +158,8 @@ impl SessionEntry {
 pub enum ThinkingLevel {
     #[default]
     Off,
+    #[serde(alias = "auto", alias = "thinking")]
+    Default,
     Minimal,
     Low,
     Medium,
@@ -183,6 +185,7 @@ impl ThinkingLevel {
             .as_str()
         {
             "off" => Some(Self::Off),
+            "default" | "auto" | "thinking" => Some(Self::Default),
             "minimal" => Some(Self::Minimal),
             "low" => Some(Self::Low),
             "medium" => Some(Self::Medium),
@@ -195,6 +198,7 @@ impl ThinkingLevel {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Off => "off",
+            Self::Default => "default",
             Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
@@ -270,6 +274,7 @@ mod tests {
     fn thinking_level_parse_and_display_cover_all_variants() {
         let cases = [
             ("off", ThinkingLevel::Off),
+            ("default", ThinkingLevel::Default),
             ("minimal", ThinkingLevel::Minimal),
             ("low", ThinkingLevel::Low),
             ("medium", ThinkingLevel::Medium),
@@ -285,6 +290,13 @@ mod tests {
     }
 
     #[test]
+    fn thinking_level_parse_accepts_default_aliases() {
+        for alias in ["Default", "auto", "thinking"] {
+            assert_eq!(ThinkingLevel::parse(alias), Some(ThinkingLevel::Default));
+        }
+    }
+
+    #[test]
     fn thinking_level_parse_accepts_extra_high_aliases() {
         for alias in [
             "Extra High",
@@ -296,6 +308,18 @@ mod tests {
         ] {
             assert_eq!(ThinkingLevel::parse(alias), Some(ThinkingLevel::XHigh));
         }
+    }
+
+    #[test]
+    fn thinking_level_serde_accepts_default_aliases() {
+        for alias in ["auto", "thinking"] {
+            let parsed: ThinkingLevel = serde_json::from_str(&format!("\"{alias}\"")).unwrap();
+            assert_eq!(parsed, ThinkingLevel::Default);
+        }
+        assert_eq!(
+            serde_json::to_string(&ThinkingLevel::Default).unwrap(),
+            "\"default\""
+        );
     }
 
     #[test]

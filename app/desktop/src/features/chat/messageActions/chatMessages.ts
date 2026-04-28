@@ -11,11 +11,12 @@ import {
   openDesktopBridgeConversation,
   sendDesktopBridgeMessage,
   startDesktopChatMessage,
+  updateDesktopChatSessionConfig,
 } from '@/lib/desktop';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
-import { isLocalDraftChatConversationId } from '../draftSessions';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import {
   localAgentRuntimeText,
@@ -48,6 +49,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'activeConvMessages'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
+  | 'composerSelections'
   | 'composerDrafts'
   | 'desktopBridgeState'
   | 'desktopChatState'
@@ -83,6 +85,7 @@ export function useChatMessageActions({
   attachmentSummaryText,
   canonicalHumanIdentityId,
   chatComposerAttachments,
+  composerSelections,
   composerDrafts,
   desktopBridgeState,
   desktopChatState,
@@ -339,6 +342,13 @@ export function useChatMessageActions({
         return targetSessionId;
       }
 
+      if (isTransientDraftConversation) {
+        await updateDesktopChatSessionConfig(
+          LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+          composerSelections.chat.model,
+          composerSelections.chat.thinking,
+        );
+      }
       materializedState = await createDesktopChatSession();
       targetSessionId = materializedState.activeSessionId;
       setDesktopChatState(materializedState);
@@ -582,6 +592,8 @@ export function useChatMessageActions({
     chatComposerAttachments,
     canonicalHumanIdentityId,
     composerDrafts.chat,
+    composerSelections.chat.model,
+    composerSelections.chat.thinking,
     desktopBridgeState,
     desktopChatState,
     desktopLiveTurn,

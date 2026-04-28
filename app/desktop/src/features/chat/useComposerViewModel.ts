@@ -12,6 +12,47 @@ import type {
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
 
+function localModelMatchesAny(modelId: string, needles: string[]) {
+  const normalizedModel = modelId.trim().toLowerCase().replace(/[\s_]/g, '-');
+  return needles.some((needle) => normalizedModel.includes(needle));
+}
+
+function inferLocalThinkingLevels(providerId: string, modelId: string) {
+  const normalizedProvider = normalizeSelectedProviderId(providerId) ?? providerId;
+  if (normalizedProvider === 'ollama' && localModelMatchesAny(modelId, ['gpt-oss', 'gptoss'])) {
+    return ['low', 'medium', 'high'];
+  }
+  if (
+    localModelMatchesAny(modelId, [
+      'thinking',
+      'reasoning',
+      'reasoner',
+      'qwen3',
+      'qwen-3',
+      'qwq',
+      'deepseek-r1',
+      'deepseek-v3.1',
+      'deepseek-v3-1',
+      'deepseek-v31',
+      'gemma-3n',
+      'gemma3n',
+      'gemma-4',
+      'gemma4',
+      'magistral',
+      'phi-4-reasoning',
+      'phi4-reasoning',
+      'seed-oss',
+      'seedoss',
+      'glm-z1',
+      'glmz1',
+    ])
+    || (normalizedProvider === 'lm-studio' && localModelMatchesAny(modelId, ['gpt-oss', 'gptoss']))
+  ) {
+    return ['default'];
+  }
+  return ['off'];
+}
+
 type UseComposerViewModelArgs = {
   isNativeShell: boolean;
   desktopAuthState: DesktopAuthState | null;
@@ -58,7 +99,7 @@ export function useComposerViewModel({
         detail: `${provider.label} • saved local model`,
         provider: providerId,
         providerLabel: provider.label,
-        thinkingLevels: ['off'],
+        thinkingLevels: inferLocalThinkingLevels(providerId, modelId),
       });
     }
 
@@ -72,7 +113,7 @@ export function useComposerViewModel({
         detail: `${provider === 'lm-studio' ? 'LM Studio' : 'Ollama'} • selected local model`,
         provider,
         providerLabel: provider === 'lm-studio' ? 'LM Studio' : 'Ollama',
-        thinkingLevels: ['off'],
+        thinkingLevels: inferLocalThinkingLevels(provider, modelId),
       });
     }
 

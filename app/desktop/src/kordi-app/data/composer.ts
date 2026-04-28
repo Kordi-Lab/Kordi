@@ -17,6 +17,7 @@ export const composerModeOptions = {
 
 export const composerThinkingOptions = [
   { value: 'off', label: 'Off' },
+  { value: 'default', label: 'Default' },
   { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
