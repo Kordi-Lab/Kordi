@@ -37,7 +37,7 @@
     "check:rust:test:core": "cargo test -p kordi-session && cargo test -p kordi-cli --lib && cargo test -p kordi-cli desktop_runtime --no-default-features",
     "check:rust:test:desktop": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo test -p kordi-desktop --no-default-features",
     "check:rust:test": "pnpm check:rust:test:core && pnpm check:rust:test:desktop",
-    "check:hygiene": "git diff --check",
+    "check:hygiene": "bash scripts/check-hygiene.sh",
     "check:ci": "pnpm check:frontend && pnpm check:rust:fmt && pnpm check:rust:clippy && pnpm check:rust:test && pnpm check:hygiene",
     "hooks:install": "bash scripts/setup-git-hooks.sh",
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust"

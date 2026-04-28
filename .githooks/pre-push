@@ -23,4 +23,7 @@ cargo test -p kordi-cli desktop_runtime --no-default-features
 echo "• Desktop web build"
 pnpm --dir app/desktop build
 
+echo "• Repository hygiene"
+bash scripts/check-hygiene.sh
+
 echo "Kordi pre-push checks passed."

@@ -8,6 +8,7 @@ git config core.hooksPath .githooks
 chmod +x .githooks/pre-commit
 chmod +x .githooks/pre-push
 chmod +x scripts/prepare-tauri-sidecar-placeholders.sh
+chmod +x scripts/check-hygiene.sh
 
 echo "Kordi git hooks installed."
 echo "To skip hooks for an emergency commit/push, set KORDI_SKIP_HOOKS=1."

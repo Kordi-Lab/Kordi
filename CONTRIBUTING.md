@@ -63,6 +63,7 @@ cargo test -p kordi-session
 cargo test -p kordi-cli --lib
 cargo test -p kordi-cli desktop_runtime --no-default-features
 pnpm --dir app/desktop build
+bash scripts/check-hygiene.sh
 ```
 
 For emergency-only bypasses:
@@ -101,6 +102,14 @@ Rust tests:
 ```bash
 pnpm check:rust:test
 ```
+
+Repository hygiene:
+
+```bash
+pnpm check:hygiene
+```
+
+This checks committed changes against `origin/main` plus staged and unstaged edits. Set `KORDI_HYGIENE_BASE=<ref>` when your branch targets a different base.
 
 Full local CI equivalent:
 
