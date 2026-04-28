@@ -226,7 +226,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   }, []);
 
   const scheduleLiveTurnSnapshot = useCallback((nextTurn: DesktopChatTurnSnapshot, options: { immediate?: boolean } = {}) => {
-    if (options.immediate || nextTurn.completed) {
+    if (options.immediate) {
       clearScheduledLiveTurnSnapshot(nextTurn.sessionId);
       commitLiveTurnSnapshot(nextTurn);
       return;
@@ -243,6 +243,19 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       commitLiveTurnSnapshot(pendingTurn);
     }, 96);
   }, [clearScheduledLiveTurnSnapshot, commitLiveTurnSnapshot]);
+
+  const removeLiveTurnSnapshot = useCallback((sessionId: string) => {
+    clearScheduledLiveTurnSnapshot(sessionId);
+    if (desktopLiveTurnsBySessionRef.current[sessionId]) {
+      const { [sessionId]: _removed, ...rest } = desktopLiveTurnsBySessionRef.current;
+      desktopLiveTurnsBySessionRef.current = rest;
+    }
+    setDesktopLiveTurnsBySession((current) => {
+      if (!current[sessionId]) return current;
+      const { [sessionId]: _removed, ...rest } = current;
+      return rest;
+    });
+  }, [clearScheduledLiveTurnSnapshot]);
 
   useEffect(() => () => {
     for (const timer of Object.values(liveTurnCommitTimersRef.current)) {
@@ -417,11 +430,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     const isBackgroundSession = visibleLocalSessionId !== turn.sessionId
       && latestDesktopSessionIdRef.current !== turn.sessionId;
 
-    setDesktopLiveTurnsBySession((current) => {
-      if (!current[turn.sessionId]) return current;
-      const { [turn.sessionId]: _removed, ...rest } = current;
-      return rest;
-    });
+    removeLiveTurnSnapshot(turn.sessionId);
 
     setDesktopChatState((current) => {
       if (!current) return current;
@@ -510,7 +519,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [turn.sessionId]: [...current[turn.sessionId], mappedMessage],
       };
     });
-  }, [clearUnreadForSession, mapDesktopMessages]);
+  }, [clearUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(
     async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {
@@ -528,10 +537,16 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         while (!nextTurn.completed) {
           await new Promise((resolve) => window.setTimeout(resolve, 60));
           nextTurn = await fetchDesktopChatTurnState(nextTurn.id);
-          if (nextTurn.completed && nextTurn.status === 'cancelled') {
+          if (nextTurn.completed) {
+            // Do not commit completed snapshots into the live-turn store. The UI
+            // intentionally hides completed live rows, so committing one creates
+            // a visible gap where the streaming response disappears before the
+            // historical assistant message is appended/refreshed. Keep the last
+            // incomplete snapshot visible until mergeCompletedDesktopTurn swaps
+            // it atomically for the completed transcript message.
             clearScheduledLiveTurnSnapshot(nextTurn.sessionId);
           } else {
-            scheduleLiveTurnSnapshot(nextTurn, { immediate: nextTurn.completed });
+            scheduleLiveTurnSnapshot(nextTurn);
           }
         }
 
@@ -546,6 +561,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         if (isVisibleCompletedSession && !turnFailed && nextTurn.transcriptRefreshRequired) {
           try {
             await refreshDesktopChat(nextTurn.sessionId);
+            removeLiveTurnSnapshot(nextTurn.sessionId);
             clearUnreadForSession(nextTurn.sessionId);
           } catch (error) {
             mergeCompletedDesktopTurn(nextTurn);
@@ -562,12 +578,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
       } catch (error) {
         if (initialTurn?.sessionId) {
-          clearScheduledLiveTurnSnapshot(initialTurn.sessionId);
-          setDesktopLiveTurnsBySession((current) => {
-            if (!current[initialTurn.sessionId]) return current;
-            const { [initialTurn.sessionId]: _removed, ...rest } = current;
-            return rest;
-          });
+          removeLiveTurnSnapshot(initialTurn.sessionId);
         }
         if (!initialTurn?.sessionId || visibleLocalSessionIdRef.current === initialTurn.sessionId) {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to stream chat turn');
@@ -576,7 +587,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshDesktopChat, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshDesktopChat, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {
