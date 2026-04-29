@@ -1,5 +1,7 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { MouseEventHandler, ReactNode } from 'react';
 
+import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +48,22 @@ export function AppShellFrame({
   inlineAuthDialog,
   windowResizeHandles,
 }: AppShellFrameProps) {
+  const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    if (!shouldStartNativeWindowDrag({
+      isNativeShell,
+      button: event.button,
+      clientY: event.clientY,
+      shellTop: event.currentTarget.getBoundingClientRect().top,
+      target: event.target,
+    })) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void getCurrentWindow().startDragging().catch(() => undefined);
+  };
+
   return (
     <div
       className={cn(
@@ -63,6 +81,7 @@ export function AppShellFrame({
             : 'app-shell-preview mx-auto rounded-[26px] border',
           !isNativeShell && isLayoutResizing && 'app-shell-resizing',
         )}
+        onMouseDownCapture={isNativeShell ? handleNativeWindowDragMouseDown : undefined}
         style={
           isNativeShell
             ? undefined
@@ -74,6 +93,7 @@ export function AppShellFrame({
             <div
               className="pointer-events-auto absolute left-0 top-0 z-40 h-11"
               style={{ width: `${LEFT_RAIL_WIDTH}px`, WebkitAppRegion: 'drag' as const }}
+              data-tauri-drag-region="true"
               aria-hidden="true"
             />
             {leftWorkspaceWidth > LEFT_RAIL_WIDTH ? (
@@ -84,6 +104,7 @@ export function AppShellFrame({
                   width: `${leftWorkspaceWidth - LEFT_RAIL_WIDTH}px`,
                   WebkitAppRegion: 'drag' as const,
                 }}
+                data-tauri-drag-region="true"
                 aria-hidden="true"
               />
             ) : null}
@@ -104,6 +125,7 @@ export function AppShellFrame({
               onMouseDown={onSessionResizeMouseDown}
               className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
               style={{ left: `${leftWorkspaceWidth}px` }}
+              data-kordi-window-drag="false"
               aria-hidden="true"
             >
               <div className="mx-auto h-full w-px bg-white/8 transition hover:bg-white/20" />
@@ -137,6 +159,7 @@ export function AppShellFrame({
                   onMouseDown={onDetailResizeMouseDown}
                   className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
                   style={{ left: `calc(100% - ${detailRailWidth}px)` }}
+                  data-kordi-window-drag="false"
                   aria-hidden="true"
                 >
                   <div className="mx-auto h-full w-px bg-white/8 transition hover:bg-white/20" />

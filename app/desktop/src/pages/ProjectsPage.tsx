@@ -197,7 +197,7 @@ export function ProjectsPage({
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="app-page-header shrink-0 flex items-start justify-between gap-3 px-4 py-2.5 shadow-[inset_0_-1px_0_var(--app-divider)]">
           <div>
-            <div className="text-[17px] font-semibold text-white">Projects</div>
+            <div className="text-[17px] font-semibold text-white" data-kordi-window-drag="false">Projects</div>
             <div className="mt-1 text-[12px] text-slate-400">Projects should start explicitly from the + menu, not from ordinary chats.</div>
           </div>
         </div>
@@ -251,6 +251,7 @@ export function ProjectsPage({
                       void onRenameDesktopSession(activeProjectSession.name);
                     }}
                     autoFocus
+                    data-kordi-window-drag="false"
                     className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
                     placeholder="Session name"
                   />
@@ -261,13 +262,14 @@ export function ProjectsPage({
                       setIsEditingDesktopSessionTitle(true);
                     }}
                     className="min-w-0 max-w-full truncate rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold text-white transition hover:bg-white/5"
+                    data-kordi-window-drag="false"
                     title="Double-click to rename session"
                   >
                     {activeProjectSession.name}
                   </h2>
                 )
               ) : (
-                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold">{activeProjectSession.name}</h2>
+                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeProjectSession.name}</h2>
               )}
               <Badge variant="outline" className="shrink-0 whitespace-nowrap rounded-full border-white/15 px-2 py-0.5 text-[10px] leading-none text-slate-200">
                 {activeProject.status}
