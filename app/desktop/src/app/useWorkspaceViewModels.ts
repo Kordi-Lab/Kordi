@@ -261,11 +261,12 @@ export function useWorkspaceViewModels({
         bridges: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft session' : 'Direct chat',
-        participants: ['Me', 'Kordi'],
+        participants: ['Me', 'My Kordi'],
         participantAvatarSeeds: {
           Me: localHumanAvatarSeed,
           You: localHumanAvatarSeed,
           [localAgentLabel]: localAgentAvatarSeed,
+          'My Kordi': localAgentAvatarSeed,
           Kordi: localAgentAvatarSeed,
         },
         messages,
@@ -320,7 +321,7 @@ export function useWorkspaceViewModels({
       bridges: ['Local'],
       trust: 'Owned',
       directness: 'Direct chat',
-      participants: ['Me', 'Kordi'],
+      participants: ['Me', 'My Kordi'],
       bridgeTarget: undefined,
       messages: [{
         role: 'system' as const,
@@ -672,7 +673,7 @@ export function useWorkspaceViewModels({
           const outreachMessages = (outreachThreadsByParentSession.get(sessionId) ?? []).flatMap((thread) => thread.inlineMessages);
           const legacyMessages = [...baseMessages, ...outreachMessages];
           const messages = canonicalReadModel ? canonicalReadModel.preferMessages(sessionId, legacyMessages) : legacyMessages;
-          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'Kordi']) : ['Me', 'Kordi'];
+          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'My Kordi']) : ['Me', 'My Kordi'];
 
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
@@ -742,7 +743,7 @@ export function useWorkspaceViewModels({
       summary: 'Write below or create a session to persist work under this project.',
       lastActive: '--:--',
       status: 'Draft',
-      participants: ['Me', 'Kordi'],
+      participants: ['Me', 'My Kordi'],
       artifacts: 0,
       tasks: 0,
       unread: 0,
@@ -766,7 +767,7 @@ export function useWorkspaceViewModels({
     summary: 'Blank project drafts stay local until the first real send.',
     lastActive: 'Draft',
     status: 'Draft',
-    participants: ['Me', 'Kordi'],
+    participants: ['Me', 'My Kordi'],
     artifacts: activeProject.artifacts,
     tasks: activeProject.tasks,
     unread: 0,

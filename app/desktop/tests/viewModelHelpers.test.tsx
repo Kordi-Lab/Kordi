@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds } from '../src/app/viewModels/helpers';
+import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
@@ -91,6 +91,29 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
   );
 });
 
+test('resolves the live local agent sender from canonical participant scope', () => {
+  assert.equal(localOwnedAgentSenderLabel({
+    canonicalParticipants: [{
+      id: 'agent:local:1',
+      name: 'My Kordi',
+      kind: 'agent',
+      role: 'delegate',
+      source: 'local',
+      ownerIdentityId: 'human:profile:1',
+      ownerName: 'You',
+    }],
+    participants: ['Me', 'Kordi'],
+    messages: [],
+  }), 'My Kordi');
+});
+
+test('defaults the live local agent sender to My Kordi instead of bare Kordi', () => {
+  assert.equal(localOwnedAgentSenderLabel({
+    participants: ['Me', 'Kordi'],
+    messages: [],
+  }), 'My Kordi');
+});
+
 test('formatSessionIdSubtitle labels raw ids for display', () => {
   assert.equal(
     formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'),
@@ -154,4 +177,91 @@ test('drops local tool-only alias turn when next local alias turn contains the f
   const deduped = dedupeAdjacentAgentTurns([toolOnly, finalAnswer]);
 
   assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('drops local intro fragment when the following final local turn extends it', () => {
+  const intro = agentMessage('Kordi', turn({
+    id: 'turn-intro',
+    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
+    thinkingText: '**Checking weather in Thuwal**',
+    tools: [],
+  }));
+  const finalAnswer = agentMessage('My Kordi', turn({
+    id: 'turn-final-weather',
+    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.\n\nToday’s weather in **Thuwal, Saudi Arabia**:',
+    thinkingText: '**Checking weather in Thuwal**',
+  }));
+
+  const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('suppresses all local owned-agent runtime fragments after the triggering user while live turn is rendered', () => {
+  const olderAssistant = agentMessage('My Kordi', turn({ id: 'older-turn', assistantText: 'Older completed answer' }));
+  const user: Message = {
+    role: 'user',
+    text: 'check todays thuwal weather',
+    time: '16:04',
+  };
+  const thinkingFragment = agentMessage('Kordi', turn({
+    id: 'raw-fragment-1',
+    completed: true,
+    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
+    thinkingText: '**Checking weather in Thuwal**',
+  }));
+  const toolFragment = agentMessage('Kordi', turn({
+    id: 'raw-fragment-2',
+    completed: true,
+    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.Today’s weather in **Thuwal, Saudi Arabia**:',
+    tools: [{
+      id: 'tool-web-fetch',
+      name: 'web_fetch',
+      status: 'done',
+      arguments: '{}',
+      liveOutput: '',
+      resultText: 'weather result',
+      detail: null,
+      isError: false,
+    }],
+  }));
+  const liveTurn = turn({
+    id: 'live-turn-weather',
+    status: 'running',
+    message: 'Running',
+    completed: false,
+    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
+    thinkingText: '**Checking weather in Thuwal**',
+  });
+
+  assert.deepEqual(
+    suppressLiveTurnEchoMessages([olderAssistant, user, thinkingFragment, toolFragment], liveTurn),
+    [olderAssistant, user],
+  );
+});
+
+test('suppresses canonical owned-agent echo while an equivalent live turn is rendered', () => {
+  const user: Message = {
+    role: 'user',
+    text: 'check my diskusage again',
+    time: '15:37',
+  };
+  const canonicalEcho = agentMessage('My Kordi', turn({
+    id: 'canonical-turn-1',
+    status: 'complete',
+    message: 'Complete',
+    completed: true,
+    assistantText: 'I’ll check overall filesystem usage and the largest items in your home directory.',
+    thinkingText: '**Checking disk usage**',
+  }));
+  const liveTurn = turn({
+    id: 'live-turn-1',
+    status: 'running',
+    message: 'Running',
+    completed: false,
+    assistantText: 'I’ll check overall filesystem usage and the largest items in your home directory.',
+    thinkingText: '**Checking disk usage**',
+  });
+
+  assert.deepEqual(suppressLiveTurnEchoMessages([user, canonicalEcho], liveTurn), [user]);
 });

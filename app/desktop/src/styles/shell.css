@@ -1723,6 +1723,209 @@
   padding-left: 22px;
 }
 
+.app-transcript-tool-timeline {
+  display: grid;
+  gap: 8px;
+  max-width: min(100%, 46rem);
+  padding: 3px 0 2px;
+}
+
+.app-transcript-tool-timeline-summary {
+  display: inline-flex;
+  width: fit-content;
+  max-width: min(100%, 34rem);
+  align-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 2px 0;
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);
+  text-align: left;
+  transition: color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-transcript-tool-timeline-summary:hover {
+  color: color-mix(in oklab, var(--utility-foreground) 72%, var(--utility-muted-text));
+}
+
+.app-transcript-tool-timeline-summary-copy {
+  min-width: 0;
+}
+
+.app-transcript-tool-timeline-summary-line {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-transcript-tool-timeline-summary-text {
+  min-width: 0;
+  max-width: 32rem;
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.app-transcript-tool-timeline-summary-active .app-transcript-tool-timeline-summary-text {
+  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+  animation: app-transcript-quiet-text-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes app-transcript-quiet-text-pulse {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 0.92; }
+}
+
+.app-transcript-timeline-list {
+  display: grid;
+  gap: 10px;
+  padding: 1px 0 1px;
+}
+
+.app-transcript-timeline-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+}
+
+.app-transcript-timeline-rail {
+  display: grid;
+  height: 18px;
+  place-items: center;
+}
+
+.app-transcript-timeline-node {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
+}
+
+.app-transcript-timeline-row-running .app-transcript-timeline-node,
+.app-transcript-timeline-row-complete .app-transcript-timeline-node,
+.app-transcript-timeline-row-error .app-transcript-timeline-node {
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
+}
+
+.app-transcript-timeline-row-body {
+  min-width: 0;
+}
+
+.app-transcript-timeline-row-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.app-transcript-timeline-row-title {
+  min-width: 0;
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.app-transcript-timeline-row-running .app-transcript-timeline-row-title {
+  animation: app-transcript-quiet-text-pulse 1.8s ease-in-out infinite;
+}
+
+.app-transcript-timeline-row-subline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 19px;
+  padding-top: 1px;
+}
+
+.app-transcript-timeline-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  padding: 2px 6px;
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, transparent);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.app-transcript-timeline-running-time {
+  color: color-mix(in oklab, var(--utility-muted-text) 68%, transparent);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  animation: app-transcript-quiet-text-pulse 1.8s ease-in-out infinite;
+}
+
+.app-transcript-timeline-row-meta {
+  max-width: 100%;
+  color: color-mix(in oklab, var(--utility-muted-text) 66%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.app-transcript-timeline-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.app-transcript-timeline-details-toggle {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 2px 0;
+  color: color-mix(in oklab, var(--utility-muted-text) 66%, transparent);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.2;
+  transition: color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-transcript-timeline-details-toggle:hover {
+  color: color-mix(in oklab, var(--utility-foreground) 72%, var(--utility-muted-text));
+}
+
+.app-transcript-timeline-details-body {
+  border-left: 1px solid color-mix(in oklab, var(--app-divider) 44%, transparent);
+  padding-left: 10px;
+}
+
+.app-live-assistant-answer {
+  color: var(--utility-foreground);
+  line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .app-transcript-tool-timeline {
+    max-width: 100%;
+  }
+
+  .app-transcript-tool-timeline-summary,
+  .app-transcript-tool-timeline-summary-text {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-transcript-tool-timeline-summary-active .app-transcript-tool-timeline-summary-text,
+  .app-transcript-timeline-row-running .app-transcript-timeline-row-title,
+  .app-transcript-timeline-running-time {
+    animation: none;
+  }
+}
+
 .app-transcript-diff-block {
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--app-divider) 70%, transparent);
