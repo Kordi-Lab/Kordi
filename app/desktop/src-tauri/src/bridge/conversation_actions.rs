@@ -46,9 +46,7 @@ fn is_realtime_direct_chat(
             || is_agent_like_runtime(&conversation.peer_runtime))
 }
 
-fn pending_read_receipt_request_ids(
-    conversation: &DesktopBridgeConversationRecord,
-) -> Vec<String> {
+fn pending_read_receipt_request_ids(conversation: &DesktopBridgeConversationRecord) -> Vec<String> {
     let mut request_ids = conversation
         .messages
         .iter()
