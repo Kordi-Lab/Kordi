@@ -159,7 +159,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalStoragePath: indexes.storagePath,
         name: bridgePersonMessageTitle || session.title || conversation.name,
         subtitle: buildSubtitle(messages, conversation.subtitle),
-        unread: 0,
+        unread: conversation.unread ?? 0,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         messages,
