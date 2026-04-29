@@ -529,7 +529,21 @@ function BridgePeerCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={() => onOpenBridgeConversation(activeBridgeHostId, peer.nodeId, peer.displayName, peer.ownerName, kind === 'person' ? 'person' : peer.runtime)}>
+          <Button
+            variant="secondary"
+            className="h-8 rounded-xl px-3 text-[11px]"
+            onClick={() => onOpenBridgeConversation(
+              activeBridgeHostId,
+              peer.nodeId,
+              peer.displayName,
+              peer.ownerName,
+              kind === 'person' ? 'person' : peer.runtime,
+              {
+                humanId: kind === 'person' ? peer.humanId : null,
+                agentId: kind === 'agent' ? peer.agentId : null,
+              },
+            )}
+          >
             Chat
           </Button>
           <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px] text-slate-400" onClick={() => { void onRemoveBridgeContact(activeBridgeHostId, peer.nodeId).catch(() => {}); }}>

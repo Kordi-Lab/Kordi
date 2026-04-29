@@ -7,6 +7,14 @@ import { findCanonicalConversationForTarget } from '@/features/canonical/session
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
+export function openChatSessionFromExternalEntryPoint(
+  args: Pick<MainContentShellArgs, 'setActiveNav' | 'handleSelectChatSession'>,
+  sessionId: string,
+) {
+  args.setActiveNav('chats');
+  void args.handleSelectChatSession(sessionId);
+}
+
 export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps<typeof BridgeConfigPage> {
   return {
     desktopBridgeState: args.desktopBridgeState,
@@ -47,10 +55,14 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onActivateBridgeAgent: args.handleActivateBridgeAgent,
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
     onRemoveBridgeContact: args.handleRemoveBridgeContact,
-    onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime) => {
-      const existingConversation = findCanonicalConversationForTarget(args.chatConversations, { bridgeNodeId: peerNodeId });
+    onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime, target) => {
+      const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
+        humanId: target?.humanId,
+        agentId: target?.agentId,
+        bridgeNodeId: peerNodeId,
+      });
       if (existingConversation) {
-        void args.handleSelectChatSession(existingConversation.id);
+        openChatSessionFromExternalEntryPoint(args, existingConversation.id);
         return;
       }
       void args.handleOpenBridgeConversation(hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime);
