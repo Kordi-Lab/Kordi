@@ -88,6 +88,54 @@ test('bridge transcript keeps implicit direct person session messages as typed',
   assert.equal(view.messages[0]?.mentions, undefined);
 });
 
+test('direct person bridge transcript renders local agent responses as agent turns', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-local-agent-response',
+      direction: 'outbound-response',
+      sender: "Shuyang's Kordi",
+      text: 'We were talking about San Diego weather.',
+      timeLabel: '17:07',
+      timestampMs: 2,
+      requestId: 'bridge_req_agent',
+      deliveryState: 'responded',
+      outreach: null,
+    }],
+  }), host(), 'My Kordi');
+
+  const message = view.messages[0];
+  assert.equal(message?.role, 'owned-agent');
+  assert.equal(message?.senderType, 'agent');
+  assert.equal(message?.sender, "Shuyang's Kordi");
+  assert.equal(message?.text, '');
+  assert.equal(message?.turn?.assistantText, 'We were talking about San Diego weather.');
+  assert.deepEqual(message?.turn?.tools, []);
+});
+
+test('direct person bridge transcript renders remote agent responses as agent turns', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-remote-agent-response',
+      direction: 'inbound-response',
+      sender: "Shenzhe's Kordi",
+      text: 'The answer is ready.',
+      timeLabel: '17:08',
+      timestampMs: 2,
+      requestId: 'bridge_req_remote_agent',
+      deliveryState: 'responded',
+      outreach: null,
+    }],
+  }), host(), 'My Kordi');
+
+  const message = view.messages[0];
+  assert.equal(message?.role, 'external-agent');
+  assert.equal(message?.senderType, 'agent');
+  assert.equal(message?.sender, "Shenzhe's Kordi");
+  assert.equal(message?.text, '');
+  assert.equal(message?.turn?.assistantText, 'The answer is ready.');
+  assert.deepEqual(message?.turn?.tools, []);
+});
+
 test('bridge transcript preserves full outreach mention labels with spaces and punctuation', () => {
   const requestId = 'bridge_req_mention';
   const view = mapBridgeConversationToViewModel(conversation({

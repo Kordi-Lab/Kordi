@@ -172,8 +172,8 @@ export function mapBridgeConversationToViewModel(
     const displayText = isProcessingAgentPlaceholder ? '' : rawDisplayText;
     const isOutboundHuman = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND;
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
-    const isLocalAgentResponse = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
-    const isRemoteAgentResponse = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
+    const isLocalAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+    const isRemoteAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
     const sender = isAgent
       ? isOutboundHuman
         ? localHumanLabel
@@ -201,9 +201,11 @@ export function mapBridgeConversationToViewModel(
     const isLiveAgentReply = (isRemoteAgentResponse || isLocalAgentResponse) && message.deliveryState === 'processing';
 
     if (isRemoteAgentResponse || isLocalAgentResponse) {
+      const responseSender = message.sender?.trim()
+        || (isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel);
       return {
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
-        sender: isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel,
+        sender: responseSender,
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
