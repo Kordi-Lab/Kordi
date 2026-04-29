@@ -158,6 +158,38 @@ async fn relay_with_contact_fallback(
     }
 }
 
+async fn send_read_receipt(
+    manager: &DesktopBridgeManager,
+    context: &ConversationContext,
+    request_id: &str,
+) -> Result<(), String> {
+    let payload = read_receipt_payload(&context.host.node_id, request_id);
+
+    if is_realtime_direct_chat(&context.conversation, &context.host) {
+        match send_realtime_payload(
+            manager,
+            &context.host,
+            &context.conversation.peer_node_id,
+            &payload,
+        )
+        .await
+        {
+            Ok(()) => return Ok(()),
+            Err(realtime_error) => {
+                eprintln!(
+                    "Bridge read receipt realtime send failed; conversation_id={}, target_node_id={}, request_id={}, error={}",
+                    context.conversation.id,
+                    context.conversation.peer_node_id,
+                    request_id,
+                    realtime_error
+                );
+            }
+        }
+    }
+
+    relay_with_contact_fallback(context, &payload).await
+}
+
 fn outbound_payload(
     context: &ConversationContext,
     request_id: &str,
@@ -306,37 +338,17 @@ pub(super) async fn desktop_bridge_mark_conversation_read_impl(
     let bridge_store = load_bridge_store();
     let store = load_conversation_store();
     let mut marked_store = None;
-    if let Some(conversation) = store
-        .conversations
-        .iter()
-        .find(|conversation| conversation.id == conversation_id)
-    {
-        if let Some(host) = bridge_store
-            .hosts
-            .iter()
-            .find(|host| host.id == conversation.host_id)
-            .cloned()
-        {
-            if is_realtime_direct_chat(conversation, &host) {
-                let pending_read_receipts: Vec<String> = conversation
-                    .messages
-                    .iter()
-                    .filter(|message| {
-                        is_inbound_message_direction(&message.direction)
-                            && message.request_id.is_some()
-                    })
-                    .filter_map(|message| message.request_id.clone())
-                    .collect();
-                for request_id in pending_read_receipts {
-                    let payload = serde_json::json!({
-                        "from": host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_READ },
-                    });
-                    let _ =
-                        send_realtime_payload(manager, &host, &conversation.peer_node_id, &payload)
-                            .await;
-                }
+    if let Ok(context) = resolve_conversation_context(&bridge_store, &store, &conversation_id) {
+        let pending_read_receipts = pending_read_receipt_request_ids(&context.conversation);
+        for request_id in pending_read_receipts {
+            if let Err(error) = send_read_receipt(manager, &context, &request_id).await {
+                eprintln!(
+                    "Bridge read receipt relay send failed; conversation_id={}, target_node_id={}, request_id={}, error={}",
+                    context.conversation.id,
+                    context.conversation.peer_node_id,
+                    request_id,
+                    error
+                );
             }
         }
         marked_store = Some(mark_bridge_conversation_read_in_storage(&conversation_id)?);
