@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
@@ -436,6 +437,7 @@ export function WorkspaceSidebar({
                         const lastMessage = conversation.messages[conversation.messages.length - 1];
                         const isActive = activeConvId === conversation.id;
                         const rowTimeLabel = conversation.updatedAtLabel ?? lastMessage?.time ?? '--:--';
+                        const sessionSubtitle = formatSessionIdSubtitle(conversation.subtitle);
 
                         return (
                           <button
@@ -472,12 +474,12 @@ export function WorkspaceSidebar({
                                     active={isActive}
                                   />
                                 </div>
-                                {conversation.subtitle.trim().length > 0 ? (
+                                {sessionSubtitle ? (
                                   <div
                                     className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}
-                                    title={conversation.subtitle}
+                                    title={sessionSubtitle}
                                   >
-                                    {conversation.subtitle}
+                                    {sessionSubtitle}
                                   </div>
                                 ) : null}
                               </div>

@@ -142,8 +142,6 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
   return messages;
 }
 
-const CONVERSATION_TITLE_MAX_CHARS = 68;
-
 function isRawConversationId(value?: string | null) {
   const trimmed = value?.trim() ?? '';
   return trimmed.startsWith('session:')
@@ -166,12 +164,23 @@ function firstUserSentence(messages: Message[]) {
   const text = firstUserMessage?.text.replace(/\s+/g, ' ').trim();
   if (!text) return undefined;
   const sentenceMatch = /^(.+?[.!?。！？])(?:\s|$)/u.exec(text);
-  const sentence = sentenceMatch?.[1] ?? text.split(/[\n\r]/)[0] ?? text;
-  return truncateInlineText(sentence, CONVERSATION_TITLE_MAX_CHARS);
+  return sentenceMatch?.[1] ?? text.split(/[\n\r]/)[0] ?? text;
 }
 
 export function conversationSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
   return conversation.canonicalSessionId || conversation.id;
+}
+
+function looksLikeSessionId(value: string) {
+  return isRawConversationId(value)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+export function formatSessionIdSubtitle(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return '';
+  if (/^session id:/i.test(trimmed)) return trimmed;
+  return looksLikeSessionId(trimmed) ? `Session ID: ${trimmed}` : trimmed;
 }
 
 export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name' | 'participants' | 'messages'>) {

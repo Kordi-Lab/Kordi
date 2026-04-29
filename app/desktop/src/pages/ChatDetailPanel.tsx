@@ -4,6 +4,7 @@ import { MessageSquareMore } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
@@ -209,6 +210,7 @@ function ChatDetailPanelView({
 }: ChatDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
+  const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
 
   if (activeDetailTab === 'info') {
     return (
@@ -219,7 +221,7 @@ function ChatDetailPanelView({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="app-inspector-heading">{activeConv.name}</div>
-                {activeConvHasSubtitle ? <div className="mt-1 app-inspector-subtext">{activeConv.subtitle}</div> : null}
+                {activeConvHasSubtitle ? <div className="mt-1 app-inspector-subtext">{activeSessionSubtitle}</div> : null}
               </div>
               <TypeBadge type={activeConv.type} compact />
             </div>
@@ -403,7 +405,7 @@ function ChatDetailPanelView({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Session context</div>
           <div className="space-y-3">
-            {activeConvHasSubtitle ? <EmphasisBlock title="Current focus">{activeConv.subtitle}</EmphasisBlock> : null}
+            {activeConvHasSubtitle ? <EmphasisBlock title="Current focus">{activeSessionSubtitle}</EmphasisBlock> : null}
             <EmphasisBlock title="Latest update">{activeLastMessage?.text ?? 'No recent update yet.'}</EmphasisBlock>
           </div>
         </section>

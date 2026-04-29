@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, hideRawConversationIds } from '../src/app/viewModels/helpers';
+import { conversationSessionId, formatSessionIdSubtitle, hideRawConversationIds } from '../src/app/viewModels/helpers';
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
   const [conversation] = hideRawConversationIds([{
@@ -85,7 +85,16 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
   );
   assert.equal(
     draftConversation.name,
-    'This is a very long first sentence that should be clipped before it…',
-    'long first sentence titles should be truncated with an ellipsis',
+    'This is a very long first sentence that should be clipped before it overwhelms the chat header and session rail.',
+    'derived titles should keep the full first sentence so CSS can adapt truncation to available width',
   );
+});
+
+test('formatSessionIdSubtitle labels raw ids for display', () => {
+  assert.equal(
+    formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'),
+    'Session ID: 63138d66-0f5b-40dd-90ea-605f7cdb9ba0',
+  );
+  assert.equal(formatSessionIdSubtitle('  '), '');
+  assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
 });
