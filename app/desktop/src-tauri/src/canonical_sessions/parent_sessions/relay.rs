@@ -11,7 +11,9 @@ use super::super::{
     existing_delegation_join_message_id, identity_display_name, now_ms, session_has_participant,
     shared_agent_display_name, similar_agent_message_exists, upsert_participant,
 };
-use super::participants::ensure_parent_session_participants;
+use super::participants::{
+    ensure_parent_session_participants, promote_session_message_parent_session,
+};
 
 fn is_processing_placeholder_text(text: &str) -> bool {
     let trimmed = text.trim();
@@ -166,6 +168,23 @@ pub(super) fn sync_parent_session_relay_messages(
     };
 
     let is_session_message = outreach_is_session_message(outreach);
+    if is_session_message {
+        let first_message_text = messages
+            .iter()
+            .filter(matches_relay_message)
+            .map(|message| message.text.trim())
+            .find(|text| !text.is_empty());
+        promote_session_message_parent_session(
+            conn,
+            parent_session_id,
+            conversation,
+            remote_target_identity_id,
+            relationship_identity_id,
+            peer_is_agent,
+            first_message_text,
+        )?;
+    }
+
     let relay_is_local_agent_response =
         outreach_is_session_relay(outreach) && outreach.parent_turn_id.is_some();
     let include_outbound = is_session_message || relay_is_local_agent_response;

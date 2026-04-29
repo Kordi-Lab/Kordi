@@ -5,6 +5,7 @@ import { findBridgeProjectForWorkspace } from '@/app/useWorkspaceViewModels';
 import { DEFAULT_LOCAL_BRIDGE_SERVER_PORT } from '@/features/bridge/constants';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
+  CanonicalSessionState,
   DesktopBridgeConversation,
   DesktopBridgeInvite,
   DesktopBridgeProject,
@@ -19,6 +20,7 @@ import {
   createDesktopBridgeInvite,
   createDesktopBridgeProject,
   openDesktopBridgeConversation,
+  openOrCreateCanonicalSession,
   removeDesktopBridgeContact,
   renameDesktopBridgeAgent,
   setDesktopBridgeDefaultAgent,
@@ -38,6 +40,18 @@ function buildBridgeConversationId(hostId: string, peerNodeId: string, peerRunti
 
 function buildCanonicalBridgeSessionId(conversationId: string) {
   return `session:bridge:${conversationId}`;
+}
+
+function newBridgePersonSessionId() {
+  const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
+  return `session:bridge:humans:${randomId}`;
+}
+
+function bridgePersonIdentityId(target: { nodeId: string; humanId?: string | null }) {
+  const humanId = target.humanId?.trim();
+  return humanId ? `human:${humanId}` : `human:bridge-node:${target.nodeId}`;
 }
 
 function optimisticBridgeConversation({
@@ -115,6 +129,8 @@ type UseBridgeOrchestrationArgs = {
   activeProjectBridgeHost: DesktopBridgeState['hosts'][number] | null;
   activeBridgeHost: DesktopBridgeState['hosts'][number] | null;
   bridgeSettingsDraft: { serverUrl: string; displayName: string; ownerName: string } | null;
+  canonicalHumanIdentityId?: string | null;
+  setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setDesktopBridgeError: Dispatch<SetStateAction<string | null>>;
   setBridgeInvite: Dispatch<SetStateAction<DesktopBridgeInvite | null>>;
@@ -131,6 +147,8 @@ export function useBridgeOrchestration({
   activeProjectBridgeHost,
   activeBridgeHost,
   bridgeSettingsDraft,
+  canonicalHumanIdentityId,
+  setCanonicalSessionState,
   setDesktopBridgeState,
   setDesktopBridgeError,
   setBridgeInvite,
@@ -179,6 +197,58 @@ export function useBridgeOrchestration({
       setIsProjectBridgeBusy(false);
     }
   }, [activeProject, activeProjectBridgeHost, handleCopyBridgeText, setBridgeInvite, setDesktopBridgeError, setDesktopBridgeState, setIsProjectBridgeBusy]);
+
+  const handleStartBridgePersonSession = useCallback(async (target: {
+    hostId: string;
+    nodeId: string;
+    displayName?: string | null;
+    ownerName?: string | null;
+    humanId?: string | null;
+  }) => {
+    if (!isNativeShell) return;
+    if (!canonicalHumanIdentityId) {
+      setDesktopChatError('Bridge identity is still loading. Try again in a moment.');
+      return;
+    }
+
+    const sessionId = newBridgePersonSessionId();
+    const remoteIdentityId = bridgePersonIdentityId(target);
+    setActiveNav('chats');
+    setActiveConvId(sessionId);
+    setDesktopChatError(null);
+
+    try {
+      const nextState = await openOrCreateCanonicalSession({
+        id: sessionId,
+        kind: 'direct-person',
+        title: 'New session',
+        status: 'active',
+        createdByIdentityId: canonicalHumanIdentityId,
+        primaryIdentityId: remoteIdentityId,
+        projectId: null,
+        projectName: null,
+        relationshipIdentityId: remoteIdentityId,
+        participantIdentityIds: [remoteIdentityId],
+        metadata: {
+          source: 'bridge-session-thread',
+          bridgeHostId: target.hostId,
+          peerNodeId: target.nodeId,
+          peerRuntime: 'person',
+          peerDisplayName: target.displayName ?? null,
+          peerOwnerName: target.ownerName ?? target.displayName ?? null,
+          peerHumanId: target.humanId ?? null,
+        },
+      });
+      setCanonicalSessionState(nextState);
+      void addDesktopBridgeContact(target.hostId, target.nodeId)
+        .then((state) => {
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+        })
+        .catch(() => {});
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to start bridge session');
+    }
+  }, [canonicalHumanIdentityId, isNativeShell, setActiveConvId, setActiveNav, setCanonicalSessionState, setDesktopBridgeState, setDesktopChatError]);
 
   const handleOpenBridgeConversation = useCallback(async (
     hostId: string,
@@ -350,6 +420,7 @@ export function useBridgeOrchestration({
     handleCreateProjectBridgeInvite,
     handleOpenBridgeConversation,
     handleRemoveBridgeContact,
+    handleStartBridgePersonSession,
     handleRenameBridgeAgent,
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,

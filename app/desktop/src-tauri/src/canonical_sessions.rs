@@ -48,7 +48,8 @@ use self::desktop_sync::{
 };
 #[cfg(test)]
 use self::parent_sessions::{
-    store_outreach_context_snapshot, sync_parent_session_snapshot_messages,
+    store_outreach_context_snapshot, sync_bridge_outreach_into_parent_session,
+    sync_parent_session_snapshot_messages,
 };
 use self::presence::update_presence_in_db;
 use self::schema::{ensure_local_profile, initialize_schema};

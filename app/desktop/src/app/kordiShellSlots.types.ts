@@ -119,6 +119,13 @@ export type AssembleKordiShellSlotsArgs = {
     peerRuntime?: string | null,
     project?: DesktopBridgeProject | null,
   ) => Promise<void>;
+  handleStartBridgePersonSession: (target: {
+    hostId: string;
+    nodeId: string;
+    displayName?: string | null;
+    ownerName?: string | null;
+    humanId?: string | null;
+  }) => Promise<void>;
 
   activeAgentId: string;
   setActiveAgentId: Dispatch<SetStateAction<string>>;
@@ -343,6 +350,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeContactRequest'
   | 'getStatusBadgeClass'
   | 'handleOpenBridgeConversation'
+  | 'handleStartBridgePersonSession'
   | 'displayedAgents'
   | 'activeAgentId'
   | 'activeAgent'

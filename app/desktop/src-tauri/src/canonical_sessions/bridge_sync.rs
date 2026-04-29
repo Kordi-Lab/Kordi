@@ -207,6 +207,25 @@ pub(crate) fn sync_bridge_state_identities(
     Ok(())
 }
 
+fn first_direct_person_message_title(
+    conversation: &crate::bridge::DesktopBridgeConversation,
+) -> Option<String> {
+    if runtime_is_agent_like(&conversation.peer_runtime) {
+        return None;
+    }
+
+    conversation
+        .messages
+        .iter()
+        .filter(|message| matches!(message.direction.as_str(), "outbound" | "inbound"))
+        .filter_map(|message| {
+            let text = message.text.trim();
+            (!text.is_empty()).then(|| (message.timestamp_ms, text.to_string()))
+        })
+        .min_by_key(|(timestamp_ms, _)| *timestamp_ms)
+        .map(|(_, text)| text)
+}
+
 pub(crate) fn sync_bridge_state_sessions(
     state: &crate::bridge::DesktopBridgeState,
 ) -> Result<(), String> {
@@ -306,6 +325,8 @@ pub(crate) fn sync_bridge_state_sessions(
         let represents_human_relationship =
             peer_is_agent && peer_is_default_agent && relationship_identity_id.is_some();
 
+        let session_title = first_direct_person_message_title(conversation);
+
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
@@ -315,7 +336,7 @@ pub(crate) fn sync_bridge_state_sessions(
                 } else {
                     "direct-person".to_string()
                 },
-                title: None,
+                title: session_title,
                 status: Some("active".to_string()),
                 created_by_identity_id: local_human_identity_id.clone(),
                 primary_identity_id: Some(primary_identity_id),
