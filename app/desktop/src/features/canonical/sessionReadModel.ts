@@ -105,12 +105,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
+      const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
       const canonicalMessages = this.messages(sessionId);
-      const messages = isCanonicalBridgeSessionId(sessionId) && canonicalMessages.length > 0
+      const messages = isBridgePersonSession && canonicalMessages.length > 0
         ? canonicalMessages
         : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
-      const bridgePersonMessageTitle = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId)
+      const bridgePersonMessageTitle = isBridgePersonSession
         ? messages.find((message) => message.role !== 'system' && message.text.trim())?.text.trim()
         : null;
       const canonicalParticipants = this.participantDetails(sessionId);
