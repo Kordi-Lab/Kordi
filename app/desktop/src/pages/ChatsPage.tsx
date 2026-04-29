@@ -18,7 +18,7 @@ import {
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
+import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import {
   ComposerMentionMenu,
   ComposerModelControls,
@@ -190,6 +190,10 @@ export function ChatsPage({
   );
   const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
+  const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
+  const shouldRenderLiveTurn = Boolean(activeTranscriptLiveTurn && !activeTranscriptLiveTurn.completed);
+  const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -292,14 +296,14 @@ export function ChatsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {activeConv.messages.map((msg, idx) => (
+            {transcriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={`${msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
               />
             ))}
-            {visibleDesktopLiveTurn && !visibleDesktopLiveTurn.completed && visibleDesktopLiveTurn.sessionId === activeConv.id ? <LiveChatTurnMessage turn={visibleDesktopLiveTurn} /> : null}
+            {shouldRenderLiveTurn && activeTranscriptLiveTurn ? <LiveChatTurnMessage turn={activeTranscriptLiveTurn} sender={liveTurnSender} /> : null}
             {queuedDesktopMessages.map((message) => (
               <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
             ))}

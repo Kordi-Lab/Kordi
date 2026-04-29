@@ -1,7 +1,7 @@
 import { useCallback, type MutableRefObject } from 'react';
 
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { selfDisplayName } from '@/lib/identityLabels';
+import { firstPersonPossessiveLabel, selfDisplayName } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 type LocalAvatarSeedsRef = MutableRefObject<{
@@ -37,7 +37,7 @@ export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopT
                 : ('user' as const),
         sender:
           message.role === 'assistant'
-            ? message.sender ?? 'Kordi'
+            ? firstPersonPossessiveLabel(message.sender ?? 'Kordi')
             : message.role === 'user'
               ? selfDisplayName(message.sender ?? 'Me', true)
               : message.sender ?? undefined,

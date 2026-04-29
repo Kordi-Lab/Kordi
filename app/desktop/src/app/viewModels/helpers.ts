@@ -1,6 +1,6 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
-import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
+import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
   Conversation,
@@ -150,10 +150,14 @@ function isRawConversationId(value?: string | null) {
     || trimmed.startsWith('draft:');
 }
 
-function participantDisplayName(participants: string[]) {
-  const nonSelf = participants
+function nonSelfParticipantNames(participants: string[]) {
+  return participants
     .map((participant) => participant.trim())
     .filter((participant) => participant.length > 0 && !/^(me|you)$/i.test(participant));
+}
+
+function participantDisplayName(participants: string[]) {
+  const nonSelf = nonSelfParticipantNames(participants);
   if (nonSelf.length === 1 && /^kordi$/i.test(nonSelf[0])) {
     return undefined;
   }
@@ -166,6 +170,31 @@ function firstUserSentence(messages: Message[]) {
   if (!text) return undefined;
   const sentenceMatch = /^(.+?[.!?。！？])(?:\s|$)/u.exec(text);
   return sentenceMatch?.[1] ?? text.split(/[\n\r]/)[0] ?? text;
+}
+
+function localOwnedAgentDisplayName(value?: string | null) {
+  return firstPersonPossessiveLabel(value || 'Kordi');
+}
+
+export function localOwnedAgentSenderLabel(
+  conversation: Pick<Conversation, 'canonicalParticipants' | 'participants' | 'messages'>,
+  fallback = 'Kordi',
+) {
+  const canonicalAgent = conversation.canonicalParticipants?.find((participant) => (
+    participant.kind === 'agent'
+    && participant.source === 'local'
+    && participant.name.trim().length > 0
+  ));
+  if (canonicalAgent) return localOwnedAgentDisplayName(canonicalAgent.name);
+
+  const recentOwnedAgentMessage = [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === 'owned-agent' && message.sender?.trim());
+  if (recentOwnedAgentMessage?.sender?.trim()) return localOwnedAgentDisplayName(recentOwnedAgentMessage.sender);
+
+  const participantName = nonSelfParticipantNames(conversation.participants)
+    .find((participant) => !/^kordi$/i.test(participant));
+  return localOwnedAgentDisplayName(participantName ?? fallback);
 }
 
 export function conversationSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
@@ -235,18 +264,44 @@ function transcriptToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
   return tool.id?.trim() || [tool.name, tool.status, tool.arguments, tool.resultText ?? '', tool.isError ? 'error' : 'ok'].join('\u0000');
 }
 
+export function suppressLiveTurnEchoMessages(messages: Message[], turn?: DesktopChatTurnSnapshot) {
+  if (!turn || turn.completed) return messages;
+
+  const lastUserIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === 'user') return index;
+    }
+    return -1;
+  })();
+
+  const filtered = messages.filter((message, index) => {
+    if (index <= lastUserIndex) return true;
+    return message.role !== 'owned-agent';
+  });
+
+  return filtered.length === messages.length ? messages : filtered;
+}
+
 function agentTurnIsSubsumedByNext(current: Message, next: Message) {
   if (!current.turn || !next.turn) return false;
   if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || current.time !== next.time) return false;
   if (!current.turn.completed || !next.turn.completed) return false;
-  if (next.turn.assistantText.trim().length === 0) return false;
-  if (current.turn.assistantText.trim().length > 0 && current.turn.assistantText.trim() !== next.turn.assistantText.trim()) return false;
+  const currentAssistantText = current.turn.assistantText.trim();
+  const nextAssistantText = next.turn.assistantText.trim();
+  if (nextAssistantText.length === 0) return false;
+  if (
+    currentAssistantText.length > 0
+    && currentAssistantText !== nextAssistantText
+    && !nextAssistantText.startsWith(currentAssistantText)
+  ) return false;
 
   const currentThinking = current.turn.thinkingText.trim();
   const nextThinking = next.turn.thinkingText.trim();
   if (currentThinking.length > 0 && !nextThinking.includes(currentThinking)) return false;
 
-  if (current.turn.tools.length === 0) return false;
+  if (current.turn.tools.length === 0) {
+    return currentAssistantText.length > 0 || currentThinking.length > 0;
+  }
   const nextToolKeys = new Set(next.turn.tools.map(transcriptToolKey));
   return current.turn.tools.every((tool) => nextToolKeys.has(transcriptToolKey(tool)));
 }

@@ -15,7 +15,7 @@ function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, fi
 
   return {
     role: 'assistant',
-    sender: 'Kordi',
+    sender: 'My Kordi',
     text: assistantText.length > 0 ? assistantText : fallbackText,
     detail: undefined,
     timeLabel: finishedAt,

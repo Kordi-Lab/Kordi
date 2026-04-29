@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -186,6 +187,10 @@ export function ProjectsPage({
   onOpenAuthSettings,
 }: ProjectsPageProps) {
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
+  const activeProjectLiveTurn = desktopLiveTurn?.sessionId === activeProjectSession.id ? desktopLiveTurn : undefined;
+  const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
+  const shouldRenderLiveTurn = Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed);
+  const liveTurnSender = localOwnedAgentSenderLabel(activeProjectSession);
 
   if (isNativeShell && !activeProject.id) {
     return (
@@ -321,14 +326,14 @@ export function ProjectsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {activeProjectSession.messages.map((msg, idx) => (
+            {transcriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={`${activeProjectSession.id}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
               />
             ))}
-            {desktopLiveTurn && !desktopLiveTurn.completed && desktopLiveTurn.sessionId === activeProjectSession.id ? <LiveChatTurnMessage turn={desktopLiveTurn} /> : null}
+            {shouldRenderLiveTurn && activeProjectLiveTurn ? <LiveChatTurnMessage turn={activeProjectLiveTurn} sender={liveTurnSender} /> : null}
           </motion.div>
         </ScrollArea>
       </div>
