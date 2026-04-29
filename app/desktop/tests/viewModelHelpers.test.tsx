@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, formatSessionIdSubtitle, hideRawConversationIds } from '../src/app/viewModels/helpers';
+import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds } from '../src/app/viewModels/helpers';
+import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
   const [conversation] = hideRawConversationIds([{
@@ -97,4 +98,60 @@ test('formatSessionIdSubtitle labels raw ids for display', () => {
   );
   assert.equal(formatSessionIdSubtitle('  '), '');
   assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
+});
+
+function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
+  return {
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: 'check issue',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Using the requested-skills workflow first, then I will inspect the repo context.',
+    thinkingText: 'Reasoning trace',
+    tools: [{
+      id: 'tool-1',
+      name: 'grep',
+      status: 'done',
+      arguments: '{"pattern":"issue"}',
+      liveOutput: '',
+      resultText: 'matched issue context',
+      detail: '23ms',
+      isError: false,
+    }],
+    completed: true,
+    succeeded: true,
+    error: null,
+    ...overrides,
+  };
+}
+
+function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot): Message {
+  return {
+    role: 'owned-agent',
+    sender,
+    senderType: 'agent',
+    text: '',
+    time: '12:36',
+    turn: messageTurn,
+  };
+}
+
+test('dedupes adjacent duplicate local agent turns even when sender aliases differ', () => {
+  const first = agentMessage('My Kordi', turn());
+  const second = agentMessage('Kordi', turn({ id: 'turn-2' }));
+
+  const deduped = dedupeAdjacentAgentTurns([first, second]);
+
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0], second);
+});
+
+test('drops local tool-only alias turn when next local alias turn contains the final answer', () => {
+  const toolOnly = agentMessage('My Kordi', turn({ id: 'turn-tool-only', assistantText: '' }));
+  const finalAnswer = agentMessage('Kordi', turn({ id: 'turn-final' }));
+
+  const deduped = dedupeAdjacentAgentTurns([toolOnly, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
 });

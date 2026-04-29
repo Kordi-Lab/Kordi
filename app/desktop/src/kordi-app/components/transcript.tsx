@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
+import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import type {
   Contact,
@@ -82,6 +83,48 @@ function looksLikeTerminalTable(text: string) {
   return columnishLines.length >= 2 || dividerLines.length >= 1;
 }
 
+function DiffOutputBlock({ label, icon, text }: { label: string; icon: ComponentType<{ className?: string }>; text: string }) {
+  const Icon = icon;
+  const rows = useMemo(() => parseDiffOutput(text), [text]);
+  const fileRows = rows.filter((row) => row.kind === 'file');
+  const bodyRows = rows.filter((row) => row.kind !== 'file');
+  const classForRow = (row: ParsedDiffLine) => cn(
+    'app-transcript-diff-row',
+    row.kind === 'add' && 'app-transcript-diff-row-add',
+    row.kind === 'delete' && 'app-transcript-diff-row-delete',
+    row.kind === 'hunk' && 'app-transcript-diff-row-hunk',
+  );
+
+  return (
+    <div className="py-1.5">
+      <div className="app-transcript-block-label mb-1.5 flex items-center gap-2 text-[10px] font-medium text-slate-500">
+        <Icon className="h-3.5 w-3.5" />
+        <span>{label}</span>
+        <span className="app-transcript-utility-chip rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-slate-400">patch</span>
+      </div>
+      <div className="app-transcript-diff-block">
+        {fileRows.length > 0 ? (
+          <div className="app-transcript-diff-files">
+            {fileRows.map((row, index) => <div key={`diff-file-${index}`} className="truncate">{row.content}</div>)}
+          </div>
+        ) : null}
+        <div className="app-transcript-diff-scroll">
+          <div className="app-transcript-diff-table" role="table" aria-label={`${label} patch`}>
+            {bodyRows.map((row, index) => (
+              <div key={`diff-row-${index}`} className={classForRow(row)} role="row">
+                <span className="app-transcript-diff-gutter" role="cell">{row.oldLineNumber ?? ''}</span>
+                <span className="app-transcript-diff-gutter" role="cell">{row.newLineNumber ?? ''}</span>
+                <span className="app-transcript-diff-marker" role="cell">{row.kind === 'add' ? '+' : row.kind === 'delete' ? '-' : ' '}</span>
+                <code className="app-transcript-diff-code" role="cell">{row.content || ' '}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ToolTranscriptBlock({
   label,
   icon,
@@ -98,8 +141,13 @@ function ToolTranscriptBlock({
   wrapLines?: boolean;
 }) {
   const Icon = icon;
-  const preserveColumns = useMemo(() => looksLikeTerminalTable(text), [text]);
+  const cleanedText = useMemo(() => stripAnsi(text), [text]);
+  const preserveColumns = useMemo(() => looksLikeTerminalTable(cleanedText), [cleanedText]);
   const [isWrapped, setIsWrapped] = useState(wrapLines ?? !preserveColumns);
+
+  if (isDiffLikeOutput(cleanedText)) {
+    return <DiffOutputBlock label={label} icon={icon} text={cleanedText} />;
+  }
 
   return (
     <div className="py-1.5">
@@ -109,7 +157,7 @@ function ToolTranscriptBlock({
         {preserveColumns ? <span className="app-transcript-utility-chip rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-slate-400">column layout</span> : null}
       </div>
       <MarkdownCodeBlock
-        code={text}
+        code={cleanedText}
         language={language}
         maxHeightClass={maxHeightClass}
         wrapLines={isWrapped}
@@ -906,12 +954,8 @@ function ToolActivityPin({ tool, kind }: { tool: ToolSnapshot; kind: 'running' |
 
 function ToolActivityRow({
   tool,
-  expanded,
-  onToggle,
 }: {
   tool: ToolSnapshot;
-  expanded: boolean;
-  onToggle: () => void;
 }) {
   const display = toolDisplayConfig(tool.name);
   const Icon = display.icon;
@@ -920,26 +964,26 @@ function ToolActivityRow({
   const tone = toolStatusTone(tool);
   const metaText = toolMetaText(tool);
   const primaryMeta = toolPrimaryMetaText(tool);
+  const running = isRunningTool(tool);
 
   return (
-    <div className="app-transcript-tool-row">
-      <button
-        type="button"
-        onClick={hasDetails ? onToggle : undefined}
-        aria-expanded={hasDetails ? expanded : undefined}
+    <div className={cn('app-transcript-tool-row', running && 'app-transcript-tool-row-running')}>
+      <div
         aria-label={`${display.label ?? tool.name}, ${status}${metaText ? `, ${metaText}` : ''}`}
         className={cn('app-transcript-tool-row-button', !hasDetails && 'cursor-default')}
       >
         <span className="app-transcript-tool-row-icon" aria-hidden="true">
-          <Icon className="h-3.5 w-3.5" />
+          {running ? <ProcessingStatusCircle className="h-3.5 w-3.5 text-amber-300" /> : <Icon className="h-3.5 w-3.5" />}
         </span>
         <span className="app-transcript-tool-row-name truncate">
-          {isRunningTool(tool) ? <ActiveSheenTitle text={display.label ?? tool.name} /> : (display.label ?? tool.name)}
+          {running ? <ActiveSheenTitle text={display.label ?? tool.name} /> : (display.label ?? tool.name)}
         </span>
         <span className="app-transcript-tool-row-detail truncate">{metaText}</span>
-        <span className={cn('app-transcript-tool-row-time truncate', `app-transcript-status-text-${tone}`)}>{primaryMeta}</span>
-      </button>
-      {expanded && hasDetails ? (
+        <span className={cn('app-transcript-tool-row-time truncate', `app-transcript-status-text-${tone}`)}>
+          {running ? 'Running' : primaryMeta}
+        </span>
+      </div>
+      {hasDetails ? (
         <div className="app-transcript-tool-row-detail-block">
           <ToolDetailBlocks tool={tool} display={display} />
         </div>
@@ -951,13 +995,9 @@ function ToolActivityRow({
 function ToolActivityGroup({
   tools,
   active,
-  expandedTools,
-  setExpandedTools,
 }: {
   tools: ToolSnapshot[];
   active?: boolean;
-  expandedTools: Record<string, boolean>;
-  setExpandedTools: Dispatch<SetStateAction<Record<string, boolean>>>;
 }) {
   const [expandedActivity, setExpandedActivity] = useState(false);
   const currentTool = findLastTool(tools, isRunningTool) ?? tools[tools.length - 1];
@@ -973,16 +1013,6 @@ function ToolActivityGroup({
   const latestMeta = currentTool ? toolMetaText(currentTool) : '';
   const latestTone = currentTool ? toolStatusTone(currentTool) : null;
 
-  function setAllRows(nextExpanded: boolean) {
-    setExpandedTools((current) => {
-      const next = { ...current };
-      tools.forEach((tool) => {
-        if (toolDetailsAvailable(tool)) next[tool.id] = nextExpanded;
-      });
-      return next;
-    });
-  }
-
   return (
     <section className={cn('app-transcript-tool-activity', expandedActivity && 'app-transcript-tool-activity-open')}>
       <button
@@ -991,7 +1021,7 @@ function ToolActivityGroup({
         aria-expanded={expandedActivity}
         className="app-transcript-tool-activity-button"
       >
-        {expandedActivity ? <ChevronDown className="h-4 w-4 shrink-0 app-transcript-tool-chevron" /> : <ChevronRight className="h-4 w-4 shrink-0 app-transcript-tool-chevron" />}
+        {active ? <span className="app-transcript-tool-running-dot" aria-hidden="true" /> : <span className="h-4 w-4 shrink-0" aria-hidden="true" />}
         <Wrench className="h-3.5 w-3.5 shrink-0 app-transcript-tool-activity-icon" />
         <span className="app-transcript-tool-activity-summary min-w-0">
           <span className="app-transcript-tool-activity-line min-w-0">
@@ -1035,19 +1065,13 @@ function ToolActivityGroup({
       {expandedActivity ? (
         <div className="app-transcript-tool-activity-details">
           <div className="app-transcript-tool-activity-toolbar">
-            <span>Complete tool chain · details open per row</span>
-            <span className="app-transcript-tool-activity-toolbar-actions">
-              <button type="button" onClick={() => setAllRows(false)} className="app-transcript-tool-activity-action">Collapse rows</button>
-              <button type="button" onClick={() => setAllRows(true)} className="app-transcript-tool-activity-action">Expand rows</button>
-            </span>
+            <span>Complete tool chain · outputs shown inline</span>
           </div>
           <div className="app-transcript-tool-list">
             {tools.map((tool) => (
               <ToolActivityRow
                 key={tool.id}
                 tool={tool}
-                expanded={expandedTools[tool.id] ?? false}
-                onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !(current[tool.id] ?? false) }))}
               />
             ))}
           </div>
@@ -1155,7 +1179,6 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
                     ? 'Replying…'
                     : 'Working…';
   const [expandedThinking, setExpandedThinking] = useState(false);
-  const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
   const liveTurnActive = !historical && !visibleTurn.completed;
   const thinkingActive = liveTurnActive && (visibleTurn.status === 'thinking' || (hasThinking && visibleTurn.tools.length === 0 && !hasAssistant));
 
@@ -1211,26 +1234,27 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
         <ToolActivityGroup
           tools={visibleTurn.tools}
           active={liveTurnActive && visibleTurn.tools.some(isRunningTool)}
-          expandedTools={expandedTools}
-          setExpandedTools={setExpandedTools}
         />
       ) : visibleTurn.tools.map((tool) => {
-        const expanded = expandedTools[tool.id] ?? !historical;
         const toolDisplay = toolDisplayConfig(tool.name);
 
         return (
-          <TimelineSection
-            key={tool.id}
-            icon={toolDisplay.icon}
-            title={toolDisplay.label ?? tool.name}
-            meta={toolMetaText(tool)}
-            metaTone={toolStatusTone(tool)}
-            expanded={expanded}
-            onToggle={() => setExpandedTools((current) => ({ ...current, [tool.id]: !expanded }))}
-            activeTitle={liveTurnActive && isRunningTool(tool)}
-          >
-            <ToolDetailBlocks tool={tool} display={toolDisplay} />
-          </TimelineSection>
+          <div key={tool.id} className={cn('app-transcript-single-tool', liveTurnActive && isRunningTool(tool) && 'app-transcript-single-tool-running')}>
+            <div className="app-transcript-single-tool-header">
+              {liveTurnActive && isRunningTool(tool) ? <ProcessingStatusCircle className="h-3.5 w-3.5 text-amber-300" /> : <toolDisplay.icon className="h-3.5 w-3.5" />}
+              <span className="app-transcript-single-tool-title">
+                {liveTurnActive && isRunningTool(tool) ? <ActiveSheenTitle text={toolDisplay.label ?? tool.name} /> : (toolDisplay.label ?? tool.name)}
+              </span>
+              <span className={cn('app-transcript-single-tool-meta', `app-transcript-status-text-${toolStatusTone(tool)}`)}>
+                {isRunningTool(tool) ? 'Running' : toolMetaText(tool)}
+              </span>
+            </div>
+            {toolDetailsAvailable(tool) ? (
+              <div className="app-transcript-single-tool-body">
+                <ToolDetailBlocks tool={tool} display={toolDisplay} />
+              </div>
+            ) : null}
+          </div>
         );
       })}
 
