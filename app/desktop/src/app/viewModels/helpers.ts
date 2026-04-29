@@ -1,5 +1,6 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
+import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
   Conversation,
@@ -216,12 +217,18 @@ export function buildConversationPreview(messages: Message[], fallback?: string)
   return truncateInlineText(fallback ?? '', 72);
 }
 
+function comparableAgentTurnSender(message: Message) {
+  const sender = message.sender?.trim() ?? '';
+  if (message.role !== 'owned-agent') return sender;
+  return (stripSelfPossessivePrefix(sender) || sender).toLowerCase();
+}
+
 export function duplicateAgentTurnKey(message: Message) {
   if (!message.turn) return null;
   const assistantText = message.turn.assistantText.trim();
   const thinkingText = message.turn.thinkingText.trim();
   const toolSignature = message.turn.tools.map((tool) => `${tool.name}:${tool.status}:${tool.resultText ?? ''}`).join('|');
-  return [message.role, message.sender ?? '', message.time, assistantText, thinkingText, toolSignature].join('\u0000');
+  return [message.role, comparableAgentTurnSender(message), message.time, assistantText, thinkingText, toolSignature].join('\u0000');
 }
 
 function transcriptToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
@@ -230,7 +237,7 @@ function transcriptToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
 
 function agentTurnIsSubsumedByNext(current: Message, next: Message) {
   if (!current.turn || !next.turn) return false;
-  if (current.role !== next.role || current.sender !== next.sender || current.time !== next.time) return false;
+  if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || current.time !== next.time) return false;
   if (!current.turn.completed || !next.turn.completed) return false;
   if (next.turn.assistantText.trim().length === 0) return false;
   if (current.turn.assistantText.trim().length > 0 && current.turn.assistantText.trim() !== next.turn.assistantText.trim()) return false;
