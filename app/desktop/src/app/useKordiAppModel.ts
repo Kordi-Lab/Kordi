@@ -17,10 +17,10 @@ import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonical
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
+import { buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
@@ -66,7 +66,7 @@ type MentionQuery = {
 };
 
 function currentMentionQuery(text: string): MentionQuery | null {
-  const match = /(^|\s)@([^@\n\r]*)$/.exec(text);
+  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(text);
   if (!match) return null;
   const raw = match[2];
   if (raw.length > 96) return null;
@@ -350,55 +350,40 @@ export function useKordiAppModel() {
       const localAgentLabel = ownerName
         ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
         : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
+      const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
       pushOption({
-        value: localAgentLabel,
-        label: localAgentLabel,
+        value: localAgentHandle,
+        label: localAgentHandle,
         detail: [
           'My agent',
+          localAgentLabel !== localAgentHandle ? localAgentLabel : null,
           activeAgent?.id ? `agent ${activeAgent.id}` : null,
           activeAgent?.nodeId ? `node ${activeAgent.nodeId}` : null,
           activeAgent?.runtime,
         ].filter((value): value is string => Boolean(value)).join(' • '),
         targetKind: 'bridge-agent',
         bridgeHostId: activeHost?.id ?? 'local',
-        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentLabel}`,
+        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
         runtime: activeAgent?.runtime ?? 'kordi-local',
       });
     }
 
-    for (const host of hosts) {
-      for (const peer of host.visiblePeers) {
-        const isAgent = isBridgeAgentRuntime(peer.runtime);
-        const owner = peer.ownerName?.trim();
-        const agentLabel = peer.displayName?.trim() || owner || peer.nodeId;
-
-        if (isAgent && peer.isDefaultAgent && owner && peer.humanId?.trim()) {
-          pushOption({
-            value: owner,
-            label: owner,
-            detail: ['Bridge person', `Owns ${agentLabel}`, host.displayName || host.ownerName].filter(Boolean).join(' • '),
-            targetKind: 'bridge-person',
-            bridgeHostId: host.id,
-            nodeId: peer.nodeId,
-            runtime: 'person',
-          });
-        }
-
-        pushOption({
-          value: agentLabel,
-          label: agentLabel,
-          detail: [
-            isAgent ? 'Bridge agent' : 'Bridge person',
-            owner && owner !== agentLabel ? owner : null,
-            host.displayName || host.ownerName,
-            peer.runtime,
-          ].filter((value): value is string => Boolean(value)).join(' • '),
-          targetKind: isAgent ? 'bridge-agent' : 'bridge-person',
-          bridgeHostId: host.id,
-          nodeId: peer.nodeId,
-          runtime: peer.runtime,
-        });
-      }
+    for (const candidate of buildBridgeMentionCandidates(desktopBridgeState)) {
+      pushOption({
+        value: candidate.handle,
+        label: candidate.handle,
+        detail: [
+          candidate.targetKind === 'bridge-agent' ? 'Bridge agent' : 'Bridge person',
+          candidate.displayLabel !== candidate.handle ? candidate.displayLabel : null,
+          candidate.peer.ownerName?.trim() && candidate.peer.ownerName?.trim() !== candidate.displayLabel ? candidate.peer.ownerName?.trim() : null,
+          candidate.host.displayName || candidate.host.ownerName,
+          candidate.peer.runtime,
+        ].filter((value): value is string => Boolean(value)).join(' • '),
+        targetKind: candidate.targetKind,
+        bridgeHostId: candidate.host.id,
+        nodeId: candidate.peer.nodeId,
+        runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
+      });
     }
 
     return options;

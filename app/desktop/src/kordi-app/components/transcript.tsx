@@ -301,15 +301,7 @@ function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
     }
   }
 
-  const parts = text.split(/(@[^@\n]{1,96}?['’]s Kordi)(?=\s|$|[:;,.!?—-])/g);
-  if (parts.length > 1) {
-    return parts.map((part, index) => {
-      if (!part.startsWith('@')) return part;
-      return mentionPill(part, `${part}-${index}`);
-    });
-  }
-
-  const legacyParts = text.split(/(@[^\s@]+)/g);
+  const legacyParts = text.split(/(@[\p{L}\p{N}]{1,64})/gu);
   return legacyParts.map((part, index) => {
     if (!part.startsWith('@')) return part;
     return mentionPill(part, `${part}-${index}`);
