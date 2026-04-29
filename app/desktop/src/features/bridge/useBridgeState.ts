@@ -7,6 +7,11 @@ import {
   DEFAULT_BRIDGE_DISPLAY_NAME,
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
+import {
+  activeBridgeConversationForSession,
+  bridgeReadReceiptSignature,
+  shouldMarkBridgeConversationRead,
+} from '@/features/bridge/readReceipts';
 import type {
   DesktopBridgeConversation,
   DesktopBridgeConversationMessage,
@@ -561,9 +566,9 @@ export function useBridgeState({
       return;
     }
 
-    const activeConversation = (desktopBridgeState?.conversations ?? []).find((conversation) => conversation.id === activeConvId);
+    const activeConversation = activeBridgeConversationForSession(desktopBridgeState?.conversations ?? [], activeConvId);
     if (!activeConversation) return;
-    if (activeConversation.unreadCount <= 0) {
+    if (!shouldMarkBridgeConversationRead(activeConversation)) {
       activeBridgeReadRequestRef.current = null;
       return;
     }
@@ -575,9 +580,10 @@ export function useBridgeState({
       activeBridgeReadRequestRef.current = null;
       return;
     }
-    if (activeBridgeReadRequestRef.current === activeConversation.id) return;
+    const readSignature = bridgeReadReceiptSignature(activeConversation);
+    if (activeBridgeReadRequestRef.current === readSignature) return;
 
-    activeBridgeReadRequestRef.current = activeConversation.id;
+    activeBridgeReadRequestRef.current = readSignature;
     markDesktopBridgeConversationRead(activeConversation.id)
       .then((state) => {
         setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
