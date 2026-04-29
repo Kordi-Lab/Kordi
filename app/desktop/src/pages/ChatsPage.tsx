@@ -232,6 +232,7 @@ export function ChatsPage({
                       void onRenameDesktopSession(activeConv.name);
                     }}
                     autoFocus
+                    data-kordi-window-drag="false"
                     className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
                     placeholder="Session name"
                   />
@@ -243,13 +244,14 @@ export function ChatsPage({
                       setIsEditingDesktopSessionTitle(true);
                     }}
                     className="min-w-0 max-w-full truncate rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold text-white transition hover:bg-white/5"
+                    data-kordi-window-drag="false"
                     title={activeConv.name}
                   >
                     {activeConv.name}
                   </h2>
                 )
               ) : (
-                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold">{activeConv.name}</h2>
+                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
               <TypeBadge type={activeConv.type} compact />
             </div>
