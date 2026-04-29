@@ -94,6 +94,49 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
   );
 });
 
+test('buildBridgeMentionCandidates does not expose node id duplicates when friendly labels exist', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'kd_remote_node_123',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-local',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+  ]);
+
+  const candidates = buildBridgeMentionCandidates(bridgeState);
+
+  assert.deepEqual(
+    candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
+  );
+  assert.equal(candidates.some((candidate) => candidate.displayLabel === 'kd_remote_node_123'), false);
+});
+
+test('buildBridgeMentionCandidates falls back to node id when no friendly labels exist', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'kd_unlabeled_node_123',
+      displayName: null,
+      ownerName: null,
+      runtime: 'kordi-local',
+      humanId: null,
+      agentId: null,
+      isDefaultAgent: false,
+    }),
+  ]);
+
+  const candidates = buildBridgeMentionCandidates(bridgeState);
+
+  assert.deepEqual(
+    candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-agent:kd_unlabeled_node_123'],
+  );
+});
+
 test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete candidates', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
