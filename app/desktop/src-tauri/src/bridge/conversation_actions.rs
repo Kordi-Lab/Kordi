@@ -46,6 +46,31 @@ fn is_realtime_direct_chat(
             || is_agent_like_runtime(&conversation.peer_runtime))
 }
 
+fn pending_read_receipt_request_ids(
+    conversation: &DesktopBridgeConversationRecord,
+) -> Vec<String> {
+    let mut request_ids = conversation
+        .messages
+        .iter()
+        .filter(|message| is_inbound_message_direction(&message.direction))
+        .filter_map(|message| message.request_id.as_deref())
+        .map(str::trim)
+        .filter(|request_id| !request_id.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    request_ids.sort();
+    request_ids.dedup();
+    request_ids
+}
+
+fn read_receipt_payload(host_node_id: &str, request_id: &str) -> Value {
+    serde_json::json!({
+        "from": host_node_id,
+        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+        "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_READ },
+    })
+}
+
 fn load_conversation_context(
     conversation_id: &str,
 ) -> Result<
@@ -499,4 +524,94 @@ pub(super) async fn desktop_bridge_send_message_impl(
     )?;
     let conversations = mark_bridge_conversation_read_in_storage(&conversation_id)?;
     rebuild_state(manager, store, conversations).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::constants::{
+        BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    };
+
+    fn test_conversation(
+        messages: Vec<crate::bridge::DesktopBridgeConversationMessageRecord>,
+    ) -> DesktopBridgeConversationRecord {
+        DesktopBridgeConversationRecord {
+            id: "bridge:host-1:peer-1:person".to_string(),
+            host_id: "host-1".to_string(),
+            peer_node_id: "peer-1".to_string(),
+            peer_display_name: Some("Peer".to_string()),
+            peer_owner_name: Some("Peer".to_string()),
+            peer_runtime: "person".to_string(),
+            project_id: None,
+            project_name: None,
+            unread_count: 0,
+            updated_at_ms: 1,
+            peer_last_typing_at_ms: None,
+            peer_last_heartbeat_at_ms: None,
+            outreach: None,
+            identity: None,
+            messages,
+        }
+    }
+
+    fn test_message(
+        direction: &str,
+        request_id: Option<&str>,
+    ) -> crate::bridge::DesktopBridgeConversationMessageRecord {
+        crate::bridge::DesktopBridgeConversationMessageRecord {
+            id: format!("msg-{}", request_id.unwrap_or("none")),
+            direction: direction.to_string(),
+            sender: Some("Peer".to_string()),
+            text: "hello".to_string(),
+            timestamp_ms: 1,
+            request_id: request_id.map(ToString::to_string),
+            delivery_state: None,
+            outreach: None,
+        }
+    }
+
+    #[test]
+    fn pending_read_receipt_request_ids_include_inbound_ids_when_unread_is_zero() {
+        let conversation = test_conversation(vec![test_message(
+            BRIDGE_MESSAGE_DIRECTION_INBOUND,
+            Some("req-1"),
+        )]);
+
+        assert_eq!(
+            pending_read_receipt_request_ids(&conversation),
+            vec!["req-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn pending_read_receipt_request_ids_deduplicate_and_skip_outbound() {
+        let conversation = test_conversation(vec![
+            test_message(BRIDGE_MESSAGE_DIRECTION_INBOUND, Some("req-1")),
+            test_message(BRIDGE_MESSAGE_DIRECTION_INBOUND, Some("req-1")),
+            test_message(BRIDGE_MESSAGE_DIRECTION_OUTBOUND, Some("req-out")),
+            test_message(BRIDGE_MESSAGE_DIRECTION_INBOUND, None),
+        ]);
+
+        assert_eq!(
+            pending_read_receipt_request_ids(&conversation),
+            vec!["req-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn read_receipt_payload_uses_delivery_event_read_state() {
+        let payload = read_receipt_payload("node-me", "req-1");
+
+        assert_eq!(payload["from"], serde_json::json!("node-me"));
+        assert_eq!(
+            payload["messageType"],
+            serde_json::json!(BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT)
+        );
+        assert_eq!(payload["payload"]["requestId"], serde_json::json!("req-1"));
+        assert_eq!(
+            payload["payload"]["state"],
+            serde_json::json!(BRIDGE_DELIVERY_STATE_READ)
+        );
+    }
 }
