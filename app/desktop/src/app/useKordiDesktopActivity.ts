@@ -46,6 +46,26 @@ function useArtifactLiveTurn(turn?: DesktopChatTurnSnapshot | null) {
   return stableTurnRef.current.turn;
 }
 
+export function visibleLocalSessionIdForActivity({
+  activeNav,
+  activeChatSessionId,
+  activeProjectSessionId,
+}: {
+  activeNav: NavId;
+  activeChatSessionId: string;
+  activeProjectSessionId: string;
+}) {
+  if (activeNav === 'projects') {
+    return isProjectDraftSessionId(activeProjectSessionId) ? null : activeProjectSessionId || null;
+  }
+  if (activeNav !== 'chats') return null;
+  if (!activeChatSessionId.trim()) return null;
+  if (activeChatSessionId.startsWith('bridge:')) return null;
+  if (isCanonicalBridgeSessionId(activeChatSessionId)) return null;
+  if (isLocalDraftChatConversationId(activeChatSessionId)) return null;
+  return activeChatSessionId;
+}
+
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
   activeSettingsSectionId: SettingsSectionId;
@@ -123,18 +143,12 @@ export function useKordiDesktopActivity({
   }, [totalUnreadMessages]);
 
   useEffect(() => {
-    const activeChatSessionId = activeConv.id;
-    const visibleLocalSessionId = activeNav === 'projects'
-      ? (isProjectDraftSessionId(activeProjectSessionId) ? null : activeProjectSessionId || null)
-      : activeNav === 'chats'
-        && !activeConversationIsBridge
-        && !activeChatSessionId.startsWith('bridge:')
-        && !isCanonicalBridgeSessionId(activeChatSessionId)
-        && !isLocalDraftChatConversationId(activeChatSessionId)
-        ? activeChatSessionId
-        : null;
-    setVisibleLocalSessionId(visibleLocalSessionId);
-  }, [activeConv.id, activeConversationIsBridge, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
+    setVisibleLocalSessionId(visibleLocalSessionIdForActivity({
+      activeNav,
+      activeChatSessionId: activeConv.id,
+      activeProjectSessionId,
+    }));
+  }, [activeConv.id, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
     if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {

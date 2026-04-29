@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
 import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
+import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 
@@ -641,6 +642,108 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
   assert.equal(conversations[0]?.name, 'hi bob');
   assert.deepEqual(conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText), ['hi bob', 'hello', 'done']);
   assert.deepEqual(conversations[0]?.messages[2]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
+});
+
+test('canonical read model keeps shared relationship history when local runtime has richer tool details', () => {
+  const sessionId = '91ecedce-0766-4d34-9b4f-feb572321b22';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'check the core agent loop', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:shenzhe', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:history:1', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: 'check the core agent loop of https://github.com/openai/codex', content: { sender: 'Shenzhe', timeLabel: '20:15' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-thread-snapshot', sourceEventId: 'history-1' },
+      { id: 'msg:history:2', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The core loop is in session handlers.', content: { sender: 'My Kordi', timeLabel: '20:15' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-thread-snapshot', sourceEventId: 'history-2' },
+      { id: 'msg:translate:1', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi can you translate it to chinese', content: { sender: 'Shenzhe', timeLabel: '20:16' }, status: 'sent', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'translate-1' },
+      { id: 'msg:translate:2', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '当然，翻译如下。', content: { sender: 'My Kordi', timeLabel: '20:16' }, status: 'complete', sequenceNum: 4, createdAtMs: 4, updatedAtMs: 4, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'translate-2' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const localRuntimeConversation = {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: '@Kordi can you translate it to chinese',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 1,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'Kordi'],
+    bridgeTarget: { hostId: 'host-1', nodeId: 'node-shenzhe', displayName: 'Shenzhe', ownerName: 'Shenzhe', runtime: 'person', humanId: 'human-shenzhe', agentId: null },
+    messages: [{
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      text: '当然，翻译如下。',
+      time: '20:16',
+      turn: {
+        id: 'local-turn-translate',
+        sessionId,
+        prompt: 'translate it',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: '当然，翻译如下。',
+        thinkingText: '',
+        tools: [{ name: 'web_search' }],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    }],
+  };
+
+  const conversations = readModel?.buildChatConversations([localRuntimeConversation as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.deepEqual(
+    conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
+    [
+      'check the core agent loop of https://github.com/openai/codex',
+      'The core loop is in session handlers.',
+      '@MyKordi can you translate it to chinese',
+      '当然，翻译如下。',
+    ],
+  );
+  assert.deepEqual(conversations[0]?.messages[3]?.turn?.tools.map((tool: { name: string }) => tool.name), ['web_search']);
+});
+
+test('activity marks bridge-backed uuid chat sessions as visible local sessions for unread clearing', () => {
+  assert.equal(visibleLocalSessionIdForActivity({
+    activeNav: 'chats',
+    activeChatSessionId: '91ecedce-0766-4d34-9b4f-feb572321b22',
+    activeProjectSessionId: '',
+  }), '91ecedce-0766-4d34-9b4f-feb572321b22');
+  assert.equal(visibleLocalSessionIdForActivity({
+    activeNav: 'chats',
+    activeChatSessionId: 'bridge:host:peer:person',
+    activeProjectSessionId: '',
+  }), null);
+  assert.equal(visibleLocalSessionIdForActivity({
+    activeNav: 'chats',
+    activeChatSessionId: 'session:bridge:humans:peer',
+    activeProjectSessionId: '',
+  }), null);
 });
 
 test('canonical read model keeps canonical parent transcript when bridge source misses an agent response', () => {

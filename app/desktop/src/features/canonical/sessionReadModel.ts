@@ -146,8 +146,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       if (!session) return conversation;
 
       const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
+      const isBridgeSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const canonicalMessages = this.messages(sessionId);
-      const messages = isBridgePersonSession && canonicalMessages.length > 0
+      const messages = (isBridgePersonSession || isBridgeSessionThread) && canonicalMessages.length > 0
         ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
