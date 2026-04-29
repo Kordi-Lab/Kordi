@@ -4,9 +4,9 @@ use uuid::Uuid;
 use super::constants::{
     is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
     BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
-    BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT,
-    BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
-    DEFAULT_BRIDGE_RUNTIME,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
+    BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
+    BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
 };
 use super::events::sender_name_for_runtime;
 use super::outreach::mark_outreach_status;
@@ -186,6 +186,17 @@ async fn send_read_receipt(
     }
 
     relay_with_contact_fallback(context, &payload).await
+}
+
+fn outbound_direction(outreach: Option<&DesktopBridgeOutreachMetadata>) -> &'static str {
+    if outreach
+        .and_then(|outreach| outreach.parent_turn_id.as_deref())
+        .is_some()
+    {
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
+    } else {
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+    }
 }
 
 fn outbound_payload(
@@ -522,7 +533,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         context.conversation.project_name.clone(),
         context.conversation.identity.clone(),
         fresh_outreach_for_message.clone(),
-        BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+        outbound_direction(fresh_outreach_for_message.as_ref()),
         Some(sender_name),
         message.to_string(),
         Some(request_id),
@@ -606,6 +617,53 @@ mod tests {
         assert_eq!(
             pending_read_receipt_request_ids(&conversation),
             vec!["req-1".to_string()]
+        );
+    }
+
+    fn test_outreach(parent_turn_id: Option<&str>) -> DesktopBridgeOutreachMetadata {
+        DesktopBridgeOutreachMetadata {
+            target_kind: "bridge-person".to_string(),
+            parent_session_id: Some("session-1".to_string()),
+            parent_session_title: Some("Shared".to_string()),
+            parent_session_messages: Vec::new(),
+            parent_turn_id: parent_turn_id.map(ToString::to_string),
+            parent_message_id: Some("msg-user".to_string()),
+            bridge_host_id: "host-1".to_string(),
+            bridge_conversation_id: Some("bridge:host-1:peer-1:person".to_string()),
+            bridge_request_id: Some("bridge_req_1".to_string()),
+            delivery_state: None,
+            target_node_id: "peer-1".to_string(),
+            target_human_id: Some("human-peer".to_string()),
+            target_agent_id: None,
+            target_display_name: "Peer".to_string(),
+            target_owner_name: Some("Peer".to_string()),
+            target_runtime: Some("person".to_string()),
+            request_text: "hello".to_string(),
+            trigger_text: None,
+            context_text: None,
+            context_policy: Some("session-relay".to_string()),
+            project_id: None,
+            project_name: None,
+            status: "completed".to_string(),
+            created_at_ms: 1,
+            updated_at_ms: 1,
+            completed_at_ms: Some(1),
+            error: None,
+        }
+    }
+
+    #[test]
+    fn outbound_direction_marks_session_relay_agent_turn_as_response() {
+        let agent_turn_outreach = test_outreach(Some("turn-1"));
+        let human_outreach = test_outreach(None);
+
+        assert_eq!(
+            outbound_direction(Some(&agent_turn_outreach)),
+            BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
+        );
+        assert_eq!(
+            outbound_direction(Some(&human_outreach)),
+            BRIDGE_MESSAGE_DIRECTION_OUTBOUND
         );
     }
 

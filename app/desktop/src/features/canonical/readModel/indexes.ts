@@ -50,6 +50,36 @@ function emptyIndexes(): CanonicalIndexes {
   };
 }
 
+function normalizedLeadingMentionText(value: string) {
+  return value
+    .trim()
+    .replace(/^@[^\s:;,.!?—-]+\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
+  const echoIds = new Set<string>();
+  const bridgeUiMentions = messages.filter((message) => (
+    message.sourceTransport === 'desktop-chat-ui'
+    && message.senderRole === 'user'
+    && message.contentText.trim().startsWith('@')
+  ));
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
+    const normalizedText = normalizedLeadingMentionText(message.contentText);
+    if (!normalizedText) continue;
+    const duplicate = bridgeUiMentions.some((candidate) => (
+      candidate.senderIdentityId === message.senderIdentityId
+      && Math.abs(message.createdAtMs - candidate.createdAtMs) <= 5_000
+      && normalizedLeadingMentionText(candidate.contentText) === normalizedText
+    ));
+    if (duplicate) echoIds.add(message.id);
+  }
+  return echoIds;
+}
+
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
 
@@ -136,36 +166,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       [...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId)],
     );
   }
-
-function normalizedLeadingMentionText(value: string) {
-  return value
-    .trim()
-    .replace(/^@[^\s:;,.!?—-]+\s*/u, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLocaleLowerCase();
-}
-
-function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
-  const echoIds = new Set<string>();
-  const bridgeUiMentions = messages.filter((message) => (
-    message.sourceTransport === 'desktop-chat-ui'
-    && message.senderRole === 'user'
-    && message.contentText.trim().startsWith('@')
-  ));
-  for (const message of messages) {
-    if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
-    const normalizedText = normalizedLeadingMentionText(message.contentText);
-    if (!normalizedText) continue;
-    const duplicate = bridgeUiMentions.some((candidate) => (
-      candidate.senderIdentityId === message.senderIdentityId
-      && Math.abs(message.createdAtMs - candidate.createdAtMs) <= 5_000
-      && normalizedLeadingMentionText(candidate.contentText) === normalizedText
-    ));
-    if (duplicate) echoIds.add(message.id);
-  }
-  return echoIds;
-}
 
   const canonicalMessagesBySessionId = new Map<string, Message[]>();
   const rawMessageCountBySessionId = new Map<string, number>();

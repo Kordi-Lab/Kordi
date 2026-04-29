@@ -1,5 +1,5 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { possessiveScopedLabel } from '@/lib/identityLabels';
+import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import type {
   ConversationBridgeTarget,
   DesktopBridgeState,
@@ -212,12 +212,7 @@ export function mentionsLocalAgent(text: string, state: DesktopChatState | null,
 
 function publicLocalAgentMentionLabel(bridgeState: DesktopBridgeState | null) {
   const { activeHost, activeAgent } = activeBridgeHostAndAgent(bridgeState);
-  const ownerName = activeHost?.ownerName?.trim();
-  const unscopedAgentLabel = (activeAgent?.label?.trim() || 'Kordi')
-    .replace(/^[^'’]+['’]s\s+/u, '')
-    .trim() || 'Kordi';
-  const publicLabel = scopedAgentLabel(ownerName, unscopedAgentLabel) || unscopedAgentLabel;
-  return mentionHandleForLabel(publicLabel, 'Kordi');
+  return publicScopedAgentMentionHandle(activeHost?.ownerName, activeAgent?.label || 'Kordi');
 }
 
 export function publicLocalAgentMentionText(text: string, bridgeState: DesktopBridgeState | null) {
@@ -231,7 +226,7 @@ export function publicLocalAgentMentionText(text: string, bridgeState: DesktopBr
     if (rest === null) continue;
     return `${leading}@${publicLocalAgentMentionLabel(bridgeState)}${rest ? ` ${rest}` : ''}`;
   }
-  return text;
+  return rewriteLeadingFirstPersonAgentMention(text, activeBridgeHostAndAgent(bridgeState).activeHost?.ownerName, 'Kordi');
 }
 
 export function leadingAddressRest(textAfterAt: string, label: string) {

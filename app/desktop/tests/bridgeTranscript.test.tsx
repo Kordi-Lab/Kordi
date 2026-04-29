@@ -88,6 +88,41 @@ test('bridge transcript keeps implicit direct person session messages as typed',
   assert.equal(view.messages[0]?.mentions, undefined);
 });
 
+test('direct person bridge transcript rewrites remote first-person agent mentions for display', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-remote-local-agent-mention',
+      direction: 'inbound',
+      sender: 'Shenzhe',
+      text: '@MyKordi show me the diskusage',
+      timeLabel: '17:30',
+      timestampMs: 1,
+      requestId: 'bridge_req_local_agent',
+      deliveryState: null,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'd17bf74f-f065-46cb-82d7-bf78ed7f910f',
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_local_agent',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Me',
+        targetOwnerName: 'Me',
+        targetRuntime: 'person',
+        requestText: '@MyKordi show me the diskusage',
+        triggerText: '@MyKordi show me the diskusage',
+        contextText: null,
+        contextPolicy: 'session-relay',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages[0]?.text, '@ShenzhesKordi show me the diskusage');
+});
+
 test('direct person bridge transcript renders local agent responses as agent turns', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     messages: [{

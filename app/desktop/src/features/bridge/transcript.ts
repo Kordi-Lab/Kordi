@@ -6,7 +6,7 @@ import {
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/bridge/messages';
 import { isBridgeAgentRuntime, isBridgePersonRuntime } from '@/features/bridge/runtime';
-import { firstPersonPossessiveLabel } from '@/lib/identityLabels';
+import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type BridgeConversationViewModel = Conversation & {
   _updatedAtMs?: number;
@@ -169,8 +169,12 @@ export function mapBridgeConversationToViewModel(
     const isProcessingAgentPlaceholder = message.deliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
       && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE);
-    const displayText = isProcessingAgentPlaceholder ? '' : rawDisplayText;
     const isOutboundHuman = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND;
+    const displayText = isProcessingAgentPlaceholder
+      ? ''
+      : !isOutboundHuman
+        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel)
+        : rawDisplayText;
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
     const isRemoteAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
