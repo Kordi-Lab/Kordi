@@ -6,6 +6,7 @@ import {
   localAgentMentionLabels,
   mentionHandleForLabel,
   outreachIdentityForBridgeTarget,
+  publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
 } from '../src/features/chat/messageActions/mentions';
 import type { DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
@@ -227,6 +228,17 @@ test('legacy display-label matching works only when unambiguous', () => {
   ]);
 
   assert.equal(resolveMentionedBridgeTarget("@Alice's Kordi summarize", ambiguousState), null);
+});
+
+test('publicLocalAgentMentionText rewrites first-person agent mentions for remote viewers', () => {
+  assert.equal(
+    publicLocalAgentMentionText('@MyKordi show me the diskusage', bridgeStateWithPeers([])),
+    '@HostOwnersKordi show me the diskusage',
+  );
+  assert.equal(
+    publicLocalAgentMentionText('@Kordi: summarize this', bridgeStateWithPeers([])),
+    '@HostOwnersKordi summarize this',
+  );
 });
 
 test('local agent labels include sanitized aliases', () => {

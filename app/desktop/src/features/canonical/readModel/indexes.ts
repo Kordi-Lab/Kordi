@@ -137,6 +137,36 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     );
   }
 
+function normalizedLeadingMentionText(value: string) {
+  return value
+    .trim()
+    .replace(/^@[^\s:;,.!?—-]+\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
+  const echoIds = new Set<string>();
+  const bridgeUiMentions = messages.filter((message) => (
+    message.sourceTransport === 'desktop-chat-ui'
+    && message.senderRole === 'user'
+    && message.contentText.trim().startsWith('@')
+  ));
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
+    const normalizedText = normalizedLeadingMentionText(message.contentText);
+    if (!normalizedText) continue;
+    const duplicate = bridgeUiMentions.some((candidate) => (
+      candidate.senderIdentityId === message.senderIdentityId
+      && Math.abs(message.createdAtMs - candidate.createdAtMs) <= 5_000
+      && normalizedLeadingMentionText(candidate.contentText) === normalizedText
+    ));
+    if (duplicate) echoIds.add(message.id);
+  }
+  return echoIds;
+}
+
   const canonicalMessagesBySessionId = new Map<string, Message[]>();
   const rawMessageCountBySessionId = new Map<string, number>();
   for (const [sessionId, messages] of rawMessagesBySessionId) {
@@ -158,10 +188,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       }),
     );
     const seenJoinEventKeys = new Set<string>();
+    const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
       sessionId,
       sortedMessages.flatMap((message) => {
+        if (suppressedLocalRuntimeEchoIds.has(message.id)) return [];
         const content = contentRecord(message.content);
         if (stringValue(content.kind) === 'delegation-join-event') {
           const key = [
