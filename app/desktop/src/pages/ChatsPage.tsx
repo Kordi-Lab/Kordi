@@ -18,6 +18,7 @@ import {
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import {
   ComposerMentionMenu,
   ComposerModelControls,
@@ -188,6 +189,7 @@ export function ChatsPage({
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
   const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
+  const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -248,9 +250,9 @@ export function ChatsPage({
               <TypeBadge type={activeConv.type} compact />
             </div>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
-              {activeConv.subtitle.trim().length > 0 ? (
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono" title={activeConv.subtitle}>
-                  <span className="truncate">{activeConv.subtitle}</span>
+              {activeSessionSubtitle ? (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono" title={activeSessionSubtitle}>
+                  <span className="truncate">{activeSessionSubtitle}</span>
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {activeConv.trust}</span>
