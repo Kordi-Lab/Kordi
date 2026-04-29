@@ -77,6 +77,10 @@ function shouldKeepLegacyChatConversationExtra(
   conversation: Conversation,
   indexes: CanonicalIndexes,
 ) {
+  if (conversation.outreach?.parentSessionId?.trim()) {
+    return false;
+  }
+
   if (isLocalDraftChatConversationId(conversation.id)) {
     return true;
   }

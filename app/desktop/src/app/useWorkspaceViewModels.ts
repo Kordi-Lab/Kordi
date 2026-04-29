@@ -66,7 +66,7 @@ function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | und
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
 
 export function bridgeChatConversationIsVisible(
-  conversation: Pick<DesktopBridgeConversation, 'outreach' | 'messages' | 'peerDisplayName' | 'peerOwnerName'>,
+  conversation: Pick<DesktopBridgeConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
 }
@@ -285,17 +285,22 @@ export function useWorkspaceViewModels({
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
     const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopBridgeState?.conversations ?? [])
-      .filter(bridgeChatConversationIsVisible)
       .map((conversation) => (
         mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
       ));
   }, [desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
 
+  const visibleBridgeChatConversations = useMemo(
+    () => bridgeChatConversations.filter(bridgeChatConversationIsVisible),
+    [bridgeChatConversations],
+  );
+
   const chatConversations = useMemo(() => {
     if (!isNativeShell) {
       return conversations;
     }
-    const merged = [...bridgeChatConversations, ...localChatConversations];
+    const bridgeSourceConversations = canonicalReadModel ? bridgeChatConversations : visibleBridgeChatConversations;
+    const merged = [...bridgeSourceConversations, ...localChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
     const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
     const hydratedConversations = canonicalReadModel
@@ -306,7 +311,7 @@ export function useWorkspaceViewModels({
       ? hydratedConversations
       : hydratedConversations.filter((conversation) => !hiddenSessionIds.has(conversation.canonicalSessionId ?? conversation.id));
     return hideRawConversationIds(visibleConversations);
-  }, [bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localChatConversations]);
+  }, [bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => ({
