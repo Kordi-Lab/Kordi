@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Unit test desktop
+        run: pnpm --dir app/desktop test:unit
+
       - name: Typecheck desktop
         run: pnpm --dir app/desktop typecheck
 
