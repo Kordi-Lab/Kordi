@@ -643,6 +643,68 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
   assert.deepEqual(conversations[0]?.messages[2]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
 
+test('canonical read model keeps canonical parent transcript when bridge source misses an agent response', () => {
+  const sessionId = 'session:bridge:humans:flapping-parent';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:shenzhe', kind: 'agent', displayName: "Shenzhe's Kordi", source: 'bridge', ownerIdentityId: 'human:shenzhe', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', agentId: 'agent-shenzhe', avatarKey: 'agent-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'check todays weather', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:shenzhe', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:shenzhe', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi show me the diskusage', content: { sender: 'Shenzhe', timeLabel: '17:30', kind: 'session-relay' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'request' },
+      { id: 'msg:response', sessionId, senderIdentityId: 'agent:shenzhe', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'I tried to check disk usage with `df -h`.', content: { sender: "Shenzhe's Kordi", timeLabel: '17:30', kind: 'session-relay' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const bridgeSourceMissingResponse = {
+    id: 'bridge:host-1:node-shenzhe:person',
+    canonicalSessionId: 'session:bridge:humans:stable-direct-thread',
+    name: 'Shenzhe',
+    type: 'person',
+    subtitle: 'latest direct person source',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Person outreach',
+    participants: ['Me', 'Shenzhe'],
+    outreach: { parentSessionId: sessionId },
+    messages: [
+      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: 'older raw bridge message', time: '17:28' },
+      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: '@ShenzhesKordi what is the weather today?', time: '17:29' },
+      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: '@MyKordi show me the diskusage', time: '17:30' },
+    ],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([bridgeSourceMissingResponse as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.deepEqual(
+    conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
+    ['@ShenzhesKordi show me the diskusage', 'I tried to check disk usage with `df -h`.'],
+  );
+});
+
 test('canonical read model rewrites remote first-person agent mention labels', () => {
   const sessionId = 'session:bridge:humans:remote-local-agent-label';
   const canonicalState = {
