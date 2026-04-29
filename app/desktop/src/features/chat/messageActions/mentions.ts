@@ -103,6 +103,9 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
         });
       };
 
+      const hasAgentLabel = Boolean(peer.displayName?.trim());
+      const hasPersonLabel = Boolean(peer.ownerName?.trim() || (!isAgent && peer.displayName?.trim()));
+
       if (isAgent && peer.humanId?.trim()) {
         pushLabel(peer.ownerName, 'bridge-person');
       }
@@ -110,7 +113,9 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
       if (!isAgent) {
         pushLabel(peer.ownerName, 'bridge-person');
       }
-      pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
+      if (isAgent ? !hasAgentLabel : !hasPersonLabel) {
+        pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
+      }
     }
   }
 
