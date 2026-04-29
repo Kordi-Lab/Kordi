@@ -9,10 +9,9 @@ import {
 } from '@/features/bridge/constants';
 import {
   BRIDGE_READ_ATTENTION_EVENTS,
-  activeBridgeConversationsForSession,
+  activeUnreadBridgeConversationsForSession,
   bridgeReadReceiptBatchSignature,
   canAutoMarkBridgeRead,
-  shouldMarkBridgeConversationRead,
 } from '@/features/bridge/readReceipts';
 import type {
   DesktopBridgeConversation,
@@ -594,13 +593,12 @@ export function useBridgeState({
   }, [isNativeShell]);
 
   useEffect(() => {
-    if (!isNativeShell || activeNav !== 'chats' || !activeConversationIsBridge) {
+    if (!isNativeShell || activeNav !== 'chats') {
       activeBridgeReadRequestRef.current = null;
       return;
     }
 
-    const activeConversations = activeBridgeConversationsForSession(desktopBridgeState?.conversations ?? [], activeConvId)
-      .filter(shouldMarkBridgeConversationRead);
+    const activeConversations = activeUnreadBridgeConversationsForSession(desktopBridgeState?.conversations ?? [], activeConvId);
     if (activeConversations.length === 0) {
       activeBridgeReadRequestRef.current = null;
       return;
@@ -626,7 +624,7 @@ export function useBridgeState({
         activeBridgeReadRequestRef.current = null;
         setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to mark bridge chat as read');
       });
-  }, [activeConvId, activeConversationIsBridge, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell]);
+  }, [activeConvId, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell]);
 
   return {
     desktopBridgeState,

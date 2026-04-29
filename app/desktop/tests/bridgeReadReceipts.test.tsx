@@ -5,6 +5,7 @@ import {
   BRIDGE_READ_ATTENTION_EVENTS,
   activeBridgeConversationForSession,
   activeBridgeConversationsForSession,
+  activeUnreadBridgeConversationsForSession,
   bridgeReadReceiptBatchSignature,
   bridgeReadReceiptSignature,
   canAutoMarkBridgeRead,
@@ -106,6 +107,30 @@ test('activeBridgeConversationsForSession returns every bridge conversation for 
   ], 'session:bridge:humans:latest-parent');
 
   assert.deepEqual(active.map((item) => item.id), ['bridge:host-1:peer-1:person', 'bridge:host-1:peer-1']);
+});
+
+test('activeUnreadBridgeConversationsForSession finds unread bridge agent conversations for uuid parent sessions', () => {
+  const active = activeUnreadBridgeConversationsForSession([
+    conversation({
+      id: 'bridge:host-1:peer-1',
+      canonicalSessionId: 'session:bridge:agents:peer-agent',
+      peerRuntime: 'kordi-desktop',
+      unreadCount: 1,
+      outreach: {
+        targetKind: 'bridge-agent',
+        parentSessionId: 'd17bf74f-f065-46cb-82d7-bf78ed7f910f',
+        bridgeHostId: 'host-1',
+        targetNodeId: 'peer-1',
+        targetDisplayName: 'Peer Kordi',
+        requestText: 'hello',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }),
+  ], 'd17bf74f-f065-46cb-82d7-bf78ed7f910f');
+
+  assert.deepEqual(active.map((item) => item.id), ['bridge:host-1:peer-1']);
 });
 
 test('bridge read effects listen for focus and visibility changes', () => {

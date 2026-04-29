@@ -48,6 +48,14 @@ export function shouldMarkBridgeConversationRead(conversation: DesktopBridgeConv
   return conversation.unreadCount > 0 || inboundBridgeRequestIds(conversation).length > 0;
 }
 
+export function activeUnreadBridgeConversationsForSession(
+  conversations: DesktopBridgeConversation[],
+  activeSessionId: string,
+) {
+  return activeBridgeConversationsForSession(conversations, activeSessionId)
+    .filter(shouldMarkBridgeConversationRead);
+}
+
 export function bridgeReadReceiptSignature(conversation: DesktopBridgeConversation) {
   return [
     conversation.id,
