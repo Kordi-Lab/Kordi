@@ -175,12 +175,14 @@ export function conversationSessionId(conversation: Pick<Conversation, 'id' | 'c
 }
 
 export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name' | 'participants' | 'messages'>) {
+  const displayName = conversation.name.trim();
+  if (displayName && !isRawConversationId(displayName)) {
+    return conversation.name;
+  }
+
   const titleFromMessage = firstUserSentence(conversation.messages);
   if (titleFromMessage) {
     return titleFromMessage;
-  }
-  if (!isRawConversationId(conversation.name)) {
-    return conversation.name;
   }
   return participantDisplayName(conversation.participants) ?? 'New session';
 }
