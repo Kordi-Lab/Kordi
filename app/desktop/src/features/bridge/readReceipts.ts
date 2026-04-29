@@ -5,8 +5,11 @@ export function activeBridgeConversationForSession(
   conversations: DesktopBridgeConversation[],
   activeSessionId: string,
 ) {
+  const normalizedActiveSessionId = activeSessionId.trim();
   return conversations.find((conversation) => (
-    conversation.id === activeSessionId || conversation.canonicalSessionId === activeSessionId
+    conversation.id === normalizedActiveSessionId
+    || conversation.canonicalSessionId === normalizedActiveSessionId
+    || conversation.outreach?.parentSessionId?.trim() === normalizedActiveSessionId
   )) ?? null;
 }
 

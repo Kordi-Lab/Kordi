@@ -181,6 +181,7 @@ export type Conversation = {
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
   bridgeTarget?: ConversationBridgeTarget | null;
+  bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];

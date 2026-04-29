@@ -70,6 +70,28 @@ function isActiveOutreachStatus(status: string | null | undefined) {
   return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
 }
 
+function bridgeUnreadByParentSessionId(conversation: DesktopBridgeConversation) {
+  const unreadCount = Math.max(0, conversation.unreadCount);
+  if (unreadCount <= 0) return undefined;
+
+  const unreadByParentSessionId: Record<string, number> = {};
+  let countedUnreadMessages = 0;
+  for (const message of [...conversation.messages].reverse()) {
+    if (countedUnreadMessages >= unreadCount) break;
+    if (message.direction !== BRIDGE_MESSAGE_DIRECTION_INBOUND && message.direction !== BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE) {
+      continue;
+    }
+    countedUnreadMessages += 1;
+    const parentSessionId = message.outreach?.parentSessionId?.trim()
+      || conversation.outreach?.parentSessionId?.trim()
+      || conversation.canonicalSessionId?.trim();
+    if (!parentSessionId) continue;
+    unreadByParentSessionId[parentSessionId] = (unreadByParentSessionId[parentSessionId] ?? 0) + 1;
+  }
+
+  return Object.keys(unreadByParentSessionId).length > 0 ? unreadByParentSessionId : undefined;
+}
+
 export function mapBridgeConversationToViewModel(
   conversation: DesktopBridgeConversation,
   host: DesktopBridgeHost | undefined,
@@ -258,6 +280,7 @@ export function mapBridgeConversationToViewModel(
     avatarSeed: conversationAvatarSeed,
     participantAvatarSeeds,
     bridgeTarget,
+    bridgeUnreadByParentSessionId: bridgeUnreadByParentSessionId(conversation),
     messages,
     _updatedAtMs: conversation.updatedAtMs,
   };

@@ -42,6 +42,28 @@ test('activeBridgeConversationForSession resolves canonical session ids', () => 
   assert.equal(active?.id, 'bridge:host-1:peer-1:person');
 });
 
+test('activeBridgeConversationForSession resolves outreach parent session ids', () => {
+  const active = activeBridgeConversationForSession([
+    conversation({
+      id: 'bridge:host-1:peer-1:person',
+      canonicalSessionId: 'session:bridge:humans:stable-pair',
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'session:bridge:humans:latest-parent',
+        bridgeHostId: 'host-1',
+        targetNodeId: 'peer-1',
+        targetDisplayName: 'Peer',
+        requestText: 'hello',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }),
+  ], 'session:bridge:humans:latest-parent');
+
+  assert.equal(active?.id, 'bridge:host-1:peer-1:person');
+});
+
 test('shouldMarkBridgeConversationRead stays true when unread was cleared but inbound request ids exist', () => {
   const active = conversation({
     unreadCount: 0,
