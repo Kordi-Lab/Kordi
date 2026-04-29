@@ -51,6 +51,43 @@ function conversation(overrides: Partial<DesktopBridgeConversation> = {}): Deskt
   };
 }
 
+test('bridge transcript keeps implicit direct person session messages as typed', () => {
+  const requestId = 'bridge_req_direct';
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-direct',
+      direction: 'outbound',
+      sender: 'Me',
+      text: 'hello',
+      timeLabel: '17:01',
+      timestampMs: 1,
+      requestId,
+      deliveryState: 'read',
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'd17bf74f-f065-46cb-82d7-bf78ed7f910f',
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: requestId,
+        targetNodeId: 'node-peer',
+        targetDisplayName: "Shenzhe's Kordi",
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'hello',
+        triggerText: null,
+        contextText: null,
+        contextPolicy: 'session-message',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages[0]?.text, 'hello');
+  assert.equal(view.messages[0]?.mentions, undefined);
+});
+
 test('bridge transcript preserves full outreach mention labels with spaces and punctuation', () => {
   const requestId = 'bridge_req_mention';
   const view = mapBridgeConversationToViewModel(conversation({

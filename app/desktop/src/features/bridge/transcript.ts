@@ -45,6 +45,12 @@ function isProcessingPlaceholderText(text: string) {
   return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
+function isImplicitDirectPersonSessionMessage(outreach: DesktopBridgeOutreachMetadata) {
+  return outreach.targetKind === 'bridge-person'
+    && outreach.contextPolicy === 'session-message'
+    && !outreach.triggerText?.trim();
+}
+
 function bridgeMessageOutreachForDisplay(
   conversation: DesktopBridgeConversation,
   message: DesktopBridgeConversationMessage,
@@ -53,7 +59,8 @@ function bridgeMessageOutreachForDisplay(
   const isOutreachRequest = outreach?.bridgeRequestId
     && message.requestId === outreach.bridgeRequestId
     && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND);
-  return isOutreachRequest ? outreach : null;
+  if (!isOutreachRequest) return null;
+  return outreach && !isImplicitDirectPersonSessionMessage(outreach) ? outreach : null;
 }
 
 function bridgeMessageDisplayText(
