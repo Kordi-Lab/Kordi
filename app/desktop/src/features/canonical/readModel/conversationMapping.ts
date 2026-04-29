@@ -11,6 +11,29 @@ import { stringValue } from './messageMapping';
 
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
 
+function messageResponseText(message: Message) {
+  return (message.turn?.assistantText ?? message.text).trim();
+}
+
+function normalizedMessageResponseText(message: Message) {
+  return messageResponseText(message).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function canonicalHasMissingCompletedAgentResponse(existingMessages: Message[], canonicalMessages: Message[]) {
+  const existingTexts = new Set(
+    existingMessages
+      .map(normalizedMessageResponseText)
+      .filter(Boolean),
+  );
+
+  return canonicalMessages.some((message) => {
+    if (!message.turn?.assistantText.trim()) return false;
+    if (message.turn.completed === false) return false;
+    if (message.role !== 'owned-agent' && message.role !== 'external-agent') return false;
+    return !existingTexts.has(normalizedMessageResponseText(message));
+  });
+}
+
 function transcriptTurnRichness(messages: Message[]) {
   return messages.reduce(
     (richness, message) => ({
@@ -37,6 +60,8 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
   ) {
     return false;
   }
+
+  if (canonicalHasMissingCompletedAgentResponse(existingMessages, canonicalMessages)) return true;
 
   const placeholderOnly = existingMessages.length === 1
     && existingMessages[0]?.role === 'system'

@@ -79,6 +79,63 @@ fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
     normalized.chars().count() < 24 && word_count <= 3
 }
 
+fn event_session_thread(event: &ParsedMailboxEvent) -> Option<&Value> {
+    event.payload.get("sessionThread")
+}
+
+fn event_session_thread_target_kind(event: &ParsedMailboxEvent) -> Option<&str> {
+    event_session_thread(event)
+        .and_then(|thread| thread.get("targetKind"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn event_session_thread_has_parent_turn(event: &ParsedMailboxEvent) -> bool {
+    event_session_thread(event)
+        .and_then(|thread| thread.get("parentTurnId"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+}
+
+fn storage_peer_runtime_for_inbound_event(
+    event: &ParsedMailboxEvent,
+    fallback: Option<&str>,
+) -> String {
+    if event_session_thread_target_kind(event)
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("bridge-person"))
+    {
+        return "person".to_string();
+    }
+
+    event
+        .from_runtime
+        .clone()
+        .or_else(|| fallback.map(ToString::to_string))
+        .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string())
+}
+
+fn sender_runtime_for_inbound_event(
+    event: &ParsedMailboxEvent,
+    storage_peer_runtime: &str,
+) -> String {
+    event
+        .from_runtime
+        .clone()
+        .unwrap_or_else(|| storage_peer_runtime.to_string())
+}
+
+fn direction_for_inbound_event(event: &ParsedMailboxEvent) -> &'static str {
+    if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE
+        || event_session_thread_has_parent_turn(event)
+    {
+        BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+    } else {
+        BRIDGE_MESSAGE_DIRECTION_INBOUND
+    }
+}
+
 fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> {
     let mut targets: Vec<LocalBridgeMailboxTarget> = Vec::new();
 
@@ -156,26 +213,48 @@ fn append_inbound_event_message_to_storage(
     }
 
     let conversations = load_conversation_store();
-    let existing = conversations.conversations.iter().find(|conversation| {
-        conversation.id
-            == bridge_conversation_id(&host.id, &event.from_node_id, event.project_id.as_deref())
-    });
-    let peer_display_name = event
-        .from_display_name
-        .clone()
-        .or_else(|| existing.and_then(|conversation| conversation.peer_display_name.clone()));
+    let base_conversation_id =
+        bridge_conversation_id(&host.id, &event.from_node_id, event.project_id.as_deref());
+    let base_existing = conversations
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == base_conversation_id);
+    let peer_runtime = storage_peer_runtime_for_inbound_event(
+        event,
+        base_existing.map(|conversation| conversation.peer_runtime.as_str()),
+    );
+    let person_conversation_id = format!("{base_conversation_id}:person");
+    let existing = if peer_runtime.trim().eq_ignore_ascii_case("person") {
+        conversations
+            .conversations
+            .iter()
+            .find(|conversation| conversation.id == person_conversation_id)
+            .or(base_existing)
+    } else {
+        base_existing
+    };
     let peer_owner_name = event
         .from_owner_name
         .clone()
         .or_else(|| existing.and_then(|conversation| conversation.peer_owner_name.clone()));
-    let peer_runtime = event.from_runtime.clone().unwrap_or_else(|| {
-        existing
-            .map(|conversation| conversation.peer_runtime.clone())
-            .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string())
-    });
+    let peer_display_name = if peer_runtime.trim().eq_ignore_ascii_case("person") {
+        peer_owner_name
+            .clone()
+            .or_else(|| existing.and_then(|conversation| conversation.peer_display_name.clone()))
+            .or_else(|| event.from_display_name.clone())
+    } else {
+        event
+            .from_display_name
+            .clone()
+            .or_else(|| existing.and_then(|conversation| conversation.peer_display_name.clone()))
+    };
+    let sender_runtime = sender_runtime_for_inbound_event(event, &peer_runtime);
     let sender_name = sender_name_for_runtime(
-        &peer_runtime,
-        peer_display_name.as_deref(),
+        &sender_runtime,
+        event
+            .from_display_name
+            .as_deref()
+            .or(peer_display_name.as_deref()),
         peer_owner_name.as_deref(),
         &event.from_node_id,
     );
@@ -198,11 +277,7 @@ fn append_inbound_event_message_to_storage(
         None,
         Some(identity_snapshot),
         outreach,
-        if event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE {
-            BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
-        } else {
-            BRIDGE_MESSAGE_DIRECTION_INBOUND
-        },
+        direction_for_inbound_event(event),
         Some(sender_name),
         text.clone(),
         event.request_id.clone(),
@@ -606,4 +681,88 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     }
 
     rebuild_state(manager, store, load_conversation_store()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::constants::BRIDGE_MESSAGE_TYPE_RAW;
+
+    fn parsed_event(
+        message_type: &str,
+        from_runtime: Option<&str>,
+        parent_turn_id: Option<&str>,
+    ) -> ParsedMailboxEvent {
+        let mut session_thread = serde_json::json!({
+            "parentSessionId": "session-1",
+            "targetKind": "bridge-person",
+            "targetDisplayName": "Peer",
+        });
+        if let Some(parent_turn_id) = parent_turn_id {
+            session_thread["parentTurnId"] = serde_json::json!(parent_turn_id);
+        }
+
+        ParsedMailboxEvent {
+            from_node_id: "peer-node".to_string(),
+            from_display_name: Some("Peer's Kordi".to_string()),
+            from_owner_name: Some("Peer".to_string()),
+            from_runtime: from_runtime.map(ToString::to_string),
+            from_human_id: Some("human-peer".to_string()),
+            from_agent_id: Some("agent-peer".to_string()),
+            message_type: message_type.to_string(),
+            payload: serde_json::json!({
+                "message": "agent reply",
+                "sessionThread": session_thread,
+            }),
+            request_id: Some("bridge_req_1".to_string()),
+            project_id: None,
+        }
+    }
+
+    #[test]
+    fn session_relay_parent_turn_stays_in_person_thread_as_agent_response() {
+        let event = parsed_event(
+            BRIDGE_MESSAGE_TYPE_RAW,
+            Some("kordi-desktop"),
+            Some("turn-1"),
+        );
+
+        assert_eq!(
+            storage_peer_runtime_for_inbound_event(&event, None),
+            "person"
+        );
+        assert_eq!(
+            sender_runtime_for_inbound_event(&event, "person"),
+            "kordi-desktop"
+        );
+        assert_eq!(
+            direction_for_inbound_event(&event),
+            BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+        );
+    }
+
+    #[test]
+    fn session_relay_human_message_stays_in_person_thread_as_human_message() {
+        let event = parsed_event(BRIDGE_MESSAGE_TYPE_RAW, Some("person"), None);
+
+        assert_eq!(
+            storage_peer_runtime_for_inbound_event(&event, None),
+            "person"
+        );
+        assert_eq!(sender_runtime_for_inbound_event(&event, "person"), "person");
+        assert_eq!(
+            direction_for_inbound_event(&event),
+            BRIDGE_MESSAGE_DIRECTION_INBOUND
+        );
+    }
+
+    #[test]
+    fn response_events_remain_agent_responses() {
+        let event = parsed_event(BRIDGE_MESSAGE_TYPE_RESPONSE, Some("kordi-desktop"), None);
+
+        assert_eq!(
+            direction_for_inbound_event(&event),
+            BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+        );
+    }
 }

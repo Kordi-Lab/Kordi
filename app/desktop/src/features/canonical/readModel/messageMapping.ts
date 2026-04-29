@@ -7,7 +7,7 @@ import type {
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
-import { isSelfReferenceName, possessiveScopedLabel, selfDisplayName } from '@/lib/identityLabels';
+import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 
 export function contentRecord(value: unknown): Record<string, unknown> {
@@ -102,6 +102,16 @@ export function ownerScopedAgentName(
   const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
   if (!owner?.displayName) return identity.displayName;
   return possessiveScopedLabel(owner.displayName, identity.displayName, owner.id === profileHumanIdentityId) ?? identity.displayName;
+}
+
+function agentLabelForHumanIdentity(
+  identity: CanonicalIdentity | undefined,
+  identityById: Map<string, CanonicalIdentity>,
+) {
+  if (!identity || identity.kind !== 'human') return 'Kordi';
+  return [...identityById.values()]
+    .find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity.id)
+    ?.displayName ?? 'Kordi';
 }
 
 export function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
@@ -225,7 +235,14 @@ export function mapCanonicalMessage(
   })();
   const thinkingText = role === 'owned-agent' ? stringValue(content.thinkingText) ?? '' : '';
   const visibleTools = role === 'owned-agent' ? tools : [];
-  const rawDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const rawDisplayText = !isOwnMessage && role === 'person'
+    ? rewriteLeadingFirstPersonAgentMention(
+      restoredDisplayText,
+      identity?.displayName || contentSender,
+      agentLabelForHumanIdentity(identity, identityById),
+    )
+    : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
     && stringValue(content.deliveryState)?.toLowerCase() === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
@@ -236,7 +253,7 @@ export function mapCanonicalMessage(
   return {
     role,
     sender,
-    senderType: identity?.kind === 'agent' ? 'agent' : 'human',
+    senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: identity?.avatarKey ?? null,
     isOwnMessage,

@@ -25,6 +25,7 @@ import {
   mentionedPersonIsActiveBridgeTarget,
   mentionsLocalAgent,
   outreachIdentityForBridgeTarget,
+  publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
   stripLeadingAddressMentions,
 } from './mentions';
@@ -496,7 +497,7 @@ export function useChatMessageActions({
             ? relaySharedSessionMessage(
               localAgentRelayTarget.target,
               localAgentRelayTarget.parentSessionId,
-              text,
+              publicLocalAgentMentionText(text, desktopBridgeState),
               localAgentRelayTarget.parentSessionTitle,
               localAgentRelayTarget.parentMessageId,
               null,

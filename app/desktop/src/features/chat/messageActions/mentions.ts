@@ -1,5 +1,5 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { possessiveScopedLabel } from '@/lib/identityLabels';
+import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import type {
   ConversationBridgeTarget,
   DesktopBridgeState,
@@ -174,6 +174,18 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
   ];
 }
 
+function activeBridgeHostAndAgent(bridgeState: DesktopBridgeState | null) {
+  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
+    ?? bridgeState?.hosts[0]
+    ?? null;
+  const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
+    ?? activeHost?.agents.find((agent) => agent.isActive)
+    ?? activeHost?.agents.find((agent) => agent.isDefault)
+    ?? activeHost?.agents[0]
+    ?? null;
+  return { activeHost, activeAgent };
+}
+
 export function localAgentMentionLabels(state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
   const labels = [
     'Kordi',
@@ -196,6 +208,25 @@ export function localAgentMentionLabels(state: DesktopChatState | null, bridgeSt
 export function mentionsLocalAgent(text: string, state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
   const afterAt = text.replace(/^\s*@/, '');
   return localAgentMentionLabels(state, bridgeState).some((label) => mentionTextStartsWithLabel(afterAt, label));
+}
+
+function publicLocalAgentMentionLabel(bridgeState: DesktopBridgeState | null) {
+  const { activeHost, activeAgent } = activeBridgeHostAndAgent(bridgeState);
+  return publicScopedAgentMentionHandle(activeHost?.ownerName, activeAgent?.label || 'Kordi');
+}
+
+export function publicLocalAgentMentionText(text: string, bridgeState: DesktopBridgeState | null) {
+  const leading = /^\s*/.exec(text)?.[0] ?? '';
+  if (!text.slice(leading.length).startsWith('@')) return text;
+  const afterAt = text.slice(leading.length + 1);
+  const labels = localAgentMentionLabels(null, bridgeState)
+    .sort((left, right) => normalizeMentionLabel(right).length - normalizeMentionLabel(left).length);
+  for (const label of labels) {
+    const rest = leadingAddressRest(afterAt, label);
+    if (rest === null) continue;
+    return `${leading}@${publicLocalAgentMentionLabel(bridgeState)}${rest ? ` ${rest}` : ''}`;
+  }
+  return rewriteLeadingFirstPersonAgentMention(text, activeBridgeHostAndAgent(bridgeState).activeHost?.ownerName, 'Kordi');
 }
 
 export function leadingAddressRest(textAfterAt: string, label: string) {

@@ -66,3 +66,26 @@ export function possessiveScopedLabel(ownerName: string | null | undefined, valu
   const unscoped = label.replace(ownerPrefixPattern, '').trim();
   return ownerPrefixPattern.test(label) ? label : `${ownerPrefix}${unscoped || label}`;
 }
+
+function safeMentionCharacters(value: string) {
+  return value.normalize('NFKC').match(/[\p{L}\p{N}]+/gu)?.join('') ?? '';
+}
+
+export function publicScopedAgentMentionHandle(ownerName: string | null | undefined, agentLabel: string | null | undefined = 'Kordi') {
+  const unscopedAgent = (stripSelfPossessivePrefix(agentLabel, ownerName).replace(/^[^'’]+['’]s\s+/u, '').trim()) || 'Kordi';
+  const scoped = possessiveScopedLabel(ownerName, unscopedAgent) || unscopedAgent;
+  return (safeMentionCharacters(scoped) || safeMentionCharacters(unscopedAgent) || 'Kordi').slice(0, 64);
+}
+
+export function rewriteLeadingFirstPersonAgentMention(
+  text: string,
+  ownerName: string | null | undefined,
+  agentLabel: string | null | undefined = 'Kordi',
+) {
+  const match = /^(\s*)@(?:my\s*kordi|your\s*kordi|kordi)(?:\s*[:;,.!?—-]\s*|\s+|$)([\s\S]*)$/iu.exec(text);
+  if (!match) return text;
+  const [, leading, rest = ''] = match;
+  const normalizedRest = rest.trimStart();
+  const mention = `@${publicScopedAgentMentionHandle(ownerName, agentLabel)}`;
+  return normalizedRest ? `${leading}${mention} ${normalizedRest}` : `${leading}${mention}`;
+}
