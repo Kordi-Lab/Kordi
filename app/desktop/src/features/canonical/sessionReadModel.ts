@@ -105,8 +105,14 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
-      const messages = this.preferMessages(sessionId, conversation.messages);
+      const canonicalMessages = this.messages(sessionId);
+      const messages = isCanonicalBridgeSessionId(sessionId) && canonicalMessages.length > 0
+        ? canonicalMessages
+        : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
+      const bridgePersonMessageTitle = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId)
+        ? messages.find((message) => message.role !== 'system' && message.text.trim())?.text.trim()
+        : null;
       const canonicalParticipants = this.participantDetails(sessionId);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
@@ -117,7 +123,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ...conversation,
         canonicalSessionId: sessionId,
         canonicalStoragePath: indexes.storagePath,
-        name: session.title || conversation.name,
+        name: bridgePersonMessageTitle || session.title || conversation.name,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread: 0,
         participants,

@@ -272,6 +272,66 @@ test('canonical read model keeps separate direct person bridge sessions for the 
   ]);
 });
 
+test('canonical read model prefers shared bridge transcript over local agent runtime details', () => {
+  const sessionId = 'session:bridge:humans:shared';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shared', humanId: 'human-bob', avatarKey: 'human-bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-person', title: 'stale later reply', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:shared:1', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hi bob', content: { sender: 'Me', timeLabel: '13:27' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'shared-1' },
+      { id: 'msg:shared:2', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'hello', content: { sender: 'Bob', timeLabel: '13:28' }, status: 'sent', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'shared-2' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const localRuntimeConversation = {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: 'hi bob',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'Kordi'],
+    messages: [{
+      role: 'owned-agent',
+      sender: 'Kordi',
+      text: 'read tool output',
+      time: '13:29',
+      turn: { thinkingText: '', tools: [{ name: 'read' }] },
+    }],
+  };
+
+  const conversations = readModel?.buildChatConversations([localRuntimeConversation as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.equal(conversations[0]?.name, 'hi bob');
+  assert.deepEqual(conversations[0]?.messages.map((message) => message.text), ['hi bob', 'hello']);
+});
+
 test('bridge chat visibility keeps empty conversations returned by backend state', () => {
   assert.equal(bridgeChatConversationIsVisible({
     outreach: null,

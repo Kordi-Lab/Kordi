@@ -965,6 +965,28 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
     };
 
     sync_bridge_state_identities(&state).expect("sync identities");
+    let conn = open_db().expect("open db before sync");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(session_id.to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("i am good".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:kh_shenzhe".to_string(),
+            primary_identity_id: Some("human:kh_shuyang".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:kh_shuyang".to_string()),
+            participant_identity_ids: vec!["human:kh_shuyang".to_string()],
+            metadata: Some(serde_json::json!({
+                "source": "bridge-session-thread",
+            })),
+        },
+    )
+    .expect("seed stale later-message title");
+    drop(conn);
+
     sync_bridge_state_sessions(&state).expect("sync sessions");
 
     let conn = open_db().expect("open db");
