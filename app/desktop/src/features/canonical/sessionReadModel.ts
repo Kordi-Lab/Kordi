@@ -32,6 +32,7 @@ type CanonicalConversationLike = {
   bridgeTarget?: ConversationBridgeTarget | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
+  unread?: number;
   name: string;
   subtitle: string;
   participants: string[];
