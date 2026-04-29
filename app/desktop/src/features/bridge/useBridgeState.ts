@@ -9,8 +9,8 @@ import {
 } from '@/features/bridge/constants';
 import {
   BRIDGE_READ_ATTENTION_EVENTS,
-  activeBridgeConversationForSession,
-  bridgeReadReceiptSignature,
+  activeBridgeConversationsForSession,
+  bridgeReadReceiptBatchSignature,
   canAutoMarkBridgeRead,
   shouldMarkBridgeConversationRead,
 } from '@/features/bridge/readReceipts';
@@ -144,6 +144,22 @@ function mergeBridgeConversation(
   };
 }
 
+function markBridgeConversationsReadInState(
+  state: DesktopBridgeState | null,
+  conversationIds: string[],
+): DesktopBridgeState | null {
+  if (!state || conversationIds.length === 0) return state;
+  const readConversationIds = new Set(conversationIds);
+  return {
+    ...state,
+    conversations: state.conversations.map((conversation) => (
+      readConversationIds.has(conversation.id)
+        ? { ...conversation, unreadCount: 0 }
+        : conversation
+    )),
+  };
+}
+
 export function mergeDesktopBridgeState(
   current: DesktopBridgeState | null,
   next: DesktopBridgeState | null,
@@ -217,7 +233,6 @@ export function useBridgeState({
   activeConvId,
   activeConversationIsBridge,
   composerChatText,
-  shouldAutoFollowChatRef,
 }: UseBridgeStateArgs) {
   const [desktopBridgeState, setDesktopBridgeState] = useState<DesktopBridgeState | null>(null);
   const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<BridgeSettingsDraft | null>(null);
@@ -584,32 +599,34 @@ export function useBridgeState({
       return;
     }
 
-    const activeConversation = activeBridgeConversationForSession(desktopBridgeState?.conversations ?? [], activeConvId);
-    if (!activeConversation) return;
-    if (!shouldMarkBridgeConversationRead(activeConversation)) {
+    const activeConversations = activeBridgeConversationsForSession(desktopBridgeState?.conversations ?? [], activeConvId)
+      .filter(shouldMarkBridgeConversationRead);
+    if (activeConversations.length === 0) {
       activeBridgeReadRequestRef.current = null;
       return;
     }
 
-    const canAutoMarkRead = canAutoMarkBridgeRead(document, shouldAutoFollowChatRef.current);
+    const canAutoMarkRead = canAutoMarkBridgeRead(document);
     if (!canAutoMarkRead) {
       activeBridgeReadRequestRef.current = null;
       return;
     }
-    const readSignature = bridgeReadReceiptSignature(activeConversation);
+    const readSignature = bridgeReadReceiptBatchSignature(activeConversations);
     if (activeBridgeReadRequestRef.current === readSignature) return;
 
     activeBridgeReadRequestRef.current = readSignature;
-    markDesktopBridgeConversationRead(activeConversation.id)
-      .then((state) => {
-        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+    const conversationIds = activeConversations.map((conversation) => conversation.id);
+    setDesktopBridgeState((current) => markBridgeConversationsReadInState(current, conversationIds));
+    Promise.all(conversationIds.map((conversationId) => markDesktopBridgeConversationRead(conversationId)))
+      .then((states) => {
+        setDesktopBridgeState((current) => states.reduce((merged, state) => mergeDesktopBridgeState(merged, state), current));
         setDesktopBridgeError(null);
       })
       .catch((error) => {
         activeBridgeReadRequestRef.current = null;
         setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to mark bridge chat as read');
       });
-  }, [activeConvId, activeConversationIsBridge, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell, shouldAutoFollowChatRef]);
+  }, [activeConvId, activeConversationIsBridge, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell]);
 
   return {
     desktopBridgeState,

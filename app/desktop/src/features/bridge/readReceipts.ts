@@ -8,22 +8,31 @@ type BridgeReadDocumentLike = {
   hasFocus?: () => boolean;
 };
 
-export function canAutoMarkBridgeRead(documentLike: BridgeReadDocumentLike | null | undefined, shouldAutoFollow: boolean) {
+export function canAutoMarkBridgeRead(documentLike: BridgeReadDocumentLike | null | undefined) {
   return documentLike?.visibilityState === 'visible'
-    && Boolean(documentLike.hasFocus?.())
-    && shouldAutoFollow;
+    && Boolean(documentLike.hasFocus?.());
+}
+
+function bridgeConversationMatchesSession(conversation: DesktopBridgeConversation, normalizedActiveSessionId: string) {
+  return conversation.id === normalizedActiveSessionId
+    || conversation.canonicalSessionId === normalizedActiveSessionId
+    || conversation.outreach?.parentSessionId?.trim() === normalizedActiveSessionId;
+}
+
+export function activeBridgeConversationsForSession(
+  conversations: DesktopBridgeConversation[],
+  activeSessionId: string,
+) {
+  const normalizedActiveSessionId = activeSessionId.trim();
+  if (!normalizedActiveSessionId) return [];
+  return conversations.filter((conversation) => bridgeConversationMatchesSession(conversation, normalizedActiveSessionId));
 }
 
 export function activeBridgeConversationForSession(
   conversations: DesktopBridgeConversation[],
   activeSessionId: string,
 ) {
-  const normalizedActiveSessionId = activeSessionId.trim();
-  return conversations.find((conversation) => (
-    conversation.id === normalizedActiveSessionId
-    || conversation.canonicalSessionId === normalizedActiveSessionId
-    || conversation.outreach?.parentSessionId?.trim() === normalizedActiveSessionId
-  )) ?? null;
+  return activeBridgeConversationsForSession(conversations, activeSessionId)[0] ?? null;
 }
 
 export function inboundBridgeRequestIds(conversation: DesktopBridgeConversation) {
@@ -42,7 +51,13 @@ export function shouldMarkBridgeConversationRead(conversation: DesktopBridgeConv
 export function bridgeReadReceiptSignature(conversation: DesktopBridgeConversation) {
   return [
     conversation.id,
-    Math.max(0, conversation.unreadCount),
     ...inboundBridgeRequestIds(conversation),
   ].join(':');
+}
+
+export function bridgeReadReceiptBatchSignature(conversations: DesktopBridgeConversation[]) {
+  return conversations
+    .map(bridgeReadReceiptSignature)
+    .sort()
+    .join('|');
 }
