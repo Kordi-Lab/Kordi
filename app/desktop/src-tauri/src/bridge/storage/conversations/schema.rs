@@ -6,6 +6,7 @@ use super::super::config::{
 };
 use super::outreach_metadata::reconcile_message_outreach_metadata;
 use super::records::{optional_json, parse_optional_json, upsert_conversation_record};
+use super::repair::repair_split_bridge_person_session_relay_rows;
 use crate::bridge::{DesktopBridgeConversationStore, DesktopBridgeOutreachMetadata};
 
 const BRIDGE_CONVERSATION_SCHEMA_VERSION: i64 = 2;
@@ -203,11 +204,19 @@ fn reconcile_persisted_message_outreach_metadata(conn: &mut Connection) -> Resul
     Ok(())
 }
 
+pub(in crate::bridge::storage) fn reconcile_and_repair_persisted_conversation_rows(
+    conn: &mut Connection,
+) -> Result<(), String> {
+    reconcile_persisted_message_outreach_metadata(conn)?;
+    repair_split_bridge_person_session_relay_rows(conn)?;
+    Ok(())
+}
+
 pub(in crate::bridge::storage) fn migrate_legacy_conversation_json(
     conn: &mut Connection,
 ) -> Result<(), String> {
     if conversation_json_migrated(conn)? {
-        return reconcile_persisted_message_outreach_metadata(conn);
+        return reconcile_and_repair_persisted_conversation_rows(conn);
     }
 
     let legacy_path = legacy_desktop_bridge_conversations_path()?;
@@ -231,5 +240,5 @@ pub(in crate::bridge::storage) fn migrate_legacy_conversation_json(
     }
     mark_conversation_json_migrated(&tx)?;
     tx.commit().map_err(sqlite_error)?;
-    reconcile_persisted_message_outreach_metadata(conn)
+    reconcile_and_repair_persisted_conversation_rows(conn)
 }

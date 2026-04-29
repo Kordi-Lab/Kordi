@@ -81,6 +81,29 @@ fn test_outreach(request_id: &str, delivery_state: Option<&str>) -> DesktopBridg
     }
 }
 
+fn test_outreach_for_conversation(
+    request_id: &str,
+    conversation_id: &str,
+    parent_turn_id: Option<&str>,
+    delivery_state: Option<&str>,
+) -> DesktopBridgeOutreachMetadata {
+    let mut outreach = test_outreach(request_id, delivery_state);
+    outreach.bridge_conversation_id = Some(conversation_id.to_string());
+    outreach.parent_turn_id = parent_turn_id.map(ToString::to_string);
+    outreach.context_policy = Some("session-relay".to_string());
+    outreach.parent_session_id = Some("session:bridge:humans:test".to_string());
+    outreach.target_kind = "bridge-person".to_string();
+    outreach
+}
+
+fn bridge_person_conversation_id() -> &'static str {
+    "bridge:host-1:peer-1:person"
+}
+
+fn bridge_base_conversation_id() -> &'static str {
+    "bridge:host-1:peer-1"
+}
+
 #[test]
 fn targeted_append_keeps_person_and_agent_threads_separate_for_same_node() {
     let conn = memory_conversation_db();
@@ -326,6 +349,252 @@ fn sqlite_upsert_allows_newer_final_response_to_clear_typing() {
         conversation.messages[0].delivery_state.as_deref(),
         Some("responded")
     );
+}
+
+#[test]
+fn repair_moves_inbound_session_relay_agent_response_into_person_thread() {
+    let mut conn = memory_conversation_db();
+
+    let mut person = test_conversation(vec![test_message(
+        "msg-request",
+        "inbound",
+        "@MyKordi check my disk usage",
+        1_000,
+        Some("req-user"),
+        None,
+    )]);
+    person.id = bridge_person_conversation_id().to_string();
+    person.peer_runtime = "person".to_string();
+    upsert_conversation_record(&conn, &person).expect("insert person thread");
+
+    let mut response = test_message(
+        "msg-response-wrong-thread",
+        "inbound",
+        "I tried to check disk usage with `df -h`.",
+        1_200,
+        Some("req-agent"),
+        Some("responded"),
+    );
+    response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_base_conversation_id(),
+        Some("turn-agent"),
+        Some("responded"),
+    ));
+    let mut base = test_conversation(vec![response]);
+    base.id = bridge_base_conversation_id().to_string();
+    base.peer_runtime = "kordi-desktop".to_string();
+    upsert_conversation_record(&conn, &base).expect("insert wrong base thread");
+
+    repair_split_bridge_person_session_relay_rows(&mut conn).expect("repair split rows");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load repaired store");
+    let person = loaded
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_person_conversation_id())
+        .expect("person conversation exists");
+    assert!(person.messages.iter().any(|message| {
+        message.id == "msg-response-wrong-thread"
+            && message.direction == "inbound-response"
+            && message
+                .outreach
+                .as_ref()
+                .and_then(|outreach| outreach.bridge_conversation_id.as_deref())
+                == Some(bridge_person_conversation_id())
+    }));
+
+    let base = loaded
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_base_conversation_id())
+        .expect("base conversation preserved");
+    assert!(!base
+        .messages
+        .iter()
+        .any(|message| message.id == "msg-response-wrong-thread"));
+}
+
+#[test]
+fn repair_moves_outbound_session_relay_agent_response_as_outbound_response() {
+    let mut conn = memory_conversation_db();
+
+    let mut response = test_message(
+        "msg-outbound-response-wrong-thread",
+        "outbound",
+        "Final local answer",
+        1_200,
+        Some("req-agent"),
+        Some("responded"),
+    );
+    response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_base_conversation_id(),
+        Some("turn-agent"),
+        Some("responded"),
+    ));
+    let mut base = test_conversation(vec![response]);
+    base.id = bridge_base_conversation_id().to_string();
+    base.peer_runtime = "kordi-desktop".to_string();
+    upsert_conversation_record(&conn, &base).expect("insert wrong base thread");
+
+    repair_split_bridge_person_session_relay_rows(&mut conn).expect("repair split rows");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load repaired store");
+    let person = loaded
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_person_conversation_id())
+        .expect("person conversation created");
+    assert_eq!(person.peer_runtime, "person");
+    assert!(person.messages.iter().any(|message| {
+        message.id == "msg-outbound-response-wrong-thread"
+            && message.direction == "outbound-response"
+            && message.text == "Final local answer"
+    }));
+}
+
+#[test]
+fn repair_normalizes_split_response_already_in_person_thread() {
+    let mut conn = memory_conversation_db();
+
+    let mut response = test_message(
+        "msg-response-person-thread",
+        "inbound",
+        "Already in the person thread, but not marked as a response.",
+        1_200,
+        Some("req-agent"),
+        Some("responded"),
+    );
+    response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_person_conversation_id(),
+        Some("turn-agent"),
+        Some("responded"),
+    ));
+    let mut person = test_conversation(vec![response]);
+    person.id = bridge_person_conversation_id().to_string();
+    person.peer_runtime = "person".to_string();
+    upsert_conversation_record(&conn, &person).expect("insert person response");
+
+    repair_split_bridge_person_session_relay_rows(&mut conn).expect("repair split rows");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load repaired store");
+    let person = loaded
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_person_conversation_id())
+        .expect("person conversation exists");
+    assert_eq!(person.messages.len(), 1);
+    assert_eq!(person.messages[0].id, "msg-response-person-thread");
+    assert_eq!(person.messages[0].direction, "inbound-response");
+}
+
+#[test]
+fn repair_is_idempotent_and_merges_duplicate_target_response() {
+    let mut conn = memory_conversation_db();
+
+    let mut target_response = test_message(
+        "msg-target-processing",
+        "inbound-response",
+        "processing...",
+        1_000,
+        Some("req-agent"),
+        Some("processing"),
+    );
+    target_response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_person_conversation_id(),
+        Some("turn-agent"),
+        Some("processing"),
+    ));
+    let mut person = test_conversation(vec![target_response]);
+    person.id = bridge_person_conversation_id().to_string();
+    upsert_conversation_record(&conn, &person).expect("insert target processing row");
+
+    let mut source_response = test_message(
+        "msg-source-final",
+        "inbound",
+        "Final answer",
+        1_500,
+        Some("req-agent"),
+        Some("responded"),
+    );
+    source_response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_base_conversation_id(),
+        Some("turn-agent"),
+        Some("responded"),
+    ));
+    let mut base = test_conversation(vec![source_response]);
+    base.id = bridge_base_conversation_id().to_string();
+    base.peer_runtime = "kordi-desktop".to_string();
+    upsert_conversation_record(&conn, &base).expect("insert source final row");
+
+    repair_split_bridge_person_session_relay_rows(&mut conn).expect("first repair");
+    repair_split_bridge_person_session_relay_rows(&mut conn).expect("second repair");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load repaired store");
+    let person = loaded
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_person_conversation_id())
+        .expect("person conversation exists");
+    let responses = person
+        .messages
+        .iter()
+        .filter(|message| {
+            message.request_id.as_deref() == Some("req-agent")
+                && message.direction == "inbound-response"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0].text, "Final answer");
+    assert_eq!(responses[0].delivery_state.as_deref(), Some("responded"));
+}
+
+#[test]
+fn persisted_row_reconcile_path_repairs_split_session_relay_rows() {
+    let mut conn = memory_conversation_db();
+
+    let mut response = test_message(
+        "msg-response-wrong-thread",
+        "inbound",
+        "Final answer",
+        1_200,
+        Some("req-agent"),
+        Some("responded"),
+    );
+    response.outreach = Some(test_outreach_for_conversation(
+        "req-agent",
+        bridge_base_conversation_id(),
+        Some("turn-agent"),
+        Some("responded"),
+    ));
+    let mut base = test_conversation(vec![response]);
+    base.id = bridge_base_conversation_id().to_string();
+    base.peer_runtime = "kordi-desktop".to_string();
+    upsert_conversation_record(&conn, &base).expect("insert split source row");
+
+    reconcile_and_repair_persisted_conversation_rows(&mut conn)
+        .expect("persisted row reconcile path repairs split row");
+
+    let repaired = load_conversation_store_from_db(&conn).expect("load repaired store");
+    let person = repaired
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_person_conversation_id())
+        .expect("person thread exists after repair");
+    assert_eq!(person.messages.len(), 1);
+    assert_eq!(person.messages[0].direction, "inbound-response");
+    assert_eq!(person.messages[0].text, "Final answer");
+
+    let base = repaired
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == bridge_base_conversation_id())
+        .expect("base conversation preserved");
+    assert!(base.messages.is_empty());
 }
 
 #[test]

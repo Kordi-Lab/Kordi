@@ -3,6 +3,7 @@ mod lookup;
 mod merge;
 mod outreach_metadata;
 mod records;
+mod repair;
 mod schema;
 
 pub(in crate::bridge) use actions::{
@@ -14,10 +15,15 @@ pub(in crate::bridge) use actions::{
 pub(in crate::bridge) use lookup::bridge_conversation_id;
 
 #[cfg(test)]
+pub(in crate::bridge::storage) use repair::repair_split_bridge_person_session_relay_rows;
+
+#[cfg(test)]
 pub(in crate::bridge::storage) use lookup::{find_conversation_for_peer, scoped_conversation_id};
 #[cfg(test)]
 pub(in crate::bridge::storage) use records::{
     load_conversation_store_from_db, upsert_conversation_record,
 };
 #[cfg(test)]
-pub(in crate::bridge::storage) use schema::init_conversation_schema;
+pub(in crate::bridge::storage) use schema::{
+    init_conversation_schema, reconcile_and_repair_persisted_conversation_rows,
+};
