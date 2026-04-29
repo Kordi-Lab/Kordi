@@ -7,6 +7,12 @@ import {
   DEFAULT_BRIDGE_DISPLAY_NAME,
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
+import {
+  BRIDGE_READ_ATTENTION_EVENTS,
+  activeUnreadBridgeConversationsForSession,
+  bridgeReadReceiptBatchSignature,
+  canAutoMarkBridgeRead,
+} from '@/features/bridge/readReceipts';
 import type {
   DesktopBridgeConversation,
   DesktopBridgeConversationMessage,
@@ -137,6 +143,22 @@ function mergeBridgeConversation(
   };
 }
 
+function markBridgeConversationsReadInState(
+  state: DesktopBridgeState | null,
+  conversationIds: string[],
+): DesktopBridgeState | null {
+  if (!state || conversationIds.length === 0) return state;
+  const readConversationIds = new Set(conversationIds);
+  return {
+    ...state,
+    conversations: state.conversations.map((conversation) => (
+      readConversationIds.has(conversation.id)
+        ? { ...conversation, unreadCount: 0 }
+        : conversation
+    )),
+  };
+}
+
 export function mergeDesktopBridgeState(
   current: DesktopBridgeState | null,
   next: DesktopBridgeState | null,
@@ -210,7 +232,6 @@ export function useBridgeState({
   activeConvId,
   activeConversationIsBridge,
   composerChatText,
-  shouldAutoFollowChatRef,
 }: UseBridgeStateArgs) {
   const [desktopBridgeState, setDesktopBridgeState] = useState<DesktopBridgeState | null>(null);
   const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<BridgeSettingsDraft | null>(null);
@@ -231,6 +252,7 @@ export function useBridgeState({
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
   const activeBridgeReadRequestRef = useRef<string | null>(null);
+  const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
     ?? desktopBridgeState?.hosts?.[0]
     ?? null;
@@ -556,38 +578,53 @@ export function useBridgeState({
   }, [activeConvId, activeConversationIsBridge, desktopBridgeState?.conversations, isNativeShell]);
 
   useEffect(() => {
-    if (!isNativeShell || activeNav !== 'chats' || !activeConversationIsBridge) {
+    if (!isNativeShell || typeof window === 'undefined' || typeof document === 'undefined') return;
+    const bumpReadAttention = () => setBridgeReadAttentionTick((tick) => tick + 1);
+    for (const eventName of BRIDGE_READ_ATTENTION_EVENTS) {
+      const target = eventName === 'visibilitychange' ? document : window;
+      target.addEventListener(eventName, bumpReadAttention);
+    }
+    return () => {
+      for (const eventName of BRIDGE_READ_ATTENTION_EVENTS) {
+        const target = eventName === 'visibilitychange' ? document : window;
+        target.removeEventListener(eventName, bumpReadAttention);
+      }
+    };
+  }, [isNativeShell]);
+
+  useEffect(() => {
+    if (!isNativeShell || activeNav !== 'chats') {
       activeBridgeReadRequestRef.current = null;
       return;
     }
 
-    const activeConversation = (desktopBridgeState?.conversations ?? []).find((conversation) => conversation.id === activeConvId);
-    if (!activeConversation) return;
-    if (activeConversation.unreadCount <= 0) {
+    const activeConversations = activeUnreadBridgeConversationsForSession(desktopBridgeState?.conversations ?? [], activeConvId);
+    if (activeConversations.length === 0) {
       activeBridgeReadRequestRef.current = null;
       return;
     }
 
-    const canAutoMarkRead = document.visibilityState === 'visible'
-      && document.hasFocus()
-      && shouldAutoFollowChatRef.current;
+    const canAutoMarkRead = canAutoMarkBridgeRead(document);
     if (!canAutoMarkRead) {
       activeBridgeReadRequestRef.current = null;
       return;
     }
-    if (activeBridgeReadRequestRef.current === activeConversation.id) return;
+    const readSignature = bridgeReadReceiptBatchSignature(activeConversations);
+    if (activeBridgeReadRequestRef.current === readSignature) return;
 
-    activeBridgeReadRequestRef.current = activeConversation.id;
-    markDesktopBridgeConversationRead(activeConversation.id)
-      .then((state) => {
-        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+    activeBridgeReadRequestRef.current = readSignature;
+    const conversationIds = activeConversations.map((conversation) => conversation.id);
+    setDesktopBridgeState((current) => markBridgeConversationsReadInState(current, conversationIds));
+    Promise.all(conversationIds.map((conversationId) => markDesktopBridgeConversationRead(conversationId)))
+      .then((states) => {
+        setDesktopBridgeState((current) => states.reduce((merged, state) => mergeDesktopBridgeState(merged, state), current));
         setDesktopBridgeError(null);
       })
       .catch((error) => {
         activeBridgeReadRequestRef.current = null;
         setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to mark bridge chat as read');
       });
-  }, [activeConvId, activeConversationIsBridge, activeNav, desktopBridgeState?.conversations, isNativeShell, shouldAutoFollowChatRef]);
+  }, [activeConvId, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell]);
 
   return {
     desktopBridgeState,

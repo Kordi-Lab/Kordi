@@ -586,7 +586,8 @@ fn desktop_state_for_canonical_sync(
         .iter()
         .enumerate()
         .filter_map(|(index, message)| {
-            (!(index > last_user_index && desktop_chat_message_is_agent(message))).then(|| message.clone())
+            (!(index > last_user_index && desktop_chat_message_is_agent(message)))
+                .then(|| message.clone())
         })
         .collect();
     next.active_session.message_count = next.active_session.messages.len();

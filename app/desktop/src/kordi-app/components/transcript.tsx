@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   Bot,
   Braces,
+  Check,
   CheckCheck,
   CheckCircle2,
   ChevronDown,
@@ -28,6 +29,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
@@ -313,25 +315,29 @@ function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
 }
 
 function MessageDeliveryGlyph({ status }: { status: string }) {
-  const normalized = status.trim().toLowerCase();
+  const visual = messageDeliveryVisual(status);
+  if (!visual) return null;
 
-  if (normalized === 'read' || normalized === 'responded') {
-    return <CheckCheck className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" />;
+  const toneClass = visual.tone === 'blue'
+    ? 'text-sky-400'
+    : visual.tone === 'red'
+      ? 'text-rose-400'
+      : 'text-slate-400';
+
+  if (visual.glyph === 'single-check') {
+    return <Check className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
   }
-  if (normalized === 'delivered' || normalized === 'sent') {
-    return <CheckCheck className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />;
+  if (visual.glyph === 'double-check') {
+    return <CheckCheck className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
   }
-  if (normalized === 'sending' || normalized === 'pending_send') {
-    return <Clock3 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />;
+  if (visual.glyph === 'clock') {
+    return <Clock3 className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
   }
-  if (normalized === 'processing' || normalized === 'awaiting reply') {
-    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />;
+  if (visual.glyph === 'spinner') {
+    return <LoaderCircle className={cn('h-3.5 w-3.5 animate-spin', toneClass)} aria-hidden="true" />;
   }
-  if (normalized === 'handed_off_direct' || normalized === 'handed_off_mailbox') {
-    return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />;
-  }
-  if (normalized === 'failed' || normalized === 'processing_failed') {
-    return <CircleAlert className="h-3.5 w-3.5 text-rose-400" aria-hidden="true" />;
+  if (visual.glyph === 'error') {
+    return <CircleAlert className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
   }
   return null;
 }

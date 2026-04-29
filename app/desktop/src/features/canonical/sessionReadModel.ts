@@ -30,8 +30,11 @@ type CanonicalConversationLike = {
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
   bridgeTarget?: ConversationBridgeTarget | null;
+  bridgeUnreadByParentSessionId?: Record<string, number>;
+  outreach?: { parentSessionId?: string | null } | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
+  unread?: number;
   name: string;
   subtitle: string;
   participants: string[];
@@ -75,6 +78,10 @@ function shouldKeepLegacyChatConversationExtra(
   conversation: Conversation,
   indexes: CanonicalIndexes,
 ) {
+  if (conversation.outreach?.parentSessionId?.trim()) {
+    return false;
+  }
+
   if (isLocalDraftChatConversationId(conversation.id)) {
     return true;
   }
@@ -153,13 +160,17 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
 
+      const scopedUnread = conversation.bridgeUnreadByParentSessionId
+        ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
+        : conversation.unread ?? 0;
+
       return {
         ...conversation,
         canonicalSessionId: sessionId,
         canonicalStoragePath: indexes.storagePath,
         name: bridgePersonMessageTitle || session.title || conversation.name,
         subtitle: buildSubtitle(messages, conversation.subtitle),
-        unread: 0,
+        unread: scopedUnread,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         messages,
@@ -175,6 +186,18 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
     },
     buildChatConversations(conversations, buildSubtitle) {
       const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
+      const sourceByOutreachParentSessionId = new Map<string, Conversation>();
+      for (const conversation of conversations) {
+        const parentSessionIds = new Set([
+          conversation.outreach?.parentSessionId?.trim(),
+          ...Object.keys(conversation.bridgeUnreadByParentSessionId ?? {}),
+        ].filter((value): value is string => Boolean(value)));
+        for (const parentSessionId of parentSessionIds) {
+          if (!sourceByOutreachParentSessionId.has(parentSessionId)) {
+            sourceByOutreachParentSessionId.set(parentSessionId, conversation);
+          }
+        }
+      }
       const groups = new Map<string, typeof chatSessions>();
       for (const session of chatSessions) {
         const isDefaultAgentRelationship = session.kind === 'direct-agent'
@@ -197,9 +220,15 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
           const representativeWithSource = sessions.find((session) => sourceBySessionId.has(session.id));
           const representative = representativeWithMessages ?? representativeWithSource;
           if (representative) {
-            const source = sourceBySessionId.get(representative.id);
+            const directSource = sourceBySessionId.get(representative.id);
+            const outreachSource = sourceByOutreachParentSessionId.get(representative.id);
+            const source = directSource ?? outreachSource;
             return source
-              ? [this.applyConversation(source, buildSubtitle)]
+              ? [this.applyConversation({
+                  ...source,
+                  id: directSource ? source.id : representative.id,
+                  canonicalSessionId: representative.id,
+                }, buildSubtitle)]
               : [this.applyConversation(
                 syntheticConversation(representative, this.participantDetails(representative.id), this.messages(representative.id), buildSubtitle),
                 buildSubtitle,
