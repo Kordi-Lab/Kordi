@@ -223,7 +223,8 @@ export function mapCanonicalMessage(
     }
     return selfDisplayName(contentSender || identity?.displayName || scopedAgentSender, isOwnMessage);
   })();
-  const thinkingText = stringValue(content.thinkingText) ?? '';
+  const thinkingText = role === 'owned-agent' ? stringValue(content.thinkingText) ?? '' : '';
+  const visibleTools = role === 'owned-agent' ? tools : [];
   const rawDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
   const isProcessingAgentPlaceholder = isAgentTurn
     && stringValue(content.deliveryState)?.toLowerCase() === 'processing'
@@ -255,9 +256,9 @@ export function mapCanonicalMessage(
           message: completed ? (failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: displayText,
           thinkingText,
-          tools,
+          tools: visibleTools,
           completed,
-          succeeded: completed && !failed && tools.every((tool) => !tool.isError),
+          succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
           error: failed ? stringValue(content.error) ?? 'Message failed' : null,
         }
       : undefined,

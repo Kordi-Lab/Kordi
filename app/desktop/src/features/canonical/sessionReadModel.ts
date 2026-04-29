@@ -38,6 +38,39 @@ type CanonicalConversationLike = {
   messages: Message[];
 };
 
+function messageResponseText(message: Message) {
+  return (message.turn?.assistantText ?? message.text).trim();
+}
+
+function hasLocalOwnedAgentRuntimeStatus(message: Message) {
+  return message.role === 'owned-agent'
+    && Boolean(message.turn)
+    && (
+      (message.turn?.tools?.length ?? 0) > 0
+      || (message.turn?.thinkingText?.trim().length ?? 0) > 0
+      || message.turn?.completed === false
+    );
+}
+
+function mergeLocalOwnedAgentRuntimeStatus(
+  canonicalMessages: Message[],
+  existingMessages: Message[],
+) {
+  const merged = [...canonicalMessages];
+  for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
+    const localText = messageResponseText(localMessage);
+    const matchingCanonicalIndex = localText
+      ? merged.findIndex((message) => message.role === 'owned-agent' && messageResponseText(message) === localText)
+      : -1;
+    if (matchingCanonicalIndex >= 0) {
+      merged[matchingCanonicalIndex] = localMessage;
+    } else {
+      merged.push(localMessage);
+    }
+  }
+  return merged;
+}
+
 function shouldKeepLegacyChatConversationExtra(
   conversation: Conversation,
   indexes: CanonicalIndexes,
@@ -108,7 +141,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
       const canonicalMessages = this.messages(sessionId);
       const messages = isBridgePersonSession && canonicalMessages.length > 0
-        ? canonicalMessages
+        ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
       const bridgePersonMessageTitle = isBridgePersonSession
