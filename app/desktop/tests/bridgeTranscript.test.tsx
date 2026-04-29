@@ -88,6 +88,34 @@ test('bridge transcript keeps implicit direct person session messages as typed',
   assert.equal(view.messages[0]?.mentions, undefined);
 });
 
+test('bridge transcript carries message attachments into the view model', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-attachment',
+      direction: 'outbound',
+      sender: 'Me',
+      text: 'see screenshot',
+      timeLabel: '17:02',
+      timestampMs: 1,
+      requestId: 'bridge_req_attachment',
+      deliveryState: 'sent',
+      attachments: [{
+        kind: 'image',
+        name: 'screenshot.png',
+        formatLabel: 'PNG',
+        mimeType: 'image/png',
+      }],
+    } as never],
+  }), host(), 'My Kordi');
+
+  assert.deepEqual(view.messages[0]?.attachments, [{
+    kind: 'image',
+    name: 'screenshot.png',
+    formatLabel: 'PNG',
+    mimeType: 'image/png',
+  }]);
+});
+
 test('direct person bridge transcript rewrites remote first-person agent mentions for display', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     messages: [{

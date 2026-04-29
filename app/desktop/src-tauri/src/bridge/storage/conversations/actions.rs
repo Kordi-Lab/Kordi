@@ -23,7 +23,8 @@ use crate::bridge::constants::{
 };
 use crate::bridge::{
     DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
-    DesktopBridgeConversationStore, DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata,
+    DesktopBridgeConversationStore, DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment,
+    DesktopBridgeOutreachMetadata,
 };
 
 pub(in crate::bridge) fn append_conversation_message_to_storage(
@@ -41,6 +42,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
     text: String,
     request_id: Option<String>,
     delivery_state: Option<String>,
+    attachments: Vec<DesktopBridgeMessageAttachment>,
     increment_unread: bool,
 ) -> Result<DesktopBridgeConversationStore, String> {
     let timestamp_ms = now_ms();
@@ -167,6 +169,9 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
             if message.outreach.is_none() {
                 message.outreach = message_outreach.clone();
             }
+            if !attachments.is_empty() {
+                message.attachments = attachments;
+            }
             if let Some(outreach) = message.outreach.as_mut() {
                 reconcile_message_outreach_for_storage(
                     outreach,
@@ -206,6 +211,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
                 request_id,
                 delivery_state,
                 outreach,
+                attachments,
             });
     }
 

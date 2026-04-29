@@ -46,6 +46,7 @@ fn test_message(
         request_id: request_id.map(ToString::to_string),
         delivery_state: delivery_state.map(ToString::to_string),
         outreach: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -184,6 +185,7 @@ fn append_conversation_message_to_db_for_test(
             request_id: Some("req-agent".to_string()),
             delivery_state: Some("responded".to_string()),
             outreach: None,
+            attachments: Vec::new(),
         });
     upsert_conversation_record(conn, &conversation)
 }

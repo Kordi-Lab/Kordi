@@ -12,6 +12,7 @@ import type {
   DesktopChatProjectSource,
   DesktopChatState,
   DesktopChatTurnSnapshot,
+  MessageAttachment,
   DesktopProjectSettings,
   OpenCanonicalSessionRequest,
   UpdateCanonicalPresenceRequest,
@@ -63,6 +64,10 @@ export async function openDesktopExternalUrl(url: string) {
   }
 
   return window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export async function downloadDesktopAttachment(path: string, name?: string | null) {
+  return invokeDesktop<string>('desktop_chat_download_attachment', { path, name: name ?? null });
 }
 
 export async function readDesktopWorkspaceTextFile(path: string) {
@@ -422,8 +427,13 @@ export async function markDesktopBridgeConversationRead(conversationId: string) 
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_mark_conversation_read', { conversationId });
 }
 
-export async function sendDesktopBridgeMessage(conversationId: string, text: string) {
-  return invokeDesktop<DesktopBridgeState>('desktop_bridge_send_message', { conversationId, text });
+export async function sendDesktopBridgeMessage(conversationId: string, text: string, attachments: Array<MessageAttachment & { path: string }> = []) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_send_message', {
+    conversationId,
+    text,
+    attachmentPaths: attachments.map((attachment) => attachment.path),
+    attachmentNames: attachments.map((attachment) => attachment.name),
+  });
 }
 
 export async function createDesktopBridgeOutreach(request: DesktopBridgeCreateOutreachRequest) {

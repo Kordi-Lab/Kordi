@@ -10,15 +10,16 @@ use super::super::constants::{
     DEFAULT_BRIDGE_RUNTIME,
 };
 use super::super::events::{
-    identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_text,
-    outreach_metadata_for_event, parse_bridge_event_payload, sanitize_agent_response_for_event,
-    sender_name_for_runtime, ParsedMailboxEvent,
+    identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_attachments,
+    mailbox_payload_text, outreach_metadata_for_event, parse_bridge_event_payload,
+    sanitize_agent_response_for_event, sender_name_for_runtime, ParsedMailboxEvent,
 };
 use super::super::mailbox::apply_bridge_event_to_storage;
 use super::super::{
     append_conversation_message_to_storage, bridge_request_is_cancelled,
     decrypt_bridge_payload_for_host, update_message_delivery_state_in_storage,
-    DesktopBridgeConversationStore, DesktopBridgeManager, LocalBridgeServerRuntime,
+    DesktopBridgeConversationStore, DesktopBridgeManager, DesktopBridgeMessageAttachment,
+    LocalBridgeServerRuntime,
 };
 use super::{
     emit_after_storage_write, emit_bridge_state, send_realtime_or_relay, LocalRealtimeTarget,
@@ -51,6 +52,7 @@ fn append_local_agent_inbound_message(
     target: &LocalRealtimeTarget,
     event: &ParsedMailboxEvent,
     text: String,
+    attachments: Vec<DesktopBridgeMessageAttachment>,
 ) -> Result<DesktopBridgeConversationStore, String> {
     let peer_display_name = event.from_display_name.clone();
     let peer_owner_name = event.from_owner_name.clone();
@@ -84,6 +86,7 @@ fn append_local_agent_inbound_message(
         text,
         event.request_id.clone(),
         Some("processing".to_string()),
+        attachments,
         true,
     )
 }
@@ -135,6 +138,7 @@ fn append_local_agent_outbound_response(
         response_text,
         event.request_id.clone(),
         Some(delivery_state.to_string()),
+        Vec::new(),
         false,
     )
 }
@@ -198,6 +202,7 @@ fn spawn_local_agent_response(
     target: LocalRealtimeTarget,
     event: ParsedMailboxEvent,
     text: String,
+    attachment_paths: Vec<String>,
 ) {
     tokio::spawn(async move {
         let _ = emit_after_storage_write(
@@ -218,6 +223,7 @@ fn spawn_local_agent_response(
             &target.host.node_id,
             &event.from_node_id,
             text,
+            attachment_paths,
         )
         .await
         {
@@ -342,15 +348,20 @@ pub(super) async fn handle_incoming_payload(
 
     if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
         let text = mailbox_payload_text(&event.payload);
+        let attachments = mailbox_payload_attachments(&event.payload)?;
+        let attachment_paths = attachments
+            .iter()
+            .filter_map(|attachment| attachment.local_path.clone())
+            .collect::<Vec<_>>();
         let agent_prompt_text = mailbox_payload_agent_prompt_text(&event.payload);
-        if text.trim().is_empty() {
+        if text.trim().is_empty() && attachments.is_empty() {
             return Ok(());
         }
 
         emit_after_storage_write(
             app,
             local_server,
-            append_local_agent_inbound_message(target, &event, text.clone()),
+            append_local_agent_inbound_message(target, &event, text.clone(), attachments),
         )
         .await?;
 
@@ -379,6 +390,7 @@ pub(super) async fn handle_incoming_payload(
             target.clone(),
             event,
             agent_prompt_text,
+            attachment_paths,
         );
         return Ok(());
     }

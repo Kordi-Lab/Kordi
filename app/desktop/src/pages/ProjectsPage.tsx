@@ -32,6 +32,7 @@ import {
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
+import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import type {
   DesktopBridgeHost,
   DesktopBridgeProject,
@@ -109,6 +110,7 @@ type ProjectsPageProps = {
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
+  saveDesktopAttachmentPaths: (paths: string[]) => Promise<Attachment[]>;
   removeChatComposerAttachment: (id: string) => void;
   projectComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
@@ -162,6 +164,7 @@ export function ProjectsPage({
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
+  saveDesktopAttachmentPaths,
   removeChatComposerAttachment,
   projectComposerText,
   updateProjectComposerDraft,
@@ -401,10 +404,20 @@ export function ProjectsPage({
                 value={projectComposerText}
                 onChange={(event) => updateProjectComposerDraft(event.target.value, event.target)}
                 onPaste={(event) => {
-                  const files = Array.from(event.clipboardData.files ?? []);
+                  const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
                     void saveDesktopAttachments(files);
+                    return;
+                  }
+
+                  const pastedPaths = extractPastedLocalFilePaths(
+                    event.clipboardData.getData('text/plain'),
+                    event.clipboardData.getData('text/uri-list'),
+                  );
+                  if (pastedPaths.length > 0) {
+                    event.preventDefault();
+                    void saveDesktopAttachmentPaths(pastedPaths);
                   }
                 }}
                 onKeyDown={(event) => {

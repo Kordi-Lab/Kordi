@@ -40,6 +40,7 @@ import type {
   EditFilePreview,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
+import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { cn } from '@/lib/utils';
 
 type QueuedMessageBubbleProps = {
@@ -107,6 +108,7 @@ type ChatsPageProps = {
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
+  saveDesktopAttachmentPaths: (paths: string[]) => Promise<Attachment[]>;
   removeChatComposerAttachment: (id: string) => void;
   chatComposerText: string;
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
@@ -160,6 +162,7 @@ export function ChatsPage({
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
+  saveDesktopAttachmentPaths,
   removeChatComposerAttachment,
   chatComposerText,
   updateChatComposerDraft,
@@ -340,7 +343,6 @@ export function ChatsPage({
                 type="file"
                 multiple
                 className="hidden"
-                disabled={activeConversationIsBridge}
                 onChange={(event) => {
                   const files = Array.from(event.target.files ?? []);
                   if (files.length > 0) {
@@ -375,11 +377,20 @@ export function ChatsPage({
                 value={chatComposerText}
                 onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
                 onPaste={(event) => {
-                  if (activeConversationIsBridge) return;
-                  const files = Array.from(event.clipboardData.files ?? []);
+                  const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
                     void saveDesktopAttachments(files);
+                    return;
+                  }
+
+                  const pastedPaths = extractPastedLocalFilePaths(
+                    event.clipboardData.getData('text/plain'),
+                    event.clipboardData.getData('text/uri-list'),
+                  );
+                  if (pastedPaths.length > 0) {
+                    event.preventDefault();
+                    void saveDesktopAttachmentPaths(pastedPaths);
                   }
                 }}
                 onKeyDown={(event) => {
@@ -447,9 +458,8 @@ export function ChatsPage({
                 variant="secondary"
                 className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
                 onClick={() => chatAttachmentInputRef.current?.click()}
-                title={activeConversationIsBridge ? 'Bridge attachments are not supported yet' : 'Add attachment'}
+                title="Add attachment"
                 aria-label="Add attachment"
-                disabled={activeConversationIsBridge}
               >
                 <Paperclip className="h-4 w-4" />
               </Button>

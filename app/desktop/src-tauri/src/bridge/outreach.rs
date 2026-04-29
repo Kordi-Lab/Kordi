@@ -212,6 +212,8 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
             delivery_state: None,
             project_id: request.project_id.clone(),
             project_name,
+            attachment_paths: Vec::new(),
+            attachment_names: Vec::new(),
         },
     )
     .await?;

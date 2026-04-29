@@ -11,9 +11,9 @@ use super::constants::{
 };
 use super::conversation_actions::rebuild_state;
 use super::events::{
-    identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_text,
-    outreach_metadata_for_event, parse_bridge_event_payload, sanitize_agent_response_for_event,
-    sender_name_for_runtime, ParsedMailboxEvent,
+    identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_attachments,
+    mailbox_payload_text, outreach_metadata_for_event, parse_bridge_event_payload,
+    sanitize_agent_response_for_event, sender_name_for_runtime, ParsedMailboxEvent,
 };
 use super::outreach::mark_outreach_status;
 use super::{
@@ -208,7 +208,8 @@ fn append_inbound_event_message_to_storage(
     event: &ParsedMailboxEvent,
 ) -> Result<Option<String>, String> {
     let text = mailbox_payload_text(&event.payload);
-    if text.trim().is_empty() {
+    let attachments = mailbox_payload_attachments(&event.payload)?;
+    if text.trim().is_empty() && attachments.is_empty() {
         return Ok(None);
     }
 
@@ -290,6 +291,7 @@ fn append_inbound_event_message_to_storage(
         } else {
             payload_delivery_state
         },
+        attachments,
         true,
     )?;
     Ok(Some(text))
@@ -399,8 +401,13 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
 
             if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
                 let text = mailbox_payload_text(&event.payload);
+                let attachments = mailbox_payload_attachments(&event.payload)?;
+                let attachment_paths = attachments
+                    .iter()
+                    .filter_map(|attachment| attachment.local_path.clone())
+                    .collect::<Vec<_>>();
                 let agent_prompt_text = mailbox_payload_agent_prompt_text(&event.payload);
-                if text.trim().is_empty() {
+                if text.trim().is_empty() && attachments.is_empty() {
                     continue;
                 }
 
@@ -436,6 +443,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     text.clone(),
                     event.request_id.clone(),
                     Some("processing".to_string()),
+                    attachments.clone(),
                     true,
                 )?;
 
@@ -479,6 +487,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     "processing...".to_string(),
                     event.request_id.clone(),
                     Some("processing".to_string()),
+                    Vec::new(),
                     false,
                 )?;
 
@@ -487,6 +496,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     &target.host.node_id,
                     &event.from_node_id,
                     agent_prompt_text,
+                    attachment_paths,
                 )
                 .await;
 
@@ -514,6 +524,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                         "Cancelled".to_string(),
                         event.request_id.clone(),
                         Some("cancelled".to_string()),
+                        Vec::new(),
                         false,
                     )?;
                     continue;
@@ -545,6 +556,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 assistant_text.clone(),
                                 event.request_id.clone(),
                                 Some(BRIDGE_DELIVERY_STATE_RESPONDED.to_string()),
+                                Vec::new(),
                                 false,
                             )?;
                             let response = serde_json::json!({
@@ -609,6 +621,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                             format!("Failed: {error}"),
                             event.request_id.clone(),
                             Some("processing_failed".to_string()),
+                            Vec::new(),
                             false,
                         )?;
                         if let Some(request_id) = event.request_id.as_deref() {
@@ -650,6 +663,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                             format!("Failed: {error}"),
                             event.request_id.clone(),
                             Some("processing_failed".to_string()),
+                            Vec::new(),
                             false,
                         )?;
                         if let Some(request_id) = event.request_id.as_deref() {

@@ -1,4 +1,6 @@
+use base64::Engine;
 use serde_json::Value;
+use std::path::Path;
 use uuid::Uuid;
 
 use super::constants::{
@@ -16,8 +18,11 @@ use super::{
     load_bridge_store, load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
     relay_plaintext_message, send_realtime_payload, update_message_delivery_state_in_storage,
     DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
+    DesktopBridgeManager, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
+    DesktopBridgeState, DesktopBridgeStore,
 };
+
+const MAX_BRIDGE_ATTACHMENT_BYTES: u64 = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 struct ConversationContext {
@@ -199,10 +204,87 @@ fn outbound_direction(outreach: Option<&DesktopBridgeOutreachMetadata>) -> &'sta
     }
 }
 
+fn bridge_attachment_from_stored(
+    attachment: crate::chat::DesktopStoredChatAttachment,
+) -> DesktopBridgeMessageAttachment {
+    DesktopBridgeMessageAttachment {
+        kind: attachment.kind,
+        name: attachment.name,
+        format_label: attachment.format_label,
+        mime_type: attachment.mime_type,
+        size_bytes: attachment.size_bytes,
+        local_path: Some(attachment.path),
+    }
+}
+
+fn expand_local_attachment_path(path: &str) -> std::path::PathBuf {
+    if path == "~" {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(path).to_path_buf());
+    }
+    if let Some(suffix) = path.strip_prefix("~/") {
+        return std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join(suffix))
+            .unwrap_or_else(|| Path::new(path).to_path_buf());
+    }
+    Path::new(path).to_path_buf()
+}
+
+fn attachment_display_name(raw_name: Option<&String>, fallback: &str) -> String {
+    raw_name
+        .map(|name| Path::new(name))
+        .and_then(|path| path.file_name())
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn bridge_attachment_payloads_from_paths(
+    attachment_paths: &[String],
+    attachment_names: &[String],
+) -> Result<(Vec<DesktopBridgeMessageAttachment>, Vec<Value>), String> {
+    let mut records = Vec::new();
+    let mut payloads = Vec::new();
+    for (index, raw_path) in attachment_paths.iter().enumerate() {
+        let trimmed = raw_path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let path = expand_local_attachment_path(trimmed);
+        let mut stored = crate::chat::stored_chat_attachment_from_path(&path)?;
+        stored.name = attachment_display_name(attachment_names.get(index), &stored.name);
+        if stored.size_bytes.unwrap_or(0) > MAX_BRIDGE_ATTACHMENT_BYTES {
+            return Err(format!(
+                "Bridge attachment is too large: {} exceeds {} MB",
+                stored.name,
+                MAX_BRIDGE_ATTACHMENT_BYTES / 1024 / 1024
+            ));
+        }
+        let bytes = std::fs::read(&path)
+            .map_err(|err| format!("Unable to read bridge attachment {}: {err}", path.display()))?;
+        let record = bridge_attachment_from_stored(stored);
+        payloads.push(serde_json::json!({
+            "kind": record.kind.clone(),
+            "name": record.name.clone(),
+            "formatLabel": record.format_label.clone(),
+            "mimeType": record.mime_type.clone(),
+            "sizeBytes": record.size_bytes,
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        }));
+        records.push(record);
+    }
+    Ok((records, payloads))
+}
+
 fn outbound_payload(
     context: &ConversationContext,
     request_id: &str,
     message: &str,
+    attachments: &[Value],
     outreach: Option<&DesktopBridgeOutreachMetadata>,
 ) -> Value {
     let active_agent = context
@@ -297,6 +379,9 @@ fn outbound_payload(
         if let Some(delivery_state) = delivery_state {
             payload["deliveryState"] = serde_json::json!(delivery_state);
         }
+        if !attachments.is_empty() {
+            payload["attachments"] = serde_json::json!(attachments);
+        }
 
         serde_json::json!({
             "from": context.host.node_id,
@@ -323,6 +408,9 @@ fn outbound_payload(
         }
         if let Some(delivery_state) = delivery_state {
             payload["deliveryState"] = serde_json::json!(delivery_state);
+        }
+        if !attachments.is_empty() {
+            payload["attachments"] = serde_json::json!(attachments);
         }
 
         serde_json::json!({
@@ -461,12 +549,16 @@ pub(super) async fn desktop_bridge_send_message_impl(
     manager: &DesktopBridgeManager,
     conversation_id: String,
     text: String,
+    attachment_paths: Vec<String>,
+    attachment_names: Vec<String>,
 ) -> Result<DesktopBridgeState, String> {
     let message = text.trim();
-    if message.is_empty() {
+    if message.is_empty() && attachment_paths.is_empty() {
         return Err("Bridge message cannot be empty".to_string());
     }
 
+    let (attachments, attachment_payloads) =
+        bridge_attachment_payloads_from_paths(&attachment_paths, &attachment_names)?;
     let (store, _conversations, context) = load_conversation_context(&conversation_id)?;
     let fresh_outreach_for_message = context.conversation.outreach.clone().filter(|outreach| {
         outreach.request_text.trim() == message
@@ -480,6 +572,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
         &context,
         &request_id,
         message,
+        &attachment_payloads,
         fresh_outreach_for_message.as_ref(),
     );
 
@@ -541,6 +634,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
             .as_ref()
             .and_then(|outreach| outreach.delivery_state.clone())
             .or_else(|| Some(BRIDGE_DELIVERY_STATE_SENT.to_string())),
+        attachments,
         false,
     )?;
     let conversations = mark_bridge_conversation_read_in_storage(&conversation_id)?;
@@ -589,6 +683,7 @@ mod tests {
             request_id: request_id.map(ToString::to_string),
             delivery_state: None,
             outreach: None,
+            attachments: Vec::new(),
         }
     }
 

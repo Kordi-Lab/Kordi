@@ -6,7 +6,7 @@ use super::merge::merge_conversation_records;
 use super::schema::sqlite_error;
 use crate::bridge::{
     DesktopBridgeConversationMessageRecord, DesktopBridgeConversationRecord,
-    DesktopBridgeConversationStore,
+    DesktopBridgeConversationStore, DesktopBridgeMessageAttachment,
 };
 
 pub(in crate::bridge::storage) fn load_conversation_messages(
@@ -15,7 +15,7 @@ pub(in crate::bridge::storage) fn load_conversation_messages(
 ) -> Result<Vec<DesktopBridgeConversationMessageRecord>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata\n             FROM bridge_messages\n             WHERE conversation_id = ?1\n             ORDER BY timestamp_ms ASC, id ASC",
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata, attachments_json\n             FROM bridge_messages\n             WHERE conversation_id = ?1\n             ORDER BY timestamp_ms ASC, id ASC",
         )
         .map_err(sqlite_error)?;
     let rows = statement
@@ -29,6 +29,10 @@ pub(in crate::bridge::storage) fn load_conversation_messages(
                 request_id: row.get(5)?,
                 delivery_state: row.get(6)?,
                 outreach: parse_optional_json(row.get(7)?)?,
+                attachments: parse_optional_json::<Vec<DesktopBridgeMessageAttachment>>(
+                    row.get(8)?,
+                )?
+                .unwrap_or_default(),
             })
         })
         .map_err(sqlite_error)?;
@@ -164,11 +168,11 @@ pub(in crate::bridge::storage) fn find_existing_message_for_merge(
 ) -> Result<Option<DesktopBridgeConversationMessageRecord>, String> {
     let mut statement = if message.request_id.is_some() {
         conn.prepare(
-            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND direction = ?2 AND request_id = ?3\n             LIMIT 1",
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata, attachments_json\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND direction = ?2 AND request_id = ?3\n             LIMIT 1",
         )
     } else {
         conn.prepare(
-            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND id = ?2\n             LIMIT 1",
+            "SELECT id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata, attachments_json\n             FROM bridge_messages\n             WHERE conversation_id = ?1 AND id = ?2\n             LIMIT 1",
         )
     }
     .map_err(sqlite_error)?;
@@ -183,6 +187,8 @@ pub(in crate::bridge::storage) fn find_existing_message_for_merge(
             request_id: row.get(5)?,
             delivery_state: row.get(6)?,
             outreach: parse_optional_json(row.get(7)?)?,
+            attachments: parse_optional_json::<Vec<DesktopBridgeMessageAttachment>>(row.get(8)?)?
+                .unwrap_or_default(),
         })
     };
 
@@ -208,8 +214,10 @@ pub(in crate::bridge::storage) fn store_message_record(
     message: &DesktopBridgeConversationMessageRecord,
 ) -> Result<(), String> {
     let outreach_metadata = optional_json(&message.outreach)?;
+    let attachments_json =
+        optional_json(&(!message.attachments.is_empty()).then(|| message.attachments.clone()))?;
     conn.execute(
-        "INSERT INTO bridge_messages(\n             id, conversation_id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)\n         ON CONFLICT(id) DO UPDATE SET\n             conversation_id = excluded.conversation_id,\n             direction = excluded.direction,\n             sender = excluded.sender,\n             text = excluded.text,\n             timestamp_ms = excluded.timestamp_ms,\n             request_id = excluded.request_id,\n             delivery_state = excluded.delivery_state,\n             outreach_metadata = excluded.outreach_metadata",
+        "INSERT INTO bridge_messages(\n             id, conversation_id, direction, sender, text, timestamp_ms, request_id, delivery_state, outreach_metadata, attachments_json\n         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)\n         ON CONFLICT(id) DO UPDATE SET\n             conversation_id = excluded.conversation_id,\n             direction = excluded.direction,\n             sender = excluded.sender,\n             text = excluded.text,\n             timestamp_ms = excluded.timestamp_ms,\n             request_id = excluded.request_id,\n             delivery_state = excluded.delivery_state,\n             outreach_metadata = excluded.outreach_metadata,\n             attachments_json = excluded.attachments_json",
         params![
             message.id,
             conversation_id,
@@ -220,6 +228,7 @@ pub(in crate::bridge::storage) fn store_message_record(
             message.request_id,
             message.delivery_state,
             outreach_metadata,
+            attachments_json,
         ],
     )
     .map_err(sqlite_error)?;

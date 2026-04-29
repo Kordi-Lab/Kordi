@@ -1,10 +1,13 @@
+use base64::Engine;
 use serde_json::Value;
 
 use super::constants::{is_agent_like_runtime, BRIDGE_MESSAGE_TYPE_RAW};
 use super::{
     default_display_name, default_owner_name, now_ms, DesktopBridgeHostConfig,
-    DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata,
+    DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
 };
+
+const MAX_BRIDGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 
 pub(super) struct ParsedMailboxEvent {
     pub(super) from_node_id: String,
@@ -67,6 +70,86 @@ pub(super) fn sanitize_agent_response_for_event(
         )
     })
     .unwrap_or_else(|_| response_text.trim().to_string())
+}
+
+fn attachment_string_field<'a>(attachment: &'a Value, key: &str) -> Option<&'a str> {
+    attachment
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+pub(super) fn mailbox_payload_attachments(
+    payload: &Value,
+) -> Result<Vec<DesktopBridgeMessageAttachment>, String> {
+    let Some(items) = payload
+        .get("attachments")
+        .and_then(|value| value.as_array())
+    else {
+        return Ok(Vec::new());
+    };
+
+    let mut attachments = Vec::new();
+    for item in items {
+        let name = attachment_string_field(item, "name").unwrap_or("attachment.bin");
+        let decoded = attachment_string_field(item, "dataBase64")
+            .map(|data| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(data)
+                    .map_err(|err| format!("Invalid bridge attachment data for {name}: {err}"))
+            })
+            .transpose()?;
+        if decoded
+            .as_ref()
+            .is_some_and(|data| data.len() > MAX_BRIDGE_ATTACHMENT_BYTES)
+        {
+            return Err(format!(
+                "Bridge attachment is too large: {name} exceeds {} MB",
+                MAX_BRIDGE_ATTACHMENT_BYTES / 1024 / 1024
+            ));
+        }
+        let stored = decoded
+            .as_ref()
+            .map(|data| crate::chat::store_chat_attachment_bytes(name, data))
+            .transpose()?;
+
+        let kind = attachment_string_field(item, "kind")
+            .map(ToString::to_string)
+            .or_else(|| stored.as_ref().map(|attachment| attachment.kind.clone()))
+            .unwrap_or_else(|| "file".to_string());
+        let stored_name = name.to_string();
+        let format_label = attachment_string_field(item, "formatLabel")
+            .map(ToString::to_string)
+            .or_else(|| {
+                stored
+                    .as_ref()
+                    .and_then(|attachment| attachment.format_label.clone())
+            });
+        let mime_type = attachment_string_field(item, "mimeType")
+            .map(ToString::to_string)
+            .or_else(|| {
+                stored
+                    .as_ref()
+                    .and_then(|attachment| attachment.mime_type.clone())
+            });
+        let size_bytes = item
+            .get("sizeBytes")
+            .and_then(|value| value.as_u64())
+            .or_else(|| stored.as_ref().and_then(|attachment| attachment.size_bytes));
+        let local_path = stored.map(|attachment| attachment.path);
+
+        attachments.push(DesktopBridgeMessageAttachment {
+            kind,
+            name: stored_name,
+            format_label,
+            mime_type,
+            size_bytes,
+            local_path,
+        });
+    }
+
+    Ok(attachments)
 }
 
 pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {

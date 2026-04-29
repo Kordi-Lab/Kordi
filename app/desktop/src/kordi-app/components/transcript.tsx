@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import {
   ArrowRightLeft,
   Bot,
@@ -11,6 +12,8 @@ import {
   ChevronUp,
   CircleAlert,
   Clock3,
+  Download,
+  ExternalLink,
   FileText,
   FolderOpen,
   Globe,
@@ -30,6 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
+import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
@@ -43,6 +47,7 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageAttachment,
   MessageMention,
 } from '../types';
 
@@ -373,10 +378,152 @@ function MessageFooter({
   );
 }
 
+const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
+const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
+
+function isNativeShell() {
+  return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
+}
+
+function attachmentPreviewUrl(attachment: MessageAttachment) {
+  if (!shouldPreviewAttachmentInline(attachment)) return undefined;
+  if (attachment.previewUrl) return attachment.previewUrl;
+  if (!attachment.localPath || !isNativeShell()) return undefined;
+  try {
+    return convertFileSrc(attachment.localPath);
+  } catch {
+    return undefined;
+  }
+}
+
+function attachmentExtension(attachment: MessageAttachment) {
+  const candidate = attachment.name || attachment.localPath || '';
+  const match = candidate.match(/\.([A-Za-z0-9]+)$/);
+  return match?.[1]?.toLowerCase() ?? '';
+}
+
+function isArchiveAttachment(attachment: MessageAttachment) {
+  return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
+}
+
+function isLargeAttachment(attachment: MessageAttachment) {
+  return typeof attachment.sizeBytes === 'number' && attachment.sizeBytes > INLINE_ATTACHMENT_PREVIEW_MAX_BYTES;
+}
+
+function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
+  return attachment.kind === 'image' && !isArchiveAttachment(attachment) && !isLargeAttachment(attachment);
+}
+
+function formatAttachmentSize(sizeBytes?: number | null) {
+  if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) return null;
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = sizeBytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canOpen = Boolean(attachment.localPath && isNativeShell());
+
+  if (!canOpen) {
+    return null;
+  }
+
+  async function handleDownload() {
+    if (!attachment.localPath) return;
+    setIsDownloading(true);
+    setError(null);
+    try {
+      const targetPath = await downloadDesktopAttachment(attachment.localPath, attachment.name);
+      setDownloadedPath(targetPath);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  async function handleOpen() {
+    if (!attachment.localPath) return;
+    setError(null);
+    try {
+      await openDesktopExternalUrl(downloadedPath ?? attachment.localPath);
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
+    }
+  }
+
+  const actionButtonClass = 'h-7 w-7 rounded-full border-white/10 bg-white/5 p-0 text-slate-200 hover:bg-white/10';
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => void handleDownload()}
+          disabled={isDownloading}
+          className={actionButtonClass}
+          aria-label={`Download ${attachment.name}`}
+          title={downloadedPath ? 'Downloaded to Downloads' : 'Download'}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => void handleOpen()}
+          className={actionButtonClass}
+          aria-label={`Open ${attachment.name} with local app`}
+          title="Open with local app"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
+      {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
+      {error ? <span className="max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
+    </div>
+  );
+}
+
+function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
+  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+  const label = [attachment.formatLabel || (isArchiveAttachment(attachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
+    .filter(Boolean)
+    .join(' • ');
+  const Icon = attachment.kind === 'image' ? Image : FileText;
+
+  return (
+    <div key={`${attachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
+        <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+          {label || 'FILE'}
+        </div>
+      </div>
+      <AttachmentActions attachment={attachment} />
+    </div>
+  );
+}
+
 function AttachmentPreview({ msg }: { msg: Message }) {
   const attachments = msg.attachments ?? [];
-  const imageAttachments = attachments.filter((attachment) => attachment.kind === 'image');
-  const fileAttachments = attachments.filter((attachment) => attachment.kind !== 'image');
+  const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
+  const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
 
   if (attachments.length === 0) {
     return null;
@@ -384,47 +531,44 @@ function AttachmentPreview({ msg }: { msg: Message }) {
 
   return (
     <div className="flex flex-col gap-2">
-      {imageAttachments.length > 0 ? (
-        <div className={cn('grid gap-2', imageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
-          {imageAttachments.map((attachment, index) => (
-            <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
-              {attachment.previewUrl ? (
-                <img
-                  src={attachment.previewUrl}
-                  alt={attachment.name || 'Attached image'}
-                  className="block max-h-[320px] w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-28 items-center justify-center bg-white/5 text-slate-400">
-                  <Image className="h-5 w-5" />
+      {previewImageAttachments.length > 0 ? (
+        <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+          {previewImageAttachments.map((attachment, index) => {
+            const previewUrl = attachmentPreviewUrl(attachment);
+            const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+            return (
+              <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt={attachment.name || 'Attached image'}
+                    className="block max-h-[320px] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-28 items-center justify-center bg-white/5 text-slate-400">
+                    <Image className="h-5 w-5" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
+                  <span className="truncate">{attachment.name || 'Image attachment'}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {sizeLabel ? <span className="text-[10px] font-medium text-slate-400">{sizeLabel}</span> : null}
+                    {attachment.formatLabel ? (
+                      <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                        {attachment.formatLabel}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
-                <span className="truncate">{attachment.name || 'Image attachment'}</span>
-                {attachment.formatLabel ? (
-                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                    {attachment.formatLabel}
-                  </span>
-                ) : null}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
-      {fileAttachments.length > 0 ? (
+      {downloadableAttachments.length > 0 ? (
         <div className="flex flex-col gap-2">
-          {fileAttachments.map((attachment, index) => (
-            <div key={`${attachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
-                <FileText className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
-                <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                  {attachment.formatLabel || 'FILE'}
-                </div>
-              </div>
-            </div>
+          {downloadableAttachments.map((attachment, index) => (
+            <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
           ))}
         </div>
       ) : null}
@@ -743,7 +887,7 @@ function messageSnapshotKey(msg: Message) {
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',
     msg.statusChips?.join(',') ?? '',
-    msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? ''].join(':')).join('|') ?? '',
+    msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     msg.mentions?.map((mention) => mention.label).join('|') ?? '',
     msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
     msg.edit?.files.map((file) => [file.path, file.additions, file.deletions, file.lines.length].join(':')).join('|') ?? '',

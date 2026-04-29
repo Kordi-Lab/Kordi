@@ -787,6 +787,7 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
                 request_id: Some("bridge_req_weather".to_string()),
                 delivery_state: Some("responded".to_string()),
                 outreach: Some(outreach),
+                attachments: Vec::new(),
             },
             crate::bridge::DesktopBridgeConversationMessage {
                 id: "msg-response".to_string(),
@@ -798,6 +799,7 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
                 request_id: Some("bridge_req_weather".to_string()),
                 delivery_state: Some("responded".to_string()),
                 outreach: None,
+                attachments: Vec::new(),
             },
         ],
     };
@@ -833,6 +835,7 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
             request_id: None,
             delivery_state: None,
             outreach: None,
+            attachments: Vec::new(),
         },
     );
     assert!(bridge_conversation_has_unrouted_direct_messages(
@@ -947,6 +950,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
                     request_id: Some("bridge_req_first".to_string()),
                     delivery_state: None,
                     outreach: Some(first_message_outreach),
+                    attachments: Vec::new(),
                 },
                 crate::bridge::DesktopBridgeConversationMessage {
                     id: "msg-reply".to_string(),
@@ -958,6 +962,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
                     request_id: None,
                     delivery_state: None,
                     outreach: None,
+                    attachments: Vec::new(),
                 },
             ],
         }],
@@ -1122,6 +1127,7 @@ fn inbound_session_message_creates_direct_person_parent_with_first_message_title
         request_id: Some("bridge_req_direct".to_string()),
         delivery_state: None,
         outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
     }];
 
     sync_bridge_outreach_into_parent_session(
@@ -1166,6 +1172,157 @@ fn inbound_session_message_creates_direct_person_parent_with_first_message_title
         identity_display_name(&conn, "human:remote-shenzhe").expect("remote identity"),
         Some("Shenzhe".to_string()),
     );
+}
+
+#[test]
+fn attachment_only_session_message_syncs_into_parent_session() {
+    let conn = test_conn();
+    for (id, display_name, human_id, node_id) in [
+        ("human:local-shuyang", "Shuyang", "kh_shuyang", "kd_shuyang"),
+        (
+            "human:remote-shenzhe",
+            "Shenzhe",
+            "kh_shenzhe",
+            "kd_shenzhe",
+        ),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: "human".to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some(node_id.to_string()),
+                human_id: Some(human_id.to_string()),
+                agent_id: None,
+                avatar_key: Some(human_id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:bridge:humans:stable-pair";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("Shenzhe".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local-shuyang".to_string(),
+            primary_identity_id: Some("human:remote-shenzhe".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:remote-shenzhe".to_string()),
+            participant_identity_ids: vec!["human:remote-shenzhe".to_string()],
+            metadata: Some(serde_json::json!({
+                "source": "desktop-bridge-conversation",
+            })),
+        },
+    )
+    .expect("open existing peer-named session");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: None,
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:sender-ui".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:remote:person".to_string()),
+        bridge_request_id: Some("bridge_req_attachment".to_string()),
+        delivery_state: None,
+        target_node_id: "kd_shuyang".to_string(),
+        target_human_id: Some("kh_shuyang".to_string()),
+        target_agent_id: None,
+        target_display_name: "Shuyang".to_string(),
+        target_owner_name: Some("Shuyang".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-message".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: Some(1_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:remote:person".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_shenzhe".to_string(),
+        peer_display_name: Some("Shenzhe".to_string()),
+        peer_owner_name: Some("Shenzhe".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Shenzhe".to_string(),
+        subtitle: String::new(),
+        unread_count: 1,
+        updated_at_ms: 1_001,
+        updated_at_label: "13:27".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_attachment".to_string(),
+        direction: "inbound".to_string(),
+        sender: Some("Shenzhe".to_string()),
+        text: "".to_string(),
+        time_label: "13:27".to_string(),
+        timestamp_ms: 1_001,
+        request_id: Some("bridge_req_attachment".to_string()),
+        delivery_state: None,
+        outreach: Some(outreach.clone()),
+        attachments: vec![crate::bridge::DesktopBridgeMessageAttachment {
+            kind: "image".to_string(),
+            name: "image.png".to_string(),
+            format_label: Some("PNG".to_string()),
+            mime_type: Some("image/png".to_string()),
+            size_bytes: Some(30_070),
+            local_path: Some("/tmp/image.png".to_string()),
+        }],
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local-shuyang",
+        None,
+        Some("human:remote-shenzhe"),
+        "human:remote-shenzhe",
+        false,
+    )
+    .expect("sync attachment-only session message");
+
+    let (content_text, attachments_len): (String, i64) = conn
+        .query_row(
+            "SELECT content_text, json_array_length(json_extract(content_json, '$.attachments'))
+             FROM session_messages
+             WHERE source_event_id = ?1",
+            ["desktop-bridge-parent:session:bridge:humans:stable-pair:bridge:host:remote:person:bridge_msg_attachment"],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("select synced attachment-only message");
+
+    assert_eq!(content_text, "");
+    assert_eq!(attachments_len, 1);
 }
 
 #[test]

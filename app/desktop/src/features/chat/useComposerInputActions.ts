@@ -135,6 +135,18 @@ function attachmentFormatLabel(name: string, mimeType?: string) {
   return 'FILE';
 }
 
+function attachmentNameFromPath(path: string) {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
+  return normalized.split('/').pop()?.trim() || 'attachment';
+}
+
+function attachmentKindFromName(name: string): AttachmentItem['kind'] {
+  const extension = name.split('.').pop()?.trim().toLowerCase();
+  return extension && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(extension)
+    ? 'image'
+    : 'file';
+}
+
 function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[]) {
   const trimmedText = text.trim();
   if (trimmedText.length > 0) {
@@ -315,30 +327,62 @@ export function useComposerInputActions({
       return [] as AttachmentItem[];
     }
 
-    const saved = await Promise.all(
-      files.map(async (file) => {
-        const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-        const path = await storeDesktopChatAttachment(file.name || 'attachment.bin', data);
-        const mimeType = file.type || undefined;
-        const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
-        return {
-          id: `${file.name}-${path}`,
-          name: file.name || 'attachment',
-          path,
-          kind,
-          mimeType,
-          formatLabel: attachmentFormatLabel(file.name || 'attachment', mimeType),
-          previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
-        };
-      }),
-    );
+    try {
+      setDesktopChatError(null);
+      const saved = await Promise.all(
+        files.map(async (file) => {
+          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+          const path = await storeDesktopChatAttachment(file.name || 'attachment.bin', data);
+          const mimeType = file.type || undefined;
+          const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
+          return {
+            id: `${file.name}-${path}`,
+            name: file.name || 'attachment',
+            path,
+            kind,
+            mimeType,
+            formatLabel: attachmentFormatLabel(file.name || 'attachment', mimeType),
+            previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
+            sizeBytes: file.size,
+          };
+        }),
+      );
+
+      setChatComposerAttachments((current) => {
+        const seen = new Set(current.map((item) => item.path));
+        return [...current, ...saved.filter((item) => !seen.has(item.path))];
+      });
+      return saved;
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to attach file');
+      return [] as AttachmentItem[];
+    }
+  }, [isNativeShell, setChatComposerAttachments, setDesktopChatError]);
+
+  const saveDesktopAttachmentPaths = useCallback(async (paths: string[]) => {
+    if (!isNativeShell || paths.length === 0) {
+      return [] as AttachmentItem[];
+    }
+
+    setDesktopChatError(null);
+    const saved = paths.map((path) => {
+      const name = attachmentNameFromPath(path);
+      const kind = attachmentKindFromName(name);
+      return {
+        id: `${name}-${path}`,
+        name,
+        path,
+        kind,
+        formatLabel: attachmentFormatLabel(name),
+      };
+    });
 
     setChatComposerAttachments((current) => {
       const seen = new Set(current.map((item) => item.path));
       return [...current, ...saved.filter((item) => !seen.has(item.path))];
     });
     return saved;
-  }, [isNativeShell, setChatComposerAttachments]);
+  }, [isNativeShell, setChatComposerAttachments, setDesktopChatError]);
 
   const removeChatComposerAttachment = useCallback((id: string) => {
     setChatComposerAttachments((current) => {
@@ -376,6 +420,7 @@ export function useComposerInputActions({
     updateComposerDraft,
     attachmentSummaryText,
     saveDesktopAttachments,
+    saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
     setChatComposerText,
     setProjectComposerText,

@@ -220,6 +220,7 @@ export type AssembleKordiShellSlotsArgs = {
   chatAttachmentInputRef: MutableRefObject<HTMLInputElement | null>;
   chatComposerAttachments: AttachmentItem[];
   saveDesktopAttachments: (files: File[]) => Promise<AttachmentItem[]>;
+  saveDesktopAttachmentPaths: (paths: string[]) => Promise<AttachmentItem[]>;
   removeChatComposerAttachment: (id: string) => void;
   projectComposerText: string;
   chatComposerText: string;
@@ -438,6 +439,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatAttachmentInputRef'
   | 'chatComposerAttachments'
   | 'saveDesktopAttachments'
+  | 'saveDesktopAttachmentPaths'
   | 'removeChatComposerAttachment'
   | 'projectComposerText'
   | 'updateProjectComposerDraft'
