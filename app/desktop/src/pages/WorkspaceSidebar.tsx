@@ -463,7 +463,7 @@ export function WorkspaceSidebar({
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2.5">
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[12px] font-medium text-slate-100">{conversation.name}</div>
+                                    <div className="truncate text-[12px] font-medium text-slate-100" title={conversation.name}>{conversation.name}</div>
                                   </div>
                                   <SidebarSessionMetaColumn
                                     timeLabel={rowTimeLabel}
@@ -473,7 +473,10 @@ export function WorkspaceSidebar({
                                   />
                                 </div>
                                 {conversation.subtitle.trim().length > 0 ? (
-                                  <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}>
+                                  <div
+                                    className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}
+                                    title={conversation.subtitle}
+                                  >
                                     {conversation.subtitle}
                                   </div>
                                 ) : null}
