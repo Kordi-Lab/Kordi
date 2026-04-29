@@ -851,6 +851,35 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
     std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
 
     let session_id = "session:bridge:humans:stable-pair";
+    let first_message_outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some(session_id.to_string()),
+        parent_session_title: None,
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:first".to_string()),
+        bridge_host_id: "bridge-shenzhe".to_string(),
+        bridge_conversation_id: Some("bridge:shenzhe:shuyang:person".to_string()),
+        bridge_request_id: Some("bridge_req_first".to_string()),
+        delivery_state: None,
+        target_node_id: "kd_shuyang".to_string(),
+        target_human_id: Some("kh_shuyang".to_string()),
+        target_agent_id: None,
+        target_display_name: "Shuyang".to_string(),
+        target_owner_name: Some("Shuyang".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "hi shu, are you here?".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-message".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: Some(1_000),
+        error: None,
+    };
     let state = crate::bridge::DesktopBridgeState {
         config_path: String::new(),
         legacy_config_path: String::new(),
@@ -915,9 +944,9 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
                     text: "hi shu, are you here?".to_string(),
                     time_label: "13:27".to_string(),
                     timestamp_ms: 1_000,
-                    request_id: None,
+                    request_id: Some("bridge_req_first".to_string()),
                     delivery_state: None,
-                    outreach: None,
+                    outreach: Some(first_message_outreach),
                 },
                 crate::bridge::DesktopBridgeConversationMessage {
                     id: "msg-reply".to_string(),
