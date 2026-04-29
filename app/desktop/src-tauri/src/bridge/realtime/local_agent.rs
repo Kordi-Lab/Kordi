@@ -4,9 +4,10 @@ use tauri::Manager;
 use crate::chat::{run_bridge_agent_prompt, DesktopChatManager};
 
 use super::super::constants::{
-    BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_MESSAGE_DIRECTION_INBOUND,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
-    BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_RESPONSE, DEFAULT_BRIDGE_RUNTIME,
+    BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_RESPONDED,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+    BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_RESPONSE,
+    DEFAULT_BRIDGE_RUNTIME,
 };
 use super::super::events::{
     identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_text,
@@ -22,6 +23,29 @@ use super::super::{
 use super::{
     emit_after_storage_write, emit_bridge_state, send_realtime_or_relay, LocalRealtimeTarget,
 };
+
+fn realtime_delivery_ack_payload(
+    target: &LocalRealtimeTarget,
+    event: &ParsedMailboxEvent,
+) -> Option<Value> {
+    if event.message_type == BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT
+        || event.message_type == BRIDGE_MESSAGE_TYPE_RESPONSE
+    {
+        return None;
+    }
+
+    let request_id = event
+        .request_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+
+    Some(serde_json::json!({
+        "from": target.host.node_id,
+        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+        "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_DELIVERED },
+    }))
+}
 
 fn append_local_agent_inbound_message(
     target: &LocalRealtimeTarget,
@@ -359,6 +383,92 @@ pub(super) async fn handle_incoming_payload(
         return Ok(());
     }
 
+    let delivery_ack = realtime_delivery_ack_payload(target, &event);
+    let delivery_ack_target_node_id = event.from_node_id.clone();
+    let delivery_ack_project_id = event.project_id.clone();
+
     apply_bridge_event_to_storage(&target.host, event, false).await?;
+    if let Some(delivery_ack) = delivery_ack {
+        send_realtime_or_relay(
+            manager,
+            &target.host,
+            &delivery_ack_target_node_id,
+            delivery_ack_project_id.as_deref(),
+            &delivery_ack,
+        )
+        .await;
+    }
     emit_bridge_state(app, local_server).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::constants::{BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_MESSAGE_TYPE_RAW};
+
+    fn test_target() -> LocalRealtimeTarget {
+        LocalRealtimeTarget {
+            host: super::super::super::DesktopBridgeHostConfig {
+                id: "host-1".to_string(),
+                coordination: "https://bridge.test".to_string(),
+                node_id: "node-me".to_string(),
+                api_key: "key".to_string(),
+                display_name: Some("Me".to_string()),
+                owner: Some("Me".to_string()),
+                human_id: Some("human-me".to_string()),
+                discovery_mode: "ask".to_string(),
+                active_agent_id: None,
+                agents: vec![],
+                api_style: "serve".to_string(),
+            },
+            sender_runtime: "person".to_string(),
+            sender_agent_id: None,
+            should_process_agent_asks: false,
+        }
+    }
+
+    fn test_event(message_type: &str) -> ParsedMailboxEvent {
+        ParsedMailboxEvent {
+            from_node_id: "node-peer".to_string(),
+            from_display_name: Some("Peer".to_string()),
+            from_owner_name: Some("Peer".to_string()),
+            from_runtime: Some("person".to_string()),
+            from_human_id: Some("human-peer".to_string()),
+            from_agent_id: None,
+            message_type: message_type.to_string(),
+            payload: serde_json::json!({ "message": "hello" }),
+            request_id: Some("bridge_req_1".to_string()),
+            project_id: None,
+        }
+    }
+
+    #[test]
+    fn realtime_delivery_ack_payload_marks_raw_messages_delivered() {
+        let payload =
+            realtime_delivery_ack_payload(&test_target(), &test_event(BRIDGE_MESSAGE_TYPE_RAW))
+                .expect("raw message should be acknowledged");
+
+        assert_eq!(payload["from"], serde_json::json!("node-me"));
+        assert_eq!(
+            payload["messageType"],
+            serde_json::json!(BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT)
+        );
+        assert_eq!(
+            payload["payload"]["requestId"],
+            serde_json::json!("bridge_req_1")
+        );
+        assert_eq!(
+            payload["payload"]["state"],
+            serde_json::json!(BRIDGE_DELIVERY_STATE_DELIVERED)
+        );
+    }
+
+    #[test]
+    fn realtime_delivery_ack_payload_ignores_delivery_events() {
+        assert!(realtime_delivery_ack_payload(
+            &test_target(),
+            &test_event(BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT)
+        )
+        .is_none());
+    }
 }

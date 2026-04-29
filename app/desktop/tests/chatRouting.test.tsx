@@ -324,6 +324,66 @@ test('canonical read model preserves unread count from source bridge conversatio
   assert.equal(conversation.unread, 3);
 });
 
+test('canonical read model preserves unread count when bridge source is routed by outreach parent session', () => {
+  const latestSessionId = 'session:bridge:humans:latest';
+  const olderSessionId = 'session:bridge:humans:older';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: latestSessionId, kind: 'direct-person', title: 'new unread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId: 'bridge:host-1:node-bob:person', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: olderSessionId, kind: 'direct-person', title: 'old thread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId: 'bridge:host-1:node-bob:person', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
+    ],
+    participants: [
+      { sessionId: latestSessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: latestSessionId, identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: olderSessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: olderSessionId, identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg-latest', sessionId: latestSessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'new unread', content: { sender: 'Bob', timeLabel: '10:03' }, status: 'delivered', sequenceNum: 1, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'latest-1' },
+      { id: 'msg-older', sessionId: olderSessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'old thread', content: { sender: 'Bob', timeLabel: '10:01' }, status: 'delivered', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'older-1' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never);
+
+  assert.ok(readModel);
+
+  const sourceConversation = {
+    id: 'bridge:host-1:node-bob:person',
+    canonicalSessionId: 'session:bridge:humans:stable-pair',
+    name: 'Bob',
+    type: 'person' as const,
+    subtitle: 'Direct person chat',
+    unread: 1,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Bob'],
+    messages: [{ role: 'person' as const, sender: 'Bob', text: 'new unread', time: '10:03' }],
+    outreach: { parentSessionId: latestSessionId },
+  };
+
+  const conversations = readModel.buildChatConversations([sourceConversation as never], (messages, fallback) => messages[0]?.text || fallback || '');
+
+  assert.equal(conversations.find((conversation) => conversation.canonicalSessionId === latestSessionId)?.unread, 1);
+  assert.equal(conversations.find((conversation) => conversation.canonicalSessionId === olderSessionId)?.unread, 0);
+});
+
 test('canonical read model keeps shared bridge transcript with local owned-agent tool details', () => {
   const sessionId = 'session:bridge:humans:shared';
   const canonicalState = {

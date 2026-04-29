@@ -30,6 +30,7 @@ type CanonicalConversationLike = {
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
   bridgeTarget?: ConversationBridgeTarget | null;
+  outreach?: { parentSessionId?: string | null } | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   unread?: number;
@@ -176,6 +177,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
     },
     buildChatConversations(conversations, buildSubtitle) {
       const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
+      const sourceByOutreachParentSessionId = new Map<string, Conversation>();
+      for (const conversation of conversations) {
+        const parentSessionId = conversation.outreach?.parentSessionId?.trim();
+        if (parentSessionId && !sourceByOutreachParentSessionId.has(parentSessionId)) {
+          sourceByOutreachParentSessionId.set(parentSessionId, conversation);
+        }
+      }
       const groups = new Map<string, typeof chatSessions>();
       for (const session of chatSessions) {
         const isDefaultAgentRelationship = session.kind === 'direct-agent'
@@ -198,9 +206,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
           const representativeWithSource = sessions.find((session) => sourceBySessionId.has(session.id));
           const representative = representativeWithMessages ?? representativeWithSource;
           if (representative) {
-            const source = sourceBySessionId.get(representative.id);
+            const source = sourceBySessionId.get(representative.id) ?? sourceByOutreachParentSessionId.get(representative.id);
             return source
-              ? [this.applyConversation(source, buildSubtitle)]
+              ? [this.applyConversation({ ...source, canonicalSessionId: representative.id }, buildSubtitle)]
               : [this.applyConversation(
                 syntheticConversation(representative, this.participantDetails(representative.id), this.messages(representative.id), buildSubtitle),
                 buildSubtitle,
