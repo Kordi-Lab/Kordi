@@ -229,12 +229,15 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
       continue;
     }
 
-    const codeFence = line.match(/^```([\w-]+)?\s*$/);
+    const codeFence = trimmed.match(/^(`{3,})([^\s`]*)?.*$/);
     if (codeFence) {
-      const language = codeFence[1];
+      const language = codeFence[2] || undefined;
+      const fenceLength = codeFence[1].length;
       index += 1;
       const body: string[] = [];
-      while (index < lines.length && !lines[index].match(/^```\s*$/)) {
+      while (index < lines.length) {
+        const closingFence = lines[index].trim().match(/^(`{3,})\s*$/);
+        if (closingFence && closingFence[1].length >= fenceLength) break;
         body.push(lines[index]);
         index += 1;
       }

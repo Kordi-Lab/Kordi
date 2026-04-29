@@ -4,6 +4,7 @@ export type ResolvedMentionedBridgeTarget = {
   host: DesktopBridgeState['hosts'][number];
   peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
   label: string;
+  displayLabel: string;
   targetKind: 'bridge-person' | 'bridge-agent';
   requestText: string;
 };

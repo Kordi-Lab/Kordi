@@ -41,6 +41,7 @@ Closes #<!-- issue number -->
 
 <!-- Check everything that applies and include exact commands. -->
 
+- [ ] `pnpm --dir app/desktop test:unit`
 - [ ] `pnpm --dir app/desktop typecheck`
 - [ ] `pnpm --dir app/desktop lint`
 - [ ] `pnpm --dir app/desktop build`
