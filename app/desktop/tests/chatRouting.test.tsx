@@ -167,6 +167,27 @@ test('agent Message switches to Chats before selecting an existing conversation'
   assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
 });
 
+test('external agent contact Message prefers the agent conversation over a same-node person conversation', () => {
+  const calls: string[] = [];
+  const element = assembleMainContentSlot(baseShellArgs(calls, {
+    chatConversations: [directPersonConversation(), directAgentConversation()],
+  }) as never) as never as { props: { contactsPageProps: { onMessageContact: (contact: Record<string, unknown>) => void } } };
+
+  element.props.contactsPageProps.onMessageContact({
+    id: 'contact-bob-agent',
+    classType: 'other-users-agents',
+    bridgeHumanId: 'human-bob',
+    bridgeAgentId: 'agent-bob',
+    bridgePeerNodeId: 'node-shared',
+    bridgeHostId: 'host-1',
+    name: 'Bob agent',
+    owner: 'Bob',
+    bridgePeerRuntime: 'kordi-desktop',
+  });
+
+  assert.deepEqual(calls, ['overlay:null', 'nav:chats', 'select:session:bridge:agents:bob-agent']);
+});
+
 test('bridge Chat uses target identity before selecting an existing same-node agent conversation', () => {
   const calls: string[] = [];
   const props = buildBridgePageProps(baseShellArgs(calls, {

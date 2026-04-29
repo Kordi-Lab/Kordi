@@ -63,9 +63,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             return;
           }
 
+          const contactTargetsAgent = contact.classType === 'other-users-agents';
           const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
-            humanId: contact.bridgeHumanId,
-            agentId: contact.classType === 'other-users-agents' ? contact.bridgeAgentId : null,
+            humanId: contactTargetsAgent ? null : contact.bridgeHumanId,
+            agentId: contactTargetsAgent ? contact.bridgeAgentId : null,
             bridgeNodeId: contact.bridgePeerNodeId,
           });
           args.setContactOverlayMode(null);
