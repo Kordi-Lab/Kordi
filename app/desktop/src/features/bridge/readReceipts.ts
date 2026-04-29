@@ -1,6 +1,19 @@
 import { isInboundBridgeMessageDirection } from '@/features/bridge/messages';
 import type { DesktopBridgeConversation } from '@/kordi-app/types';
 
+export const BRIDGE_READ_ATTENTION_EVENTS = ['focus', 'visibilitychange', 'pageshow'] as const;
+
+type BridgeReadDocumentLike = {
+  visibilityState?: string;
+  hasFocus?: () => boolean;
+};
+
+export function canAutoMarkBridgeRead(documentLike: BridgeReadDocumentLike | null | undefined, shouldAutoFollow: boolean) {
+  return documentLike?.visibilityState === 'visible'
+    && Boolean(documentLike.hasFocus?.())
+    && shouldAutoFollow;
+}
+
 export function activeBridgeConversationForSession(
   conversations: DesktopBridgeConversation[],
   activeSessionId: string,

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  BRIDGE_READ_ATTENTION_EVENTS,
   activeBridgeConversationForSession,
   bridgeReadReceiptSignature,
+  canAutoMarkBridgeRead,
   shouldMarkBridgeConversationRead,
 } from '../src/features/bridge/readReceipts';
 import type { DesktopBridgeConversation } from '../src/kordi-app/types';
@@ -62,6 +64,30 @@ test('activeBridgeConversationForSession resolves outreach parent session ids', 
   ], 'session:bridge:humans:latest-parent');
 
   assert.equal(active?.id, 'bridge:host-1:peer-1:person');
+});
+
+test('bridge read effects listen for focus and visibility changes', () => {
+  assert.deepEqual(BRIDGE_READ_ATTENTION_EVENTS, ['focus', 'visibilitychange', 'pageshow']);
+});
+
+test('canAutoMarkBridgeRead requires visible focused document and auto-follow', () => {
+  const visibleFocusedDocument = {
+    visibilityState: 'visible',
+    hasFocus: () => true,
+  };
+  const hiddenDocument = {
+    visibilityState: 'hidden',
+    hasFocus: () => true,
+  };
+  const blurredDocument = {
+    visibilityState: 'visible',
+    hasFocus: () => false,
+  };
+
+  assert.equal(canAutoMarkBridgeRead(visibleFocusedDocument, true), true);
+  assert.equal(canAutoMarkBridgeRead(hiddenDocument, true), false);
+  assert.equal(canAutoMarkBridgeRead(blurredDocument, true), false);
+  assert.equal(canAutoMarkBridgeRead(visibleFocusedDocument, false), false);
 });
 
 test('shouldMarkBridgeConversationRead stays true when unread was cleared but inbound request ids exist', () => {

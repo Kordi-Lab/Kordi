@@ -8,8 +8,10 @@ import {
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
 import {
+  BRIDGE_READ_ATTENTION_EVENTS,
   activeBridgeConversationForSession,
   bridgeReadReceiptSignature,
+  canAutoMarkBridgeRead,
   shouldMarkBridgeConversationRead,
 } from '@/features/bridge/readReceipts';
 import type {
@@ -236,6 +238,7 @@ export function useBridgeState({
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
   const activeBridgeReadRequestRef = useRef<string | null>(null);
+  const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
     ?? desktopBridgeState?.hosts?.[0]
     ?? null;
@@ -561,6 +564,21 @@ export function useBridgeState({
   }, [activeConvId, activeConversationIsBridge, desktopBridgeState?.conversations, isNativeShell]);
 
   useEffect(() => {
+    if (!isNativeShell || typeof window === 'undefined' || typeof document === 'undefined') return;
+    const bumpReadAttention = () => setBridgeReadAttentionTick((tick) => tick + 1);
+    for (const eventName of BRIDGE_READ_ATTENTION_EVENTS) {
+      const target = eventName === 'visibilitychange' ? document : window;
+      target.addEventListener(eventName, bumpReadAttention);
+    }
+    return () => {
+      for (const eventName of BRIDGE_READ_ATTENTION_EVENTS) {
+        const target = eventName === 'visibilitychange' ? document : window;
+        target.removeEventListener(eventName, bumpReadAttention);
+      }
+    };
+  }, [isNativeShell]);
+
+  useEffect(() => {
     if (!isNativeShell || activeNav !== 'chats' || !activeConversationIsBridge) {
       activeBridgeReadRequestRef.current = null;
       return;
@@ -573,9 +591,7 @@ export function useBridgeState({
       return;
     }
 
-    const canAutoMarkRead = document.visibilityState === 'visible'
-      && document.hasFocus()
-      && shouldAutoFollowChatRef.current;
+    const canAutoMarkRead = canAutoMarkBridgeRead(document, shouldAutoFollowChatRef.current);
     if (!canAutoMarkRead) {
       activeBridgeReadRequestRef.current = null;
       return;
@@ -593,7 +609,7 @@ export function useBridgeState({
         activeBridgeReadRequestRef.current = null;
         setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to mark bridge chat as read');
       });
-  }, [activeConvId, activeConversationIsBridge, activeNav, desktopBridgeState?.conversations, isNativeShell, shouldAutoFollowChatRef]);
+  }, [activeConvId, activeConversationIsBridge, activeNav, bridgeReadAttentionTick, desktopBridgeState?.conversations, isNativeShell, shouldAutoFollowChatRef]);
 
   return {
     desktopBridgeState,

@@ -1,4 +1,4 @@
-import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeHost, Message } from '@/kordi-app/types';
+import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeHost, DesktopBridgeOutreachMetadata, Message, MessageMention } from '@/kordi-app/types';
 import {
   BRIDGE_MESSAGE_DIRECTION_INBOUND,
   BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
@@ -45,24 +45,47 @@ function isProcessingPlaceholderText(text: string) {
   return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
+function bridgeMessageOutreachForDisplay(
+  conversation: DesktopBridgeConversation,
+  message: DesktopBridgeConversationMessage,
+): DesktopBridgeOutreachMetadata | null {
+  const outreach = message.outreach ?? conversation.outreach;
+  const isOutreachRequest = outreach?.bridgeRequestId
+    && message.requestId === outreach.bridgeRequestId
+    && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND);
+  return isOutreachRequest ? outreach : null;
+}
+
 function bridgeMessageDisplayText(
   conversation: DesktopBridgeConversation,
   message: DesktopBridgeConversationMessage,
 ) {
-  const outreach = conversation.outreach;
-  const isOutreachRequest = outreach?.bridgeRequestId
-    && message.requestId === outreach.bridgeRequestId
-    && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND);
-  if (isOutreachRequest) {
-    if (outreach.triggerText?.trim()) {
-      return outreach.triggerText.trim();
-    }
-    if (outreach.targetDisplayName?.trim()) {
-      const requestText = outreach.requestText?.trim() || message.text.trim();
-      return `@${outreach.targetDisplayName.trim()}${requestText ? ` ${requestText}` : ''}`;
-    }
+  const outreach = bridgeMessageOutreachForDisplay(conversation, message);
+  if (outreach?.triggerText?.trim()) {
+    return outreach.triggerText.trim();
+  }
+  if (outreach?.targetDisplayName?.trim()) {
+    const requestText = outreach.requestText?.trim() || message.text.trim();
+    return `@${outreach.targetDisplayName.trim()}${requestText ? ` ${requestText}` : ''}`;
   }
   return stripOutreachContextEnvelope(message.text);
+}
+
+function bridgeMessageMentions(
+  conversation: DesktopBridgeConversation,
+  message: DesktopBridgeConversationMessage,
+): MessageMention[] | undefined {
+  const outreach = bridgeMessageOutreachForDisplay(conversation, message);
+  const label = outreach?.targetDisplayName?.trim();
+  if (!outreach || !label) return undefined;
+  return [{
+    label,
+    targetKind: outreach.targetKind,
+    bridgeHostId: outreach.bridgeHostId,
+    nodeId: outreach.targetNodeId,
+    humanId: outreach.targetHumanId ?? null,
+    agentId: outreach.targetAgentId ?? null,
+  }];
 }
 
 function isActiveOutreachStatus(status: string | null | undefined) {
@@ -135,6 +158,7 @@ export function mapBridgeConversationToViewModel(
     : null;
   const messages: Message[] = conversation.messages.map((message) => {
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
+    const mentions = bridgeMessageMentions(conversation, message);
     const isProcessingAgentPlaceholder = message.deliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
       && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE);
@@ -217,6 +241,7 @@ export function mapBridgeConversationToViewModel(
         : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
           ? ['typing']
           : [],
+      mentions,
       detail: undefined,
     };
   });
