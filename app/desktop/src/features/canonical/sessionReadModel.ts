@@ -140,9 +140,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         const isDefaultAgentRelationship = session.kind === 'direct-agent'
           && session.relationshipIdentityId
           && session.primaryIdentityId === session.relationshipIdentityId;
-        const isCanonicalDirectPersonSession = session.kind === 'direct-person'
-          && isCanonicalBridgeSessionId(session.id);
-        const groupKey = isCanonicalDirectPersonSession || isDefaultAgentRelationship
+        const groupKey = isDefaultAgentRelationship
           ? `relationship:${session.relationshipIdentityId ?? session.id}`
           : session.id;
         groups.set(groupKey, [...(groups.get(groupKey) ?? []), session]);

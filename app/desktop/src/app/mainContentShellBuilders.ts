@@ -56,6 +56,19 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
     onRemoveBridgeContact: args.handleRemoveBridgeContact,
     onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime, target) => {
+      const targetsPerson = peerRuntime?.trim().toLowerCase() === 'person'
+        || Boolean(target?.humanId && !target.agentId);
+      if (targetsPerson) {
+        void args.handleStartBridgePersonSession({
+          hostId,
+          nodeId: peerNodeId,
+          displayName: peerDisplayName,
+          ownerName: peerOwnerName,
+          humanId: target?.humanId,
+        });
+        return;
+      }
+
       const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
         humanId: target?.humanId,
         agentId: target?.agentId,

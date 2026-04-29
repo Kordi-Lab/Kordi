@@ -64,24 +64,36 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           }
 
           const contactTargetsAgent = contact.classType === 'other-users-agents';
+          args.setContactOverlayMode(null);
+          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
+
+          if (!contactTargetsAgent) {
+            void args.handleStartBridgePersonSession({
+              hostId: contact.bridgeHostId,
+              nodeId: contact.bridgePeerNodeId,
+              displayName: contact.name,
+              ownerName: contact.owner,
+              humanId: contact.bridgeHumanId,
+            });
+            return;
+          }
+
           const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
-            humanId: contactTargetsAgent ? null : contact.bridgeHumanId,
-            agentId: contactTargetsAgent ? contact.bridgeAgentId : null,
+            humanId: null,
+            agentId: contact.bridgeAgentId,
             bridgeNodeId: contact.bridgePeerNodeId,
           });
-          args.setContactOverlayMode(null);
           if (existingConversation) {
             openChatSessionFromExternalEntryPoint(args, existingConversation.id);
             return;
           }
 
-          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
           void args.handleOpenBridgeConversation(
             contact.bridgeHostId,
             contact.bridgePeerNodeId,
             contact.name,
             contact.owner,
-            contact.classType === 'other-users' ? 'person' : contact.bridgePeerRuntime,
+            contact.bridgePeerRuntime,
           );
         },
       }}

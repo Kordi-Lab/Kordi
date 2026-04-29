@@ -75,6 +75,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeContactRequest: args.activeContactRequest,
       getStatusBadgeClass: args.getStatusBadgeClass,
       handleOpenBridgeConversation: args.handleOpenBridgeConversation,
+      handleStartBridgePersonSession: args.handleStartBridgePersonSession,
       displayedAgents: args.displayedAgents,
       activeAgentId: args.activeAgentId,
       activeAgent: args.activeAgent,
