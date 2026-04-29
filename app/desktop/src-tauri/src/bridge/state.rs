@@ -104,19 +104,6 @@ async fn build_bridge_host_state(
     }
 }
 
-fn should_show_conversation_record(record: &super::DesktopBridgeConversationRecord) -> bool {
-    !record.messages.is_empty()
-        || record.outreach.is_some()
-        || record
-            .peer_display_name
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
-        || record
-            .peer_owner_name
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
-}
-
 pub(super) async fn build_bridge_state(
     mut store: DesktopBridgeStore,
     conversation_store: DesktopBridgeConversationStore,
@@ -138,10 +125,12 @@ pub(super) async fn build_bridge_state(
         }
     }
 
+    // Conversation records are created when a user explicitly opens a bridge chat
+    // or when a message/outreach exists. Keep empty, unlabeled records visible so
+    // manual node-id chats remain durable before the first message.
     let mut conversations: Vec<DesktopBridgeConversation> = conversation_store
         .conversations
         .iter()
-        .filter(|record| should_show_conversation_record(record))
         .map(|record| {
             let mut record = record.clone();
             let is_person_conversation = record.peer_runtime.trim().eq_ignore_ascii_case("person");
@@ -205,7 +194,6 @@ pub(super) fn build_conversation_only_bridge_state(
     let mut conversations: Vec<DesktopBridgeConversation> = conversation_store
         .conversations
         .iter()
-        .filter(|record| should_show_conversation_record(record))
         .map(build_conversation_state)
         .collect();
     conversations.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
@@ -235,4 +223,45 @@ pub(super) async fn build_current_bridge_state(
     let conversations = load_conversation_store();
     let local_server = current_local_server_status(manager).await;
     build_bridge_state(store, conversations, local_server).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::DesktopBridgeConversationRecord;
+
+    fn empty_unlabeled_conversation() -> DesktopBridgeConversationRecord {
+        DesktopBridgeConversationRecord {
+            id: "bridge:host-1:node-manual".to_string(),
+            host_id: "host-1".to_string(),
+            peer_node_id: "node-manual".to_string(),
+            peer_display_name: None,
+            peer_owner_name: None,
+            peer_runtime: "bridge-node".to_string(),
+            project_id: None,
+            project_name: None,
+            unread_count: 0,
+            updated_at_ms: 42,
+            peer_last_typing_at_ms: None,
+            peer_last_heartbeat_at_ms: None,
+            outreach: None,
+            identity: None,
+            messages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn conversation_only_state_keeps_empty_unlabeled_opened_conversation() {
+        let state = build_conversation_only_bridge_state(
+            DesktopBridgeStore::default(),
+            DesktopBridgeConversationStore {
+                conversations: vec![empty_unlabeled_conversation()],
+            },
+            DesktopBridgeLocalServerStatus::default(),
+        );
+
+        assert_eq!(state.conversations.len(), 1);
+        assert_eq!(state.conversations[0].id, "bridge:host-1:node-manual");
+        assert_eq!(state.conversations[0].title, "node-manual");
+    }
 }

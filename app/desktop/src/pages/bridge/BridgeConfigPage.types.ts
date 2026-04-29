@@ -58,6 +58,7 @@ export type BridgeConfigPageProps = {
     peerDisplayName?: string | null,
     peerOwnerName?: string | null,
     peerRuntime?: string | null,
+    target?: { humanId?: string | null; agentId?: string | null },
   ) => void;
   onBridgeWizardPrimary: () => void;
 };

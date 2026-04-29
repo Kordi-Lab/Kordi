@@ -1,5 +1,10 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
-import { buildBridgePageProps, buildChatsPageProps, buildProjectsPageProps } from '@/app/mainContentShellBuilders';
+import {
+  buildBridgePageProps,
+  buildChatsPageProps,
+  buildProjectsPageProps,
+  openChatSessionFromExternalEntryPoint,
+} from '@/app/mainContentShellBuilders';
 import { findCanonicalConversationForTarget, findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
 import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
@@ -65,7 +70,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           });
           args.setContactOverlayMode(null);
           if (existingConversation) {
-            void args.handleSelectChatSession(existingConversation.id);
+            openChatSessionFromExternalEntryPoint(args, existingConversation.id);
             return;
           }
 
@@ -99,7 +104,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             bridgeNodeId: agent.bridgePeerNodeId,
           });
           if (existingConversation) {
-            void args.handleSelectChatSession(existingConversation.id);
+            openChatSessionFromExternalEntryPoint(args, existingConversation.id);
             return;
           }
 

@@ -65,6 +65,12 @@ function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | und
 
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
 
+export function bridgeChatConversationIsVisible(
+  conversation: Pick<DesktopBridgeConversation, 'outreach' | 'messages' | 'peerDisplayName' | 'peerOwnerName'>,
+) {
+  return !conversation.outreach?.parentSessionId;
+}
+
 function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
   return Object.entries(liveTurns)
     .map(([sessionId, turn]) => [
@@ -278,13 +284,7 @@ export function useWorkspaceViewModels({
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
     const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopBridgeState?.conversations ?? [])
-      .filter((conversation) => !conversation.outreach?.parentSessionId)
-      .filter((conversation) => (
-        conversation.messages.length > 0
-        || Boolean(conversation.outreach)
-        || Boolean(conversation.peerDisplayName?.trim())
-        || Boolean(conversation.peerOwnerName?.trim())
-      ))
+      .filter(bridgeChatConversationIsVisible)
       .map((conversation) => (
         mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
       ));
