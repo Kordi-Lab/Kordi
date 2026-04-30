@@ -551,6 +551,7 @@ export function useWorkspaceViewModels({
     }
 
     if (items.length === 0 && localAgent) {
+      const localAgentRouting = desktopBridgeState?.localAgentRouting;
       items.push({
         name: localAgent.label,
         id: 'desktop:local-agent',
@@ -559,7 +560,13 @@ export function useWorkspaceViewModels({
         status: 'Active',
         tasks: 0,
         defaultProvider: localAgent.defaultProvider,
-        defaultModel: localAgent.defaultModel,
+        defaultModel: localAgentRouting?.defaultModel ?? localAgent.defaultModel,
+        defaultAuthProvider: localAgentRouting?.defaultAuthProvider ?? null,
+        defaultAuthChoice: localAgentRouting?.defaultAuthChoice ?? null,
+        fallbackModel: localAgentRouting?.fallbackModel ?? null,
+        fallbackAuthProvider: localAgentRouting?.fallbackAuthProvider ?? null,
+        fallbackAuthChoice: localAgentRouting?.fallbackAuthChoice ?? null,
+        defaultThinking: localAgentRouting?.thinking ?? null,
         bridgesConfig: 'Local runtime',
         contactId: 'desktop:local-agent',
         systemPrompt: localAgent.systemPrompt,
@@ -580,7 +587,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell]);
 
   const groupedContacts = useMemo(
     () =>

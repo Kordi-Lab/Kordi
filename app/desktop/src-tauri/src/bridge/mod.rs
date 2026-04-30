@@ -84,8 +84,45 @@ struct DesktopBridgeStore {
         skip_serializing_if = "Option::is_none"
     )]
     active_host_id: Option<String>,
+    #[serde(
+        rename = "localAgentRouting",
+        default,
+        skip_serializing_if = "DesktopBridgeAgentRouting::is_empty"
+    )]
+    local_agent_routing: DesktopBridgeAgentRouting,
     #[serde(default)]
     hosts: Vec<DesktopBridgeHostConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeAgentRouting {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_auth_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_auth_choice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_auth_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_auth_choice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+}
+
+impl DesktopBridgeAgentRouting {
+    fn is_empty(&self) -> bool {
+        self.default_model.is_none()
+            && self.default_auth_provider.is_none()
+            && self.default_auth_choice.is_none()
+            && self.fallback_model.is_none()
+            && self.fallback_auth_provider.is_none()
+            && self.fallback_auth_choice.is_none()
+            && self.thinking.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -428,6 +465,7 @@ pub struct DesktopBridgeState {
     pub hosts: Vec<DesktopBridgeHost>,
     pub conversations: Vec<DesktopBridgeConversation>,
     pub local_server: DesktopBridgeLocalServerStatus,
+    pub local_agent_routing: DesktopBridgeAgentRouting,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -610,6 +648,33 @@ fn stable_identity_suffix(seed: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(seed.as_bytes());
     hex::encode(hasher.finalize())[..12].to_string()
+}
+
+fn apply_missing_agent_routing(
+    agent: &mut DesktopBridgeAgentConfig,
+    routing: &DesktopBridgeAgentRouting,
+) {
+    if agent.default_model.is_none() {
+        agent.default_model = routing.default_model.clone();
+    }
+    if agent.default_auth_provider.is_none() {
+        agent.default_auth_provider = routing.default_auth_provider.clone();
+    }
+    if agent.default_auth_choice.is_none() {
+        agent.default_auth_choice = routing.default_auth_choice.clone();
+    }
+    if agent.fallback_model.is_none() {
+        agent.fallback_model = routing.fallback_model.clone();
+    }
+    if agent.fallback_auth_provider.is_none() {
+        agent.fallback_auth_provider = routing.fallback_auth_provider.clone();
+    }
+    if agent.fallback_auth_choice.is_none() {
+        agent.fallback_auth_choice = routing.fallback_auth_choice.clone();
+    }
+    if agent.thinking.is_none() {
+        agent.thinking = routing.thinking.clone();
+    }
 }
 
 fn sync_host_active_agent_fields(host: &mut DesktopBridgeHostConfig) {
@@ -883,6 +948,30 @@ pub async fn desktop_bridge_update_agent_model_routing(
 }
 
 #[tauri::command]
+pub async fn desktop_bridge_update_local_agent_model_routing(
+    manager: State<'_, DesktopBridgeManager>,
+    default_model: Option<String>,
+    fallback_model: Option<String>,
+    thinking: Option<String>,
+    default_auth_provider: Option<String>,
+    default_auth_choice: Option<String>,
+    fallback_auth_provider: Option<String>,
+    fallback_auth_choice: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_update_local_agent_model_routing_impl(
+        &manager,
+        default_model,
+        fallback_model,
+        thinking,
+        default_auth_provider,
+        default_auth_choice,
+        fallback_auth_provider,
+        fallback_auth_choice,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_bridge_set_default_agent(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,
@@ -1063,4 +1152,61 @@ pub async fn desktop_bridge_poll_mailbox(
     chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
     mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_agent() -> DesktopBridgeAgentConfig {
+        DesktopBridgeAgentConfig {
+            id: "agent-1".to_string(),
+            label: "Kordi".to_string(),
+            node_id: String::new(),
+            api_key: String::new(),
+            runtime: "kordi".to_string(),
+            is_default: true,
+            default_model: None,
+            default_auth_provider: None,
+            default_auth_choice: None,
+            fallback_model: None,
+            fallback_auth_provider: None,
+            fallback_auth_choice: None,
+            thinking: None,
+        }
+    }
+
+    #[test]
+    fn bridge_agent_routing_template_seeds_empty_agent_without_overwriting_explicit_values() {
+        let template = DesktopBridgeAgentRouting {
+            default_model: Some("openai/gpt-5.5".to_string()),
+            default_auth_provider: Some("openai-codex".to_string()),
+            default_auth_choice: Some("profile:chatgpt".to_string()),
+            fallback_model: Some("anthropic/claude-sonnet-4.5".to_string()),
+            fallback_auth_provider: Some("anthropic".to_string()),
+            fallback_auth_choice: Some("env:api-key".to_string()),
+            thinking: Some("high".to_string()),
+        };
+
+        let mut empty = empty_agent();
+        apply_missing_agent_routing(&mut empty, &template);
+        assert_eq!(empty.default_model.as_deref(), Some("openai/gpt-5.5"));
+        assert_eq!(
+            empty.fallback_model.as_deref(),
+            Some("anthropic/claude-sonnet-4.5")
+        );
+        assert_eq!(empty.thinking.as_deref(), Some("high"));
+
+        let mut explicit = empty_agent();
+        explicit.default_model = Some("openai/gpt-4.1".to_string());
+        explicit.fallback_model = Some("anthropic/claude-opus-4.1".to_string());
+        explicit.thinking = Some("medium".to_string());
+        apply_missing_agent_routing(&mut explicit, &template);
+        assert_eq!(explicit.default_model.as_deref(), Some("openai/gpt-4.1"));
+        assert_eq!(
+            explicit.fallback_model.as_deref(),
+            Some("anthropic/claude-opus-4.1")
+        );
+        assert_eq!(explicit.thinking.as_deref(), Some("medium"));
+    }
 }

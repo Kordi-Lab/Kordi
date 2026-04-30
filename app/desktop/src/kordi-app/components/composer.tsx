@@ -212,7 +212,7 @@ export function ComposerMentionMenu({
   );
 }
 
-function composerThinkingLabel(value: string) {
+export function composerThinkingLabel(value: string) {
   const normalized = value.trim().toLowerCase().replace(/[\s_-]/g, '');
   return composerThinkingOptions.find((option) => option.value.replace(/[\s_-]/g, '') === normalized)?.label
     ?? (normalized === 'auto' || normalized === 'thinking'
@@ -222,7 +222,7 @@ function composerThinkingLabel(value: string) {
         : value);
 }
 
-function fallbackComposerThinkingValue(levels: string[], requested: string) {
+export function fallbackComposerThinkingValue(levels: string[], requested: string) {
   if (levels.includes(requested)) return requested;
   if (levels.includes('off')) return 'off';
   if (levels.includes('default')) return 'default';

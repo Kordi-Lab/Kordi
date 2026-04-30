@@ -814,6 +814,16 @@ export type DesktopBridgeInvite = {
   shareText: string;
 };
 
+export type DesktopBridgeAgentRouting = {
+  defaultModel?: string | null;
+  defaultAuthProvider?: string | null;
+  defaultAuthChoice?: string | null;
+  fallbackModel?: string | null;
+  fallbackAuthProvider?: string | null;
+  fallbackAuthChoice?: string | null;
+  thinking?: string | null;
+};
+
 export type DesktopBridgeState = {
   configPath: string;
   legacyConfigPath: string;
@@ -822,6 +832,7 @@ export type DesktopBridgeState = {
   hosts: DesktopBridgeHost[];
   conversations: DesktopBridgeConversation[];
   localServer: DesktopBridgeLocalServerStatus;
+  localAgentRouting?: DesktopBridgeAgentRouting | null;
 };
 
 export type DesktopProjectSettings = {

@@ -98,6 +98,7 @@ pub fn run() {
             bridge::desktop_bridge_activate_agent,
             bridge::desktop_bridge_rename_agent,
             bridge::desktop_bridge_update_agent_model_routing,
+            bridge::desktop_bridge_update_local_agent_model_routing,
             bridge::desktop_bridge_set_default_agent,
             bridge::desktop_bridge_start_local_server,
             bridge::desktop_bridge_stop_local_server,
