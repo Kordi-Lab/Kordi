@@ -1812,6 +1812,28 @@ fn normalize_bridge_agent_routing_value(value: Option<&String>) -> Option<String
         .map(ToString::to_string)
 }
 
+fn bridge_agent_route_key(
+    route: &BridgeAgentRunRoute,
+) -> Option<(&str, Option<&str>, Option<&str>)> {
+    route.model.as_deref().map(|model| {
+        (
+            model,
+            route.auth_provider.as_deref(),
+            route.auth_choice.as_deref(),
+        )
+    })
+}
+
+fn should_try_bridge_agent_fallback(
+    primary: &DesktopChatTurnSnapshot,
+    default_route: &BridgeAgentRunRoute,
+    fallback_route: &BridgeAgentRunRoute,
+) -> bool {
+    !primary.succeeded
+        && bridge_agent_route_key(fallback_route)
+            .is_some_and(|fallback| Some(fallback) != bridge_agent_route_key(default_route))
+}
+
 async fn run_bridge_agent_prompt_once(
     manager: &DesktopChatManager,
     cwd: &std::path::Path,
@@ -1954,13 +1976,9 @@ pub(crate) async fn run_bridge_agent_prompt(
     };
 
     let primary =
-        run_bridge_agent_prompt_once(manager, &cwd, prompt.clone(), default_route).await?;
+        run_bridge_agent_prompt_once(manager, &cwd, prompt.clone(), default_route.clone()).await?;
 
-    let should_try_fallback = !primary.succeeded
-        && fallback_model
-            .as_deref()
-            .is_some_and(|fallback| Some(fallback) != default_model.as_deref());
-    if !should_try_fallback {
+    if !should_try_bridge_agent_fallback(&primary, &default_route, &fallback_route) {
         return Ok(primary);
     }
 
@@ -2339,6 +2357,42 @@ mod tests {
         });
         let completed_sync_state = desktop_state_for_canonical_sync(&state, false);
         assert_eq!(completed_sync_state.active_session.messages.len(), 3);
+    }
+
+    #[test]
+    fn bridge_agent_fallback_route_distinguishes_auth_choice_from_default_route() {
+        let primary = DesktopChatTurnSnapshot {
+            id: "turn-1".to_string(),
+            session_id: "session-1".to_string(),
+            prompt: "Run it".to_string(),
+            status: "failed".to_string(),
+            message: "default auth failed".to_string(),
+            assistant_text: String::new(),
+            thinking_text: String::new(),
+            tools: Vec::new(),
+            completed: true,
+            succeeded: false,
+            error: Some("default auth failed".to_string()),
+            transcript_refresh_required: false,
+        };
+        let default_route = BridgeAgentRunRoute {
+            model: Some("gpt-5".to_string()),
+            auth_provider: Some("openai".to_string()),
+            auth_choice: Some("oauth:primary".to_string()),
+            thinking: Some("medium".to_string()),
+        };
+        let fallback_route = BridgeAgentRunRoute {
+            model: Some("gpt-5".to_string()),
+            auth_provider: Some("openai".to_string()),
+            auth_choice: Some("api-key:fallback".to_string()),
+            thinking: Some("medium".to_string()),
+        };
+
+        assert!(should_try_bridge_agent_fallback(
+            &primary,
+            &default_route,
+            &fallback_route
+        ));
     }
 
     #[test]

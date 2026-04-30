@@ -893,11 +893,11 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
                 "kind": "session-relay",
                 "sender": "My Kordi",
                 "timeLabel": "11:24",
-                "deliveryState": "read",
+                "deliveryState": "processing",
             })),
             parent_message_id: None,
             delegated_exchange_id: None,
-            status: Some("read".to_string()),
+            status: Some("processing".to_string()),
             source_transport: Some("desktop-bridge-session-relay".to_string()),
             source_event_id: Some("bridge-processing-1".to_string()),
             created_at_ms: Some(1_000),
@@ -939,21 +939,37 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
         .expect("replace processing placeholder")
     );
 
-    let (content_text, status, thinking, tool_count): (String, String, String, i64) = conn
+    let (content_text, status, delivery_state, thinking, tool_count): (
+        String,
+        String,
+        Option<String>,
+        String,
+        i64,
+    ) = conn
         .query_row(
             "SELECT content_text,
                     status,
+                    json_extract(content_json, '$.deliveryState'),
                     json_extract(content_json, '$.thinkingText'),
                     json_array_length(json_extract(content_json, '$.tools'))
              FROM session_messages
              WHERE id = 'msg:processing-placeholder'",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .expect("read reconciled placeholder");
 
     assert_eq!(content_text, "Final local answer");
     assert_eq!(status, "complete");
+    assert_eq!(delivery_state, None);
     assert_eq!(thinking, "private reasoning");
     assert_eq!(tool_count, 1);
 }

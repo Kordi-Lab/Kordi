@@ -63,6 +63,11 @@ fn content_with_desktop_runtime(
         .filter(|value| value.is_object())
         .unwrap_or_else(|| serde_json::json!({}));
 
+    if let Some(object) = content.as_object_mut() {
+        object.remove("deliveryState");
+        object.remove("error");
+    }
+
     if let Some(thinking_text) = message.thinking_text.as_deref() {
         if !thinking_text.trim().is_empty() {
             content["thinkingText"] = serde_json::Value::String(thinking_text.to_string());
