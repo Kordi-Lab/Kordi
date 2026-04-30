@@ -18,6 +18,7 @@ import {
   FolderOpen,
   Globe,
   Image,
+  ImageOff,
   Link2,
   LoaderCircle,
   Pencil,
@@ -32,6 +33,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
 import { selfDisplayName } from '@/lib/identityLabels';
@@ -520,6 +522,49 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
   );
 }
 
+function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
+  return (
+    <div className="flex h-36 flex-col items-center justify-center gap-2 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),rgba(15,23,42,0.58))] px-4 text-center text-slate-400">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-slate-300 shadow-inner shadow-black/20">
+        <ImageOff className="h-5 w-5" />
+      </div>
+      <div>
+        <div className="text-[12px] font-medium text-slate-300">Preview unavailable</div>
+        <div className="mt-0.5 max-w-[14rem] truncate text-[10px] text-slate-500">{displayAttachmentName(attachment.name, attachment.kind)}</div>
+      </div>
+    </div>
+  );
+}
+
+function AttachmentImageCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const previewUrl = attachmentPreviewUrl(attachment);
+  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+  const metadataLabel = [sizeLabel, attachment.formatLabel].filter(Boolean).join(' • ');
+  const showImage = Boolean(previewUrl && !previewFailed);
+
+  return (
+    <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+      {showImage ? (
+        <img
+          src={previewUrl}
+          alt={attachment.name || 'Attached image'}
+          className="block max-h-[320px] w-full object-cover"
+          onError={() => setPreviewFailed(true)}
+        />
+      ) : (
+        <BrokenImagePreview attachment={attachment} />
+      )}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
+        <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+          {metadataLabel || 'IMAGE'}
+        </span>
+        <AttachmentActions attachment={attachment} />
+      </div>
+    </div>
+  );
+}
+
 function AttachmentPreview({ msg }: { msg: Message }) {
   const attachments = msg.attachments ?? [];
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
@@ -533,36 +578,9 @@ function AttachmentPreview({ msg }: { msg: Message }) {
     <div className="flex flex-col gap-2">
       {previewImageAttachments.length > 0 ? (
         <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
-          {previewImageAttachments.map((attachment, index) => {
-            const previewUrl = attachmentPreviewUrl(attachment);
-            const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-            return (
-              <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt={attachment.name || 'Attached image'}
-                    className="block max-h-[320px] w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-28 items-center justify-center bg-white/5 text-slate-400">
-                    <Image className="h-5 w-5" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
-                  <span className="truncate">{attachment.name || 'Image attachment'}</span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {sizeLabel ? <span className="text-[10px] font-medium text-slate-400">{sizeLabel}</span> : null}
-                    {attachment.formatLabel ? (
-                      <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                        {attachment.formatLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {previewImageAttachments.map((attachment, index) => (
+            <AttachmentImageCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
+          ))}
         </div>
       ) : null}
       {downloadableAttachments.length > 0 ? (

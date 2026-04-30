@@ -2,7 +2,9 @@ import { useCallback } from 'react';
 
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
-import { storeDesktopChatAttachment, updateDesktopChatSessionConfig } from '@/lib/desktop';
+import { storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
+
+import { friendlyAttachmentName } from './composerAttachments';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
@@ -331,17 +333,18 @@ export function useComposerInputActions({
       setDesktopChatError(null);
       const saved = await Promise.all(
         files.map(async (file) => {
-          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-          const path = await storeDesktopChatAttachment(file.name || 'attachment.bin', data);
           const mimeType = file.type || undefined;
           const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
+          const displayName = friendlyAttachmentName(file.name || 'attachment.bin', kind);
+          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+          const path = await storeDesktopChatAttachment(displayName, data);
           return {
-            id: `${file.name}-${path}`,
-            name: file.name || 'attachment',
+            id: `${displayName}-${path}`,
+            name: displayName,
             path,
             kind,
             mimeType,
-            formatLabel: attachmentFormatLabel(file.name || 'attachment', mimeType),
+            formatLabel: attachmentFormatLabel(displayName, mimeType),
             previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
             sizeBytes: file.size,
           };
@@ -364,24 +367,34 @@ export function useComposerInputActions({
       return [] as AttachmentItem[];
     }
 
-    setDesktopChatError(null);
-    const saved = paths.map((path) => {
-      const name = attachmentNameFromPath(path);
-      const kind = attachmentKindFromName(name);
-      return {
-        id: `${name}-${path}`,
-        name,
-        path,
-        kind,
-        formatLabel: attachmentFormatLabel(name),
-      };
-    });
+    try {
+      setDesktopChatError(null);
+      const saved = await Promise.all(paths.map(async (sourcePath) => {
+        const rawName = attachmentNameFromPath(sourcePath);
+        const kind = attachmentKindFromName(rawName);
+        const displayName = friendlyAttachmentName(rawName, kind);
+        const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
+        const storedKind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
+        return {
+          id: `${displayName}-${stored.path}`,
+          name: displayName,
+          path: stored.path,
+          kind: storedKind,
+          mimeType: stored.mimeType ?? undefined,
+          formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
+          sizeBytes: stored.sizeBytes ?? undefined,
+        };
+      }));
 
-    setChatComposerAttachments((current) => {
-      const seen = new Set(current.map((item) => item.path));
-      return [...current, ...saved.filter((item) => !seen.has(item.path))];
-    });
-    return saved;
+      setChatComposerAttachments((current) => {
+        const seen = new Set(current.map((item) => item.path));
+        return [...current, ...saved.filter((item) => !seen.has(item.path))];
+      });
+      return saved;
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to attach file');
+      return [] as AttachmentItem[];
+    }
   }, [isNativeShell, setChatComposerAttachments, setDesktopChatError]);
 
   const removeChatComposerAttachment = useCallback((id: string) => {

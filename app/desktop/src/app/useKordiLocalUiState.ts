@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { readStoredComposerAttachments, writeStoredComposerAttachments } from '@/features/chat/composerAttachments';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
 import type { ChatFilter, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
@@ -64,7 +66,11 @@ export function useKordiLocalUiState() {
   });
   const [openComposerSelector, setOpenComposerSelector] = useState<{ scope: ComposerScope; type: ComposerSelectorType } | null>(null);
   const [chatSlashMenuIndex, setChatSlashMenuIndex] = useState(0);
-  const [chatComposerAttachments, setChatComposerAttachments] = useState<Array<{ id: string; name: string; path: string; kind: 'image' | 'file' }>>([]);
+  const [chatComposerAttachments, setChatComposerAttachments] = useState<AttachmentItem[]>(() => readStoredComposerAttachments());
+
+  useEffect(() => {
+    writeStoredComposerAttachments(chatComposerAttachments);
+  }, [chatComposerAttachments]);
 
   const [chatFilter, setChatFilter] = useState<ChatFilter>('all');
   const [chatSearch, setChatSearch] = useState('');

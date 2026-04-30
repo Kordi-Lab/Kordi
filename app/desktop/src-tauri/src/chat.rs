@@ -368,6 +368,19 @@ pub(crate) fn store_chat_attachment_bytes(
     stored_chat_attachment_from_path(&path)
 }
 
+pub(crate) fn store_chat_attachment_file(
+    source: &Path,
+    name: &str,
+) -> Result<DesktopStoredChatAttachment, String> {
+    let source = ensure_attachment_file_path(source)?;
+    let display_name = safe_attachment_name(name);
+    let target = unique_attachment_path(&display_name)?;
+    std::fs::copy(&source, &target).map_err(|err| err.to_string())?;
+    let mut stored = stored_chat_attachment_from_path(&target)?;
+    stored.name = display_name;
+    Ok(stored)
+}
+
 fn artifact_base_path(base_root: Option<&str>) -> Result<PathBuf, String> {
     base_root
         .map(str::trim)
@@ -1395,6 +1408,23 @@ async fn build_chat_state(
 #[tauri::command]
 pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Result<String, String> {
     store_chat_attachment_bytes(&name, &data).map(|attachment| attachment.path)
+}
+
+#[tauri::command]
+pub async fn desktop_chat_store_attachment_path(
+    path: String,
+    name: Option<String>,
+) -> Result<DesktopStoredChatAttachment, String> {
+    let fallback_name = Path::new(&path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("attachment.bin")
+        .to_string();
+    let display_name = name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&fallback_name);
+    store_chat_attachment_file(Path::new(&path), display_name)
 }
 
 #[tauri::command]

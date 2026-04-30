@@ -158,6 +158,7 @@ pub fn run() {
             auth::ollama::desktop_ollama_stop_model,
             auth::ollama::desktop_ollama_delete_model,
             chat::desktop_chat_store_attachment,
+            chat::desktop_chat_store_attachment_path,
             chat::desktop_chat_download_attachment,
             chat::desktop_chat_artifact_preview,
             chat::desktop_chat_artifact_directory,
