@@ -726,6 +726,255 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
 }
 
 #[test]
+fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:bridge-final".to_string()),
+            session_id: "session:bridge:humans:test".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "Final answer".to_string(),
+            content: Some(serde_json::json!({
+                "sender": "My Kordi",
+                "timeLabel": "10:57",
+                "thinkingText": null,
+                "tools": [],
+            })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            source_transport: Some("desktop-bridge-session-relay".to_string()),
+            source_event_id: Some("bridge-response-1".to_string()),
+            created_at_ms: Some(1_000),
+        },
+    )
+    .expect("seed bridge response");
+
+    let desktop_message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("My Kordi".to_string()),
+        text: "Final answer".to_string(),
+        detail: None,
+        time_label: "10:57".to_string(),
+        timestamp_ms: 1_100,
+        thinking_text: Some("local reasoning trace".to_string()),
+        tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
+            id: "tool-1".to_string(),
+            name: "read".to_string(),
+            status: "complete".to_string(),
+            arguments: "{}".to_string(),
+            live_output: String::new(),
+            result_text: Some("file contents".to_string()),
+            detail: None,
+            is_error: false,
+        }],
+        attachments: Vec::new(),
+        failed: false,
+    };
+
+    assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
+        &conn,
+        "session:bridge:humans:test",
+        "Final answer",
+        1_100,
+        30_000,
+        &desktop_message,
+    )
+    .expect("enrich bridge response"));
+
+    let (thinking, tool_count): (String, i64) = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.thinkingText'),
+                    json_array_length(json_extract(content_json, '$.tools'))
+             FROM session_messages
+             WHERE id = 'msg:bridge-final'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read enriched response");
+
+    assert_eq!(thinking, "local reasoning trace");
+    assert_eq!(tool_count, 1);
+}
+
+#[test]
+fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:bridge-final".to_string()),
+            session_id: "session:bridge:humans:test".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "I’ll check current web weather info for Thuwal today and summarize it.Today in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+            content: Some(serde_json::json!({
+                "sender": "My Kordi",
+                "timeLabel": "13:37",
+                "thinkingText": null,
+                "tools": [],
+            })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            source_transport: Some("desktop-bridge-session-relay".to_string()),
+            source_event_id: Some("bridge-response-1".to_string()),
+            created_at_ms: Some(1_000),
+        },
+    )
+    .expect("seed bridge response");
+
+    let desktop_message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("My Kordi".to_string()),
+        text: "I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+        detail: None,
+        time_label: "13:37".to_string(),
+        timestamp_ms: 1_100,
+        thinking_text: Some("local reasoning trace".to_string()),
+        tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
+            id: "tool-1".to_string(),
+            name: "web_fetch".to_string(),
+            status: "complete".to_string(),
+            arguments: "{}".to_string(),
+            live_output: String::new(),
+            result_text: Some("weather".to_string()),
+            detail: None,
+            is_error: false,
+        }],
+        attachments: Vec::new(),
+        failed: false,
+    };
+
+    assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
+        &conn,
+        "session:bridge:humans:test",
+        &desktop_message.text,
+        1_100,
+        30_000,
+        &desktop_message,
+    )
+    .expect("enrich whitespace-collapsed bridge response"));
+
+    let (content_text, thinking, tool_count): (String, String, i64) = conn
+        .query_row(
+            "SELECT content_text,
+                    json_extract(content_json, '$.thinkingText'),
+                    json_array_length(json_extract(content_json, '$.tools'))
+             FROM session_messages
+             WHERE id = 'msg:bridge-final'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read enriched response");
+
+    assert_eq!(content_text, desktop_message.text);
+    assert_eq!(thinking, "local reasoning trace");
+    assert_eq!(tool_count, 1);
+}
+
+#[test]
+fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_details() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:processing-placeholder".to_string()),
+            session_id: "session:bridge:humans:test".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "processing...".to_string(),
+            content: Some(serde_json::json!({
+                "kind": "session-relay",
+                "sender": "My Kordi",
+                "timeLabel": "11:24",
+                "deliveryState": "processing",
+            })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("processing".to_string()),
+            source_transport: Some("desktop-bridge-session-relay".to_string()),
+            source_event_id: Some("bridge-processing-1".to_string()),
+            created_at_ms: Some(1_000),
+        },
+    )
+    .expect("seed processing placeholder");
+
+    let desktop_message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("My Kordi".to_string()),
+        text: "Final local answer".to_string(),
+        detail: None,
+        time_label: "11:24".to_string(),
+        timestamp_ms: 10_000,
+        thinking_text: Some("private reasoning".to_string()),
+        tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
+            id: "tool-1".to_string(),
+            name: "web_fetch".to_string(),
+            status: "complete".to_string(),
+            arguments: "{}".to_string(),
+            live_output: String::new(),
+            result_text: Some("repo page".to_string()),
+            detail: None,
+            is_error: false,
+        }],
+        attachments: Vec::new(),
+        failed: false,
+    };
+
+    assert!(
+        reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
+            &conn,
+            "session:bridge:humans:test",
+            "Final local answer",
+            10_000,
+            30_000,
+            &desktop_message,
+        )
+        .expect("replace processing placeholder")
+    );
+
+    let (content_text, status, delivery_state, thinking, tool_count): (
+        String,
+        String,
+        Option<String>,
+        String,
+        i64,
+    ) = conn
+        .query_row(
+            "SELECT content_text,
+                    status,
+                    json_extract(content_json, '$.deliveryState'),
+                    json_extract(content_json, '$.thinkingText'),
+                    json_array_length(json_extract(content_json, '$.tools'))
+             FROM session_messages
+             WHERE id = 'msg:processing-placeholder'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .expect("read reconciled placeholder");
+
+    assert_eq!(content_text, "Final local answer");
+    assert_eq!(status, "complete");
+    assert_eq!(delivery_state, None);
+    assert_eq!(thinking, "private reasoning");
+    assert_eq!(tool_count, 1);
+}
+
+#[test]
 fn message_scoped_outreach_groups_include_same_request_response_without_message_outreach() {
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-agent".to_string(),

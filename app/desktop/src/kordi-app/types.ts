@@ -228,6 +228,12 @@ export type Agent = {
   tasks: number;
   defaultProvider: string;
   defaultModel: string;
+  defaultAuthProvider?: string | null;
+  defaultAuthChoice?: string | null;
+  fallbackModel?: string | null;
+  fallbackAuthProvider?: string | null;
+  fallbackAuthChoice?: string | null;
+  defaultThinking?: string | null;
   bridgesConfig: string;
   contactId: string;
   systemPrompt: string;
@@ -646,6 +652,13 @@ export type DesktopBridgeAgent = {
   isDefault: boolean;
   isActive: boolean;
   registered: boolean;
+  defaultModel?: string | null;
+  defaultAuthProvider?: string | null;
+  defaultAuthChoice?: string | null;
+  fallbackModel?: string | null;
+  fallbackAuthProvider?: string | null;
+  fallbackAuthChoice?: string | null;
+  thinking?: string | null;
   profileImageUrl?: string | null;
 };
 

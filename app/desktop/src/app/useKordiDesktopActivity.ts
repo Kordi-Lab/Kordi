@@ -13,7 +13,6 @@ import type {
   ProjectSession,
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
-import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 
 function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
@@ -49,21 +48,24 @@ function useArtifactLiveTurn(turn?: DesktopChatTurnSnapshot | null) {
 export function visibleLocalSessionIdForActivity({
   activeNav,
   activeChatSessionId,
+  activeChatCanonicalSessionId,
   activeProjectSessionId,
 }: {
   activeNav: NavId;
   activeChatSessionId: string;
+  activeChatCanonicalSessionId?: string | null;
   activeProjectSessionId: string;
 }) {
   if (activeNav === 'projects') {
     return isProjectDraftSessionId(activeProjectSessionId) ? null : activeProjectSessionId || null;
   }
   if (activeNav !== 'chats') return null;
-  if (!activeChatSessionId.trim()) return null;
-  if (activeChatSessionId.startsWith('bridge:')) return null;
-  if (isCanonicalBridgeSessionId(activeChatSessionId)) return null;
-  if (isLocalDraftChatConversationId(activeChatSessionId)) return null;
-  return activeChatSessionId;
+  const canonicalSessionId = activeChatCanonicalSessionId?.trim();
+  const visibleSessionId = canonicalSessionId || activeChatSessionId.trim();
+  if (!visibleSessionId) return null;
+  if (!canonicalSessionId && activeChatSessionId.startsWith('bridge:')) return null;
+  if (isLocalDraftChatConversationId(visibleSessionId)) return null;
+  return visibleSessionId;
 }
 
 type UseKordiDesktopActivityArgs = {
@@ -72,7 +74,7 @@ type UseKordiDesktopActivityArgs = {
   activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
   activeConvId: string;
-  activeConv: { id: string; messages: Message[] };
+  activeConv: { id: string; canonicalSessionId?: string; messages: Message[] };
   activeProjectSessionId: string;
   activeProjectSession: ProjectSession;
   activeConversationIsBridge: boolean;
@@ -146,9 +148,10 @@ export function useKordiDesktopActivity({
     setVisibleLocalSessionId(visibleLocalSessionIdForActivity({
       activeNav,
       activeChatSessionId: activeConv.id,
+      activeChatCanonicalSessionId: activeConv.canonicalSessionId,
       activeProjectSessionId,
     }));
-  }, [activeConv.id, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
+  }, [activeConv.canonicalSessionId, activeConv.id, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
     if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {

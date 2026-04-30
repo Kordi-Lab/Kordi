@@ -47,6 +47,7 @@ export type BridgeWizardDraft = {
 
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
+  desktopChatState: DesktopChatState | null;
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
@@ -161,6 +162,17 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
   handleActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
   handleSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
+  handleUpdateBridgeAgentModelRouting: (
+    hostId: string,
+    agentId: string,
+    defaultModel?: string | null,
+    fallbackModel?: string | null,
+    thinking?: string | null,
+    defaultAuthProvider?: string | null,
+    defaultAuthChoice?: string | null,
+    fallbackAuthProvider?: string | null,
+    fallbackAuthChoice?: string | null,
+  ) => Promise<void>;
   handleRemoveBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   handleBridgeWizardPrimary: () => Promise<void>;
 
@@ -388,6 +400,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleCreateBridgeAgent'
   | 'handleActivateBridgeAgent'
   | 'handleSetDefaultBridgeAgent'
+  | 'handleUpdateBridgeAgentModelRouting'
   | 'handleRemoveBridgeContact'
   | 'handleBridgeWizardPrimary'
   | 'settingsRailWidth'
@@ -398,6 +411,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeSettingsSection'
   | 'authSettingsLayoutWidth'
   | 'isNativeShell'
+  | 'desktopChatState'
   | 'desktopAuthState'
   | 'isDesktopAuthLoading'
   | 'desktopAuthError'
@@ -478,6 +492,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'composerAuthOptionsChat'
   | 'handleSendChatMessage'
   | 'activeQueuedDesktopMessages'
+  | 'activeBridgeConversationHost'
   | 'activeBridgeConversation'
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'

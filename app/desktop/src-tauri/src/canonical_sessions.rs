@@ -42,9 +42,10 @@ use self::core::{
 pub(crate) use self::desktop_sync::sync_desktop_chat_state;
 #[cfg(test)]
 use self::desktop_sync::{
-    explicit_desktop_project_membership, should_skip_shared_local_agent_runtime_prompt,
-    should_sync_desktop_chat_detail, should_sync_desktop_chat_summary,
-    should_update_desktop_session_shell,
+    enrich_similar_bridge_agent_message_with_desktop_runtime, explicit_desktop_project_membership,
+    reconcile_processing_bridge_agent_placeholder_with_desktop_runtime,
+    should_skip_shared_local_agent_runtime_prompt, should_sync_desktop_chat_detail,
+    should_sync_desktop_chat_summary, should_update_desktop_session_shell,
 };
 #[cfg(test)]
 use self::parent_sessions::{
@@ -512,6 +513,19 @@ fn session_has_participant(
     .map_err(|err| err.to_string())
 }
 
+fn compact_agent_message_text(value: &str) -> String {
+    value.split_whitespace().collect::<String>()
+}
+
+fn similar_agent_message_text(left: &str, right: &str) -> bool {
+    let left = left.trim();
+    let right = right.trim();
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+    left == right || compact_agent_message_text(left) == compact_agent_message_text(right)
+}
+
 fn similar_agent_message_exists(
     conn: &Connection,
     session_id: &str,
@@ -520,26 +534,32 @@ fn similar_agent_message_exists(
     created_at_ms: i64,
     match_window_ms: i64,
 ) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM session_messages
-            WHERE session_id = ?1
-              AND message_kind = 'agent-turn'
-              AND sender_role IN ('owned-agent', 'external-agent')
-              AND content_text = ?2
-              AND source_transport = ?3
-              AND ABS(created_at_ms - ?4) <= ?5
-         )",
-        params![
+    let mut stmt = conn
+        .prepare(
+            "SELECT content_text
+             FROM session_messages
+             WHERE session_id = ?1
+               AND message_kind = 'agent-turn'
+               AND sender_role IN ('owned-agent', 'external-agent')
+               AND source_transport = ?2
+               AND ABS(created_at_ms - ?3) <= ?4",
+        )
+        .map_err(|err| err.to_string())?;
+    let mut rows = stmt
+        .query(params![
             session_id,
-            content_text,
             source_transport,
             created_at_ms,
             match_window_ms
-        ],
-        |row| row.get::<_, bool>(0),
-    )
-    .map_err(|err| err.to_string())
+        ])
+        .map_err(|err| err.to_string())?;
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        let candidate_text: String = row.get(0).map_err(|err| err.to_string())?;
+        if similar_agent_message_text(&candidate_text, content_text) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn existing_delegation_join_message_id(

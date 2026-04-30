@@ -10,6 +10,9 @@ export function AgentsPage({
   activeAgent,
   onOpenAgent,
   getStatusBadgeClass,
+  chatModelOptions,
+  composerProviderOptions,
+  onUpdateAgentModelRouting,
   onMessageAgent,
 }: AgentsPageProps) {
   const {
@@ -56,6 +59,9 @@ export function AgentsPage({
           activeSaveFeedback={activeSaveFeedback}
           activeEditingSection={activeEditingSection}
           availableSkills={availableSkills}
+          chatModelOptions={chatModelOptions}
+          composerProviderOptions={composerProviderOptions}
+          onUpdateModelRouting={onUpdateAgentModelRouting}
           onReset={resetAgentDraft}
           onMessage={
             onMessageAgent && activeAgent && activeAgentConfig

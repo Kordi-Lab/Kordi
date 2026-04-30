@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::chat::{run_bridge_agent_prompt, DesktopChatManager};
+use crate::chat::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting, DesktopChatManager};
 
 use super::constants::{
     is_agent_like_runtime, BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_RESPONDED,
@@ -29,6 +29,7 @@ struct LocalBridgeMailboxTarget {
     host: DesktopBridgeHostConfig,
     sender_runtime: String,
     sender_agent_id: Option<String>,
+    model_routing: Option<DesktopBridgeAgentModelRouting>,
     should_process_agent_asks: bool,
 }
 
@@ -158,6 +159,7 @@ fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> 
                 host: host.clone(),
                 sender_runtime: "person".to_string(),
                 sender_agent_id: None,
+                model_routing: None,
                 should_process_agent_asks: false,
             });
         }
@@ -182,6 +184,15 @@ fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> 
                 },
                 sender_runtime: agent.runtime.clone(),
                 sender_agent_id: Some(agent.id.clone()),
+                model_routing: Some(DesktopBridgeAgentModelRouting {
+                    default_model: agent.default_model.clone(),
+                    default_auth_provider: agent.default_auth_provider.clone(),
+                    default_auth_choice: agent.default_auth_choice.clone(),
+                    fallback_model: agent.fallback_model.clone(),
+                    fallback_auth_provider: agent.fallback_auth_provider.clone(),
+                    fallback_auth_choice: agent.fallback_auth_choice.clone(),
+                    thinking: agent.thinking.clone(),
+                }),
                 should_process_agent_asks: true,
             });
         }
@@ -497,6 +508,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     &event.from_node_id,
                     agent_prompt_text,
                     attachment_paths,
+                    target.model_routing.clone(),
                 )
                 .await;
 

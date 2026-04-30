@@ -1,3 +1,4 @@
+import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
 export type AgentsPageProps = {
@@ -6,6 +7,20 @@ export type AgentsPageProps = {
   activeAgent?: Agent;
   onOpenAgent: (agentId: string) => void;
   getStatusBadgeClass: (value: string) => string;
+  chatModelOptions?: ComposerModelOption[];
+  composerProviderOptions?: ComposerProviderOption[];
+  onUpdateAgentModelRouting?: (
+    agent: Agent,
+    values: {
+      defaultModel?: string | null;
+      defaultAuthProvider?: string | null;
+      defaultAuthChoice?: string | null;
+      fallbackModel?: string | null;
+      fallbackAuthProvider?: string | null;
+      fallbackAuthChoice?: string | null;
+      thinking?: string | null;
+    },
+  ) => Promise<void> | void;
   onMessageAgent?: (agent: Agent) => void;
 };
 

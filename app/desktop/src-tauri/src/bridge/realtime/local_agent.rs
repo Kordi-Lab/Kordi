@@ -224,6 +224,7 @@ fn spawn_local_agent_response(
             &event.from_node_id,
             text,
             attachment_paths,
+            target.model_routing.clone(),
         )
         .await
         {
@@ -435,6 +436,7 @@ mod tests {
             },
             sender_runtime: "person".to_string(),
             sender_agent_id: None,
+            model_routing: None,
             should_process_agent_asks: false,
         }
     }

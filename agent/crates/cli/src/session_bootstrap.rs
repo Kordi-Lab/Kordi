@@ -86,12 +86,21 @@ pub(crate) struct SessionUiOptions {
 }
 
 /// Non-clone runtime state needed for actual LLM calls.
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub(crate) struct SessionAuthChoiceOverride {
+    pub provider: String,
+    pub choice: String,
+}
+
 pub(crate) struct SessionRuntimeSetup {
     pub conn: rusqlite::Connection,
     pub session_id: String,
     pub provider: Arc<dyn Provider>,
     pub model: kordi_provider::registry::Model,
     pub auth: Option<crate::login::ResolvedProviderAuth>,
+    #[allow(dead_code)]
+    pub auth_choice_override: Option<SessionAuthChoiceOverride>,
     pub api_key: String,
     pub base_url: String,
     pub headers: std::collections::HashMap<String, String>,
@@ -497,6 +506,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         provider,
         model,
         auth,
+        auth_choice_override: None,
         api_key,
         base_url,
         headers,
