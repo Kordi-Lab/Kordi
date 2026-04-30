@@ -97,6 +97,40 @@ function shouldKeepLegacyChatConversationExtra(
     || !conversation.canonicalSessionId;
 }
 
+function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
+  const normalizedSessionId = sessionId?.trim();
+  const unread = Math.max(0, count ?? 0);
+  if (!normalizedSessionId || unread <= 0) return;
+  unreadBySessionId.set(normalizedSessionId, (unreadBySessionId.get(normalizedSessionId) ?? 0) + unread);
+}
+
+function mergedUnreadBySessionId(conversations: Conversation[]) {
+  const unreadBySessionId = new Map<string, number>();
+  for (const conversation of conversations) {
+    const scopedUnread = conversation.bridgeUnreadByParentSessionId ?? {};
+    const scopedEntries = Object.entries(scopedUnread);
+    if (scopedEntries.length > 0) {
+      for (const [sessionId, unread] of scopedEntries) {
+        addUnreadForSession(unreadBySessionId, sessionId, unread);
+      }
+      continue;
+    }
+    addUnreadForSession(unreadBySessionId, conversation.canonicalSessionId ?? conversation.id, conversation.unread);
+  }
+  return unreadBySessionId;
+}
+
+function withMergedUnreadForSession<T extends Conversation>(conversation: T, sessionId: string, unread: number): T {
+  return {
+    ...conversation,
+    unread,
+    bridgeUnreadByParentSessionId: {
+      ...(conversation.bridgeUnreadByParentSessionId ?? {}),
+      [sessionId]: unread,
+    },
+  };
+}
+
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -186,6 +220,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       };
     },
     buildChatConversations(conversations, buildSubtitle) {
+      const unreadBySessionId = mergedUnreadBySessionId(conversations);
       const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
       const sourceByOutreachParentSessionId = new Map<string, Conversation>();
       for (const conversation of conversations) {
@@ -224,12 +259,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
             const directSource = sourceBySessionId.get(representative.id);
             const outreachSource = sourceByOutreachParentSessionId.get(representative.id);
             const source = directSource ?? outreachSource;
+            const mergedUnread = unreadBySessionId.get(representative.id) ?? 0;
             return source
-              ? [this.applyConversation({
+              ? [this.applyConversation(withMergedUnreadForSession({
                   ...source,
                   id: directSource ? source.id : representative.id,
                   canonicalSessionId: representative.id,
-                }, buildSubtitle)]
+                }, representative.id, mergedUnread), buildSubtitle)]
               : [this.applyConversation(
                 syntheticConversation(representative, this.participantDetails(representative.id), this.messages(representative.id), buildSubtitle),
                 buildSubtitle,
