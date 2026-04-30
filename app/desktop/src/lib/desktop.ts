@@ -607,8 +607,15 @@ export async function storeDesktopChatAttachmentPath(path: string, name?: string
   return invokeDesktop<DesktopStoredChatAttachment>('desktop_chat_store_attachment_path', { path, name: name ?? null });
 }
 
-export async function startDesktopChatMessage(sessionId: string, text: string, attachmentPaths: string[] = []) {
-  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', { sessionId, text, attachmentPaths });
+export type DesktopChatMessageRoute = {
+  model?: string | null;
+  authProvider?: string | null;
+  authChoice?: string | null;
+  thinking?: string | null;
+};
+
+export async function startDesktopChatMessage(sessionId: string, text: string, attachmentPaths: string[] = [], route?: DesktopChatMessageRoute | null) {
+  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', { sessionId, text, attachmentPaths, route: route ?? null });
 }
 
 export async function runDesktopChatSkillCommand(sessionId: string, text: string) {
