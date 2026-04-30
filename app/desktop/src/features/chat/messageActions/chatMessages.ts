@@ -42,6 +42,28 @@ import {
 import { pendingOutreachFromState, relaySharedSessionMessage } from './relay';
 import type { PendingBridgeOutreach } from './types';
 
+export function bridgeConversationSendPlan({
+  activeConvId,
+  hasMaterializedBridgeConversation,
+  existingTargetConversationId,
+  shouldStayInCanonicalSession,
+}: {
+  activeConvId: string;
+  hasMaterializedBridgeConversation: boolean;
+  existingTargetConversationId?: string | null;
+  shouldStayInCanonicalSession: boolean;
+}) {
+  const targetConversationId = hasMaterializedBridgeConversation
+    ? activeConvId
+    : existingTargetConversationId ?? null;
+
+  return {
+    targetConversationId,
+    shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
+    canAppendBridgeOptimisticMessage: Boolean(targetConversationId),
+  };
+}
+
 type UseChatMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'activeConversationIsBridge'
@@ -226,13 +248,19 @@ export function useChatMessageActions({
         ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
         : null;
       const shouldStayInCanonicalSession = Boolean(activeConvBridgeTarget && activeConvCanonicalSessionId);
-      let targetConversationId = hasMaterializedBridgeConversation ? activeConvId : existingTargetConversation?.id ?? null;
+      const sendPlan = bridgeConversationSendPlan({
+        activeConvId,
+        hasMaterializedBridgeConversation,
+        existingTargetConversationId: existingTargetConversation?.id ?? null,
+        shouldStayInCanonicalSession,
+      });
+      let targetConversationId = sendPlan.targetConversationId;
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
 
-        if (!targetConversationId && activeConvBridgeTarget) {
+        if (sendPlan.shouldOpenBeforeOptimisticSend && activeConvBridgeTarget) {
           const openedState = await openDesktopBridgeConversation(
             activeConvBridgeTarget.hostId,
             activeConvBridgeTarget.nodeId,
@@ -251,12 +279,16 @@ export function useChatMessageActions({
           }
         }
 
-        if (!targetConversationId) {
+        if (!targetConversationId && !shouldStayInCanonicalSession) {
           throw new Error('Unable to resolve bridge conversation');
         }
 
+        const optimisticParentSessionId = activeConvCanonicalSessionId ?? targetConversationId;
+        if (!optimisticParentSessionId) {
+          throw new Error('Unable to resolve bridge conversation');
+        }
         const preparedCanonicalMessage = prepareCanonicalUserMessage(
-          activeConvCanonicalSessionId ?? targetConversationId,
+          optimisticParentSessionId,
           canonicalHumanIdentityId,
           text,
           chatComposerAttachments,
@@ -265,7 +297,9 @@ export function useChatMessageActions({
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
+        if (targetConversationId) {
+          setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
+        }
         setComposerDrafts((current) => ({ ...current, chat: '' }));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
@@ -299,13 +333,18 @@ export function useChatMessageActions({
                 ...bridgeAttachmentTransportFields(chatComposerAttachments),
               });
             }
+            if (!resolvedConversationId) {
+              throw new Error('Unable to resolve bridge conversation');
+            }
             return sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
           })
           .then((nextState) => {
             setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
           })
           .catch((error: unknown) => {
-            setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId));
+            if (resolvedConversationId) {
+              setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId));
+            }
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
           });
       } catch (error) {

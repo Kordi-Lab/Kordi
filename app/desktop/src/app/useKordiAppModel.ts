@@ -17,7 +17,7 @@ import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonical
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import { buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
+import { bridgeMentionCandidateOptionText, buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -353,12 +353,10 @@ export function useKordiAppModel() {
       const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
       pushOption({
         value: localAgentHandle,
-        label: localAgentHandle,
+        label: localAgentLabel,
         detail: [
           'My agent',
-          localAgentLabel !== localAgentHandle ? localAgentLabel : null,
-          activeAgent?.id ? `agent ${activeAgent.id}` : null,
-          activeAgent?.nodeId ? `node ${activeAgent.nodeId}` : null,
+          localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
           activeAgent?.runtime,
         ].filter((value): value is string => Boolean(value)).join(' • '),
         targetKind: 'bridge-agent',
@@ -369,16 +367,11 @@ export function useKordiAppModel() {
     }
 
     for (const candidate of buildBridgeMentionCandidates(desktopBridgeState)) {
+      const display = bridgeMentionCandidateOptionText(candidate);
       pushOption({
         value: candidate.handle,
-        label: candidate.handle,
-        detail: [
-          candidate.targetKind === 'bridge-agent' ? 'Bridge agent' : 'Bridge person',
-          candidate.displayLabel !== candidate.handle ? candidate.displayLabel : null,
-          candidate.peer.ownerName?.trim() && candidate.peer.ownerName?.trim() !== candidate.displayLabel ? candidate.peer.ownerName?.trim() : null,
-          candidate.host.displayName || candidate.host.ownerName,
-          candidate.peer.runtime,
-        ].filter((value): value is string => Boolean(value)).join(' • '),
+        label: display.label,
+        detail: display.detail,
         targetKind: candidate.targetKind,
         bridgeHostId: candidate.host.id,
         nodeId: candidate.peer.nodeId,
