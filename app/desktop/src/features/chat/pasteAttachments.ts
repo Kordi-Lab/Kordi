@@ -6,17 +6,24 @@ function fileIdentity(file: File) {
   return [file.name, file.size, file.type, file.lastModified].join(':');
 }
 
+function clipboardFileIdentity(file: File) {
+  return [file.name, file.size, file.type].join(':');
+}
+
 export function extractClipboardFiles(clipboardData: Pick<DataTransfer, 'files' | 'items'>): File[] {
   const files = arrayFromList(clipboardData.files);
   const seen = new Set(files.map(fileIdentity));
+  const seenClipboardFiles = new Set(files.map(clipboardFileIdentity));
 
   for (const item of arrayFromList(clipboardData.items)) {
     if (item.kind !== 'file') continue;
     const file = item.getAsFile();
     if (!file) continue;
     const identity = fileIdentity(file);
-    if (seen.has(identity)) continue;
+    const clipboardIdentity = clipboardFileIdentity(file);
+    if (seen.has(identity) || seenClipboardFiles.has(clipboardIdentity)) continue;
     seen.add(identity);
+    seenClipboardFiles.add(clipboardIdentity);
     files.push(file);
   }
 

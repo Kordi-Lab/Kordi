@@ -22,6 +22,28 @@ test('extractClipboardFiles falls back to clipboard item files when clipboard fi
   assert.deepEqual(files, [pastedImage]);
 });
 
+test('extractClipboardFiles dedupes one pasted image exposed through files and items with different modification times', () => {
+  const pastedImageFromFiles = {
+    name: 'image.png',
+    size: 246000,
+    type: 'image/png',
+    lastModified: 100,
+  } as File;
+  const pastedImageFromItems = {
+    name: 'image.png',
+    size: 246000,
+    type: 'image/png',
+    lastModified: 200,
+  } as File;
+
+  const files = extractClipboardFiles({
+    files: [pastedImageFromFiles] as unknown as FileList,
+    items: [{ kind: 'file', getAsFile: () => pastedImageFromItems }] as unknown as DataTransferItemList,
+  });
+
+  assert.deepEqual(files, [pastedImageFromFiles]);
+});
+
 test('extractPastedLocalFilePaths accepts a pasted absolute temp image path', () => {
   assert.deepEqual(
     extractPastedLocalFilePaths('/var/folders/sj/clipboard/pi-clipboard.png'),
