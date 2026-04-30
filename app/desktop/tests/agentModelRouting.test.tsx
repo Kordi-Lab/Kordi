@@ -283,6 +283,7 @@ test('owned agent inspector surfaces default and fallback model routing before r
   assert.doesNotMatch(markup, /class="[^"]*truncate[^"]*"[^>]*>ChatGPT account · oauth id e96dde/);
   assert.doesNotMatch(markup, /class="[^"]*truncate[^"]*"[^>]*>Claude subscription · oauth id 3d9dab/);
   assert.match(markup, /Thinking level/);
+  assert.match(markup, /Save routing/);
   assert.doesNotMatch(markup, /<select/);
   assert.ok(routingIndex < overviewIndex, 'model routing should be visible before overview/runtime sections');
 });

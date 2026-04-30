@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,6 +18,28 @@ type RoutingOption = {
   authProvider?: string | null;
   authChoice?: string | null;
   activeAuth?: boolean;
+};
+
+type ModelRoutingDraft = {
+  agentId: string | null;
+  defaultModel: string | null;
+  defaultAuthProvider: string | null;
+  defaultAuthChoice: string | null;
+  fallbackModel: string | null;
+  fallbackAuthProvider: string | null;
+  fallbackAuthChoice: string | null;
+  thinking: string | null;
+};
+
+const EMPTY_MODEL_ROUTING_DRAFT: ModelRoutingDraft = {
+  agentId: null,
+  defaultModel: null,
+  defaultAuthProvider: null,
+  defaultAuthChoice: null,
+  fallbackModel: null,
+  fallbackAuthProvider: null,
+  fallbackAuthChoice: null,
+  thinking: null,
 };
 
 function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
@@ -45,6 +67,41 @@ function truncatePrompt(value: string) {
   if (!normalized) return 'No real prompt payload is exposed for this identity.';
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 179).trimEnd()}…`;
+}
+
+function compactRoutingValue(value?: string | null) {
+  return value?.trim() || null;
+}
+
+function modelRoutingDraftFromAgent(agent?: Agent | null): ModelRoutingDraft {
+  if (!agent) return EMPTY_MODEL_ROUTING_DRAFT;
+  return {
+    agentId: agent.id,
+    defaultModel: compactRoutingValue(agent.defaultModel),
+    defaultAuthProvider: compactRoutingValue(agent.defaultAuthProvider),
+    defaultAuthChoice: compactRoutingValue(agent.defaultAuthChoice),
+    fallbackModel: compactRoutingValue(agent.fallbackModel),
+    fallbackAuthProvider: compactRoutingValue(agent.fallbackAuthProvider),
+    fallbackAuthChoice: compactRoutingValue(agent.fallbackAuthChoice),
+    thinking: compactRoutingValue(agent.defaultThinking),
+  };
+}
+
+function routingDraftKey(draft: ModelRoutingDraft) {
+  return [
+    draft.agentId,
+    draft.defaultModel,
+    draft.defaultAuthProvider,
+    draft.defaultAuthChoice,
+    draft.fallbackModel,
+    draft.fallbackAuthProvider,
+    draft.fallbackAuthChoice,
+    draft.thinking,
+  ].map((value) => value ?? '').join('\u0000');
+}
+
+function sameRoutingDraft(left: ModelRoutingDraft, right: ModelRoutingDraft) {
+  return routingDraftKey(left) === routingDraftKey(right);
 }
 
 function RoutingSelect({
@@ -321,6 +378,27 @@ export function AgentDetailPane({
   onToggleSkill: (agentId: string, skill: string, selected: boolean) => void;
   onSelectIdentityFile: (agentId: string, file: string) => void;
 }) {
+  const persistedRoutingDraft = useMemo(() => modelRoutingDraftFromAgent(activeAgent), [
+    activeAgent?.id,
+    activeAgent?.defaultModel,
+    activeAgent?.defaultAuthProvider,
+    activeAgent?.defaultAuthChoice,
+    activeAgent?.fallbackModel,
+    activeAgent?.fallbackAuthProvider,
+    activeAgent?.fallbackAuthChoice,
+    activeAgent?.defaultThinking,
+  ]);
+  const persistedRoutingKey = routingDraftKey(persistedRoutingDraft);
+  const [routingDraft, setRoutingDraft] = useState<ModelRoutingDraft>(persistedRoutingDraft);
+  const [isRoutingSaving, setIsRoutingSaving] = useState(false);
+  const [routingSaveFeedback, setRoutingSaveFeedback] = useState<{ tone: 'idle' | 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setRoutingDraft(persistedRoutingDraft);
+    setIsRoutingSaving(false);
+    setRoutingSaveFeedback(null);
+  }, [persistedRoutingDraft, persistedRoutingKey]);
+
   if (!activeAgent || !activeAgentConfig) {
     return (
       <section className="app-agent-detail-pane flex min-h-0 min-w-0 flex-col">
@@ -339,38 +417,76 @@ export function AgentDetailPane({
   const exposesLoadedTools = activeAgent.exposesLoadedTools !== false;
   const exposesLoadedPlugins = activeAgent.exposesLoadedPlugins !== false;
   const selectedFilePath = activeDetail?.kind === 'file' ? activeDetail.path : null;
+  const activeRoutingDraft = routingDraft.agentId === activeAgent.id ? routingDraft : persistedRoutingDraft;
+  const routingDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
   const canEditModelRouting = Boolean(activeAgent.isOwned && activeAgent.bridgeHostId && activeAgent.bridgeAgentId && onUpdateModelRouting);
+  const updateRoutingDraft = (patch: Partial<ModelRoutingDraft>) => {
+    if (!canEditModelRouting) return;
+    setRoutingDraft((current) => ({
+      ...(current.agentId === activeAgent.id ? current : activeRoutingDraft),
+      ...patch,
+      agentId: activeAgent.id,
+    }));
+    setRoutingSaveFeedback(null);
+  };
+  const saveRoutingDraft = () => {
+    if (!canEditModelRouting || !routingDirty || isRoutingSaving) return;
+    setIsRoutingSaving(true);
+    setRoutingSaveFeedback(null);
+    void Promise.resolve(onUpdateModelRouting?.(activeAgent, {
+      defaultModel: activeRoutingDraft.defaultModel,
+      defaultAuthProvider: activeRoutingDraft.defaultAuthProvider,
+      defaultAuthChoice: activeRoutingDraft.defaultAuthChoice,
+      fallbackModel: activeRoutingDraft.fallbackModel,
+      fallbackAuthProvider: activeRoutingDraft.fallbackAuthProvider,
+      fallbackAuthChoice: activeRoutingDraft.fallbackAuthChoice,
+      thinking: activeRoutingDraft.thinking,
+    }))
+      .then(() => {
+        setRoutingSaveFeedback({ tone: 'success', text: 'Routing saved.' });
+      })
+      .catch((error) => {
+        setRoutingSaveFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to save routing.' });
+      })
+      .finally(() => {
+        setIsRoutingSaving(false);
+      });
+  };
+  const resetRoutingDraft = () => {
+    setRoutingDraft(persistedRoutingDraft);
+    setRoutingSaveFeedback(null);
+  };
   const authOptions = routingAuthOptions(composerProviderOptions);
   const modelOptions = buildRouteOptions({
     models: chatModelOptions ?? [],
     authOptions,
-    currentModel: activeAgent.defaultModel,
-    currentAuthProvider: activeAgent.defaultAuthProvider,
-    currentAuthChoice: activeAgent.defaultAuthChoice,
+    currentModel: activeRoutingDraft.defaultModel,
+    currentAuthProvider: activeRoutingDraft.defaultAuthProvider,
+    currentAuthChoice: activeRoutingDraft.defaultAuthChoice,
   });
   const fallbackOptions = buildRouteOptions({
     models: chatModelOptions ?? [],
     authOptions,
-    currentModel: activeAgent.fallbackModel,
-    currentAuthProvider: activeAgent.fallbackAuthProvider,
-    currentAuthChoice: activeAgent.fallbackAuthChoice,
+    currentModel: activeRoutingDraft.fallbackModel,
+    currentAuthProvider: activeRoutingDraft.fallbackAuthProvider,
+    currentAuthChoice: activeRoutingDraft.fallbackAuthChoice,
     includeNoFallback: true,
   });
   const selectedDefaultRouteValue = selectedRouteValue(
     modelOptions,
-    activeAgent.defaultModel,
-    activeAgent.defaultAuthProvider,
-    activeAgent.defaultAuthChoice,
+    activeRoutingDraft.defaultModel,
+    activeRoutingDraft.defaultAuthProvider,
+    activeRoutingDraft.defaultAuthChoice,
   );
-  const selectedFallbackRouteValue = activeAgent.fallbackModel
+  const selectedFallbackRouteValue = activeRoutingDraft.fallbackModel
     ? selectedRouteValue(
         fallbackOptions,
-        activeAgent.fallbackModel,
-        activeAgent.fallbackAuthProvider,
-        activeAgent.fallbackAuthChoice,
+        activeRoutingDraft.fallbackModel,
+        activeRoutingDraft.fallbackAuthProvider,
+        activeRoutingDraft.fallbackAuthChoice,
       )
     : routeKey('', '', '');
-  const selectedModelOption = (chatModelOptions ?? []).find((option) => option.value === activeAgent.defaultModel);
+  const selectedModelOption = (chatModelOptions ?? []).find((option) => option.value === activeRoutingDraft.defaultModel);
   const thinkingOptions = uniqueRoutingOptions([
     { value: '', label: 'Model default' },
     ...((selectedModelOption?.thinkingLevels?.length ? selectedModelOption.thinkingLevels : ['off', 'medium', 'high'])
@@ -387,15 +503,10 @@ export function AgentDetailPane({
           value={selectedDefaultRouteValue}
           options={modelOptions}
           onChange={(option) => {
-            if (!canEditModelRouting) return;
-            void onUpdateModelRouting?.(activeAgent, {
+            updateRoutingDraft({
               defaultModel: option.model || null,
               defaultAuthProvider: option.authProvider ?? null,
               defaultAuthChoice: option.authChoice ?? null,
-              fallbackModel: activeAgent.fallbackModel ?? null,
-              fallbackAuthProvider: activeAgent.fallbackAuthProvider ?? null,
-              fallbackAuthChoice: activeAgent.fallbackAuthChoice ?? null,
-              thinking: activeAgent.defaultThinking ?? null,
             });
           }}
         />
@@ -404,35 +515,47 @@ export function AgentDetailPane({
           value={selectedFallbackRouteValue}
           options={fallbackOptions}
           onChange={(option) => {
-            if (!canEditModelRouting) return;
-            void onUpdateModelRouting?.(activeAgent, {
-              defaultModel: activeAgent.defaultModel || null,
-              defaultAuthProvider: activeAgent.defaultAuthProvider ?? null,
-              defaultAuthChoice: activeAgent.defaultAuthChoice ?? null,
+            updateRoutingDraft({
               fallbackModel: option.model || null,
               fallbackAuthProvider: option.model ? (option.authProvider ?? null) : null,
               fallbackAuthChoice: option.model ? (option.authChoice ?? null) : null,
-              thinking: activeAgent.defaultThinking ?? null,
             });
           }}
         />
         <RoutingSelect
           label="Thinking level"
-          value={activeAgent.defaultThinking || ''}
+          value={activeRoutingDraft.thinking || ''}
           options={thinkingOptions}
           onChange={(option) => {
-            if (!canEditModelRouting) return;
-            void onUpdateModelRouting?.(activeAgent, {
-              defaultModel: activeAgent.defaultModel || null,
-              defaultAuthProvider: activeAgent.defaultAuthProvider ?? null,
-              defaultAuthChoice: activeAgent.defaultAuthChoice ?? null,
-              fallbackModel: activeAgent.fallbackModel ?? null,
-              fallbackAuthProvider: activeAgent.fallbackAuthProvider ?? null,
-              fallbackAuthChoice: activeAgent.fallbackAuthChoice ?? null,
-              thinking: option.value || null,
-            });
+            updateRoutingDraft({ thinking: option.value || null });
           }}
         />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className={cn(
+            'text-[12px] leading-5',
+            routingSaveFeedback?.tone === 'error'
+              ? 'text-rose-300'
+              : routingDirty
+                ? 'text-amber-200'
+                : routingSaveFeedback?.tone === 'success'
+                  ? 'text-emerald-300'
+                  : 'app-agent-row-meta',
+          )}
+        >
+          {routingSaveFeedback?.text ?? (routingDirty ? 'Unsaved route changes. Save when ready.' : 'Select routes instantly; saved routes run this Bridge agent.')}
+        </div>
+        <div className="flex items-center gap-2">
+          {routingDirty ? (
+            <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
+              Discard
+            </Button>
+          ) : null}
+          <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={saveRoutingDraft} disabled={!canEditModelRouting || !routingDirty || isRoutingSaving}>
+            {isRoutingSaving ? 'Saving…' : 'Save routing'}
+          </Button>
+        </div>
       </div>
     </AgentInspectorSection>
   ) : null;
