@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -51,6 +51,9 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+
+export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
+export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
@@ -267,6 +270,7 @@ export function ChatsPage({
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
+  const prefersReducedMotion = useReducedMotion();
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
@@ -298,6 +302,14 @@ export function ChatsPage({
   const bridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(bridgeRoutingAgents.length);
   const bridgeAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
   const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
+
+  useEffect(() => {
+    if (!bridgeRoutingNotice) return;
+    const timeoutId = window.setTimeout(() => {
+      setBridgeRoutingNotice(null);
+    }, BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [bridgeRoutingNotice]);
 
   const closeBridgeRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
     if (openComposerSelector?.scope === 'chat' && openComposerSelector.type === type) {
@@ -509,13 +521,24 @@ export function ChatsPage({
       </div>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
-        {activeConversationIsBridge && bridgeRoutingNotice ? (
-          <div className="mb-2 flex justify-center" role="status" aria-live="polite">
-            <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-              Private · {bridgeRoutingNotice}
-            </div>
-          </div>
-        ) : null}
+        <AnimatePresence initial={false}>
+          {activeConversationIsBridge && bridgeRoutingNotice ? (
+            <motion.div
+              key={bridgeRoutingNotice}
+              className="mb-2 flex justify-center"
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
+              transition={{ duration: prefersReducedMotion ? 0.01 : BRIDGE_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
+                Private · {bridgeRoutingNotice}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
             {filteredChatSlashCommands.length > 0 ? (

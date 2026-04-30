@@ -10,3 +10,4 @@
 - Distinguished account-backed routes such as ChatGPT subscription, OpenAI API key, Claude subscription, and Anthropic API key instead of collapsing them to a generic provider label.
 - Made Agent inspector route selection instant and local-draft based, with an explicit Save routing button so slow persistence only happens once the user commits changes.
 - Fixed a #146/#162 unread conflict where canonical Bridge sessions with both Bridge transport and local runtime sources could hide real unread badges, then keep stale local unread after the conversation was opened.
+- Made private chat routing confirmation banners auto-dismiss after two seconds with a short fade-out that respects reduced motion.

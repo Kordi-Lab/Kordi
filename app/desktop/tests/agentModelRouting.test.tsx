@@ -11,6 +11,7 @@ import {
   routingSelectionForBridgeAgent,
 } from '../src/features/bridge/agentModelRouting';
 import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
+import { BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS, BRIDGE_ROUTING_NOTICE_EXIT_MS } from '../src/pages/ChatsPage';
 import type { Agent, DesktopBridgeHost, DesktopChatState } from '../src/kordi-app/types';
 
 const hosts: DesktopBridgeHost[] = [
@@ -151,6 +152,12 @@ test('bridgeAgentRoutingChangeNotice reports only the changed private setting', 
     }),
     "Shuyang's Kordi thinking set to High. Only you can see this.",
   );
+});
+
+test('bridge routing notice auto-dismisses after two seconds with a short fade', () => {
+  assert.equal(BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS, 2000);
+  assert.ok(BRIDGE_ROUTING_NOTICE_EXIT_MS > 0);
+  assert.ok(BRIDGE_ROUTING_NOTICE_EXIT_MS <= 300);
 });
 
 test('owned agent inspector surfaces default and fallback model routing before runtime details', () => {
