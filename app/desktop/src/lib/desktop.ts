@@ -403,6 +403,26 @@ export async function updateDesktopBridgeAgentModelRouting(
   });
 }
 
+export async function updateDesktopLocalAgentModelRouting(
+  defaultModel?: string | null,
+  fallbackModel?: string | null,
+  thinking?: string | null,
+  defaultAuthProvider?: string | null,
+  defaultAuthChoice?: string | null,
+  fallbackAuthProvider?: string | null,
+  fallbackAuthChoice?: string | null,
+) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_update_local_agent_model_routing', {
+    defaultModel,
+    fallbackModel,
+    thinking,
+    defaultAuthProvider,
+    defaultAuthChoice,
+    fallbackAuthProvider,
+    fallbackAuthChoice,
+  });
+}
+
 export async function setDesktopBridgeDefaultAgent(hostId: string, agentId: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_default_agent', { hostId, agentId });
 }

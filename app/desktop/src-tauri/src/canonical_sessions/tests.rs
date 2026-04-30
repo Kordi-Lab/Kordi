@@ -1216,6 +1216,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
             ],
         }],
         local_server: crate::bridge::DesktopBridgeLocalServerStatus::default(),
+        local_agent_routing: crate::bridge::DesktopBridgeAgentRouting::default(),
     };
 
     sync_bridge_state_identities(&state).expect("sync identities");

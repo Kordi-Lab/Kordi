@@ -4,17 +4,17 @@ use std::process::Command;
 
 use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE};
 use super::{
-    add_serve_contact, bridge_hosts_match, build_bridge_state, build_current_bridge_state,
-    current_local_server_status, default_bridge_agent_label, default_bridge_agent_runtime,
-    default_bridge_api_style, default_display_name, default_endpoint, default_owner_name,
-    delete_bridge_host_secrets, delete_conversations_for_host, ensure_host_bootstrap,
-    generate_agent_id, health_check, legacy_bridge_config_path, load_bridge_store,
-    load_conversation_store, load_legacy_bridge_config, normalize_imported_bridge_host,
-    normalize_server_url, parse_imported_bridge_store, register_bridge_host, remove_serve_contact,
-    save_bridge_store, save_conversation_store, sync_host_active_agent_fields,
-    update_registered_registry_node, update_serve_discovery_mode, write_bridge_store_export,
-    DesktopBridgeAgentConfig, DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState,
-    DesktopBridgeStore,
+    add_serve_contact, apply_missing_agent_routing, bridge_hosts_match, build_bridge_state,
+    build_current_bridge_state, current_local_server_status, default_bridge_agent_label,
+    default_bridge_agent_runtime, default_bridge_api_style, default_display_name, default_endpoint,
+    default_owner_name, delete_bridge_host_secrets, delete_conversations_for_host,
+    ensure_host_bootstrap, generate_agent_id, health_check, legacy_bridge_config_path,
+    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
+    normalize_imported_bridge_host, normalize_server_url, parse_imported_bridge_store,
+    register_bridge_host, remove_serve_contact, save_bridge_store, save_conversation_store,
+    sync_host_active_agent_fields, update_registered_registry_node, update_serve_discovery_mode,
+    write_bridge_store_export, DesktopBridgeAgentConfig, DesktopBridgeAgentRouting,
+    DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
 use super::{desktop_bridge_config_path, desktop_bridge_conversations_path, korde_dir};
 
@@ -326,6 +326,10 @@ pub(super) async fn desktop_save_bridge_host_impl(
     } else {
         display_name.clone()
     };
+    apply_missing_agent_routing(
+        &mut next.agents[active_agent_index],
+        &store.local_agent_routing,
+    );
     let agent = next.agents[active_agent_index].clone();
 
     let (api_style, node_id, api_key) = if next.api_style == API_STYLE_REGISTRY
@@ -510,6 +514,7 @@ pub(super) async fn desktop_bridge_create_agent_impl(
     runtime: Option<String>,
 ) -> Result<DesktopBridgeState, String> {
     let mut store = load_bridge_store();
+    let local_agent_routing = store.local_agent_routing.clone();
     let host = store
         .hosts
         .iter_mut()
@@ -552,7 +557,7 @@ pub(super) async fn desktop_bridge_create_agent_impl(
     .await?;
 
     host.api_style = api_style;
-    host.agents.push(DesktopBridgeAgentConfig {
+    let mut agent = DesktopBridgeAgentConfig {
         id: agent_id.clone(),
         label: agent_label,
         node_id,
@@ -566,7 +571,9 @@ pub(super) async fn desktop_bridge_create_agent_impl(
         fallback_auth_provider: None,
         fallback_auth_choice: None,
         thinking: None,
-    });
+    };
+    apply_missing_agent_routing(&mut agent, &local_agent_routing);
+    host.agents.push(agent);
     host.active_agent_id = Some(agent_id);
     sync_host_active_agent_fields(host);
     save_bridge_store(&store)?;
@@ -688,6 +695,35 @@ pub(super) async fn desktop_bridge_update_agent_model_routing_impl(
     agent.fallback_auth_choice = normalize_optional_agent_setting(fallback_auth_choice);
     agent.thinking = normalize_optional_agent_setting(thinking);
     sync_host_active_agent_fields(host);
+    save_bridge_store(&store)?;
+    Ok(build_bridge_state(
+        store,
+        load_conversation_store(),
+        current_local_server_status(manager).await,
+    )
+    .await)
+}
+
+pub(super) async fn desktop_bridge_update_local_agent_model_routing_impl(
+    manager: &DesktopBridgeManager,
+    default_model: Option<String>,
+    fallback_model: Option<String>,
+    thinking: Option<String>,
+    default_auth_provider: Option<String>,
+    default_auth_choice: Option<String>,
+    fallback_auth_provider: Option<String>,
+    fallback_auth_choice: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    let mut store = load_bridge_store();
+    store.local_agent_routing = DesktopBridgeAgentRouting {
+        default_model: normalize_optional_agent_setting(default_model),
+        default_auth_provider: normalize_optional_agent_setting(default_auth_provider),
+        default_auth_choice: normalize_optional_agent_setting(default_auth_choice),
+        fallback_model: normalize_optional_agent_setting(fallback_model),
+        fallback_auth_provider: normalize_optional_agent_setting(fallback_auth_provider),
+        fallback_auth_choice: normalize_optional_agent_setting(fallback_auth_choice),
+        thinking: normalize_optional_agent_setting(thinking),
+    };
     save_bridge_store(&store)?;
     Ok(build_bridge_state(
         store,

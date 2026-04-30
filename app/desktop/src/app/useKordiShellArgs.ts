@@ -113,6 +113,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleActivateBridgeAgent: args.handleActivateBridgeAgent,
       handleSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
       handleUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
+      handleUpdateLocalAgentModelRouting: args.handleUpdateLocalAgentModelRouting,
       handleRemoveBridgeContact: args.handleRemoveBridgeContact,
       handleBridgeWizardPrimary: args.handleBridgeWizardPrimary,
       settingsRailWidth: args.settingsRailWidth,

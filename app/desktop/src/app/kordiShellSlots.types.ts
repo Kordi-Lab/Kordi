@@ -173,6 +173,15 @@ export type AssembleKordiShellSlotsArgs = {
     fallbackAuthProvider?: string | null,
     fallbackAuthChoice?: string | null,
   ) => Promise<void>;
+  handleUpdateLocalAgentModelRouting: (
+    defaultModel?: string | null,
+    fallbackModel?: string | null,
+    thinking?: string | null,
+    defaultAuthProvider?: string | null,
+    defaultAuthChoice?: string | null,
+    fallbackAuthProvider?: string | null,
+    fallbackAuthChoice?: string | null,
+  ) => Promise<void>;
   handleRemoveBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   handleBridgeWizardPrimary: () => Promise<void>;
 
@@ -401,6 +410,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleActivateBridgeAgent'
   | 'handleSetDefaultBridgeAgent'
   | 'handleUpdateBridgeAgentModelRouting'
+  | 'handleUpdateLocalAgentModelRouting'
   | 'handleRemoveBridgeContact'
   | 'handleBridgeWizardPrimary'
   | 'settingsRailWidth'

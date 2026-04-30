@@ -1,4 +1,4 @@
-export { ComposerMentionMenu, ComposerModeControl, ComposerModelControls, ComposerRuntimeStatus, ComposerSlashMenu } from './components/composer';
+export { ComposerMentionMenu, ComposerModeControl, ComposerModelControls, ComposerRuntimeStatus, ComposerSlashMenu, composerThinkingLabel, fallbackComposerThinkingValue } from './components/composer';
 export type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from './components/composer';
 export { MarkdownCodeBlock, MarkdownContent } from './components/markdown';
 export { SettingsValueControl } from './components/settings';

@@ -603,6 +603,7 @@ fn persisted_row_reconcile_path_repairs_split_session_relay_rows() {
 fn bridge_store_export_redacts_api_keys() {
     let store = DesktopBridgeStore {
         active_host_id: Some("host-1".to_string()),
+        local_agent_routing: Default::default(),
         hosts: vec![DesktopBridgeHostConfig {
             id: "host-1".to_string(),
             coordination: "https://bridge.example.com".to_string(),
@@ -661,6 +662,7 @@ fn bridge_store_export_redacts_api_keys() {
 fn hydrate_bridge_store_secrets_restores_redacted_config() {
     let mut store = DesktopBridgeStore {
         active_host_id: Some("host-1".to_string()),
+        local_agent_routing: Default::default(),
         hosts: vec![DesktopBridgeHostConfig {
             id: "host-1".to_string(),
             coordination: "https://bridge.example.com".to_string(),

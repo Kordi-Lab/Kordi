@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
-import type { ComposerModelOption, ComposerProviderOption } from '../components';
+import { composerThinkingLabel, fallbackComposerThinkingValue, type ComposerModelOption, type ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
 import { AgentConfigList, AgentInspectorSection } from './shared';
@@ -177,9 +177,41 @@ function modelOptionLabel(option: ComposerModelOption) {
 }
 
 function normalizeRoutingProviderId(value?: string | null) {
-  const normalized = value?.trim().toLowerCase();
+  const normalized = value?.trim().toLowerCase().replace(/[\s_]+/g, '-');
   if (!normalized) return '';
-  return normalized === 'openai-codex' ? 'openai' : normalized;
+  if (['openai-codex', 'openai-api', 'openai-api-key', 'chatgpt', 'chatgpt-account'].includes(normalized)) return 'openai';
+  if (['claude', 'claude-subscription', 'anthropic-api', 'anthropic-api-key'].includes(normalized)) return 'anthropic';
+  return normalized;
+}
+
+function modelIdFromOption(option: ComposerModelOption) {
+  const provider = option.provider?.trim();
+  if (provider && option.value.startsWith(`${provider}/`)) {
+    return option.value.slice(provider.length + 1);
+  }
+  const [, ...modelParts] = option.value.split('/');
+  return modelParts.join('/') || option.value;
+}
+
+function modelValueMatchesOption(option: ComposerModelOption, modelValue: string) {
+  const compact = modelValue.trim();
+  return option.value === compact || option.label === compact || modelIdFromOption(option) === compact;
+}
+
+function resolveRoutingModelValue(modelValue: string | null | undefined, providerHint: string | null | undefined, modelOptions: ComposerModelOption[]) {
+  const compact = compactRoutingValue(modelValue);
+  if (!compact) return null;
+  if (modelOptions.some((option) => option.value === compact)) return compact;
+
+  const matches = modelOptions.filter((option) => modelValueMatchesOption(option, compact));
+  const normalizedProviderHint = normalizeRoutingProviderId(providerHint);
+  const providerMatches = normalizedProviderHint
+    ? matches.filter((option) => normalizeRoutingProviderId(option.provider ?? option.value.split('/')[0]) === normalizedProviderHint)
+    : [];
+
+  if (providerMatches.length === 1) return providerMatches[0]?.value ?? compact;
+  if (matches.length === 1) return matches[0]?.value ?? compact;
+  return compact;
 }
 
 function authChoiceFromProviderOption(option: ComposerProviderOption) {
@@ -253,7 +285,8 @@ function buildRouteOptions({
 
   if (currentModel?.trim()) {
     const currentKey = routeKey(currentModel, currentAuthProvider, currentAuthChoice);
-    if (!options.some((option) => option.value === currentKey)) {
+    const hasKnownModelRoute = options.some((option) => option.model === currentModel);
+    if (!hasKnownModelRoute && !options.some((option) => option.value === currentKey)) {
       options.push({
         value: currentKey,
         label: currentModel,
@@ -418,8 +451,19 @@ export function AgentDetailPane({
   const exposesLoadedPlugins = activeAgent.exposesLoadedPlugins !== false;
   const selectedFilePath = activeDetail?.kind === 'file' ? activeDetail.path : null;
   const activeRoutingDraft = routingDraft.agentId === activeAgent.id ? routingDraft : persistedRoutingDraft;
-  const routingDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
-  const canEditModelRouting = Boolean(activeAgent.isOwned && activeAgent.bridgeHostId && activeAgent.bridgeAgentId && onUpdateModelRouting);
+  const canEditModelRouting = Boolean(activeAgent.isOwned && onUpdateModelRouting);
+  const routingPersistsToBridge = Boolean(activeAgent.bridgeHostId && activeAgent.bridgeAgentId);
+  const routeModelOptions = chatModelOptions ?? [];
+  const resolvedDefaultModel = resolveRoutingModelValue(
+    activeRoutingDraft.defaultModel,
+    activeRoutingDraft.defaultAuthProvider ?? activeAgent.defaultProvider,
+    routeModelOptions,
+  );
+  const resolvedFallbackModel = resolveRoutingModelValue(
+    activeRoutingDraft.fallbackModel,
+    activeRoutingDraft.fallbackAuthProvider,
+    routeModelOptions,
+  );
   const updateRoutingDraft = (patch: Partial<ModelRoutingDraft>) => {
     if (!canEditModelRouting) return;
     setRoutingDraft((current) => ({
@@ -430,17 +474,17 @@ export function AgentDetailPane({
     setRoutingSaveFeedback(null);
   };
   const saveRoutingDraft = () => {
-    if (!canEditModelRouting || !routingDirty || isRoutingSaving) return;
+    if (!canEditModelRouting || !routingSaveDirty || isRoutingSaving) return;
     setIsRoutingSaving(true);
     setRoutingSaveFeedback(null);
     void Promise.resolve(onUpdateModelRouting?.(activeAgent, {
-      defaultModel: activeRoutingDraft.defaultModel,
-      defaultAuthProvider: activeRoutingDraft.defaultAuthProvider,
-      defaultAuthChoice: activeRoutingDraft.defaultAuthChoice,
-      fallbackModel: activeRoutingDraft.fallbackModel,
-      fallbackAuthProvider: activeRoutingDraft.fallbackAuthProvider,
-      fallbackAuthChoice: activeRoutingDraft.fallbackAuthChoice,
-      thinking: activeRoutingDraft.thinking,
+      defaultModel: effectiveRoutingDraft.defaultModel,
+      defaultAuthProvider: effectiveRoutingDraft.defaultAuthProvider,
+      defaultAuthChoice: effectiveRoutingDraft.defaultAuthChoice,
+      fallbackModel: effectiveRoutingDraft.fallbackModel,
+      fallbackAuthProvider: effectiveRoutingDraft.fallbackAuthProvider,
+      fallbackAuthChoice: effectiveRoutingDraft.fallbackAuthChoice,
+      thinking: effectiveRoutingDraft.thinking,
     }))
       .then(() => {
         setRoutingSaveFeedback({ tone: 'success', text: 'Routing saved.' });
@@ -458,44 +502,66 @@ export function AgentDetailPane({
   };
   const authOptions = routingAuthOptions(composerProviderOptions);
   const modelOptions = buildRouteOptions({
-    models: chatModelOptions ?? [],
+    models: routeModelOptions,
     authOptions,
-    currentModel: activeRoutingDraft.defaultModel,
+    currentModel: resolvedDefaultModel,
     currentAuthProvider: activeRoutingDraft.defaultAuthProvider,
     currentAuthChoice: activeRoutingDraft.defaultAuthChoice,
   });
   const fallbackOptions = buildRouteOptions({
-    models: chatModelOptions ?? [],
+    models: routeModelOptions,
     authOptions,
-    currentModel: activeRoutingDraft.fallbackModel,
+    currentModel: resolvedFallbackModel,
     currentAuthProvider: activeRoutingDraft.fallbackAuthProvider,
     currentAuthChoice: activeRoutingDraft.fallbackAuthChoice,
     includeNoFallback: true,
   });
   const selectedDefaultRouteValue = selectedRouteValue(
     modelOptions,
-    activeRoutingDraft.defaultModel,
+    resolvedDefaultModel,
     activeRoutingDraft.defaultAuthProvider,
     activeRoutingDraft.defaultAuthChoice,
   );
-  const selectedFallbackRouteValue = activeRoutingDraft.fallbackModel
+  const selectedFallbackRouteValue = resolvedFallbackModel
     ? selectedRouteValue(
         fallbackOptions,
-        activeRoutingDraft.fallbackModel,
+        resolvedFallbackModel,
         activeRoutingDraft.fallbackAuthProvider,
         activeRoutingDraft.fallbackAuthChoice,
       )
     : routeKey('', '', '');
-  const selectedModelOption = (chatModelOptions ?? []).find((option) => option.value === activeRoutingDraft.defaultModel);
+  const selectedDefaultRoute = modelOptions.find((option) => option.value === selectedDefaultRouteValue) ?? null;
+  const selectedFallbackRoute = fallbackOptions.find((option) => option.value === selectedFallbackRouteValue) ?? null;
+  const selectedModelOption = routeModelOptions.find((option) => option.value === resolvedDefaultModel);
+  const selectedThinkingLevels = selectedModelOption?.thinkingLevels?.length ? selectedModelOption.thinkingLevels : ['off', 'medium', 'high'];
   const thinkingOptions = uniqueRoutingOptions([
     { value: '', label: 'Model default' },
-    ...((selectedModelOption?.thinkingLevels?.length ? selectedModelOption.thinkingLevels : ['off', 'medium', 'high'])
-      .map((level) => ({ value: level, label: level[0]?.toUpperCase() + level.slice(1) }))),
+    ...(selectedThinkingLevels.map((level) => ({ value: level, label: composerThinkingLabel(level) }))),
   ]);
+  const selectedThinkingValue = activeRoutingDraft.thinking
+    ? fallbackComposerThinkingValue(selectedThinkingLevels, activeRoutingDraft.thinking)
+    : '';
+  const effectiveRoutingDraft: ModelRoutingDraft = {
+    ...activeRoutingDraft,
+    defaultModel: selectedDefaultRoute?.model ?? resolvedDefaultModel,
+    defaultAuthProvider: selectedDefaultRoute?.model ? (selectedDefaultRoute.authProvider ?? null) : (activeRoutingDraft.defaultAuthProvider ?? null),
+    defaultAuthChoice: selectedDefaultRoute?.model ? (selectedDefaultRoute.authChoice ?? null) : (activeRoutingDraft.defaultAuthChoice ?? null),
+    fallbackModel: resolvedFallbackModel ? (selectedFallbackRoute?.model ?? resolvedFallbackModel) : null,
+    fallbackAuthProvider: resolvedFallbackModel ? (selectedFallbackRoute?.model ? (selectedFallbackRoute.authProvider ?? null) : (activeRoutingDraft.fallbackAuthProvider ?? null)) : null,
+    fallbackAuthChoice: resolvedFallbackModel ? (selectedFallbackRoute?.model ? (selectedFallbackRoute.authChoice ?? null) : (activeRoutingDraft.fallbackAuthChoice ?? null)) : null,
+    thinking: selectedThinkingValue || null,
+  };
+  const routingDraftDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
+  const routingSaveDirty = !sameRoutingDraft(effectiveRoutingDraft, persistedRoutingDraft);
+  const routingIdleCopy = routingPersistsToBridge
+    ? 'Select routes instantly; saved routes run this Bridge agent.'
+    : 'Saved locally until this agent is connected to Bridge; connected Bridge agents inherit it.';
   const modelRoutingSection = activeAgent.isOwned ? (
-    <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned Bridge agent. These choices are private and not announced in shared chat history.">
+    <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
       <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
-        Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.
+        {routingPersistsToBridge
+          ? 'Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.'
+          : 'Choose the default and fallback now. Saved locally until this agent is connected to Bridge, then the connected Bridge agent inherits the same routing.'}
       </div>
       <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
         <RoutingSelect
@@ -524,7 +590,7 @@ export function AgentDetailPane({
         />
         <RoutingSelect
           label="Thinking level"
-          value={activeRoutingDraft.thinking || ''}
+          value={selectedThinkingValue}
           options={thinkingOptions}
           onChange={(option) => {
             updateRoutingDraft({ thinking: option.value || null });
@@ -537,22 +603,22 @@ export function AgentDetailPane({
             'text-[12px] leading-5',
             routingSaveFeedback?.tone === 'error'
               ? 'text-rose-300'
-              : routingDirty
+              : routingSaveDirty
                 ? 'text-amber-200'
                 : routingSaveFeedback?.tone === 'success'
                   ? 'text-emerald-300'
                   : 'app-agent-row-meta',
           )}
         >
-          {routingSaveFeedback?.text ?? (routingDirty ? 'Unsaved route changes. Save when ready.' : 'Select routes instantly; saved routes run this Bridge agent.')}
+          {routingSaveFeedback?.text ?? (routingSaveDirty ? 'Unsaved route changes. Save when ready.' : routingIdleCopy)}
         </div>
         <div className="flex items-center gap-2">
-          {routingDirty ? (
+          {routingDraftDirty ? (
             <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
               Discard
             </Button>
           ) : null}
-          <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={saveRoutingDraft} disabled={!canEditModelRouting || !routingDirty || isRoutingSaving}>
+          <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={saveRoutingDraft} disabled={!canEditModelRouting || !routingSaveDirty || isRoutingSaving}>
             {isRoutingSaving ? 'Saving…' : 'Save routing'}
           </Button>
         </div>
@@ -717,22 +783,6 @@ export function AgentDetailPane({
               )}
             </AgentInspectorSection>
           </div>
-
-          <AgentInspectorSection title="Identity metadata">
-            <div className="app-agent-inner-list overflow-hidden rounded-[14px] border">
-              {[
-                ['Default provider', activeAgent.defaultProvider],
-                ['Default model', activeAgent.defaultModel],
-                ['Bridge config', activeAgent.bridgesConfig],
-                ['Contact ID', activeAgent.contactId],
-              ].map(([label, value], index) => (
-                <div key={label} className={cn('app-agent-inner-list-row flex items-start justify-between gap-3 px-3 py-2.5 text-[12px]', index > 0 && 'border-t')}>
-                  <div className="app-agent-row-meta">{label}</div>
-                  <div className="app-agent-row-title max-w-[60%] min-w-0 break-words text-right">{value}</div>
-                </div>
-              ))}
-            </div>
-          </AgentInspectorSection>
 
           <EditHistorySection entries={activePersistedConfig?.editHistory ?? []} />
 

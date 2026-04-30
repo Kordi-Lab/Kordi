@@ -476,6 +476,7 @@ pub(in crate::bridge) fn parse_imported_bridge_store(
     if let Ok(host) = serde_json::from_str::<DesktopBridgeHostConfig>(raw) {
         return Ok(DesktopBridgeStore {
             active_host_id: Some(host.id.clone()),
+            local_agent_routing: Default::default(),
             hosts: vec![host],
         });
     }
@@ -483,6 +484,7 @@ pub(in crate::bridge) fn parse_imported_bridge_store(
         let active_host_id = hosts.first().map(|host| host.id.clone());
         return Ok(DesktopBridgeStore {
             active_host_id,
+            local_agent_routing: Default::default(),
             hosts,
         });
     }
@@ -490,6 +492,7 @@ pub(in crate::bridge) fn parse_imported_bridge_store(
         let host = imported_legacy_host(legacy);
         return Ok(DesktopBridgeStore {
             active_host_id: Some(host.id.clone()),
+            local_agent_routing: Default::default(),
             hosts: vec![host],
         });
     }
@@ -566,6 +569,7 @@ pub(in crate::bridge) fn load_bridge_store() -> DesktopBridgeStore {
         let host = imported_legacy_host(legacy);
         let store = DesktopBridgeStore {
             active_host_id: Some(host.id.clone()),
+            local_agent_routing: Default::default(),
             hosts: vec![host],
         };
         let _ = save_bridge_store(&store);

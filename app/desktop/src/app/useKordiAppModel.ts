@@ -598,6 +598,7 @@ export function useKordiAppModel() {
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,
     handleUpdateBridgeAgentModelRouting,
+    handleUpdateLocalAgentModelRouting,
     handleStartLocalBridgeHost,
     handleStopLocalBridgeHost,
   } = useBridgeOrchestration({
@@ -1013,6 +1014,7 @@ export function useKordiAppModel() {
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,
     handleUpdateBridgeAgentModelRouting,
+    handleUpdateLocalAgentModelRouting,
     activeAgentId: agentsUi.activeAgentId,
     setActiveAgentId: agentsUi.setActiveAgentId,
     activeAgent,

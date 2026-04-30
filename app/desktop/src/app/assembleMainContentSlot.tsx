@@ -109,7 +109,17 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         chatModelOptions: args.chatModelOptions,
         composerProviderOptions: args.composerProviderOptions,
         onUpdateAgentModelRouting: (agent, values) => {
-          if (!agent.bridgeHostId || !agent.bridgeAgentId) return;
+          if (!agent.bridgeHostId || !agent.bridgeAgentId) {
+            return args.handleUpdateLocalAgentModelRouting(
+              values.defaultModel,
+              values.fallbackModel,
+              values.thinking,
+              values.defaultAuthProvider,
+              values.defaultAuthChoice,
+              values.fallbackAuthProvider,
+              values.fallbackAuthChoice,
+            );
+          }
           return args.handleUpdateBridgeAgentModelRouting(
             agent.bridgeHostId,
             agent.bridgeAgentId,

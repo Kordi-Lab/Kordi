@@ -183,6 +183,7 @@ pub(super) async fn build_bridge_state(
         hosts,
         conversations,
         local_server,
+        local_agent_routing: store.local_agent_routing,
     }
 }
 
@@ -212,6 +213,7 @@ pub(super) fn build_conversation_only_bridge_state(
         hosts: Vec::new(),
         conversations,
         local_server,
+        local_agent_routing: store.local_agent_routing,
     }
 }
 
