@@ -590,8 +590,21 @@ export async function sendDesktopChatMessage(sessionId: string, text: string) {
   return invokeDesktop<DesktopChatState>('desktop_chat_send_message', { sessionId, text });
 }
 
+export type DesktopStoredChatAttachment = {
+  path: string;
+  name: string;
+  kind: 'image' | 'file' | string;
+  mimeType?: string | null;
+  formatLabel?: string | null;
+  sizeBytes?: number | null;
+};
+
 export async function storeDesktopChatAttachment(name: string, data: number[]) {
   return invokeDesktop<string>('desktop_chat_store_attachment', { name, data });
+}
+
+export async function storeDesktopChatAttachmentPath(path: string, name?: string | null) {
+  return invokeDesktop<DesktopStoredChatAttachment>('desktop_chat_store_attachment_path', { path, name: name ?? null });
 }
 
 export async function startDesktopChatMessage(sessionId: string, text: string, attachmentPaths: string[] = []) {

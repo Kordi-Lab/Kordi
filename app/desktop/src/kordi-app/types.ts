@@ -574,6 +574,9 @@ export type DesktopChatAttachment = {
   name: string;
   formatLabel?: string | null;
   previewUrl?: string | null;
+  mimeType?: string | null;
+  localPath?: string | null;
+  sizeBytes?: number | null;
 };
 
 export type DesktopChatMessage = {

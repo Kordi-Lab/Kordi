@@ -152,6 +152,12 @@ pub struct DesktopChatAttachment {
     pub format_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2014,6 +2020,27 @@ fn attachment_name_from_path(path: &str) -> String {
         .to_string()
 }
 
+fn attachment_mime_type_from_path(path: &str) -> Option<String> {
+    match std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => Some("image/png".to_string()),
+        Some("jpg" | "jpeg") => Some("image/jpeg".to_string()),
+        Some("gif") => Some("image/gif".to_string()),
+        Some("webp") => Some("image/webp".to_string()),
+        Some("bmp") => Some("image/bmp".to_string()),
+        Some("svg") => Some("image/svg+xml".to_string()),
+        Some("pdf") => Some("application/pdf".to_string()),
+        Some("json") => Some("application/json".to_string()),
+        Some("zip") => Some("application/zip".to_string()),
+        Some("txt" | "md" | "log") => Some("text/plain".to_string()),
+        _ => None,
+    }
+}
+
 fn attachment_metadata_from_path(path: &str) -> DesktopChatAttachment {
     DesktopChatAttachment {
         kind: if attachment_is_image(path) {
@@ -2024,6 +2051,9 @@ fn attachment_metadata_from_path(path: &str) -> DesktopChatAttachment {
         name: attachment_name_from_path(path),
         format_label: attachment_format_label_from_path(path),
         preview_url: None,
+        mime_type: attachment_mime_type_from_path(path),
+        local_path: Some(path.to_string()),
+        size_bytes: std::fs::metadata(path).ok().map(|metadata| metadata.len()),
     }
 }
 
@@ -2095,6 +2125,9 @@ fn image_attachments_from_blocks(blocks: &[ContentBlock]) -> Vec<DesktopChatAtta
                     .map(|value| value.trim().to_ascii_uppercase())
                     .filter(|value| !value.is_empty()),
                 preview_url: Some(format!("data:{mime_type};base64,{data}")),
+                mime_type: Some(mime_type.to_string()),
+                local_path: None,
+                size_bytes: None,
             }),
             _ => None,
         })
@@ -2128,6 +2161,9 @@ fn merge_attachment_metadata(
                     },
                     format_label: attachment.format_label.or(preview.format_label),
                     preview_url: preview.preview_url,
+                    mime_type: attachment.mime_type.or(preview.mime_type),
+                    local_path: attachment.local_path.or(preview.local_path),
+                    size_bytes: attachment.size_bytes.or(preview.size_bytes),
                 });
             } else {
                 merged.push(attachment);
@@ -2867,6 +2903,26 @@ mod tests {
 
     fn lm_studio_settings() -> Settings {
         local_provider_settings("lm-studio", "http://localhost:1234/v1")
+    }
+
+    #[test]
+    fn attachment_metadata_from_path_includes_size_local_path_and_mime_type() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "kordi-attachment-test-{}.png",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, b"png-bytes")?;
+
+        let metadata = attachment_metadata_from_path(path.to_str().expect("temp path is utf-8"));
+
+        assert_eq!(metadata.kind, "image");
+        assert_eq!(metadata.format_label.as_deref(), Some("PNG"));
+        assert_eq!(metadata.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(metadata.local_path.as_deref(), path.to_str());
+        assert_eq!(metadata.size_bytes, Some(9));
+
+        std::fs::remove_file(path)?;
+        Ok(())
     }
 
     #[test]
