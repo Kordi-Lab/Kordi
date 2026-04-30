@@ -801,6 +801,83 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
 }
 
 #[test]
+fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:bridge-final".to_string()),
+            session_id: "session:bridge:humans:test".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "I’ll check current web weather info for Thuwal today and summarize it.Today in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+            content: Some(serde_json::json!({
+                "sender": "My Kordi",
+                "timeLabel": "13:37",
+                "thinkingText": null,
+                "tools": [],
+            })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            source_transport: Some("desktop-bridge-session-relay".to_string()),
+            source_event_id: Some("bridge-response-1".to_string()),
+            created_at_ms: Some(1_000),
+        },
+    )
+    .expect("seed bridge response");
+
+    let desktop_message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("My Kordi".to_string()),
+        text: "I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+        detail: None,
+        time_label: "13:37".to_string(),
+        timestamp_ms: 1_100,
+        thinking_text: Some("local reasoning trace".to_string()),
+        tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
+            id: "tool-1".to_string(),
+            name: "web_fetch".to_string(),
+            status: "complete".to_string(),
+            arguments: "{}".to_string(),
+            live_output: String::new(),
+            result_text: Some("weather".to_string()),
+            detail: None,
+            is_error: false,
+        }],
+        attachments: Vec::new(),
+        failed: false,
+    };
+
+    assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
+        &conn,
+        "session:bridge:humans:test",
+        &desktop_message.text,
+        1_100,
+        30_000,
+        &desktop_message,
+    )
+    .expect("enrich whitespace-collapsed bridge response"));
+
+    let (content_text, thinking, tool_count): (String, String, i64) = conn
+        .query_row(
+            "SELECT content_text,
+                    json_extract(content_json, '$.thinkingText'),
+                    json_array_length(json_extract(content_json, '$.tools'))
+             FROM session_messages
+             WHERE id = 'msg:bridge-final'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read enriched response");
+
+    assert_eq!(content_text, desktop_message.text);
+    assert_eq!(thinking, "local reasoning trace");
+    assert_eq!(tool_count, 1);
+}
+
+#[test]
 fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_details() {
     let conn = test_conn();
     append_message_in_db(

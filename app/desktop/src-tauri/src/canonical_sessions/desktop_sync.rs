@@ -7,6 +7,7 @@ use super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::{
     local_agent_identity_id, local_profile_human_identity_id, open_db,
     open_or_create_session_in_db, select_session, similar_agent_message_exists,
+    similar_agent_message_text,
 };
 
 fn canonical_desktop_message_source_event_id(
@@ -129,24 +130,38 @@ pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
     match_window_ms: i64,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> Result<bool, String> {
-    let Some((message_id, content_json)) = conn
-        .query_row(
-            "SELECT id, content_json
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, content_json, content_text
              FROM session_messages
              WHERE session_id = ?1
                AND message_kind = 'agent-turn'
                AND sender_role IN ('owned-agent', 'external-agent')
-               AND content_text = ?2
                AND source_transport = 'desktop-bridge-session-relay'
-               AND ABS(created_at_ms - ?3) <= ?4
-             ORDER BY ABS(created_at_ms - ?3) ASC, sequence_num DESC
-             LIMIT 1",
-            rusqlite::params![session_id, content_text, created_at_ms, match_window_ms],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+               AND ABS(created_at_ms - ?2) <= ?3
+             ORDER BY ABS(created_at_ms - ?2) ASC, sequence_num DESC",
         )
-        .optional()
-        .map_err(|err| err.to_string())?
-    else {
+        .map_err(|err| err.to_string())?;
+    let mut rows = stmt
+        .query(rusqlite::params![
+            session_id,
+            created_at_ms,
+            match_window_ms
+        ])
+        .map_err(|err| err.to_string())?;
+    let mut match_record: Option<(String, Option<String>)> = None;
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        let candidate_text: String = row.get(2).map_err(|err| err.to_string())?;
+        if similar_agent_message_text(&candidate_text, content_text) {
+            match_record = Some((
+                row.get::<_, String>(0).map_err(|err| err.to_string())?,
+                row.get::<_, Option<String>>(1)
+                    .map_err(|err| err.to_string())?,
+            ));
+            break;
+        }
+    }
+    let Some((message_id, content_json)) = match_record else {
         return Ok(false);
     };
 

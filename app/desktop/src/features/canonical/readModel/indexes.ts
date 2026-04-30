@@ -89,6 +89,18 @@ function ownedAgentRuntimeRichness(message: CanonicalSessionMessage) {
   return tools * 10 + thinking + active;
 }
 
+function comparableOwnedAgentResponseText(value: string) {
+  return value.trim().replace(/\s+/gu, '');
+}
+
+function sameOwnedAgentResponseText(left: string, right: string) {
+  const leftTrimmed = left.trim();
+  const rightTrimmed = right.trim();
+  if (!leftTrimmed || !rightTrimmed) return false;
+  return leftTrimmed === rightTrimmed
+    || comparableOwnedAgentResponseText(leftTrimmed) === comparableOwnedAgentResponseText(rightTrimmed);
+}
+
 function sameOwnedAgentResponse(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
   return left.sessionId === right.sessionId
     && left.senderIdentityId === right.senderIdentityId
@@ -96,7 +108,7 @@ function sameOwnedAgentResponse(left: CanonicalSessionMessage, right: CanonicalS
     && right.senderRole === 'owned-agent'
     && left.messageKind === 'agent-turn'
     && right.messageKind === 'agent-turn'
-    && left.contentText.trim() === right.contentText.trim()
+    && sameOwnedAgentResponseText(left.contentText, right.contentText)
     && Math.abs(left.createdAtMs - right.createdAtMs) <= 30_000;
 }
 
