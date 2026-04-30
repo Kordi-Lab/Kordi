@@ -71,6 +71,11 @@ pub(in crate::bridge::storage) fn merge_conversation_message_records(
             .or_else(|| older.request_id.clone()),
         delivery_state,
         outreach,
+        attachments: if newer.attachments.is_empty() {
+            older.attachments.clone()
+        } else {
+            newer.attachments.clone()
+        },
     }
 }
 

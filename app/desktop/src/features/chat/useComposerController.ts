@@ -19,6 +19,7 @@ export function useComposerController(args: UseComposerControllerArgs) {
     selectComposerProviderChoice: inputActions.selectComposerProviderChoice,
     updateComposerDraft: inputActions.updateComposerDraft,
     saveDesktopAttachments: inputActions.saveDesktopAttachments,
+    saveDesktopAttachmentPaths: inputActions.saveDesktopAttachmentPaths,
     removeChatComposerAttachment: inputActions.removeChatComposerAttachment,
     setChatComposerText: inputActions.setChatComposerText,
     setProjectComposerText: inputActions.setProjectComposerText,

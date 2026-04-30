@@ -66,6 +66,9 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("main window should exist");
             window.set_title("Kordi")?;
+            if let Err(err) = chat::allow_attachment_asset_scope(app) {
+                eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
+            }
             let bridge_manager = app.state::<DesktopBridgeManager>();
             tauri::async_runtime::block_on(bridge::set_bridge_app_handle(
                 &bridge_manager,
@@ -155,6 +158,7 @@ pub fn run() {
             auth::ollama::desktop_ollama_stop_model,
             auth::ollama::desktop_ollama_delete_model,
             chat::desktop_chat_store_attachment,
+            chat::desktop_chat_download_attachment,
             chat::desktop_chat_artifact_preview,
             chat::desktop_chat_artifact_directory,
             chat::desktop_chat_state,

@@ -20,7 +20,17 @@ export function toOptimisticAttachments(attachments: AttachmentItem[]) {
     name: attachment.name,
     formatLabel: attachment.formatLabel,
     previewUrl: attachment.previewUrl,
+    mimeType: attachment.mimeType,
+    localPath: attachment.path,
+    sizeBytes: attachment.sizeBytes,
   }));
+}
+
+export function bridgeAttachmentTransportFields(attachments: AttachmentItem[]) {
+  return {
+    attachmentPaths: attachments.map((attachment) => attachment.path),
+    attachmentNames: attachments.map((attachment) => attachment.name),
+  };
 }
 
 export function optimisticSessionTitleFromMessage(messageText: string, attachments: AttachmentItem[], fallbackTitle: string) {
@@ -145,6 +155,8 @@ export function appendOptimisticBridgeMessage(
   text: string,
   sentAt: string,
   optimisticMessageId: string,
+  attachments: AttachmentItem[] = [],
+  subtitleText = text,
 ): DesktopBridgeState | null {
   if (!current) return current;
 
@@ -153,7 +165,7 @@ export function appendOptimisticBridgeMessage(
     if (conversation.id !== conversationId) return conversation;
     return {
       ...conversation,
-      subtitle: text,
+      subtitle: subtitleText,
       updatedAtMs: timestampMs,
       updatedAtLabel: sentAt,
       awaitingReply: isBridgeAgentRuntime(conversation.peerRuntime),
@@ -167,6 +179,7 @@ export function appendOptimisticBridgeMessage(
           timeLabel: sentAt,
           timestampMs,
           deliveryState: 'sending',
+          attachments: toOptimisticAttachments(attachments),
         },
       ],
     };

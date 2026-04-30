@@ -33,6 +33,7 @@ import {
   appendOptimisticBridgeMessage,
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
+  bridgeAttachmentTransportFields,
   findBridgeConversationForTarget,
   markOptimisticBridgeMessageFailed,
   persistCanonicalUserMessage,
@@ -116,7 +117,7 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const mentionedTarget = chatComposerAttachments.length === 0 ? resolveMentionedBridgeTarget(text, desktopBridgeState) : null;
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState);
 
     if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
       try {
@@ -125,6 +126,7 @@ export function useChatMessageActions({
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
         setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const sentAt = formatDesktopEventTime();
         const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
@@ -135,7 +137,7 @@ export function useChatMessageActions({
           parentSessionId,
           canonicalHumanIdentityId,
           text,
-          [],
+          chatComposerAttachments,
           sentAt,
           'desktop-bridge-ui',
           'sent',
@@ -167,6 +169,7 @@ export function useChatMessageActions({
             parentMessageId,
             projectId: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.root,
             projectName: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.name,
+            ...bridgeAttachmentTransportFields(chatComposerAttachments),
           }))
           .then((nextState) => {
             if (mentionedTarget.targetKind === 'bridge-agent') {
@@ -214,11 +217,9 @@ export function useChatMessageActions({
     }
 
     if ((activeConversationIsBridge || activeConvBridgeTarget) && !mentionsLocalAgent(text, desktopChatState, desktopBridgeState)) {
-      if (chatComposerAttachments.length > 0) {
-        setDesktopChatError('Bridge chats do not support attachments yet.');
-        return;
-      }
       const sentAt = formatDesktopEventTime();
+      const previewText = attachmentSummaryText(text);
+      const bridgeMessageText = text;
       const optimisticMessageId = `bridge-pending-${Date.now()}`;
       const hasMaterializedBridgeConversation = activeConversationIsBridge && activeConvId.startsWith('bridge:');
       const existingTargetConversation = activeConvBridgeTarget && desktopBridgeState
@@ -258,14 +259,15 @@ export function useChatMessageActions({
           activeConvCanonicalSessionId ?? targetConversationId,
           canonicalHumanIdentityId,
           text,
-          [],
+          chatComposerAttachments,
           sentAt,
           'desktop-bridge-ui',
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, text, sentAt, optimisticMessageId));
+        setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
         setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const resolvedConversationId = targetConversationId;
         void persistCanonicalUserMessage(preparedCanonicalMessage)
@@ -278,7 +280,7 @@ export function useChatMessageActions({
                 hostId: activeConvBridgeTarget.hostId,
                 targetNodeId: activeConvBridgeTarget.nodeId,
                 targetKind: 'bridge-person',
-                requestText: text,
+                requestText: bridgeMessageText,
                 targetDisplayName: activeConvBridgeTarget.displayName ?? activeConvBridgeTarget.ownerName ?? null,
                 targetOwnerName: activeConvBridgeTarget.ownerName ?? activeConvBridgeTarget.displayName ?? null,
                 targetRuntime: 'person',
@@ -294,9 +296,10 @@ export function useChatMessageActions({
                 parentMessageId: preparedCanonicalMessage?.messageId ?? null,
                 projectId: null,
                 projectName: null,
+                ...bridgeAttachmentTransportFields(chatComposerAttachments),
               });
             }
-            return sendDesktopBridgeMessage(resolvedConversationId, text);
+            return sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
           })
           .then((nextState) => {
             setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
@@ -363,6 +366,7 @@ export function useChatMessageActions({
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
         setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const parentSessionId = await ensureLocalSessionId();
         const sentAt = formatDesktopEventTime();
@@ -370,7 +374,7 @@ export function useChatMessageActions({
           parentSessionId,
           canonicalHumanIdentityId,
           text,
-          [],
+          chatComposerAttachments,
           sentAt,
           'desktop-chat-ui',
           'sent',
@@ -382,7 +386,7 @@ export function useChatMessageActions({
             ? materializedState
             : current;
           if (!baseState) return current;
-          return appendOptimisticOutboundMessage(baseState, parentSessionId, text, text, [], sentAt, mentionForBridgeTarget(mentionedTarget));
+          return appendOptimisticOutboundMessage(baseState, parentSessionId, text, text, chatComposerAttachments, sentAt, mentionForBridgeTarget(mentionedTarget));
         });
         void persistCanonicalUserMessage(preparedCanonicalMessage)
           .catch((error: unknown) => {
@@ -407,6 +411,7 @@ export function useChatMessageActions({
             parentMessageId,
             projectId: desktopChatState?.activeSession.project?.root,
             projectName: desktopChatState?.activeSession.project?.name,
+            ...bridgeAttachmentTransportFields(chatComposerAttachments),
           }))
           .then((nextState) => {
             setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
@@ -432,9 +437,10 @@ export function useChatMessageActions({
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
-      const willRelayToLocalAgent = chatComposerAttachments.length === 0
-        && activeConvBridgeTarget
-        && mentionsLocalAgent(text, desktopChatState, desktopBridgeState);
+      const willRelayToLocalAgent = Boolean(
+        activeConvBridgeTarget
+        && mentionsLocalAgent(text, desktopChatState, desktopBridgeState),
+      );
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -501,6 +507,9 @@ export function useChatMessageActions({
               localAgentRelayTarget.parentSessionTitle,
               localAgentRelayTarget.parentMessageId,
               null,
+              undefined,
+              undefined,
+              chatComposerAttachments,
             )
               .then((nextState) => {
                 setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));

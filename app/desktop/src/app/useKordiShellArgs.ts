@@ -165,6 +165,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       chatAttachmentInputRef: args.chatAttachmentInputRef,
       chatComposerAttachments: args.chatComposerAttachments,
       saveDesktopAttachments: args.saveDesktopAttachments,
+      saveDesktopAttachmentPaths: args.saveDesktopAttachmentPaths,
       removeChatComposerAttachment: args.removeChatComposerAttachment,
       projectComposerText: args.projectComposerText,
       updateProjectComposerDraft: args.updateProjectComposerDraft,

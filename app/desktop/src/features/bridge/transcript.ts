@@ -1,4 +1,6 @@
-import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeHost, DesktopBridgeOutreachMetadata, Message, MessageMention } from '@/kordi-app/types';
+import { convertFileSrc } from '@tauri-apps/api/core';
+
+import type { Conversation, ConversationBridgeTarget, DesktopBridgeConversation, DesktopBridgeConversationMessage, DesktopBridgeHost, DesktopBridgeOutreachMetadata, Message, MessageAttachment, MessageMention } from '@/kordi-app/types';
 import {
   BRIDGE_MESSAGE_DIRECTION_INBOUND,
   BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
@@ -76,6 +78,24 @@ function bridgeMessageDisplayText(
     return `@${outreach.targetDisplayName.trim()}${requestText ? ` ${requestText}` : ''}`;
   }
   return stripOutreachContextEnvelope(message.text);
+}
+
+function bridgeAttachmentPreviewUrl(attachment: MessageAttachment) {
+  if (attachment.kind !== 'image' || !attachment.localPath) return attachment.previewUrl;
+  if (typeof window === 'undefined' || !window.__TAURI_INTERNALS__) return attachment.previewUrl;
+  try {
+    return convertFileSrc(attachment.localPath);
+  } catch {
+    return attachment.previewUrl;
+  }
+}
+
+function bridgeMessageAttachments(message: DesktopBridgeConversationMessage): MessageAttachment[] | undefined {
+  if (!message.attachments || message.attachments.length === 0) return undefined;
+  return message.attachments.map((attachment) => {
+    const previewUrl = bridgeAttachmentPreviewUrl(attachment);
+    return previewUrl ? { ...attachment, previewUrl } : attachment;
+  });
 }
 
 function bridgeMessageMentions(
@@ -166,6 +186,7 @@ export function mapBridgeConversationToViewModel(
   const messages: Message[] = conversation.messages.map((message) => {
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
     const mentions = bridgeMessageMentions(conversation, message);
+    const attachments = bridgeMessageAttachments(message);
     const isProcessingAgentPlaceholder = message.deliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
       && (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE);
@@ -255,6 +276,7 @@ export function mapBridgeConversationToViewModel(
           ? ['typing']
           : [],
       mentions,
+      attachments,
       detail: undefined,
     };
   });

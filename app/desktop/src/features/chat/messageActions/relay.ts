@@ -1,6 +1,8 @@
 import type { ConversationBridgeTarget, DesktopBridgeState } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach } from '@/lib/desktop';
 
+import type { AttachmentItem } from '../composerController.types';
+import { bridgeAttachmentTransportFields } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
 
 export function pendingOutreachFromState(
@@ -29,6 +31,7 @@ export async function relaySharedSessionMessage(
   parentTurnId?: string | null,
   deliveryState?: string | null,
   bridgeRequestId?: string | null,
+  attachments: AttachmentItem[] = [],
 ) {
   return createDesktopBridgeOutreach({
     hostId: target.hostId,
@@ -52,5 +55,6 @@ export async function relaySharedSessionMessage(
     deliveryState,
     projectId: null,
     projectName: null,
+    ...bridgeAttachmentTransportFields(attachments),
   });
 }

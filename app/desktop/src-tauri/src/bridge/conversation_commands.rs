@@ -7,7 +7,9 @@ use super::conversation_actions::desktop_bridge_send_message_impl;
 #[cfg(test)]
 use super::conversation_actions::outbound_message_type;
 #[cfg(test)]
-use super::events::{mailbox_payload_agent_prompt_text, mailbox_payload_text};
+use super::events::{
+    mailbox_payload_agent_prompt_text, mailbox_payload_attachments, mailbox_payload_text,
+};
 #[cfg(test)]
 use super::mailbox::parse_mailbox_event;
 #[cfg(test)]
@@ -21,12 +23,32 @@ use super::{
     DesktopBridgeOutreachMetadata, DesktopBridgePeer, DesktopBridgeState,
 };
 
+fn outreach_attachment_args(
+    request: &DesktopBridgeCreateOutreachRequest,
+) -> (Vec<String>, Vec<String>) {
+    (
+        request.attachment_paths.clone(),
+        request.attachment_names.clone(),
+    )
+}
+
+fn outreach_request_has_content(
+    request: &DesktopBridgeCreateOutreachRequest,
+    message: &str,
+) -> bool {
+    !message.trim().is_empty()
+        || request
+            .attachment_paths
+            .iter()
+            .any(|path| !path.trim().is_empty())
+}
+
 pub(super) async fn desktop_bridge_create_outreach_impl(
     manager: &DesktopBridgeManager,
     request: DesktopBridgeCreateOutreachRequest,
 ) -> Result<DesktopBridgeState, String> {
     let message = request.request_text.trim();
-    if message.is_empty() {
+    if !outreach_request_has_content(&request, message) {
         return Err("Outreach request cannot be empty".to_string());
     }
 
@@ -211,13 +233,73 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
     let conversation_id = conversation.id.clone();
     save_conversation_store(&store)?;
 
-    desktop_bridge_send_message_impl(manager, conversation_id, message.to_string()).await
+    let (attachment_paths, attachment_names) = outreach_attachment_args(&request);
+    desktop_bridge_send_message_impl(
+        manager,
+        conversation_id,
+        message.to_string(),
+        attachment_paths,
+        attachment_names,
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use base64::Engine as _;
+
+    fn base_outreach_request() -> DesktopBridgeCreateOutreachRequest {
+        DesktopBridgeCreateOutreachRequest {
+            host_id: "host-1".to_string(),
+            target_node_id: "peer-1".to_string(),
+            target_kind: "bridge-person".to_string(),
+            request_text: "see this".to_string(),
+            target_display_name: None,
+            target_owner_name: None,
+            target_runtime: None,
+            target_human_id: None,
+            target_agent_id: None,
+            trigger_text: None,
+            context_text: None,
+            context_policy: None,
+            parent_session_id: None,
+            parent_session_title: None,
+            parent_session_messages: Vec::new(),
+            parent_turn_id: None,
+            parent_message_id: None,
+            bridge_request_id: None,
+            delivery_state: None,
+            project_id: None,
+            project_name: None,
+            attachment_paths: Vec::new(),
+            attachment_names: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn outreach_request_has_content_when_attachment_only() {
+        let mut request = base_outreach_request();
+        request.request_text = "".to_string();
+        request.attachment_paths = vec!["/tmp/pi-clipboard-1.png".to_string()];
+
+        assert!(outreach_request_has_content(&request, ""));
+    }
+
+    #[test]
+    fn outreach_attachment_args_preserve_paths_and_display_names() {
+        let mut request = base_outreach_request();
+        request.attachment_paths = vec![
+            "/tmp/pi-clipboard-1.png".to_string(),
+            "/Users/shuyang/Desktop/raw-uuid.txt".to_string(),
+        ];
+        request.attachment_names = vec!["Screenshot 1.png".to_string(), "notes.txt".to_string()];
+
+        let (paths, names) = outreach_attachment_args(&request);
+
+        assert_eq!(paths, request.attachment_paths);
+        assert_eq!(names, request.attachment_names);
+    }
 
     #[test]
     fn outbound_message_type_uses_ask_for_agent_like_runtimes() {
@@ -244,6 +326,31 @@ mod tests {
             mailbox_payload_agent_prompt_text(&payload),
             "Context:\nRecent session messages:\nAlice: hello\n\nRequest:\nhiu"
         );
+    }
+
+    #[test]
+    fn mailbox_payload_attachments_preserves_original_display_name() {
+        let data = base64::engine::general_purpose::STANDARD.encode(b"png bytes");
+        let payload = serde_json::json!({
+            "message": "see this",
+            "attachments": [{
+                "kind": "image",
+                "name": "screenshot.png",
+                "formatLabel": "PNG",
+                "mimeType": "image/png",
+                "sizeBytes": 9,
+                "dataBase64": data,
+            }],
+        });
+
+        let attachments = mailbox_payload_attachments(&payload).expect("decode attachments");
+
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].name, "screenshot.png");
+        assert_eq!(attachments[0].kind, "image");
+        let local_path = attachments[0].local_path.as_deref().expect("stored path");
+        assert!(std::path::Path::new(local_path).exists());
+        let _ = std::fs::remove_file(local_path);
     }
 
     #[test]

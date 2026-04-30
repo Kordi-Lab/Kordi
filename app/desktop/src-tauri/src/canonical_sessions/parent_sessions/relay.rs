@@ -206,7 +206,7 @@ pub(super) fn sync_parent_session_relay_messages(
         if !is_inbound && !(include_outbound && is_outbound) {
             continue;
         }
-        if message.text.trim().is_empty() {
+        if message.text.trim().is_empty() && message.attachments.is_empty() {
             continue;
         }
         let is_processing_placeholder = message
@@ -299,6 +299,7 @@ pub(super) fn sync_parent_session_relay_messages(
                     "deliveryState": message.delivery_state,
                     "requestId": message.request_id,
                     "bridgeConversationId": conversation.id,
+                    "attachments": message.attachments,
                     "mentions": [{
                         "label": outreach.target_display_name,
                         "targetKind": outreach.target_kind,

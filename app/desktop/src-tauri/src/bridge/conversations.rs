@@ -296,6 +296,7 @@ pub(super) fn build_conversation_state(
             request_id: message.request_id.clone(),
             delivery_state: message.delivery_state.clone(),
             outreach: message.outreach.clone(),
+            attachments: message.attachments.clone(),
         })
         .collect();
     let subtitle = messages

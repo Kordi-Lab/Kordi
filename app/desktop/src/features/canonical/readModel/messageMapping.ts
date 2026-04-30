@@ -18,6 +18,10 @@ export function stringValue(value: unknown) {
   return typeof value === 'string' ? value : undefined;
 }
 
+export function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 export function canonicalMentions(value: unknown): MessageMention[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
@@ -54,6 +58,8 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
       formatLabel: stringValue(record.formatLabel) ?? null,
       previewUrl: stringValue(record.previewUrl) ?? null,
       mimeType: stringValue(record.mimeType) ?? null,
+      localPath: stringValue(record.localPath) ?? null,
+      sizeBytes: numberValue(record.sizeBytes) ?? null,
     }];
   });
 

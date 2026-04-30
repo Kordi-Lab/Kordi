@@ -205,6 +205,21 @@ struct DesktopBridgeConversationRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeMessageAttachment {
+    pub kind: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DesktopBridgeConversationMessageRecord {
     id: String,
     direction: String,
@@ -217,6 +232,8 @@ struct DesktopBridgeConversationMessageRecord {
     delivery_state: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     outreach: Option<DesktopBridgeOutreachMetadata>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<DesktopBridgeMessageAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -361,6 +378,8 @@ pub struct DesktopBridgeConversationMessage {
     pub delivery_state: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outreach: Option<DesktopBridgeOutreachMetadata>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<DesktopBridgeMessageAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -446,6 +465,10 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub delivery_state: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
+    #[serde(default)]
+    pub attachment_paths: Vec<String>,
+    #[serde(default)]
+    pub attachment_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -994,8 +1017,17 @@ pub async fn desktop_bridge_send_message(
     manager: State<'_, DesktopBridgeManager>,
     conversation_id: String,
     text: String,
+    attachment_paths: Option<Vec<String>>,
+    attachment_names: Option<Vec<String>>,
 ) -> Result<DesktopBridgeState, String> {
-    conversation_actions::desktop_bridge_send_message_impl(&manager, conversation_id, text).await
+    conversation_actions::desktop_bridge_send_message_impl(
+        &manager,
+        conversation_id,
+        text,
+        attachment_paths.unwrap_or_default(),
+        attachment_names.unwrap_or_default(),
+    )
+    .await
 }
 
 #[tauri::command]

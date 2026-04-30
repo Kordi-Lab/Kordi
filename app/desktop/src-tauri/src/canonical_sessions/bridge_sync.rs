@@ -439,6 +439,7 @@ pub(crate) fn sync_bridge_state_sessions(
                     "timestampMs": message.timestamp_ms,
                     "deliveryState": message.delivery_state,
                     "bridgeConversationId": conversation.id,
+                    "attachments": message.attachments,
                 })),
                 created_at_ms: Some(message.timestamp_ms),
                 parent_message_id: None,

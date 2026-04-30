@@ -77,6 +77,8 @@ export type MessageAttachment = {
   formatLabel?: string | null;
   previewUrl?: string | null;
   mimeType?: string | null;
+  localPath?: string | null;
+  sizeBytes?: number | null;
 };
 
 export type MessageMention = {
@@ -690,6 +692,7 @@ export type DesktopBridgeConversationMessage = {
   requestId?: string | null;
   deliveryState?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
+  attachments?: MessageAttachment[];
 };
 
 export type DesktopBridgeSessionThreadMessage = {
@@ -790,6 +793,8 @@ export type DesktopBridgeCreateOutreachRequest = {
   deliveryState?: string | null;
   projectId?: string | null;
   projectName?: string | null;
+  attachmentPaths?: string[];
+  attachmentNames?: string[];
 };
 
 export type DesktopBridgeLocalServerStatus = {

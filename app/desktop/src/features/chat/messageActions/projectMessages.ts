@@ -9,7 +9,7 @@ import { formatDesktopEventTime, resizeComposerTextarea } from '../composerContr
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMentionedBridgeTarget } from './mentions';
-import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
+import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, bridgeAttachmentTransportFields, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type UseProjectMessageActionsArgs = Pick<
   UseComposerControllerArgs,
@@ -127,7 +127,7 @@ export function useProjectMessageActions({
 
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
-    const mentionedTarget = chatComposerAttachments.length === 0 ? resolveMentionedBridgeTarget(text, desktopBridgeState) : null;
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState);
     if (mentionedTarget) {
       try {
         shouldAutoFollowChatRef.current = true;
@@ -135,13 +135,14 @@ export function useProjectMessageActions({
         setDesktopChatError(null);
         const { sessionId: projectSessionId, state: projectChatState } = await ensureProjectSession();
         appendProjectDraft('');
+        setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]');
         const sentAt = formatDesktopEventTime();
         const preparedCanonicalMessage = prepareCanonicalUserMessage(
           projectSessionId,
           canonicalHumanIdentityId,
           text,
-          [],
+          chatComposerAttachments,
           sentAt,
           'desktop-chat-ui',
           'sent',
@@ -150,7 +151,7 @@ export function useProjectMessageActions({
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         setDesktopChatState((current) => {
           if (!current || current.activeSessionId !== projectSessionId) return current;
-          return appendOptimisticOutboundMessage(current, projectSessionId, text, text, [], sentAt, mentionForBridgeTarget(mentionedTarget));
+          return appendOptimisticOutboundMessage(current, projectSessionId, text, text, chatComposerAttachments, sentAt, mentionForBridgeTarget(mentionedTarget));
         });
         void persistCanonicalUserMessage(preparedCanonicalMessage)
           .catch((error: unknown) => {
@@ -175,6 +176,7 @@ export function useProjectMessageActions({
             parentMessageId,
             projectId: projectChatState?.activeSession.project?.root,
             projectName: projectChatState?.activeSession.project?.name,
+            ...bridgeAttachmentTransportFields(chatComposerAttachments),
           }))
           .then((nextState) => {
             setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
