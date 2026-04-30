@@ -148,8 +148,8 @@ export function useComposerViewModel({
               : (option.profileId ? `api id ${profileSuffix(option.profileId)}` : detailIdentity(option.detail)) ?? `api id ${index}`;
 
             return {
-              value: `${provider.id}::${option.value}`,
-              providerId: provider.id,
+              value: `${option.providerId}::${option.value}`,
+              providerId: option.providerId,
               label: method.title,
               detail: identity,
               selectionLabel: `${method.title} • ${method.mode === 'oauth' ? `oauth id ${oauthId}` : identity}`.trim(),

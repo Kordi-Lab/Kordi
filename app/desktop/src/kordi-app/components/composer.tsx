@@ -234,6 +234,10 @@ function normalizeComposerProviderId(providerId: string) {
   return providerId === 'openai-codex' ? 'openai' : providerId;
 }
 
+function authChoiceFromComposerProviderOption(option: ComposerProviderOption) {
+  return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
+}
+
 function providerDisplayLabel(providerId: string) {
   switch (providerId) {
     case 'anthropic':
@@ -274,7 +278,7 @@ export function ComposerModelControls({
   modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
 }: {
   scope: ComposerScope;
-  selection: { mode: string; model: string; thinking: string };
+  selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
   openSelector: { scope: ComposerScope; type: ComposerSelectorType } | null;
   onToggleSelector: (scope: ComposerScope, type: ComposerSelectorType) => void;
   onSelectValue: (scope: ComposerScope, type: ComposerSelectorType, value: string) => void;
@@ -295,12 +299,18 @@ export function ComposerModelControls({
     || modelOptions.some((option) => option.provider === fallbackProviderValue)
   );
   const selectedProviderValue = selectedModelOption?.provider ?? (fallbackProviderKnown ? fallbackProviderValue : '');
-  const selectedProviderOption = providerOptions.find(
+  const selectedAuthProviderOption = selection.authProvider
+    ? providerOptions.find((option) => (
+        option.providerId === selection.authProvider
+        && authChoiceFromComposerProviderOption(option) === (selection.authChoice ?? null)
+      )) ?? null
+    : null;
+  const selectedProviderOption = selectedAuthProviderOption ?? providerOptions.find(
     (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
   ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
-  const selectedProviderLabel = selectedModelOption?.providerLabel
-    ?? selectedProviderOption?.selectionLabel
-    ?? selectedProviderOption?.label
+  const selectedProviderLabel = selectedProviderOption?.selectionLabel
+    ?? (selectedProviderOption ? [selectedProviderOption.label, selectedProviderOption.detail].filter(Boolean).join(' · ') : null)
+    ?? selectedModelOption?.providerLabel
     ?? (selectedProviderValue ? providerDisplayLabel(selectedProviderValue) : 'Provider');
   const filteredModelOptions = selectedProviderValue
     ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)

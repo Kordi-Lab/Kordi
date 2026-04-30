@@ -1,13 +1,46 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
+import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
+
+type RoutingOption = {
+  value: string;
+  label: string;
+  model?: string | null;
+  authProvider?: string | null;
+  authChoice?: string | null;
+  activeAuth?: boolean;
+};
+
+type ModelRoutingDraft = {
+  agentId: string | null;
+  defaultModel: string | null;
+  defaultAuthProvider: string | null;
+  defaultAuthChoice: string | null;
+  fallbackModel: string | null;
+  fallbackAuthProvider: string | null;
+  fallbackAuthChoice: string | null;
+  thinking: string | null;
+};
+
+const EMPTY_MODEL_ROUTING_DRAFT: ModelRoutingDraft = {
+  agentId: null,
+  defaultModel: null,
+  defaultAuthProvider: null,
+  defaultAuthChoice: null,
+  fallbackModel: null,
+  fallbackAuthProvider: null,
+  fallbackAuthChoice: null,
+  thinking: null,
+};
 
 function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
@@ -34,6 +67,227 @@ function truncatePrompt(value: string) {
   if (!normalized) return 'No real prompt payload is exposed for this identity.';
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 179).trimEnd()}…`;
+}
+
+function compactRoutingValue(value?: string | null) {
+  return value?.trim() || null;
+}
+
+function modelRoutingDraftFromAgent(agent?: Agent | null): ModelRoutingDraft {
+  if (!agent) return EMPTY_MODEL_ROUTING_DRAFT;
+  return {
+    agentId: agent.id,
+    defaultModel: compactRoutingValue(agent.defaultModel),
+    defaultAuthProvider: compactRoutingValue(agent.defaultAuthProvider),
+    defaultAuthChoice: compactRoutingValue(agent.defaultAuthChoice),
+    fallbackModel: compactRoutingValue(agent.fallbackModel),
+    fallbackAuthProvider: compactRoutingValue(agent.fallbackAuthProvider),
+    fallbackAuthChoice: compactRoutingValue(agent.fallbackAuthChoice),
+    thinking: compactRoutingValue(agent.defaultThinking),
+  };
+}
+
+function routingDraftKey(draft: ModelRoutingDraft) {
+  return [
+    draft.agentId,
+    draft.defaultModel,
+    draft.defaultAuthProvider,
+    draft.defaultAuthChoice,
+    draft.fallbackModel,
+    draft.fallbackAuthProvider,
+    draft.fallbackAuthChoice,
+    draft.thinking,
+  ].map((value) => value ?? '').join('\u0000');
+}
+
+function sameRoutingDraft(left: ModelRoutingDraft, right: ModelRoutingDraft) {
+  return routingDraftKey(left) === routingDraftKey(right);
+}
+
+function RoutingSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: RoutingOption[];
+  onChange: (option: RoutingOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const selectedLabel = selected?.label ?? 'Select';
+
+  return (
+    <div className="relative min-w-0">
+      <div className="app-agent-row-meta mb-1 text-[11px]">{label}</div>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        title={selectedLabel}
+        className="app-agent-inspector-row flex min-h-10 w-full items-center justify-between gap-2 rounded-[12px] border px-3 py-2.5 text-left text-[12px] transition hover:border-white/18"
+      >
+        <span className="app-agent-row-title min-w-0 flex-1 whitespace-normal break-words leading-5">{selectedLabel}</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', open ? 'rotate-180 text-slate-300' : '')} />
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-40 mt-2 max-h-[min(20rem,45vh)] w-full min-w-[min(22rem,calc(100vw-3rem))] max-w-[min(34rem,calc(100vw-3rem))] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl"
+        >
+          <div className="space-y-1">
+            {options.map((option) => {
+              const selectedOption = option.value === value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={selectedOption}
+                  onClick={() => {
+                    onChange(option);
+                    setOpen(false);
+                  }}
+                  title={option.label}
+                  className={cn(
+                    'app-composer-popover-item flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left text-[13px]',
+                    selectedOption ? 'app-composer-popover-item-active' : '',
+                  )}
+                >
+                  <span className="min-w-0 flex-1 whitespace-normal break-words leading-5">{option.label}</span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', selectedOption ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
+                    Selected
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function modelOptionLabel(option: ComposerModelOption) {
+  const provider = option.providerLabel || option.provider;
+  return provider ? `${option.label} · ${provider}` : option.label;
+}
+
+function normalizeRoutingProviderId(value?: string | null) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return '';
+  return normalized === 'openai-codex' ? 'openai' : normalized;
+}
+
+function authChoiceFromProviderOption(option: ComposerProviderOption) {
+  return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
+}
+
+function routingAuthOptions(providerOptions?: ComposerProviderOption[]) {
+  return (providerOptions ?? []).map((option) => ({
+    providerId: option.providerId,
+    normalizedProviderId: normalizeRoutingProviderId(option.providerId),
+    authChoice: authChoiceFromProviderOption(option),
+    label: option.label,
+    detail: option.detail?.trim() || option.selectionLabel?.trim() || null,
+    active: Boolean(option.active),
+  }));
+}
+
+function routeKey(model?: string | null, authProvider?: string | null, authChoice?: string | null) {
+  return [model?.trim() ?? '', authProvider?.trim() ?? '', authChoice?.trim() ?? ''].join('::');
+}
+
+function routeLabel(model: ComposerModelOption, auth?: ReturnType<typeof routingAuthOptions>[number]) {
+  if (!auth) return modelOptionLabel(model);
+  return [auth.label, auth.detail, model.label].filter(Boolean).join(' · ');
+}
+
+function buildRouteOptions({
+  models,
+  authOptions,
+  currentModel,
+  currentAuthProvider,
+  currentAuthChoice,
+  includeNoFallback,
+}: {
+  models: ComposerModelOption[];
+  authOptions: ReturnType<typeof routingAuthOptions>;
+  currentModel?: string | null;
+  currentAuthProvider?: string | null;
+  currentAuthChoice?: string | null;
+  includeNoFallback?: boolean;
+}) {
+  const options: RoutingOption[] = includeNoFallback
+    ? [{ value: routeKey('', '', ''), label: 'No fallback', model: null, authProvider: null, authChoice: null }]
+    : [];
+
+  for (const model of models) {
+    const provider = normalizeRoutingProviderId(model.provider ?? model.value.split('/')[0]);
+    const matchingAuth = authOptions.filter((auth) => auth.normalizedProviderId === provider);
+    if (matchingAuth.length === 0) {
+      options.push({
+        value: routeKey(model.value, null, null),
+        label: modelOptionLabel(model),
+        model: model.value,
+        authProvider: null,
+        authChoice: null,
+      });
+      continue;
+    }
+
+    for (const auth of matchingAuth) {
+      options.push({
+        value: routeKey(model.value, auth.providerId, auth.authChoice),
+        label: routeLabel(model, auth),
+        model: model.value,
+        authProvider: auth.providerId,
+        authChoice: auth.authChoice,
+        activeAuth: auth.active,
+      });
+    }
+  }
+
+  if (currentModel?.trim()) {
+    const currentKey = routeKey(currentModel, currentAuthProvider, currentAuthChoice);
+    if (!options.some((option) => option.value === currentKey)) {
+      options.push({
+        value: currentKey,
+        label: currentModel,
+        model: currentModel,
+        authProvider: currentAuthProvider ?? null,
+        authChoice: currentAuthChoice ?? null,
+      });
+    }
+  }
+
+  return uniqueRoutingOptions(options);
+}
+
+function selectedRouteValue(options: RoutingOption[], model?: string | null, authProvider?: string | null, authChoice?: string | null) {
+  const exact = routeKey(model, authProvider, authChoice);
+  if (options.some((option) => option.value === exact)) return exact;
+  const normalizedAuthProvider = normalizeRoutingProviderId(authProvider);
+  return options.find((option) => (
+    option.model === model
+      && option.authChoice === authChoice
+      && normalizeRoutingProviderId(option.authProvider) === normalizedAuthProvider
+  ))?.value
+    ?? options.find((option) => option.model === model && option.activeAuth)?.value
+    ?? options.find((option) => option.model === model)?.value
+    ?? exact;
+}
+
+function uniqueRoutingOptions(options: RoutingOption[]) {
+  const seen = new Set<string>();
+  return options.filter((option) => {
+    if (seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
 }
 
 function InspectorRow({
@@ -82,6 +336,9 @@ export function AgentDetailPane({
   activeSaveFeedback,
   activeEditingSection,
   availableSkills,
+  chatModelOptions,
+  composerProviderOptions,
+  onUpdateModelRouting,
   onReset,
   onMessage,
   onOpenPromptDetail,
@@ -98,6 +355,20 @@ export function AgentDetailPane({
   activeSaveFeedback: AgentSaveFeedback | null;
   activeEditingSection: 'prompt' | 'skills' | null;
   availableSkills: string[];
+  chatModelOptions?: ComposerModelOption[];
+  composerProviderOptions?: ComposerProviderOption[];
+  onUpdateModelRouting?: (
+    agent: Agent,
+    values: {
+      defaultModel?: string | null;
+      defaultAuthProvider?: string | null;
+      defaultAuthChoice?: string | null;
+      fallbackModel?: string | null;
+      fallbackAuthProvider?: string | null;
+      fallbackAuthChoice?: string | null;
+      thinking?: string | null;
+    },
+  ) => Promise<void> | void;
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
   onOpenPromptDetail: (agentId: string) => void;
@@ -107,6 +378,27 @@ export function AgentDetailPane({
   onToggleSkill: (agentId: string, skill: string, selected: boolean) => void;
   onSelectIdentityFile: (agentId: string, file: string) => void;
 }) {
+  const persistedRoutingDraft = useMemo(() => modelRoutingDraftFromAgent(activeAgent), [
+    activeAgent?.id,
+    activeAgent?.defaultModel,
+    activeAgent?.defaultAuthProvider,
+    activeAgent?.defaultAuthChoice,
+    activeAgent?.fallbackModel,
+    activeAgent?.fallbackAuthProvider,
+    activeAgent?.fallbackAuthChoice,
+    activeAgent?.defaultThinking,
+  ]);
+  const persistedRoutingKey = routingDraftKey(persistedRoutingDraft);
+  const [routingDraft, setRoutingDraft] = useState<ModelRoutingDraft>(persistedRoutingDraft);
+  const [isRoutingSaving, setIsRoutingSaving] = useState(false);
+  const [routingSaveFeedback, setRoutingSaveFeedback] = useState<{ tone: 'idle' | 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setRoutingDraft(persistedRoutingDraft);
+    setIsRoutingSaving(false);
+    setRoutingSaveFeedback(null);
+  }, [persistedRoutingDraft, persistedRoutingKey]);
+
   if (!activeAgent || !activeAgentConfig) {
     return (
       <section className="app-agent-detail-pane flex min-h-0 min-w-0 flex-col">
@@ -125,6 +417,148 @@ export function AgentDetailPane({
   const exposesLoadedTools = activeAgent.exposesLoadedTools !== false;
   const exposesLoadedPlugins = activeAgent.exposesLoadedPlugins !== false;
   const selectedFilePath = activeDetail?.kind === 'file' ? activeDetail.path : null;
+  const activeRoutingDraft = routingDraft.agentId === activeAgent.id ? routingDraft : persistedRoutingDraft;
+  const routingDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
+  const canEditModelRouting = Boolean(activeAgent.isOwned && activeAgent.bridgeHostId && activeAgent.bridgeAgentId && onUpdateModelRouting);
+  const updateRoutingDraft = (patch: Partial<ModelRoutingDraft>) => {
+    if (!canEditModelRouting) return;
+    setRoutingDraft((current) => ({
+      ...(current.agentId === activeAgent.id ? current : activeRoutingDraft),
+      ...patch,
+      agentId: activeAgent.id,
+    }));
+    setRoutingSaveFeedback(null);
+  };
+  const saveRoutingDraft = () => {
+    if (!canEditModelRouting || !routingDirty || isRoutingSaving) return;
+    setIsRoutingSaving(true);
+    setRoutingSaveFeedback(null);
+    void Promise.resolve(onUpdateModelRouting?.(activeAgent, {
+      defaultModel: activeRoutingDraft.defaultModel,
+      defaultAuthProvider: activeRoutingDraft.defaultAuthProvider,
+      defaultAuthChoice: activeRoutingDraft.defaultAuthChoice,
+      fallbackModel: activeRoutingDraft.fallbackModel,
+      fallbackAuthProvider: activeRoutingDraft.fallbackAuthProvider,
+      fallbackAuthChoice: activeRoutingDraft.fallbackAuthChoice,
+      thinking: activeRoutingDraft.thinking,
+    }))
+      .then(() => {
+        setRoutingSaveFeedback({ tone: 'success', text: 'Routing saved.' });
+      })
+      .catch((error) => {
+        setRoutingSaveFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to save routing.' });
+      })
+      .finally(() => {
+        setIsRoutingSaving(false);
+      });
+  };
+  const resetRoutingDraft = () => {
+    setRoutingDraft(persistedRoutingDraft);
+    setRoutingSaveFeedback(null);
+  };
+  const authOptions = routingAuthOptions(composerProviderOptions);
+  const modelOptions = buildRouteOptions({
+    models: chatModelOptions ?? [],
+    authOptions,
+    currentModel: activeRoutingDraft.defaultModel,
+    currentAuthProvider: activeRoutingDraft.defaultAuthProvider,
+    currentAuthChoice: activeRoutingDraft.defaultAuthChoice,
+  });
+  const fallbackOptions = buildRouteOptions({
+    models: chatModelOptions ?? [],
+    authOptions,
+    currentModel: activeRoutingDraft.fallbackModel,
+    currentAuthProvider: activeRoutingDraft.fallbackAuthProvider,
+    currentAuthChoice: activeRoutingDraft.fallbackAuthChoice,
+    includeNoFallback: true,
+  });
+  const selectedDefaultRouteValue = selectedRouteValue(
+    modelOptions,
+    activeRoutingDraft.defaultModel,
+    activeRoutingDraft.defaultAuthProvider,
+    activeRoutingDraft.defaultAuthChoice,
+  );
+  const selectedFallbackRouteValue = activeRoutingDraft.fallbackModel
+    ? selectedRouteValue(
+        fallbackOptions,
+        activeRoutingDraft.fallbackModel,
+        activeRoutingDraft.fallbackAuthProvider,
+        activeRoutingDraft.fallbackAuthChoice,
+      )
+    : routeKey('', '', '');
+  const selectedModelOption = (chatModelOptions ?? []).find((option) => option.value === activeRoutingDraft.defaultModel);
+  const thinkingOptions = uniqueRoutingOptions([
+    { value: '', label: 'Model default' },
+    ...((selectedModelOption?.thinkingLevels?.length ? selectedModelOption.thinkingLevels : ['off', 'medium', 'high'])
+      .map((level) => ({ value: level, label: level[0]?.toUpperCase() + level.slice(1) }))),
+  ]);
+  const modelRoutingSection = activeAgent.isOwned ? (
+    <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned Bridge agent. These choices are private and not announced in shared chat history.">
+      <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
+        Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.
+      </div>
+      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
+        <RoutingSelect
+          label="Default route"
+          value={selectedDefaultRouteValue}
+          options={modelOptions}
+          onChange={(option) => {
+            updateRoutingDraft({
+              defaultModel: option.model || null,
+              defaultAuthProvider: option.authProvider ?? null,
+              defaultAuthChoice: option.authChoice ?? null,
+            });
+          }}
+        />
+        <RoutingSelect
+          label="Fallback route"
+          value={selectedFallbackRouteValue}
+          options={fallbackOptions}
+          onChange={(option) => {
+            updateRoutingDraft({
+              fallbackModel: option.model || null,
+              fallbackAuthProvider: option.model ? (option.authProvider ?? null) : null,
+              fallbackAuthChoice: option.model ? (option.authChoice ?? null) : null,
+            });
+          }}
+        />
+        <RoutingSelect
+          label="Thinking level"
+          value={activeRoutingDraft.thinking || ''}
+          options={thinkingOptions}
+          onChange={(option) => {
+            updateRoutingDraft({ thinking: option.value || null });
+          }}
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className={cn(
+            'text-[12px] leading-5',
+            routingSaveFeedback?.tone === 'error'
+              ? 'text-rose-300'
+              : routingDirty
+                ? 'text-amber-200'
+                : routingSaveFeedback?.tone === 'success'
+                  ? 'text-emerald-300'
+                  : 'app-agent-row-meta',
+          )}
+        >
+          {routingSaveFeedback?.text ?? (routingDirty ? 'Unsaved route changes. Save when ready.' : 'Select routes instantly; saved routes run this Bridge agent.')}
+        </div>
+        <div className="flex items-center gap-2">
+          {routingDirty ? (
+            <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
+              Discard
+            </Button>
+          ) : null}
+          <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={saveRoutingDraft} disabled={!canEditModelRouting || !routingDirty || isRoutingSaving}>
+            {isRoutingSaving ? 'Saving…' : 'Save routing'}
+          </Button>
+        </div>
+      </div>
+    </AgentInspectorSection>
+  ) : null;
 
   return (
     <section className="app-agent-detail-pane flex min-h-0 min-w-0 flex-col">
@@ -179,6 +613,8 @@ export function AgentDetailPane({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-5 px-5 py-5">
+          {modelRoutingSection}
+
           <AgentInspectorSection title="Overview" detail="System prompt and markdown/config files open in the right panel.">
             <div className="space-y-3">
               <InspectorRow

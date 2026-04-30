@@ -597,6 +597,7 @@ export function useKordiAppModel() {
     handleStartBridgePersonSession,
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,
+    handleUpdateBridgeAgentModelRouting,
     handleStartLocalBridgeHost,
     handleStopLocalBridgeHost,
   } = useBridgeOrchestration({
@@ -938,6 +939,7 @@ export function useKordiAppModel() {
 
   const shellArgs = useKordiShellArgs({
     isNativeShell,
+    desktopChatState,
     windowWidth: windowSize.width,
     activeNav,
     setActiveNav,
@@ -1009,6 +1011,7 @@ export function useKordiAppModel() {
     handleStartBridgePersonSession,
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,
+    handleUpdateBridgeAgentModelRouting,
     activeAgentId: agentsUi.activeAgentId,
     setActiveAgentId: agentsUi.setActiveAgentId,
     activeAgent,

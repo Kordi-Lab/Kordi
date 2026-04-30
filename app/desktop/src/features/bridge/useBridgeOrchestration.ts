@@ -24,6 +24,7 @@ import {
   removeDesktopBridgeContact,
   renameDesktopBridgeAgent,
   setDesktopBridgeDefaultAgent,
+  updateDesktopBridgeAgentModelRouting,
   setDesktopBridgeDiscoveryMode,
   startDesktopBridgeLocalServer,
   stopDesktopBridgeLocalServer,
@@ -413,6 +414,38 @@ export function useBridgeOrchestration({
     }
   }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
 
+  const handleUpdateBridgeAgentModelRouting = useCallback(async (
+    hostId: string,
+    agentId: string,
+    defaultModel?: string | null,
+    fallbackModel?: string | null,
+    thinking?: string | null,
+    defaultAuthProvider?: string | null,
+    defaultAuthChoice?: string | null,
+    fallbackAuthProvider?: string | null,
+    fallbackAuthChoice?: string | null,
+  ) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await updateDesktopBridgeAgentModelRouting(
+        hostId,
+        agentId,
+        defaultModel,
+        fallbackModel,
+        thinking,
+        defaultAuthProvider,
+        defaultAuthChoice,
+        fallbackAuthProvider,
+        fallbackAuthChoice,
+      );
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
   return {
     handleAddBridgeContact,
     handleActivateBridgeAgent,
@@ -424,6 +457,7 @@ export function useBridgeOrchestration({
     handleRenameBridgeAgent,
     handleSetBridgeDiscoveryMode,
     handleSetDefaultBridgeAgent,
+    handleUpdateBridgeAgentModelRouting,
     handleStartLocalBridgeHost,
     handleStopLocalBridgeHost,
   };

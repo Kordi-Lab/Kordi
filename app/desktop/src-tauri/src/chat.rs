@@ -562,6 +562,56 @@ fn desktop_chat_message_is_agent(message: &kordi_cli::desktop_runtime::DesktopCh
     role != "user" && role != "system"
 }
 
+fn completed_desktop_session_state_for_canonical_sync(
+    cwd: &Path,
+    active_session_id: &str,
+    active_session: DesktopChatSessionDetail,
+    local_agent: DesktopChatAgentProfile,
+) -> DesktopChatState {
+    DesktopChatState {
+        cwd: cwd.display().to_string(),
+        active_session_id: active_session_id.to_string(),
+        sessions: Vec::new(),
+        projects: Vec::new(),
+        active_session,
+        local_agent,
+        model_options: Vec::new(),
+        slash_commands: Vec::new(),
+    }
+}
+
+async fn sync_completed_desktop_session_to_canonical(
+    cwd: &Path,
+    active_session_id: &str,
+    session: &DesktopSessionHandle,
+) {
+    let snapshot = {
+        let session = session.lock().await;
+        match session.detail() {
+            Ok(detail) => Some((detail, session.agent_profile())),
+            Err(error) => {
+                eprintln!(
+                    "Unable to load completed desktop chat detail for canonical sync: {error}"
+                );
+                None
+            }
+        }
+    };
+
+    let Some((active_session, local_agent)) = snapshot else {
+        return;
+    };
+    let state = completed_desktop_session_state_for_canonical_sync(
+        cwd,
+        active_session_id,
+        active_session,
+        local_agent,
+    );
+    if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
+        eprintln!("Unable to sync completed desktop chat into canonical sessions: {error}");
+    }
+}
+
 fn desktop_state_for_canonical_sync(
     state: &DesktopChatState,
     active_turn_running: bool,
@@ -1735,14 +1785,62 @@ async fn ensure_bridge_agent_execution_session(
     Ok((session_id, handle))
 }
 
-pub(crate) async fn run_bridge_agent_prompt(
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DesktopBridgeAgentModelRouting {
+    pub default_model: Option<String>,
+    pub default_auth_provider: Option<String>,
+    pub default_auth_choice: Option<String>,
+    pub fallback_model: Option<String>,
+    pub fallback_auth_provider: Option<String>,
+    pub fallback_auth_choice: Option<String>,
+    pub thinking: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BridgeAgentRunRoute {
+    model: Option<String>,
+    auth_provider: Option<String>,
+    auth_choice: Option<String>,
+    thinking: Option<String>,
+}
+
+fn normalize_bridge_agent_routing_value(value: Option<&String>) -> Option<String> {
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "default")
+        .map(ToString::to_string)
+}
+
+fn bridge_agent_route_key(
+    route: &BridgeAgentRunRoute,
+) -> Option<(&str, Option<&str>, Option<&str>)> {
+    route.model.as_deref().map(|model| {
+        (
+            model,
+            route.auth_provider.as_deref(),
+            route.auth_choice.as_deref(),
+        )
+    })
+}
+
+fn should_try_bridge_agent_fallback(
+    primary: &DesktopChatTurnSnapshot,
+    default_route: &BridgeAgentRunRoute,
+    fallback_route: &BridgeAgentRunRoute,
+) -> bool {
+    !primary.succeeded
+        && bridge_agent_route_key(fallback_route)
+            .is_some_and(|fallback| Some(fallback) != bridge_agent_route_key(default_route))
+}
+
+async fn run_bridge_agent_prompt_once(
     manager: &DesktopChatManager,
-    local_agent_node_id: &str,
-    peer_node_id: &str,
+    cwd: &std::path::Path,
     prompt: String,
+    route: BridgeAgentRunRoute,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
-    let (target_session_id, session) = ensure_bridge_agent_execution_session(manager, &cwd).await?;
+    let (target_session_id, session) = ensure_bridge_agent_execution_session(manager, cwd).await?;
     let execution_session_id = target_session_id.clone();
 
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
@@ -1762,7 +1860,34 @@ pub(crate) async fn run_bridge_agent_prompt(
 
     let result = {
         let mut session = session.lock().await;
-        session.send_message(prompt, Vec::new()).await
+        let setup_result = (|| -> Result<(), String> {
+            if let Some(model) = route.model.as_deref() {
+                session
+                    .set_model(model)
+                    .map_err(|error| error.to_string())?;
+            }
+            if let (Some(auth_provider), Some(auth_choice)) =
+                (route.auth_provider.as_deref(), route.auth_choice.as_deref())
+            {
+                session
+                    .set_auth_choice(auth_provider, auth_choice)
+                    .map_err(|error| error.to_string())?;
+            }
+            if let Some(thinking) = route.thinking.as_deref() {
+                session
+                    .set_thinking(thinking)
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        })();
+
+        match setup_result {
+            Ok(()) => session
+                .send_message(prompt, Vec::new())
+                .await
+                .map_err(|error| error.to_string()),
+            Err(error) => Err(error),
+        }
     };
 
     match result {
@@ -1802,8 +1927,7 @@ pub(crate) async fn run_bridge_agent_prompt(
                 }
             });
         }
-        Err(error) => {
-            let message = error.to_string();
+        Err(message) => {
             update_turn(&snapshot, |state| {
                 state.status = "failed".to_string();
                 state.message = message.clone();
@@ -1822,6 +1946,43 @@ pub(crate) async fn run_bridge_agent_prompt(
     let _ = kordi_cli::desktop_runtime::delete_session_forever(&execution_session_id);
 
     snapshot_turn(&snapshot)
+}
+
+pub(crate) async fn run_bridge_agent_prompt(
+    manager: &DesktopChatManager,
+    local_agent_node_id: &str,
+    peer_node_id: &str,
+    prompt: String,
+    routing: Option<DesktopBridgeAgentModelRouting>,
+) -> Result<DesktopChatTurnSnapshot, String> {
+    let cwd = bridge_agent_session_cwd(local_agent_node_id, peer_node_id)?;
+    let routing = routing.unwrap_or_default();
+    let default_model = normalize_bridge_agent_routing_value(routing.default_model.as_ref());
+    let fallback_model = normalize_bridge_agent_routing_value(routing.fallback_model.as_ref());
+    let thinking = normalize_bridge_agent_routing_value(routing.thinking.as_ref());
+    let default_route = BridgeAgentRunRoute {
+        model: default_model.clone(),
+        auth_provider: normalize_bridge_agent_routing_value(routing.default_auth_provider.as_ref()),
+        auth_choice: normalize_bridge_agent_routing_value(routing.default_auth_choice.as_ref()),
+        thinking: thinking.clone(),
+    };
+    let fallback_route = BridgeAgentRunRoute {
+        model: fallback_model.clone(),
+        auth_provider: normalize_bridge_agent_routing_value(
+            routing.fallback_auth_provider.as_ref(),
+        ),
+        auth_choice: normalize_bridge_agent_routing_value(routing.fallback_auth_choice.as_ref()),
+        thinking,
+    };
+
+    let primary =
+        run_bridge_agent_prompt_once(manager, &cwd, prompt.clone(), default_route.clone()).await?;
+
+    if !should_try_bridge_agent_fallback(&primary, &default_route, &fallback_route) {
+        return Ok(primary);
+    }
+
+    run_bridge_agent_prompt_once(manager, &cwd, prompt, fallback_route).await
 }
 
 #[tauri::command]
@@ -1954,20 +2115,36 @@ pub async fn desktop_chat_start_message(
         };
 
         match result {
-            Ok(_) if cancel.is_cancelled() => update_turn(&snapshot_for_task, |state| {
-                state.status = "cancelled".to_string();
-                state.message = "Response stopped".to_string();
-                state.completed = true;
-                state.succeeded = false;
-                state.error = None;
-            }),
-            Ok(_) => update_turn(&snapshot_for_task, |state| {
-                state.status = "succeeded".to_string();
-                state.message = "Response complete".to_string();
-                state.completed = true;
-                state.succeeded = true;
-                state.error = None;
-            }),
+            Ok(_) if cancel.is_cancelled() => {
+                sync_completed_desktop_session_to_canonical(
+                    &cwd,
+                    &target_session_id,
+                    &session_handle,
+                )
+                .await;
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "cancelled".to_string();
+                    state.message = "Response stopped".to_string();
+                    state.completed = true;
+                    state.succeeded = false;
+                    state.error = None;
+                });
+            }
+            Ok(_) => {
+                sync_completed_desktop_session_to_canonical(
+                    &cwd,
+                    &target_session_id,
+                    &session_handle,
+                )
+                .await;
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "succeeded".to_string();
+                    state.message = "Response complete".to_string();
+                    state.completed = true;
+                    state.succeeded = true;
+                    state.error = None;
+                });
+            }
             Err(_err) if cancel.is_cancelled() => update_turn(&snapshot_for_task, |state| {
                 state.status = "cancelled".to_string();
                 state.message = "Response stopped".to_string();
@@ -2180,6 +2357,137 @@ mod tests {
         });
         let completed_sync_state = desktop_state_for_canonical_sync(&state, false);
         assert_eq!(completed_sync_state.active_session.messages.len(), 3);
+    }
+
+    #[test]
+    fn bridge_agent_fallback_route_distinguishes_auth_choice_from_default_route() {
+        let primary = DesktopChatTurnSnapshot {
+            id: "turn-1".to_string(),
+            session_id: "session-1".to_string(),
+            prompt: "Run it".to_string(),
+            status: "failed".to_string(),
+            message: "default auth failed".to_string(),
+            assistant_text: String::new(),
+            thinking_text: String::new(),
+            tools: Vec::new(),
+            completed: true,
+            succeeded: false,
+            error: Some("default auth failed".to_string()),
+            transcript_refresh_required: false,
+        };
+        let default_route = BridgeAgentRunRoute {
+            model: Some("gpt-5".to_string()),
+            auth_provider: Some("openai".to_string()),
+            auth_choice: Some("oauth:primary".to_string()),
+            thinking: Some("medium".to_string()),
+        };
+        let fallback_route = BridgeAgentRunRoute {
+            model: Some("gpt-5".to_string()),
+            auth_provider: Some("openai".to_string()),
+            auth_choice: Some("api-key:fallback".to_string()),
+            thinking: Some("medium".to_string()),
+        };
+
+        assert!(should_try_bridge_agent_fallback(
+            &primary,
+            &default_route,
+            &fallback_route
+        ));
+    }
+
+    #[test]
+    fn completed_desktop_session_sync_state_preserves_agent_runtime_details() {
+        let detail = DesktopChatSessionDetail {
+            id: "session:bridge:humans:test".to_string(),
+            title: "Check repo".to_string(),
+            subtitle: "Check repo".to_string(),
+            provider: "openai".to_string(),
+            provider_label: "OpenAI".to_string(),
+            model: "gpt-5.5".to_string(),
+            model_label: "gpt-5.5".to_string(),
+            thinking: "medium".to_string(),
+            thinking_label: "Medium".to_string(),
+            thinking_levels: Vec::new(),
+            updated_at_label: "Now".to_string(),
+            message_count: 2,
+            draft: false,
+            cache_monitor_text: None,
+            context_window_text: "0 / 0".to_string(),
+            context_window_status: DesktopChatContextWindowStatus {
+                context_window: 0,
+                used_tokens: None,
+                used_percent: None,
+                auto_compaction: false,
+                compaction_threshold_percent: 90,
+            },
+            project: None,
+            messages: vec![
+                DesktopChatMessage {
+                    role: "user".to_string(),
+                    sender: Some("You".to_string()),
+                    text: "@Kordi check again".to_string(),
+                    detail: None,
+                    time_label: "Now".to_string(),
+                    timestamp_ms: 1,
+                    failed: false,
+                    attachments: Vec::new(),
+                    thinking_text: None,
+                    tools: Vec::new(),
+                },
+                DesktopChatMessage {
+                    role: "assistant".to_string(),
+                    sender: Some("Kordi".to_string()),
+                    text: "Checked again.".to_string(),
+                    detail: Some("openai/gpt-5.5 • tool use".to_string()),
+                    time_label: "Now".to_string(),
+                    timestamp_ms: 2,
+                    failed: false,
+                    attachments: Vec::new(),
+                    thinking_text: Some("Need to re-check the repo".to_string()),
+                    tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
+                        id: "tool-1".to_string(),
+                        name: "web_fetch".to_string(),
+                        status: "complete".to_string(),
+                        arguments: "{}".to_string(),
+                        live_output: String::new(),
+                        result_text: Some("repo page".to_string()),
+                        detail: None,
+                        is_error: false,
+                    }],
+                },
+            ],
+        };
+        let local_agent = DesktopChatAgentProfile {
+            label: "Kordi".to_string(),
+            system_prompt: String::new(),
+            loaded_skills: Vec::new(),
+            loaded_tools: Vec::new(),
+            loaded_plugins: Vec::new(),
+            identity_files: Vec::new(),
+            default_provider: "openai".to_string(),
+            default_model: "gpt-5".to_string(),
+            workspace_root: "/tmp/workspace".to_string(),
+            last_activities: Vec::new(),
+        };
+
+        let sync_state = completed_desktop_session_state_for_canonical_sync(
+            Path::new("/tmp/workspace"),
+            "session:bridge:humans:test",
+            detail,
+            local_agent,
+        );
+
+        let assistant = sync_state
+            .active_session
+            .messages
+            .iter()
+            .find(|message| message.role == "assistant")
+            .expect("assistant message is retained after completion");
+        assert_eq!(
+            assistant.thinking_text.as_deref(),
+            Some("Need to re-check the repo")
+        );
+        assert_eq!(assistant.tools.len(), 1);
     }
 
     #[test]

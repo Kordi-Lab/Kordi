@@ -576,6 +576,7 @@ mod tests {
             provider: Arc::new(OpenAiProvider::new()),
             model,
             auth: None,
+            auth_choice_override: None,
             api_key: String::new(),
             base_url: "https://api.openai.com/v1".to_string(),
             headers: HashMap::new(),

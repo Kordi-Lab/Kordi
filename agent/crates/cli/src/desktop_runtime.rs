@@ -20,7 +20,8 @@ use tokio::sync::mpsc;
 
 use crate::login;
 use crate::session_bootstrap::{
-    SessionBootstrapOptions, SessionRuntimeSetup, prepare_session_runtime_for_cwd,
+    SessionAuthChoiceOverride, SessionBootstrapOptions, SessionRuntimeSetup,
+    prepare_session_runtime_for_cwd,
 };
 use crate::session_info::collect_session_info_summary;
 use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
@@ -525,6 +526,36 @@ impl DesktopRuntimeSession {
                 effective_thinking,
             )?;
         }
+        Ok(())
+    }
+
+    pub fn set_auth_choice(&mut self, provider: &str, choice: &str) -> Result<()> {
+        let provider = provider.trim();
+        let choice = choice.trim();
+        if provider.is_empty() || choice.is_empty() {
+            self.setup.auth_choice_override = None;
+            refresh_provider_runtime_fields(&mut self.setup);
+            return Ok(());
+        }
+
+        let model_provider =
+            login::normalize_provider_for_model_selection(&self.setup.model.provider);
+        let auth_provider = login::normalize_provider_for_model_selection(provider);
+        if model_provider != auth_provider {
+            bail!(
+                "Auth choice provider {provider} does not match selected model provider {}",
+                self.setup.model.provider
+            );
+        }
+        if login::resolve_provider_auth_choice(provider, choice).is_none() {
+            bail!("Unknown auth choice for {provider}: {choice}");
+        }
+
+        self.setup.auth_choice_override = Some(SessionAuthChoiceOverride {
+            provider: provider.to_string(),
+            choice: choice.to_string(),
+        });
+        refresh_provider_runtime_fields(&mut self.setup);
         Ok(())
     }
 
@@ -1484,10 +1515,28 @@ fn resolve_model_candidate(
         .ok_or_else(|| anyhow!("Unknown model: {requested}"))
 }
 
+fn resolve_auth_choice_override_for_model(
+    model_provider: &str,
+    choice: &SessionAuthChoiceOverride,
+) -> Option<crate::login::ResolvedProviderAuth> {
+    let model_provider = login::normalize_provider_for_model_selection(model_provider);
+    let auth_provider = login::normalize_provider_for_model_selection(&choice.provider);
+    (model_provider == auth_provider)
+        .then(|| login::resolve_provider_auth_choice(&choice.provider, &choice.choice))
+        .flatten()
+}
+
 fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
     let settings = Settings::load_merged(&setup.tool_ctx.cwd);
-    let runtime =
-        crate::runtime_model::resolve_runtime_config_with_settings(&setup.model, &settings);
+    let auth_override = setup
+        .auth_choice_override
+        .as_ref()
+        .and_then(|choice| resolve_auth_choice_override_for_model(&setup.model.provider, choice));
+    let runtime = crate::runtime_model::build_runtime_config_with_settings(
+        &setup.model,
+        &settings,
+        auth_override,
+    );
 
     setup.provider = runtime.provider.clone();
     setup.auth = runtime.auth;
@@ -2774,6 +2823,34 @@ mod tests {
     use super::*;
     use kordi_core::settings::ProviderOverride;
     use kordi_core::types::{AssistantMessage, StopReason, Usage, UserMessage};
+    use std::sync::Mutex;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::login::auth_test_env_lock()
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        old: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set_value(key: &'static str, value: &str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::set_var(key, value) };
+            Self { key, old }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.old {
+                unsafe { std::env::set_var(self.key, value) };
+            } else {
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
 
     fn local_provider_settings(provider: &str, base_url: &str) -> Settings {
         Settings {
@@ -2816,6 +2893,23 @@ mod tests {
         assert_eq!(model.provider, "ollama");
         assert_eq!(model.id, "llama3.2:latest");
         Ok(())
+    }
+
+    #[test]
+    fn bridge_agent_auth_override_resolves_choice_without_changing_global_provider() {
+        let _lock = env_lock().lock().unwrap();
+        let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "env-openai-key");
+        let choice = SessionAuthChoiceOverride {
+            provider: "openai-codex".to_string(),
+            choice: "env:api-key".to_string(),
+        };
+
+        let auth = resolve_auth_choice_override_for_model("openai", &choice)
+            .expect("matching OpenAI route resolves explicit auth choice");
+
+        assert_eq!(auth.credential, "env-openai-key");
+        assert_eq!(auth.method, crate::login::ProviderAuthMethod::ApiKey);
+        assert!(resolve_auth_choice_override_for_model("anthropic", &choice).is_none());
     }
 
     fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {

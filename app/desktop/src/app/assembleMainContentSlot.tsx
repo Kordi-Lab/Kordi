@@ -106,6 +106,22 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           args.setIsAgentOverlayOpen(false);
         },
         getStatusBadgeClass: args.getStatusBadgeClass,
+        chatModelOptions: args.chatModelOptions,
+        composerProviderOptions: args.composerProviderOptions,
+        onUpdateAgentModelRouting: (agent, values) => {
+          if (!agent.bridgeHostId || !agent.bridgeAgentId) return;
+          return args.handleUpdateBridgeAgentModelRouting(
+            agent.bridgeHostId,
+            agent.bridgeAgentId,
+            values.defaultModel,
+            values.fallbackModel,
+            values.thinking,
+            values.defaultAuthProvider,
+            values.defaultAuthChoice,
+            values.fallbackAuthProvider,
+            values.fallbackAuthChoice,
+          );
+        },
         onMessageAgent: (agent) => {
           if (agent.isOwned) {
             void openLocalAgentChat();

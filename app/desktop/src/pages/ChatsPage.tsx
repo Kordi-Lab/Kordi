@@ -1,7 +1,9 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowRightLeft,
+  ChevronDown,
   Clock3,
   FileText,
   Globe,
@@ -16,6 +18,12 @@ import {
 } from 'lucide-react';
 
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
+import {
+  bridgeAgentRoutingChangeNotice,
+  bridgeChatRoutingControlVisibility,
+  localOwnedBridgeAgentsForModelRouting,
+  routingSelectionForBridgeAgent,
+} from '@/features/bridge/agentModelRouting';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -34,13 +42,18 @@ import {
 } from '@/kordi-app/components';
 import type {
   Conversation,
+  DesktopBridgeHost,
   DesktopChatContextWindowStatus,
   DesktopChatSlashCommand,
+  DesktopChatState,
   DesktopChatTurnSnapshot,
   EditFilePreview,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+
+export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
+export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
@@ -78,6 +91,52 @@ type Attachment = {
   kind: 'image' | 'file';
 };
 
+function bridgeModelDisplayName(modelValue?: string | null, modelOptions?: ComposerModelOption[]) {
+  if (!modelValue?.trim()) return 'model default';
+  const option = modelOptions?.find((candidate) => candidate.value === modelValue);
+  return option?.label ?? modelValue;
+}
+
+function bridgeThinkingDisplayName(value?: string | null) {
+  if (!value?.trim() || value === 'default') return 'model default';
+  return value[0]?.toUpperCase() + value.slice(1);
+}
+
+function normalizeRoutingProviderId(providerId: string) {
+  const normalized = providerId.trim().toLowerCase();
+  return normalized === 'openai-codex' ? 'openai' : normalized;
+}
+
+function authChoiceFromProviderOption(option: ComposerProviderOption) {
+  return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
+}
+
+function firstModelForProvider(providerId: string, modelOptions?: ComposerModelOption[]) {
+  const normalized = normalizeRoutingProviderId(providerId);
+  return modelOptions?.find((option) => normalizeRoutingProviderId(option.provider ?? '') === normalized)?.value ?? null;
+}
+
+function bridgeAuthDisplayName(authProvider?: string | null, authChoice?: string | null, providerOptions?: ComposerProviderOption[]) {
+  if (!authProvider?.trim() && !authChoice?.trim()) return null;
+  const option = providerOptions?.find((candidate) => (
+    candidate.providerId === authProvider && authChoiceFromProviderOption(candidate) === (authChoice ?? null)
+  ));
+  if (option) return [option.label, option.detail].filter(Boolean).join(' · ');
+  return authProvider ?? null;
+}
+
+function bridgeRouteDisplayName(
+  modelValue?: string | null,
+  authProvider?: string | null,
+  authChoice?: string | null,
+  modelOptions?: ComposerModelOption[],
+  providerOptions?: ComposerProviderOption[],
+) {
+  const model = bridgeModelDisplayName(modelValue, modelOptions);
+  const auth = bridgeAuthDisplayName(authProvider, authChoice, providerOptions);
+  return auth ? `${auth} · ${model}` : model;
+}
+
 type ChatsPageProps = {
   isNativeShell: boolean;
   showChatDetailRail: boolean;
@@ -88,6 +147,19 @@ type ChatsPageProps = {
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   activeConv: Conversation;
   activeConversationIsBridge: boolean;
+  activeBridgeModelHost: DesktopBridgeHost | null;
+  desktopChatState: DesktopChatState | null;
+  onUpdateBridgeAgentModelRouting: (
+    hostId: string,
+    agentId: string,
+    defaultModel?: string | null,
+    fallbackModel?: string | null,
+    thinking?: string | null,
+    defaultAuthProvider?: string | null,
+    defaultAuthChoice?: string | null,
+    fallbackAuthProvider?: string | null,
+    fallbackAuthChoice?: string | null,
+  ) => Promise<void>;
   isEditingDesktopSessionTitle: boolean;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   desktopSessionRenameDraft: string;
@@ -141,6 +213,9 @@ export function ChatsPage({
   setIsDetailPanelCollapsed,
   activeConv,
   activeConversationIsBridge,
+  activeBridgeModelHost,
+  desktopChatState,
+  onUpdateBridgeAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
   desktopSessionRenameDraft,
@@ -191,9 +266,141 @@ export function ChatsPage({
   const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
-  const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
   const shouldRenderLiveTurn = Boolean(activeTranscriptLiveTurn && !activeTranscriptLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
+  const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
+  const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
+  const prefersReducedMotion = useReducedMotion();
+  const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
+    defaultModel?: string | null;
+    defaultAuthProvider?: string | null;
+    defaultAuthChoice?: string | null;
+    fallbackModel?: string | null;
+    fallbackAuthProvider?: string | null;
+    fallbackAuthChoice?: string | null;
+    thinking?: string | null;
+  }>>({});
+  const bridgeRoutingAgents = useMemo(
+    () => localOwnedBridgeAgentsForModelRouting(activeBridgeModelHost ? [activeBridgeModelHost] : [], desktopChatState),
+    [activeBridgeModelHost, desktopChatState],
+  );
+  const selectedBridgeRoutingAgentBase = bridgeRoutingAgents.find((agent) => agent.id === selectedBridgeAgentId)
+    ?? bridgeRoutingAgents.find((agent) => agent.isActive)
+    ?? bridgeRoutingAgents.find((agent) => agent.isDefault)
+    ?? bridgeRoutingAgents[0]
+    ?? null;
+  const selectedBridgeRoutingKey = selectedBridgeRoutingAgentBase
+    ? `${selectedBridgeRoutingAgentBase.hostId}:${selectedBridgeRoutingAgentBase.id}`
+    : null;
+  const selectedBridgeRoutingAgent = selectedBridgeRoutingAgentBase
+    ? {
+      ...selectedBridgeRoutingAgentBase,
+      ...(selectedBridgeRoutingKey ? optimisticBridgeAgentRouting[selectedBridgeRoutingKey] : null),
+    }
+    : null;
+  const bridgeRoutingSelection = routingSelectionForBridgeAgent(selectedBridgeRoutingAgent);
+  const bridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(bridgeRoutingAgents.length);
+  const bridgeAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
+  const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
+
+  useEffect(() => {
+    if (!bridgeRoutingNotice) return;
+    const timeoutId = window.setTimeout(() => {
+      setBridgeRoutingNotice(null);
+    }, BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [bridgeRoutingNotice]);
+
+  const closeBridgeRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
+    if (openComposerSelector?.scope === 'chat' && openComposerSelector.type === type) {
+      toggleComposerSelector('chat', type);
+    }
+  };
+
+  const updateBridgeAgentRouting = ({
+    defaultModel,
+    defaultAuthProvider,
+    defaultAuthChoice,
+    fallbackModel,
+    fallbackAuthProvider,
+    fallbackAuthChoice,
+    thinking,
+    selectorType,
+  }: {
+    defaultModel?: string | null;
+    defaultAuthProvider?: string | null;
+    defaultAuthChoice?: string | null;
+    fallbackModel?: string | null;
+    fallbackAuthProvider?: string | null;
+    fallbackAuthChoice?: string | null;
+    thinking?: string | null;
+    selectorType?: 'provider' | 'model' | 'thinking';
+  }) => {
+    if (selectorType) closeBridgeRoutingSelector(selectorType);
+    if (!selectedBridgeRoutingAgent || !selectedBridgeRoutingKey) return;
+    if (isDesktopChatSending || activeLiveTurnIsRunning) {
+      setBridgeRoutingNotice("Stop the running task before changing this session's model or thinking level.");
+      return;
+    }
+
+    const currentModel = selectedBridgeRoutingAgent.defaultModel ?? null;
+    const currentDefaultAuthProvider = selectedBridgeRoutingAgent.defaultAuthProvider ?? null;
+    const currentDefaultAuthChoice = selectedBridgeRoutingAgent.defaultAuthChoice ?? null;
+    const currentFallback = selectedBridgeRoutingAgent.fallbackModel ?? null;
+    const currentFallbackAuthProvider = selectedBridgeRoutingAgent.fallbackAuthProvider ?? null;
+    const currentFallbackAuthChoice = selectedBridgeRoutingAgent.fallbackAuthChoice ?? null;
+    const currentThinking = selectedBridgeRoutingAgent.thinking ?? null;
+    const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
+    const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
+    const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
+    const nextFallback = fallbackModel !== undefined ? fallbackModel : currentFallback;
+    const nextFallbackAuthProvider = fallbackAuthProvider !== undefined ? fallbackAuthProvider : currentFallbackAuthProvider;
+    const nextFallbackAuthChoice = fallbackAuthChoice !== undefined ? fallbackAuthChoice : currentFallbackAuthChoice;
+    const nextThinking = thinking !== undefined ? thinking : currentThinking;
+    const defaultAuthChanged = (defaultAuthProvider !== undefined && nextDefaultAuthProvider !== currentDefaultAuthProvider)
+      || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
+    const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
+      || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
+    const noticeText = bridgeAgentRoutingChangeNotice({
+      agentLabel: selectedBridgeRoutingAgent.label,
+      currentModel,
+      nextModel: defaultModel,
+      currentThinking,
+      nextThinking: thinking,
+      modelLabel: bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
+      thinkingLabel: bridgeThinkingDisplayName(nextThinking),
+    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
+      ? `${selectedBridgeRoutingAgent.label} model route changed to ${bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
+      : null);
+    if (!noticeText) return;
+
+    setOptimisticBridgeAgentRouting((current) => ({
+      ...current,
+      [selectedBridgeRoutingKey]: {
+        defaultModel: nextModel,
+        defaultAuthProvider: nextDefaultAuthProvider,
+        defaultAuthChoice: nextDefaultAuthChoice,
+        fallbackModel: nextFallback,
+        fallbackAuthProvider: nextFallbackAuthProvider,
+        fallbackAuthChoice: nextFallbackAuthChoice,
+        thinking: nextThinking,
+      },
+    }));
+    setBridgeRoutingNotice(noticeText);
+    void onUpdateBridgeAgentModelRouting(
+      selectedBridgeRoutingAgent.hostId,
+      selectedBridgeRoutingAgent.id,
+      nextModel,
+      nextFallback,
+      nextThinking,
+      nextDefaultAuthProvider,
+      nextDefaultAuthChoice,
+      nextFallbackAuthProvider,
+      nextFallbackAuthChoice,
+    ).catch((error) => {
+      setBridgeRoutingNotice(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -314,6 +521,24 @@ export function ChatsPage({
       </div>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
+        <AnimatePresence initial={false}>
+          {activeConversationIsBridge && bridgeRoutingNotice ? (
+            <motion.div
+              key={bridgeRoutingNotice}
+              className="mb-2 flex justify-center"
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
+              transition={{ duration: prefersReducedMotion ? 0.01 : BRIDGE_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
+                Private · {bridgeRoutingNotice}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
             {filteredChatSlashCommands.length > 0 ? (
@@ -481,6 +706,94 @@ export function ChatsPage({
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                 />
+              ) : selectedBridgeRoutingAgent ? (
+                <div className="relative flex min-w-0 items-center gap-2">
+                  {bridgeRoutingControlVisibility.showAgentSelector ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleComposerSelector('chat', 'mode')}
+                      className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+                      title="Choose which owned agent these private settings apply to"
+                    >
+                      <span className="truncate">{selectedBridgeRoutingAgent.label}</span>
+                      <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', bridgeAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
+                    </button>
+                  ) : null}
+                  {bridgeAgentSelectorOpen ? (
+                    <div className="absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+                      <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
+                      <div className="space-y-1">
+                        {bridgeRoutingAgents.map((agent) => (
+                          <button
+                            key={`${agent.hostId}:${agent.id}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBridgeAgentId(agent.id);
+                              toggleComposerSelector('chat', 'mode');
+                            }}
+                            className={cn(
+                              'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                              selectedBridgeRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
+                            )}
+                          >
+                            <span className="truncate">{agent.label}</span>
+                            <span className="shrink-0 text-[11px] text-[color:var(--utility-muted-text)]">{agent.isDefault ? 'Default' : 'Owned'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <ComposerModelControls
+                    scope="chat"
+                    selection={bridgeRoutingSelection}
+                    openSelector={openComposerSelector}
+                    onToggleSelector={toggleComposerSelector}
+                    onSelectValue={(_scope, type, value) => {
+                      if (type === 'model') {
+                        updateBridgeAgentRouting({
+                          defaultModel: value,
+                          defaultAuthProvider: selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
+                          defaultAuthChoice: selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
+                          fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
+                          fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                          fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                          thinking: selectedBridgeRoutingAgent.thinking ?? null,
+                          selectorType: 'model',
+                        });
+                      } else if (type === 'thinking') {
+                        updateBridgeAgentRouting({
+                          defaultModel: selectedBridgeRoutingAgent.defaultModel ?? null,
+                          defaultAuthProvider: selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
+                          defaultAuthChoice: selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
+                          fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
+                          fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                          fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                          thinking: value,
+                          selectorType: 'thinking',
+                        });
+                      }
+                    }}
+                    authLabel={composerAuthLabel}
+                    authOptions={composerAuthOptions}
+                    onSelectAuthChoice={() => {}}
+                    onSelectProviderChoice={(_scope, option) => {
+                      const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
+                      if (!nextModel) return;
+                      updateBridgeAgentRouting({
+                        defaultModel: nextModel,
+                        defaultAuthProvider: option.providerId,
+                        defaultAuthChoice: authChoiceFromProviderOption(option),
+                        fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
+                        fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                        fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                        thinking: selectedBridgeRoutingAgent.thinking ?? null,
+                        selectorType: 'provider',
+                      });
+                    }}
+                    providerOptions={composerProviderOptions}
+                    modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  />
+                </div>
               ) : null}
               <Button
                 className={cn(
