@@ -112,6 +112,47 @@ function sameOwnedAgentResponse(left: CanonicalSessionMessage, right: CanonicalS
     && Math.abs(left.createdAtMs - right.createdAtMs) <= 30_000;
 }
 
+function normalizedDuplicateText(value: string) {
+  return value.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
+function bridgeParentUserMessageMatchesOptimisticUi(
+  parentMessage: CanonicalSessionMessage,
+  optimisticMessage: CanonicalSessionMessage,
+) {
+  return parentMessage.sessionId === optimisticMessage.sessionId
+    && parentMessage.senderRole === 'user'
+    && optimisticMessage.senderRole === 'user'
+    && parentMessage.messageKind === optimisticMessage.messageKind
+    && parentMessage.sourceTransport === 'desktop-bridge-parent'
+    && optimisticMessage.sourceTransport === 'desktop-bridge-ui'
+    && normalizedDuplicateText(parentMessage.contentText) === normalizedDuplicateText(optimisticMessage.contentText)
+    && Math.abs(parentMessage.createdAtMs - optimisticMessage.createdAtMs) <= 10_000;
+}
+
+function bridgeUiOptimisticEchoIds(messages: CanonicalSessionMessage[]) {
+  const echoIds = new Set<string>();
+  const optimisticMessages = messages
+    .filter((message) => message.sourceTransport === 'desktop-bridge-ui' && message.senderRole === 'user')
+    .sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
+  const parentMessages = messages
+    .filter((message) => message.sourceTransport === 'desktop-bridge-parent' && message.senderRole === 'user')
+    .sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
+
+  for (const parentMessage of parentMessages) {
+    const nearestOptimisticMessage = optimisticMessages
+      .filter((optimisticMessage) => !echoIds.has(optimisticMessage.id) && bridgeParentUserMessageMatchesOptimisticUi(parentMessage, optimisticMessage))
+      .sort((left, right) => {
+        const leftDistance = Math.abs(parentMessage.createdAtMs - left.createdAtMs);
+        const rightDistance = Math.abs(parentMessage.createdAtMs - right.createdAtMs);
+        return leftDistance - rightDistance || right.sequenceNum - left.sequenceNum;
+      })[0];
+    if (nearestOptimisticMessage) echoIds.add(nearestOptimisticMessage.id);
+  }
+
+  return echoIds;
+}
+
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   const duplicateIds = new Set<string>();
   const localRuntimeMessages = messages.filter((message) => (
@@ -256,13 +297,14 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       }),
     );
     const seenJoinEventKeys = new Set<string>();
+    const suppressedBridgeUiEchoIds = bridgeUiOptimisticEchoIds(sortedMessages);
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
       sessionId,
       sortedMessages.flatMap((message) => {
-        if (suppressedLocalRuntimeEchoIds.has(message.id) || suppressedLocalRuntimeDuplicateIds.has(message.id)) return [];
+        if (suppressedBridgeUiEchoIds.has(message.id) || suppressedLocalRuntimeEchoIds.has(message.id) || suppressedLocalRuntimeDuplicateIds.has(message.id)) return [];
         const content = contentRecord(message.content);
         if (stringValue(content.kind) === 'delegation-join-event') {
           const key = [
