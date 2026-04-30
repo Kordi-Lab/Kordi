@@ -142,6 +142,33 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
   });
 }
 
+export function bridgeMentionCandidateOptionText(candidate: BridgeMentionCandidate) {
+  const runtime = candidate.peer.runtime?.trim();
+  if (candidate.targetKind === 'bridge-person') {
+    const pairedAgentLabel = candidate.peer.displayName?.trim();
+    return {
+      label: candidate.displayLabel,
+      detail: [
+        'Bridge person',
+        `@${candidate.handle}`,
+        pairedAgentLabel && pairedAgentLabel !== candidate.displayLabel ? `Kordi: ${pairedAgentLabel}` : null,
+        runtime,
+      ].filter((value): value is string => Boolean(value)).join(' • '),
+    };
+  }
+
+  const ownerName = candidate.peer.ownerName?.trim();
+  return {
+    label: candidate.displayLabel,
+    detail: [
+      'Bridge agent',
+      `@${candidate.handle}`,
+      ownerName && ownerName !== candidate.displayLabel ? `Owner: ${ownerName}` : null,
+      runtime,
+    ].filter((value): value is string => Boolean(value)).join(' • '),
+  };
+}
+
 export function scopedAgentLabel(ownerName: string | null | undefined, agentLabel: string | null | undefined, ownerIsSelf = false) {
   const label = agentLabel?.trim();
   if (!label) return null;

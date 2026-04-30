@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  bridgeMentionCandidateOptionText,
   buildBridgeMentionCandidates,
   localAgentMentionLabels,
   mentionHandleForLabel,
@@ -93,6 +94,35 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
     annCandidates.map((candidate) => candidate.handle).sort(),
     ['AnnLeehumanalp', 'AnnLeehumanbet'].sort(),
   );
+});
+
+test('bridge mention option text shows display names and pairs people with their Kordi', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'kd_remote_node_123',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+  ]);
+
+  const options = buildBridgeMentionCandidates(bridgeState).map(bridgeMentionCandidateOptionText);
+
+  assert.deepEqual(options, [
+    {
+      label: 'Alice',
+      detail: "Bridge person • @Alice • Kordi: Alice's Kordi • kordi-desktop",
+    },
+    {
+      label: "Alice's Kordi",
+      detail: 'Bridge agent • @AlicesKordi • Owner: Alice • kordi-desktop',
+    },
+  ]);
+  assert.equal(options.some((option) => option.detail.includes('Host One')), false);
+  assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
 });
 
 test('buildBridgeMentionCandidates does not expose node id duplicates when friendly labels exist', () => {
