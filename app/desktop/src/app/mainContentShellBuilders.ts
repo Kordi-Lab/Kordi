@@ -157,6 +157,11 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
     activeConv: args.activeConv,
     activeConversationIsBridge: args.activeConversationIsBridge,
+    activeBridgeModelHost: args.activeBridgeConversationHost
+      ?? args.desktopBridgeState?.hosts.find((host) => host.id === args.activeConv.bridgeTarget?.hostId)
+      ?? args.activeBridgeHost,
+    desktopChatState: args.desktopChatState,
+    onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,
     desktopSessionRenameDraft: args.desktopSessionRenameDraft,

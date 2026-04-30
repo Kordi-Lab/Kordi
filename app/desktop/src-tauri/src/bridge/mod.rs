@@ -100,6 +100,44 @@ struct DesktopBridgeAgentConfig {
     runtime: String,
     #[serde(default)]
     is_default: bool,
+    #[serde(
+        rename = "defaultModel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    default_model: Option<String>,
+    #[serde(
+        rename = "defaultAuthProvider",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    default_auth_provider: Option<String>,
+    #[serde(
+        rename = "defaultAuthChoice",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    default_auth_choice: Option<String>,
+    #[serde(
+        rename = "fallbackModel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    fallback_model: Option<String>,
+    #[serde(
+        rename = "fallbackAuthProvider",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    fallback_auth_provider: Option<String>,
+    #[serde(
+        rename = "fallbackAuthChoice",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    fallback_auth_choice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thinking: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +293,13 @@ pub struct DesktopBridgeAgent {
     pub is_default: bool,
     pub is_active: bool,
     pub registered: bool,
+    pub default_model: Option<String>,
+    pub default_auth_provider: Option<String>,
+    pub default_auth_choice: Option<String>,
+    pub fallback_model: Option<String>,
+    pub fallback_auth_provider: Option<String>,
+    pub fallback_auth_choice: Option<String>,
+    pub thinking: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -614,6 +659,13 @@ fn ensure_host_bootstrap(
             api_key: host.api_key.clone(),
             runtime: default_bridge_agent_runtime(),
             is_default: true,
+            default_model: None,
+            default_auth_provider: None,
+            default_auth_choice: None,
+            fallback_model: None,
+            fallback_auth_provider: None,
+            fallback_auth_choice: None,
+            thinking: None,
         });
     } else {
         let active_id = host.active_agent_id.clone();
@@ -666,6 +718,13 @@ fn build_public_bridge_agents(host: &DesktopBridgeHostConfig) -> Vec<DesktopBrid
             is_default: agent.is_default,
             is_active: active_id == Some(agent.id.as_str()),
             registered: !agent.node_id.trim().is_empty() && !agent.api_key.trim().is_empty(),
+            default_model: agent.default_model.clone(),
+            default_auth_provider: agent.default_auth_provider.clone(),
+            default_auth_choice: agent.default_auth_choice.clone(),
+            fallback_model: agent.fallback_model.clone(),
+            fallback_auth_provider: agent.fallback_auth_provider.clone(),
+            fallback_auth_choice: agent.fallback_auth_choice.clone(),
+            thinking: agent.thinking.clone(),
         })
         .collect()
 }
@@ -770,6 +829,34 @@ pub async fn desktop_bridge_rename_agent(
     label: String,
 ) -> Result<DesktopBridgeState, String> {
     host_commands::desktop_bridge_rename_agent_impl(&manager, host_id, agent_id, label).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_update_agent_model_routing(
+    manager: State<'_, DesktopBridgeManager>,
+    host_id: String,
+    agent_id: String,
+    default_model: Option<String>,
+    fallback_model: Option<String>,
+    thinking: Option<String>,
+    default_auth_provider: Option<String>,
+    default_auth_choice: Option<String>,
+    fallback_auth_provider: Option<String>,
+    fallback_auth_choice: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_update_agent_model_routing_impl(
+        &manager,
+        host_id,
+        agent_id,
+        default_model,
+        fallback_model,
+        thinking,
+        default_auth_provider,
+        default_auth_choice,
+        fallback_auth_provider,
+        fallback_auth_choice,
+    )
+    .await
 }
 
 #[tauri::command]

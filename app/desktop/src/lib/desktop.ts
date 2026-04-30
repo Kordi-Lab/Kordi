@@ -374,6 +374,30 @@ export async function renameDesktopBridgeAgent(hostId: string, agentId: string, 
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_rename_agent', { hostId, agentId, label });
 }
 
+export async function updateDesktopBridgeAgentModelRouting(
+  hostId: string,
+  agentId: string,
+  defaultModel?: string | null,
+  fallbackModel?: string | null,
+  thinking?: string | null,
+  defaultAuthProvider?: string | null,
+  defaultAuthChoice?: string | null,
+  fallbackAuthProvider?: string | null,
+  fallbackAuthChoice?: string | null,
+) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_update_agent_model_routing', {
+    hostId,
+    agentId,
+    defaultModel,
+    fallbackModel,
+    thinking,
+    defaultAuthProvider,
+    defaultAuthChoice,
+    fallbackAuthProvider,
+    fallbackAuthChoice,
+  });
+}
+
 export async function setDesktopBridgeDefaultAgent(hostId: string, agentId: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_default_agent', { hostId, agentId });
 }

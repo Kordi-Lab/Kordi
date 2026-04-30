@@ -728,6 +728,53 @@ test('canonical read model keeps shared relationship history when local runtime 
   assert.deepEqual(conversations[0]?.messages[3]?.turn?.tools.map((tool: { name: string }) => tool.name), ['web_search']);
 });
 
+test('canonical read model prefers local rich owned-agent runtime over later plain bridge relay duplicate', () => {
+  const sessionId = 'session:bridge:humans:rich-local-runtime';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-person', title: 'inspect repo', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:shenzhe', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: 'inspect repo', content: { sender: 'Shenzhe', timeLabel: '20:15' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'request' },
+      { id: 'msg:local-rich', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The repo core loop is in session handlers.', content: { sender: 'My Kordi', timeLabel: '20:16', thinkingText: 'local chain', tools: [{ id: 'tool-1', name: 'read', status: 'complete', arguments: '', liveOutput: '', resultText: 'src/main.rs', detail: null, isError: false }] }, status: 'complete', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'local-rich' },
+      { id: 'msg:relay-plain', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The repo core loop is in session handlers.', content: { sender: 'My Kordi', timeLabel: '20:16', kind: 'session-relay' }, status: 'complete', sequenceNum: 3, createdAtMs: 2_100, updatedAtMs: 2_100, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'relay-plain' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+
+  assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), [
+    'inspect repo',
+    'The repo core loop is in session handlers.',
+  ]);
+  assert.equal(messages[1]?.turn?.thinkingText, 'local chain');
+  assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
+});
+
 test('activity marks bridge-backed uuid chat sessions as visible local sessions for unread clearing', () => {
   assert.equal(visibleLocalSessionIdForActivity({
     activeNav: 'chats',

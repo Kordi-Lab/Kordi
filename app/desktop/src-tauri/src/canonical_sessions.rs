@@ -42,9 +42,10 @@ use self::core::{
 pub(crate) use self::desktop_sync::sync_desktop_chat_state;
 #[cfg(test)]
 use self::desktop_sync::{
-    explicit_desktop_project_membership, should_skip_shared_local_agent_runtime_prompt,
-    should_sync_desktop_chat_detail, should_sync_desktop_chat_summary,
-    should_update_desktop_session_shell,
+    enrich_similar_bridge_agent_message_with_desktop_runtime, explicit_desktop_project_membership,
+    reconcile_processing_bridge_agent_placeholder_with_desktop_runtime,
+    should_skip_shared_local_agent_runtime_prompt, should_sync_desktop_chat_detail,
+    should_sync_desktop_chat_summary, should_update_desktop_session_shell,
 };
 #[cfg(test)]
 use self::parent_sessions::{

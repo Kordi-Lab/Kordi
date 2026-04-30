@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::core::hash_hex;
 use super::message_reconcile;
@@ -53,6 +53,155 @@ pub(super) fn should_skip_shared_local_agent_runtime_prompt(
     message.text.trim_start().starts_with("@Kordi")
 }
 
+fn content_with_desktop_runtime(
+    content_json: Option<&str>,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> Result<serde_json::Value, String> {
+    let mut content = content_json
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .filter(|value| value.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if let Some(thinking_text) = message.thinking_text.as_deref() {
+        if !thinking_text.trim().is_empty() {
+            content["thinkingText"] = serde_json::Value::String(thinking_text.to_string());
+        }
+    }
+    if !message.tools.is_empty() {
+        content["tools"] = serde_json::to_value(&message.tools).map_err(|err| err.to_string())?;
+    }
+    content["role"] = serde_json::Value::String(message.role.clone());
+    if let Some(sender) = message.sender.as_deref() {
+        content["sender"] = serde_json::Value::String(sender.to_string());
+    }
+    if let Some(detail) = message.detail.as_deref() {
+        content["detail"] = serde_json::Value::String(detail.to_string());
+    }
+    content["timeLabel"] = serde_json::Value::String(message.time_label.clone());
+    content["timestampMs"] = serde_json::Value::Number(message.timestamp_ms.into());
+    if !message.attachments.is_empty() {
+        content["attachments"] =
+            serde_json::to_value(&message.attachments).map_err(|err| err.to_string())?;
+    }
+
+    Ok(content)
+}
+
+fn update_message_with_desktop_runtime(
+    conn: &Connection,
+    message_id: &str,
+    content_text: &str,
+    content_json: Option<&str>,
+    status: &str,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> Result<(), String> {
+    let content = content_with_desktop_runtime(content_json, message)?;
+    let content_string = content.to_string();
+    let content_hash = hash_hex(&format!("{}|{}", content_text, content_string), 16);
+    conn.execute(
+        "UPDATE session_messages
+         SET content_text = ?2,
+             content_json = ?3,
+             status = ?4,
+             created_at_ms = ?5,
+             updated_at_ms = MAX(updated_at_ms, ?5),
+             content_hash = ?6
+         WHERE id = ?1",
+        rusqlite::params![
+            message_id,
+            content_text,
+            content_string,
+            status,
+            message.timestamp_ms,
+            content_hash,
+        ],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
+    conn: &Connection,
+    session_id: &str,
+    content_text: &str,
+    created_at_ms: i64,
+    match_window_ms: i64,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> Result<bool, String> {
+    let Some((message_id, content_json)) = conn
+        .query_row(
+            "SELECT id, content_json
+             FROM session_messages
+             WHERE session_id = ?1
+               AND message_kind = 'agent-turn'
+               AND sender_role IN ('owned-agent', 'external-agent')
+               AND content_text = ?2
+               AND source_transport = 'desktop-bridge-session-relay'
+               AND ABS(created_at_ms - ?3) <= ?4
+             ORDER BY ABS(created_at_ms - ?3) ASC, sequence_num DESC
+             LIMIT 1",
+            rusqlite::params![session_id, content_text, created_at_ms, match_window_ms],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+    else {
+        return Ok(false);
+    };
+
+    update_message_with_desktop_runtime(
+        conn,
+        &message_id,
+        content_text,
+        content_json.as_deref(),
+        "complete",
+        message,
+    )?;
+    Ok(true)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
+    conn: &Connection,
+    session_id: &str,
+    content_text: &str,
+    created_at_ms: i64,
+    match_window_ms: i64,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> Result<bool, String> {
+    let Some((message_id, content_json)) = conn
+        .query_row(
+            "SELECT id, content_json
+             FROM session_messages
+             WHERE session_id = ?1
+               AND message_kind = 'agent-turn'
+               AND sender_role = 'owned-agent'
+               AND source_transport = 'desktop-bridge-session-relay'
+               AND lower(trim(content_text)) IN ('processing', 'processing.', 'processing..', 'processing...', 'processing…')
+               AND ABS(created_at_ms - ?2) <= ?3
+             ORDER BY created_at_ms DESC, sequence_num DESC
+             LIMIT 1",
+            rusqlite::params![session_id, created_at_ms, match_window_ms],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+    else {
+        return Ok(false);
+    };
+
+    update_message_with_desktop_runtime(
+        conn,
+        &message_id,
+        content_text,
+        content_json.as_deref(),
+        "complete",
+        message,
+    )?;
+    Ok(true)
+}
+
 fn sync_desktop_chat_message(
     conn: &Connection,
     session_id: &str,
@@ -96,17 +245,36 @@ fn sync_desktop_chat_message(
         message.text.clone()
     };
 
-    if is_agent
-        && similar_agent_message_exists(
+    if is_agent {
+        if reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
+            conn,
+            session_id,
+            &content_text,
+            message.timestamp_ms,
+            30_000,
+            message,
+        )? {
+            return Ok(());
+        }
+
+        if similar_agent_message_exists(
             conn,
             session_id,
             &content_text,
             "desktop-bridge-session-relay",
             message.timestamp_ms,
             30_000,
-        )?
-    {
-        return Ok(());
+        )? {
+            let _ = enrich_similar_bridge_agent_message_with_desktop_runtime(
+                conn,
+                session_id,
+                &content_text,
+                message.timestamp_ms,
+                30_000,
+                message,
+            )?;
+            return Ok(());
+        }
     }
 
     let request = AppendCanonicalMessageRequest {

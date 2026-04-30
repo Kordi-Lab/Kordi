@@ -559,6 +559,13 @@ pub(super) async fn desktop_bridge_create_agent_impl(
         api_key,
         runtime: agent_runtime,
         is_default: false,
+        default_model: None,
+        default_auth_provider: None,
+        default_auth_choice: None,
+        fallback_model: None,
+        fallback_auth_provider: None,
+        fallback_auth_choice: None,
+        thinking: None,
     });
     host.active_agent_id = Some(agent_id);
     sync_host_active_agent_fields(host);
@@ -631,6 +638,55 @@ pub(super) async fn desktop_bridge_rename_agent_impl(
 
     host.agents[agent_index].label = next_label.to_string();
     sync_registered_agent(host, agent_index).await?;
+    sync_host_active_agent_fields(host);
+    save_bridge_store(&store)?;
+    Ok(build_bridge_state(
+        store,
+        load_conversation_store(),
+        current_local_server_status(manager).await,
+    )
+    .await)
+}
+
+fn normalize_optional_agent_setting(value: Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "default")
+        .map(ToString::to_string)
+}
+
+pub(super) async fn desktop_bridge_update_agent_model_routing_impl(
+    manager: &DesktopBridgeManager,
+    host_id: String,
+    agent_id: String,
+    default_model: Option<String>,
+    fallback_model: Option<String>,
+    thinking: Option<String>,
+    default_auth_provider: Option<String>,
+    default_auth_choice: Option<String>,
+    fallback_auth_provider: Option<String>,
+    fallback_auth_choice: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    let mut store = load_bridge_store();
+    let host = store
+        .hosts
+        .iter_mut()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| "Bridge host not found".to_string())?;
+    let agent = host
+        .agents
+        .iter_mut()
+        .find(|agent| agent.id == agent_id)
+        .ok_or_else(|| "Bridge agent not found".to_string())?;
+
+    agent.default_model = normalize_optional_agent_setting(default_model);
+    agent.default_auth_provider = normalize_optional_agent_setting(default_auth_provider);
+    agent.default_auth_choice = normalize_optional_agent_setting(default_auth_choice);
+    agent.fallback_model = normalize_optional_agent_setting(fallback_model);
+    agent.fallback_auth_provider = normalize_optional_agent_setting(fallback_auth_provider);
+    agent.fallback_auth_choice = normalize_optional_agent_setting(fallback_auth_choice);
+    agent.thinking = normalize_optional_agent_setting(thinking);
     sync_host_active_agent_fields(host);
     save_bridge_store(&store)?;
     Ok(build_bridge_state(

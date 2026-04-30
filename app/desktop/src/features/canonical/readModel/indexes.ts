@@ -80,6 +80,62 @@ function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
   return echoIds;
 }
 
+function ownedAgentRuntimeRichness(message: CanonicalSessionMessage) {
+  if (message.senderRole !== 'owned-agent' || message.messageKind !== 'agent-turn') return 0;
+  const content = contentRecord(message.content);
+  const tools = Array.isArray(content.tools) ? content.tools.length : 0;
+  const thinking = stringValue(content.thinkingText)?.trim() ? 1 : 0;
+  const active = stringValue(content.deliveryState)?.trim().toLowerCase() === 'processing' ? 1 : 0;
+  return tools * 10 + thinking + active;
+}
+
+function sameOwnedAgentResponse(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
+  return left.sessionId === right.sessionId
+    && left.senderIdentityId === right.senderIdentityId
+    && left.senderRole === 'owned-agent'
+    && right.senderRole === 'owned-agent'
+    && left.messageKind === 'agent-turn'
+    && right.messageKind === 'agent-turn'
+    && left.contentText.trim() === right.contentText.trim()
+    && Math.abs(left.createdAtMs - right.createdAtMs) <= 30_000;
+}
+
+function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
+  const duplicateIds = new Set<string>();
+  const localRuntimeMessages = messages.filter((message) => (
+    message.sourceTransport === 'desktop-chat'
+    && ownedAgentRuntimeRichness(message) > 0
+  ));
+  const bridgeRelayMessages = messages.filter((message) => message.sourceTransport === 'desktop-bridge-session-relay');
+
+  for (const localMessage of localRuntimeMessages) {
+    const matches = bridgeRelayMessages.filter((message) => sameOwnedAgentResponse(localMessage, message));
+    if (matches.length === 0) continue;
+
+    const localRichness = ownedAgentRuntimeRichness(localMessage);
+    const richestBridge = matches.reduce((best, candidate) => {
+      const candidateRichness = ownedAgentRuntimeRichness(candidate);
+      const bestRichness = ownedAgentRuntimeRichness(best);
+      if (candidateRichness !== bestRichness) return candidateRichness > bestRichness ? candidate : best;
+      return Math.abs(candidate.createdAtMs - localMessage.createdAtMs) < Math.abs(best.createdAtMs - localMessage.createdAtMs)
+        ? candidate
+        : best;
+    });
+    const bridgeRichness = ownedAgentRuntimeRichness(richestBridge);
+
+    if (bridgeRichness >= localRichness) {
+      duplicateIds.add(localMessage.id);
+      for (const message of matches) {
+        if (message.id !== richestBridge.id) duplicateIds.add(message.id);
+      }
+    } else {
+      for (const message of matches) duplicateIds.add(message.id);
+    }
+  }
+
+  return duplicateIds;
+}
+
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
 
@@ -189,11 +245,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     );
     const seenJoinEventKeys = new Set<string>();
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
+    const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
       sessionId,
       sortedMessages.flatMap((message) => {
-        if (suppressedLocalRuntimeEchoIds.has(message.id)) return [];
+        if (suppressedLocalRuntimeEchoIds.has(message.id) || suppressedLocalRuntimeDuplicateIds.has(message.id)) return [];
         const content = contentRecord(message.content);
         if (stringValue(content.kind) === 'delegation-join-event') {
           const key = [

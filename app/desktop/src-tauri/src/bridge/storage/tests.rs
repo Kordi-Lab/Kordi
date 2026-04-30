@@ -618,6 +618,13 @@ fn bridge_store_export_redacts_api_keys() {
                 api_key: "test-agent-key".to_string(),
                 runtime: super::default_bridge_agent_runtime(),
                 is_default: true,
+                default_model: Some("openai/gpt-5.4".to_string()),
+                default_auth_provider: Some("openai".to_string()),
+                default_auth_choice: Some("env:api-key".to_string()),
+                fallback_model: Some("anthropic/claude-sonnet-4.5".to_string()),
+                fallback_auth_provider: Some("anthropic".to_string()),
+                fallback_auth_choice: Some("profile:claude".to_string()),
+                thinking: Some("high".to_string()),
             }],
             api_style: "serve".to_string(),
         }],
@@ -634,6 +641,16 @@ fn bridge_store_export_redacts_api_keys() {
         .expect("agent entry");
 
     assert_eq!(exported["credentialsRedacted"], serde_json::json!(true));
+    assert_eq!(agent["defaultAuthProvider"], serde_json::json!("openai"));
+    assert_eq!(agent["defaultAuthChoice"], serde_json::json!("env:api-key"));
+    assert_eq!(
+        agent["fallbackAuthProvider"],
+        serde_json::json!("anthropic")
+    );
+    assert_eq!(
+        agent["fallbackAuthChoice"],
+        serde_json::json!("profile:claude")
+    );
     assert!(host.get("apiKey").is_none());
     assert!(agent.get("apiKey").is_none());
 }
@@ -659,6 +676,13 @@ fn hydrate_bridge_store_secrets_restores_redacted_config() {
                 api_key: String::new(),
                 runtime: super::default_bridge_agent_runtime(),
                 is_default: true,
+                default_model: None,
+                default_auth_provider: None,
+                default_auth_choice: None,
+                fallback_model: None,
+                fallback_auth_provider: None,
+                fallback_auth_choice: None,
+                thinking: None,
             }],
             api_style: "serve".to_string(),
         }],

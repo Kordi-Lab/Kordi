@@ -218,6 +218,7 @@ fn spawn_local_agent_response(
             &target.host.node_id,
             &event.from_node_id,
             text,
+            target.model_routing.clone(),
         )
         .await
         {
@@ -423,6 +424,7 @@ mod tests {
             },
             sender_runtime: "person".to_string(),
             sender_agent_id: None,
+            model_routing: None,
             should_process_agent_asks: false,
         }
     }
