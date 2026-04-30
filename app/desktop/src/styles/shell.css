@@ -502,6 +502,27 @@
   box-shadow: none;
 }
 
+.app-attachment-image-card {
+  color: inherit;
+}
+
+.app-attachment-image-footer {
+  color: color-mix(in oklab, currentColor 72%, transparent);
+}
+
+.app-attachment-image-fallback {
+  color: color-mix(in oklab, currentColor 68%, transparent);
+}
+
+.app-attachment-image-fallback-icon,
+.app-attachment-image-fallback-title {
+  color: color-mix(in oklab, currentColor 86%, transparent);
+}
+
+.app-attachment-image-fallback-name {
+  color: color-mix(in oklab, currentColor 62%, transparent);
+}
+
 .app-auth-notice {
   border: 1px solid rgba(251, 191, 36, 0.26);
   background: rgba(251, 191, 36, 0.11);

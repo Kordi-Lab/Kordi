@@ -524,13 +524,13 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
 
 function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
   return (
-    <div className="flex h-36 flex-col items-center justify-center gap-2 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),rgba(15,23,42,0.58))] px-4 text-center text-slate-400">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 text-slate-300 shadow-inner shadow-black/20">
+    <div className="app-attachment-image-fallback flex h-36 flex-col items-center justify-center gap-2 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),rgba(15,23,42,0.58))] px-4 text-center">
+      <div className="app-attachment-image-fallback-icon flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 shadow-inner shadow-black/20">
         <ImageOff className="h-5 w-5" />
       </div>
       <div>
-        <div className="text-[12px] font-medium text-slate-300">Preview unavailable</div>
-        <div className="mt-0.5 max-w-[14rem] truncate text-[10px] text-slate-500">{displayAttachmentName(attachment.name, attachment.kind)}</div>
+        <div className="app-attachment-image-fallback-title text-[12px] font-medium">Preview unavailable</div>
+        <div className="app-attachment-image-fallback-name mt-0.5 max-w-[14rem] truncate text-[10px]">{displayAttachmentName(attachment.name, attachment.kind)}</div>
       </div>
     </div>
   );
@@ -544,7 +544,7 @@ function AttachmentImageCard({ attachment, index }: { attachment: MessageAttachm
   const showImage = Boolean(previewUrl && !previewFailed);
 
   return (
-    <div key={`${attachment.name}-${index}`} className="overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+    <div key={`${attachment.name}-${index}`} className="app-attachment-image-card overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
       {showImage ? (
         <img
           src={previewUrl}
@@ -555,8 +555,8 @@ function AttachmentImageCard({ attachment, index }: { attachment: MessageAttachm
       ) : (
         <BrokenImagePreview attachment={attachment} />
       )}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-300">
-        <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+      <div className="app-attachment-image-footer flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
+        <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em]">
           {metadataLabel || 'IMAGE'}
         </span>
         <AttachmentActions attachment={attachment} />
