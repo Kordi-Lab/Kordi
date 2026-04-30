@@ -87,6 +87,15 @@ pub struct DesktopChatTurnSnapshot {
     pub transcript_refresh_required: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatMessageRoute {
+    pub model: Option<String>,
+    pub auth_provider: Option<String>,
+    pub auth_choice: Option<String>,
+    pub thinking: Option<String>,
+}
+
 const TRANSIENT_LOCAL_DRAFT_SESSION_ID: &str = "draft:local-chat";
 
 #[derive(Clone, Serialize)]
@@ -2192,6 +2201,43 @@ pub(crate) async fn run_bridge_agent_prompt(
     run_bridge_agent_prompt_once(manager, &cwd, prompt, attachment_paths, fallback_route).await
 }
 
+fn normalized_message_route_value(value: Option<&String>) -> Option<&str> {
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "default")
+}
+
+fn apply_desktop_chat_message_route(
+    session: &mut DesktopRuntimeSession,
+    route: Option<&DesktopChatMessageRoute>,
+) -> Result<(), String> {
+    let Some(route) = route else {
+        return Ok(());
+    };
+
+    if let Some(model) = normalized_message_route_value(route.model.as_ref()) {
+        session
+            .set_model(model)
+            .map_err(|error| error.to_string())?;
+    }
+    if let (Some(auth_provider), Some(auth_choice)) = (
+        normalized_message_route_value(route.auth_provider.as_ref()),
+        normalized_message_route_value(route.auth_choice.as_ref()),
+    ) {
+        session
+            .set_auth_choice(auth_provider, auth_choice)
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(thinking) = normalized_message_route_value(route.thinking.as_ref()) {
+        session
+            .set_thinking(thinking)
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn desktop_chat_start_message(
     manager: State<'_, DesktopChatManager>,
@@ -2199,6 +2245,7 @@ pub async fn desktop_chat_start_message(
     session_id: String,
     text: String,
     attachment_paths: Option<Vec<String>>,
+    route: Option<DesktopChatMessageRoute>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -2259,6 +2306,16 @@ pub async fn desktop_chat_start_message(
     tokio::spawn(async move {
         let (provider, model) = {
             let mut session = session_handle.lock().await;
+            if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "failed".to_string();
+                    state.message = error.clone();
+                    state.completed = true;
+                    state.succeeded = false;
+                    state.error = Some(error);
+                });
+                return;
+            }
             prepare_desktop_session_for_send(
                 &mut session,
                 bridge_manager_for_task,

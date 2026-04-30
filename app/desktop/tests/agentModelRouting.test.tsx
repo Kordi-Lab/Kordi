@@ -7,6 +7,7 @@ import {
   bridgeAgentRoutingChangeNotice,
   bridgeAgentRoutingNotice,
   bridgeChatRoutingControlVisibility,
+  localAgentRuntimeRouteForBridgeState,
   localOwnedBridgeAgentsForModelRouting,
   routingSelectionForBridgeAgent,
 } from '../src/features/bridge/agentModelRouting';
@@ -99,6 +100,26 @@ test('routingSelectionForBridgeAgent uses per-agent default, fallback, and think
     authChoice: 'profile:chatgpt-e96dde',
     fallbackModel: 'anthropic/claude-sonnet-4.5',
     thinking: 'high',
+  });
+});
+
+test('localAgentRuntimeRouteForBridgeState applies active owned-agent thinking to group chat local turns', () => {
+  const route = localAgentRuntimeRouteForBridgeState({
+    activeHostId: 'host-1',
+    hosts: [{
+      ...hosts[0],
+      agents: [
+        { ...hosts[0].agents[0], thinking: 'xhigh' },
+        hosts[0].agents[1],
+      ],
+    }],
+  });
+
+  assert.deepEqual(route, {
+    model: 'openai/gpt-5.4',
+    authProvider: 'openai-codex',
+    authChoice: 'profile:chatgpt-e96dde',
+    thinking: 'xhigh',
   });
 });
 

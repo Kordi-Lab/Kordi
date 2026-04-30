@@ -1,4 +1,4 @@
-import type { DesktopBridgeAgent, DesktopBridgeHost, DesktopChatState } from '@/kordi-app/types';
+import type { DesktopBridgeAgent, DesktopBridgeHost, DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 
 export type LocalBridgeAgentRoutingOption = DesktopBridgeAgent & {
   hostId: string;
@@ -43,6 +43,31 @@ export function routingSelectionForBridgeAgent(agent: LocalBridgeAgentRoutingOpt
     authChoice: compactModelValue(agent?.defaultAuthChoice),
     fallbackModel: compactModelValue(agent?.fallbackModel),
     thinking: compactModelValue(agent?.thinking) ?? 'default',
+  };
+}
+
+export function activeLocalBridgeAgent(bridgeState: Pick<DesktopBridgeState, 'activeHostId' | 'hosts'> | null | undefined) {
+  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
+    ?? bridgeState?.hosts[0]
+    ?? null;
+  return activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
+    ?? activeHost?.agents.find((agent) => agent.isActive)
+    ?? activeHost?.agents.find((agent) => agent.isDefault)
+    ?? activeHost?.agents[0]
+    ?? null;
+}
+
+export function localAgentRuntimeRouteForBridgeState(
+  bridgeState: Pick<DesktopBridgeState, 'activeHostId' | 'hosts'> | null | undefined,
+  desktopChatState?: DesktopChatState | null,
+) {
+  const agent = activeLocalBridgeAgent(bridgeState);
+  if (!agent) return null;
+  return {
+    model: compactModelValue(agent.defaultModel) ?? defaultRuntimeModelValue(desktopChatState),
+    authProvider: compactModelValue(agent.defaultAuthProvider),
+    authChoice: compactModelValue(agent.defaultAuthChoice),
+    thinking: compactModelValue(agent.thinking),
   };
 }
 

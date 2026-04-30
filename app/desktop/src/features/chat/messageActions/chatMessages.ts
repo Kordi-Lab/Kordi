@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerScope, DesktopChatState } from '@/kordi-app/types';
 import {
@@ -557,7 +558,12 @@ export function useChatMessageActions({
                 setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
               })
             : null;
-          const turn = await startDesktopChatMessage(resolvedSessionId, runtimeMessageText, attachmentPaths);
+          const turn = await startDesktopChatMessage(
+            resolvedSessionId,
+            runtimeMessageText,
+            attachmentPaths,
+            localAgentRelayTarget ? localAgentRuntimeRouteForBridgeState(desktopBridgeState, desktopChatState) : null,
+          );
           const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
           let processingRelayPromise: Promise<void> | null = null;
           if (localAgentRelayTarget) {
