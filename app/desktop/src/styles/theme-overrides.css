@@ -523,10 +523,16 @@
 }
 
 .bridge-app.theme-light .app-auth-notice,
-.bridge-app.theme-light .app-compression-card-active,
-.bridge-app.theme-light .app-queued-message {
+.bridge-app.theme-light .app-compression-card-active {
   border-color: rgba(180, 83, 9, 0.34);
   background: rgba(245, 158, 11, 0.18);
+  color: rgb(85 47 12) !important;
+}
+
+.bridge-app.theme-light .app-queued-message {
+  --app-message-bubble-fill: rgba(245, 158, 11, 0.18);
+  --app-message-bubble-stroke: rgba(180, 83, 9, 0.34);
+  background: transparent;
   color: rgb(85 47 12) !important;
 }
 

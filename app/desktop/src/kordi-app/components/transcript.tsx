@@ -35,6 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
+import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -369,7 +370,7 @@ function MessageFooter({
     <div className={cn(
       'flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
       compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'mt-1.5 justify-end',
-      isUser ? 'text-black/58' : 'text-slate-500',
+      isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
@@ -829,14 +830,16 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
           />
         ) : null}
         <div className={cn(
-          'min-w-0 overflow-hidden text-[13px] shadow-sm',
+          'min-w-0 text-[13px] shadow-sm',
           isOwnHumanMessage
-            ? 'w-fit max-w-[26rem] rounded-[20px] rounded-br-[6px] px-3 py-2'
+            ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? 'w-fit max-w-[26rem] rounded-[20px] rounded-bl-[6px] px-3 py-2'
+              ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           bubble,
         )}>
+        {isOwnHumanMessage ? <MessageBubbleShapeBackdrop side="own" /> : null}
+        {isPeerHumanMessage ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
@@ -844,8 +847,8 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
                 {renderTextWithMentionPills(msg.text, msg.mentions)}
               </span>
               <span className={cn(
-                'ml-2 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[10px] leading-none tabular-nums',
-                isOwnHumanMessage ? 'text-black/54' : 'text-slate-500',
+                'app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
+                isOwnHumanMessage ? 'text-black/45' : 'text-slate-500/80',
               )}>
                 {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
                   <span>{msg.detail}</span>

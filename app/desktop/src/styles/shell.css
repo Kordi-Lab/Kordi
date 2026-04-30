@@ -489,17 +489,116 @@
 }
 
 .app-chat-bubble-user {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-  background: var(--app-chat-bubble-user-bg);
+  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
+  --app-message-bubble-stroke: transparent;
+  --app-message-bubble-shadow: none;
+  border: 0;
+  background: transparent;
   color: var(--app-chat-bubble-user-text);
   box-shadow: none;
 }
 
 .app-chat-bubble-peer {
-  border: 1px solid color-mix(in oklab, var(--app-chat-bubble-peer-border) 72%, transparent);
-  background: var(--app-chat-bubble-peer-bg);
+  --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
+  --app-message-bubble-stroke: transparent;
+  --app-message-bubble-shadow: none;
+  border: 0;
+  background: transparent;
   color: var(--utility-foreground);
   box-shadow: none;
+}
+
+.app-message-bubble {
+  --app-message-bubble-enter-x: 0px;
+  --app-message-bubble-tail-width: 8px;
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  background: transparent;
+  animation: app-message-bubble-enter var(--app-motion-base) var(--app-motion-ease) both;
+  transform-origin: bottom center;
+  transition:
+    color var(--app-motion-fast) var(--app-motion-ease),
+    opacity var(--app-motion-fast) var(--app-motion-ease),
+    transform var(--app-motion-base) var(--app-motion-ease);
+}
+
+.app-message-bubble > :not(.app-message-bubble-shape) {
+  position: relative;
+  z-index: 1;
+}
+
+.app-message-bubble-own {
+  --app-message-bubble-enter-x: 6px;
+  transform-origin: 92% 100%;
+}
+
+.app-message-bubble-peer {
+  --app-message-bubble-enter-x: -6px;
+  transform-origin: 8% 100%;
+}
+
+.app-message-bubble-shape {
+  position: absolute;
+  top: 0;
+  z-index: 0;
+  display: block;
+  width: calc(100% + var(--app-message-bubble-tail-width));
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: var(--app-message-bubble-shadow, none);
+}
+
+.app-message-bubble-own .app-message-bubble-shape {
+  right: calc(-1 * var(--app-message-bubble-tail-width));
+}
+
+.app-message-bubble-peer .app-message-bubble-shape {
+  left: calc(-1 * var(--app-message-bubble-tail-width));
+}
+
+.app-message-compact-footer {
+  opacity: 0.58;
+}
+
+.app-message-bubble-shape-fill {
+  fill: var(--app-message-bubble-fill, currentColor);
+  stroke: var(--app-message-bubble-stroke, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transition:
+    fill var(--app-motion-fast) var(--app-motion-ease),
+    stroke var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-message-bubble-queued {
+  --app-message-bubble-fill: rgba(251, 191, 36, 0.1);
+  --app-message-bubble-stroke: rgba(251, 191, 36, 0.26);
+  --app-message-bubble-shadow: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+@keyframes app-message-bubble-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-message-bubble-enter-x), 5px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-message-bubble {
+    animation: none;
+    transition: none;
+  }
+
+  .app-message-bubble-shape-fill {
+    transition: none;
+  }
 }
 
 .app-attachment-image-card {
@@ -576,10 +675,10 @@
 }
 
 .app-queued-message {
-  border: 1px solid rgba(251, 191, 36, 0.26);
-  background: rgba(251, 191, 36, 0.1);
+  border: 0;
+  background: transparent;
   color: rgb(254 243 199);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 
 .app-queued-message-label,

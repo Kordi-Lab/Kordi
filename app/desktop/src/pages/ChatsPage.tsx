@@ -50,6 +50,7 @@ import type {
   EditFilePreview,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
+import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { cn } from '@/lib/utils';
 
@@ -64,7 +65,8 @@ type QueuedMessageBubbleProps = {
 function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubbleProps) {
   return (
     <div className="flex justify-end py-0.5">
-      <div className="app-queued-message max-w-[min(72%,34rem)] rounded-[19px] rounded-br-[6px] px-3 py-2 text-right">
+      <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
+        <MessageBubbleShapeBackdrop side="own" />
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1 text-left">
             <div className="app-queued-message-label mb-0.5 inline-flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
