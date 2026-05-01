@@ -24,6 +24,7 @@ import type {
   QueuedDesktopChatMessage,
   EditFilePreview,
   Message,
+  ParticipantSpaceViewModel,
   Project,
   SessionArtifact,
   ThemeMode,
@@ -60,6 +61,8 @@ export type AssembleKordiShellSlotsArgs = {
   showSessionRail: boolean;
   sessionRailWidth: number;
   chatConversations: Conversation[];
+  participantSpaces: ParticipantSpaceViewModel[];
+  filteredParticipantSpaces: ParticipantSpaceViewModel[];
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -309,6 +312,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
   | 'chatConversations'
+  | 'participantSpaces'
+  | 'filteredParticipantSpaces'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'

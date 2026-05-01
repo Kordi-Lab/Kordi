@@ -21,6 +21,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       isDesktopChatLoading: args.isDesktopChatLoading,
       desktopChatError: args.desktopChatError,
       filteredConversations: args.filteredConversations,
+      participantSpaces: args.participantSpaces,
+      filteredParticipantSpaces: args.filteredParticipantSpaces,
       activeConvId: args.activeConvId,
       handleSelectChatSession: args.handleSelectChatSession,
       handleArchiveChatSession: args.handleArchiveChatSession,
