@@ -497,6 +497,137 @@ fn upsert_participant(
     Ok(())
 }
 
+fn ensure_group_session(conn: &Connection, session_id: &str) -> Result<CanonicalSession, String> {
+    let session =
+        select_session(conn, session_id)?.ok_or_else(|| "Group session not found".to_string())?;
+    if session.kind != "group" {
+        return Err("Session is not a group".to_string());
+    }
+    Ok(session)
+}
+
+fn rename_session_in_db(conn: &Connection, session_id: &str, title: &str) -> Result<(), String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("Group name is required".to_string());
+    }
+    ensure_group_session(conn, session_id)?;
+    conn.execute(
+        "UPDATE sessions SET title = ?2, updated_at_ms = ?3 WHERE id = ?1",
+        params![session_id, title, now_ms()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn set_session_metadata_in_db(
+    conn: &Connection,
+    session_id: &str,
+    metadata: Value,
+) -> Result<(), String> {
+    ensure_group_session(conn, session_id)?;
+    let raw = serde_json::to_string(&metadata).map_err(|err| err.to_string())?;
+    conn.execute(
+        "UPDATE sessions SET metadata_json = ?2, updated_at_ms = ?3 WHERE id = ?1",
+        params![session_id, raw, now_ms()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn add_session_participants_in_db(
+    conn: &Connection,
+    session_id: &str,
+    identity_ids: &[String],
+    added_by: &str,
+) -> Result<(), String> {
+    ensure_group_session(conn, session_id)?;
+    let now = now_ms();
+    for identity_id in identity_ids
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        upsert_participant(conn, session_id, identity_id, "person", Some(added_by), now)?;
+    }
+    Ok(())
+}
+
+fn active_admin_count(conn: &Connection, session_id: &str) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND role IN ('self', 'admin') AND state = 'active'",
+        params![session_id],
+        |row| row.get(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
+fn set_session_participant_role_in_db(
+    conn: &Connection,
+    session_id: &str,
+    identity_id: &str,
+    role: &str,
+) -> Result<(), String> {
+    ensure_group_session(conn, session_id)?;
+    let role = role.trim().to_lowercase();
+    if !matches!(role.as_str(), "self" | "admin" | "person" | "delegate") {
+        return Err("Unsupported participant role".to_string());
+    }
+    let existing_role: Option<String> = conn
+        .query_row(
+            "SELECT role FROM session_participants WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'",
+            params![session_id, identity_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if existing_role.is_none() {
+        return Err("Participant not found in group".to_string());
+    }
+    if matches!(existing_role.as_deref(), Some("self" | "admin"))
+        && !matches!(role.as_str(), "self" | "admin")
+        && active_admin_count(conn, session_id)? <= 1
+    {
+        return Err("Group must keep at least one admin".to_string());
+    }
+    conn.execute(
+        "UPDATE session_participants SET role = ?3 WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'",
+        params![session_id, identity_id, role],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn remove_session_participant_in_db(
+    conn: &Connection,
+    session_id: &str,
+    identity_id: &str,
+) -> Result<(), String> {
+    ensure_group_session(conn, session_id)?;
+    let existing_role: Option<String> = conn
+        .query_row(
+            "SELECT role FROM session_participants WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'",
+            params![session_id, identity_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if existing_role.is_none() {
+        return Err("Participant not found in group".to_string());
+    }
+    if matches!(existing_role.as_deref(), Some("self" | "admin"))
+        && active_admin_count(conn, session_id)? <= 1
+    {
+        return Err("Group must keep at least one admin".to_string());
+    }
+    conn.execute(
+        "UPDATE session_participants SET state = 'left' WHERE session_id = ?1 AND identity_id = ?2",
+        params![session_id, identity_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
 fn session_has_participant(
     conn: &Connection,
     session_id: &str,
@@ -1231,4 +1362,39 @@ pub fn desktop_canonical_update_presence(
     request: UpdateCanonicalPresenceRequest,
 ) -> Result<CanonicalSessionState, String> {
     commands::desktop_canonical_update_presence(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_rename_session(
+    request: RenameCanonicalSessionRequest,
+) -> Result<CanonicalSessionState, String> {
+    commands::desktop_canonical_rename_session(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_update_session_metadata(
+    request: UpdateCanonicalSessionMetadataRequest,
+) -> Result<CanonicalSessionState, String> {
+    commands::desktop_canonical_update_session_metadata(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_add_session_participants(
+    request: AddCanonicalSessionParticipantsRequest,
+) -> Result<CanonicalSessionState, String> {
+    commands::desktop_canonical_add_session_participants(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_remove_session_participant(
+    request: RemoveCanonicalSessionParticipantRequest,
+) -> Result<CanonicalSessionState, String> {
+    commands::desktop_canonical_remove_session_participant(request)
+}
+
+#[tauri::command]
+pub fn desktop_canonical_set_session_participant_role(
+    request: SetCanonicalSessionParticipantRoleRequest,
+) -> Result<CanonicalSessionState, String> {
+    commands::desktop_canonical_set_session_participant_role(request)
 }

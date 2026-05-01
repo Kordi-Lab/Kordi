@@ -1,12 +1,17 @@
 use rusqlite::Connection;
 
 use super::{
-    append_message_in_db, create_delegated_exchange_in_db, json_from_db, open_db,
-    open_or_create_session_in_db, select_delegated_exchange, select_identity, select_message,
-    select_session, update_presence_in_db, upsert_identity_in_db, AppendCanonicalMessageRequest,
-    CanonicalContextSnapshot, CanonicalPresence, CanonicalSessionParticipant,
-    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, OpenCanonicalSessionRequest,
-    UpdateCanonicalPresenceRequest, UpsertCanonicalIdentityRequest,
+    add_session_participants_in_db, append_message_in_db, create_delegated_exchange_in_db,
+    json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
+    rename_session_in_db, select_delegated_exchange, select_identity, select_message,
+    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
+    update_presence_in_db, upsert_identity_in_db, AddCanonicalSessionParticipantsRequest,
+    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
+    CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
+    OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
+    RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
+    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
+    UpsertCanonicalIdentityRequest,
 };
 
 fn query_all<T>(
@@ -176,6 +181,56 @@ pub(super) fn desktop_canonical_update_presence(
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
     update_presence_in_db(&conn, request)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_rename_session(
+    request: RenameCanonicalSessionRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    rename_session_in_db(&conn, &request.session_id, &request.title)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_update_session_metadata(
+    request: UpdateCanonicalSessionMetadataRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    set_session_metadata_in_db(&conn, &request.session_id, request.metadata)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_add_session_participants(
+    request: AddCanonicalSessionParticipantsRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    add_session_participants_in_db(
+        &conn,
+        &request.session_id,
+        &request.identity_ids,
+        &request.added_by_identity_id,
+    )?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_remove_session_participant(
+    request: RemoveCanonicalSessionParticipantRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    remove_session_participant_in_db(&conn, &request.session_id, &request.identity_id)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_set_session_participant_role(
+    request: SetCanonicalSessionParticipantRoleRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    set_session_participant_role_in_db(
+        &conn,
+        &request.session_id,
+        &request.identity_id,
+        &request.role,
+    )?;
     load_state_from_db(&conn)
 }
 

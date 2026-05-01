@@ -19,6 +19,115 @@ fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
     }
 }
 
+fn seed_identity(conn: &Connection, id: &str, display_name: &str, kind: &str) -> CanonicalIdentity {
+    upsert_identity_in_db(
+        conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some(id.to_string()),
+            kind: kind.to_string(),
+            display_name: display_name.to_string(),
+            owner_identity_id: None,
+            source: Some("local".to_string()),
+            source_host_id: None,
+            bridge_node_id: None,
+            human_id: kind
+                .eq_ignore_ascii_case("human")
+                .then(|| id.trim_start_matches("human:").to_string()),
+            agent_id: kind
+                .eq_ignore_ascii_case("agent")
+                .then(|| id.trim_start_matches("agent:").to_string()),
+            avatar_key: Some(id.to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("seed identity")
+}
+
+#[test]
+fn canonical_group_metadata_and_participant_role_mutations_are_stable() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let bob = seed_identity(&conn, "human:bob", "Bob", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:test".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice, Bob".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone(), bob.id.clone()],
+            metadata: Some(serde_json::json!({
+                "adminIdentityIds": [creator.id.clone()],
+                "customName": null,
+            })),
+        },
+    )
+    .expect("create group");
+
+    rename_session_in_db(&conn, &group.id, "Design crew").expect("rename");
+    set_session_metadata_in_db(
+        &conn,
+        &group.id,
+        serde_json::json!({
+            "adminIdentityIds": [creator.id.clone(), alice.id.clone()],
+            "customName": "Design crew",
+        }),
+    )
+    .expect("metadata");
+    set_session_participant_role_in_db(&conn, &group.id, &alice.id, "admin").expect("admin role");
+    remove_session_participant_in_db(&conn, &group.id, &bob.id).expect("remove member");
+
+    let selected = select_session(&conn, &group.id)
+        .expect("select")
+        .expect("session");
+    assert_eq!(selected.id, "session:group:test");
+    assert_eq!(selected.title, "Design crew");
+    assert_eq!(selected.metadata.unwrap()["customName"], "Design crew");
+    let bob_state: String = conn
+        .query_row(
+            "SELECT state FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+            rusqlite::params![group.id, bob.id],
+            |row| row.get(0),
+        )
+        .expect("bob state");
+    assert_eq!(bob_state, "left");
+}
+
+#[test]
+fn canonical_group_role_mutation_rejects_last_admin_removal() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:admin".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({ "adminIdentityIds": [creator.id.clone()] })),
+        },
+    )
+    .expect("create group");
+
+    let error = set_session_participant_role_in_db(&conn, &group.id, &creator.id, "person")
+        .expect_err("last admin rejected");
+    assert!(error.contains("at least one admin"));
+}
+
 #[test]
 fn identity_uses_canonical_human_id_and_avatar_key() {
     let conn = test_conn();

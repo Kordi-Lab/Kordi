@@ -231,3 +231,40 @@ pub struct UpdateCanonicalPresenceRequest {
     pub detail: Option<String>,
     pub expires_at_ms: Option<i64>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCanonicalSessionRequest {
+    pub session_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCanonicalSessionMetadataRequest {
+    pub session_id: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCanonicalSessionParticipantsRequest {
+    pub session_id: String,
+    pub identity_ids: Vec<String>,
+    pub added_by_identity_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveCanonicalSessionParticipantRequest {
+    pub session_id: String,
+    pub identity_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCanonicalSessionParticipantRoleRequest {
+    pub session_id: String,
+    pub identity_id: String,
+    pub role: String,
+}
