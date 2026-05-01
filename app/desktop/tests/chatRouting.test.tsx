@@ -235,6 +235,57 @@ test('bridge Chat uses target identity before selecting an existing same-node ag
   assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
 });
 
+test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: false,
+      isDesktopChatLoading: false,
+      desktopChatState: null,
+      desktopBridgeState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [{
+        id: 'project:test',
+        name: 'Test project',
+        summary: 'Fixture project',
+        bridge: 'Local',
+        scope: '/tmp/kordi-test',
+        status: 'Local',
+        people: [],
+        agents: [],
+        pendingInvites: [],
+        artifacts: 0,
+        tasks: 0,
+        sessions: [],
+      }],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'c1',
+      activeProjectId: '',
+      activeProjectSessionId: '',
+      chatFilter: 'all',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.ok(viewModels?.participantSpaces.length);
+  assert.ok(viewModels?.participantSpaces[0]?.sessions.length);
+  assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
+});
+
 test('canonical read model keeps separate direct person bridge sessions for the same participant', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

@@ -12,6 +12,7 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import { buildParticipantSpaces, filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -376,6 +377,12 @@ export function useWorkspaceViewModels({
       return matchesFilter && matchesSearch;
     });
   }, [chatConversations, chatFilter, chatSearch]);
+
+  const participantSpaces = useMemo(() => buildParticipantSpaces(chatConversations), [chatConversations]);
+  const filteredParticipantSpaces = useMemo(
+    () => filterParticipantSpaces(participantSpaces, chatSearch),
+    [chatSearch, participantSpaces],
+  );
 
   const displayedContacts = useMemo<Contact[]>(() => {
     if (!isNativeShell) return contacts;
@@ -832,6 +839,8 @@ export function useWorkspaceViewModels({
   return {
     chatConversations,
     filteredConversations,
+    participantSpaces,
+    filteredParticipantSpaces,
     activeConv,
     activeConversationIsBridge,
     activeLastMessage,
