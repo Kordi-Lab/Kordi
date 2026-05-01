@@ -155,6 +155,9 @@ pub(super) fn ensure_parent_group_session_participants(
         .entry("source".to_string())
         .or_insert_with(|| serde_json::json!("bridge-session-thread"));
     metadata
+        .entry("groupId".to_string())
+        .or_insert_with(|| serde_json::json!(parent_session_id));
+    metadata
         .entry("groupSpaceId".to_string())
         .or_insert_with(|| serde_json::json!(parent_session_id));
     if !admin_identity_ids.is_empty() {

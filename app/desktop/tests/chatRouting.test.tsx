@@ -374,6 +374,78 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
 });
 
+test('canonical read model names chat-created direct and group sessions from the first user message', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:direct-person:alice-one',
+        kind: 'direct-person',
+        title: 'Alice',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'human:alice',
+        relationshipIdentityId: 'human:alice',
+        metadata: { createdFrom: 'chat-create-flow', contactId: 'contact:alice' },
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        lastMessageAtMs: 10,
+      },
+      {
+        id: 'session:group:crew-root',
+        kind: 'group',
+        title: 'Design crew',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: null,
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', customName: 'Design crew', groupId: 'session:group:crew-root', groupSpaceId: 'session:group:crew-root' },
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        lastMessageAtMs: 20,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:direct-person:alice-one', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:direct-person:alice-one', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:direct:first', sessionId: 'session:direct-person:alice-one', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Plan lunch tomorrow with the launch notes before standup', content: { sender: 'Me', timeLabel: '10:01' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'direct:first' },
+      { id: 'msg:group:first', sessionId: 'session:group:crew-root', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Review launch plan and assign owners before demo', content: { sender: 'Me', timeLabel: '10:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const directConversation = conversations.find((conversation) => conversation.id === 'session:direct-person:alice-one');
+  const groupConversation = conversations.find((conversation) => conversation.id === 'session:group:crew-root');
+  const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:crew-root');
+
+  assert.equal(directConversation?.name, 'Plan lunch tomorrow with the launch notes before');
+  assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
+  assert.equal(groupSpace?.title, 'Design crew');
+  assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
+});
+
 test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

@@ -12,6 +12,7 @@ import {
   canCreateGroup,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
+  chatSessionIdForPersonStart,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
@@ -154,6 +155,11 @@ test('buildChatCreateAgentOptions derives agent rows from displayed agents', () 
 
   assert.deepEqual(options.map((option) => option.label), ['Kordi', 'Reviewer']);
   assert.equal(options[0]?.detail, 'Coding partner');
+});
+
+test('person create flow starts a fresh direct-person session id for each new same-contact chat', () => {
+  assert.equal(chatSessionIdForPersonStart('first-id'), 'session:direct-person:first-id');
+  assert.equal(chatSessionIdForPersonStart('second-id'), 'session:direct-person:second-id');
 });
 
 test('agent create flow starts a new selected-agent session under My chats', () => {
@@ -420,6 +426,7 @@ test('buildChatCreateGroupMetadata records stable admin and member policy', () =
   assert.deepEqual(metadata.adminIdentityIds, ['human:me']);
   assert.deepEqual(metadata.initialContactIds, ['contact:alice', 'contact:bob']);
   assert.equal(metadata.customName, 'Design crew');
+  assert.equal(metadata.groupId, 'session:group:root');
   assert.equal(metadata.groupSpaceId, 'session:group:root');
   assert.equal(metadata.memberApprovalPolicy, 'under-50-open');
 });

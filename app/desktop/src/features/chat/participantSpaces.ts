@@ -175,7 +175,8 @@ function groupSpaceIdForConversation(conversation: Conversation) {
   if (explicit) return normalizeGroupSpaceId(explicit);
   const metadata = metadataRecord(conversation.metadata);
   return normalizeGroupSpaceId(
-    metadataStringValue(metadata, 'groupSpaceId')
+    metadataStringValue(metadata, 'groupId')
+    || metadataStringValue(metadata, 'groupSpaceId')
     || metadataStringValue(metadata, 'continuedFromSpaceId'),
   );
 }

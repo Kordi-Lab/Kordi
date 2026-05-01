@@ -24,20 +24,23 @@ The group picker lists only people contacts. Agents are not selectable and are n
 
 A group can be created only after selecting at least two contacts. Including the local user, this makes a group of three or more people.
 
-The default group name is derived from selected people:
+The default group display name is derived from selected people:
 
-- 2 people: `Shuyhere, Shuyhere2`
-- More than 2 people: `Shuyhere, Shuyhere2 +N more`
+- 2 selected people: `Shuyhere, Shuyhere2` (creator + 2 selected people = 3 humans total)
+- More than 2 selected people: `Shuyhere, Shuyhere2 +N more`
 
-The user can override the name before creating the group, or rename it later from details.
+The user can override the group display name before creating the group, or rename it later from details. The transcript/session row title remains derived from the first few message tokens, not from the contact name or group display name.
 
 ### Stable group identity
 
-Creating a group creates a stable local canonical session id. Later adding/removing members does not change the group id. If the group has a custom name, adding/removing members also does not change the custom name.
+Creating a group creates one stable canonical group/session id, e.g. `session:group:<uuid>`. That id is the group id and the shared session id for all participants. It is sent in Bridge invites and group message fan-out as `parentSessionId`; receivers reconstruct the same canonical group session id rather than generating their own local group id.
+
+Later adding/removing members does not change the group id. If the group has a custom display name, adding/removing members also does not change the custom name.
 
 Group metadata stores:
 
-- `participantSpaceId` / stable group id
+- `groupId` / stable shared group id
+- `groupSpaceId` / same value as `groupId` for compatibility with participant-space grouping
 - `createdAtMs`
 - `createdByIdentityId`
 - `adminIdentityIds`
@@ -74,7 +77,7 @@ Use the existing canonical session tables for this foundation instead of adding 
 - A group is a canonical session with `kind = 'group'`.
 - People membership is represented by `session_participants` rows.
 - Admins and group policy metadata are represented in `sessions.metadata_json`.
-- Session title stores the current visible group name.
+- Group display name is stored in metadata (`customName`), while session row titles are derived from the first few tokens of the first real message.
 
 This is intentionally compatible with a future dedicated `participant_spaces` backend. If/when that table is added, the metadata fields can be migrated without changing the UI contract.
 
@@ -88,7 +91,7 @@ Add focused UI helpers rather than growing `WorkspaceSidebar` too much:
 
 Wire handlers through existing shell args:
 
-- create direct person: use the existing bridge person session path when a contact has bridge identity data; otherwise create/open a canonical direct-person session.
+- create direct person: use the existing bridge person session path when a contact has bridge identity data; otherwise create a fresh canonical direct-person session. Multiple sessions with the same person are allowed.
 - create direct agent: use the existing bridge conversation path when possible; otherwise create/open a canonical direct-agent session.
 - create group: create a canonical `group` session with selected people as participants and group metadata.
 - manage group: call new canonical management functions and refresh canonical state.

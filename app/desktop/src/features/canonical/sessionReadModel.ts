@@ -11,6 +11,7 @@ import { formatDesktopClockTime } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  sessionDisplayTitle,
   sessionHasActiveProcessing,
   sessionMetadata,
   shouldUseCanonicalMessages,
@@ -189,10 +190,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
-      const bridgePersonMessageTitle = isBridgePersonSession
-        ? messages.find((message) => message.role !== 'system' && message.text.trim())?.text.trim()
-        : null;
       const canonicalParticipants = this.participantDetails(sessionId);
+      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
@@ -207,7 +206,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalSessionId: sessionId,
         canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalStoragePath: indexes.storagePath,
-        name: bridgePersonMessageTitle || session.title || conversation.name,
+        name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread: scopedUnread,
         participants,

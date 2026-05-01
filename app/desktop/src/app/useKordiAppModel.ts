@@ -46,6 +46,7 @@ import {
   buildChatCreatePersonOptions,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
+  chatSessionIdForPersonStart,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
@@ -218,7 +219,8 @@ function normalizeStoredGroupSpaceId(value: string) {
 
 function metadataGroupSpaceId(metadata: Record<string, unknown>) {
   return normalizeStoredGroupSpaceId(
-    metadataString(metadata, 'groupSpaceId')
+    metadataString(metadata, 'groupId')
+    || metadataString(metadata, 'groupSpaceId')
     || metadataString(metadata, 'continuedFromSpaceId'),
   );
 }
@@ -1099,17 +1101,17 @@ export function useKordiAppModel() {
     }
     const identityState = await upsertCanonicalIdentity(identityRequest);
     setCanonicalSessionState(identityState);
-    const sessionId = chatSessionIdForIdentity('direct-person', creatorIdentityId, targetIdentityId);
+    const sessionId = chatSessionIdForPersonStart(crypto.randomUUID());
     const nextState = await openOrCreateCanonicalSession({
       id: sessionId,
       kind: 'direct-person',
-      title: contact.name,
+      title: 'New session',
       status: 'active',
       createdByIdentityId: creatorIdentityId,
       primaryIdentityId: targetIdentityId,
       relationshipIdentityId: targetIdentityId,
       participantIdentityIds: [targetIdentityId],
-      metadata: { createdFrom: 'chat-create-flow', contactId: contact.id },
+      metadata: { createdFrom: 'chat-create-flow', contactId: contact.id, participantSpaceKind: 'direct-human' },
     });
     setCanonicalSessionState(nextState);
     selectNewChatSession(sessionId);
@@ -1390,6 +1392,7 @@ export function useKordiAppModel() {
             schemaVersion: 1,
             kind: 'chat-group',
             customName,
+            groupId: groupSpaceId,
             groupSpaceId,
             adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
             initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
@@ -1472,6 +1475,7 @@ export function useKordiAppModel() {
         metadata: {
           ...currentMetadata,
           customName: title,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
         },
       });
@@ -1521,6 +1525,7 @@ export function useKordiAppModel() {
         requestedByIdentityId: creatorIdentityId,
         metadata: {
           ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           initialContactIds: uniqueStrings([...metadataStringArray(currentMetadata, 'initialContactIds'), ...addedContactIds]),
           initialParticipantNames: uniqueStrings([...metadataStringArray(currentMetadata, 'initialParticipantNames'), ...addedNames]),
@@ -1553,6 +1558,7 @@ export function useKordiAppModel() {
         requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(nextState, sessionId),
         },
@@ -1590,6 +1596,7 @@ export function useKordiAppModel() {
         requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(nextState, sessionId),
         },

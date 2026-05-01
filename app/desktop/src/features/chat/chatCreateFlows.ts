@@ -35,6 +35,7 @@ export type ChatGroupMetadata = {
   schemaVersion: 1;
   kind: 'chat-group';
   customName: string | null;
+  groupId: string | null;
   groupSpaceId: string | null;
   adminIdentityIds: string[];
   initialContactIds: string[];
@@ -98,6 +99,11 @@ export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOpt
 
 export function buildChatAgentSessionKind(agent: Agent): ChatAgentSessionKind {
   return agent.isOwned ? 'self-agent' : 'direct-agent';
+}
+
+export function chatSessionIdForPersonStart(randomId: string) {
+  const id = cleanText(randomId) || Date.now().toString(36);
+  return `session:direct-person:${id}`;
 }
 
 export function chatSessionIdForAgentStart(agent: Agent, randomId: string) {
@@ -308,6 +314,7 @@ export function buildChatCreateGroupMetadata(input: {
     schemaVersion: 1,
     kind: 'chat-group',
     customName: customName || null,
+    groupId: groupSpaceId || null,
     groupSpaceId: groupSpaceId || null,
     adminIdentityIds: uniqueNonEmpty([input.creatorIdentityId]),
     initialContactIds: uniqueNonEmpty(input.selectedContactIds),

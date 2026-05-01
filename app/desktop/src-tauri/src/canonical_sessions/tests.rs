@@ -1687,6 +1687,22 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
         .expect("session exists");
     assert_eq!(session.kind, "group");
     assert_eq!(session.title, "Alice, Bob, Carol");
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupId"))
+            .and_then(|value| value.as_str()),
+        Some(parent_session_id),
+    );
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupSpaceId"))
+            .and_then(|value| value.as_str()),
+        Some(parent_session_id),
+    );
     let participant_roles: Vec<(String, String)> = conn
         .prepare(
             "SELECT identity_id, role FROM session_participants WHERE session_id = ?1 ORDER BY identity_id",
@@ -1913,6 +1929,22 @@ fn inbound_group_session_invite_reconstructs_group_parent_without_visible_messag
         .expect("select session")
         .expect("session exists");
     assert_eq!(session.kind, "group");
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupId"))
+            .and_then(|value| value.as_str()),
+        Some(parent_session_id),
+    );
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupSpaceId"))
+            .and_then(|value| value.as_str()),
+        Some(parent_session_id),
+    );
     let participant_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND state = 'active'",
