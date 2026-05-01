@@ -771,10 +771,21 @@ export type DesktopBridgeSessionThreadMessage = {
   index?: number | null;
 };
 
+export type DesktopBridgeSessionParticipant = {
+  identityId?: string | null;
+  displayName: string;
+  role?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+};
+
 export type DesktopBridgeOutreachMetadata = {
   targetKind: 'bridge-agent' | 'bridge-person' | string;
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
+  parentSessionKind?: string | null;
+  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
   parentMessageId?: string | null;
@@ -854,6 +865,8 @@ export type DesktopBridgeCreateOutreachRequest = {
   contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
+  parentSessionKind?: string | null;
+  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
   parentMessageId?: string | null;

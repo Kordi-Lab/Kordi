@@ -3,7 +3,13 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { ComposerScope, DesktopChatState } from '@/kordi-app/types';
+import type {
+  ComposerScope,
+  Conversation,
+  ConversationBridgeTarget,
+  DesktopChatState,
+  DesktopBridgeSessionParticipant,
+} from '@/kordi-app/types';
 import {
   cancelDesktopBridgeOutreach,
   createDesktopBridgeOutreach,
@@ -63,6 +69,85 @@ export function bridgeConversationSendPlan({
     shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
     canAppendBridgeOptimisticMessage: Boolean(targetConversationId),
   };
+}
+
+function cleanText(value?: string | null) {
+  return value?.trim() || null;
+}
+
+function participantIsSelf(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
+}
+
+export function isBridgeGroupSession(conversation?: {
+  canonicalSessionId?: string | null;
+  participantSpaceId?: string | null;
+  directness?: string | null;
+  canonicalParticipants?: Conversation['canonicalParticipants'];
+} | null) {
+  if (!conversation) return false;
+  if (conversation.canonicalSessionId?.startsWith('session:group:')) return true;
+  if (conversation.participantSpaceId?.startsWith('group:')) return true;
+  if (/\bgroup\b/i.test(conversation.directness ?? '')) return true;
+  const humanCount = (conversation.canonicalParticipants ?? [])
+    .filter((participant) => participant.kind === 'human' && !participantIsSelf(participant))
+    .length;
+  return humanCount > 1;
+}
+
+export function bridgeGroupSessionSendTargets(
+  conversation: Pick<Conversation, 'canonicalParticipants'>,
+  fallbackTarget?: ConversationBridgeTarget | null,
+) {
+  const targets = new Map<string, ConversationBridgeTarget>();
+  const fallbackHostId = cleanText(fallbackTarget?.hostId);
+
+  for (const participant of conversation.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human' || participantIsSelf(participant)) continue;
+    const nodeId = cleanText(participant.bridgeNodeId);
+    const hostId = cleanText(participant.bridgeHostId) ?? fallbackHostId;
+    if (!nodeId || !hostId) continue;
+    targets.set(`${hostId}:${nodeId}:${cleanText(participant.humanId) ?? ''}`, {
+      hostId,
+      nodeId,
+      displayName: cleanText(participant.name),
+      ownerName: cleanText(participant.ownerName) ?? cleanText(participant.name),
+      runtime: 'person',
+      humanId: cleanText(participant.humanId),
+      agentId: null,
+    });
+  }
+
+  if (targets.size === 0 && fallbackTarget?.hostId && fallbackTarget.nodeId) {
+    targets.set(`${fallbackTarget.hostId}:${fallbackTarget.nodeId}:${fallbackTarget.humanId ?? ''}`, {
+      ...fallbackTarget,
+      runtime: 'person',
+      agentId: null,
+    });
+  }
+
+  return [...targets.values()];
+}
+
+export function bridgeGroupSessionParticipants(conversation: Pick<Conversation, 'canonicalParticipants'>): DesktopBridgeSessionParticipant[] {
+  const participants = new Map<string, DesktopBridgeSessionParticipant>();
+  for (const participant of conversation.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human') continue;
+    const displayName = cleanText(participant.name);
+    if (!displayName) continue;
+    const bridgeNodeId = cleanText(participant.bridgeNodeId);
+    const humanId = cleanText(participant.humanId);
+    const isSelf = participantIsSelf(participant);
+    if (isSelf && !bridgeNodeId && !humanId) continue;
+    participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
+      identityId: cleanText(participant.id),
+      displayName,
+      role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
+      bridgeNodeId,
+      humanId,
+    });
+  }
+  return [...participants.values()];
 }
 
 type UseChatMessageActionsArgs = Pick<
@@ -251,6 +336,19 @@ export function useChatMessageActions({
         ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
         : null;
       const shouldStayInCanonicalSession = Boolean(activeConvBridgeTarget && activeConvCanonicalSessionId);
+      const groupSessionScope = {
+        canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
+        participantSpaceId: activeConvMentionScope?.participantSpaceId,
+        directness: activeConvMentionScope?.directness,
+        canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
+      };
+      const isGroupSessionMessage = shouldStayInCanonicalSession && isBridgeGroupSession(groupSessionScope);
+      const groupSendTargets = isGroupSessionMessage
+        ? bridgeGroupSessionSendTargets(groupSessionScope, activeConvBridgeTarget)
+        : [];
+      const groupSessionParticipants = isGroupSessionMessage
+        ? bridgeGroupSessionParticipants(groupSessionScope)
+        : [];
       const sendPlan = bridgeConversationSendPlan({
         activeConvId,
         hasMaterializedBridgeConversation,
@@ -300,7 +398,7 @@ export function useChatMessageActions({
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        if (targetConversationId) {
+        if (targetConversationId && !isGroupSessionMessage) {
           setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
         }
         setComposerDrafts((current) => ({ ...current, chat: '' }));
@@ -311,7 +409,40 @@ export function useChatMessageActions({
           .catch((error: unknown) => {
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
           })
-          .then(() => {
+          .then(async () => {
+            if (isGroupSessionMessage && activeConvCanonicalSessionId) {
+              if (groupSendTargets.length === 0) {
+                throw new Error('Unable to resolve group recipients');
+              }
+              for (const target of groupSendTargets) {
+                const nextState = await createDesktopBridgeOutreach({
+                  hostId: target.hostId,
+                  targetNodeId: target.nodeId,
+                  targetKind: 'bridge-person',
+                  requestText: bridgeMessageText,
+                  targetDisplayName: target.displayName ?? target.ownerName ?? null,
+                  targetOwnerName: target.ownerName ?? target.displayName ?? null,
+                  targetRuntime: 'person',
+                  targetHumanId: target.humanId ?? null,
+                  targetAgentId: null,
+                  triggerText: null,
+                  contextText: null,
+                  contextPolicy: 'session-message',
+                  parentSessionId: activeConvCanonicalSessionId,
+                  parentSessionTitle: null,
+                  parentSessionKind: 'group',
+                  parentSessionParticipants: groupSessionParticipants,
+                  parentSessionMessages: [],
+                  parentTurnId: null,
+                  parentMessageId: preparedCanonicalMessage?.messageId ?? null,
+                  projectId: null,
+                  projectName: null,
+                  ...bridgeAttachmentTransportFields(chatComposerAttachments),
+                });
+                setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+              }
+              return null;
+            }
             if (shouldStayInCanonicalSession && activeConvBridgeTarget && activeConvCanonicalSessionId) {
               return createDesktopBridgeOutreach({
                 hostId: activeConvBridgeTarget.hostId,
@@ -342,7 +473,9 @@ export function useChatMessageActions({
             return sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
           })
           .then((nextState) => {
-            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+            if (nextState) {
+              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+            }
           })
           .catch((error: unknown) => {
             if (resolvedConversationId) {

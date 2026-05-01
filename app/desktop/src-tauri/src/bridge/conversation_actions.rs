@@ -349,6 +349,8 @@ fn outbound_payload(
                 serde_json::json!({
                     "parentSessionId": parent_session_id,
                     "parentSessionTitle": outreach.parent_session_title.as_deref(),
+                    "parentSessionKind": outreach.parent_session_kind.as_deref(),
+                    "participants": &outreach.parent_session_participants,
                     "messages": &outreach.parent_session_messages,
                     "parentTurnId": outreach.parent_turn_id.as_deref(),
                     "parentMessageId": outreach.parent_message_id.as_deref(),
@@ -720,6 +722,8 @@ mod tests {
             target_kind: "bridge-person".to_string(),
             parent_session_id: Some("session-1".to_string()),
             parent_session_title: Some("Shared".to_string()),
+            parent_session_kind: None,
+            parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: parent_turn_id.map(ToString::to_string),
             parent_message_id: Some("msg-user".to_string()),

@@ -154,7 +154,7 @@ test('buildChatCreateAgentOptions derives agent rows from displayed agents', () 
   assert.equal(options[0]?.detail, 'Coding partner');
 });
 
-test('agent create flow starts a new selected-agent session under Notes to self', () => {
+test('agent create flow starts a new selected-agent session under My chats', () => {
   const selectedAgent = agent({ id: 'agent:reviewer', name: 'Reviewer', isOwned: true });
 
   assert.equal(buildChatAgentSessionKind(selectedAgent), 'self-agent');

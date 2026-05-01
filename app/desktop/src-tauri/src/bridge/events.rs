@@ -386,6 +386,15 @@ pub(super) fn outreach_metadata_for_event(
             .get("parentSessionTitle")
             .and_then(|value| value.as_str())
             .map(ToString::to_string),
+        parent_session_kind: thread
+            .get("parentSessionKind")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        parent_session_participants: thread
+            .get("participants")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default(),
         parent_session_messages: thread
             .get("messages")
             .cloned()

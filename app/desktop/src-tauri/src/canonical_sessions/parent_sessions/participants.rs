@@ -1,10 +1,155 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
-use super::super::models::OpenCanonicalSessionRequest;
+use super::super::models::{OpenCanonicalSessionRequest, UpsertCanonicalIdentityRequest};
 use super::super::{
     clean_optional, identity_display_name, json_to_db, now_ms, open_or_create_session_in_db,
-    select_session, upsert_participant,
+    select_session, upsert_identity_in_db, upsert_participant,
 };
+
+fn clean_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn identity_exists(conn: &Connection, identity_id: &str) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM identities WHERE id = ?1)",
+        params![identity_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|value| value != 0)
+    .map_err(|err| err.to_string())
+}
+
+fn existing_self_participant(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT identity_id FROM session_participants
+         WHERE session_id = ?1 AND role = 'self' AND state = 'active'
+         ORDER BY added_at_ms ASC, identity_id ASC
+         LIMIT 1",
+        params![session_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn group_participant_identity_id(
+    conn: &Connection,
+    bridge_host_id: &str,
+    participant: &crate::bridge::DesktopBridgeSessionParticipant,
+) -> Result<Option<String>, String> {
+    let Some(display_name) = clean_text(Some(participant.display_name.as_str())) else {
+        return Ok(None);
+    };
+    if let Some(identity_id) = clean_text(participant.identity_id.as_deref()) {
+        if identity_exists(conn, &identity_id)? {
+            return Ok(Some(identity_id));
+        }
+    }
+    let human_id = clean_text(participant.human_id.as_deref());
+    let bridge_node_id = clean_text(participant.bridge_node_id.as_deref());
+    if human_id.is_none() && bridge_node_id.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        upsert_identity_in_db(
+            conn,
+            UpsertCanonicalIdentityRequest {
+                id: None,
+                kind: "human".to_string(),
+                display_name,
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some(bridge_host_id.to_string()),
+                bridge_node_id,
+                human_id: human_id.clone(),
+                agent_id: None,
+                avatar_key: human_id,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )?
+        .id,
+    ))
+}
+
+pub(super) fn ensure_parent_group_session_participants(
+    conn: &Connection,
+    parent_session_id: &str,
+    parent_session_title: Option<&str>,
+    local_human_identity_id: &str,
+    remote_target_identity_id: &str,
+    relationship_identity_id: Option<&str>,
+    bridge_host_id: &str,
+    participants: &[crate::bridge::DesktopBridgeSessionParticipant],
+) -> Result<(), String> {
+    let now = now_ms();
+    let cleaned_parent_title = parent_session_title
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let self_identity_id = existing_self_participant(conn, parent_session_id)?
+        .unwrap_or_else(|| local_human_identity_id.to_string());
+    let mut participant_ids = vec![
+        self_identity_id.clone(),
+        remote_target_identity_id.to_string(),
+    ];
+    if let Some(relationship_identity_id) = relationship_identity_id {
+        participant_ids.push(relationship_identity_id.to_string());
+    }
+    for participant in participants {
+        if let Some(identity_id) = group_participant_identity_id(conn, bridge_host_id, participant)?
+        {
+            participant_ids.push(identity_id);
+        }
+    }
+    participant_ids.sort();
+    participant_ids.dedup();
+
+    open_or_create_session_in_db(
+        conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some(cleaned_parent_title.unwrap_or("Group").to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: self_identity_id.clone(),
+            primary_identity_id: Some(remote_target_identity_id.to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: participant_ids.clone(),
+            metadata: Some(serde_json::json!({
+                "source": "bridge-session-thread",
+                "groupSpaceId": parent_session_id,
+            })),
+        },
+    )?;
+
+    for identity_id in participant_ids {
+        let role = if identity_id == self_identity_id {
+            "self"
+        } else {
+            "person"
+        };
+        upsert_participant(
+            conn,
+            parent_session_id,
+            &identity_id,
+            role,
+            Some(self_identity_id.as_str()),
+            now,
+        )?;
+    }
+
+    Ok(())
+}
 
 pub(super) fn ensure_parent_session_participants(
     conn: &Connection,

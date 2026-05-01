@@ -373,7 +373,7 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
 });
 
-test('canonical read model keeps blank selected-agent sessions visible under Notes to self', () => {
+test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
     profile: {

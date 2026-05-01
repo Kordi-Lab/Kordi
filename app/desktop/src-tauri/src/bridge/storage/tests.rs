@@ -55,6 +55,8 @@ fn test_outreach(request_id: &str, delivery_state: Option<&str>) -> DesktopBridg
         target_kind: "bridge-person".to_string(),
         parent_session_id: Some("session:bridge:humans:test".to_string()),
         parent_session_title: Some("Humans".to_string()),
+        parent_session_kind: None,
+        parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: Some("turn-1".to_string()),
         parent_message_id: Some("parent-message-1".to_string()),

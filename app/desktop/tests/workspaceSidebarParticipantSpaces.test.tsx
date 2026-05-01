@@ -315,7 +315,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
 
   assert.match(markup, /shu/);
   assert.match(markup, /Person • 1 session/);
-  assert.match(markup, /Notes to self/);
+  assert.match(markup, /My chats/);
   assert.match(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
   assert.doesNotMatch(markup, /Myself \+ 2 agents/);
@@ -430,7 +430,7 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Rename/);
 });
 
-test('WorkspaceSidebar auto-expands the active Notes to self space with only the active session', () => {
+test('WorkspaceSidebar auto-expands the active My chats space with only the active session', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:wrong',
@@ -482,13 +482,13 @@ test('WorkspaceSidebar auto-expands the active Notes to self space with only the
     initialSelectedParticipantSpaceId: null,
   }) as never));
 
-  assert.match(markup, /Notes to self/);
-  assert.match(markup, /aria-label="Expand Notes to self"/);
+  assert.match(markup, /My chats/);
+  assert.match(markup, /aria-label="Expand My chats"/);
   assert.match(markup, /# Reviewer/);
   assert.doesNotMatch(markup, /# Old note/);
 });
 
-test('WorkspaceSidebar explicit expansion shows all sessions in the active Notes to self space', () => {
+test('WorkspaceSidebar explicit expansion shows all sessions in the active My chats space', () => {
   const chatConversations = [
     conversation({
       id: 'session:self-agent:old-note',
@@ -529,7 +529,7 @@ test('WorkspaceSidebar explicit expansion shows all sessions in the active Notes
     initialSelectedParticipantSpaceId: notesSpace?.id,
   }) as never));
 
-  assert.match(markup, /aria-label="Collapse Notes to self"/);
+  assert.match(markup, /aria-label="Collapse My chats"/);
   assert.match(markup, /# Reviewer/);
   assert.match(markup, /# Old note/);
 });

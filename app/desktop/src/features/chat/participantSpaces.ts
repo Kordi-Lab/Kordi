@@ -243,8 +243,10 @@ function customGroupTitle(latestSession: ParticipantSpaceSessionViewModel | unde
   return typeof customName === 'string' ? safePreviewText(customName) : '';
 }
 
+export const SELF_PARTICIPANT_SPACE_TITLE = 'My chats';
+
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
-  if (kind === 'self') return 'Notes to self';
+  if (kind === 'self') return SELF_PARTICIPANT_SPACE_TITLE;
   if (kind === 'group') {
     return customGroupTitle(latestSession)
       || participantNameList(nonSelfHumans(participants))
@@ -342,7 +344,7 @@ export function ensureSelfParticipantSpace(
   const selfSpace: ParticipantSpaceViewModel = {
     id: 'self:local',
     kind: 'self',
-    title: 'Notes to self',
+    title: SELF_PARTICIPANT_SPACE_TITLE,
     participants: [selfParticipant],
     participantCount: 1,
     sessionCount: 0,
@@ -362,7 +364,7 @@ export function filterParticipantSpaces(
   chatFilter: ChatFilter = 'latest',
 ) {
   const normalized = query.trim().toLowerCase();
-  return spaces.filter((space) => {
+  const filtered = spaces.filter((space) => {
     if (!spaceMatchesChatFilter(space, chatFilter)) return false;
     if (!normalized) return true;
     const haystack = [
@@ -372,5 +374,12 @@ export function filterParticipantSpaces(
       ...space.sessions.flatMap((session) => [session.title, session.preview]),
     ].join(' ').toLowerCase();
     return haystack.includes(normalized);
+  });
+
+  if (chatFilter !== 'contacts') return filtered;
+  return [...filtered].sort((left, right) => {
+    if (left.kind === 'self' && right.kind !== 'self') return -1;
+    if (right.kind === 'self' && left.kind !== 'self') return 1;
+    return 0;
   });
 }

@@ -572,7 +572,7 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    Expand a contact, Notes to self, or a group to see its sessions.
+                    Expand a contact, My chats, or a group to see its sessions.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
