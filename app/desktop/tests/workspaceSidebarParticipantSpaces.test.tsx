@@ -344,6 +344,8 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Alice/);
   assert.match(markup, /Make admin/);
   assert.match(markup, /Add people/);
+  assert.doesNotMatch(markup, />✓</);
+  assert.match(markup, /data-add-contact-state="idle"[^>]*>Add</);
   assert.match(markup, /Rename/);
 });
 

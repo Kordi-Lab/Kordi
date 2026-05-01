@@ -257,7 +257,12 @@ export function GroupDetailsDialog({
                       className={cn('app-group-management-add-row flex w-full items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2 text-left text-[12px] transition', selected && 'app-group-management-add-row-selected')}
                     >
                       <span>{option.label}</span>
-                      <span className={selected ? 'text-emerald-300' : 'text-[color:var(--utility-muted-text)]'}>✓</span>
+                      <span
+                        data-add-contact-state={selected ? 'selected' : 'idle'}
+                        className={selected ? 'text-emerald-300' : 'text-[color:var(--utility-muted-text)]'}
+                      >
+                        {selected ? 'Selected' : 'Add'}
+                      </span>
                     </button>
                   );
                 }) : (
