@@ -136,6 +136,65 @@ export function filterBridgeMentionCandidatesForConversation(
   return candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation));
 }
 
+function normalizedSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
+  return (conversation.canonicalSessionId ?? conversation.id).trim();
+}
+
+function mentionScopeMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function mentionScopeMetadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function mentionScopeConversationForActiveConversation<T extends MentionScopeConversation & Pick<Conversation, 'id' | 'canonicalSessionId' | 'metadata'>>(
+  activeConversation: T,
+  conversations: Array<T | Conversation>,
+): T | (T & MentionScopeConversation) {
+  const metadata = mentionScopeMetadata(activeConversation.metadata);
+  const rootSessionId = mentionScopeMetadataText(metadata, 'continuedFromSessionId');
+  if (!rootSessionId) return activeConversation;
+
+  const rootConversation = conversations.find((conversation) => normalizedSessionId(conversation) === rootSessionId || conversation.id === rootSessionId);
+  if (!rootConversation) return activeConversation;
+
+  return {
+    ...activeConversation,
+    participantSpaceId: activeConversation.participantSpaceId ?? rootConversation.participantSpaceId,
+    canonicalParticipants: rootConversation.canonicalParticipants ?? activeConversation.canonicalParticipants,
+    participants: rootConversation.participants?.length ? rootConversation.participants : activeConversation.participants,
+    directness: rootConversation.directness ?? activeConversation.directness,
+  };
+}
+
+export function filterBridgeMentionCandidatesForHost(
+  candidates: BridgeMentionCandidate[],
+  host: DesktopBridgeState['hosts'][number] | null | undefined,
+) {
+  if (!host) return candidates;
+  const hostHumanId = normalizedOwnerKey(host.humanId);
+  const hostOwnerName = normalizedOwnerKey(host.ownerName);
+  const hostNodeId = normalizedOwnerKey(host.nodeId);
+  const hostAgentIds = new Set((host.agents ?? []).flatMap((agent) => [agent.id, agent.nodeId]).map(normalizedOwnerKey).filter(Boolean));
+
+  return candidates.filter((candidate) => {
+    const peerHumanId = normalizedOwnerKey(candidate.peer.humanId);
+    const peerOwnerName = normalizedOwnerKey(candidate.peer.ownerName);
+    const peerNodeId = normalizedOwnerKey(candidate.peer.nodeId);
+    const peerAgentId = normalizedOwnerKey(candidate.peer.agentId);
+    if (hostHumanId && peerHumanId === hostHumanId) return false;
+    if (hostOwnerName && peerOwnerName === hostOwnerName) return false;
+    if (hostNodeId && peerNodeId === hostNodeId) return false;
+    if (peerAgentId && hostAgentIds.has(peerAgentId)) return false;
+    if (peerNodeId && hostAgentIds.has(peerNodeId)) return false;
+    return true;
+  });
+}
+
 function identitySuffixForCandidate(candidate: Pick<BridgeMentionCandidate, 'peer' | 'handle'>) {
   const source = candidate.peer.humanId?.trim()
     || candidate.peer.agentId?.trim()

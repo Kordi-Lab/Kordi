@@ -28,7 +28,10 @@ import {
   buildBridgeMentionCandidates,
   conversationHasGroupMentionScope,
   filterBridgeMentionCandidatesForConversation,
+  filterBridgeMentionCandidatesForHost,
   mentionHandleForLabel,
+  mentionScopeConversationForActiveConversation,
+  type MentionScopeConversation,
 } from '@/features/chat/messageActions/mentions';
 import {
   adminIdentityIdsFromMetadata,
@@ -536,6 +539,11 @@ export function useKordiAppModel() {
     mapDesktopMessages,
   });
 
+  const activeConvMentionScope = useMemo(
+    () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
+    [activeConv, chatConversations],
+  );
+
   const bridgeMentionTargetsByScope = useMemo<{ chat: ComposerMentionOption[]; project: ComposerMentionOption[] }>(() => {
     if (!isNativeShell) return { chat: [], project: [] };
 
@@ -549,7 +557,7 @@ export function useKordiAppModel() {
       ?? activeHost?.agents[0]
       ?? null;
 
-    const buildTargets = (conversation: typeof activeConv | null): ComposerMentionOption[] => {
+    const buildTargets = (conversation: MentionScopeConversation | null): ComposerMentionOption[] => {
       const options: ComposerMentionOption[] = [];
       const seen = new Set<string>();
       const pushOption = (option: ComposerMentionOption) => {
@@ -589,7 +597,8 @@ export function useKordiAppModel() {
         });
       }
 
-      for (const candidate of filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(desktopBridgeState), conversation)) {
+      const bridgeCandidates = filterBridgeMentionCandidatesForHost(buildBridgeMentionCandidates(desktopBridgeState), activeHost);
+      for (const candidate of filterBridgeMentionCandidatesForConversation(bridgeCandidates, conversation)) {
         const display = bridgeMentionCandidateOptionText(candidate);
         pushOption({
           value: candidate.handle,
@@ -609,10 +618,10 @@ export function useKordiAppModel() {
     };
 
     return {
-      chat: buildTargets(activeConv),
+      chat: buildTargets(activeConvMentionScope),
       project: buildTargets(null),
     };
-  }, [activeConv, desktopBridgeState, desktopChatState?.localAgent, isNativeShell]);
+  }, [activeConvMentionScope, desktopBridgeState, desktopChatState?.localAgent, isNativeShell]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
@@ -801,7 +810,7 @@ export function useKordiAppModel() {
     activeConvCanonicalSessionId: activeConv.canonicalSessionId,
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
-    activeConvMentionScope: activeConv,
+    activeConvMentionScope,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,

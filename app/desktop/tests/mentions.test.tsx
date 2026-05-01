@@ -5,8 +5,10 @@ import {
   bridgeMentionCandidateOptionText,
   buildBridgeMentionCandidates,
   filterBridgeMentionCandidatesForConversation,
+  filterBridgeMentionCandidatesForHost,
   localAgentMentionLabels,
   mentionHandleForLabel,
+  mentionScopeConversationForActiveConversation,
   outreachIdentityForBridgeTarget,
   publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
@@ -259,6 +261,97 @@ test('group mention candidates fall back to participant names when canonical det
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
     ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+  );
+});
+
+test('group mention scope uses root group participants for legacy child continuations', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-carol-agent',
+      displayName: "Carol's Kordi",
+      ownerName: 'Carol',
+      runtime: 'kordi-desktop',
+      humanId: 'human-carol',
+      agentId: 'agent-carol',
+      isDefaultAgent: true,
+    }),
+  ]);
+  const root = {
+    ...groupConversationWithHumans([
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+    ]),
+    id: 'session:group:root',
+    canonicalSessionId: 'session:group:root',
+  } as Conversation;
+  const child = {
+    ...groupConversationWithHumans([
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+      { id: 'human:carol', name: 'Carol', humanId: 'human-carol', bridgeNodeId: 'node-carol-person' },
+    ]),
+    id: 'session:group:child',
+    canonicalSessionId: 'session:group:child',
+    metadata: { continuedFromSessionId: 'session:group:root' },
+  } as Conversation;
+
+  const scope = mentionScopeConversationForActiveConversation(child, [child, root]);
+  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), scope);
+
+  assert.deepEqual(
+    scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+  );
+});
+
+test('mention candidates hide active host person and agent duplicates', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'host-node-1',
+      displayName: "Host Owner's Kordi",
+      ownerName: 'Host Owner',
+      runtime: 'kordi-desktop',
+      humanId: 'host-human-1',
+      agentId: 'agent-local',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+  ]);
+
+  const candidates = filterBridgeMentionCandidatesForHost(
+    buildBridgeMentionCandidates(bridgeState),
+    bridgeState.hosts[0],
+  );
+
+  assert.deepEqual(
+    candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
   );
 });
 
