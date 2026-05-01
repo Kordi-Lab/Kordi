@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import {
   Activity,
   ChevronDown,
+  ChevronLeft,
   Copy,
   Plus,
   Search,
@@ -16,7 +17,7 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
+import type { ChatFilter, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
@@ -40,6 +41,8 @@ type ConversationItem = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
 };
+
+type ParticipantSpaceItem = ParticipantSpaceViewModel;
 
 const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
 
@@ -112,6 +115,8 @@ type WorkspaceSidebarProps = {
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: ConversationItem[];
+  participantSpaces: ParticipantSpaceItem[];
+  filteredParticipantSpaces: ParticipantSpaceItem[];
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
   onArchiveChatSession: (sessionId: string) => void;
@@ -231,6 +236,79 @@ function SidebarSessionMetaColumn({
   );
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function isParticipantSpaceSelf(participant: ParticipantSpaceItem['participants'][number]) {
+  return participant.role === 'self'
+    || (participant.source === 'local' && participant.kind === 'human');
+}
+
+function participantSpaceHumanCount(space: ParticipantSpaceItem) {
+  return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'human').length;
+}
+
+function participantSpaceKindText(space: ParticipantSpaceItem) {
+  if (space.kind === 'self') return 'Myself';
+  if (space.kind === 'direct-human') return 'Person';
+  if (space.kind === 'direct-agent') return 'Agent';
+  return 'Group';
+}
+
+function participantSpaceDetailText(space: ParticipantSpaceItem) {
+  const sessionText = pluralize(space.sessionCount, 'session');
+  if (space.kind === 'self') {
+    return `Myself • ${sessionText}`;
+  }
+  if (space.kind === 'direct-human') {
+    return `Person • ${sessionText}`;
+  }
+  if (space.kind === 'group') {
+    const humanCount = participantSpaceHumanCount(space);
+    const peopleText = humanCount > 0 ? `${pluralize(humanCount, 'person', 'people')} • ` : '';
+    return `Group • ${peopleText}${sessionText}`;
+  }
+  return `Agent • ${sessionText}`;
+}
+
+function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem }) {
+  const avatars = space.avatarStack.length > 0
+    ? space.avatarStack
+    : [{ kind: space.kind === 'direct-agent' ? 'agent' as const : 'human' as const, seed: space.id, imageUrl: null }];
+
+  if (avatars.length === 1) {
+    const avatar = avatars[0];
+    return (
+      <div className="relative h-9 w-9 shrink-0">
+        <IdentityAvatar
+          kind={avatar.kind}
+          seed={avatar.seed}
+          name={space.title}
+          imageUrl={avatar.imageUrl ?? undefined}
+          className="h-9 w-9 border border-white/10"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-9 w-10 shrink-0 items-center -space-x-5" aria-hidden="true">
+      {avatars.slice(0, 3).map((avatar, index) => (
+        <span key={`${avatar.seed}-${index}`} className="relative inline-flex" style={{ zIndex: avatars.length - index }}>
+          <IdentityAvatar
+            kind={avatar.kind}
+            seed={avatar.seed}
+            name={space.title}
+            imageUrl={avatar.imageUrl ?? undefined}
+            className="h-7 w-7 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function WorkspaceSidebar({
   isNativeShell,
   isSingleWorkspacePage,
@@ -246,7 +324,8 @@ export function WorkspaceSidebar({
   chatFilter,
   setChatFilter,
   desktopChatError,
-  filteredConversations,
+  participantSpaces,
+  filteredParticipantSpaces,
   activeConvId,
   onSelectChatSession,
   onArchiveChatSession,
@@ -282,7 +361,14 @@ export function WorkspaceSidebar({
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
+  const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(null);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const activeParticipantSpaceId = participantSpaces.find((space) => (
+    space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
+  ))?.id ?? null;
+  const selectedParticipantSpace = selectedParticipantSpaceId
+    ? participantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
+    : null;
 
   useEffect(() => {
     if (!sessionContextMenu) return;
@@ -298,6 +384,12 @@ export function WorkspaceSidebar({
       window.removeEventListener('keydown', handleEscape);
     };
   }, [sessionContextMenu]);
+
+  useEffect(() => {
+    if (selectedParticipantSpaceId && !participantSpaces.some((space) => space.id === selectedParticipantSpaceId)) {
+      setSelectedParticipantSpaceId(null);
+    }
+  }, [participantSpaces, selectedParticipantSpaceId]);
 
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
@@ -393,7 +485,7 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    People, owned agents, and delegated sessions all stay in one list.
+                    Pick a person, yourself, or a group to see its sessions.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -401,7 +493,7 @@ export function WorkspaceSidebar({
                     <input
                       value={chatSearch}
                       onChange={(event) => setChatSearch(event.target.value)}
-                      placeholder="Search sessions"
+                      placeholder="Search people, myself, agents"
                       className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                     />
                   </div>
@@ -431,64 +523,148 @@ export function WorkspaceSidebar({
                     </div>
                   ) : null}
 
-                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
-                    <div className="w-full space-y-1">
-                      {filteredConversations.map((conversation) => {
-                        const lastMessage = conversation.messages[conversation.messages.length - 1];
-                        const isActive = activeConvId === conversation.id;
-                        const rowTimeLabel = conversation.updatedAtLabel ?? lastMessage?.time ?? '--:--';
-                        const sessionSubtitle = formatSessionIdSubtitle(conversation.subtitle);
-
-                        return (
-                          <button
-                            key={conversation.id}
-                            type="button"
-                            onClick={() => onSelectChatSession(conversation.id)}
-                            onContextMenu={(event) => {
-                              if (!isManageableLocalChatConversation(conversation)) {
-                                return;
-                              }
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setSessionContextMenu({
-                                sessionId: conversation.id,
-                                sessionName: conversation.name,
-                                x: event.clientX,
-                                y: event.clientY,
-                              });
-                            }}
-                            className={`app-session-row block w-full px-2.5 py-[0.3125rem] text-left ${
-                              isActive ? 'app-session-row-active text-white' : 'text-white'
-                            }`}
-                          >
-                            <div className="flex items-start">
-                              <div className="min-w-0 flex-1">
+                  <div className="relative min-h-0 flex-1 overflow-hidden" data-chat-sidebar-mode="participant-spaces">
+                    <div className={cn(
+                      'absolute inset-0 min-h-0 transition duration-200 ease-out motion-reduce:transition-none',
+                      selectedParticipantSpace ? 'pointer-events-none -translate-x-5 opacity-0' : 'translate-x-0 opacity-100',
+                    )}>
+                      <ScrollArea className="app-workspace-session-scroll h-full min-h-0">
+                        <div className="w-full space-y-1">
+                          {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
+                            const latestSession = space.sessions[0];
+                            const isActiveSpace = activeParticipantSpaceId === space.id;
+                            const isSelectedSpace = selectedParticipantSpaceId === space.id;
+                            const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
+                            return (
+                              <button
+                                key={space.id}
+                                type="button"
+                                data-testid="participant-space-row"
+                                onClick={() => {
+                                  setSelectedParticipantSpaceId(space.id);
+                                  if (latestSession && activeConvId !== latestSession.id) {
+                                    onSelectChatSession(latestSession.id);
+                                  }
+                                }}
+                                className={cn(
+                                  'app-session-row block w-full px-2.5 py-2 text-left text-white',
+                                  (isActiveSpace || isSelectedSpace) && 'app-session-row-active',
+                                )}
+                              >
                                 <div className="flex items-start gap-2.5">
+                                  <ParticipantSpaceAvatarStack space={space} />
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[12px] font-medium text-slate-100" title={conversation.name}>{conversation.name}</div>
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="truncate text-[12px] font-medium text-slate-100" title={space.title}>{space.title}</div>
+                                        <div className={cn('mt-px truncate text-[10.5px] leading-[1.05rem]', isActiveSpace || isSelectedSpace ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
+                                          {space.preview || `${participantSpaceKindText(space)} space`}
+                                        </div>
+                                        <div className="mt-px truncate text-[10px] leading-[0.95rem] text-slate-600">
+                                          {participantSpaceDetailText(space)}
+                                        </div>
+                                      </div>
+                                      <SidebarSessionMetaColumn
+                                        timeLabel={rowTimeLabel}
+                                        unreadCount={space.unread}
+                                        indicator={latestSession?.statusIndicator}
+                                        active={isActiveSpace || isSelectedSpace}
+                                      />
+                                    </div>
                                   </div>
-                                  <SidebarSessionMetaColumn
-                                    timeLabel={rowTimeLabel}
-                                    unreadCount={conversation.unread}
-                                    indicator={conversation.statusIndicator}
-                                    active={isActive}
-                                  />
                                 </div>
-                                {sessionSubtitle ? (
-                                  <div
-                                    className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}
-                                    title={sessionSubtitle}
-                                  >
-                                    {sessionSubtitle}
-                                  </div>
-                                ) : null}
+                              </button>
+                            );
+                          }) : (
+                            <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
+                              No chat spaces match this filter.
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+
+                    <div className={cn(
+                      'absolute inset-0 min-h-0 transition duration-200 ease-out motion-reduce:transition-none',
+                      selectedParticipantSpace ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-5 opacity-0',
+                    )}>
+                      {selectedParticipantSpace ? (
+                        <div className="flex h-full min-h-0 flex-col">
+                          <div className="mb-2 rounded-[16px] border border-white/10 bg-white/[0.035] px-2.5 py-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedParticipantSpaceId(null)}
+                              className="mb-1 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 transition hover:text-white"
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                              Back to chats
+                            </button>
+                            <div className="flex items-center gap-2.5">
+                              <ParticipantSpaceAvatarStack space={selectedParticipantSpace} />
+                              <div className="min-w-0">
+                                <div className="truncate text-[13px] font-semibold text-white" title={selectedParticipantSpace.title}>{selectedParticipantSpace.title}</div>
+                                <div className="mt-px text-[10.5px] text-slate-500">
+                                  {participantSpaceDetailText(selectedParticipantSpace)}
+                                </div>
                               </div>
                             </div>
-                          </button>
-                        );
-                      })}
+                          </div>
+
+                          <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
+                            <div className="w-full space-y-1">
+                              {selectedParticipantSpace.sessions.map((session) => {
+                                const conversation = session.conversation;
+                                const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
+                                const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
+                                const sessionSubtitle = formatSessionIdSubtitle(session.preview);
+                                return (
+                                  <button
+                                    key={session.id}
+                                    type="button"
+                                    data-testid="participant-space-session-row"
+                                    onClick={() => onSelectChatSession(session.id)}
+                                    onContextMenu={(event) => {
+                                      if (!isManageableLocalChatConversation(conversation)) return;
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      setSessionContextMenu({
+                                        sessionId: conversation.id,
+                                        sessionName: conversation.name,
+                                        x: event.clientX,
+                                        y: event.clientY,
+                                      });
+                                    }}
+                                    className={cn('app-session-row block w-full px-2.5 py-[0.3125rem] text-left text-white', isActive && 'app-session-row-active')}
+                                  >
+                                    <div className="flex items-start">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-start gap-2.5">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="truncate text-[12px] font-medium text-slate-100" title={session.title}>{session.title}</div>
+                                          </div>
+                                          <SidebarSessionMetaColumn
+                                            timeLabel={rowTimeLabel}
+                                            unreadCount={session.unread}
+                                            indicator={session.statusIndicator}
+                                            active={isActive}
+                                          />
+                                        </div>
+                                        {sessionSubtitle ? (
+                                          <div className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')} title={sessionSubtitle}>
+                                            {sessionSubtitle}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      ) : null}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </div>
               )}
 

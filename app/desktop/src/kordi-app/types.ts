@@ -190,7 +190,7 @@ export type Conversation = {
   outreachThreads?: OutreachThreadSummary[];
 };
 
-export type ParticipantSpaceKind = 'direct-human' | 'direct-agent' | 'group';
+export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
 
 export type ParticipantSpaceAvatar = {
   kind: 'human' | 'agent';

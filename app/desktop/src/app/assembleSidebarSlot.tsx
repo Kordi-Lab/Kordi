@@ -23,6 +23,8 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       isDesktopChatLoading={args.isDesktopChatLoading}
       desktopChatError={args.desktopChatError}
       filteredConversations={args.filteredConversations}
+      participantSpaces={args.participantSpaces}
+      filteredParticipantSpaces={args.filteredParticipantSpaces}
       activeConvId={args.activeConvId}
       onSelectChatSession={(sessionId) => {
         void args.handleSelectChatSession(sessionId);

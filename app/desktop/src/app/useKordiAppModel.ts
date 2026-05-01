@@ -443,6 +443,8 @@ export function useKordiAppModel() {
   const {
     chatConversations,
     filteredConversations,
+    participantSpaces,
+    filteredParticipantSpaces,
     activeConv,
     activeConversationIsBridge,
     activeLastMessage,
@@ -951,6 +953,8 @@ export function useKordiAppModel() {
     isDesktopChatLoading,
     desktopChatError,
     filteredConversations,
+    participantSpaces,
+    filteredParticipantSpaces,
     handleCreateChatSession,
     handleSelectChatSession,
     handleArchiveChatSession,

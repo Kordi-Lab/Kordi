@@ -1,4 +1,5 @@
 import type {
+  ChatFilter,
   Conversation,
   ConversationParticipant,
   ParticipantSpaceAvatar,
@@ -9,10 +10,23 @@ import type {
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
+function isRawSessionIdText(value: string) {
+  const text = value.trim();
+  return text.startsWith('session:')
+    || text.startsWith('bridge:')
+    || text.startsWith('canonical:')
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+}
+
+function safePreviewText(value: string | undefined | null) {
+  const text = value?.trim() ?? '';
+  return text && !isRawSessionIdText(text) ? text : '';
+}
+
 function latestMessageText(conversation: Conversation) {
-  return conversation.messages[conversation.messages.length - 1]?.text?.trim()
-    || conversation.subtitle.trim()
-    || conversation.name.trim();
+  return safePreviewText(conversation.messages[conversation.messages.length - 1]?.text)
+    || safePreviewText(conversation.subtitle)
+    || safePreviewText(conversation.name);
 }
 
 function conversationTimestamp(conversation: Conversation, fallbackIndex: number) {
@@ -65,18 +79,41 @@ function allDisplayParticipants(conversation: Conversation) {
   return canonical.length > 0 ? canonical : fallbackParticipants(conversation);
 }
 
+function nonSelfHumans(participants: ConversationParticipant[]) {
+  return participants.filter((participant) => !isSelfParticipant(participant) && participant.kind === 'human');
+}
+
+function nonSelfAgents(participants: ConversationParticipant[]) {
+  return participants.filter((participant) => !isSelfParticipant(participant) && participant.kind === 'agent');
+}
+
+function selfParticipant(participants: ConversationParticipant[]) {
+  return participants.find((participant) => isSelfParticipant(participant));
+}
+
 function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
-  if (conversation.participantSpaceId || nonSelf.length > 1) {
+  const humanCount = nonSelfHumans(nonSelf).length;
+  if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';
   }
-  const primary = nonSelf[0];
-  if (primary?.kind === 'agent' || conversation.type === 'external-agent' || conversation.type === 'owned-agent') {
-    return 'direct-agent';
+  if (humanCount === 1) {
+    return 'direct-human';
   }
-  return 'direct-human';
+  if (nonSelfAgents(nonSelf).length > 0 || conversation.type === 'external-agent' || conversation.type === 'owned-agent') {
+    return 'self';
+  }
+  return 'self';
+}
+
+function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
+  if (kind === 'self') return selfParticipant(participants) ?? participants[0];
+  if (kind === 'direct-human') return nonSelfHumans(participants)[0] ?? participants.find((participant) => !isSelfParticipant(participant));
+  if (kind === 'direct-agent') return nonSelfAgents(participants)[0] ?? participants.find((participant) => !isSelfParticipant(participant));
+  return participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
 }
 
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
+  if (kind === 'self') return 'self:local';
   if (kind === 'group') {
     const explicit = conversation.participantSpaceId?.trim();
     if (explicit) return `group:${explicit}`;
@@ -120,17 +157,32 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
   }
 }
 
+function participantNameList(participants: ConversationParticipant[]) {
+  const names = participants.map((participant) => participant.name.trim()).filter(Boolean);
+  if (names.length <= 2) return names.join(', ');
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
+}
+
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
-  const nonSelf = participants.filter((participant) => !isSelfParticipant(participant));
+  if (kind === 'self') return 'Myself';
   if (kind === 'group') {
-    return latestSession?.conversation.name || nonSelf.map((participant) => participant.name).join(', ') || 'Group';
+    return participantNameList(nonSelfHumans(participants))
+      || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
+      || safePreviewText(latestSession?.conversation.name)
+      || 'Group';
   }
-  return nonSelf[0]?.name || latestSession?.conversation.name || 'Chat';
+  return primaryParticipantForKind(kind, participants)?.name || safePreviewText(latestSession?.conversation.name) || 'Chat';
 }
 
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
-  if (kind === 'group') return participants;
-  const primary = participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
+  if (kind === 'self') {
+    const primary = selfParticipant(participants) ?? participants.find((participant) => participant.kind === 'human') ?? participants[0];
+    return primary ? [primary] : [];
+  }
+  if (kind === 'group') {
+    return nonSelfHumans(participants);
+  }
+  const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];
 }
 
@@ -146,7 +198,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       .sort((left, right) => participantSortKey(left).localeCompare(participantSortKey(right)));
     const displayParticipants = allDisplayParticipants(conversation);
     const kind = spaceKindForConversation(conversation, nonSelf);
-    const primary = nonSelf[0] ?? displayParticipants[0];
+    const primary = primaryParticipantForKind(kind, displayParticipants);
     const id = spaceIdForConversation(kind, primary, conversation);
     const updatedAtMs = conversationTimestamp(conversation, conversations.length - index);
     const session = buildSession(conversation, updatedAtMs);
@@ -181,10 +233,27 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-export function filterParticipantSpaces(spaces: ParticipantSpaceViewModel[], query: string) {
+function participantSpaceAgentCount(space: ParticipantSpaceViewModel) {
+  return nonSelfAgents(space.participants).length;
+}
+
+function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
+  if (chatFilter === 'all') return true;
+  if (chatFilter === 'people') return space.kind === 'self' || space.kind === 'direct-human';
+  if (chatFilter === 'agents') return space.kind === 'direct-agent' || (space.kind === 'self' && participantSpaceAgentCount(space) > 0);
+  return space.kind === 'group'
+    || space.sessions.some((session) => session.conversation.directness !== 'Direct chat');
+}
+
+export function filterParticipantSpaces(
+  spaces: ParticipantSpaceViewModel[],
+  query: string,
+  chatFilter: ChatFilter = 'all',
+) {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return spaces;
   return spaces.filter((space) => {
+    if (!spaceMatchesChatFilter(space, chatFilter)) return false;
+    if (!normalized) return true;
     const haystack = [
       space.title,
       space.preview,
