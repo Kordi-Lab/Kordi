@@ -209,6 +209,27 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
   assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex']);
 });
 
+test('buildParticipantSpaces uses explicit custom group names before inferred people names', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:my-group',
+      canonicalSessionId: 'session:my-group',
+      type: 'person',
+      name: 'My group',
+      participants: ['Me', 'Alice', 'Bob'],
+      metadata: { customName: 'My group' },
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces[0]?.kind, 'group');
+  assert.equal(spaces[0]?.title, 'My group');
+});
+
 test('buildParticipantSpaces truncates long inferred group names with a remaining people count', () => {
   const humans = Array.from({ length: 105 }, (_, index) => ({
     id: `human:shuyhere${index + 1}`,

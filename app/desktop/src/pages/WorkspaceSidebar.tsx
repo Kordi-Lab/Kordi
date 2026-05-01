@@ -59,6 +59,12 @@ export function participantSpaceSessionRowTitle(title: string) {
   return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
 }
 
+function participantSpaceSessionPreviewText(preview: string) {
+  const formatted = formatSessionIdSubtitle(preview);
+  if (/^session id:/i.test(formatted)) return '';
+  return formatted;
+}
+
 function isManageableLocalChatConversation(conversation: ConversationItem) {
   return conversation.type === 'owned-agent'
     && conversation.id !== 'draft:local-chat'
@@ -124,6 +130,7 @@ type WorkspaceSidebarProps = {
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
   onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionId: string, name: string) => Promise<void> | void;
   onAddChatGroupMembers: (sessionId: string, contactIds: string[]) => Promise<void> | void;
   onRemoveChatGroupMember: (sessionId: string, identityId: string) => Promise<void> | void;
@@ -340,6 +347,7 @@ export function WorkspaceSidebar({
   onStartChatWithPerson,
   onStartChatWithAgent,
   onCreateChatGroup,
+  onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
   onAddChatGroupMembers,
   onRemoveChatGroupMember,
@@ -604,7 +612,7 @@ export function WorkspaceSidebar({
                                 <button
                                   type="button"
                                   data-participant-space-enter="true"
-                                  className="app-participant-space-action absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[10px]"
+                                  className="app-participant-space-action app-participant-space-enter-action absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[10px]"
                                   title="Open sessions"
                                   aria-label={`Enter ${space.title}`}
                                   onClick={openSpace}
@@ -645,22 +653,34 @@ export function WorkspaceSidebar({
                                   {participantSpaceDetailText(selectedParticipantSpace)}
                                 </div>
                               </div>
-                              {selectedParticipantSpace.kind === 'group' ? (
+                              <div className="flex shrink-0 items-center gap-1" data-participant-space-header-actions="true">
                                 <button
                                   type="button"
-                                  onClick={(event) => {
-                                    const rect = event.currentTarget.getBoundingClientRect();
-                                    setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-                                    setIsGroupDetailsDialogOpen(true);
-                                  }}
-                                  className="app-participant-space-action grid h-8 w-8 shrink-0 place-items-center rounded-[12px]"
-                                  title="Group management"
-                                  aria-label="Open group management"
-                                  aria-haspopup="dialog"
+                                  data-participant-space-context-create="true"
+                                  className="app-participant-space-context-create grid h-8 w-8 place-items-center rounded-[12px] transition"
+                                  aria-label={`Create session in ${selectedParticipantSpace.title}`}
+                                  title={`Create session in ${selectedParticipantSpace.title}`}
+                                  onClick={() => { void onCreateChatSessionInParticipantSpace(selectedParticipantSpace); }}
                                 >
-                                  <MoreHorizontal className="h-4 w-4" />
+                                  <Plus className="h-4 w-4" />
                                 </button>
-                              ) : null}
+                                {selectedParticipantSpace.kind === 'group' ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      const rect = event.currentTarget.getBoundingClientRect();
+                                      setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                                      setIsGroupDetailsDialogOpen(true);
+                                    }}
+                                    className="app-participant-space-action app-participant-space-menu-action grid h-8 w-8 shrink-0 place-items-center rounded-[12px]"
+                                    title="Group management"
+                                    aria-label="Open group management"
+                                    aria-haspopup="dialog"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
 
@@ -670,12 +690,14 @@ export function WorkspaceSidebar({
                                 const conversation = session.conversation;
                                 const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
                                 const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
-                                const sessionSubtitle = formatSessionIdSubtitle(session.preview);
+                                const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
                                 return (
                                   <button
                                     key={session.id}
                                     type="button"
                                     data-testid="participant-space-session-row"
+                                    data-session-preview={sessionPreview}
+                                    data-session-updated-at={rowTimeLabel}
                                     onClick={() => onSelectChatSession(session.id)}
                                     onContextMenu={(event) => {
                                       if (!isManageableLocalChatConversation(conversation)) return;
@@ -688,7 +710,7 @@ export function WorkspaceSidebar({
                                         y: event.clientY,
                                       });
                                     }}
-                                    className={cn('app-session-row block w-full px-2.5 py-[0.3125rem] text-left text-white', isActive && 'app-session-row-active')}
+                                    className={cn('app-session-row app-participant-space-session-row block w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
                                   >
                                     <div className="flex items-start">
                                       <div className="min-w-0 flex-1">
@@ -703,11 +725,16 @@ export function WorkspaceSidebar({
                                             active={isActive}
                                           />
                                         </div>
-                                        {sessionSubtitle ? (
-                                          <div className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')} title={sessionSubtitle}>
-                                            {sessionSubtitle}
-                                          </div>
-                                        ) : null}
+                                        <div
+                                          className={cn(
+                                            'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                                            isActive ? 'text-slate-300' : 'text-slate-500',
+                                            session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+                                          )}
+                                          title={sessionPreview}
+                                        >
+                                          {sessionPreview}
+                                        </div>
                                       </div>
                                     </div>
                                   </button>

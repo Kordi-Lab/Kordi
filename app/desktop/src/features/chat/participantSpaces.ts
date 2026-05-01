@@ -163,10 +163,23 @@ function participantNameList(participants: ConversationParticipant[]) {
   return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function customGroupTitle(latestSession: ParticipantSpaceSessionViewModel | undefined) {
+  const metadata = metadataRecord(latestSession?.conversation.metadata);
+  const customName = metadata.customName;
+  return typeof customName === 'string' ? safePreviewText(customName) : '';
+}
+
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
   if (kind === 'self') return 'Myself';
   if (kind === 'group') {
-    return participantNameList(nonSelfHumans(participants))
+    return customGroupTitle(latestSession)
+      || participantNameList(nonSelfHumans(participants))
       || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
       || safePreviewText(latestSession?.conversation.name)
       || 'Group';

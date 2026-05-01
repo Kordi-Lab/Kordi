@@ -162,6 +162,7 @@ export function syntheticConversation(
     avatarSeed: primary?.avatarKey ?? null,
     profileImageUrl: primary?.profileImageUrl ?? null,
     participantAvatarSeeds,
+    metadata: session.metadata,
     bridgeTarget,
     canonicalStoragePath: undefined,
     canonicalParticipantCount: participants.length,

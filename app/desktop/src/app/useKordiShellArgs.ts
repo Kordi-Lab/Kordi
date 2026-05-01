@@ -28,6 +28,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleStartChatWithPerson: args.handleStartChatWithPerson,
       handleStartChatWithAgent: args.handleStartChatWithAgent,
       handleCreateChatGroup: args.handleCreateChatGroup,
+      handleCreateChatSessionInParticipantSpace: args.handleCreateChatSessionInParticipantSpace,
       handleRenameChatGroup: args.handleRenameChatGroup,
       handleAddChatGroupMembers: args.handleAddChatGroupMembers,
       handleRemoveChatGroupMember: args.handleRemoveChatGroupMember,

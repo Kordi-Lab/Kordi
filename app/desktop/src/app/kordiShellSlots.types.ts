@@ -99,6 +99,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStartChatWithPerson: (contact: Contact) => Promise<void>;
   handleStartChatWithAgent: (agent: Agent) => Promise<void>;
   handleCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void>;
+  handleCreateChatSessionInParticipantSpace: (space: ParticipantSpaceViewModel) => Promise<void>;
   handleRenameChatGroup: (sessionId: string, name: string) => Promise<void>;
   handleAddChatGroupMembers: (sessionId: string, contactIds: string[]) => Promise<void>;
   handleRemoveChatGroupMember: (sessionId: string, identityId: string) => Promise<void>;
@@ -339,6 +340,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'
   | 'handleCreateChatGroup'
+  | 'handleCreateChatSessionInParticipantSpace'
   | 'handleRenameChatGroup'
   | 'handleAddChatGroupMembers'
   | 'handleRemoveChatGroupMember'

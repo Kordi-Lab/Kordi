@@ -39,7 +39,7 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { Agent, CanonicalSessionState, Contact, DesktopChatState } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
   addCanonicalSessionParticipants,
@@ -164,6 +164,29 @@ function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: str
       && (participant.role === 'self' || participant.role === 'admin')
     ))
     .map((participant) => participant.identityId);
+}
+
+function isParticipantSpaceSelfIdentity(participant: ParticipantSpaceViewModel['participants'][number]) {
+  return participant.role === 'self'
+    || (participant.kind === 'human' && participant.source === 'local');
+}
+
+function participantSpaceNonSelfIdentities(space: ParticipantSpaceViewModel, kind?: 'human' | 'agent') {
+  return space.participants.filter((participant) => (
+    !isParticipantSpaceSelfIdentity(participant)
+    && (!kind || participant.kind === kind)
+    && participant.id.trim()
+  ));
+}
+
+function metadataStringArray(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function uniqueStrings(values: string[]) {
@@ -1149,6 +1172,101 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
+  const handleCreateChatSessionInParticipantSpace = useCallback(async (space: ParticipantSpaceViewModel) => {
+    if (space.kind === 'self') {
+      await handleCreateChatSession();
+      return;
+    }
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+
+    const sourceSession = space.sessions[0] ?? null;
+    const sourceSessionId = sourceSession?.canonicalSessionId ?? sourceSession?.id ?? null;
+    const sourceMetadata = sourceSessionId ? sessionMetadataRecord(canonicalSessionState, sourceSessionId) : {};
+    const sessionId = `session:${space.kind === 'group' ? 'group' : space.kind}:${crypto.randomUUID()}`;
+
+    if (space.kind === 'group') {
+      const members = participantSpaceNonSelfIdentities(space, 'human');
+      const participantIdentityIds = uniqueStrings(members.map((member) => member.id));
+      if (participantIdentityIds.length < 2) {
+        throw new Error('A group session needs at least 2 other people.');
+      }
+
+      const adminIds = sourceSessionId
+        ? uniqueStrings(activeGroupAdminIds(canonicalSessionState, sourceSessionId))
+        : [];
+      const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
+      const customName = metadataString(sourceMetadata, 'customName') || space.title;
+      const participantNames = members.map((member) => member.name);
+      const nextState = await openOrCreateCanonicalSession({
+        id: sessionId,
+        kind: 'group',
+        title: 'New session',
+        status: 'active',
+        createdByIdentityId: creatorIdentityId,
+        primaryIdentityId: null,
+        relationshipIdentityId: null,
+        participantIdentityIds,
+        metadata: {
+          ...sourceMetadata,
+          schemaVersion: 1,
+          kind: 'chat-group',
+          customName,
+          adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
+          initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
+          initialParticipantNames: uniqueStrings([
+            ...metadataStringArray(sourceMetadata, 'initialParticipantNames'),
+            ...participantNames,
+          ]),
+          memberApprovalPolicy: 'under-50-open',
+          createdFrom: 'chat-create-flow',
+          continuedFromSessionId: sourceSessionId,
+          continuedFromSpaceId: space.id,
+        },
+      });
+      setCanonicalSessionState(nextState);
+      selectNewChatSession(sessionId);
+      return;
+    }
+
+    const receiver = participantSpaceNonSelfIdentities(space)[0];
+    if (!receiver) {
+      await handleCreateChatSession();
+      return;
+    }
+
+    const kind = receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind,
+      title: 'New session',
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: receiver.id,
+      relationshipIdentityId: receiver.id,
+      participantIdentityIds: [receiver.id],
+      metadata: {
+        createdFrom: 'chat-create-flow',
+        continuedFromSessionId: sourceSessionId,
+        continuedFromSpaceId: space.id,
+        participantSpaceKind: space.kind,
+      },
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState,
+    handleCreateChatSession,
+    isNativeShell,
+    selectNewChatSession,
+    setDesktopChatError,
+  ]);
+
   const handleRenameChatGroup = useCallback(async (sessionId: string, name: string) => {
     if (!isNativeShell) return;
     const title = name.trim();
@@ -1301,6 +1419,7 @@ export function useKordiAppModel() {
     handleStartChatWithPerson,
     handleStartChatWithAgent,
     handleCreateChatGroup,
+    handleCreateChatSessionInParticipantSpace,
     handleRenameChatGroup,
     handleAddChatGroupMembers,
     handleRemoveChatGroupMember,

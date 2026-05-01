@@ -183,6 +183,7 @@ export type Conversation = {
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
   participantSpaceId?: string | null;
+  metadata?: unknown;
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: DesktopBridgeOutreachMetadata | null;

@@ -158,7 +158,7 @@ export function GroupDetailsDialog({
         aria-label="Group management"
         data-group-management-surface="popover"
         data-popover-placement={placement}
-        className="app-group-management-popover app-group-management-popover-enter fixed z-[60] w-[min(26rem,calc(100vw-1.25rem))] overflow-hidden rounded-[20px] p-3 backdrop-blur-2xl backdrop-saturate-150"
+        className="app-frosted-popover app-group-management-popover app-group-management-popover-enter fixed z-[60] w-[min(26rem,calc(100vw-1.25rem))] overflow-hidden rounded-[20px] p-3 backdrop-blur-2xl backdrop-saturate-150"
         style={style}
         onMouseDown={(event) => event.stopPropagation()}
       >

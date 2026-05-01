@@ -104,7 +104,7 @@ function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; on
       <div
         data-create-surface="side-popover"
         data-popover-placement={placement}
-        className="app-chat-create-popover app-chat-create-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-hidden rounded-[18px] p-2.5 backdrop-blur-2xl backdrop-saturate-150"
+        className="app-frosted-popover app-chat-create-popover app-chat-create-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-hidden rounded-[18px] p-2.5 backdrop-blur-2xl backdrop-saturate-150"
         style={style}
       >
         {placement !== 'floating' ? (

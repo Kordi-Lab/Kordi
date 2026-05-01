@@ -32,6 +32,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       onStartChatWithPerson={args.handleStartChatWithPerson}
       onStartChatWithAgent={args.handleStartChatWithAgent}
       onCreateChatGroup={args.handleCreateChatGroup}
+      onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
       onRenameChatGroup={args.handleRenameChatGroup}
       onAddChatGroupMembers={args.handleAddChatGroupMembers}
       onRemoveChatGroupMember={args.handleRemoveChatGroupMember}

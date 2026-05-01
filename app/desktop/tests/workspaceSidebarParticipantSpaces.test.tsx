@@ -118,6 +118,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onStartChatWithPerson: () => {},
     onStartChatWithAgent: () => {},
     onCreateChatGroup: () => {},
+    onCreateChatSessionInParticipantSpace: () => {},
     onRenameChatGroup: () => {},
     onAddChatGroupMembers: () => {},
     onRemoveChatGroupMember: () => {},
@@ -160,6 +161,7 @@ test('WorkspaceSidebar renders participant spaces as the Chats first level', () 
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);
   assert.match(markup, /data-participant-space-enter="true"/);
+  assert.match(markup, /app-participant-space-enter-action/);
   assert.match(markup, /aria-label="Enter Bob"/);
   assert.doesNotMatch(markup, /aria-label="Actions for Bob"/);
   assert.doesNotMatch(markup, /Old Bob thread/);
@@ -240,6 +242,7 @@ test('ChatCreateDialog renders compact theme-aware choices beside the plus butto
   assert.match(markup, /data-create-surface="side-popover"/);
   assert.match(markup, /data-popover-placement="right"/);
   assert.match(markup, /app-chat-create-popover/);
+  assert.match(markup, /app-frosted-popover/);
   assert.match(markup, /app-chat-create-popover-enter/);
   assert.doesNotMatch(markup, /bg-white\/80/);
   assert.doesNotMatch(markup, /text-slate-950/);
@@ -302,6 +305,7 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
 
   assert.match(markup, /data-group-management-surface="popover"/);
   assert.match(markup, /app-group-management-popover/);
+  assert.match(markup, /app-frosted-popover/);
   assert.doesNotMatch(markup, /bg-slate-950\/70/);
   assert.match(markup, /Group management/);
   assert.match(markup, /Participants/);
@@ -309,6 +313,22 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Make admin/);
   assert.match(markup, /Add people/);
   assert.match(markup, /Rename/);
+});
+
+test('WorkspaceSidebar selected participant space keeps contextual create in the header and rich child previews', () => {
+  const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.doesNotMatch(markup, /Page 2/);
+  assert.match(markup, /data-participant-space-header-actions="true"/);
+  assert.match(markup, /aria-label="Create session in Bob"/);
+  assert.match(markup, /data-participant-space-context-create="true"/);
+  assert.match(markup, /data-session-preview="New preview"/);
+  assert.match(markup, /data-session-updated-at="10:00"/);
 });
 
 test('WorkspaceSidebar selected group header exposes details and hashtag child sessions', () => {
