@@ -218,14 +218,17 @@ function SidebarSessionMetaColumn({
   indicator?: SessionStatusIndicator;
   active?: boolean;
 }) {
+  const visibleUnreadCount = active ? 0 : unreadCount;
+  const visibleIndicator = active ? undefined : indicator;
+
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
       <span className={cn('whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
         {timeLabel}
       </span>
       <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-        <SidebarUnreadBadge count={unreadCount} />
-        <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+        <SidebarUnreadBadge count={visibleUnreadCount} />
+        <SidebarSessionStatusIndicator indicator={visibleIndicator} active={active} />
       </div>
     </div>
   );
