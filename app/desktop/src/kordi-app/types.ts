@@ -182,11 +182,48 @@ export type Conversation = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
+  participantSpaceId?: string | null;
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+};
+
+export type ParticipantSpaceKind = 'direct-human' | 'direct-agent' | 'group';
+
+export type ParticipantSpaceAvatar = {
+  kind: 'human' | 'agent';
+  seed: string;
+  imageUrl?: string | null;
+};
+
+export type ParticipantSpaceSessionViewModel = {
+  id: string;
+  canonicalSessionId?: string;
+  title: string;
+  preview: string;
+  unread: number;
+  updatedAtLabel?: string;
+  updatedAtMs: number;
+  participantCount: number;
+  statusIndicator?: SessionStatusIndicator;
+  conversation: Conversation;
+};
+
+export type ParticipantSpaceViewModel = {
+  id: string;
+  kind: ParticipantSpaceKind;
+  title: string;
+  participants: ConversationParticipant[];
+  participantCount: number;
+  sessionCount: number;
+  unread: number;
+  updatedAtLabel?: string;
+  updatedAtMs: number;
+  preview: string;
+  avatarStack: ParticipantSpaceAvatar[];
+  sessions: ParticipantSpaceSessionViewModel[];
 };
 
 export type Contact = {
