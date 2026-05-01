@@ -339,6 +339,7 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /app-frosted-popover/);
   assert.doesNotMatch(markup, /bg-slate-950\/70/);
   assert.match(markup, /Group management/);
+  assert.doesNotMatch(markup, /lucide-ellipsis/);
   assert.match(markup, /Participants/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Make admin/);

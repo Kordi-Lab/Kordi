@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
-import { MoreHorizontal, ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
+import { ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { buildChatCreatePersonOptions, contactCanonicalIdentityRequest, participantSpaceCanonicalSessionIds } from '@/features/chat/chatCreateFlows';
@@ -176,8 +176,8 @@ export function GroupDetailsDialog({
         <div className="relative flex max-h-[min(36rem,calc(100vh-1.5rem))] flex-col">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 text-[14px] font-semibold text-[color:var(--utility-foreground)]">
-                <MoreHorizontal className="h-4 w-4 text-[color:var(--utility-muted-text)]" /> Group management
+              <div className="text-[14px] font-semibold text-[color:var(--utility-foreground)]">
+                Group management
               </div>
               <div className="mt-0.5 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
                 {displayCreatedLabel(space)} • {members.length} participants • {adminCount} admin{adminCount === 1 ? '' : 's'}
