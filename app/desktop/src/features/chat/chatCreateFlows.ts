@@ -1,6 +1,7 @@
 import type {
   Agent,
   Contact,
+  ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
@@ -21,6 +22,8 @@ export type ChatCreateAgentOption = {
   profileImageUrl?: string | null;
   agent: Agent;
 };
+
+const BRIDGE_HUMAN_SESSION_PREFIX = 'session:bridge:humans:';
 
 export type ChatGroupMetadata = {
   schemaVersion: 1;
@@ -94,6 +97,29 @@ export function groupDefaultName(names: string[]) {
   const clean = uniqueNonEmpty(names);
   if (clean.length <= 2) return clean.join(', ');
   return `${clean.slice(0, 2).join(', ')} +${clean.length - 2} more`;
+}
+
+function participantSpaceHasBridgeHuman(space: ParticipantSpaceViewModel) {
+  return space.participants.some((participant) => (
+    participant.kind === 'human'
+    && participant.role !== 'self'
+    && (participant.source === 'bridge' || Boolean(participant.bridgeNodeId?.trim()) || Boolean(participant.humanId?.trim()))
+  ));
+}
+
+export function chatSessionIdForParticipantSpaceContinuation(space: ParticipantSpaceViewModel, randomId: string) {
+  const id = cleanText(randomId) || Date.now().toString(36);
+  const sourceSessionId = cleanText(space.sessions[0]?.canonicalSessionId) || cleanText(space.sessions[0]?.id);
+
+  if (space.kind === 'direct-human') {
+    if (sourceSessionId.startsWith(BRIDGE_HUMAN_SESSION_PREFIX) || participantSpaceHasBridgeHuman(space)) {
+      return `${BRIDGE_HUMAN_SESSION_PREFIX}${id}`;
+    }
+    return `session:direct-person:${id}`;
+  }
+  if (space.kind === 'group') return `session:group:${id}`;
+  if (space.kind === 'direct-agent') return `session:direct-agent:${id}`;
+  return `session:self-agent:${id}`;
 }
 
 export function buildChatCreateGroupMetadata(input: {

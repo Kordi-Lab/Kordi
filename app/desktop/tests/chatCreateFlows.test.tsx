@@ -6,9 +6,10 @@ import {
   buildChatCreateGroupMetadata,
   buildChatCreatePersonOptions,
   canCreateGroup,
+  chatSessionIdForParticipantSpaceContinuation,
   groupDefaultName,
 } from '../src/features/chat/chatCreateFlows';
-import type { Agent, Contact } from '../src/kordi-app/types';
+import type { Agent, Contact, ParticipantSpaceViewModel } from '../src/kordi-app/types';
 
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -25,6 +26,54 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     owner: 'Alice',
     avatarSeed: 'alice',
     profileImageUrl: null,
+    ...overrides,
+  };
+}
+
+function participantSpace(overrides: Partial<ParticipantSpaceViewModel> = {}): ParticipantSpaceViewModel {
+  return {
+    id: 'direct-human:human:alice',
+    kind: 'direct-human',
+    title: 'Alice',
+    participants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', bridgeNodeId: 'node-alice', avatarKey: 'alice' },
+    ],
+    participantCount: 2,
+    sessionCount: 1,
+    unread: 0,
+    updatedAtLabel: '10:00',
+    updatedAtMs: 1,
+    preview: 'Hi',
+    avatarStack: [{ kind: 'human', seed: 'alice', imageUrl: null }],
+    sessions: [{
+      id: 'session:bridge:humans:old',
+      canonicalSessionId: 'session:bridge:humans:old',
+      title: 'Hi',
+      preview: 'Hi',
+      unread: 0,
+      updatedAtLabel: '10:00',
+      updatedAtMs: 1,
+      participantCount: 2,
+      conversation: {
+        id: 'session:bridge:humans:old',
+        canonicalSessionId: 'session:bridge:humans:old',
+        name: 'Hi',
+        type: 'person',
+        subtitle: 'Hi',
+        unread: 0,
+        bridges: ['Bridge'],
+        trust: 'Bridge',
+        directness: 'Direct chat',
+        participants: ['Me', 'Alice'],
+        canonicalParticipants: [
+          { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+          { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', bridgeNodeId: 'node-alice', avatarKey: 'alice' },
+        ],
+        messages: [],
+        updatedAtLabel: '10:00',
+      },
+    }],
     ...overrides,
   };
 }
@@ -85,6 +134,27 @@ test('canCreateGroup requires at least two unique people contacts', () => {
 test('groupDefaultName uses people names only and truncates long groups', () => {
   assert.equal(groupDefaultName(['Alice', 'Bob']), 'Alice, Bob');
   assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
+});
+
+test('chatSessionIdForParticipantSpaceContinuation keeps Bridge human session ids consistent', () => {
+  assert.equal(
+    chatSessionIdForParticipantSpaceContinuation(participantSpace(), 'next-id'),
+    'session:bridge:humans:next-id',
+  );
+  assert.equal(
+    chatSessionIdForParticipantSpaceContinuation(participantSpace({
+      sessions: [{
+        ...participantSpace().sessions[0],
+        id: 'session:direct-person:old',
+        canonicalSessionId: 'session:direct-person:old',
+      }],
+      participants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:local-alice', name: 'Alice', kind: 'human', role: 'person', source: 'local', avatarKey: 'alice' },
+      ],
+    }), 'next-id'),
+    'session:direct-person:next-id',
+  );
 });
 
 test('buildChatCreateGroupMetadata records stable admin and member policy', () => {

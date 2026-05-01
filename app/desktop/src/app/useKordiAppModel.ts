@@ -29,6 +29,7 @@ import {
   agentCanonicalIdentityRequest,
   buildChatCreateGroupMetadata,
   buildChatCreatePersonOptions,
+  chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
   groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
@@ -1188,7 +1189,7 @@ export function useKordiAppModel() {
     const sourceSession = space.sessions[0] ?? null;
     const sourceSessionId = sourceSession?.canonicalSessionId ?? sourceSession?.id ?? null;
     const sourceMetadata = sourceSessionId ? sessionMetadataRecord(canonicalSessionState, sourceSessionId) : {};
-    const sessionId = `session:${space.kind === 'group' ? 'group' : space.kind}:${crypto.randomUUID()}`;
+    const sessionId = chatSessionIdForParticipantSpaceContinuation(space, crypto.randomUUID());
 
     if (space.kind === 'group') {
       const members = participantSpaceNonSelfIdentities(space, 'human');
