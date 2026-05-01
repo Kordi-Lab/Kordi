@@ -77,7 +77,7 @@ Out of scope:
 - Modify: `app/desktop/src-tauri/src/lib.rs`
 - Modify: `app/desktop/src-tauri/src/canonical_sessions/tests.rs`
 
-- [ ] **Step 1: Write Rust tests**
+- [x] **Step 1: Write Rust tests**
 
 Add a helper and tests to `app/desktop/src-tauri/src/canonical_sessions/tests.rs`:
 
@@ -160,7 +160,7 @@ fn canonical_group_role_mutation_rejects_last_admin_removal() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -170,7 +170,7 @@ cargo test -p kordi-desktop --no-default-features canonical_group_metadata_and_p
 
 Expected: FAIL because helper functions and/or request types do not exist.
 
-- [ ] **Step 3: Implement commands**
+- [x] **Step 3: Implement commands**
 
 Add request structs to `models.rs`:
 
@@ -292,7 +292,7 @@ fn remove_session_participant_in_db(conn: &Connection, session_id: &str, identit
 
 Add wrappers in `commands.rs`, Tauri exports in `canonical_sessions.rs`, and register each command in `lib.rs`.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run:
 
@@ -302,7 +302,7 @@ cargo test -p kordi-desktop --no-default-features canonical_group
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/desktop/src-tauri/src/canonical_sessions.rs app/desktop/src-tauri/src/canonical_sessions/commands.rs app/desktop/src-tauri/src/canonical_sessions/models.rs app/desktop/src-tauri/src/lib.rs app/desktop/src-tauri/src/canonical_sessions/tests.rs
@@ -319,11 +319,11 @@ git commit -m "Add canonical group management commands"
 - Modify: `app/desktop/src/kordi-app/types.ts`
 - Modify: `app/desktop/src/lib/desktop.ts`
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 Create `app/desktop/tests/chatCreateFlows.test.tsx` with tests for people-only options, minimum selected people, stable names, metadata, and direct agent/person options.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 pnpm --dir app/desktop test:unit -- chatCreateFlows.test.tsx
@@ -331,7 +331,7 @@ pnpm --dir app/desktop test:unit -- chatCreateFlows.test.tsx
 
 Expected: FAIL because `chatCreateFlows.ts` does not exist.
 
-- [ ] **Step 3: Implement helpers**
+- [x] **Step 3: Implement helpers**
 
 Create helpers:
 
@@ -354,7 +354,7 @@ Derive people options from contacts with `entityType !== 'Agent'` and agents fro
 
 Add TS request types for canonical commands and desktop invoke wrappers in `lib/desktop.ts`.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 pnpm --dir app/desktop test:unit -- chatCreateFlows.test.tsx
@@ -363,7 +363,7 @@ pnpm --dir app/desktop typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/desktop/src/features/chat/chatCreateFlows.ts app/desktop/tests/chatCreateFlows.test.tsx app/desktop/src/kordi-app/types.ts app/desktop/src/lib/desktop.ts
@@ -381,11 +381,11 @@ git commit -m "Add chat create flow helpers"
 - Modify: `app/desktop/src/app/assembleSidebarSlot.tsx`
 - Modify: `app/desktop/tests/chatRouting.test.tsx`
 
-- [ ] **Step 1: Add failing view-model/handler exposure tests**
+- [x] **Step 1: Add failing view-model/handler exposure tests**
 
 Extend existing shell test fixtures to include new no-op handlers and assert shell args include group create/manage callbacks.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 pnpm --dir app/desktop test:unit -- chatRouting.test.tsx
@@ -393,7 +393,7 @@ pnpm --dir app/desktop test:unit -- chatRouting.test.tsx
 
 Expected: FAIL until props/types are wired.
 
-- [ ] **Step 3: Implement handlers**
+- [x] **Step 3: Implement handlers**
 
 In `useKordiAppModel.ts` add callbacks:
 
@@ -407,7 +407,7 @@ In `useKordiAppModel.ts` add callbacks:
 
 Group creation uses `openOrCreateCanonicalSession({ id: 'session:group:' + crypto.randomUUID(), kind: 'group', title, participantIdentityIds, metadata })` and selects the new session in Chats.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 pnpm --dir app/desktop test:unit -- chatRouting.test.tsx
@@ -416,7 +416,7 @@ pnpm --dir app/desktop typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/desktop/src/app/useKordiAppModel.ts app/desktop/src/app/kordiShellSlots.types.ts app/desktop/src/app/useKordiShellArgs.ts app/desktop/src/app/assembleSidebarSlot.tsx app/desktop/tests/chatRouting.test.tsx
@@ -433,7 +433,7 @@ git commit -m "Wire chat create and group management handlers"
 - Modify: `app/desktop/src/pages/WorkspaceSidebar.tsx`
 - Modify: `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx`
 
-- [ ] **Step 1: Write failing static render tests**
+- [x] **Step 1: Write failing static render tests**
 
 Extend `workspaceSidebarParticipantSpaces.test.tsx` to assert:
 
@@ -442,7 +442,7 @@ Extend `workspaceSidebarParticipantSpaces.test.tsx` to assert:
 - selected-space child row title renders `# Hi shu`
 - group header contains an accessible `Group details` button
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 pnpm --dir app/desktop test:unit -- workspaceSidebarParticipantSpaces.test.tsx
@@ -450,7 +450,7 @@ pnpm --dir app/desktop test:unit -- workspaceSidebarParticipantSpaces.test.tsx
 
 Expected: FAIL until UI exists.
 
-- [ ] **Step 3: Implement UI**
+- [x] **Step 3: Implement UI**
 
 Add `ChatCreateDialog` with a mode state (`menu`, `person`, `agent`, `group`) and people-only group picker. Add `GroupDetailsDialog` with name edit, members/admins, add members, remove, promote/demote.
 
@@ -460,7 +460,7 @@ Update `WorkspaceSidebar`:
 - add `...` in selected group header
 - prefix child session titles with `# `
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 pnpm --dir app/desktop test:unit -- workspaceSidebarParticipantSpaces.test.tsx
@@ -469,7 +469,7 @@ pnpm --dir app/desktop typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/desktop/src/pages/ChatCreateDialog.tsx app/desktop/src/pages/GroupDetailsDialog.tsx app/desktop/src/pages/WorkspaceSidebar.tsx app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx
@@ -480,7 +480,7 @@ git commit -m "Add chat create and group detail UI"
 
 ### Task 5: Verification, QA refresh, and PR
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 ```bash
 pnpm --dir app/desktop test:unit
@@ -493,7 +493,7 @@ git diff --check
 
 Expected: PASS. Existing Vite large chunk warning is acceptable.
 
-- [ ] **Step 2: Refresh user1/user2 QA instances from this branch without resetting data**
+- [x] **Step 2: Refresh user1/user2 QA instances from this branch without resetting data**
 
 Stop existing user1/user2 pid groups from `/Users/shuyang/kordi/app/desktop/.multi-instance-runtime`, then run:
 
@@ -505,7 +505,7 @@ curl -s -o /dev/null -w 'user2 %{http_code}\n' http://127.0.0.1:1484/
 
 Expected: both HTTP 200.
 
-- [ ] **Step 3: Push and open stacked PR**
+- [x] **Step 3: Push and open stacked PR**
 
 ```bash
 git push -u origin feature/issue-171-create-flows
