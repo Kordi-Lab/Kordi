@@ -72,7 +72,7 @@ export function useKordiLocalUiState() {
     writeStoredComposerAttachments(chatComposerAttachments);
   }, [chatComposerAttachments]);
 
-  const [chatFilter, setChatFilter] = useState<ChatFilter>('all');
+  const [chatFilter, setChatFilter] = useState<ChatFilter>('latest');
   const [chatSearch, setChatSearch] = useState('');
 
   return {

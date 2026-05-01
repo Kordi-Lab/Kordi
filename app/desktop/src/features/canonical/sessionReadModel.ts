@@ -11,11 +11,14 @@ import { formatDesktopClockTime } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  sessionDisplayTitle,
   sessionHasActiveProcessing,
   sessionMetadata,
+  sessionViewMetadata,
   shouldUseCanonicalMessages,
   syntheticBridgeTarget,
   syntheticConversation,
+  syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
 
@@ -32,6 +35,8 @@ type CanonicalConversationLike = {
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: { parentSessionId?: string | null } | null;
+  participantSpaceId?: string | null;
+  directness?: string | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   unread?: number;
@@ -186,10 +191,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const participants = this.participantNames(sessionId, conversation.participants);
-      const bridgePersonMessageTitle = isBridgePersonSession
-        ? messages.find((message) => message.role !== 'system' && message.text.trim())?.text.trim()
-        : null;
       const canonicalParticipants = this.participantDetails(sessionId);
+      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
@@ -202,12 +205,16 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       return {
         ...conversation,
         canonicalSessionId: sessionId,
+        canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalStoragePath: indexes.storagePath,
-        name: bridgePersonMessageTitle || session.title || conversation.name,
+        name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread: scopedUnread,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
+        participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
+        metadata: sessionViewMetadata(session),
+        directness: session.kind === 'group' ? 'Group chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
@@ -276,8 +283,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
           const fallbackParticipants = this.participantDetails(fallbackSession.id);
           const fallbackMessages = this.messages(fallbackSession.id);
           const fallbackMetadata = sessionMetadata(fallbackSession);
+          const createdFromChatFlow = fallbackMetadata.createdFrom === 'chat-create-flow';
           if (fallbackMessages.length === 0 && (
-            fallbackSession.kind === 'self-agent'
+            (fallbackSession.kind === 'self-agent' && !createdFromChatFlow)
             || fallbackMetadata.source === 'desktop-bridge-conversation'
           )) {
             return [];

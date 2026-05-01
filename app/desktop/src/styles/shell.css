@@ -131,6 +131,185 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 }
 
+.app-frosted-popover {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+  box-shadow:
+    0 14px 34px rgba(2, 6, 23, 0.2),
+    0 2px 10px rgba(2, 6, 23, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  backdrop-filter: blur(28px) saturate(155%);
+  -webkit-backdrop-filter: blur(28px) saturate(155%);
+}
+
+.app-chat-create-popover {
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-popover-enter {
+  transform-origin: var(--app-popover-origin, left 22px);
+  animation: app-chat-create-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-chat-create-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+}
+
+.app-chat-create-close {
+  color: var(--utility-muted-text);
+}
+
+.app-chat-create-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice,
+.app-chat-create-list-item {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice:hover,
+.app-chat-create-list-item:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 78%, transparent);
+}
+
+.app-chat-create-icon {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-list-item-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-chat-create-check {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  color: transparent;
+}
+
+.app-chat-create-check-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 74%, var(--app-divider));
+  background: color-mix(in oklab, oklch(74% 0.14 156) 74%, var(--utility-foreground));
+  color: rgb(15 23 42);
+}
+
+.app-chat-create-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-popover {
+  color: var(--utility-foreground);
+}
+
+.app-group-management-popover-enter {
+  transform-origin: var(--app-group-management-origin, left 26px);
+  animation: app-group-management-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-group-management-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+}
+
+.app-group-management-close {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-section-label {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-member-row,
+.app-group-management-add-row,
+.app-group-management-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 74%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-add-row:hover,
+.app-group-management-member-row:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 70%, transparent);
+}
+
+.app-group-management-add-row-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-group-management-admin-button {
+  background: color-mix(in oklab, var(--app-control-bg) 74%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-admin-button:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 86%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-admin-button-active {
+  background: color-mix(in oklab, oklch(68% 0.13 156) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(78% 0.12 156) 72%, var(--utility-foreground));
+}
+
+.app-group-management-remove-button {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-remove-button:hover {
+  background: color-mix(in oklab, oklch(62% 0.18 25) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(76% 0.13 25) 74%, var(--utility-foreground));
+}
+
+@keyframes app-chat-create-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-create-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes app-group-management-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-group-management-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-chat-create-popover-enter,
+  .app-group-management-popover-enter {
+    animation: none;
+  }
+}
+
 .app-code-panel {
   background: var(--app-code-bg);
 }
@@ -412,6 +591,14 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.app-session-meta-time {
+  color: var(--utility-meta-text);
+}
+
+.app-session-meta-time-active {
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, var(--utility-foreground));
+}
+
 .app-session-row {
   border: 1px solid transparent;
   border-radius: 16px;
@@ -426,15 +613,188 @@
 }
 
 .app-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 70%, transparent);
+  background: var(--app-control-hover);
 }
 
 .app-session-row-active {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 84%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  border: 1px solid transparent;
+  background: var(--app-control-active);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+    0 0 0 1px var(--app-accent-ring),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.app-participant-space-inline-group {
+  border-radius: 16px;
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 46%, transparent);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-inline-group-expanded {
+  background: var(--app-control-bg);
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.125rem;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-row-shell:hover {
+  background: var(--app-control-hover);
+}
+
+.app-participant-space-row-shell-active {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
+  box-shadow: 0 0 0 1px var(--app-accent-ring);
+}
+
+.app-participant-space-row-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.625rem;
+  border: 0;
+  background: transparent;
+  padding: 0.375rem 0.25rem 0.375rem 0.625rem;
+  box-shadow: none;
+}
+
+.app-participant-space-row-button:hover,
+.app-participant-space-row-button:focus-visible {
+  background: transparent;
+}
+
+.app-participant-space-row-side {
+  display: grid;
+  grid-template-rows: max-content 1fr;
+  justify-items: end;
+  min-height: 4.05rem;
+}
+
+.app-participant-space-row-meta {
+  align-self: end;
+  padding: 0 0.35rem 0.45rem 0;
+}
+
+.app-participant-space-row-actions {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(3, 1.5rem);
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.375rem 0.25rem 0 0;
+  opacity: 0.9;
+}
+
+.app-participant-space-action-spacer {
+  display: block;
+}
+
+.app-participant-space-inline-sessions {
+  padding: 0.125rem 0 0.35rem;
+}
+
+.app-participant-space-inline-group:not(.app-participant-space-inline-group-expanded) .app-participant-space-row-actions {
+  opacity: 0.78;
+}
+
+.app-participant-space-action {
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, var(--utility-foreground));
+  opacity: 0.78;
+  box-shadow: none;
+  transition:
+    opacity var(--app-motion-fast) var(--app-motion-ease),
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    transform var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-action:hover,
+.app-participant-space-action:focus-visible {
+  border-color: color-mix(in oklab, var(--app-divider) 42%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 42%, transparent);
+  color: var(--utility-foreground);
+  opacity: 1;
+  transform: translateX(1px);
+}
+
+.app-participant-space-enter-action {
+  right: 0.25rem;
+}
+
+.app-participant-space-menu-action {
+  border-color: color-mix(in oklab, var(--app-divider) 46%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+  opacity: 0.88;
+}
+
+.app-participant-space-context-create {
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-foreground) 92%, var(--utility-muted-text));
+  opacity: 0.98;
+}
+
+.app-participant-space-context-create:hover,
+.app-participant-space-context-create:focus-visible {
+  border-color: color-mix(in oklab, var(--app-divider) 38%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 38%, transparent);
+  color: var(--utility-foreground);
+  opacity: 1;
+}
+
+.app-participant-space-session-row {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-participant-space-session-title {
+  color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
+}
+
+.app-participant-space-session-preview {
+  display: block;
+  max-width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 18px), transparent 100%);
+}
+
+.app-participant-space-session-preview-live {
+  background: linear-gradient(90deg, currentColor 0%, color-mix(in oklab, currentColor 62%, transparent) 48%, currentColor 100%);
+  background-size: 180% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: app-session-preview-stream 2.2s var(--app-motion-ease) infinite;
+}
+
+@keyframes app-session-preview-stream {
+  from { background-position: 100% 0; }
+  to { background-position: -80% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-participant-space-session-preview-live {
+    animation: none;
+  }
 }
 
 .app-composer-shell {
@@ -1014,10 +1374,64 @@
   background: color-mix(in oklab, var(--app-control-bg) 46%, transparent);
 }
 
+.app-workspace-sidebar .app-participant-space-row-button {
+  display: grid;
+}
+
+.app-workspace-sidebar .app-participant-space-row-button:hover,
+.app-workspace-sidebar .app-participant-space-row-button:focus-visible {
+  background: transparent;
+}
+
+.app-workspace-sidebar .app-participant-space-row-title {
+  color: color-mix(in oklab, var(--utility-foreground) 96%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 68%, var(--utility-foreground));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview-active {
+  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-detail {
+  color: color-mix(in oklab, var(--app-markdown-link) 48%, var(--utility-muted-text));
+}
+
 .app-workspace-sidebar .app-session-row-active {
   border-color: transparent;
+  box-shadow: 0 0 0 1px var(--app-accent-ring);
+  background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
+}
+
+.app-workspace-sidebar .app-participant-space-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.625rem;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
   box-shadow: none;
-  background: color-mix(in oklab, var(--app-control-active) 40%, transparent);
+}
+
+.app-workspace-sidebar .app-participant-space-session-row:hover {
+  background: var(--app-control-hover);
+}
+
+.app-workspace-sidebar .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 62%, var(--utility-foreground));
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
+  border: 0;
+  background: color-mix(in oklab, var(--app-control-active) 72%, var(--app-control-bg));
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-foreground) 74%, var(--utility-muted-text));
 }
 
 .app-workspace-sidebar .app-project-group {

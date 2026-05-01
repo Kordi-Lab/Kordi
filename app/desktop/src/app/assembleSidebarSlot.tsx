@@ -29,6 +29,14 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       onSelectChatSession={(sessionId) => {
         void args.handleSelectChatSession(sessionId);
       }}
+      onStartChatWithPerson={args.handleStartChatWithPerson}
+      onStartChatWithAgent={args.handleStartChatWithAgent}
+      onCreateChatGroup={args.handleCreateChatGroup}
+      onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
+      onRenameChatGroup={args.handleRenameChatGroup}
+      onAddChatGroupMembers={args.handleAddChatGroupMembers}
+      onRemoveChatGroupMember={args.handleRemoveChatGroupMember}
+      onSetChatGroupAdmin={args.handleSetChatGroupAdmin}
       onArchiveChatSession={(sessionId) => {
         void args.handleArchiveChatSession(sessionId);
       }}

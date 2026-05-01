@@ -52,6 +52,7 @@ import type {
 } from '@/kordi-app/types';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -306,7 +307,9 @@ export function ChatsPage({
   const bridgeRoutingSelection = routingSelectionForBridgeAgent(selectedBridgeRoutingAgent);
   const bridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(bridgeRoutingAgents.length);
   const bridgeAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
-  const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
+  const transcriptMessages = collapseAdjacentSessionConfigNotices(
+    suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
+  );
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;

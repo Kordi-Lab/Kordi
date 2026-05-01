@@ -231,6 +231,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
 
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
+    if (participant.state !== 'active') continue;
     participantsBySessionId.set(participant.sessionId, [...(participantsBySessionId.get(participant.sessionId) ?? []), participant]);
   }
 
@@ -244,9 +245,14 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const name = ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName;
       const ownerName = owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null;
+      const role = identity.id === canonicalState.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
       const participantKey = [
         identity.kind,
-        participant.role,
+        role,
         name.trim().toLowerCase(),
         ownerName?.trim().toLowerCase() ?? '',
       ].join('\u0000');
@@ -256,7 +262,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         id: identity.id,
         name,
         kind: identity.kind,
-        role: participant.role,
+        role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
         ownerName,
@@ -290,6 +296,13 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       if (!delegationTerminalStatus(exchange.status)) return [];
       const key = delegationOptimisticFallbackKey(exchange);
       return key ? [key] : [];
+    }),
+  );
+  const failedDelegationRequestMessageIds = new Set(
+    canonicalState.delegatedExchanges.flatMap((exchange) => {
+      if (!['failed', 'timeout'].includes(exchange.status.trim().toLowerCase())) return [];
+      const requestMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
+      return requestMessageId ? [requestMessageId] : [];
     }),
   );
   const processingDelegationMessagesBySessionId = new Map<string, Message[]>();
@@ -368,7 +381,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           return [];
         }
         const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
-        return mapped ? [mapped] : [];
+        if (!mapped) return [];
+        if (mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)) {
+          return [{ ...mapped, statusChips: ['failed'] }];
+        }
+        return [mapped];
       }).concat(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
     );
   }

@@ -76,6 +76,20 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
     : {};
 }
 
+function nonPlaceholderGroupTitle(value: string) {
+  const title = value.trim();
+  if (!title || /^(new session|session|group)$/i.test(title)) return null;
+  return title;
+}
+
+export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return session.metadata;
+  const metadata = sessionMetadata(session);
+  if (stringValue(metadata.customName)) return session.metadata;
+  const customName = nonPlaceholderGroupTitle(session.title);
+  return customName ? { ...metadata, customName } : session.metadata;
+}
+
 export function syntheticBridgeTarget(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -122,6 +136,36 @@ export function syntheticConversationType(
   return 'owned-agent';
 }
 
+function normalizeParticipantSpaceId(value: string) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('group:') ? trimmed.slice('group:'.length) : trimmed;
+}
+
+export function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return null;
+  const metadata = sessionMetadata(session);
+  const groupSpaceId = stringValue(metadata.groupId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.continuedFromSpaceId);
+  return groupSpaceId ? normalizeParticipantSpaceId(groupSpaceId) || null : null;
+}
+
+function firstMessageTitle(messages: Message[]) {
+  const text = messages
+    .find((message) => message.role !== 'system' && message.text.trim().length > 0)
+    ?.text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(' ')
+    .slice(0, 60)
+    .trim();
+  return text || null;
+}
+
+export function sessionDisplayTitle(messages: Message[], fallback: string) {
+  return firstMessageTitle(messages) ?? fallback;
+}
+
 export function sessionHasActiveProcessing(messages: Message[]) {
   return messages.some((message) => message.turn && !message.turn.completed)
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
@@ -145,10 +189,13 @@ export function syntheticConversation(
   const updatedAtLabel = messages[messages.length - 1]?.time
     ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
 
+  const displayTitle = sessionDisplayTitle(messages, session.title);
+
   return {
     id: session.id,
     canonicalSessionId: session.id,
-    name: session.title,
+    canonicalCreatedByIdentityId: session.createdByIdentityId,
+    name: displayTitle,
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
     unread: 0,
@@ -162,6 +209,8 @@ export function syntheticConversation(
     avatarSeed: primary?.avatarKey ?? null,
     profileImageUrl: primary?.profileImageUrl ?? null,
     participantAvatarSeeds,
+    participantSpaceId: syntheticParticipantSpaceId(session),
+    metadata: sessionViewMetadata(session),
     bridgeTarget,
     canonicalStoragePath: undefined,
     canonicalParticipantCount: participants.length,

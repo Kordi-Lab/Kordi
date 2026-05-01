@@ -13,27 +13,71 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import {
+  buildProjectRoutingGroups,
+  canonicalProjectGroupIdFromRoot,
+  findCanonicalConversationForTarget,
+  isCanonicalBridgeSessionId,
+} from '@/features/canonical/sessionResolver';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import { bridgeMentionCandidateOptionText, buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
+import {
+  bridgeMentionCandidateOptionText,
+  buildBridgeMentionCandidates,
+  filterBridgeMentionCandidatesForConversation,
+  filterBridgeMentionCandidatesForHost,
+  mentionHandleForLabel,
+  mentionScopeConversationForActiveConversation,
+  shouldIncludeLocalAgentMentionForConversation,
+  type MentionScopeConversation,
+} from '@/features/chat/messageActions/mentions';
+import {
+  adminIdentityIdsFromMetadata,
+  agentCanonicalIdentityRequest,
+  buildChatAgentSessionKind,
+  buildChatAgentSessionMetadata,
+  buildChatCreateGroupBridgeInviteParticipants,
+  buildChatCreateGroupBridgeInviteTargets,
+  buildChatCreateGroupInviteText,
+  buildChatCreateGroupMetadata,
+  buildChatGroupBridgeUpdateParticipants,
+  buildChatGroupBridgeUpdateTargets,
+  CHAT_GROUP_INVITE_CONTEXT_POLICY,
+  CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+  buildChatCreatePersonOptions,
+  chatSessionIdForAgentStart,
+  chatSessionIdForParticipantSpaceContinuation,
+  chatSessionIdForPersonStart,
+  contactCanonicalIdentityRequest,
+  existingBlankSessionIdForAgentStart,
+  existingBlankSessionIdForParticipantSpace,
+  groupDefaultName,
+} from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
-import { useBridgeState } from '@/features/bridge/useBridgeState';
+import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, Contact, ConversationParticipant, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
+  addCanonicalSessionParticipants,
   archiveDesktopChatSession,
+  createDesktopBridgeOutreach,
   createDesktopProject,
   createDesktopProjectFromFolder,
   deleteDesktopChatSessionForever,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
+  openOrCreateCanonicalSession,
+  removeCanonicalSessionParticipant,
+  renameCanonicalSession,
+  setCanonicalSessionParticipantRole,
+  updateCanonicalSessionMetadata,
+  upsertCanonicalIdentity,
 } from '@/lib/desktop';
 
 function normalizeMentionSearch(value: string) {
@@ -123,9 +167,120 @@ function removeSessionFromCanonicalState(state: CanonicalSessionState | null, se
   };
 }
 
+function canonicalMetadataRecord(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? { ...(metadata as Record<string, unknown>) }
+    : {};
+}
+
+function sessionMetadataRecord(state: CanonicalSessionState | null, sessionId: string) {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  return canonicalMetadataRecord(session?.metadata);
+}
+
+function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: string) {
+  if (!state) return [];
+  const metadataAdminIds = adminIdentityIdsFromMetadata(sessionMetadataRecord(state, sessionId));
+  if (metadataAdminIds.length > 0) return metadataAdminIds;
+  return state.participants
+    .filter((participant) => (
+      participant.sessionId === sessionId
+      && participant.state === 'active'
+      && participant.role === 'admin'
+    ))
+    .map((participant) => participant.identityId);
+}
+
+function canonicalGroupParticipantsForSession(state: CanonicalSessionState | null, sessionId: string): ConversationParticipant[] {
+  if (!state) return [];
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  return state.participants
+    .filter((participant) => participant.sessionId === sessionId && participant.state === 'active')
+    .flatMap((participant) => {
+      const identity = identityById.get(participant.identityId);
+      if (!identity) return [];
+      const role = identity.id === state.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
+      return [{
+        id: identity.id,
+        name: identity.displayName,
+        kind: identity.kind === 'agent' ? 'agent' : 'human',
+        role,
+        source: identity.source,
+        ownerIdentityId: identity.ownerIdentityId,
+        bridgeHostId: identity.sourceHostId,
+        bridgeNodeId: identity.bridgeNodeId,
+        humanId: identity.humanId,
+        agentId: identity.agentId,
+        avatarKey: identity.avatarKey,
+        profileImageUrl: identity.profileImageUrl,
+      } satisfies ConversationParticipant];
+    });
+}
+
+function isParticipantSpaceSelfIdentity(participant: ParticipantSpaceViewModel['participants'][number]) {
+  return participant.role === 'self'
+    || (participant.kind === 'human' && participant.source === 'local');
+}
+
+function participantSpaceNonSelfIdentities(space: ParticipantSpaceViewModel, kind?: 'human' | 'agent') {
+  return space.participants.filter((participant) => (
+    !isParticipantSpaceSelfIdentity(participant)
+    && (!kind || participant.kind === kind)
+    && participant.id.trim()
+  ));
+}
+
+function metadataStringArray(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeStoredGroupSpaceId(value: string) {
+  const text = value.trim();
+  return text.startsWith('group:') ? text.slice('group:'.length) : text;
+}
+
+function metadataGroupSpaceId(metadata: Record<string, unknown>) {
+  return normalizeStoredGroupSpaceId(
+    metadataString(metadata, 'groupId')
+    || metadataString(metadata, 'groupSpaceId')
+    || metadataString(metadata, 'continuedFromSpaceId'),
+  );
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function chatSessionIdForIdentity(kind: 'direct-person' | 'direct-agent', creatorIdentityId: string, identityId: string) {
+  const scope = [creatorIdentityId, identityId].map((value) => encodeURIComponent(value).replace(/%/g, '~')).join(':');
+  return `session:${kind}:${scope}`;
+}
+
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
+}
+
+function participantSpaceCreateKey(space: ParticipantSpaceViewModel) {
+  return space.id.trim() || `${space.kind}:${space.participants.map((participant) => participant.id).join(',')}`;
 }
 
 export function useKordiAppModel() {
@@ -139,6 +294,7 @@ export function useKordiAppModel() {
   const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; agent?: string | null }>({});
+  const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
   const localUi = useKordiLocalUiState();
   const {
@@ -320,73 +476,6 @@ export function useKordiAppModel() {
     shouldAutoFollowChatRef,
   });
 
-  const bridgeMentionTargets = useMemo<ComposerMentionOption[]>(() => {
-    if (!isNativeShell) return [];
-
-    const hosts = desktopBridgeState?.hosts ?? [];
-    const options: ComposerMentionOption[] = [];
-    const seen = new Set<string>();
-    const pushOption = (option: ComposerMentionOption) => {
-      const key = `${option.targetKind}:${option.bridgeHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      options.push(option);
-    };
-
-    const activeHost = hosts.find((host) => host.id === desktopBridgeState?.activeHostId)
-      ?? hosts[0]
-      ?? null;
-    const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
-      ?? activeHost?.agents.find((agent) => agent.isActive)
-      ?? activeHost?.agents.find((agent) => agent.isDefault)
-      ?? activeHost?.agents[0]
-      ?? null;
-    const localAgentBaseLabel = 'Kordi';
-    if (desktopChatState?.localAgent || activeAgent) {
-      const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
-      const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
-      const ownerName = activeHost?.ownerName?.trim();
-      const hostDisplayName = activeHost?.displayName?.trim();
-      const localAgentLabel = ownerName
-        ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
-        : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
-      const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
-      pushOption({
-        value: localAgentHandle,
-        label: localAgentLabel,
-        detail: [
-          'My agent',
-          localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
-          activeAgent?.runtime,
-        ].filter((value): value is string => Boolean(value)).join(' • '),
-        targetKind: 'bridge-agent',
-        bridgeHostId: activeHost?.id ?? 'local',
-        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
-        runtime: activeAgent?.runtime ?? 'kordi-local',
-      });
-    }
-
-    for (const candidate of buildBridgeMentionCandidates(desktopBridgeState)) {
-      const display = bridgeMentionCandidateOptionText(candidate);
-      pushOption({
-        value: candidate.handle,
-        label: display.label,
-        detail: display.detail,
-        targetKind: candidate.targetKind,
-        bridgeHostId: candidate.host.id,
-        nodeId: candidate.peer.nodeId,
-        runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
-      });
-    }
-
-    return options;
-  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent?.label, isNativeShell]);
-
-  const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
-  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
-  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);
-  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, projectMentionQuery), [bridgeMentionTargets, projectMentionQuery]);
-
   const avatarBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
     ?? desktopBridgeState?.hosts[0]
     ?? null;
@@ -492,6 +581,107 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
+
+  const activeConvMentionScope = useMemo(
+    () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
+    [activeConv, chatConversations],
+  );
+
+  const bridgeMentionTargetsByScope = useMemo<{ chat: ComposerMentionOption[]; project: ComposerMentionOption[] }>(() => {
+    if (!isNativeShell) return { chat: [], project: [] };
+
+    const hosts = desktopBridgeState?.hosts ?? [];
+    const activeHost = hosts.find((host) => host.id === desktopBridgeState?.activeHostId)
+      ?? hosts[0]
+      ?? null;
+    const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
+      ?? activeHost?.agents.find((agent) => agent.isActive)
+      ?? activeHost?.agents.find((agent) => agent.isDefault)
+      ?? activeHost?.agents[0]
+      ?? null;
+
+    const buildTargets = (conversation: MentionScopeConversation | null): ComposerMentionOption[] => {
+      const options: ComposerMentionOption[] = [];
+      const seen = new Set<string>();
+      const pushOption = (option: ComposerMentionOption) => {
+        const key = `${option.targetKind}:${option.bridgeHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push(option);
+      };
+
+      const localAgentBaseLabel = 'Kordi';
+      const ownerName = activeHost?.ownerName?.trim();
+      const includeLocalAgent = shouldIncludeLocalAgentMentionForConversation(
+        conversation,
+        { humanId: activeHost?.humanId ?? '', ownerName: ownerName ?? '' },
+      );
+      if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
+        const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
+        const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
+        const hostDisplayName = activeHost?.displayName?.trim();
+        const localAgentLabel = ownerName
+          ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
+          : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
+        const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
+        pushOption({
+          value: localAgentHandle,
+          label: localAgentLabel,
+          detail: [
+            'My agent',
+            localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
+            activeAgent?.runtime,
+          ].filter((value): value is string => Boolean(value)).join(' • '),
+          targetKind: 'bridge-agent',
+          bridgeHostId: activeHost?.id ?? 'local',
+          nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
+          runtime: activeAgent?.runtime ?? 'kordi-local',
+          humanId: activeHost?.humanId ?? null,
+          agentId: activeAgent?.id ?? null,
+          ownerName: ownerName ?? null,
+        });
+      }
+
+      const bridgeCandidates = filterBridgeMentionCandidatesForHost(buildBridgeMentionCandidates(desktopBridgeState), activeHost);
+      for (const candidate of filterBridgeMentionCandidatesForConversation(bridgeCandidates, conversation)) {
+        const display = bridgeMentionCandidateOptionText(candidate);
+        pushOption({
+          value: candidate.handle,
+          label: display.label,
+          detail: display.detail,
+          targetKind: candidate.targetKind,
+          bridgeHostId: candidate.host.id,
+          nodeId: candidate.peer.nodeId,
+          runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
+          humanId: candidate.peer.humanId ?? null,
+          agentId: candidate.peer.agentId ?? null,
+          ownerName: candidate.peer.ownerName ?? null,
+        });
+      }
+
+      return options;
+    };
+
+    return {
+      chat: buildTargets(activeConvMentionScope),
+      project: buildTargets(null),
+    };
+  }, [activeConvMentionScope, desktopBridgeState, desktopChatState?.localAgent, isNativeShell]);
+
+  const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
+  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
+  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.chat, chatMentionQuery), [bridgeMentionTargetsByScope.chat, chatMentionQuery]);
+  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.project, projectMentionQuery), [bridgeMentionTargetsByScope.project, projectMentionQuery]);
+
+  useEffect(() => {
+    for (const [spaceKey, sessionId] of pendingParticipantSpaceCreateRef.current) {
+      const space = participantSpaces.find((candidate) => participantSpaceCreateKey(candidate) === spaceKey);
+      const pendingSessionIsVisible = space?.sessions.some((session) => session.id === sessionId || session.canonicalSessionId === sessionId);
+      if (!space || existingBlankSessionIdForParticipantSpace(space) || pendingSessionIsVisible) {
+        pendingParticipantSpaceCreateRef.current.delete(spaceKey);
+      }
+    }
+  }, [participantSpaces]);
 
   useEffect(() => {
     setLocalProfileAvatarSeed(localProfileAvatarSeed);
@@ -665,6 +855,7 @@ export function useKordiAppModel() {
     activeConvCanonicalSessionId: activeConv.canonicalSessionId,
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
+    activeConvMentionScope,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,
@@ -901,6 +1092,597 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
+  const peopleContactById = useMemo(() => new Map(
+    buildChatCreatePersonOptions(displayedContacts).map((option) => [option.id, option.contact]),
+  ), [displayedContacts]);
+
+  const selectNewChatSession = useCallback((sessionId: string) => {
+    setActiveNav('chats');
+    setActiveConvId(sessionId);
+    composerUi.setComposerDrafts((current) => ({ ...current, chat: '' }));
+    composerUi.setChatComposerAttachments([]);
+    composerUi.setOpenComposerSelector(null);
+  }, [
+    composerUi.setChatComposerAttachments,
+    composerUi.setComposerDrafts,
+    composerUi.setOpenComposerSelector,
+    setActiveConvId,
+    setActiveNav,
+  ]);
+
+  const handleStartChatWithPerson = useCallback(async (contact: Contact) => {
+    setDesktopChatError(null);
+    if (contact.bridgeHostId && contact.bridgePeerNodeId) {
+      await handleStartBridgePersonSession({
+        hostId: contact.bridgeHostId,
+        nodeId: contact.bridgePeerNodeId,
+        displayName: contact.name,
+        ownerName: contact.owner,
+        humanId: contact.bridgeHumanId,
+      });
+      return;
+    }
+
+    if (!isNativeShell) return;
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const identityRequest = contactCanonicalIdentityRequest(contact);
+    const targetIdentityId = identityRequest.id?.trim();
+    if (!targetIdentityId) {
+      throw new Error('Unable to resolve contact identity.');
+    }
+    const identityState = await upsertCanonicalIdentity(identityRequest);
+    setCanonicalSessionState(identityState);
+    const sessionId = chatSessionIdForPersonStart(crypto.randomUUID());
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'direct-person',
+      title: 'New session',
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: targetIdentityId,
+      relationshipIdentityId: targetIdentityId,
+      participantIdentityIds: [targetIdentityId],
+      metadata: { createdFrom: 'chat-create-flow', contactId: contact.id, participantSpaceKind: 'direct-human' },
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState?.profile.humanIdentityId,
+    handleStartBridgePersonSession,
+    isNativeShell,
+    selectNewChatSession,
+    setDesktopChatError,
+  ]);
+
+  const handleStartChatWithAgent = useCallback(async (agent: Agent) => {
+    setDesktopChatError(null);
+    setActiveNav('chats');
+
+    if (agent.isOwned) {
+      if (!isNativeShell) {
+        await handleCreateChatSession();
+        return;
+      }
+      const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+      if (!creatorIdentityId) {
+        throw new Error('Local profile identity is not ready yet.');
+      }
+      if (agent.bridgeHostId && agent.bridgeAgentId && !agent.isBridgeActive) {
+        await handleActivateBridgeAgent(agent.bridgeHostId, agent.bridgeAgentId);
+      }
+      const existingBlankSessionId = existingBlankSessionIdForAgentStart(agent, chatConversations);
+      if (existingBlankSessionId) {
+        selectNewChatSession(existingBlankSessionId);
+        return;
+      }
+      const identityRequest = agentCanonicalIdentityRequest(agent);
+      const targetIdentityId = identityRequest.id?.trim();
+      if (!targetIdentityId) {
+        throw new Error('Unable to resolve agent identity.');
+      }
+      const identityState = await upsertCanonicalIdentity(identityRequest);
+      setCanonicalSessionState(identityState);
+      const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
+      const nextState = await openOrCreateCanonicalSession({
+        id: sessionId,
+        kind: buildChatAgentSessionKind(agent),
+        title: agent.name || 'New session',
+        status: 'active',
+        createdByIdentityId: creatorIdentityId,
+        primaryIdentityId: targetIdentityId,
+        relationshipIdentityId: null,
+        participantIdentityIds: [targetIdentityId],
+        metadata: buildChatAgentSessionMetadata(agent),
+      });
+      setCanonicalSessionState(nextState);
+      selectNewChatSession(sessionId);
+      return;
+    }
+
+    const existingConversation = findCanonicalConversationForTarget(chatConversations, {
+      agentId: agent.bridgeAgentId,
+      bridgeNodeId: agent.bridgePeerNodeId,
+    });
+    if (existingConversation) {
+      await handleSelectChatSession(existingConversation.id);
+      return;
+    }
+
+    if (agent.bridgeHostId && agent.bridgePeerNodeId) {
+      await handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
+      return;
+    }
+
+    if (!isNativeShell) return;
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const identityRequest = agentCanonicalIdentityRequest(agent);
+    const targetIdentityId = identityRequest.id?.trim();
+    if (!targetIdentityId) {
+      throw new Error('Unable to resolve agent identity.');
+    }
+    const identityState = await upsertCanonicalIdentity(identityRequest);
+    setCanonicalSessionState(identityState);
+    const sessionId = chatSessionIdForIdentity('direct-agent', creatorIdentityId, targetIdentityId);
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'direct-agent',
+      title: agent.name,
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: targetIdentityId,
+      relationshipIdentityId: targetIdentityId,
+      participantIdentityIds: [targetIdentityId],
+      metadata: { createdFrom: 'chat-create-flow', agentId: agent.id },
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState?.profile.humanIdentityId,
+    chatConversations,
+    handleActivateBridgeAgent,
+    handleCreateChatSession,
+    handleOpenBridgeConversation,
+    handleSelectChatSession,
+    isNativeShell,
+    selectNewChatSession,
+    setActiveNav,
+    setDesktopChatError,
+  ]);
+
+  const handleCreateChatGroup = useCallback(async (request: { name?: string | null; contactIds: string[] }) => {
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+    const currentCanonicalState = canonicalSessionState;
+    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId || !currentCanonicalState) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const contacts = uniqueStrings(request.contactIds)
+      .map((contactId) => peopleContactById.get(contactId))
+      .filter((contact): contact is Contact => Boolean(contact));
+    if (contacts.length < 2) {
+      throw new Error('Select at least 2 people to start a group.');
+    }
+
+    const identityIds: string[] = [];
+    for (const contact of contacts) {
+      const identityRequest = contactCanonicalIdentityRequest(contact);
+      const identityId = identityRequest.id?.trim();
+      if (!identityId) continue;
+      const identityState = await upsertCanonicalIdentity(identityRequest);
+      setCanonicalSessionState(identityState);
+      identityIds.push(identityId);
+    }
+
+    const participantIdentityIds = uniqueStrings(identityIds);
+    if (participantIdentityIds.length < 2) {
+      throw new Error('Select at least 2 people to start a group.');
+    }
+    const selectedNames = contacts.map((contact) => contact.name);
+    const groupDisplayName = request.name?.trim() || groupDefaultName(selectedNames);
+    const sessionId = `session:group:${crypto.randomUUID()}`;
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'group',
+      title: 'New session',
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      participantIdentityIds,
+      metadata: buildChatCreateGroupMetadata({
+        creatorIdentityId,
+        selectedContactIds: contacts.map((contact) => contact.id),
+        selectedNames,
+        customName: groupDisplayName,
+        groupSpaceId: sessionId,
+      }),
+    });
+    setCanonicalSessionState(nextState);
+
+    const creatorIdentity = currentCanonicalState.identities.find((identity) => identity.id === creatorIdentityId);
+    const creatorInviteIdentity = {
+      id: creatorIdentityId,
+      displayName: creatorIdentity?.displayName?.trim()
+        || currentCanonicalState.profile.displayName?.trim()
+        || activeBridgeHost?.ownerName?.trim()
+        || 'Me',
+      bridgeNodeId: creatorIdentity?.bridgeNodeId?.trim() || activeBridgeHost?.nodeId?.trim() || null,
+      humanId: creatorIdentity?.humanId?.trim() || activeBridgeHost?.humanId?.trim() || null,
+    };
+    const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
+    const inviteParticipants = buildChatCreateGroupBridgeInviteParticipants({
+      creator: creatorInviteIdentity,
+      contacts,
+    });
+    if (inviteTargets.length > 0) {
+      const inviteText = buildChatCreateGroupInviteText(groupDisplayName);
+      try {
+        for (const target of inviteTargets) {
+          const inviteState = await createDesktopBridgeOutreach({
+            hostId: target.hostId,
+            targetNodeId: target.nodeId,
+            targetKind: 'bridge-person',
+            requestText: inviteText,
+            targetDisplayName: target.displayName,
+            targetOwnerName: target.ownerName,
+            targetRuntime: 'person',
+            targetHumanId: target.humanId,
+            targetAgentId: null,
+            triggerText: null,
+            contextText: null,
+            contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
+            parentSessionId: sessionId,
+            parentSessionTitle: groupDisplayName,
+            parentSessionKind: 'group',
+            parentSessionParticipants: inviteParticipants,
+            parentSessionMessages: [],
+            parentTurnId: null,
+            parentMessageId: null,
+            projectId: null,
+            projectName: null,
+          });
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, inviteState));
+        }
+      } catch (error) {
+        setDesktopChatError(`Group created, but Bridge invites failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    selectNewChatSession(sessionId);
+  }, [
+    activeBridgeHost,
+    canonicalSessionState,
+    isNativeShell,
+    peopleContactById,
+    selectNewChatSession,
+    setDesktopBridgeState,
+    setDesktopChatError,
+  ]);
+
+  const handleCreateChatSessionInParticipantSpace = useCallback(async (space: ParticipantSpaceViewModel) => {
+    if (space.kind === 'self') {
+      await handleCreateChatSession();
+      return;
+    }
+
+    const existingBlankSessionId = existingBlankSessionIdForParticipantSpace(space);
+    if (existingBlankSessionId) {
+      selectNewChatSession(existingBlankSessionId);
+      return;
+    }
+
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+
+    const sourceSession = space.sessions[0] ?? null;
+    const sourceSessionId = sourceSession?.canonicalSessionId ?? sourceSession?.id ?? null;
+    const sourceMetadata = sourceSessionId ? sessionMetadataRecord(canonicalSessionState, sourceSessionId) : {};
+    const sessionId = chatSessionIdForParticipantSpaceContinuation(space, crypto.randomUUID());
+    const createKey = participantSpaceCreateKey(space);
+    const pendingSessionId = pendingParticipantSpaceCreateRef.current.get(createKey);
+    if (pendingSessionId) {
+      selectNewChatSession(pendingSessionId);
+      return;
+    }
+    pendingParticipantSpaceCreateRef.current.set(createKey, sessionId);
+
+    try {
+      if (space.kind === 'group') {
+        const members = participantSpaceNonSelfIdentities(space, 'human');
+        const participantIdentityIds = uniqueStrings(members.map((member) => member.id));
+        if (participantIdentityIds.length < 2) {
+          throw new Error('A group session needs at least 2 other people.');
+        }
+
+        const adminIds = sourceSessionId
+          ? uniqueStrings(activeGroupAdminIds(canonicalSessionState, sourceSessionId))
+          : [];
+        const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
+        const customName = metadataString(sourceMetadata, 'customName') || space.title;
+        const participantNames = members.map((member) => member.name);
+        const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
+        const nextState = await openOrCreateCanonicalSession({
+          id: sessionId,
+          kind: 'group',
+          title: 'New session',
+          status: 'active',
+          createdByIdentityId: creatorIdentityId,
+          primaryIdentityId: null,
+          relationshipIdentityId: null,
+          participantIdentityIds,
+          metadata: {
+            ...sourceMetadata,
+            schemaVersion: 1,
+            kind: 'chat-group',
+            customName,
+            groupId: groupSpaceId,
+            groupSpaceId,
+            adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
+            initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
+            initialParticipantNames: uniqueStrings([
+              ...metadataStringArray(sourceMetadata, 'initialParticipantNames'),
+              ...participantNames,
+            ]),
+            memberApprovalPolicy: 'under-50-open',
+            createdFrom: 'chat-create-flow',
+            continuedFromSessionId: sourceSessionId,
+            continuedFromSpaceId: space.id,
+          },
+        });
+        setCanonicalSessionState(nextState);
+        selectNewChatSession(sessionId);
+        return;
+      }
+
+      const receiver = participantSpaceNonSelfIdentities(space)[0];
+      if (!receiver) {
+        pendingParticipantSpaceCreateRef.current.delete(createKey);
+        await handleCreateChatSession();
+        return;
+      }
+
+      const kind = receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
+      const nextState = await openOrCreateCanonicalSession({
+        id: sessionId,
+        kind,
+        title: 'New session',
+        status: 'active',
+        createdByIdentityId: creatorIdentityId,
+        primaryIdentityId: receiver.id,
+        relationshipIdentityId: receiver.id,
+        participantIdentityIds: [receiver.id],
+        metadata: {
+          createdFrom: 'chat-create-flow',
+          continuedFromSessionId: sourceSessionId,
+          continuedFromSpaceId: space.id,
+          participantSpaceKind: space.kind,
+        },
+      });
+      setCanonicalSessionState(nextState);
+      selectNewChatSession(sessionId);
+    } catch (error) {
+      pendingParticipantSpaceCreateRef.current.delete(createKey);
+      throw error;
+    }
+  }, [
+    canonicalSessionState,
+    handleCreateChatSession,
+    isNativeShell,
+    selectNewChatSession,
+    setDesktopChatError,
+  ]);
+
+  const handleRenameChatGroup = useCallback(async (sessionIds: string[], name: string) => {
+    if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
+    const title = name.trim();
+    if (!title) throw new Error('Group name is required.');
+    setDesktopChatError(null);
+
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
+
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    const renamedGroupIds = new Map<string, string>();
+    for (const sessionId of groupSessionIds) {
+      nextState = await renameCanonicalSession({
+        sessionId,
+        title,
+        requestedByIdentityId: actorIdentityId,
+      });
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const groupId = metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId;
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        requestedByIdentityId: actorIdentityId,
+        metadata: {
+          ...currentMetadata,
+          customName: title,
+          groupId,
+          groupSpaceId: groupId,
+        },
+      });
+      renamedGroupIds.set(groupId, sessionId);
+    }
+    setCanonicalSessionState(nextState);
+
+    try {
+      for (const [groupId, sourceSessionId] of renamedGroupIds) {
+        const participants = canonicalGroupParticipantsForSession(nextState, sourceSessionId);
+        const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
+        if (targets.length === 0) continue;
+        const updateParticipants = buildChatGroupBridgeUpdateParticipants({
+          participants,
+          adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
+        });
+        for (const target of targets) {
+          const bridgeState = await createDesktopBridgeOutreach({
+            hostId: target.hostId,
+            targetNodeId: target.nodeId,
+            targetKind: 'bridge-person',
+            requestText: `Group renamed to ${title}`,
+            targetDisplayName: target.displayName,
+            targetOwnerName: target.ownerName,
+            targetRuntime: 'person',
+            targetHumanId: target.humanId,
+            targetAgentId: null,
+            triggerText: null,
+            contextText: null,
+            contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+            parentSessionId: groupId,
+            parentSessionTitle: title,
+            parentSessionKind: 'group',
+            parentSessionParticipants: updateParticipants,
+            parentSessionMessages: [],
+            parentTurnId: null,
+            parentMessageId: null,
+            projectId: null,
+            projectName: null,
+          });
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
+        }
+      }
+    } catch (error) {
+      setDesktopChatError(`Group renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [canonicalSessionState, isNativeShell, setDesktopBridgeState, setDesktopChatError]);
+
+  const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
+    if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
+    setDesktopChatError(null);
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const contacts = uniqueStrings(contactIds)
+      .map((contactId) => peopleContactById.get(contactId))
+      .filter((contact): contact is Contact => Boolean(contact));
+    const identityIds: string[] = [];
+    let nextState = canonicalSessionState;
+    for (const contact of contacts) {
+      const identityRequest = contactCanonicalIdentityRequest(contact);
+      const identityId = identityRequest.id?.trim();
+      if (!identityId) continue;
+      nextState = await upsertCanonicalIdentity(identityRequest);
+      identityIds.push(identityId);
+    }
+    const participantIdentityIds = uniqueStrings(identityIds);
+    if (participantIdentityIds.length === 0) return;
+
+    for (const sessionId of groupSessionIds) {
+      nextState = await addCanonicalSessionParticipants({
+        sessionId,
+        identityIds: participantIdentityIds,
+        addedByIdentityId: creatorIdentityId,
+      });
+    }
+
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    const addedContactIds = contacts.map((contact) => contact.id);
+    const addedNames = contacts.map((contact) => contact.name);
+    for (const sessionId of groupSessionIds) {
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        requestedByIdentityId: creatorIdentityId,
+        metadata: {
+          ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          initialContactIds: uniqueStrings([...metadataStringArray(currentMetadata, 'initialContactIds'), ...addedContactIds]),
+          initialParticipantNames: uniqueStrings([...metadataStringArray(currentMetadata, 'initialParticipantNames'), ...addedNames]),
+        },
+      });
+    }
+    setCanonicalSessionState(nextState);
+  }, [
+    canonicalSessionState,
+    isNativeShell,
+    peopleContactById,
+    setDesktopChatError,
+  ]);
+
+  const handleRemoveChatGroupMember = useCallback(async (sessionIds: string[], identityId: string) => {
+    if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
+    setDesktopChatError(null);
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    for (const sessionId of groupSessionIds) {
+      nextState = await removeCanonicalSessionParticipant({ sessionId, identityId, removedByIdentityId: actorIdentityId });
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const adminIds = adminIdentityIdsFromMetadata(currentMetadata).filter((adminId) => adminId !== identityId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        requestedByIdentityId: actorIdentityId,
+        metadata: {
+          ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(nextState, sessionId),
+        },
+      });
+    }
+    setCanonicalSessionState(nextState);
+  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
+
+  const handleSetChatGroupAdmin = useCallback(async (sessionIds: string[], identityId: string, isAdmin: boolean) => {
+    if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
+    setDesktopChatError(null);
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    for (const sessionId of groupSessionIds) {
+      nextState = await setCanonicalSessionParticipantRole({
+        sessionId,
+        identityId,
+        role: isAdmin ? 'admin' : 'person',
+        requestedByIdentityId: actorIdentityId,
+      });
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const adminIds = uniqueStrings([
+        ...adminIdentityIdsFromMetadata(currentMetadata),
+        ...activeGroupAdminIds(nextState, sessionId),
+      ]);
+      const nextAdminIds = isAdmin
+        ? uniqueStrings([...adminIds, identityId])
+        : adminIds.filter((adminId) => adminId !== identityId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        requestedByIdentityId: actorIdentityId,
+        metadata: {
+          ...currentMetadata,
+          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(nextState, sessionId),
+        },
+      });
+    }
+    setCanonicalSessionState(nextState);
+  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -957,6 +1739,14 @@ export function useKordiAppModel() {
     filteredParticipantSpaces,
     handleCreateChatSession,
     handleSelectChatSession,
+    handleStartChatWithPerson,
+    handleStartChatWithAgent,
+    handleCreateChatGroup,
+    handleCreateChatSessionInParticipantSpace,
+    handleRenameChatGroup,
+    handleAddChatGroupMembers,
+    handleRemoveChatGroupMember,
+    handleSetChatGroupAdmin,
     handleArchiveChatSession,
     handleDeleteChatSession,
     handleMoveChatSessionToProject,

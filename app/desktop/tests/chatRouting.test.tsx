@@ -4,10 +4,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
+import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
 import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 
 function directPersonConversation() {
   return {
@@ -56,6 +58,65 @@ function directAgentConversation() {
       agentId: 'agent-bob',
     }],
     messages: [],
+  };
+}
+
+function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
+  return {
+    isNativeShell: true,
+    isSingleWorkspacePage: false,
+    collapseChatSessions: false,
+    showSessionRail: true,
+    sessionRailWidth: 320,
+    activeNav: 'chats',
+    setActiveNav: () => {},
+    chatConversations: [],
+    handleCreateChatSession: async () => {},
+    chatSearch: '',
+    setChatSearch: () => {},
+    chatFilter: 'latest',
+    setChatFilter: () => {},
+    isDesktopChatLoading: false,
+    desktopChatError: null,
+    filteredConversations: [],
+    participantSpaces: [],
+    filteredParticipantSpaces: [],
+    activeConvId: '',
+    handleSelectChatSession: async () => {},
+    handleStartChatWithPerson: async () => {},
+    handleStartChatWithAgent: async () => {},
+    handleCreateChatGroup: async () => {},
+    handleRenameChatGroup: async () => {},
+    handleAddChatGroupMembers: async () => {},
+    handleRemoveChatGroupMember: async () => {},
+    handleSetChatGroupAdmin: async () => {},
+    handleArchiveChatSession: async () => {},
+    handleDeleteChatSession: async () => {},
+    handleMoveChatSessionToProject: async () => {},
+    handleCreateProjectFromFolder: async () => {},
+    handleCreateProject: async () => {},
+    runtimeProjects: [],
+    projectSearch: '',
+    setProjectSearch: () => {},
+    filteredProjects: [],
+    activeProjectId: '',
+    activeProjectSessionId: '',
+    projectSelectedSessionIds: {},
+    selectProject: () => {},
+    expandedProjectIds: {},
+    setExpandedProjectIds: () => {},
+    handleSelectProjectSession: async () => {},
+    groupedContacts: [],
+    displayedContacts: [],
+    setActiveContactGroup: () => {},
+    setActiveContactId: () => {},
+    displayedAgents: [],
+    activeBridgeHost: null,
+    localProfileAvatarSeed: null,
+    refreshDesktopBridge: async () => {},
+    handleCopyBridgeText: async () => {},
+    handleCreateBridgeDraft: () => {},
+    ...overrides,
   };
 }
 
@@ -134,6 +195,33 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     ...overrides,
   };
 }
+
+test('sidebar shell forwards chat create and group management handlers', () => {
+  const startPerson = async () => {};
+  const startAgent = async () => {};
+  const createGroup = async () => {};
+  const renameGroup = async () => {};
+  const addMembers = async () => {};
+  const removeMember = async () => {};
+  const setAdmin = async () => {};
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    handleStartChatWithPerson: startPerson,
+    handleStartChatWithAgent: startAgent,
+    handleCreateChatGroup: createGroup,
+    handleRenameChatGroup: renameGroup,
+    handleAddChatGroupMembers: addMembers,
+    handleRemoveChatGroupMember: removeMember,
+    handleSetChatGroupAdmin: setAdmin,
+  }) as never) as never as { props: Record<string, unknown> };
+
+  assert.equal(element.props.onStartChatWithPerson, startPerson);
+  assert.equal(element.props.onStartChatWithAgent, startAgent);
+  assert.equal(element.props.onCreateChatGroup, createGroup);
+  assert.equal(element.props.onRenameChatGroup, renameGroup);
+  assert.equal(element.props.onAddChatGroupMembers, addMembers);
+  assert.equal(element.props.onRemoveChatGroupMember, removeMember);
+  assert.equal(element.props.onSetChatGroupAdmin, setAdmin);
+});
 
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {
   const calls: string[] = [];
@@ -264,7 +352,7 @@ test('workspace view model exposes participant spaces alongside flat chat conver
       activeConvId: 'c1',
       activeProjectId: '',
       activeProjectSessionId: '',
-      chatFilter: 'all',
+      chatFilter: 'latest',
       chatSearch: '',
       projectSearch: '',
       contactSearch: '',
@@ -284,6 +372,176 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.ok(viewModels?.participantSpaces.length);
   assert.ok(viewModels?.participantSpaces[0]?.sessions.length);
   assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
+});
+
+test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:user1',
+      displayName: 'Testuser1',
+      humanIdentityId: 'human:user1',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:user1', kind: 'human', displayName: 'Testuser1', source: 'bridge', humanId: 'kh_user1', bridgeNodeId: 'kd_user1', avatarKey: 'user1', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user2', kind: 'human', displayName: 'Testuser2', source: 'bridge', humanId: 'kh_user2', bridgeNodeId: 'kd_user2', avatarKey: 'user2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user3', kind: 'human', displayName: 'Testuser3', source: 'bridge', humanId: 'kh_user3', bridgeNodeId: 'kd_user3', avatarKey: 'user3', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: 'session:group:shared',
+      kind: 'group',
+      title: 'New test group',
+      status: 'active',
+      createdByIdentityId: 'human:user2',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { source: 'bridge-session-thread', groupId: 'session:group:shared', groupSpaceId: 'session:group:shared' },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 2,
+    }],
+    participants: [
+      { sessionId: 'session:group:shared', identityId: 'human:user1', role: 'self', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId: 'session:group:shared', identityId: 'human:user2', role: 'self', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId: 'session:group:shared', identityId: 'human:user3', role: 'person', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId: 'session:group:shared', senderIdentityId: 'human:user2', senderRole: 'person', messageKind: 'text', contentText: 'hi every one', content: { sender: 'Testuser2', timeLabel: '00:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((candidate) => candidate.id === 'group:session:group:shared');
+
+  assert.equal(space?.title, 'New test group');
+  assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
+});
+
+test('canonical read model names chat-created direct and group sessions from the first user message', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:direct-person:alice-one',
+        kind: 'direct-person',
+        title: 'Alice',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'human:alice',
+        relationshipIdentityId: 'human:alice',
+        metadata: { createdFrom: 'chat-create-flow', contactId: 'contact:alice' },
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        lastMessageAtMs: 10,
+      },
+      {
+        id: 'session:group:crew-root',
+        kind: 'group',
+        title: 'Design crew',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: null,
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', customName: 'Design crew', groupId: 'session:group:crew-root', groupSpaceId: 'session:group:crew-root' },
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        lastMessageAtMs: 20,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:direct-person:alice-one', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:direct-person:alice-one', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:crew-root', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:direct:first', sessionId: 'session:direct-person:alice-one', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Plan lunch tomorrow with the launch notes before standup', content: { sender: 'Me', timeLabel: '10:01' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'direct:first' },
+      { id: 'msg:group:first', sessionId: 'session:group:crew-root', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Review launch plan and assign owners before demo', content: { sender: 'Me', timeLabel: '10:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const directConversation = conversations.find((conversation) => conversation.id === 'session:direct-person:alice-one');
+  const groupConversation = conversations.find((conversation) => conversation.id === 'session:group:crew-root');
+  const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:crew-root');
+
+  assert.equal(directConversation?.name, 'Plan lunch tomorrow with the launch notes before');
+  assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
+  assert.equal(groupSpace?.title, 'Design crew');
+  assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
+});
+
+test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:reviewer', kind: 'agent', displayName: 'Reviewer', source: 'local', avatarKey: 'reviewer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:self-agent:selected-reviewer',
+        kind: 'self-agent',
+        title: 'Reviewer',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'agent:reviewer',
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:reviewer', participantSpaceKind: 'self' },
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        lastMessageAtMs: null,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:self-agent:selected-reviewer', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+      { sessionId: 'session:self-agent:selected-reviewer', identityId: 'agent:reviewer', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  });
+
+  const conversations = readModel?.buildChatConversations([], () => '') ?? [];
+
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0]?.id, 'session:self-agent:selected-reviewer');
+  assert.equal(conversations[0]?.type, 'owned-agent');
 });
 
 test('canonical read model keeps separate direct person bridge sessions for the same participant', () => {
@@ -640,7 +898,7 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
       activeConvId: 'draft:local-chat',
       activeProjectId: '',
       activeProjectSessionId: 'draft:project-chat',
-      chatFilter: 'all',
+      chatFilter: 'latest',
       chatSearch: '',
       projectSearch: '',
       contactSearch: '',
@@ -1164,6 +1422,110 @@ test('canonical read model keeps canonical parent transcript when bridge source 
   );
 });
 
+test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {
+  const sessionId = 'session:bridge:humans:failed-delegation';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser3', kind: 'human', displayName: 'Testuser3', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser3', humanId: 'human-testuser3', avatarKey: 'human-testuser3', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:testuser3', kind: 'agent', displayName: "Testuser3's Kordi", source: 'bridge', ownerIdentityId: 'human:testuser3', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser3-agent', agentId: 'agent-testuser3', avatarKey: 'agent-testuser3', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'can you see our chat history ?', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:testuser3', relationshipIdentityId: 'human:testuser3', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-testuser3', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:testuser3', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:testuser3', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@Testuser3sKordi can you see our chat history ?', content: { sender: 'Me', timeLabel: '00:45', mentions: [{ label: 'Testuser3sKordi', targetKind: 'bridge-agent', nodeId: 'node-testuser3-agent' }] }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'request' },
+      { id: 'msg:join', sessionId, senderIdentityId: 'human:me', senderRole: 'system', messageKind: 'status', contentText: "Testuser3's Kordi joined via @mention", content: { kind: 'delegation-join-event', targetDisplayName: "Testuser3's Kordi" }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'join' },
+    ],
+    delegatedExchanges: [{
+      id: 'delegation:bridge:failed',
+      sessionId,
+      initiatorIdentityId: 'human:me',
+      targetIdentityId: 'agent:testuser3',
+      triggerMessageId: 'msg:request',
+      requestMessageId: 'msg:request',
+      responseMessageId: null,
+      transport: 'bridge',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-testuser3:kordi-desktop',
+      bridgeRequestId: 'bridge_req_failed',
+      contextPolicy: 'recent-window',
+      status: 'failed',
+      error: 'ChatGPT OAuth credentials are not usable',
+      createdAtMs: 2,
+      updatedAtMs: 3,
+    }],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.deepEqual(conversations[0]?.messages[0]?.statusChips, ['failed']);
+  assert.equal(conversations[0]?.messages.some((message) => message.text.includes('ChatGPT OAuth credentials')), false);
+});
+
+test('canonical read model hides bridge agent failure detail behind a generic failed turn', () => {
+  const sessionId = 'session:bridge:humans:remote-agent-failure';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser2', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', humanId: 'human-testuser2', avatarKey: 'human-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', sourceHostId: 'host-1', bridgeNodeId: 'node-local-agent', agentId: 'agent-local', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'can you see our chat history ?', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:testuser2', relationshipIdentityId: 'human:testuser2', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-testuser2', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:testuser2', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:testuser2', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi can you see our chat history ?', content: { sender: 'Testuser2', timeLabel: '00:45', kind: 'mention-request' }, status: 'read', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
+      { id: 'msg:failed-response', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Failed: ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again.', content: { sender: 'My Kordi', timeLabel: '00:45', deliveryState: 'processing_failed', delegatedExchangeId: 'delegation:bridge:failed' }, status: 'failed', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'failed-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const turn = conversations[0]?.messages[1]?.turn;
+
+  assert.equal(turn?.status, 'failed');
+  assert.equal(turn?.assistantText, '');
+  assert.equal(turn?.error, 'Message failed');
+  assert.equal(JSON.stringify(conversations[0]?.messages).includes('ChatGPT OAuth credentials'), false);
+});
+
 test('canonical read model rewrites remote first-person agent mention labels', () => {
   const sessionId = 'session:bridge:humans:remote-local-agent-label';
   const canonicalState = {
@@ -1342,6 +1704,125 @@ test('canonical read model does not override bridge agent runtime details with c
   const conversations = readModel?.buildChatConversations([runtimeConversation as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
 
   assert.deepEqual(conversations[0]?.messages.map((message) => message.text), ['active runtime details']);
+});
+
+test('canonical read model excludes left group participants from active conversations', () => {
+  const canonicalState = {
+    storagePath: '/tmp/canonical.db',
+    profile: {
+      id: 'profile:local',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'session:group:left', kind: 'group', title: 'Alice, Bob', status: 'active', createdByIdentityId: 'human:me', metadata: {}, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId: 'session:group:left', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:left', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:left', identityId: 'human:bob', role: 'person', state: 'left', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const group = conversations.find((conversation) => conversation.id === 'session:group:left');
+
+  assert.deepEqual(group?.canonicalParticipants?.map((participant) => participant.name), ['Me', 'Alice']);
+});
+
+test('canonical read model preserves group space when hydrating from a bridge outreach source', () => {
+  const canonicalState = {
+    storagePath: '/tmp/canonical.db',
+    profile: {
+      id: 'profile:local',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', avatarKey: 'bob', humanId: 'kh_bob', bridgeNodeId: 'kd_bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:group:invite',
+        kind: 'group',
+        title: 'Group',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        metadata: { groupSpaceId: 'session:group:invite', source: 'bridge-session-thread' },
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        lastMessageAtMs: 2,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:group:invite', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:invite', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      {
+        id: 'msg:group-invite',
+        sessionId: 'session:group:invite',
+        senderIdentityId: 'human:bob',
+        senderRole: 'person',
+        messageKind: 'text',
+        contentText: 'hi everyone',
+        content: { sender: 'Bob', timeLabel: '13:27' },
+        status: 'sent',
+        sequenceNum: 1,
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        contentHash: null,
+        sourceTransport: 'desktop-bridge-parent',
+        sourceEventId: 'bridge-group-1',
+      },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const bridgeSource = {
+    id: 'bridge:host:bob:person',
+    canonicalSessionId: 'session:bridge:humans:bob',
+    name: 'Bob',
+    type: 'person',
+    subtitle: 'hi everyone',
+    unread: 1,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct chat',
+    participants: ['Me', 'Bob'],
+    outreach: { parentSessionId: 'session:group:invite' },
+    bridgeUnreadByParentSessionId: { 'session:group:invite': 1 },
+    messages: [{ role: 'person', sender: 'Bob', text: 'hi everyone', time: '13:27' }],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([bridgeSource as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const group = conversations.find((conversation) => conversation.id === 'session:group:invite');
+  const spaces = buildParticipantSpaces(conversations as never);
+
+  assert.equal(group?.participantSpaceId, 'session:group:invite');
+  assert.equal(spaces[0]?.kind, 'group');
+  assert.equal(spaces[0]?.id, 'group:session:group:invite');
 });
 
 test('bridge chat visibility keeps empty conversations returned by backend state', () => {

@@ -127,7 +127,7 @@ export function useProjectMessageActions({
 
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState);
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, null, { targetKind: 'bridge-agent' });
     if (mentionedTarget) {
       try {
         shouldAutoFollowChatRef.current = true;

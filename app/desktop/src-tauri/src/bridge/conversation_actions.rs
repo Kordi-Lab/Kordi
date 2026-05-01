@@ -51,6 +51,20 @@ fn is_realtime_direct_chat(
             || is_agent_like_runtime(&conversation.peer_runtime))
 }
 
+fn should_fallback_direct_realtime_to_relay(
+    outreach: Option<&DesktopBridgeOutreachMetadata>,
+) -> bool {
+    outreach
+        .and_then(|outreach| outreach.context_policy.as_deref())
+        .map(str::trim)
+        .is_some_and(|policy| {
+            policy.eq_ignore_ascii_case("session-relay")
+                || policy.eq_ignore_ascii_case("session-message")
+                || policy.eq_ignore_ascii_case("session-invite")
+                || policy.eq_ignore_ascii_case("session-update")
+        })
+}
+
 fn pending_read_receipt_request_ids(conversation: &DesktopBridgeConversationRecord) -> Vec<String> {
     let mut request_ids = conversation
         .messages
@@ -349,6 +363,8 @@ fn outbound_payload(
                 serde_json::json!({
                     "parentSessionId": parent_session_id,
                     "parentSessionTitle": outreach.parent_session_title.as_deref(),
+                    "parentSessionKind": outreach.parent_session_kind.as_deref(),
+                    "participants": &outreach.parent_session_participants,
                     "messages": &outreach.parent_session_messages,
                     "parentTurnId": outreach.parent_turn_id.as_deref(),
                     "parentMessageId": outreach.parent_message_id.as_deref(),
@@ -577,13 +593,20 @@ pub(super) async fn desktop_bridge_send_message_impl(
     );
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        send_realtime_payload(
+        let realtime_result = send_realtime_payload(
             manager,
             &context.host,
             &context.conversation.peer_node_id,
             &payload,
         )
-        .await?;
+        .await;
+        if let Err(error) = realtime_result {
+            if should_fallback_direct_realtime_to_relay(fresh_outreach_for_message.as_ref()) {
+                relay_with_contact_fallback(&context, &payload).await?;
+            } else {
+                return Err(error);
+            }
+        }
     } else {
         relay_with_contact_fallback(&context, &payload).await?;
     }
@@ -720,6 +743,8 @@ mod tests {
             target_kind: "bridge-person".to_string(),
             parent_session_id: Some("session-1".to_string()),
             parent_session_title: Some("Shared".to_string()),
+            parent_session_kind: None,
+            parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: parent_turn_id.map(ToString::to_string),
             parent_message_id: Some("msg-user".to_string()),
@@ -760,6 +785,21 @@ mod tests {
             outbound_direction(Some(&human_outreach)),
             BRIDGE_MESSAGE_DIRECTION_OUTBOUND
         );
+    }
+
+    #[test]
+    fn session_transport_uses_relay_fallback_when_direct_realtime_is_unavailable() {
+        let mut session_message = test_outreach(None);
+        session_message.context_policy = Some("session-message".to_string());
+        let mut session_invite = test_outreach(None);
+        session_invite.context_policy = Some("session-invite".to_string());
+        let mut ordinary_outreach = test_outreach(None);
+        ordinary_outreach.context_policy = Some("recent-window".to_string());
+
+        assert!(should_fallback_direct_realtime_to_relay(Some(&session_message)));
+        assert!(should_fallback_direct_realtime_to_relay(Some(&session_invite)));
+        assert!(!should_fallback_direct_realtime_to_relay(Some(&ordinary_outreach)));
+        assert!(!should_fallback_direct_realtime_to_relay(None));
     }
 
     #[test]

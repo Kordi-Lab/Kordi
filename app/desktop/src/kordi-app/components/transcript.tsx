@@ -344,8 +344,12 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
   if (visual.glyph === 'spinner') {
     return <LoaderCircle className={cn('h-3.5 w-3.5 animate-spin', toneClass)} aria-hidden="true" />;
   }
-  if (visual.glyph === 'error') {
-    return <CircleAlert className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
+  if (visual.glyph === 'exclamation') {
+    return (
+      <span className={cn('inline-flex h-3.5 w-3.5 items-center justify-center text-[13px] font-semibold leading-none', toneClass)} aria-hidden="true">
+        !
+      </span>
+    );
   }
   return null;
 }
@@ -363,7 +367,9 @@ function MessageFooter({
   isUser?: boolean;
   compact?: boolean;
 }) {
+  const visual = messageDeliveryVisual(status);
   const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
+  const showFailedLabel = visual?.tone === 'red';
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
   return (
@@ -373,8 +379,9 @@ function MessageFooter({
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      {showFailedLabel ? <span className="font-semibold text-rose-400">{visual.label}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
-      <span className="inline-flex w-4 justify-center" title={status ?? undefined}>
+      <span className="inline-flex w-4 justify-center" title={visual?.label ?? status ?? undefined}>
         {glyph}
       </span>
     </div>
@@ -655,8 +662,8 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
 
   if (msg.role === 'system') {
     return (
-      <div className="flex justify-center py-2">
-        <div className="max-w-[min(100%,44rem)] rounded-full border bg-muted px-3 py-1 text-center text-xs text-muted-foreground">{msg.text}</div>
+      <div className="app-system-notice-row flex justify-center py-0.5">
+        <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
       </div>
     );
   }
@@ -798,6 +805,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
   const deliveryStatus = primaryMessageStatus(msg);
+  const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
   const showHeaderMeta = Boolean((msg.showSenderMeta || isAgentMessage) && msg.sender);
   const hasText = msg.text.trim().length > 0;
@@ -852,6 +860,9 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
               )}>
                 {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
                   <span>{msg.detail}</span>
+                ) : null}
+                {isOwnHumanMessage && deliveryVisual?.tone === 'red' ? (
+                  <span className="font-semibold text-rose-400">{deliveryVisual.label}</span>
                 ) : null}
                 <span>{msg.time}</span>
                 {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
@@ -1334,7 +1345,10 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
       ) : null}
 
       {visibleTurn.error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{visibleTurn.error}</div>
+        <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
+          <span className="min-w-0 break-words">{visibleTurn.error}</span>
+        </div>
       ) : null}
     </div>
   );

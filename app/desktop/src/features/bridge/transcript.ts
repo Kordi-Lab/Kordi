@@ -49,7 +49,11 @@ function isProcessingPlaceholderText(text: string) {
 
 function isImplicitDirectPersonSessionMessage(outreach: DesktopBridgeOutreachMetadata) {
   return outreach.targetKind === 'bridge-person'
-    && outreach.contextPolicy === 'session-message'
+    && (
+      outreach.contextPolicy === 'session-message'
+      || outreach.contextPolicy === 'session-invite'
+      || outreach.contextPolicy === 'session-update'
+    )
     && !outreach.triggerText?.trim();
 }
 
