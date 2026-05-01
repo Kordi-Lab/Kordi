@@ -390,14 +390,15 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.match(markup, /# Hi shu/);
 });
 
-test('WorkspaceSidebar aligns child session hashtags with the avatar column and hides duplicate previews', () => {
+test('WorkspaceSidebar aligns child session hashtags and keeps last-message metadata visible', () => {
   const chatConversations = [conversation({
     id: 'session:group-duplicate-preview',
     canonicalSessionId: 'session:group-duplicate-preview',
     name: '今天吃什么',
     subtitle: '今天吃什么',
-    messages: [],
+    messages: [{ role: 'person', sender: 'Alice', text: '今天吃什么', time: '16:02' }],
     participants: ['Me', 'Alice', 'Bob'],
+    canonicalMessageCount: 1,
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
       { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
@@ -416,8 +417,12 @@ test('WorkspaceSidebar aligns child session hashtags with the avatar column and 
 
   assert.doesNotMatch(markup, /pl-\[3\.25rem\]/);
   assert.match(markup, /# 今天吃什么/);
-  assert.doesNotMatch(markup, /app-participant-space-session-preview/);
+  assert.match(markup, /data-session-message-count="1"/);
+  assert.match(markup, /data-session-preview-line="今天吃什么 · 1 message"/);
+  assert.match(markup, /app-participant-space-session-preview/);
+  assert.match(markup, /app-participant-space-session-title/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);
+  assert.match(shellCss, /\.app-participant-space-session-title\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/s);
 });
 
 test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {

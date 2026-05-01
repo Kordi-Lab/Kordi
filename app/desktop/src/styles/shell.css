@@ -760,6 +760,10 @@
   box-shadow: none;
 }
 
+.app-participant-space-session-title {
+  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+}
+
 .app-participant-space-session-preview {
   display: block;
   max-width: 100%;

@@ -63,14 +63,22 @@ function participantSpaceSessionPreviewText(preview: string) {
   return formatted;
 }
 
-function normalizedParticipantSpaceSessionText(value: string) {
-  return value.replace(/^#\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function participantSpaceSessionMessageCount(session: ParticipantSpaceItem['sessions'][number]) {
+  const canonicalCount = session.conversation.canonicalMessageCount;
+  if (typeof canonicalCount === 'number' && Number.isFinite(canonicalCount)) {
+    return Math.max(0, canonicalCount);
+  }
+  const visibleMessages = session.conversation.messages.filter((message) => message.role !== 'system' && message.text.trim().length > 0).length;
+  return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
 }
 
-function shouldShowParticipantSpaceSessionPreview(title: string, preview: string) {
-  const normalizedPreview = normalizedParticipantSpaceSessionText(preview);
-  if (!normalizedPreview || normalizedPreview === 'no messages yet') return false;
-  return normalizedPreview !== normalizedParticipantSpaceSessionText(title);
+function participantSpaceSessionMessageCountText(messageCount: number) {
+  return `${messageCount} message${messageCount === 1 ? '' : 's'}`;
+}
+
+function participantSpaceSessionPreviewLine(preview: string, messageCount: number) {
+  const text = preview.trim() || 'No messages yet';
+  return `${text} · ${participantSpaceSessionMessageCountText(messageCount)}`;
 }
 
 function isManageableLocalChatConversation(conversation: ConversationItem) {
@@ -675,13 +683,16 @@ export function WorkspaceSidebar({
                                   const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
                                   const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
                                   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
-                                  const showSessionPreview = shouldShowParticipantSpaceSessionPreview(sessionRowTitle, sessionPreview);
+                                  const sessionMessageCount = participantSpaceSessionMessageCount(session);
+                                  const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
                                   return (
                                     <button
                                       key={session.id}
                                       type="button"
                                       data-testid="participant-space-session-row"
                                       data-session-preview={sessionPreview}
+                                      data-session-preview-line={sessionPreviewLine}
+                                      data-session-message-count={sessionMessageCount}
                                       data-session-updated-at={rowTimeLabel}
                                       onClick={() => onSelectChatSession(session.id)}
                                       onContextMenu={(event) => {
@@ -698,19 +709,17 @@ export function WorkspaceSidebar({
                                       className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
                                     >
                                       <div className="min-w-0">
-                                        <div className="truncate text-[12px] font-medium text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</div>
-                                        {showSessionPreview ? (
-                                          <div
-                                            className={cn(
-                                              'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
-                                              isActive ? 'text-slate-300' : 'text-slate-500',
-                                              session.statusIndicator?.live && 'app-participant-space-session-preview-live',
-                                            )}
-                                            title={sessionPreview}
-                                          >
-                                            {sessionPreview}
-                                          </div>
-                                        ) : null}
+                                        <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
+                                        <div
+                                          className={cn(
+                                            'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                                            isActive ? 'text-slate-300' : 'text-slate-500',
+                                            session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+                                          )}
+                                          title={sessionPreviewLine}
+                                        >
+                                          {sessionPreviewLine}
+                                        </div>
                                       </div>
                                       <SidebarSessionMetaColumn
                                         timeLabel={rowTimeLabel}
