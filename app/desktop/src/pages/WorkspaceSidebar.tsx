@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Copy,
   MoreHorizontal,
   Plus,
@@ -32,6 +33,7 @@ import {
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
 import type { ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
+import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
 type ConversationItem = {
   id: string;
@@ -378,6 +380,7 @@ export function WorkspaceSidebar({
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
+  const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const activeParticipantSpaceId = participantSpaces.find((space) => (
@@ -600,18 +603,13 @@ export function WorkspaceSidebar({
                                 </button>
                                 <button
                                   type="button"
+                                  data-participant-space-enter="true"
                                   className="app-participant-space-action absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[10px]"
-                                  title={space.kind === 'group' ? 'Group details' : 'Open sessions'}
-                                  aria-label={`Actions for ${space.title}`}
-                                  aria-haspopup={space.kind === 'group' ? 'dialog' : undefined}
-                                  onClick={() => {
-                                    openSpace();
-                                    if (space.kind === 'group') {
-                                      setIsGroupDetailsDialogOpen(true);
-                                    }
-                                  }}
+                                  title="Open sessions"
+                                  aria-label={`Enter ${space.title}`}
+                                  onClick={openSpace}
                                 >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                  <ChevronRight className="h-3.5 w-3.5" />
                                 </button>
                               </div>
                             );
@@ -650,10 +648,15 @@ export function WorkspaceSidebar({
                               {selectedParticipantSpace.kind === 'group' ? (
                                 <button
                                   type="button"
-                                  onClick={() => setIsGroupDetailsDialogOpen(true)}
-                                  className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] text-slate-400 transition hover:bg-white/10 hover:text-white"
-                                  title="Group details"
-                                  aria-label="Group details"
+                                  onClick={(event) => {
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                                    setIsGroupDetailsDialogOpen(true);
+                                  }}
+                                  className="app-participant-space-action grid h-8 w-8 shrink-0 place-items-center rounded-[12px]"
+                                  title="Group management"
+                                  aria-label="Open group management"
+                                  aria-haspopup="dialog"
                                 >
                                   <MoreHorizontal className="h-4 w-4" />
                                 </button>
@@ -1019,11 +1022,15 @@ export function WorkspaceSidebar({
         isOpen={isGroupDetailsDialogOpen}
         space={selectedParticipantSpace}
         contacts={displayedContacts}
-        onClose={() => setIsGroupDetailsDialogOpen(false)}
+        onClose={() => {
+          setIsGroupDetailsDialogOpen(false);
+          setGroupDetailsAnchor(null);
+        }}
         onRename={onRenameChatGroup}
         onAddMembers={onAddChatGroupMembers}
         onRemoveMember={onRemoveChatGroupMember}
         onSetAdmin={onSetChatGroupAdmin}
+        anchorRect={groupDetailsAnchor}
       />
 
       {isCreateProjectDialogOpen ? (

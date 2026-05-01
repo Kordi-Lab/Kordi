@@ -199,6 +199,81 @@
   color: var(--utility-muted-text);
 }
 
+.app-group-management-popover {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: var(--app-modal-bg);
+  color: var(--utility-foreground);
+  box-shadow: var(--app-shadow-float);
+}
+
+.app-group-management-popover-enter {
+  transform-origin: var(--app-group-management-origin, left 26px);
+  animation: app-group-management-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-group-management-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 92%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: var(--app-modal-bg);
+}
+
+.app-group-management-close {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-section-label {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-member-row,
+.app-group-management-add-row,
+.app-group-management-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 74%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-add-row:hover,
+.app-group-management-member-row:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 70%, transparent);
+}
+
+.app-group-management-add-row-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-group-management-admin-button {
+  background: color-mix(in oklab, var(--app-control-bg) 74%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-admin-button:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 86%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-admin-button-active {
+  background: color-mix(in oklab, oklch(68% 0.13 156) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(78% 0.12 156) 72%, var(--utility-foreground));
+}
+
+.app-group-management-remove-button {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-remove-button:hover {
+  background: color-mix(in oklab, oklch(62% 0.18 25) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(76% 0.13 25) 74%, var(--utility-foreground));
+}
+
 @keyframes app-chat-create-popover-enter {
   from {
     opacity: 0;
@@ -211,8 +286,21 @@
   }
 }
 
+@keyframes app-group-management-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-group-management-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .app-chat-create-popover-enter {
+  .app-chat-create-popover-enter,
+  .app-group-management-popover-enter {
     animation: none;
   }
 }

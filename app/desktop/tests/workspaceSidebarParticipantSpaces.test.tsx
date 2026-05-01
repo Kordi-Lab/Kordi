@@ -159,7 +159,9 @@ test('WorkspaceSidebar renders participant spaces as the Chats first level', () 
   assert.match(markup, /Bob/);
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);
-  assert.match(markup, /aria-label="Actions for Bob"/);
+  assert.match(markup, /data-participant-space-enter="true"/);
+  assert.match(markup, /aria-label="Enter Bob"/);
+  assert.doesNotMatch(markup, /aria-label="Actions for Bob"/);
   assert.doesNotMatch(markup, /Old Bob thread/);
   assert.doesNotMatch(markup, /New Bob thread/);
 });
@@ -298,11 +300,15 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
     onSetAdmin: () => {},
   }));
 
-  assert.match(markup, /Group details/);
-  assert.match(markup, /participants/);
+  assert.match(markup, /data-group-management-surface="popover"/);
+  assert.match(markup, /app-group-management-popover/);
+  assert.doesNotMatch(markup, /bg-slate-950\/70/);
+  assert.match(markup, /Group management/);
+  assert.match(markup, /Participants/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Make admin/);
-  assert.match(markup, /Add selected people/);
+  assert.match(markup, /Add people/);
+  assert.match(markup, /Rename/);
 });
 
 test('WorkspaceSidebar selected group header exposes details and hashtag child sessions', () => {
@@ -326,7 +332,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
 
-  assert.match(markup, /aria-label="Group details"/);
+  assert.match(markup, /aria-label="Open group management"/);
   assert.match(markup, /# Hi shu/);
 });
 
@@ -356,7 +362,8 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   }) as never));
 
   assert.match(markup, /shuyhere1, shuyhere2/);
-  assert.match(markup, /aria-label="Actions for shuyhere1, shuyhere2"/);
+  assert.match(markup, /aria-label="Enter shuyhere1, shuyhere2"/);
+  assert.doesNotMatch(markup, /aria-label="Actions for shuyhere1, shuyhere2"/);
   assert.match(markup, /Group • 2 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);
