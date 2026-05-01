@@ -783,10 +783,84 @@ Add participant-space drill-in sidebar
 
 Use `Refs #171`, not `Closes #171`.
 
+### Task 7: Human-centered participant spaces and default self space
+
+**Files:**
+- Modify: `app/desktop/src/kordi-app/types.ts`
+- Modify: `app/desktop/src/features/chat/participantSpaces.ts`
+- Modify: `app/desktop/src/pages/WorkspaceSidebar.tsx`
+- Modify: `app/desktop/tests/participantSpaces.test.tsx`
+- Modify: `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx`
+
+- [ ] **Step 1: Write the failing read-model tests**
+
+Add tests proving:
+
+```ts
+assert.equal(spaces[0]?.id, 'direct-human:human:shu');
+assert.equal(spaces[0]?.kind, 'direct-human');
+assert.equal(spaces[0]?.title, 'shu');
+assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu']);
+```
+
+for a session containing `Me`, one other human, and an agent; add tests proving agent-only sessions collapse into:
+
+```ts
+assert.equal(spaces[0]?.id, 'self:local');
+assert.equal(spaces[0]?.kind, 'self');
+assert.equal(spaces[0]?.title, 'Myself');
+assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:any-agent', 'session:my-kordi']);
+```
+
+Run:
+
+```bash
+pnpm --dir app/desktop test:unit -- participantSpaces.test.tsx workspaceSidebarParticipantSpaces.test.tsx
+```
+
+Expected: FAIL against the old grouping logic.
+
+- [ ] **Step 2: Implement the read-model change**
+
+Add `self` to `ParticipantSpaceKind`. In `participantSpaces.ts`, compute non-self humans and agents separately. Classify a session as:
+
+```ts
+if (conversation.participantSpaceId || nonSelfHumanCount > 1) return 'group';
+if (nonSelfHumanCount === 1) return 'direct-human';
+return 'self';
+```
+
+Use `self:local` as the stable default self-space id. Use `Myself` as the self-space title. For avatars, return the self avatar for `self`, the other human avatar for `direct-human`, and non-self participants for true groups.
+
+- [ ] **Step 3: Polish the sidebar labels and avatars**
+
+In `WorkspaceSidebar.tsx`, render detail text as:
+
+```ts
+Person + 1 agent • 1 session
+Myself + 2 agents • 2 sessions
+Group • 2 people • 1 session
+```
+
+Show a single primary avatar for self/person rows and a small `+N` agent badge instead of a large stacked avatar treatment.
+
+- [ ] **Step 4: Run GREEN**
+
+Run:
+
+```bash
+pnpm --dir app/desktop test:unit -- participantSpaces.test.tsx workspaceSidebarParticipantSpaces.test.tsx
+pnpm --dir app/desktop typecheck
+```
+
+Expected: PASS.
+
 ## Self-review
 
 - PR2 scope only: yes.
 - Existing transcript routing preserved: yes.
 - No backend group persistence: yes.
 - No invite/fan-out behavior: yes.
+- Human-centered person + agent grouping covered: yes.
+- Default self space for agent-only sessions covered: yes.
 - QA refresh included: yes.

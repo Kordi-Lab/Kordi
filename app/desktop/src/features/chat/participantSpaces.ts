@@ -66,18 +66,41 @@ function allDisplayParticipants(conversation: Conversation) {
   return canonical.length > 0 ? canonical : fallbackParticipants(conversation);
 }
 
+function nonSelfHumans(participants: ConversationParticipant[]) {
+  return participants.filter((participant) => !isSelfParticipant(participant) && participant.kind === 'human');
+}
+
+function nonSelfAgents(participants: ConversationParticipant[]) {
+  return participants.filter((participant) => !isSelfParticipant(participant) && participant.kind === 'agent');
+}
+
+function selfParticipant(participants: ConversationParticipant[]) {
+  return participants.find((participant) => isSelfParticipant(participant));
+}
+
 function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
-  if (conversation.participantSpaceId || nonSelf.length > 1) {
+  const humanCount = nonSelfHumans(nonSelf).length;
+  if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';
   }
-  const primary = nonSelf[0];
-  if (primary?.kind === 'agent' || conversation.type === 'external-agent' || conversation.type === 'owned-agent') {
-    return 'direct-agent';
+  if (humanCount === 1) {
+    return 'direct-human';
   }
-  return 'direct-human';
+  if (nonSelfAgents(nonSelf).length > 0 || conversation.type === 'external-agent' || conversation.type === 'owned-agent') {
+    return 'self';
+  }
+  return 'self';
+}
+
+function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
+  if (kind === 'self') return selfParticipant(participants) ?? participants[0];
+  if (kind === 'direct-human') return nonSelfHumans(participants)[0] ?? participants.find((participant) => !isSelfParticipant(participant));
+  if (kind === 'direct-agent') return nonSelfAgents(participants)[0] ?? participants.find((participant) => !isSelfParticipant(participant));
+  return participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
 }
 
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
+  if (kind === 'self') return 'self:local';
   if (kind === 'group') {
     const explicit = conversation.participantSpaceId?.trim();
     if (explicit) return `group:${explicit}`;
@@ -123,15 +146,26 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
 
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
   const nonSelf = participants.filter((participant) => !isSelfParticipant(participant));
+  if (kind === 'self') return 'Myself';
   if (kind === 'group') {
     return latestSession?.conversation.name || nonSelf.map((participant) => participant.name).join(', ') || 'Group';
   }
-  return nonSelf[0]?.name || latestSession?.conversation.name || 'Chat';
+  return primaryParticipantForKind(kind, participants)?.name || latestSession?.conversation.name || 'Chat';
 }
 
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
-  if (kind === 'group') return participants;
-  const primary = participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
+  if (kind === 'self') {
+    const primary = selfParticipant(participants) ?? participants.find((participant) => participant.kind === 'human') ?? participants[0];
+    return primary ? [primary] : [];
+  }
+  if (kind === 'group') {
+    return [
+      ...nonSelfHumans(participants),
+      ...nonSelfAgents(participants),
+      ...participants.filter((participant) => !isSelfParticipant(participant) && participant.kind !== 'human' && participant.kind !== 'agent'),
+    ];
+  }
+  const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];
 }
 
@@ -147,7 +181,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       .sort((left, right) => participantSortKey(left).localeCompare(participantSortKey(right)));
     const displayParticipants = allDisplayParticipants(conversation);
     const kind = spaceKindForConversation(conversation, nonSelf);
-    const primary = nonSelf[0] ?? displayParticipants[0];
+    const primary = primaryParticipantForKind(kind, displayParticipants);
     const id = spaceIdForConversation(kind, primary, conversation);
     const updatedAtMs = conversationTimestamp(conversation, conversations.length - index);
     const session = buildSession(conversation, updatedAtMs);
@@ -182,10 +216,14 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
+function participantSpaceAgentCount(space: ParticipantSpaceViewModel) {
+  return nonSelfAgents(space.participants).length;
+}
+
 function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
   if (chatFilter === 'all') return true;
-  if (chatFilter === 'people') return space.kind === 'direct-human';
-  if (chatFilter === 'agents') return space.kind === 'direct-agent';
+  if (chatFilter === 'people') return space.kind === 'self' || space.kind === 'direct-human';
+  if (chatFilter === 'agents') return space.kind === 'direct-agent' || (space.kind === 'self' && participantSpaceAgentCount(space) > 0);
   return space.kind === 'group'
     || space.sessions.some((session) => session.conversation.directness !== 'Direct chat');
 }

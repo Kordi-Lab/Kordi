@@ -240,10 +240,41 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function isParticipantSpaceSelf(participant: ParticipantSpaceItem['participants'][number]) {
+  return participant.role === 'self'
+    || (participant.source === 'local' && participant.kind === 'human');
+}
+
+function participantSpaceAgentCount(space: ParticipantSpaceItem) {
+  return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'agent').length;
+}
+
+function participantSpaceHumanCount(space: ParticipantSpaceItem) {
+  return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'human').length;
+}
+
 function participantSpaceKindText(space: ParticipantSpaceItem) {
+  if (space.kind === 'self') return 'Myself';
   if (space.kind === 'direct-human') return 'Person';
   if (space.kind === 'direct-agent') return 'Agent';
   return 'Group';
+}
+
+function participantSpaceDetailText(space: ParticipantSpaceItem) {
+  const sessionText = pluralize(space.sessionCount, 'session');
+  const agentCount = participantSpaceAgentCount(space);
+  if (space.kind === 'self') {
+    return `${agentCount > 0 ? `Myself + ${pluralize(agentCount, 'agent')}` : 'Myself'} • ${sessionText}`;
+  }
+  if (space.kind === 'direct-human') {
+    return `${agentCount > 0 ? `Person + ${pluralize(agentCount, 'agent')}` : 'Person'} • ${sessionText}`;
+  }
+  if (space.kind === 'group') {
+    const humanCount = participantSpaceHumanCount(space);
+    const peopleText = humanCount > 0 ? `${pluralize(humanCount, 'person', 'people')} • ` : '';
+    return `Group • ${peopleText}${sessionText}`;
+  }
+  return `Agent • ${sessionText}`;
 }
 
 function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem }) {
@@ -251,21 +282,31 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
     ? space.avatarStack
     : [{ kind: space.kind === 'direct-agent' ? 'agent' as const : 'human' as const, seed: space.id, imageUrl: null }];
 
+  const agentCount = participantSpaceAgentCount(space);
+  const showAgentBadge = (space.kind === 'self' || space.kind === 'direct-human') && agentCount > 0;
+
   if (avatars.length === 1) {
     const avatar = avatars[0];
     return (
-      <IdentityAvatar
-        kind={avatar.kind}
-        seed={avatar.seed}
-        name={space.title}
-        imageUrl={avatar.imageUrl ?? undefined}
-        className="h-9 w-9 border border-white/10"
-      />
+      <div className="relative h-9 w-9 shrink-0">
+        <IdentityAvatar
+          kind={avatar.kind}
+          seed={avatar.seed}
+          name={space.title}
+          imageUrl={avatar.imageUrl ?? undefined}
+          className="h-9 w-9 border border-white/10"
+        />
+        {showAgentBadge ? (
+          <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-slate-950/80 bg-slate-200 px-1 text-[8px] font-semibold leading-none text-slate-950 shadow-[0_1px_4px_rgba(2,6,23,0.35)]" aria-hidden="true">
+            {agentCount > 9 ? '9+' : `+${agentCount}`}
+          </span>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <div className="flex h-9 w-11 items-center -space-x-4" aria-hidden="true">
+    <div className="flex h-9 w-10 shrink-0 items-center -space-x-5" aria-hidden="true">
       {avatars.slice(0, 3).map((avatar, index) => (
         <span key={`${avatar.seed}-${index}`} className="relative inline-flex" style={{ zIndex: avatars.length - index }}>
           <IdentityAvatar
@@ -273,7 +314,7 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
             seed={avatar.seed}
             name={space.title}
             imageUrl={avatar.imageUrl ?? undefined}
-            className="h-8 w-8 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+            className="h-7 w-7 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
           />
         </span>
       ))}
@@ -457,7 +498,7 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    Pick a person, agent, or group to see its sessions.
+                    Pick a person, yourself, or a group to see its sessions.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -465,7 +506,7 @@ export function WorkspaceSidebar({
                     <input
                       value={chatSearch}
                       onChange={(event) => setChatSearch(event.target.value)}
-                      placeholder="Search people, agents, groups"
+                      placeholder="Search people, myself, agents"
                       className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                     />
                   </div>
@@ -533,7 +574,7 @@ export function WorkspaceSidebar({
                                           {space.preview || `${participantSpaceKindText(space)} space`}
                                         </div>
                                         <div className="mt-px truncate text-[10px] leading-[0.95rem] text-slate-600">
-                                          {participantSpaceKindText(space)} • {pluralize(space.sessionCount, 'session')}
+                                          {participantSpaceDetailText(space)}
                                         </div>
                                       </div>
                                       <SidebarSessionMetaColumn
@@ -576,7 +617,7 @@ export function WorkspaceSidebar({
                               <div className="min-w-0">
                                 <div className="truncate text-[13px] font-semibold text-white" title={selectedParticipantSpace.title}>{selectedParticipantSpace.title}</div>
                                 <div className="mt-px text-[10.5px] text-slate-500">
-                                  {participantSpaceKindText(selectedParticipantSpace)} • {pluralize(selectedParticipantSpace.sessionCount, 'session')}
+                                  {participantSpaceDetailText(selectedParticipantSpace)}
                                 </div>
                               </div>
                             </div>
