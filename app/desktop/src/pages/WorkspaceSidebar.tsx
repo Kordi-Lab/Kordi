@@ -704,7 +704,7 @@ export function WorkspaceSidebar({
                                     timeLabel={rowTimeLabel}
                                     unreadCount={isExpanded ? 0 : space.unread}
                                     unreadScope="participant-space"
-                                    indicator={latestSession?.statusIndicator}
+                                    indicator={isExpanded ? undefined : latestSession?.statusIndicator}
                                     active={isActiveSpace || isExpanded}
                                     reserveStatusSpace={false}
                                   />

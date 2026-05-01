@@ -188,6 +188,10 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   assert.match(markup, /New Bob thread/);
 });
 
+function countMatches(value: string, pattern: RegExp) {
+  return value.match(pattern)?.length ?? 0;
+}
+
 test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
   const chatConversations = [
     conversation({
@@ -241,6 +245,55 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-space"/);
   assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="2"/);
   assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
+});
+
+test('WorkspaceSidebar moves participant-space running light from expanded parent to child session', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group:one',
+      canonicalSessionId: 'session:group:one',
+      name: 'First group thread',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      statusIndicator: { label: 'Processing', tone: 'running', live: true },
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:group:two',
+      canonicalSessionId: 'session:group:two',
+      name: 'Second group thread',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 1,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const [space] = participantSpaces;
+
+  const foldedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:outside-active',
+  }) as never));
+  assert.equal(countMatches(foldedMarkup, /app-session-status-light-running/g), 1);
+
+  const expandedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    initialSelectedParticipantSpaceId: space?.id,
+    activeConvId: 'session:group:one',
+  }) as never));
+  assert.equal(countMatches(expandedMarkup, /app-session-status-light-running/g), 1);
 });
 
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
