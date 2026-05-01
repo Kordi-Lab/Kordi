@@ -698,7 +698,7 @@
 }
 
 .app-participant-space-inline-sessions {
-  padding-bottom: 0.2rem;
+  padding: 0.125rem 0 0.35rem;
 }
 
 .app-participant-space-inline-group:not(.app-participant-space-inline-group-expanded) .app-participant-space-row-actions {
@@ -755,6 +755,9 @@
 
 .app-participant-space-session-row {
   min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-participant-space-session-preview {
@@ -1374,6 +1377,26 @@
   border-color: transparent;
   box-shadow: none;
   background: color-mix(in oklab, var(--app-control-active) 40%, transparent);
+}
+
+.app-workspace-sidebar .app-participant-space-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.625rem;
+  border-color: transparent;
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-participant-space-session-row:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--app-control-active) 24%, transparent);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-project-group {

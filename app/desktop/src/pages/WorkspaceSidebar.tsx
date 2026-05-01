@@ -63,6 +63,16 @@ function participantSpaceSessionPreviewText(preview: string) {
   return formatted;
 }
 
+function normalizedParticipantSpaceSessionText(value: string) {
+  return value.replace(/^#\s*/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function shouldShowParticipantSpaceSessionPreview(title: string, preview: string) {
+  const normalizedPreview = normalizedParticipantSpaceSessionText(preview);
+  if (!normalizedPreview || normalizedPreview === 'no messages yet') return false;
+  return normalizedPreview !== normalizedParticipantSpaceSessionText(title);
+}
+
 function isManageableLocalChatConversation(conversation: ConversationItem) {
   return conversation.type === 'owned-agent'
     && conversation.id !== 'draft:local-chat'
@@ -658,12 +668,14 @@ export function WorkspaceSidebar({
                             </div>
 
                             {isExpanded ? (
-                              <div className="app-participant-space-inline-sessions mt-0.5 space-y-0.5 pl-[3.25rem]">
+                              <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
                                 {space.sessions.map((session) => {
                                   const conversation = session.conversation;
                                   const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
                                   const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
                                   const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
+                                  const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
+                                  const showSessionPreview = shouldShowParticipantSpaceSessionPreview(sessionRowTitle, sessionPreview);
                                   return (
                                     <button
                                       key={session.id}
@@ -683,21 +695,11 @@ export function WorkspaceSidebar({
                                           y: event.clientY,
                                         });
                                       }}
-                                      className={cn('app-session-row app-participant-space-session-row block w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
+                                      className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
                                     >
-                                      <div className="flex items-start">
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex items-start gap-2.5">
-                                            <div className="min-w-0 flex-1">
-                                              <div className="truncate text-[12px] font-medium text-slate-100" title={participantSpaceSessionRowTitle(session.title)}>{participantSpaceSessionRowTitle(session.title)}</div>
-                                            </div>
-                                            <SidebarSessionMetaColumn
-                                              timeLabel={rowTimeLabel}
-                                              unreadCount={session.unread}
-                                              indicator={session.statusIndicator}
-                                              active={isActive}
-                                            />
-                                          </div>
+                                      <div className="min-w-0">
+                                        <div className="truncate text-[12px] font-medium text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</div>
+                                        {showSessionPreview ? (
                                           <div
                                             className={cn(
                                               'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
@@ -708,8 +710,14 @@ export function WorkspaceSidebar({
                                           >
                                             {sessionPreview}
                                           </div>
-                                        </div>
+                                        ) : null}
                                       </div>
+                                      <SidebarSessionMetaColumn
+                                        timeLabel={rowTimeLabel}
+                                        unreadCount={session.unread}
+                                        indicator={session.statusIndicator}
+                                        active={isActive}
+                                      />
                                     </button>
                                   );
                                 })}

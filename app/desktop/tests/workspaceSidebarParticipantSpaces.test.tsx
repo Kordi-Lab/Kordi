@@ -390,6 +390,36 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.match(markup, /# Hi shu/);
 });
 
+test('WorkspaceSidebar aligns child session hashtags with the avatar column and hides duplicate previews', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-duplicate-preview',
+    canonicalSessionId: 'session:group-duplicate-preview',
+    name: '今天吃什么',
+    subtitle: '今天吃什么',
+    messages: [],
+    participants: ['Me', 'Alice', 'Bob'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group-duplicate-preview',
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(markup, /pl-\[3\.25rem\]/);
+  assert.match(markup, /# 今天吃什么/);
+  assert.doesNotMatch(markup, /app-participant-space-session-preview/);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);
+});
+
 test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {
   const chatConversations = [
     conversation({
