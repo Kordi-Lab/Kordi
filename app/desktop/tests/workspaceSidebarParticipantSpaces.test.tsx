@@ -190,6 +190,7 @@ test('participant-space row CSS separates the timestamp and actions while adding
 
   assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*position:\s*static/s);
+  assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*grid-template-columns:\s*repeat\(3, 1\.5rem\)/s);
   assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*box-shadow:\s*inset 0 -1px 0/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
@@ -381,6 +382,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   }) as never));
 
   assert.match(markup, /aria-label="Open group management"/);
+  assert.ok(markup.indexOf('aria-label="Open group management"') < markup.indexOf('aria-label="Create session in Alice, Bob"'));
   assert.match(markup, /data-participant-space-row-actions="true"/);
   assert.match(markup, /# Hi shu/);
 });

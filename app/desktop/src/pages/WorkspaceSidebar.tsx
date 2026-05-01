@@ -599,20 +599,6 @@ export function WorkspaceSidebar({
                                 </div>
                               </button>
                               <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
-                                <button
-                                  type="button"
-                                  data-participant-space-context-create="true"
-                                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
-                                  aria-label={`Create session in ${space.title}`}
-                                  title={`Create session in ${space.title}`}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedParticipantSpaceId(space.id);
-                                    void onCreateChatSessionInParticipantSpace(space);
-                                  }}
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                </button>
                                 {space.kind === 'group' ? (
                                   <button
                                     type="button"
@@ -630,7 +616,23 @@ export function WorkspaceSidebar({
                                   >
                                     <MoreHorizontal className="h-3.5 w-3.5" />
                                   </button>
-                                ) : null}
+                                ) : (
+                                  <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
+                                )}
+                                <button
+                                  type="button"
+                                  data-participant-space-context-create="true"
+                                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
+                                  aria-label={`Create session in ${space.title}`}
+                                  title={`Create session in ${space.title}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedParticipantSpaceId(space.id);
+                                    void onCreateChatSessionInParticipantSpace(space);
+                                  }}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
                                 <button
                                   type="button"
                                   data-participant-space-toggle-button="true"
