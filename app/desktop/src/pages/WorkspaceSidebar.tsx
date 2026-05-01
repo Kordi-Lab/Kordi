@@ -35,6 +35,7 @@ import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
 type ConversationItem = {
   id: string;
+  canonicalSessionId?: string;
   name: string;
   subtitle: string;
   unread: number;
@@ -50,6 +51,7 @@ type ConversationItem = {
 type ParticipantSpaceItem = ParticipantSpaceViewModel;
 
 const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+const LOCAL_RUNTIME_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function participantSpaceSessionRowTitle(title: string) {
   const trimmed = title.trim();
@@ -81,11 +83,35 @@ function participantSpaceSessionPreviewLine(preview: string, messageCount: numbe
   return `${text} · ${participantSpaceSessionMessageCountText(messageCount)}`;
 }
 
-function isManageableLocalChatConversation(conversation: ConversationItem) {
+function sessionActionIdForConversation(conversation: ConversationItem) {
+  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return null;
+  if (sessionId.startsWith('bridge:')) return null;
+  return sessionId;
+}
+
+function canMoveConversationToProject(conversation: ConversationItem, sessionId: string) {
   return conversation.type === 'owned-agent'
-    && conversation.id !== 'draft:local-chat'
-    && !conversation.id.startsWith('bridge:')
-    && !conversation.id.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+    && sessionId === conversation.id.trim()
+    && LOCAL_RUNTIME_SESSION_ID_PATTERN.test(sessionId)
+    && !sessionId.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+}
+
+export function sessionContextMenuTargetForConversation(
+  conversation: ConversationItem,
+  x: number,
+  y: number,
+): SessionContextMenuTarget | null {
+  const sessionId = sessionActionIdForConversation(conversation);
+  if (!sessionId) return null;
+
+  return {
+    sessionId,
+    sessionName: conversation.name,
+    x,
+    y,
+    canMoveToProject: canMoveConversationToProject(conversation, sessionId),
+  };
 }
 
 type ProjectSessionItem = {
@@ -696,15 +722,11 @@ export function WorkspaceSidebar({
                                       data-session-updated-at={rowTimeLabel}
                                       onClick={() => onSelectChatSession(session.id)}
                                       onContextMenu={(event) => {
-                                        if (!isManageableLocalChatConversation(conversation)) return;
+                                        const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+                                        if (!target) return;
                                         event.preventDefault();
                                         event.stopPropagation();
-                                        setSessionContextMenu({
-                                          sessionId: conversation.id,
-                                          sessionName: conversation.name,
-                                          x: event.clientX,
-                                          y: event.clientY,
-                                        });
+                                        setSessionContextMenu(target);
                                       }}
                                       className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
                                     >

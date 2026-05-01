@@ -7,6 +7,7 @@ export type SessionContextMenuTarget = {
   sessionName: string;
   x: number;
   y: number;
+  canMoveToProject?: boolean;
 };
 
 export type SessionActionTarget = {
@@ -45,19 +46,21 @@ export function SessionContextMenu({
         }}
         onMouseDown={(event) => event.stopPropagation()}
       >
+        {target.canMoveToProject ? (
+          <button
+            type="button"
+            className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+            onClick={() => {
+              onClose();
+              onMove({ sessionId: target.sessionId, sessionName: target.sessionName });
+            }}
+          >
+            Move to project…
+          </button>
+        ) : null}
         <button
           type="button"
-          className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
-          onClick={() => {
-            onClose();
-            onMove({ sessionId: target.sessionId, sessionName: target.sessionName });
-          }}
-        >
-          Move to project…
-        </button>
-        <button
-          type="button"
-          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+          className={`${target.canMoveToProject ? 'mt-1 ' : ''}w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]`}
           onClick={() => {
             onArchive(target.sessionId);
             onClose();

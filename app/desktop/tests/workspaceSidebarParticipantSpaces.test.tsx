@@ -8,7 +8,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import type { Agent, Contact, Conversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
-import { participantSpaceSessionRowTitle, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import { participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 
 type ConversationFixture = Conversation & { _updatedAtMs?: number };
 
@@ -308,6 +308,23 @@ test('ChatCreateDialog group picker requires at least 2 people and excludes agen
 test('participant-space child session rows use hashtag titles', () => {
   assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
   assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
+});
+
+test('participant-space direct sessions expose archive and delete context menu targets', () => {
+  const target = sessionContextMenuTargetForConversation(conversation({
+    id: 'session:bridge:humans:shu',
+    canonicalSessionId: 'session:bridge:humans:shu',
+    name: 'Lunch planning',
+    type: 'person',
+  }), 42, 84);
+
+  assert.deepEqual(target, {
+    sessionId: 'session:bridge:humans:shu',
+    sessionName: 'Lunch planning',
+    x: 42,
+    y: 84,
+    canMoveToProject: false,
+  });
 });
 
 test('GroupDetailsDialog renders group metadata and member controls', () => {
