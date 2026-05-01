@@ -344,8 +344,12 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
   if (visual.glyph === 'spinner') {
     return <LoaderCircle className={cn('h-3.5 w-3.5 animate-spin', toneClass)} aria-hidden="true" />;
   }
-  if (visual.glyph === 'error') {
-    return <CircleAlert className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
+  if (visual.glyph === 'exclamation') {
+    return (
+      <span className={cn('inline-flex h-3.5 w-3.5 items-center justify-center text-[13px] font-semibold leading-none', toneClass)} aria-hidden="true">
+        !
+      </span>
+    );
   }
   return null;
 }

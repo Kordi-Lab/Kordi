@@ -222,7 +222,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.doesNotMatch(markup, /Group • 1 session/);
 });
 
-test('ChatCreateDialog renders create menu choices', () => {
+test('ChatCreateDialog renders create menu choices in a frosted popover', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     contacts: [contact({ id: 'contact:alice', name: 'Alice' })],
@@ -233,6 +233,10 @@ test('ChatCreateDialog renders create menu choices', () => {
     onCreateGroup: () => {},
   }));
 
+  assert.match(markup, /data-create-surface="popover"/);
+  assert.match(markup, /backdrop-blur/);
+  assert.doesNotMatch(markup, /bg-slate-950\/70/);
+  assert.doesNotMatch(markup, /fixed inset-0 z-50 flex items-center justify-center/);
   assert.match(markup, /Chat with person/);
   assert.match(markup, /Chat with agent/);
   assert.match(markup, /Start group/);

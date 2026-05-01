@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
   ChevronDown,
@@ -30,6 +30,7 @@ import {
   type SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
+import type { ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 
 type ConversationItem = {
@@ -375,6 +376,7 @@ export function WorkspaceSidebar({
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
@@ -384,8 +386,10 @@ export function WorkspaceSidebar({
   const selectedParticipantSpace = selectedParticipantSpaceId
     ? participantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
     : null;
-  const openChatCreateDialog = () => {
+  const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
     setActiveNav('chats');
+    setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
   };
 
@@ -984,10 +988,14 @@ export function WorkspaceSidebar({
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
         agents={displayedAgents}
-        onClose={() => setIsChatCreateDialogOpen(false)}
+        onClose={() => {
+          setIsChatCreateDialogOpen(false);
+          setChatCreateAnchor(null);
+        }}
         onStartPerson={onStartChatWithPerson}
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
+        anchorRect={chatCreateAnchor}
       />
 
       <GroupDetailsDialog
