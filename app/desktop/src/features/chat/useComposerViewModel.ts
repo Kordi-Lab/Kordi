@@ -9,6 +9,8 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 
+import { filterDesktopSlashCommands } from './composerController.shared';
+
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
 
@@ -302,7 +304,7 @@ export function useComposerViewModel({
     const normalizedQuery = query.toLowerCase();
     const search = normalizedQuery.slice(1);
 
-    return desktopChatState.slashCommands.filter((item) => {
+    return filterDesktopSlashCommands(desktopChatState.slashCommands).filter((item) => {
       if (!search) return true;
       const value = item.value.toLowerCase();
       const label = item.label.toLowerCase();

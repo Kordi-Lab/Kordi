@@ -4,15 +4,9 @@ import {
   Bot,
   Check,
   ChevronDown,
-  Copy,
   FolderOpen,
-  HelpCircle,
-  ImagePlus,
-  LogIn,
-  LogOut,
   RefreshCw,
   Search,
-  Settings2,
   Sparkles,
   UserRound,
   Wrench,
@@ -71,31 +65,10 @@ function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
   if (value.startsWith('/skill:') || value === '/skill') {
     return { icon: Sparkles, iconClassName: 'text-violet-300' };
   }
-  if (value === '/model') {
-    return { icon: Bot, iconClassName: 'text-slate-300' };
-  }
-  if (value === '/settings') {
-    return { icon: Settings2, iconClassName: 'text-slate-300' };
-  }
-  if (value === '/login') {
-    return { icon: LogIn, iconClassName: 'text-emerald-300' };
-  }
-  if (value === '/logout') {
-    return { icon: LogOut, iconClassName: 'text-rose-300' };
-  }
-  if (value === '/copy') {
-    return { icon: Copy, iconClassName: 'text-slate-300' };
-  }
   if (value === '/reload') {
     return { icon: RefreshCw, iconClassName: 'text-slate-300' };
   }
-  if (value === '/image') {
-    return { icon: ImagePlus, iconClassName: 'text-fuchsia-300' };
-  }
-  if (value === '/help' || value === '/hotkeys') {
-    return { icon: HelpCircle, iconClassName: 'text-slate-300' };
-  }
-  if (value === '/new' || value === '/resume' || value === '/fork' || value === '/tree') {
+  if (value === '/fork' || value === '/tree') {
     return { icon: FolderOpen, iconClassName: 'text-sky-300' };
   }
   if (value.startsWith('/')) {

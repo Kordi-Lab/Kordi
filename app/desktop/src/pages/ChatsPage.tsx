@@ -634,7 +634,12 @@ export function ChatsPage({
                     }
                     if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
                       event.preventDefault();
-                      acceptChatSlashCommand(filteredChatSlashCommands[Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)]?.value ?? filteredChatSlashCommands[0].value);
+                      const selectedCommand = filteredChatSlashCommands[Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)]?.value ?? filteredChatSlashCommands[0].value;
+                      if (event.key === 'Enter' && event.currentTarget.value.trim() === selectedCommand) {
+                        onSendChatMessage(event.currentTarget.value);
+                      } else {
+                        acceptChatSlashCommand(selectedCommand);
+                      }
                       return;
                     }
                   }

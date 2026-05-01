@@ -494,6 +494,181 @@ impl DesktopRuntimeSession {
         }
     }
 
+    async fn reload_runtime_setup(&mut self) -> Result<()> {
+        let cwd = self.setup.tool_ctx.cwd.clone();
+        let session_id = self.setup.session_id.clone();
+        let entry = SessionBootstrapOptions {
+            session: Some(session_id),
+            ..SessionBootstrapOptions::default()
+        };
+        let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        normalize_setup_thinking(&mut setup);
+        self.setup = setup;
+        Ok(())
+    }
+
+    pub async fn run_local_command(&mut self, text: &str) -> Result<Option<String>> {
+        let text = text.trim();
+        let command = text.split_whitespace().next().unwrap_or(text);
+        match command {
+            "/reload" => {
+                if text != "/reload" {
+                    return Ok(Some("Usage: /reload".to_string()));
+                }
+                self.reload_runtime_setup().await?;
+                Ok(Some("Reloaded desktop runtime resources and slash commands.".to_string()))
+            }
+            "/install" => self.run_install_command(text).await,
+            "/skill" => self.run_skill_command(text).await,
+            "/compact" => self.run_compact_command(text).await,
+            "/export" => self.run_export_command(text),
+            "/import" => self.run_import_command(text),
+            "/fork" => Ok(Some("Desktop /fork is reserved for the upcoming message fork flow (#172).".to_string())),
+            "/tree" => Ok(Some("Desktop /tree is reserved for the upcoming session branch browser (#173).".to_string())),
+            _ if command.starts_with("/skill:") => Ok(Some(
+                "Skill invocation commands are visible in the desktop menu, but running them as local desktop commands is not implemented yet.".to_string(),
+            )),
+            _ if self.setup.extension_commands.is_registered(text) => {
+                let note = self
+                    .setup
+                    .extension_commands
+                    .execute_text(text)
+                    .await?
+                    .unwrap_or_else(|| "Extension command completed.".to_string());
+                Ok(Some(note))
+            }
+            _ if self
+                .setup
+                .slash_command_items
+                .iter()
+                .any(|item| item.value == command) => Ok(Some(format!(
+                    "{command} is visible in the desktop command menu, but interactive execution is not wired yet."
+                ))),
+            _ => Ok(None),
+        }
+    }
+
+    async fn run_install_command(&mut self, text: &str) -> Result<Option<String>> {
+        match crate::slash::parse_install_command(text) {
+            Some(crate::slash::InstallSlashAction::Help) => {
+                Ok(Some(crate::slash::install_help_text()))
+            }
+            Some(crate::slash::InstallSlashAction::Install(install)) => {
+                let cwd = self.setup.tool_ctx.cwd.clone();
+                let scope = if install.local {
+                    crate::extensions::SettingsScope::Project
+                } else {
+                    crate::extensions::SettingsScope::Global
+                };
+                let source = install.source.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::extensions::install_package(&source, scope, &cwd)
+                })
+                .await
+                .map_err(|err| anyhow!("install task failed: {err}"))??;
+                self.reload_runtime_setup().await?;
+                Ok(Some(format!(
+                    "Installed {} and reloaded resources.",
+                    install.source
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn run_compact_command(&mut self, text: &str) -> Result<Option<String>> {
+        let instructions = text
+            .strip_prefix("/compact")
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let settings = kordi_core::types::CompactionSettings {
+            enabled: self.setup.compaction_enabled,
+            reserve_tokens: self.setup.compaction_reserve_tokens,
+            keep_recent_tokens: self.setup.compaction_keep_recent_tokens,
+        };
+        let entries = kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+        let parent_id = crate::turn_runner::get_leaf_raw(&self.setup.conn, &self.setup.session_id);
+        let db_path = self
+            .setup
+            .conn
+            .path()
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| anyhow!("Compaction requires a file-backed session database"))?;
+        let (auth_mode, auth_account_id) =
+            crate::compaction_exec::compaction_auth_options(self.setup.auth.as_ref());
+        let result = crate::compaction_exec::execute_session_compaction(
+            entries,
+            parent_id,
+            db_path,
+            &self.setup.session_id,
+            self.setup.provider.clone(),
+            &self.setup.model.id,
+            &self.setup.api_key,
+            auth_mode,
+            auth_account_id,
+            &self.setup.base_url,
+            &self.setup.headers,
+            &settings,
+            instructions,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        match result {
+            Ok(result) => Ok(Some(format!(
+                "Compaction complete • {} messages summarized • {} kept • {} tokens before",
+                result.summarized_count, result.kept_count, result.tokens_before
+            ))),
+            Err(err) if err.to_string() == "Nothing to compact" => {
+                let entries =
+                    kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+                let total_tokens: u64 = entries
+                    .iter()
+                    .map(kordi_session::compaction::estimate_tokens_row)
+                    .sum();
+                Ok(Some(format!(
+                    "Nothing to compact ({total_tokens} estimated tokens, {} entries)",
+                    entries.len()
+                )))
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn run_export_command(&mut self, text: &str) -> Result<Option<String>> {
+        let path = text
+            .strip_prefix("/export")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("session-export.jsonl");
+        let rows = kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+        let mut lines = Vec::new();
+        for row in &rows {
+            if let Ok(entry) = kordi_session::store::parse_entry(row)
+                && let Ok(json) = serde_json::to_string(&entry)
+            {
+                lines.push(json);
+            }
+        }
+        std::fs::write(path, format!("{}\n", lines.join("\n")))?;
+        let abs_path =
+            std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+        Ok(Some(format!("Exported session to: {}", abs_path.display())))
+    }
+
+    fn run_import_command(&mut self, text: &str) -> Result<Option<String>> {
+        let Some(path) = text
+            .strip_prefix("/import")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(Some("Usage: /import <path.jsonl>".to_string()));
+        };
+        Ok(Some(format!(
+            "Import from {path} is not supported in the desktop app yet."
+        )))
+    }
+
     pub fn summary(&self) -> Result<DesktopChatSessionSummary> {
         build_summary_from_setup(&self.setup)
     }

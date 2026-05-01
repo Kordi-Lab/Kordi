@@ -7,7 +7,6 @@ export function useComposerController(args: UseComposerControllerArgs) {
   const messageActions = useComposerMessageActions({
     ...args,
     attachmentSummaryText: inputActions.attachmentSummaryText,
-    selectComposerValue: inputActions.selectComposerValue,
     appendProjectDraft: inputActions.setProjectComposerText,
     appendChatDraft: inputActions.setChatComposerText,
   });
