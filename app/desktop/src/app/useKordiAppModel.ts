@@ -17,7 +17,6 @@ import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
   findCanonicalConversationForTarget,
-  findOwnedAgentConversation,
   isCanonicalBridgeSessionId,
 } from '@/features/canonical/sessionResolver';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
@@ -27,8 +26,11 @@ import { bridgeMentionCandidateOptionText, buildBridgeMentionCandidates, mention
 import {
   adminIdentityIdsFromMetadata,
   agentCanonicalIdentityRequest,
+  buildChatAgentSessionKind,
+  buildChatAgentSessionMetadata,
   buildChatCreateGroupMetadata,
   buildChatCreatePersonOptions,
+  chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForParticipantSpace,
@@ -1081,12 +1083,38 @@ export function useKordiAppModel() {
     setActiveNav('chats');
 
     if (agent.isOwned) {
-      const existingLocalConversation = findOwnedAgentConversation(chatConversations);
-      if (existingLocalConversation) {
-        await handleSelectChatSession(existingLocalConversation.id);
-      } else {
+      if (!isNativeShell) {
         await handleCreateChatSession();
+        return;
       }
+      const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+      if (!creatorIdentityId) {
+        throw new Error('Local profile identity is not ready yet.');
+      }
+      if (agent.bridgeHostId && agent.bridgeAgentId && !agent.isBridgeActive) {
+        await handleActivateBridgeAgent(agent.bridgeHostId, agent.bridgeAgentId);
+      }
+      const identityRequest = agentCanonicalIdentityRequest(agent);
+      const targetIdentityId = identityRequest.id?.trim();
+      if (!targetIdentityId) {
+        throw new Error('Unable to resolve agent identity.');
+      }
+      const identityState = await upsertCanonicalIdentity(identityRequest);
+      setCanonicalSessionState(identityState);
+      const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
+      const nextState = await openOrCreateCanonicalSession({
+        id: sessionId,
+        kind: buildChatAgentSessionKind(agent),
+        title: agent.name || 'New session',
+        status: 'active',
+        createdByIdentityId: creatorIdentityId,
+        primaryIdentityId: targetIdentityId,
+        relationshipIdentityId: null,
+        participantIdentityIds: [targetIdentityId],
+        metadata: buildChatAgentSessionMetadata(agent),
+      });
+      setCanonicalSessionState(nextState);
+      selectNewChatSession(sessionId);
       return;
     }
 
@@ -1133,6 +1161,7 @@ export function useKordiAppModel() {
   }, [
     canonicalSessionState?.profile.humanIdentityId,
     chatConversations,
+    handleActivateBridgeAgent,
     handleCreateChatSession,
     handleOpenBridgeConversation,
     handleSelectChatSession,

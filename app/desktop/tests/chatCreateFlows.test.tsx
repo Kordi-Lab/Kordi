@@ -3,9 +3,12 @@ import { test } from 'node:test';
 
 import {
   buildChatCreateAgentOptions,
+  buildChatAgentSessionMetadata,
+  buildChatAgentSessionKind,
   buildChatCreateGroupMetadata,
   buildChatCreatePersonOptions,
   canCreateGroup,
+  chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
@@ -124,6 +127,18 @@ test('buildChatCreateAgentOptions derives agent rows from displayed agents', () 
 
   assert.deepEqual(options.map((option) => option.label), ['Kordi', 'Reviewer']);
   assert.equal(options[0]?.detail, 'Coding partner');
+});
+
+test('agent create flow starts a new selected-agent session under Notes to self', () => {
+  const selectedAgent = agent({ id: 'agent:reviewer', name: 'Reviewer', isOwned: true });
+
+  assert.equal(buildChatAgentSessionKind(selectedAgent), 'self-agent');
+  assert.equal(chatSessionIdForAgentStart(selectedAgent, 'next-id'), 'session:self-agent:next-id');
+  assert.deepEqual(buildChatAgentSessionMetadata(selectedAgent), {
+    createdFrom: 'chat-create-flow',
+    agentId: 'agent:reviewer',
+    participantSpaceKind: 'self',
+  });
 });
 
 test('canCreateGroup requires at least two unique people contacts', () => {

@@ -24,6 +24,8 @@ export type ChatCreateAgentOption = {
   agent: Agent;
 };
 
+export type ChatAgentSessionKind = 'self-agent' | 'direct-agent';
+
 const BRIDGE_HUMAN_SESSION_PREFIX = 'session:bridge:humans:';
 
 export type ChatGroupMetadata = {
@@ -89,6 +91,23 @@ export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOpt
     profileImageUrl: agent.profileImageUrl ?? null,
     agent,
   }));
+}
+
+export function buildChatAgentSessionKind(agent: Agent): ChatAgentSessionKind {
+  return agent.isOwned ? 'self-agent' : 'direct-agent';
+}
+
+export function chatSessionIdForAgentStart(agent: Agent, randomId: string) {
+  const id = cleanText(randomId) || Date.now().toString(36);
+  return `session:${buildChatAgentSessionKind(agent)}:${id}`;
+}
+
+export function buildChatAgentSessionMetadata(agent: Agent) {
+  return {
+    createdFrom: 'chat-create-flow' as const,
+    agentId: agent.id,
+    participantSpaceKind: 'self' as const,
+  };
 }
 
 export function canCreateGroup(selectedContactIds: string[]) {

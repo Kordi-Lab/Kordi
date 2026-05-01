@@ -1729,6 +1729,23 @@ fn desktop_sync_does_not_reclassify_bridge_sessions() {
         },
     )
     .expect("open desktop session");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("selected-agent-session".to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Selected agent".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("agent:selected".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:selected".to_string()],
+            metadata: Some(serde_json::json!({ "createdFrom": "chat-create-flow" })),
+        },
+    )
+    .expect("open selected agent session");
 
     assert!(
         !should_update_desktop_session_shell(&conn, "session:bridge:humans:test")
@@ -1736,6 +1753,10 @@ fn desktop_sync_does_not_reclassify_bridge_sessions() {
     );
     assert!(
         should_update_desktop_session_shell(&conn, "local-session").expect("desktop shell check")
+    );
+    assert!(
+        !should_update_desktop_session_shell(&conn, "selected-agent-session")
+            .expect("selected agent shell check")
     );
 }
 

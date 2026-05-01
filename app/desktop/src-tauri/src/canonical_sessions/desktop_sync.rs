@@ -361,7 +361,14 @@ pub(super) fn should_update_desktop_session_shell(
         .and_then(|value| value.get("source"))
         .and_then(|value| value.as_str())
         .unwrap_or_default();
+    let created_from = session
+        .metadata
+        .as_ref()
+        .and_then(|value| value.get("createdFrom"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
     if session.id.starts_with("session:bridge:")
+        || created_from == "chat-create-flow"
         || source.starts_with("desktop-bridge")
         || source.starts_with("bridge-")
         || matches!(
