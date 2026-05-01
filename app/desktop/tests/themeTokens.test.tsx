@@ -13,8 +13,9 @@ test('dark theme uses a translucent dark-glass palette with one accent selected 
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/);
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-divider:\s*rgba\(255,\s*255,\s*255,\s*0\.08\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent:\s*rgb\(124 92 255\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(124,\s*92,\s*255,\s*0\.15\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent:\s*rgba\(132,\s*122,\s*196,\s*0\.64\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent-ring:\s*rgba\(132,\s*122,\s*196,\s*0\.26\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
 });
 
 test('chat sidebar timestamps use the tertiary text token', () => {
@@ -22,4 +23,5 @@ test('chat sidebar timestamps use the tertiary text token', () => {
 
   assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--utility-meta-text\)/s);
   assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 72%, var\(--utility-foreground\)\)/s);
+  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid transparent;[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
 });

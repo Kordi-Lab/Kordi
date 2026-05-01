@@ -617,15 +617,15 @@
 }
 
 .app-session-row-active {
-  border: 1px solid color-mix(in oklab, var(--app-accent) 36%, var(--app-divider));
+  border: 1px solid transparent;
   background: var(--app-control-active);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+    0 0 0 1px var(--app-accent-ring),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .app-participant-space-inline-group {
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 46%, transparent);
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
@@ -634,10 +634,7 @@
 
 .app-participant-space-inline-group-expanded {
   background: var(--app-control-bg);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--app-divider) 72%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 64%, transparent);
+  box-shadow: none;
 }
 
 .app-participant-space-row-shell {
@@ -659,11 +656,9 @@
 }
 
 .app-participant-space-row-shell-active {
-  border-color: color-mix(in oklab, var(--app-accent) 32%, var(--app-divider));
-  background: var(--app-control-active);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 8px 18px rgba(0, 0, 0, 0.06);
+  border-color: transparent;
+  background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
+  box-shadow: 0 0 0 1px var(--app-accent-ring);
 }
 
 .app-participant-space-row-button {
@@ -1405,9 +1400,9 @@
 }
 
 .app-workspace-sidebar .app-session-row-active {
-  border-color: color-mix(in oklab, var(--app-accent) 28%, var(--app-divider));
-  box-shadow: none;
-  background: var(--app-control-active);
+  border-color: transparent;
+  box-shadow: 0 0 0 1px var(--app-accent-ring);
+  background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
 }
 
 .app-workspace-sidebar .app-participant-space-session-row {
@@ -1415,8 +1410,8 @@
   grid-template-columns: minmax(0, 1fr) max-content;
   align-items: start;
   gap: 0.625rem;
-  border-color: transparent;
-  border-radius: 11px;
+  border: 0;
+  border-radius: 8px;
   background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
   box-shadow: none;
 }
@@ -1430,9 +1425,9 @@
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
-  border-color: color-mix(in oklab, var(--app-accent) 42%, var(--app-divider));
-  background: var(--app-control-active);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  border: 0;
+  background: color-mix(in oklab, var(--app-control-active) 72%, var(--app-control-bg));
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active .app-participant-space-session-preview {

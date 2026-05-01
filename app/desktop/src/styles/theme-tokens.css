@@ -5,15 +5,16 @@
   --utility-muted: rgba(255, 255, 255, 0.04);
   --utility-muted-text: rgba(255, 255, 255, 0.6);
   --utility-meta-text: rgba(255, 255, 255, 0.35);
-  --app-accent: rgb(124 92 255);
-  --app-markdown-link: oklch(74% 0.14 285);
-  --app-markdown-link-hover: oklch(80% 0.15 285);
+  --app-accent: rgba(132, 122, 196, 0.64);
+  --app-accent-ring: rgba(132, 122, 196, 0.26);
+  --app-markdown-link: oklch(72% 0.085 285);
+  --app-markdown-link-hover: oklch(78% 0.095 285);
   --app-motion-fast: 180ms;
   --app-motion-base: 220ms;
   --app-motion-slow: 300ms;
   --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --app-page-bg:
-    radial-gradient(circle at top left, rgba(124, 92, 255, 0.08), transparent 24%),
+    radial-gradient(circle at top left, rgba(132, 122, 196, 0.055), transparent 24%),
     linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
   --app-shell-bg: rgba(15, 17, 21, 0.88);
   --app-shell-border: rgba(255, 255, 255, 0.08);
@@ -30,17 +31,17 @@
   --app-divider: rgba(255, 255, 255, 0.08);
   --app-control-bg: rgba(255, 255, 255, 0.04);
   --app-control-hover: rgba(255, 255, 255, 0.06);
-  --app-control-active: rgba(124, 92, 255, 0.15);
+  --app-control-active: rgba(132, 122, 196, 0.11);
   --app-control-border: rgba(255, 255, 255, 0.08);
-  --app-chip-active-bg: rgba(124, 92, 255, 0.18);
-  --app-chip-active-border: rgba(124, 92, 255, 0.28);
+  --app-chip-active-bg: rgba(132, 122, 196, 0.13);
+  --app-chip-active-border: rgba(132, 122, 196, 0.22);
   --app-chip-active-text: rgba(255, 255, 255, 0.92);
   --app-mode-tab-bg: rgba(255, 255, 255, 0.03);
   --app-mode-tab-hover: rgba(255, 255, 255, 0.06);
   --app-mode-tab-border: rgba(255, 255, 255, 0.08);
   --app-mode-tab-text: rgba(255, 255, 255, 0.62);
-  --app-mode-tab-active-bg: rgba(124, 92, 255, 0.16);
-  --app-mode-tab-active-border: rgba(124, 92, 255, 0.3);
+  --app-mode-tab-active-bg: rgba(132, 122, 196, 0.12);
+  --app-mode-tab-active-border: rgba(132, 122, 196, 0.22);
   --app-mode-tab-active-text: rgba(255, 255, 255, 0.92);
   --app-shadow-soft:
     0 0 0 1px rgba(255, 255, 255, 0.02),
@@ -53,7 +54,7 @@
   --app-button-primary-bg: rgba(255, 255, 255, 0.88);
   --app-button-primary-hover: rgba(255, 255, 255, 0.95);
   --app-button-primary-text: rgb(15 17 21);
-  --app-badge-primary-bg: rgba(124, 92, 255, 0.18);
+  --app-badge-primary-bg: rgba(132, 122, 196, 0.13);
   --app-badge-primary-text: rgba(255, 255, 255, 0.92);
   --app-chat-bubble-user-bg: rgba(255, 255, 255, 0.88);
   --app-chat-bubble-user-text: rgb(15 17 21);
