@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   Copy,
+  MoreHorizontal,
   Plus,
   Search,
 } from 'lucide-react';
@@ -28,6 +29,8 @@ import {
   type SessionActionTarget,
   type SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
+import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
+import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 
 type ConversationItem = {
   id: string;
@@ -46,6 +49,12 @@ type ConversationItem = {
 type ParticipantSpaceItem = ParticipantSpaceViewModel;
 
 const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+
+export function participantSpaceSessionRowTitle(title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return '# Untitled session';
+  return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
+}
 
 function isManageableLocalChatConversation(conversation: ConversationItem) {
   return conversation.type === 'owned-agent'
@@ -106,6 +115,7 @@ type WorkspaceSidebarProps = {
   filteredConversations: ConversationItem[];
   participantSpaces: ParticipantSpaceItem[];
   filteredParticipantSpaces: ParticipantSpaceItem[];
+  initialSelectedParticipantSpaceId?: string | null;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
@@ -314,7 +324,6 @@ export function WorkspaceSidebar({
   activeNav,
   setActiveNav,
   chatConversations,
-  onCreateChatSession,
   chatSearch,
   setChatSearch,
   chatFilter,
@@ -322,8 +331,16 @@ export function WorkspaceSidebar({
   desktopChatError,
   participantSpaces,
   filteredParticipantSpaces,
+  initialSelectedParticipantSpaceId = null,
   activeConvId,
   onSelectChatSession,
+  onStartChatWithPerson,
+  onStartChatWithAgent,
+  onCreateChatGroup,
+  onRenameChatGroup,
+  onAddChatGroupMembers,
+  onRemoveChatGroupMember,
+  onSetChatGroupAdmin,
   onArchiveChatSession,
   onDeleteChatSession,
   onMoveChatSessionToProject,
@@ -357,7 +374,9 @@ export function WorkspaceSidebar({
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
-  const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(null);
+  const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
+  const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
@@ -365,6 +384,10 @@ export function WorkspaceSidebar({
   const selectedParticipantSpace = selectedParticipantSpaceId
     ? participantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
     : null;
+  const openChatCreateDialog = () => {
+    setActiveNav('chats');
+    setIsChatCreateDialogOpen(true);
+  };
 
   useEffect(() => {
     if (!sessionContextMenu) return;
@@ -442,7 +465,7 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            <Button size="icon" className="h-9 w-9 rounded-[14px]">
+            <Button size="icon" className="h-9 w-9 rounded-[14px]" onClick={openChatCreateDialog} aria-label="Start a chat">
               <Plus className="h-4 w-4" />
             </Button>
             <IdentityAvatar
@@ -471,10 +494,10 @@ export function WorkspaceSidebar({
                     </div>
                     <button
                       type="button"
-                      onClick={onCreateChatSession}
+                      onClick={openChatCreateDialog}
                       className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="New chat session"
-                      aria-label="New chat session"
+                      title="Start a chat"
+                      aria-label="Start a chat"
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </button>
@@ -597,12 +620,23 @@ export function WorkspaceSidebar({
                             </button>
                             <div className="flex items-center gap-2.5">
                               <ParticipantSpaceAvatarStack space={selectedParticipantSpace} />
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="truncate text-[13px] font-semibold text-white" title={selectedParticipantSpace.title}>{selectedParticipantSpace.title}</div>
                                 <div className="mt-px text-[10.5px] text-slate-500">
                                   {participantSpaceDetailText(selectedParticipantSpace)}
                                 </div>
                               </div>
+                              {selectedParticipantSpace.kind === 'group' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsGroupDetailsDialogOpen(true)}
+                                  className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] text-slate-400 transition hover:bg-white/10 hover:text-white"
+                                  title="Group details"
+                                  aria-label="Group details"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              ) : null}
                             </div>
                           </div>
 
@@ -636,7 +670,7 @@ export function WorkspaceSidebar({
                                       <div className="min-w-0 flex-1">
                                         <div className="flex items-start gap-2.5">
                                           <div className="min-w-0 flex-1">
-                                            <div className="truncate text-[12px] font-medium text-slate-100" title={session.title}>{session.title}</div>
+                                            <div className="truncate text-[12px] font-medium text-slate-100" title={participantSpaceSessionRowTitle(session.title)}>{participantSpaceSessionRowTitle(session.title)}</div>
                                           </div>
                                           <SidebarSessionMetaColumn
                                             timeLabel={rowTimeLabel}
@@ -945,6 +979,27 @@ export function WorkspaceSidebar({
           onMoveToProject={onMoveChatSessionToProject}
         />
       ) : null}
+
+      <ChatCreateDialog
+        isOpen={isChatCreateDialogOpen}
+        contacts={displayedContacts}
+        agents={displayedAgents}
+        onClose={() => setIsChatCreateDialogOpen(false)}
+        onStartPerson={onStartChatWithPerson}
+        onStartAgent={onStartChatWithAgent}
+        onCreateGroup={onCreateChatGroup}
+      />
+
+      <GroupDetailsDialog
+        isOpen={isGroupDetailsDialogOpen}
+        space={selectedParticipantSpace}
+        contacts={displayedContacts}
+        onClose={() => setIsGroupDetailsDialogOpen(false)}
+        onRename={onRenameChatGroup}
+        onAddMembers={onAddChatGroupMembers}
+        onRemoveMember={onRemoveChatGroupMember}
+        onSetAdmin={onSetChatGroupAdmin}
+      />
 
       {isCreateProjectDialogOpen ? (
         <ProjectCreateDialog

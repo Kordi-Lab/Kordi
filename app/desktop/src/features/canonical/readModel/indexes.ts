@@ -231,6 +231,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
 
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
+    if (participant.state !== 'active') continue;
     participantsBySessionId.set(participant.sessionId, [...(participantsBySessionId.get(participant.sessionId) ?? []), participant]);
   }
 

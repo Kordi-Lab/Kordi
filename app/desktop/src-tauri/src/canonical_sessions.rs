@@ -416,6 +416,11 @@ fn open_or_create_session_in_db(
     let title = default_session_title(conn, &request)?;
     let status = validate_status(request.status, "active");
     let metadata = json_to_db(&request.metadata)?;
+    let participant_role = if kind == "group" {
+        "person"
+    } else {
+        "delegate"
+    };
     let now = now_ms();
 
     conn.execute(
@@ -468,7 +473,7 @@ fn open_or_create_session_in_db(
             conn,
             &id,
             participant,
-            "delegate",
+            participant_role,
             Some(&request.created_by_identity_id),
             now,
         )?;

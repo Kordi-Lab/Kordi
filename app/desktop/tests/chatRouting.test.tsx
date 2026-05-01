@@ -1431,6 +1431,44 @@ test('canonical read model does not override bridge agent runtime details with c
   assert.deepEqual(conversations[0]?.messages.map((message) => message.text), ['active runtime details']);
 });
 
+test('canonical read model excludes left group participants from active conversations', () => {
+  const canonicalState = {
+    storagePath: '/tmp/canonical.db',
+    profile: {
+      id: 'profile:local',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'session:group:left', kind: 'group', title: 'Alice, Bob', status: 'active', createdByIdentityId: 'human:me', metadata: {}, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId: 'session:group:left', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:left', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:left', identityId: 'human:bob', role: 'person', state: 'left', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const group = conversations.find((conversation) => conversation.id === 'session:group:left');
+
+  assert.deepEqual(group?.canonicalParticipants?.map((participant) => participant.name), ['Me', 'Alice']);
+});
+
 test('bridge chat visibility keeps empty conversations returned by backend state', () => {
   assert.equal(bridgeChatConversationIsVisible({
     outreach: null,

@@ -70,6 +70,14 @@ fn canonical_group_metadata_and_participant_role_mutations_are_stable() {
         },
     )
     .expect("create group");
+    let alice_initial_role: String = conn
+        .query_row(
+            "SELECT role FROM session_participants WHERE session_id = ?1 AND identity_id = ?2",
+            rusqlite::params![group.id, alice.id],
+            |row| row.get(0),
+        )
+        .expect("alice initial role");
+    assert_eq!(alice_initial_role, "person");
 
     rename_session_in_db(&conn, &group.id, "Design crew").expect("rename");
     set_session_metadata_in_db(

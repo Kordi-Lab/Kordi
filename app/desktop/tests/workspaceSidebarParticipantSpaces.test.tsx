@@ -4,8 +4,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import type { Conversation } from '../src/kordi-app/types';
-import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import type { Agent, Contact, Conversation } from '../src/kordi-app/types';
+import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
+import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
+import { participantSpaceSessionRowTitle, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 
 type ConversationFixture = Conversation & { _updatedAtMs?: number };
 
@@ -28,6 +30,50 @@ function conversation(overrides: Partial<ConversationFixture> = {}): Conversatio
     messages: [{ role: 'person', sender: 'Bob', text: 'Old preview', time: '09:00' }],
     updatedAtLabel: '09:00',
     _updatedAtMs: 1,
+    ...overrides,
+  };
+}
+
+function contact(overrides: Partial<Contact> = {}): Contact {
+  return {
+    id: 'contact:alice',
+    name: 'Alice',
+    initials: 'A',
+    classType: 'other-users',
+    entityType: 'Person',
+    subtitle: 'Human contact',
+    bridges: ['Bridge'],
+    status: 'Online',
+    discoverableOn: ['Bridge'],
+    detail: 'Works on product',
+    owner: 'Alice',
+    avatarSeed: 'alice',
+    profileImageUrl: null,
+    ...overrides,
+  };
+}
+
+function agent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'agent:kordi',
+    name: 'Kordi',
+    role: 'Coding partner',
+    messaging: 'Available',
+    status: 'Ready',
+    tasks: 0,
+    defaultProvider: 'openai',
+    defaultModel: 'gpt-5.2',
+    bridgesConfig: 'Bridge',
+    contactId: 'contact:kordi',
+    systemPrompt: '',
+    xMd: '',
+    identityFiles: [],
+    loadedTools: [],
+    loadedSkills: [],
+    loadedPlugins: [],
+    lastActivities: [],
+    avatarSeed: 'kordi',
+    profileImageUrl: null,
     ...overrides,
   };
 }
@@ -69,6 +115,13 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     filteredParticipantSpaces: participantSpaces,
     activeConvId: 'session:bob:new',
     onSelectChatSession: () => {},
+    onStartChatWithPerson: () => {},
+    onStartChatWithAgent: () => {},
+    onCreateChatGroup: () => {},
+    onRenameChatGroup: () => {},
+    onAddChatGroupMembers: () => {},
+    onRemoveChatGroupMember: () => {},
+    onSetChatGroupAdmin: () => {},
     onArchiveChatSession: () => {},
     onDeleteChatSession: () => {},
     onMoveChatSessionToProject: () => {},
@@ -167,6 +220,105 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
   assert.doesNotMatch(markup, /Myself \+ 2 agents/);
   assert.doesNotMatch(markup, /Group • 1 session/);
+});
+
+test('ChatCreateDialog renders create menu choices', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    contacts: [contact({ id: 'contact:alice', name: 'Alice' })],
+    agents: [agent({ id: 'agent:kordi', name: 'Kordi' })],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+  }));
+
+  assert.match(markup, /Chat with person/);
+  assert.match(markup, /Chat with agent/);
+  assert.match(markup, /Start group/);
+});
+
+test('ChatCreateDialog group picker requires at least 2 people and excludes agents', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'group',
+    contacts: [
+      contact({ id: 'contact:alice', name: 'Alice', entityType: 'Person' }),
+      contact({ id: 'contact:bob', name: 'Bob', entityType: 'Person' }),
+      contact({ id: 'contact:agent', name: 'Helper Kordi', entityType: 'External agent', classType: 'other-users-agents' }),
+    ],
+    agents: [agent({ id: 'agent:kordi', name: 'Kordi' })],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+  }));
+
+  assert.match(markup, /Select at least 2 people/);
+  assert.match(markup, /Alice/);
+  assert.match(markup, /Bob/);
+  assert.doesNotMatch(markup, /Helper Kordi/);
+});
+
+test('participant-space child session rows use hashtag titles', () => {
+  assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
+  assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
+});
+
+test('GroupDetailsDialog renders group metadata and member controls', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-details',
+    canonicalSessionId: 'session:group-details',
+    name: 'Design crew',
+    participants: ['Me', 'Alice', 'Bob'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'alice' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+    ],
+  })];
+  const [space] = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
+    isOpen: true,
+    space,
+    contacts: [contact({ id: 'contact:chen', name: 'Chen' })],
+    onClose: () => {},
+    onRename: () => {},
+    onAddMembers: () => {},
+    onRemoveMember: () => {},
+    onSetAdmin: () => {},
+  }));
+
+  assert.match(markup, /Group details/);
+  assert.match(markup, /participants/);
+  assert.match(markup, /Alice/);
+  assert.match(markup, /Make admin/);
+  assert.match(markup, /Add selected people/);
+});
+
+test('WorkspaceSidebar selected group header exposes details and hashtag child sessions', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-selected',
+    canonicalSessionId: 'session:group-selected',
+    name: 'Hi shu',
+    participants: ['Me', 'Alice', 'Bob'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group-selected',
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.match(markup, /aria-label="Group details"/);
+  assert.match(markup, /# Hi shu/);
 });
 
 test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {
