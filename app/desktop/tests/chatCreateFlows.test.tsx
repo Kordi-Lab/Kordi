@@ -9,6 +9,7 @@ import {
   chatSessionIdForParticipantSpaceContinuation,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
+  participantSpaceCanonicalSessionIds,
 } from '../src/features/chat/chatCreateFlows';
 import type { Agent, Contact, ParticipantSpaceViewModel } from '../src/kordi-app/types';
 
@@ -259,16 +260,47 @@ test('existingBlankSessionIdForParticipantSpace ignores New session rows that al
   assert.equal(existingBlankSessionIdForParticipantSpace(space), null);
 });
 
+test('participantSpaceCanonicalSessionIds returns every canonical session in a group space', () => {
+  const space = participantSpace({
+    kind: 'group',
+    id: 'group:session:group:root',
+    sessions: [
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:group:followup',
+        canonicalSessionId: 'session:group:followup',
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:group:root-local-row',
+        canonicalSessionId: 'session:group:root',
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:group:root',
+        canonicalSessionId: 'session:group:root',
+      },
+    ],
+  });
+
+  assert.deepEqual(participantSpaceCanonicalSessionIds(space), [
+    'session:group:followup',
+    'session:group:root',
+  ]);
+});
+
 test('buildChatCreateGroupMetadata records stable admin and member policy', () => {
   const metadata = buildChatCreateGroupMetadata({
     creatorIdentityId: 'human:me',
     selectedContactIds: ['contact:alice', 'contact:bob'],
     selectedNames: ['Alice', 'Bob'],
     customName: 'Design crew',
+    groupSpaceId: 'session:group:root',
   });
 
   assert.deepEqual(metadata.adminIdentityIds, ['human:me']);
   assert.deepEqual(metadata.initialContactIds, ['contact:alice', 'contact:bob']);
   assert.equal(metadata.customName, 'Design crew');
+  assert.equal(metadata.groupSpaceId, 'session:group:root');
   assert.equal(metadata.memberApprovalPolicy, 'under-50-open');
 });

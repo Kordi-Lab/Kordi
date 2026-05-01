@@ -32,7 +32,6 @@ import {
   chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForParticipantSpace,
-  groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
@@ -53,7 +52,6 @@ import {
   moveDesktopChatSessionToProject,
   openOrCreateCanonicalSession,
   removeCanonicalSessionParticipant,
-  renameCanonicalSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -1161,12 +1159,11 @@ export function useKordiAppModel() {
       throw new Error('Select at least 2 people to start a group.');
     }
     const selectedNames = contacts.map((contact) => contact.name);
-    const title = request.name?.trim() || groupDefaultName(selectedNames) || 'New group';
     const sessionId = `session:group:${crypto.randomUUID()}`;
     const nextState = await openOrCreateCanonicalSession({
       id: sessionId,
       kind: 'group',
-      title,
+      title: 'New session',
       status: 'active',
       createdByIdentityId: creatorIdentityId,
       primaryIdentityId: null,
@@ -1177,6 +1174,7 @@ export function useKordiAppModel() {
         selectedContactIds: contacts.map((contact) => contact.id),
         selectedNames,
         customName: request.name,
+        groupSpaceId: sessionId,
       }),
     });
     setCanonicalSessionState(nextState);
@@ -1235,6 +1233,7 @@ export function useKordiAppModel() {
         const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
         const customName = metadataString(sourceMetadata, 'customName') || space.title;
         const participantNames = members.map((member) => member.name);
+        const groupSpaceId = metadataString(sourceMetadata, 'groupSpaceId') || sourceSessionId || space.id;
         const nextState = await openOrCreateCanonicalSession({
           id: sessionId,
           kind: 'group',
@@ -1249,6 +1248,7 @@ export function useKordiAppModel() {
             schemaVersion: 1,
             kind: 'chat-group',
             customName,
+            groupSpaceId,
             adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
             initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
             initialParticipantNames: uniqueStrings([
@@ -1304,23 +1304,34 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
-  const handleRenameChatGroup = useCallback(async (sessionId: string, name: string) => {
+  const handleRenameChatGroup = useCallback(async (sessionIds: string[], name: string) => {
     if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
     const title = name.trim();
     if (!title) throw new Error('Group name is required.');
     setDesktopChatError(null);
-    const renamedState = await renameCanonicalSession({ sessionId, title });
-    setCanonicalSessionState(renamedState);
-    const metadata = {
-      ...sessionMetadataRecord(renamedState, sessionId),
-      customName: title,
-    };
-    const nextState = await updateCanonicalSessionMetadata({ sessionId, metadata });
-    setCanonicalSessionState(nextState);
-  }, [isNativeShell, setDesktopChatError]);
 
-  const handleAddChatGroupMembers = useCallback(async (sessionId: string, contactIds: string[]) => {
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    for (const sessionId of groupSessionIds) {
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        metadata: {
+          ...currentMetadata,
+          customName: title,
+          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+        },
+      });
+    }
+    setCanonicalSessionState(nextState);
+  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
+
+  const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
     const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId) {
@@ -1330,72 +1341,103 @@ export function useKordiAppModel() {
       .map((contactId) => peopleContactById.get(contactId))
       .filter((contact): contact is Contact => Boolean(contact));
     const identityIds: string[] = [];
+    let nextState = canonicalSessionState;
     for (const contact of contacts) {
       const identityRequest = contactCanonicalIdentityRequest(contact);
       const identityId = identityRequest.id?.trim();
       if (!identityId) continue;
-      const identityState = await upsertCanonicalIdentity(identityRequest);
-      setCanonicalSessionState(identityState);
+      nextState = await upsertCanonicalIdentity(identityRequest);
       identityIds.push(identityId);
     }
     const participantIdentityIds = uniqueStrings(identityIds);
     if (participantIdentityIds.length === 0) return;
-    const nextState = await addCanonicalSessionParticipants({
-      sessionId,
-      identityIds: participantIdentityIds,
-      addedByIdentityId: creatorIdentityId,
-    });
+
+    for (const sessionId of groupSessionIds) {
+      nextState = await addCanonicalSessionParticipants({
+        sessionId,
+        identityIds: participantIdentityIds,
+        addedByIdentityId: creatorIdentityId,
+      });
+    }
+
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    const addedContactIds = contacts.map((contact) => contact.id);
+    const addedNames = contacts.map((contact) => contact.name);
+    for (const sessionId of groupSessionIds) {
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        metadata: {
+          ...currentMetadata,
+          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          initialContactIds: uniqueStrings([...metadataStringArray(currentMetadata, 'initialContactIds'), ...addedContactIds]),
+          initialParticipantNames: uniqueStrings([...metadataStringArray(currentMetadata, 'initialParticipantNames'), ...addedNames]),
+        },
+      });
+    }
     setCanonicalSessionState(nextState);
   }, [
-    canonicalSessionState?.profile.humanIdentityId,
+    canonicalSessionState,
     isNativeShell,
     peopleContactById,
     setDesktopChatError,
   ]);
 
-  const handleRemoveChatGroupMember = useCallback(async (sessionId: string, identityId: string) => {
+  const handleRemoveChatGroupMember = useCallback(async (sessionIds: string[], identityId: string) => {
     if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
-    const removedState = await removeCanonicalSessionParticipant({ sessionId, identityId });
-    setCanonicalSessionState(removedState);
-    const metadata = sessionMetadataRecord(removedState, sessionId);
-    const adminIds = adminIdentityIdsFromMetadata(metadata).filter((adminId) => adminId !== identityId);
-    const nextState = await updateCanonicalSessionMetadata({
-      sessionId,
-      metadata: {
-        ...metadata,
-        adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(removedState, sessionId),
-      },
-    });
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    for (const sessionId of groupSessionIds) {
+      nextState = await removeCanonicalSessionParticipant({ sessionId, identityId });
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const adminIds = adminIdentityIdsFromMetadata(currentMetadata).filter((adminId) => adminId !== identityId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        metadata: {
+          ...currentMetadata,
+          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(nextState, sessionId),
+        },
+      });
+    }
     setCanonicalSessionState(nextState);
-  }, [isNativeShell, setDesktopChatError]);
+  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
 
-  const handleSetChatGroupAdmin = useCallback(async (sessionId: string, identityId: string, isAdmin: boolean) => {
+  const handleSetChatGroupAdmin = useCallback(async (sessionIds: string[], identityId: string, isAdmin: boolean) => {
     if (!isNativeShell) return;
+    const groupSessionIds = uniqueStrings(sessionIds);
+    if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
-    const roleState = await setCanonicalSessionParticipantRole({
-      sessionId,
-      identityId,
-      role: isAdmin ? 'admin' : 'person',
-    });
-    setCanonicalSessionState(roleState);
-    const metadata = sessionMetadataRecord(roleState, sessionId);
-    const adminIds = uniqueStrings([
-      ...adminIdentityIdsFromMetadata(metadata),
-      ...activeGroupAdminIds(roleState, sessionId),
-    ]);
-    const nextAdminIds = isAdmin
-      ? uniqueStrings([...adminIds, identityId])
-      : adminIds.filter((adminId) => adminId !== identityId);
-    const nextState = await updateCanonicalSessionMetadata({
-      sessionId,
-      metadata: {
-        ...metadata,
-        adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(roleState, sessionId),
-      },
-    });
+    const fallbackGroupSpaceId = groupSessionIds[0];
+    let nextState = canonicalSessionState;
+    for (const sessionId of groupSessionIds) {
+      nextState = await setCanonicalSessionParticipantRole({
+        sessionId,
+        identityId,
+        role: isAdmin ? 'admin' : 'person',
+      });
+      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const adminIds = uniqueStrings([
+        ...adminIdentityIdsFromMetadata(currentMetadata),
+        ...activeGroupAdminIds(nextState, sessionId),
+      ]);
+      const nextAdminIds = isAdmin
+        ? uniqueStrings([...adminIds, identityId])
+        : adminIds.filter((adminId) => adminId !== identityId);
+      nextState = await updateCanonicalSessionMetadata({
+        sessionId,
+        metadata: {
+          ...currentMetadata,
+          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(nextState, sessionId),
+        },
+      });
+    }
     setCanonicalSessionState(nextState);
-  }, [isNativeShell, setDesktopChatError]);
+  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
 
   const {
     rootThemeClass,

@@ -30,6 +30,7 @@ export type ChatGroupMetadata = {
   schemaVersion: 1;
   kind: 'chat-group';
   customName: string | null;
+  groupSpaceId: string | null;
   adminIdentityIds: string[];
   initialContactIds: string[];
   initialParticipantNames: string[];
@@ -134,17 +135,24 @@ export function existingBlankSessionIdForParticipantSpace(space: ParticipantSpac
   return blankSession?.canonicalSessionId ?? blankSession?.id ?? null;
 }
 
+export function participantSpaceCanonicalSessionIds(space: ParticipantSpaceViewModel) {
+  return uniqueNonEmpty(space.sessions.map((session) => session.canonicalSessionId ?? session.id));
+}
+
 export function buildChatCreateGroupMetadata(input: {
   creatorIdentityId: string;
   selectedContactIds: string[];
   selectedNames: string[];
   customName?: string | null;
+  groupSpaceId?: string | null;
 }): ChatGroupMetadata {
   const customName = cleanText(input.customName);
+  const groupSpaceId = cleanText(input.groupSpaceId);
   return {
     schemaVersion: 1,
     kind: 'chat-group',
     customName: customName || null,
+    groupSpaceId: groupSpaceId || null,
     adminIdentityIds: uniqueNonEmpty([input.creatorIdentityId]),
     initialContactIds: uniqueNonEmpty(input.selectedContactIds),
     initialParticipantNames: uniqueNonEmpty(input.selectedNames),

@@ -143,10 +143,18 @@ function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: Con
   return participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
 }
 
+function groupSpaceIdForConversation(conversation: Conversation) {
+  const explicit = cleanOptionalText(conversation.participantSpaceId);
+  if (explicit) return explicit;
+  const metadata = metadataRecord(conversation.metadata);
+  const groupSpaceId = metadata.groupSpaceId;
+  return typeof groupSpaceId === 'string' ? groupSpaceId.trim() : '';
+}
+
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
   if (kind === 'self') return 'self:local';
   if (kind === 'group') {
-    const explicit = conversation.participantSpaceId?.trim();
+    const explicit = groupSpaceIdForConversation(conversation);
     if (explicit) return `group:${explicit}`;
     const participantKey = nonSelfParticipants(conversation)
       .map((participant) => participant.id)

@@ -122,6 +122,13 @@ export function syntheticConversationType(
   return 'owned-agent';
 }
 
+function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return null;
+  const metadata = sessionMetadata(session);
+  const groupSpaceId = stringValue(metadata.groupSpaceId);
+  return groupSpaceId?.trim() || null;
+}
+
 export function sessionHasActiveProcessing(messages: Message[]) {
   return messages.some((message) => message.turn && !message.turn.completed)
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
@@ -162,6 +169,7 @@ export function syntheticConversation(
     avatarSeed: primary?.avatarKey ?? null,
     profileImageUrl: primary?.profileImageUrl ?? null,
     participantAvatarSeeds,
+    participantSpaceId: syntheticParticipantSpaceId(session),
     metadata: session.metadata,
     bridgeTarget,
     canonicalStoragePath: undefined,

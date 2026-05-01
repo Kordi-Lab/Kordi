@@ -283,6 +283,51 @@ test('buildParticipantSpaces uses explicit custom group names before inferred pe
   assert.equal(spaces[0]?.title, 'My group');
 });
 
+test('buildParticipantSpaces keeps a stable group space when invited members change participants', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:group:root',
+      canonicalSessionId: 'session:group:root',
+      type: 'person',
+      name: 'Kickoff',
+      metadata: { customName: 'Design crew', groupSpaceId: 'session:group:root' },
+      participants: ['Me', 'Alice', 'Bob'],
+      _updatedAtMs: 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:group:followup',
+      canonicalSessionId: 'session:group:followup',
+      type: 'person',
+      name: 'Follow-up',
+      metadata: { customName: 'Design crew', groupSpaceId: 'session:group:root' },
+      participants: ['Me', 'Alice', 'Bob', 'Chen'],
+      _updatedAtMs: 2,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+        { id: 'human:chen', name: 'Chen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'chen' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.id, 'group:session:group:root');
+  assert.equal(spaces[0]?.title, 'Design crew');
+  assert.equal(spaces[0]?.sessionCount, 2);
+  assert.deepEqual(spaces[0]?.participants.map((participant) => participant.id), [
+    'human:me',
+    'human:alice',
+    'human:bob',
+    'human:chen',
+  ]);
+});
+
 test('buildParticipantSpaces truncates long inferred group names with a remaining people count', () => {
   const humans = Array.from({ length: 105 }, (_, index) => ({
     id: `human:shuyhere${index + 1}`,

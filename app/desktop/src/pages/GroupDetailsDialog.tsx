@@ -3,7 +3,7 @@ import type { CSSProperties, FormEvent } from 'react';
 import { MoreHorizontal, ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { buildChatCreatePersonOptions, contactCanonicalIdentityRequest } from '@/features/chat/chatCreateFlows';
+import { buildChatCreatePersonOptions, contactCanonicalIdentityRequest, participantSpaceCanonicalSessionIds } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -19,10 +19,10 @@ export type GroupDetailsDialogProps = {
   space: ParticipantSpaceViewModel | null;
   contacts: Contact[];
   onClose: () => void;
-  onRename: (sessionId: string, name: string) => Promise<void> | void;
-  onAddMembers: (sessionId: string, contactIds: string[]) => Promise<void> | void;
-  onRemoveMember: (sessionId: string, identityId: string) => Promise<void> | void;
-  onSetAdmin: (sessionId: string, identityId: string, isAdmin: boolean) => Promise<void> | void;
+  onRename: (sessionIds: string[], name: string) => Promise<void> | void;
+  onAddMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
+  onRemoveMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
+  onSetAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
 };
 
@@ -106,8 +106,8 @@ export function GroupDetailsDialog({
   anchorRect = null,
 }: GroupDetailsDialogProps) {
   const session = space?.sessions[0] ?? null;
-  const sessionId = session?.canonicalSessionId ?? session?.id ?? '';
-  const allParticipants = session?.conversation.canonicalParticipants ?? space?.participants ?? [];
+  const groupSessionIds = space ? participantSpaceCanonicalSessionIds(space) : [];
+  const allParticipants = space?.participants ?? session?.conversation.canonicalParticipants ?? [];
   const members = allParticipants.filter(isHumanMember);
   const memberIds = new Set(members.map((member) => member.id));
   const adminCount = members.filter(isAdminMember).length;
@@ -126,7 +126,7 @@ export function GroupDetailsDialog({
     setSelectedContactIds([]);
   }, [isOpen, space?.id, space?.title]);
 
-  if (!isOpen || !space || !sessionId) return null;
+  if (!isOpen || !space || groupSessionIds.length === 0) return null;
 
   const { style, arrowStyle, placement } = groupManagementGeometry(anchorRect);
 
@@ -134,7 +134,7 @@ export function GroupDetailsDialog({
     event.preventDefault();
     const name = nameDraft.trim();
     if (!name) return;
-    void onRename(sessionId, name);
+    void onRename(groupSessionIds, name);
   };
 
   const toggleAddContact = (contactId: string) => {
@@ -223,7 +223,7 @@ export function GroupDetailsDialog({
                         type="button"
                         className={cn('app-group-management-admin-button rounded-[10px] px-2 py-1 text-[10px] transition', admin && 'app-group-management-admin-button-active', isLastAdmin && 'cursor-not-allowed opacity-50')}
                         disabled={isLastAdmin}
-                        onClick={() => { void onSetAdmin(sessionId, member.id, !admin); }}
+                        onClick={() => { void onSetAdmin(groupSessionIds, member.id, !admin); }}
                       >
                         {admin ? 'Demote' : 'Make admin'}
                       </button>
@@ -232,7 +232,7 @@ export function GroupDetailsDialog({
                         className={cn('app-group-management-remove-button grid h-7 w-7 place-items-center rounded-[10px] transition', isLastAdmin && 'cursor-not-allowed opacity-50')}
                         disabled={isLastAdmin}
                         aria-label={`Remove ${member.name}`}
-                        onClick={() => { void onRemoveMember(sessionId, member.id); }}
+                        onClick={() => { void onRemoveMember(groupSessionIds, member.id); }}
                       >
                         <UserMinus className="h-3.5 w-3.5" />
                       </button>
@@ -269,7 +269,7 @@ export function GroupDetailsDialog({
                 className="mt-2 h-9 w-full rounded-[12px] text-[12px]"
                 disabled={selectedContactIds.length === 0}
                 onClick={() => {
-                  void onAddMembers(sessionId, selectedContactIds);
+                  void onAddMembers(groupSessionIds, selectedContactIds);
                   setSelectedContactIds([]);
                 }}
               >
