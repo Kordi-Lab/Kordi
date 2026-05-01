@@ -328,6 +328,48 @@ test('buildParticipantSpaces keeps a stable group space when invited members cha
   ]);
 });
 
+test('buildParticipantSpaces keeps legacy continued group sessions in their original group after invites', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:group:legacy-root',
+      canonicalSessionId: 'session:group:legacy-root',
+      type: 'person',
+      name: 'Kickoff',
+      metadata: { customName: 'Design crew' },
+      participants: ['Me', 'Alice', 'Bob'],
+      _updatedAtMs: 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:group:legacy-followup',
+      canonicalSessionId: 'session:group:legacy-followup',
+      type: 'person',
+      name: 'Follow-up',
+      metadata: { customName: 'Design crew', continuedFromSpaceId: 'group:human:alice+human:bob' },
+      participants: ['Me', 'Alice', 'Bob', 'Chen'],
+      _updatedAtMs: 2,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+        { id: 'human:chen', name: 'Chen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'chen' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.id, 'group:human:alice+human:bob');
+  assert.equal(spaces[0]?.sessionCount, 2);
+  assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), [
+    'session:group:legacy-followup',
+    'session:group:legacy-root',
+  ]);
+});
+
 test('buildParticipantSpaces truncates long inferred group names with a remaining people count', () => {
   const humans = Array.from({ length: 105 }, (_, index) => ({
     id: `human:shuyhere${index + 1}`,

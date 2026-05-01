@@ -122,11 +122,16 @@ export function syntheticConversationType(
   return 'owned-agent';
 }
 
+function normalizeParticipantSpaceId(value: string) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('group:') ? trimmed.slice('group:'.length) : trimmed;
+}
+
 function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
   if (session.kind !== 'group') return null;
   const metadata = sessionMetadata(session);
-  const groupSpaceId = stringValue(metadata.groupSpaceId);
-  return groupSpaceId?.trim() || null;
+  const groupSpaceId = stringValue(metadata.groupSpaceId) ?? stringValue(metadata.continuedFromSpaceId);
+  return groupSpaceId ? normalizeParticipantSpaceId(groupSpaceId) || null : null;
 }
 
 export function sessionHasActiveProcessing(messages: Message[]) {

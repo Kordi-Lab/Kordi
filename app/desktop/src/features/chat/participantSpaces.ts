@@ -143,12 +143,24 @@ function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: Con
   return participants.find((participant) => !isSelfParticipant(participant)) ?? participants[0];
 }
 
+function normalizeGroupSpaceId(value: string) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('group:') ? trimmed.slice('group:'.length) : trimmed;
+}
+
+function metadataStringValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function groupSpaceIdForConversation(conversation: Conversation) {
   const explicit = cleanOptionalText(conversation.participantSpaceId);
-  if (explicit) return explicit;
+  if (explicit) return normalizeGroupSpaceId(explicit);
   const metadata = metadataRecord(conversation.metadata);
-  const groupSpaceId = metadata.groupSpaceId;
-  return typeof groupSpaceId === 'string' ? groupSpaceId.trim() : '';
+  return normalizeGroupSpaceId(
+    metadataStringValue(metadata, 'groupSpaceId')
+    || metadataStringValue(metadata, 'continuedFromSpaceId'),
+  );
 }
 
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {

@@ -189,6 +189,18 @@ function metadataString(metadata: Record<string, unknown>, key: string) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeStoredGroupSpaceId(value: string) {
+  const text = value.trim();
+  return text.startsWith('group:') ? text.slice('group:'.length) : text;
+}
+
+function metadataGroupSpaceId(metadata: Record<string, unknown>) {
+  return normalizeStoredGroupSpaceId(
+    metadataString(metadata, 'groupSpaceId')
+    || metadataString(metadata, 'continuedFromSpaceId'),
+  );
+}
+
 function uniqueStrings(values: string[]) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -1233,7 +1245,7 @@ export function useKordiAppModel() {
         const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
         const customName = metadataString(sourceMetadata, 'customName') || space.title;
         const participantNames = members.map((member) => member.name);
-        const groupSpaceId = metadataString(sourceMetadata, 'groupSpaceId') || sourceSessionId || space.id;
+        const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
         const nextState = await openOrCreateCanonicalSession({
           id: sessionId,
           kind: 'group',
@@ -1321,7 +1333,7 @@ export function useKordiAppModel() {
         metadata: {
           ...currentMetadata,
           customName: title,
-          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
         },
       });
     }
@@ -1369,7 +1381,7 @@ export function useKordiAppModel() {
         sessionId,
         metadata: {
           ...currentMetadata,
-          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           initialContactIds: uniqueStrings([...metadataStringArray(currentMetadata, 'initialContactIds'), ...addedContactIds]),
           initialParticipantNames: uniqueStrings([...metadataStringArray(currentMetadata, 'initialParticipantNames'), ...addedNames]),
         },
@@ -1398,7 +1410,7 @@ export function useKordiAppModel() {
         sessionId,
         metadata: {
           ...currentMetadata,
-          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(nextState, sessionId),
         },
       });
@@ -1431,7 +1443,7 @@ export function useKordiAppModel() {
         sessionId,
         metadata: {
           ...currentMetadata,
-          groupSpaceId: metadataString(currentMetadata, 'groupSpaceId') || fallbackGroupSpaceId,
+          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
           adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(nextState, sessionId),
         },
       });
