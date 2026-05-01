@@ -161,8 +161,41 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   }) as never));
 
   assert.match(markup, /shu/);
-  assert.match(markup, /Person \+ 1 agent • 1 session/);
+  assert.match(markup, /Person • 1 session/);
   assert.match(markup, /Myself/);
-  assert.match(markup, /Myself \+ 2 agents • 2 sessions/);
+  assert.match(markup, /Myself • 2 sessions/);
+  assert.doesNotMatch(markup, /Person \+ 1 agent/);
+  assert.doesNotMatch(markup, /Myself \+ 2 agents/);
   assert.doesNotMatch(markup, /Group • 1 session/);
+});
+
+test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group-with-agent',
+      canonicalSessionId: 'session:group-with-agent',
+      name: 'hi shu',
+      subtitle: 'session:bridge:humans:8e32e6b4-b8e7-4591-a412-8613ad09fe25',
+      messages: [],
+      participants: ['Me', 'shuyhere1', 'shuyhere2', 'Helper Kordi'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:shuyhere1', name: 'shuyhere1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere1' },
+        { id: 'human:shuyhere2', name: 'shuyhere2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere2' },
+        { id: 'agent:helper-kordi', name: 'Helper Kordi', kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'helper-kordi' },
+      ],
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group-with-agent',
+  }) as never));
+
+  assert.match(markup, /shuyhere1, shuyhere2/);
+  assert.match(markup, /Group • 2 people • 1 session/);
+  assert.doesNotMatch(markup, /Helper Kordi/);
+  assert.doesNotMatch(markup, /session:bridge:humans/);
 });

@@ -245,10 +245,6 @@ function isParticipantSpaceSelf(participant: ParticipantSpaceItem['participants'
     || (participant.source === 'local' && participant.kind === 'human');
 }
 
-function participantSpaceAgentCount(space: ParticipantSpaceItem) {
-  return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'agent').length;
-}
-
 function participantSpaceHumanCount(space: ParticipantSpaceItem) {
   return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'human').length;
 }
@@ -262,12 +258,11 @@ function participantSpaceKindText(space: ParticipantSpaceItem) {
 
 function participantSpaceDetailText(space: ParticipantSpaceItem) {
   const sessionText = pluralize(space.sessionCount, 'session');
-  const agentCount = participantSpaceAgentCount(space);
   if (space.kind === 'self') {
-    return `${agentCount > 0 ? `Myself + ${pluralize(agentCount, 'agent')}` : 'Myself'} • ${sessionText}`;
+    return `Myself • ${sessionText}`;
   }
   if (space.kind === 'direct-human') {
-    return `${agentCount > 0 ? `Person + ${pluralize(agentCount, 'agent')}` : 'Person'} • ${sessionText}`;
+    return `Person • ${sessionText}`;
   }
   if (space.kind === 'group') {
     const humanCount = participantSpaceHumanCount(space);
@@ -282,9 +277,6 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
     ? space.avatarStack
     : [{ kind: space.kind === 'direct-agent' ? 'agent' as const : 'human' as const, seed: space.id, imageUrl: null }];
 
-  const agentCount = participantSpaceAgentCount(space);
-  const showAgentBadge = (space.kind === 'self' || space.kind === 'direct-human') && agentCount > 0;
-
   if (avatars.length === 1) {
     const avatar = avatars[0];
     return (
@@ -296,11 +288,6 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
           imageUrl={avatar.imageUrl ?? undefined}
           className="h-9 w-9 border border-white/10"
         />
-        {showAgentBadge ? (
-          <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-slate-950/80 bg-slate-200 px-1 text-[8px] font-semibold leading-none text-slate-950 shadow-[0_1px_4px_rgba(2,6,23,0.35)]" aria-hidden="true">
-            {agentCount > 9 ? '9+' : `+${agentCount}`}
-          </span>
-        ) : null}
       </div>
     );
   }

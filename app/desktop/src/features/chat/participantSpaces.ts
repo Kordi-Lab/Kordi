@@ -10,10 +10,23 @@ import type {
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
+function isRawSessionIdText(value: string) {
+  const text = value.trim();
+  return text.startsWith('session:')
+    || text.startsWith('bridge:')
+    || text.startsWith('canonical:')
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+}
+
+function safePreviewText(value: string | undefined | null) {
+  const text = value?.trim() ?? '';
+  return text && !isRawSessionIdText(text) ? text : '';
+}
+
 function latestMessageText(conversation: Conversation) {
-  return conversation.messages[conversation.messages.length - 1]?.text?.trim()
-    || conversation.subtitle.trim()
-    || conversation.name.trim();
+  return safePreviewText(conversation.messages[conversation.messages.length - 1]?.text)
+    || safePreviewText(conversation.subtitle)
+    || safePreviewText(conversation.name);
 }
 
 function conversationTimestamp(conversation: Conversation, fallbackIndex: number) {
@@ -144,13 +157,21 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
   }
 }
 
+function participantNameList(participants: ConversationParticipant[]) {
+  const names = participants.map((participant) => participant.name.trim()).filter(Boolean);
+  if (names.length <= 2) return names.join(', ');
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
+}
+
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
-  const nonSelf = participants.filter((participant) => !isSelfParticipant(participant));
   if (kind === 'self') return 'Myself';
   if (kind === 'group') {
-    return latestSession?.conversation.name || nonSelf.map((participant) => participant.name).join(', ') || 'Group';
+    return participantNameList(nonSelfHumans(participants))
+      || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
+      || safePreviewText(latestSession?.conversation.name)
+      || 'Group';
   }
-  return primaryParticipantForKind(kind, participants)?.name || latestSession?.conversation.name || 'Chat';
+  return primaryParticipantForKind(kind, participants)?.name || safePreviewText(latestSession?.conversation.name) || 'Chat';
 }
 
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
@@ -159,11 +180,7 @@ function avatarParticipants(kind: ParticipantSpaceKind, participants: Conversati
     return primary ? [primary] : [];
   }
   if (kind === 'group') {
-    return [
-      ...nonSelfHumans(participants),
-      ...nonSelfAgents(participants),
-      ...participants.filter((participant) => !isSelfParticipant(participant) && participant.kind !== 'human' && participant.kind !== 'agent'),
-    ];
+    return nonSelfHumans(participants);
   }
   const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];

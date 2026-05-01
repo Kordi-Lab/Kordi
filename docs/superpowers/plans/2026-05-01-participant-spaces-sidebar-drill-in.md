@@ -834,15 +834,93 @@ Use `self:local` as the stable default self-space id. Use `Myself` as the self-s
 
 - [ ] **Step 3: Polish the sidebar labels and avatars**
 
-In `WorkspaceSidebar.tsx`, render detail text as:
+In `WorkspaceSidebar.tsx`, render top-level detail text without exposing agent membership:
 
 ```ts
-Person + 1 agent • 1 session
-Myself + 2 agents • 2 sessions
+Person • 1 session
+Myself • 2 sessions
 Group • 2 people • 1 session
 ```
 
-Show a single primary avatar for self/person rows and a small `+N` agent badge instead of a large stacked avatar treatment.
+Show a single primary human/self avatar for self/person rows. Group rows show human avatars only; agents remain available inside sessions/transcripts but are not shown as participant-space members.
+
+- [ ] **Step 4: Run GREEN**
+
+Run:
+
+```bash
+pnpm --dir app/desktop test:unit -- participantSpaces.test.tsx workspaceSidebarParticipantSpaces.test.tsx
+pnpm --dir app/desktop typecheck
+```
+
+Expected: PASS.
+
+### Task 8: Hide agents from participant-space rows and derive group names from people
+
+**Files:**
+- Modify: `app/desktop/src/features/chat/participantSpaces.ts`
+- Modify: `app/desktop/src/pages/WorkspaceSidebar.tsx`
+- Modify: `app/desktop/tests/participantSpaces.test.tsx`
+- Modify: `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx`
+
+- [ ] **Step 1: Write failing tests for the screenshot regression**
+
+Add read-model tests proving inferred groups use people names instead of session titles:
+
+```ts
+assert.equal(spaces[0]?.title, 'shu, Alex');
+assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex']);
+```
+
+Add a large-group truncation test:
+
+```ts
+assert.equal(spaces[0]?.title, 'shuyhere1, shuyhere2 +103 more');
+```
+
+Add a raw subtitle guard:
+
+```ts
+assert.equal(spaces[0]?.preview, 'hi shu');
+```
+
+Add static sidebar tests proving the first-level row hides agents and raw ids:
+
+```ts
+assert.match(markup, /shuyhere1, shuyhere2/);
+assert.match(markup, /Group • 2 people • 1 session/);
+assert.doesNotMatch(markup, /Helper Kordi/);
+assert.doesNotMatch(markup, /session:bridge:humans/);
+```
+
+Run:
+
+```bash
+pnpm --dir app/desktop test:unit -- participantSpaces.test.tsx workspaceSidebarParticipantSpaces.test.tsx
+```
+
+Expected: FAIL against the prior implementation because group titles use session names, group avatars include agents, row detail mentions agents, and raw session ids can appear as previews.
+
+- [ ] **Step 2: Fix participant-space derivation**
+
+In `participantSpaces.ts`, add raw-id filtering for preview fallback. For inferred group titles, use non-self human participant names, formatted as:
+
+```text
+name1, name2
+name1, name2 +N more
+```
+
+For group avatars, return only non-self humans.
+
+- [ ] **Step 3: Fix sidebar row display**
+
+In `WorkspaceSidebar.tsx`, remove first-level `+N agent` badges and metadata. Keep top-level participant rows human/self/group centered:
+
+```text
+Person • N sessions
+Myself • N sessions
+Group • N people • N sessions
+```
 
 - [ ] **Step 4: Run GREEN**
 
@@ -863,4 +941,7 @@ Expected: PASS.
 - No invite/fan-out behavior: yes.
 - Human-centered person + agent grouping covered: yes.
 - Default self space for agent-only sessions covered: yes.
+- Top-level participant rows hide agent membership: yes.
+- Inferred group names derive from human participants and truncate large groups: yes.
+- Raw session ids are not used as participant-space previews: yes.
 - QA refresh included: yes.

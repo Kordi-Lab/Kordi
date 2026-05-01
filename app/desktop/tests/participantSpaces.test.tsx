@@ -204,9 +204,58 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
 
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.kind, 'group');
-  assert.equal(spaces[0]?.title, 'Kordi design group');
+  assert.equal(spaces[0]?.title, 'shu, Alex');
   assert.equal(spaces[0]?.participantCount, 4);
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex', 'agent-shu']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex']);
+});
+
+test('buildParticipantSpaces truncates long inferred group names with a remaining people count', () => {
+  const humans = Array.from({ length: 105 }, (_, index) => ({
+    id: `human:shuyhere${index + 1}`,
+    name: `shuyhere${index + 1}`,
+    kind: 'human' as const,
+    role: 'person',
+    source: 'bridge',
+    avatarKey: `shuyhere${index + 1}`,
+  }));
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:large-group',
+      canonicalSessionId: 'session:large-group',
+      type: 'person',
+      name: 'Large group thread',
+      participants: ['Me', ...humans.map((participant) => participant.name), 'Helper Kordi'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        ...humans,
+        { id: 'agent:helper-kordi', name: 'Helper Kordi', kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'helper-kordi' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces[0]?.title, 'shuyhere1, shuyhere2 +103 more');
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shuyhere1', 'shuyhere2', 'shuyhere3', 'shuyhere4']);
+});
+
+test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:raw-preview-group',
+      canonicalSessionId: 'session:raw-preview-group',
+      type: 'person',
+      name: 'hi shu',
+      subtitle: 'session:bridge:humans:8e32e6b4-b8e7-4591-a412-8613ad09fe25',
+      messages: [],
+      participants: ['Me', 'shuyhere1', 'shuyhere2'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:shuyhere1', name: 'shuyhere1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere1' },
+        { id: 'human:shuyhere2', name: 'shuyhere2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere2' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces[0]?.preview, 'hi shu');
 });
 
 test('filterParticipantSpaces matches title, participant names, preview, and child session title', () => {
