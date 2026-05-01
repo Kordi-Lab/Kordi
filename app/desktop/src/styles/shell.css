@@ -625,10 +625,11 @@
 }
 
 .app-participant-space-inline-group-expanded {
-  background: color-mix(in oklab, var(--app-control-bg) 30%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--app-divider) 56%, transparent),
-    inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 54%, transparent);
+    inset 0 0 0 1px color-mix(in oklab, var(--app-divider) 72%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 64%, transparent);
 }
 
 .app-participant-space-row-shell {
@@ -650,9 +651,11 @@
 }
 
 .app-participant-space-row-shell-active {
-  border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 44%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  border-color: color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 58%, var(--app-control-bg));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 8px 18px rgba(0, 0, 0, 0.06);
 }
 
 .app-participant-space-row-button {
@@ -708,8 +711,8 @@
 .app-participant-space-action {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--utility-muted-text);
-  opacity: 0.68;
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, var(--utility-foreground));
+  opacity: 0.78;
   box-shadow: none;
   transition:
     opacity var(--app-motion-fast) var(--app-motion-ease),
@@ -741,8 +744,8 @@
 .app-participant-space-context-create {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--utility-foreground);
-  opacity: 0.9;
+  color: color-mix(in oklab, var(--utility-foreground) 92%, var(--utility-muted-text));
+  opacity: 0.98;
 }
 
 .app-participant-space-context-create:hover,
@@ -761,7 +764,7 @@
 }
 
 .app-participant-space-session-title {
-  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+  color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
 }
 
 .app-participant-space-session-preview {
@@ -1377,6 +1380,22 @@
   background: transparent;
 }
 
+.app-workspace-sidebar .app-participant-space-row-title {
+  color: color-mix(in oklab, var(--utility-foreground) 96%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 68%, var(--utility-foreground));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview-active {
+  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-detail {
+  color: color-mix(in oklab, var(--app-markdown-link) 58%, var(--utility-muted-text));
+}
+
 .app-workspace-sidebar .app-session-row-active {
   border-color: transparent;
   box-shadow: none;
@@ -1390,17 +1409,26 @@
   gap: 0.625rem;
   border-color: transparent;
   border-radius: 11px;
+  background: color-mix(in oklab, var(--app-control-bg) 12%, transparent);
   box-shadow: none;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 38%, transparent);
+}
+
+.app-workspace-sidebar .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 62%, var(--utility-foreground));
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
-  border-color: transparent;
-  background: color-mix(in oklab, var(--app-control-active) 24%, transparent);
-  box-shadow: none;
+  border-color: color-mix(in oklab, var(--app-divider) 62%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 62%, var(--app-control-bg));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-foreground) 74%, var(--utility-muted-text));
 }
 
 .app-workspace-sidebar .app-project-group {

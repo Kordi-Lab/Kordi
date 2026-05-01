@@ -639,11 +639,11 @@ export function WorkspaceSidebar({
                               >
                                 <ParticipantSpaceAvatarStack space={space} />
                                 <div className="min-w-0">
-                                  <div className="truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
-                                  <div className={cn('mt-px truncate text-[10.5px] leading-[0.98rem]', isActiveSpace || isExpanded ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
+                                  <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
+                                  <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
                                     {space.preview || `${participantSpaceKindText(space)} space`}
                                   </div>
-                                  <div className="mt-px truncate text-[10px] leading-[0.88rem] text-slate-500">
+                                  <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
                                     {participantSpaceDetailText(space)}
                                   </div>
                                 </div>

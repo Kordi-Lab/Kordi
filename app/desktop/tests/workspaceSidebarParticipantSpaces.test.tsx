@@ -173,6 +173,9 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   assert.match(markup, /New preview/);
   assert.match(markup, /data-participant-space-row-shell="true"/);
   assert.match(markup, /app-participant-space-row-button/);
+  assert.match(markup, /app-participant-space-row-title/);
+  assert.match(markup, /app-participant-space-row-preview/);
+  assert.match(markup, /app-participant-space-row-detail/);
   assert.match(markup, /data-participant-space-toggle="true"/);
   assert.match(markup, /aria-label="Collapse Bob"/);
   assert.match(markup, /aria-label="Create session in Bob"/);
@@ -197,6 +200,9 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 58%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 62%, var\(--utility-foreground\)\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-divider\) 62%, transparent\)[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 62%, var\(--app-control-bg\)\)/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
@@ -546,7 +552,7 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   assert.match(markup, /app-participant-space-session-preview/);
   assert.match(markup, /app-participant-space-session-title/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);
-  assert.match(shellCss, /\.app-participant-space-session-title\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-participant-space-session-title\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-foreground\) 88%, var\(--utility-muted-text\)\)/s);
 });
 
 test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {
