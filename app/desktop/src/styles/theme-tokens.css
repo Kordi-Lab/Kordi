@@ -1,63 +1,64 @@
 .bridge-app {
-  --utility-background: rgb(10 10 12);
-  --utility-foreground: rgb(241 245 249);
-  --utility-card: rgba(24, 24, 28, 0.9);
-  --utility-muted: rgba(34, 34, 39, 0.9);
-  --utility-muted-text: rgb(148 163 184);
-  --app-markdown-link: oklch(78% 0.055 218);
-  --app-markdown-link-hover: oklch(84% 0.065 218);
+  --utility-background: rgb(15 17 21);
+  --utility-foreground: rgba(255, 255, 255, 0.9);
+  --utility-card: rgba(255, 255, 255, 0.04);
+  --utility-muted: rgba(255, 255, 255, 0.04);
+  --utility-muted-text: rgba(255, 255, 255, 0.6);
+  --utility-meta-text: rgba(255, 255, 255, 0.35);
+  --app-accent: rgb(124 92 255);
+  --app-markdown-link: oklch(74% 0.14 285);
+  --app-markdown-link-hover: oklch(80% 0.15 285);
   --app-motion-fast: 180ms;
   --app-motion-base: 220ms;
   --app-motion-slow: 300ms;
   --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --app-page-bg:
-    radial-gradient(circle at top, rgba(224, 211, 172, 0.07), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(122, 128, 80, 0.06), transparent 28%),
-    linear-gradient(180deg, #22231d 0%, #171814 42%, #11120f 100%);
-  --app-shell-bg: linear-gradient(180deg, rgba(46, 46, 39, 0.94) 0%, rgba(33, 32, 29, 0.95) 100%);
+    radial-gradient(circle at top left, rgba(124, 92, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
+  --app-shell-bg: rgba(15, 17, 21, 0.88);
   --app-shell-border: rgba(255, 255, 255, 0.08);
-  --app-side-bg: rgba(43, 42, 38, 0.92);
-  --app-left-glass-bg: linear-gradient(180deg, rgba(67, 66, 58, 0.72) 0%, rgba(46, 45, 40, 0.6) 100%);
-  --app-left-glass-border: rgba(255, 255, 255, 0.04);
-  --app-session-bg: linear-gradient(180deg, rgba(53, 52, 46, 0.9) 0%, rgba(42, 41, 37, 0.92) 100%);
-  --app-main-bg: linear-gradient(180deg, rgba(35, 35, 31, 0.97) 0%, rgba(28, 28, 25, 0.98) 100%);
-  --app-card-bg: rgba(255, 255, 255, 0.05);
-  --app-overlay-bg: rgba(8, 8, 10, 0.74);
-  --app-modal-bg: linear-gradient(180deg, rgba(33, 31, 34, 0.97) 0%, rgba(24, 23, 25, 0.97) 100%);
-  --app-code-bg: #151518;
-  --app-code-toolbar-bg: rgba(255, 255, 255, 0.03);
+  --app-side-bg: rgba(15, 17, 21, 0.72);
+  --app-left-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.018) 100%);
+  --app-left-glass-border: rgba(255, 255, 255, 0.06);
+  --app-session-bg: rgba(15, 17, 21, 0.64);
+  --app-main-bg: rgba(15, 17, 21, 0.78);
+  --app-card-bg: rgba(255, 255, 255, 0.04);
+  --app-overlay-bg: rgba(5, 7, 10, 0.74);
+  --app-modal-bg: rgba(17, 19, 24, 0.88);
+  --app-code-bg: #0b0d11;
+  --app-code-toolbar-bg: rgba(255, 255, 255, 0.035);
   --app-divider: rgba(255, 255, 255, 0.08);
-  --app-control-bg: rgba(255, 255, 255, 0.055);
-  --app-control-hover: rgba(255, 255, 255, 0.085);
-  --app-control-active: rgba(255, 255, 255, 0.115);
-  --app-control-border: rgba(255, 255, 255, 0.1);
-  --app-chip-active-bg: rgba(221, 216, 208, 0.82);
-  --app-chip-active-border: rgba(255, 255, 255, 0.18);
-  --app-chip-active-text: rgb(34 31 29);
-  --app-mode-tab-bg: rgba(255, 255, 255, 0.02);
-  --app-mode-tab-hover: rgba(255, 255, 255, 0.045);
-  --app-mode-tab-border: rgba(255, 255, 255, 0.11);
-  --app-mode-tab-text: rgb(224 218 211);
-  --app-mode-tab-active-bg: rgba(211, 205, 196, 0.84);
-  --app-mode-tab-active-border: rgba(255, 255, 255, 0.14);
-  --app-mode-tab-active-text: rgb(34 31 29);
+  --app-control-bg: rgba(255, 255, 255, 0.04);
+  --app-control-hover: rgba(255, 255, 255, 0.06);
+  --app-control-active: rgba(124, 92, 255, 0.15);
+  --app-control-border: rgba(255, 255, 255, 0.08);
+  --app-chip-active-bg: rgba(124, 92, 255, 0.18);
+  --app-chip-active-border: rgba(124, 92, 255, 0.28);
+  --app-chip-active-text: rgba(255, 255, 255, 0.92);
+  --app-mode-tab-bg: rgba(255, 255, 255, 0.03);
+  --app-mode-tab-hover: rgba(255, 255, 255, 0.06);
+  --app-mode-tab-border: rgba(255, 255, 255, 0.08);
+  --app-mode-tab-text: rgba(255, 255, 255, 0.62);
+  --app-mode-tab-active-bg: rgba(124, 92, 255, 0.16);
+  --app-mode-tab-active-border: rgba(124, 92, 255, 0.3);
+  --app-mode-tab-active-text: rgba(255, 255, 255, 0.92);
   --app-shadow-soft:
-    0 0 0 1px rgba(255, 255, 255, 0.018),
-    0 10px 24px rgba(0, 0, 0, 0.16),
-    0 -4px 10px rgba(255, 255, 255, 0.012);
-  --app-shadow-float:
     0 0 0 1px rgba(255, 255, 255, 0.02),
-    0 18px 40px rgba(0, 0, 0, 0.24),
+    0 14px 30px rgba(0, 0, 0, 0.22),
+    0 -4px 10px rgba(255, 255, 255, 0.01);
+  --app-shadow-float:
+    0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 22px 48px rgba(0, 0, 0, 0.32),
     0 -6px 14px rgba(255, 255, 255, 0.012);
-  --app-button-primary-bg: rgba(219, 214, 206, 0.84);
-  --app-button-primary-hover: rgba(229, 224, 217, 0.9);
-  --app-button-primary-text: rgb(31 28 27);
-  --app-badge-primary-bg: rgba(214, 209, 201, 0.78);
-  --app-badge-primary-text: rgb(37 34 32);
-  --app-chat-bubble-user-bg: rgba(224, 218, 210, 0.9);
-  --app-chat-bubble-user-text: rgb(29 26 24);
-  --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.06);
-  --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.16);
+  --app-button-primary-bg: rgba(255, 255, 255, 0.88);
+  --app-button-primary-hover: rgba(255, 255, 255, 0.95);
+  --app-button-primary-text: rgb(15 17 21);
+  --app-badge-primary-bg: rgba(124, 92, 255, 0.18);
+  --app-badge-primary-text: rgba(255, 255, 255, 0.92);
+  --app-chat-bubble-user-bg: rgba(255, 255, 255, 0.88);
+  --app-chat-bubble-user-text: rgb(15 17 21);
+  --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.05);
+  --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.1);
 }
 
 .bridge-app.theme-light {
@@ -66,6 +67,7 @@
   --utility-card: rgba(255, 255, 255, 0.9);
   --utility-muted: rgba(225, 218, 207, 0.88);
   --utility-muted-text: rgb(76 70 65);
+  --utility-meta-text: rgba(76, 70, 65, 0.58);
   --app-markdown-link: oklch(45% 0.065 218);
   --app-markdown-link-hover: oklch(38% 0.075 218);
   --app-motion-fast: 200ms;

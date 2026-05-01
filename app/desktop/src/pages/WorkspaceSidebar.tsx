@@ -286,7 +286,7 @@ function SidebarSessionMetaColumn({
   const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
-      <span className={cn('whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
+      <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active && 'app-session-meta-time-active')}>
         {timeLabel}
       </span>
       {reserveStatusSpace || hasStatusLine ? (

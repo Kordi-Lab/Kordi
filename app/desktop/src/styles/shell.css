@@ -591,6 +591,14 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.app-session-meta-time {
+  color: var(--utility-meta-text);
+}
+
+.app-session-meta-time-active {
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, var(--utility-foreground));
+}
+
 .app-session-row {
   border: 1px solid transparent;
   border-radius: 16px;
@@ -605,12 +613,12 @@
 }
 
 .app-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 70%, transparent);
+  background: var(--app-control-hover);
 }
 
 .app-session-row-active {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 84%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  border: 1px solid color-mix(in oklab, var(--app-accent) 36%, var(--app-divider));
+  background: var(--app-control-active);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     inset 0 -1px 0 rgba(0, 0, 0, 0.1);
@@ -625,7 +633,7 @@
 }
 
 .app-participant-space-inline-group-expanded {
-  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  background: var(--app-control-bg);
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--app-divider) 72%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.045),
@@ -647,12 +655,12 @@
 }
 
 .app-participant-space-row-shell:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
+  background: var(--app-control-hover);
 }
 
 .app-participant-space-row-shell-active {
-  border-color: color-mix(in oklab, var(--app-divider) 78%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 58%, var(--app-control-bg));
+  border-color: color-mix(in oklab, var(--app-accent) 32%, var(--app-divider));
+  background: var(--app-control-active);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
     0 8px 18px rgba(0, 0, 0, 0.06);
@@ -1393,13 +1401,13 @@
 }
 
 .app-workspace-sidebar .app-participant-space-row-detail {
-  color: color-mix(in oklab, var(--app-markdown-link) 58%, var(--utility-muted-text));
+  color: color-mix(in oklab, var(--app-markdown-link) 48%, var(--utility-muted-text));
 }
 
 .app-workspace-sidebar .app-session-row-active {
-  border-color: transparent;
+  border-color: color-mix(in oklab, var(--app-accent) 28%, var(--app-divider));
   box-shadow: none;
-  background: color-mix(in oklab, var(--app-control-active) 40%, transparent);
+  background: var(--app-control-active);
 }
 
 .app-workspace-sidebar .app-participant-space-session-row {
@@ -1409,12 +1417,12 @@
   gap: 0.625rem;
   border-color: transparent;
   border-radius: 11px;
-  background: color-mix(in oklab, var(--app-control-bg) 12%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
   box-shadow: none;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 38%, transparent);
+  background: var(--app-control-hover);
 }
 
 .app-workspace-sidebar .app-participant-space-session-preview {
@@ -1422,8 +1430,8 @@
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
-  border-color: color-mix(in oklab, var(--app-divider) 62%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 62%, var(--app-control-bg));
+  border-color: color-mix(in oklab, var(--app-accent) 42%, var(--app-divider));
+  background: var(--app-control-active);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 

@@ -200,9 +200,9 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 58%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 48%, var\(--utility-muted-text\)\)/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 62%, var\(--utility-foreground\)\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-divider\) 62%, transparent\)[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 62%, var\(--app-control-bg\)\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent\) 42%, var\(--app-divider\)\)[^}]*background:\s*var\(--app-control-active\)/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
