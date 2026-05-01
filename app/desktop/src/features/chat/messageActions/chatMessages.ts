@@ -49,6 +49,31 @@ import {
 import { pendingOutreachFromState, relaySharedSessionMessage } from './relay';
 import type { PendingBridgeOutreach } from './types';
 
+export type LocalChatSendInFlight = {
+  sessionId: string | null;
+};
+
+export function localChatSendIsInFlightForTarget(
+  inFlight: LocalChatSendInFlight | null,
+  targetSessionId: string | null,
+) {
+  if (!inFlight) return false;
+  if (!inFlight.sessionId || !targetSessionId) return true;
+  return inFlight.sessionId === targetSessionId;
+}
+
+export function chatSendIsBusy({
+  isDesktopChatSending = false,
+  desktopLiveTurn,
+  localSendInFlight = false,
+}: {
+  isDesktopChatSending?: boolean;
+  desktopLiveTurn?: { completed?: boolean } | null;
+  localSendInFlight?: boolean;
+}) {
+  return Boolean(isDesktopChatSending || localSendInFlight || (desktopLiveTurn && !desktopLiveTurn.completed));
+}
+
 export function bridgeConversationSendPlan({
   activeConvId,
   hasMaterializedBridgeConversation,
@@ -166,6 +191,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'desktopChatState'
   | 'desktopLiveTurn'
   | 'isNativeShell'
+  | 'isDesktopChatSending'
   | 'refreshDesktopChat'
   | 'setActiveConvId'
   | 'setCanonicalSessionState'
@@ -184,6 +210,7 @@ type UseChatMessageActionsArgs = Pick<
   attachmentSummaryText: (text: string) => string;
   handleLocalSlashCommand: (rawText: string, scope?: ComposerScope) => Promise<boolean>;
   pendingBridgeCancelRequestedRef: MutableRefObject<boolean>;
+  localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
   setPendingBridgeOutreach: Dispatch<SetStateAction<PendingBridgeOutreach | null>>;
 };
 
@@ -203,8 +230,10 @@ export function useChatMessageActions({
   desktopChatState,
   desktopLiveTurn,
   handleLocalSlashCommand,
+  isDesktopChatSending,
   isNativeShell,
   pendingBridgeCancelRequestedRef,
+  localChatSendInFlightRef,
   refreshDesktopChat,
   setActiveConvId,
   setCanonicalSessionState,
@@ -226,6 +255,7 @@ export function useChatMessageActions({
     const rawText = draftOverride ?? composerDrafts.chat;
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
+    if (chatSendIsBusy({ isDesktopChatSending, desktopLiveTurn })) return;
 
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
 
@@ -503,8 +533,6 @@ export function useChatMessageActions({
     if (isLocalDraftChatConversationId(targetSessionId)) {
       targetSessionId = null;
     }
-    if (desktopLiveTurn && !desktopLiveTurn.completed) return;
-
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
@@ -602,10 +630,16 @@ export function useChatMessageActions({
       return;
     }
 
+    const localTargetSessionId = targetSessionId ?? null;
+    if (chatSendIsBusy({ localSendInFlight: localChatSendIsInFlightForTarget(localChatSendInFlightRef.current, localTargetSessionId) })) return;
+    localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
+
     try {
       shouldAutoFollowChatRef.current = true;
+      setIsDesktopChatSending(true);
       setDesktopChatError(null);
       const resolvedSessionId = await ensureLocalSessionId();
+      localChatSendInFlightRef.current = { sessionId: resolvedSessionId };
 
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
@@ -724,7 +758,12 @@ export function useChatMessageActions({
         })
         .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
           if (!localAgentRelayTarget) {
-            void watchDesktopLiveTurn(turn);
+            void watchDesktopLiveTurn(turn).finally(() => {
+              if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
+                localChatSendInFlightRef.current = null;
+              }
+            });
+            setIsDesktopChatSending(false);
             return;
           }
 
@@ -750,6 +789,9 @@ export function useChatMessageActions({
               );
               setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
             } finally {
+              if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
+                localChatSendInFlightRef.current = null;
+              }
               setIsDesktopChatSending(false);
             }
           })().catch((error: unknown) => {
@@ -758,6 +800,9 @@ export function useChatMessageActions({
         })
         .catch((error: unknown) => {
           if (localAgentRelayTarget) {
+            if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
+              localChatSendInFlightRef.current = null;
+            }
             setIsDesktopChatSending(false);
             setDesktopLiveTurnsBySession((current) => {
               if (!current[resolvedSessionId]) return current;
@@ -766,10 +811,16 @@ export function useChatMessageActions({
             });
           }
           setPendingUserChatMessage(null);
+          if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
+            localChatSendInFlightRef.current = null;
+          }
+          setIsDesktopChatSending(false);
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
         });
     } catch (error) {
       setPendingUserChatMessage(null);
+      localChatSendInFlightRef.current = null;
+      setIsDesktopChatSending(false);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
     }
   }, [
@@ -789,7 +840,9 @@ export function useChatMessageActions({
     desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
+    isDesktopChatSending,
     isNativeShell,
+    localChatSendInFlightRef,
     refreshDesktopChat,
     setActiveConvId,
     setCanonicalSessionState,
