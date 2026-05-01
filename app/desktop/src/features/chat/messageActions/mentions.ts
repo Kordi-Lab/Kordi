@@ -147,6 +147,25 @@ export function filterBridgeMentionCandidatesForConversation(
   return candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation));
 }
 
+function conversationImpliesLocalViewerParticipant(conversation: MentionScopeConversation | null | undefined) {
+  if (!conversation) return false;
+  if (conversationHasGroupMentionScope(conversation)) return true;
+  return /\b(?:direct|person|contact|relationship)\b/i.test(conversation.directness ?? '');
+}
+
+export function shouldIncludeLocalAgentMentionForConversation(
+  conversation: MentionScopeConversation | null | undefined,
+  localOwner: Pick<DesktopBridgeState['hosts'][number], 'humanId' | 'ownerName'>,
+) {
+  if (!conversationHasParticipantMentionScope(conversation)) return true;
+  if (bridgeMentionOwnerMatchesConversationHumans(localOwner, conversation)) return true;
+
+  // Bridge-sourced direct/group threads can list only remote people in the
+  // session metadata. The local viewer is still a participant of the open chat,
+  // so My Kordi must remain mentionable even when self metadata is absent.
+  return conversationImpliesLocalViewerParticipant(conversation);
+}
+
 function normalizedSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
   return (conversation.canonicalSessionId ?? conversation.id).trim();
 }

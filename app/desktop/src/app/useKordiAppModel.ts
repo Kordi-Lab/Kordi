@@ -24,13 +24,12 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import {
   bridgeMentionCandidateOptionText,
-  bridgeMentionOwnerMatchesConversationHumans,
   buildBridgeMentionCandidates,
-  conversationHasParticipantMentionScope,
   filterBridgeMentionCandidatesForConversation,
   filterBridgeMentionCandidatesForHost,
   mentionHandleForLabel,
   mentionScopeConversationForActiveConversation,
+  shouldIncludeLocalAgentMentionForConversation,
   type MentionScopeConversation,
 } from '@/features/chat/messageActions/mentions';
 import {
@@ -613,8 +612,10 @@ export function useKordiAppModel() {
 
       const localAgentBaseLabel = 'Kordi';
       const ownerName = activeHost?.ownerName?.trim();
-      const includeLocalAgent = !conversationHasParticipantMentionScope(conversation)
-        || bridgeMentionOwnerMatchesConversationHumans({ humanId: activeHost?.humanId, ownerName }, conversation);
+      const includeLocalAgent = shouldIncludeLocalAgentMentionForConversation(
+        conversation,
+        { humanId: activeHost?.humanId ?? '', ownerName: ownerName ?? '' },
+      );
       if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
         const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
         const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;

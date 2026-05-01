@@ -8,6 +8,7 @@ import {
   filterBridgeMentionCandidatesForHost,
   localAgentMentionLabels,
   mentionHandleForLabel,
+  shouldIncludeLocalAgentMentionForConversation,
   mentionScopeConversationForActiveConversation,
   outreachIdentityForBridgeTarget,
   publicLocalAgentMentionText,
@@ -257,6 +258,22 @@ test('group mention candidates include only people in the group and their agents
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
     ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+  );
+});
+
+test('participant scoped chats keep the local agent mentionable when self metadata is missing', () => {
+  const direct = directPersonConversationWithHuman({
+    id: 'human:bob',
+    name: 'Bob',
+    humanId: 'human-bob',
+    bridgeNodeId: 'node-bob-person',
+  });
+  direct.participants = ['Bob'];
+  direct.canonicalParticipants = direct.canonicalParticipants?.filter((participant) => participant.role !== 'self');
+
+  assert.equal(
+    shouldIncludeLocalAgentMentionForConversation(direct, { humanId: 'host-human-1', ownerName: 'Host Owner' }),
+    true,
   );
 });
 

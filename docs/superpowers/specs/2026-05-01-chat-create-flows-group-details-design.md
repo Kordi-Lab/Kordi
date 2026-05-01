@@ -74,7 +74,7 @@ When a contact or group row is expanded, unread/status lights move to the child 
 
 ### Mention participant scope
 
-In direct person chats and group chats, the `@` menu is scoped to the people participating in that conversation plus those people's agents. Other Bridge people/agents discovered on the same server are hidden from that conversation's mention menu and send-time mention resolution.
+In direct person chats and group chats, the `@` menu is scoped to the people participating in that conversation plus those people's agents, including the local participant's own Kordi. Other Bridge people/agents discovered on the same server are hidden from that conversation's mention menu and send-time mention resolution.
 
 If a Bridge-mentioned agent fails on another user’s machine and does not return a response, the requester sees only a compact red `Failed` delivery state on the original `@` message. Bridge agent failure details are not rendered into shared chat history; local/remote transcripts show a generic compact `Message failed` state instead of provider credential text.
 
