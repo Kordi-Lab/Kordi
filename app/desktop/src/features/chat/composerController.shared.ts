@@ -83,6 +83,36 @@ export function filterDesktopSlashCommands(items: DesktopChatSlashCommand[]) {
   return items.filter((item) => !desktopSlashCommandIsExcluded(item.value));
 }
 
+export function filterDesktopSlashCommandsForQuery(
+  items: DesktopChatSlashCommand[],
+  query: string | null,
+  scope: 'chat' | 'project' = 'chat',
+) {
+  if (!query) return [] as DesktopChatSlashCommand[];
+
+  const normalizedQuery = query.toLowerCase();
+  const search = normalizedQuery.slice(1);
+  const matches = filterDesktopSlashCommands(items).filter((item) => {
+    const kind = desktopSlashCommandKind(item);
+    if (scope === 'project' && kind !== 'skill' && kind !== 'prompt') return false;
+    if (!search) return true;
+    const value = item.value.toLowerCase();
+    const label = item.label.toLowerCase();
+    const detail = item.detail?.toLowerCase() ?? '';
+    return value.startsWith(normalizedQuery)
+      || label.startsWith(normalizedQuery)
+      || value.includes(search)
+      || label.includes(search)
+      || detail.includes(search);
+  });
+
+  if (matches.some((item) => desktopSlashCommandToken(item.value) === normalizedQuery)) {
+    return [] as DesktopChatSlashCommand[];
+  }
+
+  return matches;
+}
+
 function desktopSlashCatalogItem(command: string, catalog: DesktopChatSlashCommand[] = []) {
   const token = desktopSlashCommandToken(command);
   return catalog.find((item) => desktopSlashCommandToken(item.value) === token && !desktopSlashCommandIsExcluded(item.value));

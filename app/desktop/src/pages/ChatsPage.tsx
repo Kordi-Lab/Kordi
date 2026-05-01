@@ -539,7 +539,7 @@ export function ChatsPage({
           className="h-full min-h-0 px-3.5 py-3 sm:px-4 sm:py-3.5"
           onScroll={onTranscriptScroll}
         >
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="space-y-1">
             {transcriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={`${msg.role}-${msg.time}-${idx}`}

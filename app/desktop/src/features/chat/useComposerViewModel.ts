@@ -9,7 +9,7 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 
-import { desktopSlashCommandKind, desktopSlashCommandQuery, filterDesktopSlashCommands } from './composerController.shared';
+import { desktopSlashCommandQuery, filterDesktopSlashCommandsForQuery } from './composerController.shared';
 
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
@@ -291,22 +291,7 @@ export function useComposerViewModel({
       return [] as DesktopChatSlashCommand[];
     }
 
-    const normalizedQuery = query.toLowerCase();
-    const search = normalizedQuery.slice(1);
-
-    return filterDesktopSlashCommands(desktopChatState.slashCommands).filter((item) => {
-      const kind = desktopSlashCommandKind(item);
-      if (scope === 'project' && kind !== 'skill' && kind !== 'prompt') return false;
-      if (!search) return true;
-      const value = item.value.toLowerCase();
-      const label = item.label.toLowerCase();
-      const detail = item.detail?.toLowerCase() ?? '';
-      return value.startsWith(normalizedQuery)
-        || label.startsWith(normalizedQuery)
-        || value.includes(search)
-        || label.includes(search)
-        || detail.includes(search);
-    });
+    return filterDesktopSlashCommandsForQuery(desktopChatState.slashCommands, query, scope);
   }, [desktopChatState?.slashCommands, isNativeShell]);
 
   const filteredChatSlashCommands = useMemo(() => filterSlashCommands(chatSlashQuery, 'chat'), [chatSlashQuery, filterSlashCommands]);

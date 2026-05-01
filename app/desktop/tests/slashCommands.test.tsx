@@ -10,6 +10,7 @@ import {
   desktopSlashCommandIsExcluded,
   desktopSlashCommandQuery,
   filterDesktopSlashCommands,
+  filterDesktopSlashCommandsForQuery,
   isDesktopHandledSlashCommand,
   leadingSlashCommandTextParts,
 } from '../src/features/chat/composerController.shared';
@@ -95,6 +96,19 @@ test('desktop slash command classifier keeps agent prompt commands out of local 
   assert.equal(isDesktopHandledSlashCommand('/unknown', catalog), false);
 });
 
+test('exact slash commands do not keep the command menu open before sending', () => {
+  const catalog = commandItems([
+    '/export',
+    { value: '/skill:quieter', kind: 'skill' },
+    { value: '/summarize', kind: 'prompt' },
+  ]);
+
+  assert.deepEqual(filterDesktopSlashCommandsForQuery(catalog, '/skill:quiet', 'chat').map((item) => item.value), ['/skill:quieter']);
+  assert.deepEqual(filterDesktopSlashCommandsForQuery(catalog, '/skill:quieter', 'chat'), []);
+  assert.deepEqual(filterDesktopSlashCommandsForQuery(catalog, '/summarize', 'project'), []);
+  assert.deepEqual(filterDesktopSlashCommandsForQuery(catalog, '/export', 'chat'), []);
+});
+
 test('absolute file paths do not open or render as slash commands', () => {
   const imagePath = '/var/folders/sj/4t94lr1x6nz054myq77r2b4c0000gn/T/pi-clipboard-b9f3a7fc-c9bb-4c97-b785-02ef613131f9.png';
   const catalog = commandItems([
@@ -142,6 +156,16 @@ test('enter accepts agent prompt slash commands so users can continue typing aft
   assert.equal(desktopSlashCommandEnterAction(commandItems([{ value: '/skill:using-superpowers', kind: 'skill' }])[0]), 'accept');
   assert.equal(desktopSlashCommandEnterAction(commandItems([{ value: '/summarize', kind: 'prompt' }])[0]), 'accept');
   assert.equal(desktopSlashCommandEnterAction(commandItems(['/export'])[0]), 'run');
+});
+
+test('chat transcripts do not replay mount fade during send/response refreshes', () => {
+  const chatsPage = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const projectsPage = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(chatsPage, /motion\.div initial=\{\{ opacity: 0, y: 8 \}\}/);
+  assert.doesNotMatch(projectsPage, /motion\.div initial=\{\{ opacity: 0, y: 8 \}\}/);
+  assert.match(chatsPage, /<motion\.div initial=\{false\} animate=\{\{ opacity: 1, y: 0 \}\} className="space-y-1">/);
+  assert.match(projectsPage, /<motion\.div initial=\{false\} animate=\{\{ opacity: 1, y: 0 \}\} className="space-y-1">/);
 });
 
 test('composer slash command highlight and textareas share explicit text measurement styles', () => {
