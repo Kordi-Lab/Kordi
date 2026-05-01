@@ -1,4 +1,5 @@
 import type {
+  ChatFilter,
   Conversation,
   ConversationParticipant,
   ParticipantSpaceAvatar,
@@ -181,10 +182,23 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-export function filterParticipantSpaces(spaces: ParticipantSpaceViewModel[], query: string) {
+function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
+  if (chatFilter === 'all') return true;
+  if (chatFilter === 'people') return space.kind === 'direct-human';
+  if (chatFilter === 'agents') return space.kind === 'direct-agent';
+  return space.kind === 'group'
+    || space.sessions.some((session) => session.conversation.directness !== 'Direct chat');
+}
+
+export function filterParticipantSpaces(
+  spaces: ParticipantSpaceViewModel[],
+  query: string,
+  chatFilter: ChatFilter = 'all',
+) {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return spaces;
   return spaces.filter((space) => {
+    if (!spaceMatchesChatFilter(space, chatFilter)) return false;
+    if (!normalized) return true;
     const haystack = [
       space.title,
       space.preview,

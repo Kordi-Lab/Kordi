@@ -160,3 +160,46 @@ test('filterParticipantSpaces matches title, participant names, preview, and chi
   assert.equal(filterParticipantSpaces(spaces, 'budget').length, 1);
   assert.equal(filterParticipantSpaces(spaces, 'missing').length, 0);
 });
+
+test('filterParticipantSpaces applies chat filter tabs to spaces', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:bob-person',
+      type: 'person',
+      name: 'Bob',
+      _updatedAtMs: 3,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:bob-agent',
+      type: 'external-agent',
+      name: "Bob's Kordi",
+      participants: ['Me', "Bob's Kordi"],
+      _updatedAtMs: 2,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:bob-kordi', name: "Bob's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'agent-bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:design-group',
+      type: 'person',
+      name: 'Design group',
+      participants: ['Me', 'Bob', "Bob's Kordi"],
+      _updatedAtMs: 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+        { id: 'agent:bob-kordi', name: "Bob's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'agent-bob' },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'people').map((space) => space.kind), ['direct-human']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agents').map((space) => space.kind), ['direct-agent']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'delegated').map((space) => space.kind), ['group']);
+  assert.equal(filterParticipantSpaces(spaces, 'design', 'people').length, 0);
+});

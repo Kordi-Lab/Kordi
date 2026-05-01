@@ -380,8 +380,8 @@ export function useWorkspaceViewModels({
 
   const participantSpaces = useMemo(() => buildParticipantSpaces(chatConversations), [chatConversations]);
   const filteredParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch),
-    [chatSearch, participantSpaces],
+    () => filterParticipantSpaces(participantSpaces, chatSearch, chatFilter),
+    [chatFilter, chatSearch, participantSpaces],
   );
 
   const displayedContacts = useMemo<Contact[]>(() => {
