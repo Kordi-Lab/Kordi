@@ -95,6 +95,22 @@ function groupConversationWithHumans(humans: Array<{ id: string; name: string; h
   } as Conversation;
 }
 
+function groupConversationWithParticipantNames(names: string[]): Conversation {
+  return {
+    id: 'session:group:fallback',
+    canonicalSessionId: 'session:group:fallback',
+    name: 'Group',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: names,
+    messages: [],
+  } as Conversation;
+}
+
 test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
   assert.equal(mentionHandleForLabel("Alice's Kordi"), 'AlicesKordi');
   assert.equal(mentionHandleForLabel('Ann Lee'), 'AnnLee');
@@ -163,7 +179,7 @@ test('bridge mention option text shows display names and pairs people with their
   assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
 });
 
-test('group mention candidates include only agents owned by current group humans', () => {
+test('group mention candidates include only people in the group and their agents', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
@@ -202,11 +218,51 @@ test('group mention candidates include only agents owned by current group humans
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ["bridge-agent:Alice's Kordi", "bridge-agent:Bob's Kordi"],
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
   );
 });
 
-test('group mention resolution rejects people and agents outside the current group humans', () => {
+test('group mention candidates fall back to participant names when canonical details are missing', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-carol-agent',
+      displayName: "Carol's Kordi",
+      ownerName: 'Carol',
+      runtime: 'kordi-desktop',
+      humanId: 'human-carol',
+      agentId: 'agent-carol',
+      isDefaultAgent: true,
+    }),
+  ]);
+  const group = groupConversationWithParticipantNames(['Host Owner', 'Alice', 'Bob']);
+
+  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+
+  assert.deepEqual(
+    scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+  );
+});
+
+test('send-time group mention action resolves member agents but not people or outside agents', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
@@ -231,9 +287,9 @@ test('group mention resolution rejects people and agents outside the current gro
     { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
   ]);
 
-  const aliceAgent = resolveMentionedBridgeTarget('@AlicesKordi please join', bridgeState, group);
-  const alicePerson = resolveMentionedBridgeTarget('@Alice please join', bridgeState, group);
-  const carolAgent = resolveMentionedBridgeTarget('@CarolsKordi please join', bridgeState, group);
+  const aliceAgent = resolveMentionedBridgeTarget('@AlicesKordi please join', bridgeState, group, { targetKind: 'bridge-agent' });
+  const alicePerson = resolveMentionedBridgeTarget('@Alice please join', bridgeState, group, { targetKind: 'bridge-agent' });
+  const carolAgent = resolveMentionedBridgeTarget('@CarolsKordi please join', bridgeState, group, { targetKind: 'bridge-agent' });
 
   assert.equal(aliceAgent?.targetKind, 'bridge-agent');
   assert.equal(aliceAgent?.peer.nodeId, 'node-alice-agent');

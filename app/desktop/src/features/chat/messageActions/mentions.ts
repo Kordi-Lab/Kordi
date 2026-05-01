@@ -84,7 +84,13 @@ function participantHumanOwnerKeys(participant: NonNullable<Conversation['canoni
   return keys;
 }
 
-export type MentionScopeConversation = object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants'>>;
+function conversationParticipantNameKeys(participants: string[] | undefined) {
+  return (participants ?? [])
+    .map(normalizedOwnerKey)
+    .filter((key) => key && !['me', 'you', 'my kordi', 'kordi'].includes(key));
+}
+
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>>;
 
 function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
   const keys = new Set<string>();
@@ -94,12 +100,16 @@ function conversationHumanOwnerKeys(conversation: MentionScopeConversation | nul
       keys.add(key);
     }
   }
+  for (const key of conversationParticipantNameKeys(conversation?.participants)) {
+    keys.add(key);
+  }
   return keys;
 }
 
 export function conversationHasGroupMentionScope(conversation: MentionScopeConversation | null | undefined) {
   if (!conversation) return false;
   if (conversation.participantSpaceId?.trim()) return true;
+  if (/\bgroup\b/i.test(conversation.directness ?? '')) return true;
   const nonSelfHumanCount = (conversation.canonicalParticipants ?? []).filter((participant) => (
     participant.kind === 'human' && !isSelfConversationParticipant(participant)
   )).length;
@@ -123,10 +133,7 @@ export function filterBridgeMentionCandidatesForConversation(
   conversation: MentionScopeConversation | null | undefined,
 ) {
   if (!conversationHasGroupMentionScope(conversation)) return candidates;
-  return candidates.filter((candidate) => (
-    candidate.targetKind === 'bridge-agent'
-    && bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)
-  ));
+  return candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation));
 }
 
 function identitySuffixForCandidate(candidate: Pick<BridgeMentionCandidate, 'peer' | 'handle'>) {
@@ -390,12 +397,20 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
   return !next || /[\s:;,.!?—-]/.test(next);
 }
 
+export type ResolveMentionedBridgeTargetOptions = {
+  targetKind?: BridgeMentionCandidate['targetKind'];
+};
+
 export function resolveMentionedBridgeTarget(
   text: string,
   bridgeState: DesktopBridgeState | null,
   conversation?: MentionScopeConversation | null,
+  options: ResolveMentionedBridgeTargetOptions = {},
 ) {
-  const candidates = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), conversation);
+  const scopedCandidates = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), conversation);
+  const candidates = options.targetKind
+    ? scopedCandidates.filter((candidate) => candidate.targetKind === options.targetKind)
+    : scopedCandidates;
   if (candidates.length === 0) return null;
   const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
   if (mentionMatches.length === 0) return null;

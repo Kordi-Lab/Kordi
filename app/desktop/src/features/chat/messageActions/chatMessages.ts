@@ -142,7 +142,7 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope);
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
 
     if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
       try {

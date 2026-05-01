@@ -40,7 +40,7 @@ export type UseComposerControllerArgs = {
   activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
-  activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants'>> | null;
+  activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeProjectRoot?: string | null;
