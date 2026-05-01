@@ -124,6 +124,8 @@ pub(crate) struct SessionRuntimeSetup {
     pub extension_commands: ExtensionCommandRegistry,
     pub extension_bootstrap: ExtensionBootstrap,
     #[allow(dead_code)]
+    pub session_resources: kordi_core::agent_session_extensions::SessionResourceBootstrap,
+    #[allow(dead_code)]
     pub slash_command_items: Vec<kordi_tui::select_list::SelectItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
@@ -546,6 +548,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         sibling_conn: Some(sibling_conn),
         extension_commands: commands,
         extension_bootstrap,
+        session_resources: session_resources.clone(),
         slash_command_items,
         request_metrics_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
             RequestMetricsTracker::new(),

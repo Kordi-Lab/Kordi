@@ -8,11 +8,17 @@ import {
 } from '../src/features/chat/composerController.shared';
 import type { DesktopChatSlashCommand } from '../src/kordi-app/types';
 
-const commandItems = (values: string[]): DesktopChatSlashCommand[] => values.map((value) => ({
-  label: value,
-  value,
-  detail: `${value} detail`,
-}));
+const commandItems = (
+  values: Array<string | { value: string; kind?: DesktopChatSlashCommand['kind'] }>,
+): DesktopChatSlashCommand[] => values.map((entry) => {
+  const value = typeof entry === 'string' ? entry : entry.value;
+  return {
+    label: value,
+    value,
+    detail: `${value} detail`,
+    kind: typeof entry === 'string' ? 'builtin' : entry.kind ?? 'builtin',
+  } as DesktopChatSlashCommand;
+});
 
 test('desktop slash command catalog removes app-native commands but keeps session/runtime commands', () => {
   const filtered = filterDesktopSlashCommands(commandItems([
@@ -61,12 +67,22 @@ test('desktop slash command classifier treats removed commands as unsupported ap
   }
 });
 
-test('desktop slash command classifier handles static runtime commands and dynamic runtime commands', () => {
-  const catalog = commandItems(['/compact', '/reload', '/install', '/skill:review', '/summarize']);
+test('desktop slash command classifier keeps agent prompt commands out of local handling', () => {
+  const catalog = commandItems([
+    '/compact',
+    '/reload',
+    '/install',
+    { value: '/skill:review', kind: 'skill' },
+    { value: '/summarize', kind: 'prompt' },
+    { value: '/extension-menu', kind: 'extension' },
+  ]);
 
   assert.equal(isDesktopHandledSlashCommand('/compact', catalog), true);
   assert.equal(isDesktopHandledSlashCommand('/install', catalog), true);
-  assert.equal(isDesktopHandledSlashCommand('/skill:review', catalog), true);
-  assert.equal(isDesktopHandledSlashCommand('/summarize', catalog), true);
+  assert.equal(isDesktopHandledSlashCommand('/extension-menu', catalog), true);
+  assert.equal(isDesktopHandledSlashCommand('/skill:review', catalog), false);
+  assert.equal(isDesktopHandledSlashCommand('/skill:review focus on tests', catalog), false);
+  assert.equal(isDesktopHandledSlashCommand('/summarize', catalog), false);
+  assert.equal(isDesktopHandledSlashCommand('/summarize release notes', catalog), false);
   assert.equal(isDesktopHandledSlashCommand('/unknown', catalog), false);
 });

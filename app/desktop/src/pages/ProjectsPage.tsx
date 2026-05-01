@@ -434,7 +434,12 @@ export function ProjectsPage({
                     }
                     if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
                       event.preventDefault();
-                      acceptProjectSlashCommand(filteredProjectSlashCommands[Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)]?.value ?? filteredProjectSlashCommands[0].value);
+                      const selectedCommand = filteredProjectSlashCommands[Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)]?.value ?? filteredProjectSlashCommands[0].value;
+                      if (event.key === 'Enter') {
+                        onSendProjectMessage(selectedCommand);
+                      } else {
+                        acceptProjectSlashCommand(selectedCommand);
+                      }
                       return;
                     }
                   }

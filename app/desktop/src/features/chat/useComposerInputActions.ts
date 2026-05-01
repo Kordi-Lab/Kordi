@@ -418,11 +418,11 @@ export function useComposerInputActions({
   }, [setComposerDrafts]);
 
   const acceptChatSlashCommand = useCallback((value: string) => {
-    setChatComposerText(value);
+    setChatComposerText(`${value.trimEnd()} `);
   }, [setChatComposerText]);
 
   const acceptProjectSlashCommand = useCallback((value: string) => {
-    setProjectComposerText(value);
+    setProjectComposerText(`${value.trimEnd()} `);
   }, [setProjectComposerText]);
 
   return {

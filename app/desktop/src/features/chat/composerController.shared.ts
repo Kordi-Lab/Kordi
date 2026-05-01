@@ -69,15 +69,37 @@ export function isSharedLocalSlashCommand(command: string) {
   return DESKTOP_STATIC_SLASH_COMMANDS.has(desktopSlashCommandToken(command));
 }
 
+function inferredDesktopSlashCommandKind(value: string): DesktopChatSlashCommand['kind'] {
+  const token = desktopSlashCommandToken(value);
+  if (token.startsWith('/skill:')) return 'skill';
+  return 'builtin';
+}
+
+export function desktopSlashCommandKind(item: DesktopChatSlashCommand): DesktopChatSlashCommand['kind'] {
+  return item.kind ?? inferredDesktopSlashCommandKind(item.value);
+}
+
 export function filterDesktopSlashCommands(items: DesktopChatSlashCommand[]) {
   return items.filter((item) => !desktopSlashCommandIsExcluded(item.value));
+}
+
+function desktopSlashCatalogItem(command: string, catalog: DesktopChatSlashCommand[] = []) {
+  const token = desktopSlashCommandToken(command);
+  return catalog.find((item) => desktopSlashCommandToken(item.value) === token && !desktopSlashCommandIsExcluded(item.value));
+}
+
+export function isDesktopAgentPromptSlashCommand(command: string, catalog: DesktopChatSlashCommand[] = []) {
+  const item = desktopSlashCatalogItem(command, catalog);
+  if (!item) return false;
+  return desktopSlashCommandKind(item) === 'skill' || desktopSlashCommandKind(item) === 'prompt';
 }
 
 export function isDesktopHandledSlashCommand(command: string, catalog: DesktopChatSlashCommand[] = []) {
   const token = desktopSlashCommandToken(command);
   if (!token || desktopSlashCommandIsExcluded(token)) return false;
   if (DESKTOP_STATIC_SLASH_COMMANDS.has(token)) return true;
-  return catalog.some((item) => desktopSlashCommandToken(item.value) === token && !desktopSlashCommandIsExcluded(item.value));
+  const item = desktopSlashCatalogItem(token, catalog);
+  return item ? desktopSlashCommandKind(item) === 'extension' : false;
 }
 
 export function desktopHotkeyHelpText() {

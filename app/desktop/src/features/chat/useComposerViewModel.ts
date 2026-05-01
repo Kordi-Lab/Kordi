@@ -9,7 +9,7 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 
-import { filterDesktopSlashCommands } from './composerController.shared';
+import { desktopSlashCommandKind, filterDesktopSlashCommands } from './composerController.shared';
 
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
@@ -283,20 +283,20 @@ export function useComposerViewModel({
   }, [composerSelections, desktopAuthState, resolveComposerProviderId]);
 
   const chatSlashQuery = useMemo(() => {
-    const text = composerDrafts.chat.trim();
+    const text = composerDrafts.chat;
     if (!text.startsWith('/')) return null;
     if (/\s/.test(text)) return null;
     return text;
   }, [composerDrafts.chat]);
 
   const projectSlashQuery = useMemo(() => {
-    const text = composerDrafts.project.trim();
+    const text = composerDrafts.project;
     if (!text.startsWith('/')) return null;
     if (/\s/.test(text)) return null;
     return text;
   }, [composerDrafts.project]);
 
-  const filterSlashCommands = useCallback((query: string | null) => {
+  const filterSlashCommands = useCallback((query: string | null, scope: ComposerScope) => {
     if (!isNativeShell || !desktopChatState?.slashCommands?.length || !query) {
       return [] as DesktopChatSlashCommand[];
     }
@@ -305,6 +305,8 @@ export function useComposerViewModel({
     const search = normalizedQuery.slice(1);
 
     return filterDesktopSlashCommands(desktopChatState.slashCommands).filter((item) => {
+      const kind = desktopSlashCommandKind(item);
+      if (scope === 'project' && kind !== 'skill' && kind !== 'prompt') return false;
       if (!search) return true;
       const value = item.value.toLowerCase();
       const label = item.label.toLowerCase();
@@ -317,8 +319,8 @@ export function useComposerViewModel({
     });
   }, [desktopChatState?.slashCommands, isNativeShell]);
 
-  const filteredChatSlashCommands = useMemo(() => filterSlashCommands(chatSlashQuery), [chatSlashQuery, filterSlashCommands]);
-  const filteredProjectSlashCommands = useMemo(() => filterSlashCommands(projectSlashQuery), [filterSlashCommands, projectSlashQuery]);
+  const filteredChatSlashCommands = useMemo(() => filterSlashCommands(chatSlashQuery, 'chat'), [chatSlashQuery, filterSlashCommands]);
+  const filteredProjectSlashCommands = useMemo(() => filterSlashCommands(projectSlashQuery, 'project'), [filterSlashCommands, projectSlashQuery]);
 
   return {
     chatModelOptions,

@@ -43,6 +43,7 @@ pub struct DesktopChatSlashCommand {
     pub label: String,
     pub detail: Option<String>,
     pub value: String,
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -351,6 +352,7 @@ impl DesktopRuntimeSession {
                 label: item.label.clone(),
                 detail: item.detail.clone(),
                 value: item.value.clone(),
+                kind: desktop_slash_command_kind(item.value.as_str(), &self.setup).to_string(),
             })
             .collect()
     }
@@ -516,18 +518,25 @@ impl DesktopRuntimeSession {
                     return Ok(Some("Usage: /reload".to_string()));
                 }
                 self.reload_runtime_setup().await?;
-                Ok(Some("Reloaded desktop runtime resources and slash commands.".to_string()))
+                Ok(Some(
+                    "Reloaded desktop runtime resources and slash commands.".to_string(),
+                ))
             }
             "/install" => self.run_install_command(text).await,
             "/skill" => self.run_skill_command(text).await,
             "/compact" => self.run_compact_command(text).await,
             "/export" => self.run_export_command(text),
             "/import" => self.run_import_command(text),
-            "/fork" => Ok(Some("Desktop /fork is reserved for the upcoming message fork flow (#172).".to_string())),
-            "/tree" => Ok(Some("Desktop /tree is reserved for the upcoming session branch browser (#173).".to_string())),
-            _ if command.starts_with("/skill:") => Ok(Some(
-                "Skill invocation commands are visible in the desktop menu, but running them as local desktop commands is not implemented yet.".to_string(),
+            "/fork" => Ok(Some(
+                "Desktop /fork is reserved for the upcoming message fork flow (#172).".to_string(),
             )),
+            "/tree" => Ok(Some(
+                "Desktop /tree is reserved for the upcoming session branch browser (#173)."
+                    .to_string(),
+            )),
+            _ if is_desktop_dynamic_agent_slash_command(command, &self.setup.session_resources) => {
+                Ok(None)
+            }
             _ if self.setup.extension_commands.is_registered(text) => {
                 let note = self
                     .setup
@@ -541,9 +550,12 @@ impl DesktopRuntimeSession {
                 .setup
                 .slash_command_items
                 .iter()
-                .any(|item| item.value == command) => Ok(Some(format!(
+                .any(|item| item.value == command) =>
+            {
+                Ok(Some(format!(
                     "{command} is visible in the desktop command menu, but interactive execution is not wired yet."
-                ))),
+                )))
+            }
             _ => Ok(None),
         }
     }
@@ -819,7 +831,12 @@ impl DesktopRuntimeSession {
             &attachment_paths,
             &self.setup.tool_ctx.cwd,
         );
-        let prompt_text = expanded.text.trim().to_string();
+        let prompt_text = expand_desktop_dynamic_slash_prompt(
+            expanded.text.trim(),
+            &self.setup.session_resources,
+        )
+        .trim()
+        .to_string();
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
         }
@@ -876,7 +893,7 @@ impl DesktopRuntimeSession {
         turn_runner::append_user_message_with_images(
             &sibling_conn,
             &self.setup.session_id,
-            &prompt,
+            &prompt_text,
             &images,
         )
         .await?;
@@ -1518,6 +1535,105 @@ fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
     setup.thinking_level = effective_thinking_for_model(requested, &setup.model)
         .as_str()
         .to_string();
+}
+
+fn desktop_slash_command_kind(value: &str, setup: &SessionRuntimeSetup) -> &'static str {
+    let token = value.trim().split_whitespace().next().unwrap_or(value);
+    if token.starts_with("/skill:") {
+        return "skill";
+    }
+    if setup
+        .session_resources
+        .prompts
+        .iter()
+        .any(|prompt| format!("/{}", prompt.info.slash_command_name()) == token)
+    {
+        return "prompt";
+    }
+    if setup.extension_commands.is_registered(token) {
+        return "extension";
+    }
+    "builtin"
+}
+
+fn is_desktop_dynamic_agent_slash_command(
+    command: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> bool {
+    parse_desktop_skill_command(command).is_some()
+        || parse_desktop_prompt_template(command, resources).is_some()
+}
+
+fn expand_desktop_dynamic_slash_prompt(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> String {
+    if let Some((skill_name, user_args)) = parse_desktop_skill_command(text)
+        && let Some(skill) = resources
+            .skills
+            .iter()
+            .find(|skill| skill.info.name == skill_name)
+    {
+        return format_desktop_resource_content(&skill.content, user_args);
+    }
+
+    if let Some((prompt, user_args)) = parse_desktop_prompt_template(text, resources) {
+        return format_desktop_resource_content(&prompt.content, user_args);
+    }
+
+    text.to_string()
+}
+
+fn parse_desktop_skill_command(text: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = text.trim();
+    let remainder = trimmed.strip_prefix("/skill:")?;
+    split_desktop_slash_command_name_and_args(remainder)
+}
+
+fn parse_desktop_prompt_template<'a, 'b>(
+    text: &'b str,
+    resources: &'a kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Option<(
+    &'a kordi_core::agent_session_extensions::PromptTemplateDefinition,
+    Option<&'b str>,
+)> {
+    let (name, args) = parse_desktop_slash_command(text)?;
+    resources
+        .prompts
+        .iter()
+        .find(|prompt| prompt.info.slash_command_name() == name)
+        .map(|prompt| (prompt, args))
+}
+
+fn parse_desktop_slash_command(text: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = text.trim();
+    let remainder = trimmed.strip_prefix('/')?;
+    split_desktop_slash_command_name_and_args(remainder)
+}
+
+fn split_desktop_slash_command_name_and_args(input: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed.find(char::is_whitespace) {
+        Some(index) => {
+            let name = trimmed[..index].trim();
+            if name.is_empty() {
+                return None;
+            }
+            let args = trimmed[index..].trim();
+            Some((name, (!args.is_empty()).then_some(args)))
+        }
+        None => Some((trimmed, None)),
+    }
+}
+
+fn format_desktop_resource_content(content: &str, user_args: Option<&str>) -> String {
+    match user_args {
+        Some(args) => format!("{}\n\nUser: {}", content.trim_end(), args),
+        None => content.to_string(),
+    }
 }
 
 fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
@@ -3078,6 +3194,44 @@ mod tests {
 
     fn lm_studio_settings() -> Settings {
         local_provider_settings("lm-studio", "http://localhost:1234/v1")
+    }
+
+    #[test]
+    fn desktop_dynamic_slash_prompt_expands_skills_and_prompt_templates() {
+        let resources = kordi_core::agent_session_extensions::SessionResourceBootstrap {
+            skills: vec![kordi_core::agent_session_extensions::SkillDefinition {
+                info: kordi_core::agent_session_extensions::SkillInfo {
+                    name: "review".to_string(),
+                    description: "Review changes".to_string(),
+                    source_info: kordi_core::agent_session_extensions::SourceInfo::default(),
+                },
+                content: "Use the review skill.".to_string(),
+            }],
+            prompts: vec![
+                kordi_core::agent_session_extensions::PromptTemplateDefinition {
+                    info: kordi_core::agent_session_extensions::PromptTemplateInfo {
+                        name: "summarize".to_string(),
+                        description: "Summarize context".to_string(),
+                        source_info: kordi_core::agent_session_extensions::SourceInfo::default(),
+                    },
+                    content: "Summarize this context.".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/skill:review focus on tests", &resources),
+            "Use the review skill.\n\nUser: focus on tests"
+        );
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/summarize release notes", &resources),
+            "Summarize this context.\n\nUser: release notes"
+        );
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/unknown release notes", &resources),
+            "/unknown release notes"
+        );
     }
 
     #[test]
