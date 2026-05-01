@@ -1444,6 +1444,62 @@ test('canonical read model keeps canonical parent transcript when bridge source 
   );
 });
 
+test('canonical read model does not show processing for bridge agent outreach without a sent bridge request', () => {
+  const sessionId = 'session:direct-agent:stale-outreach';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser2', kind: 'human', displayName: 'testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', humanId: 'human-testuser2', avatarKey: 'human-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:testuser2', kind: 'agent', displayName: "testuser2's Kordi", source: 'bridge', ownerIdentityId: 'human:testuser2', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', agentId: 'agent-testuser2', avatarKey: 'agent-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-agent', title: "testuser2's Kordi", status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:testuser2', relationshipIdentityId: null, metadata: { createdFrom: 'chat-create-flow', bridgeHostId: 'host-1', peerNodeId: 'node-testuser2', peerRuntime: 'kordi-desktop', targetAgentId: 'agent-testuser2' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:testuser2', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello', content: { sender: 'Me', timeLabel: '02:26' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'request' },
+    ],
+    delegatedExchanges: [{
+      id: 'delegation:bridge:unsent',
+      sessionId,
+      initiatorIdentityId: 'human:me',
+      targetIdentityId: 'agent:testuser2',
+      triggerMessageId: 'msg:request',
+      requestMessageId: 'msg:request',
+      responseMessageId: null,
+      transport: 'bridge',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-testuser2:kordi-desktop',
+      bridgeRequestId: null,
+      contextPolicy: 'recent-window',
+      status: 'processing',
+      error: null,
+      createdAtMs: 2,
+      updatedAtMs: 2,
+    }],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.equal(conversations[0]?.messages.some((message) => message.turn?.status === 'processing'), false);
+});
+
 test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {
   const sessionId = 'session:bridge:humans:failed-delegation';
   const canonicalState = {

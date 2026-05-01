@@ -199,6 +199,31 @@ test('direct person bridge transcript renders remote agent responses as agent tu
   assert.deepEqual(message?.turn?.tools, []);
 });
 
+test('bridge transcript does not show processing for unsent agent outreach', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    peerRuntime: 'kordi-desktop',
+    awaitingReply: true,
+    outreach: {
+      targetKind: 'bridge-agent',
+      parentSessionId: 'session:direct-agent:peer',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-peer:kordi-desktop',
+      bridgeRequestId: null,
+      targetNodeId: 'node-peer',
+      targetDisplayName: "Shenzhe's Kordi",
+      targetOwnerName: 'Shenzhe',
+      targetRuntime: 'kordi-desktop',
+      requestText: 'hello',
+      status: 'awaitingReply',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    messages: [],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
+});
+
 test('bridge transcript preserves full outreach mention labels with spaces and punctuation', () => {
   const requestId = 'bridge_req_mention';
   const view = mapBridgeConversationToViewModel(conversation({

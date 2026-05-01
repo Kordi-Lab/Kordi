@@ -310,6 +310,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) continue;
     if (!exchange.bridgeRequestId) {
+      if (exchange.transport?.trim().toLowerCase() === 'bridge') continue;
       const fallbackKey = delegationOptimisticFallbackKey(exchange);
       if (fallbackKey && (bridgedDelegationFallbackKeys.has(fallbackKey) || completedDelegationFallbackKeys.has(fallbackKey))) continue;
     }
