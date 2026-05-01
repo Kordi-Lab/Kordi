@@ -188,6 +188,61 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   assert.match(markup, /New Bob thread/);
 });
 
+test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group:one',
+      canonicalSessionId: 'session:group:one',
+      name: 'First group thread',
+      subtitle: 'First unread',
+      unread: 2,
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:group:two',
+      canonicalSessionId: 'session:group:two',
+      name: 'Second group thread',
+      subtitle: 'Second unread',
+      unread: 3,
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const [space] = participantSpaces;
+
+  const foldedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:outside-active',
+  }) as never));
+  assert.match(foldedMarkup, /data-unread-scope="participant-space"[^>]*data-unread-count="5"/);
+  assert.doesNotMatch(foldedMarkup, /data-unread-scope="participant-session"/);
+
+  const expandedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    initialSelectedParticipantSpaceId: space?.id,
+    activeConvId: 'session:group:two',
+  }) as never));
+  assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-space"/);
+  assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="2"/);
+  assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
+});
+
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
 

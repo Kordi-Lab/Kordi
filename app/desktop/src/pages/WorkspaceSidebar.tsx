@@ -260,11 +260,15 @@ function SidebarSessionStatusIndicator({
   );
 }
 
-function SidebarUnreadBadge({ count }: { count?: number }) {
+function SidebarUnreadBadge({ count, scope }: { count?: number; scope?: string }) {
   if (!count || count <= 0) return null;
 
   return (
-    <span className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]">
+    <span
+      className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]"
+      data-unread-scope={scope}
+      data-unread-count={count > 99 ? '99+' : count}
+    >
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -273,12 +277,14 @@ function SidebarUnreadBadge({ count }: { count?: number }) {
 function SidebarSessionMetaColumn({
   timeLabel,
   unreadCount,
+  unreadScope,
   indicator,
   active = false,
   reserveStatusSpace = true,
 }: {
   timeLabel: string;
   unreadCount?: number;
+  unreadScope?: string;
   indicator?: SessionStatusIndicator;
   active?: boolean;
   reserveStatusSpace?: boolean;
@@ -291,7 +297,7 @@ function SidebarSessionMetaColumn({
       </span>
       {reserveStatusSpace || hasStatusLine ? (
         <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-          <SidebarUnreadBadge count={unreadCount} />
+          <SidebarUnreadBadge count={unreadCount} scope={unreadScope} />
           <SidebarSessionStatusIndicator indicator={indicator} active={active} />
         </div>
       ) : null}
@@ -701,7 +707,8 @@ export function WorkspaceSidebar({
                                 <div className="app-participant-space-row-meta">
                                   <SidebarSessionMetaColumn
                                     timeLabel={rowTimeLabel}
-                                    unreadCount={space.unread}
+                                    unreadCount={isExpanded ? 0 : space.unread}
+                                    unreadScope="participant-space"
                                     indicator={latestSession?.statusIndicator}
                                     active={isActiveSpace || isExpanded}
                                     reserveStatusSpace={false}
@@ -755,6 +762,7 @@ export function WorkspaceSidebar({
                                       <SidebarSessionMetaColumn
                                         timeLabel={rowTimeLabel}
                                         unreadCount={session.unread}
+                                        unreadScope="participant-session"
                                         indicator={session.statusIndicator}
                                         active={isActive}
                                       />
