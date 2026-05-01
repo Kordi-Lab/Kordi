@@ -659,8 +659,8 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
 
   if (msg.role === 'system') {
     return (
-      <div className="flex justify-center py-2">
-        <div className="max-w-[min(100%,44rem)] rounded-full border bg-muted px-3 py-1 text-center text-xs text-muted-foreground">{msg.text}</div>
+      <div className="app-system-notice-row flex justify-center py-0.5">
+        <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
       </div>
     );
   }
@@ -1338,7 +1338,10 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
       ) : null}
 
       {visibleTurn.error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{visibleTurn.error}</div>
+        <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
+          <span className="min-w-0 break-words">{visibleTurn.error}</span>
+        </div>
       ) : null}
     </div>
   );

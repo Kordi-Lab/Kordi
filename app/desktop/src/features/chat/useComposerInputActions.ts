@@ -5,6 +5,7 @@ import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/m
 import { storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import { friendlyAttachmentName } from './composerAttachments';
+import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
@@ -81,6 +82,8 @@ function appendOptimisticSessionConfigMessage({
     timeLabel,
     timestampMs,
   };
+  const nextMessages = appendOrReplaceTrailingSessionConfigNotice(current.activeSession.messages, systemMessage);
+  const messageCountDelta = nextMessages.appended ? 1 : 0;
 
   return {
     ...current,
@@ -89,7 +92,7 @@ function appendOptimisticSessionConfigMessage({
         ? {
             ...session,
             updatedAtLabel: timeLabel,
-            messageCount: session.messageCount + 1,
+            messageCount: session.messageCount + messageCountDelta,
           }
         : session
     )),
@@ -114,11 +117,8 @@ function appendOptimisticSessionConfigMessage({
         ? formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)
         : current.activeSession.thinkingLabel,
       updatedAtLabel: timeLabel,
-      messageCount: current.activeSession.messageCount + 1,
-      messages: [
-        ...current.activeSession.messages,
-        systemMessage,
-      ],
+      messageCount: current.activeSession.messageCount + messageCountDelta,
+      messages: nextMessages.messages,
     },
   };
 }
