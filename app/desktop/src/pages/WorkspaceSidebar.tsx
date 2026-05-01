@@ -556,7 +556,7 @@ export function WorkspaceSidebar({
                   ) : null}
 
                   <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="participant-spaces-inline">
-                    <div className="w-full space-y-1">
+                    <div className="w-full space-y-0.5">
                       {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
                         const latestSession = space.sessions[0];
                         const isActiveSpace = activeParticipantSpaceId === space.id;
@@ -566,47 +566,43 @@ export function WorkspaceSidebar({
                           setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
                         };
                         return (
-                          <div key={space.id} className={cn('app-participant-space-inline-group rounded-[16px]', isExpanded && 'app-participant-space-inline-group-expanded')}>
-                            <div className="relative">
+                          <div key={space.id} className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}>
+                            <div
+                              className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
+                              data-participant-space-row-shell="true"
+                            >
                               <button
                                 type="button"
                                 data-testid="participant-space-row"
                                 data-participant-space-toggle="true"
                                 aria-expanded={isExpanded}
                                 onClick={toggleSpace}
-                                className={cn(
-                                  'app-session-row block w-full px-2.5 py-2 pr-[4.75rem] text-left text-white',
-                                  (isActiveSpace || isExpanded) && 'app-session-row-active',
-                                )}
+                                className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
                               >
-                                <div className="flex items-start gap-2.5">
-                                  <ParticipantSpaceAvatarStack space={space} />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-start gap-2.5">
-                                      <div className="min-w-0 flex-1">
-                                        <div className="truncate text-[12px] font-medium text-slate-100" title={space.title}>{space.title}</div>
-                                        <div className={cn('mt-px truncate text-[10.5px] leading-[1.05rem]', isActiveSpace || isExpanded ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
-                                          {space.preview || `${participantSpaceKindText(space)} space`}
-                                        </div>
-                                        <div className="mt-px truncate text-[10px] leading-[0.95rem] text-slate-600">
-                                          {participantSpaceDetailText(space)}
-                                        </div>
-                                      </div>
-                                      <SidebarSessionMetaColumn
-                                        timeLabel={rowTimeLabel}
-                                        unreadCount={space.unread}
-                                        indicator={latestSession?.statusIndicator}
-                                        active={isActiveSpace || isExpanded}
-                                      />
-                                    </div>
+                                <ParticipantSpaceAvatarStack space={space} />
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
+                                  <div className={cn('mt-px truncate text-[10.5px] leading-[0.98rem]', isActiveSpace || isExpanded ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
+                                    {space.preview || `${participantSpaceKindText(space)} space`}
+                                  </div>
+                                  <div className="mt-px truncate text-[10px] leading-[0.88rem] text-slate-500">
+                                    {participantSpaceDetailText(space)}
                                   </div>
                                 </div>
+                                <div className="app-participant-space-row-meta">
+                                  <SidebarSessionMetaColumn
+                                    timeLabel={rowTimeLabel}
+                                    unreadCount={space.unread}
+                                    indicator={latestSession?.statusIndicator}
+                                    active={isActiveSpace || isExpanded}
+                                  />
+                                </div>
                               </button>
-                              <div className="app-participant-space-row-actions absolute right-1.5 top-1.5 flex items-center gap-1" data-participant-space-row-actions="true">
+                              <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
                                 <button
                                   type="button"
                                   data-participant-space-context-create="true"
-                                  className="app-participant-space-action app-participant-space-context-create grid h-7 w-7 place-items-center rounded-[10px] transition"
+                                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
                                   aria-label={`Create session in ${space.title}`}
                                   title={`Create session in ${space.title}`}
                                   onClick={(event) => {
@@ -627,7 +623,7 @@ export function WorkspaceSidebar({
                                       setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
                                       setIsGroupDetailsDialogOpen(true);
                                     }}
-                                    className="app-participant-space-action app-participant-space-menu-action grid h-7 w-7 shrink-0 place-items-center rounded-[10px]"
+                                    className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
                                     title="Group management"
                                     aria-label="Open group management"
                                     aria-haspopup="dialog"
@@ -638,7 +634,7 @@ export function WorkspaceSidebar({
                                 <button
                                   type="button"
                                   data-participant-space-toggle-button="true"
-                                  className="app-participant-space-action app-participant-space-enter-action grid h-7 w-7 place-items-center rounded-[10px]"
+                                  className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
                                   title={isExpanded ? 'Collapse sessions' : 'Expand sessions'}
                                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${space.title}`}
                                   onClick={(event) => {
@@ -652,7 +648,7 @@ export function WorkspaceSidebar({
                             </div>
 
                             {isExpanded ? (
-                              <div className="app-participant-space-inline-sessions mt-1 space-y-1 pl-5">
+                              <div className="app-participant-space-inline-sessions mt-0.5 space-y-0.5 pl-[3.25rem]">
                                 {space.sessions.map((session) => {
                                   const conversation = session.conversation;
                                   const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;

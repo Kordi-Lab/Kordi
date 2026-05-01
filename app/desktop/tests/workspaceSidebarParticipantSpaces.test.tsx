@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -170,14 +171,28 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   assert.match(markup, /Bob/);
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);
+  assert.match(markup, /data-participant-space-row-shell="true"/);
+  assert.match(markup, /app-participant-space-row-button/);
   assert.match(markup, /data-participant-space-toggle="true"/);
   assert.match(markup, /aria-label="Collapse Bob"/);
   assert.match(markup, /aria-label="Create session in Bob"/);
   assert.match(markup, /data-participant-space-context-create="true"/);
+  assert.doesNotMatch(markup, /absolute right-1\.5 top-1\.5/);
+  assert.doesNotMatch(markup, /pr-\[4\.75rem\]/);
   assert.doesNotMatch(markup, /data-participant-space-enter="true"/);
   assert.doesNotMatch(markup, /Back to chats/);
   assert.match(markup, /Old Bob thread/);
   assert.match(markup, /New Bob thread/);
+});
+
+test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
+  assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*position:\s*static/s);
+  assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*box-shadow:\s*inset 0 -1px 0/s);
+  assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
