@@ -116,6 +116,17 @@ export function conversationHasGroupMentionScope(conversation: MentionScopeConve
   return nonSelfHumanCount > 1;
 }
 
+export function conversationHasParticipantMentionScope(conversation: MentionScopeConversation | null | undefined) {
+  if (!conversation) return false;
+  if (conversationHasGroupMentionScope(conversation)) return true;
+  const humanKeys = conversationHumanOwnerKeys(conversation);
+  if (humanKeys.size === 0) return false;
+  const nonSelfHumanCount = (conversation.canonicalParticipants ?? []).filter((participant) => (
+    participant.kind === 'human' && !isSelfConversationParticipant(participant)
+  )).length;
+  return nonSelfHumanCount > 0 || /\b(?:direct|person|contact)\b/i.test(conversation.directness ?? '');
+}
+
 export function bridgeMentionOwnerMatchesConversationHumans(
   owner: Pick<DesktopBridgeState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'>,
   conversation: MentionScopeConversation | null | undefined,
@@ -132,7 +143,7 @@ export function filterBridgeMentionCandidatesForConversation(
   candidates: BridgeMentionCandidate[],
   conversation: MentionScopeConversation | null | undefined,
 ) {
-  if (!conversationHasGroupMentionScope(conversation)) return candidates;
+  if (!conversationHasParticipantMentionScope(conversation)) return candidates;
   return candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation));
 }
 

@@ -70,6 +70,10 @@ For groups under 50 people, adding a person contact directly makes them an activ
 
 Inside a drilled participant-space view, child sessions render with a `#` prefix before the session title, e.g. `# Hi shu`.
 
+### Mention participant scope
+
+In direct person chats and group chats, the `@` menu is scoped to the people participating in that conversation plus those people's agents. Other Bridge people/agents discovered on the same server are hidden from that conversation's mention menu and send-time mention resolution.
+
 ## Data model approach
 
 Use the existing canonical session tables for this foundation instead of adding a new storage table in this PR:

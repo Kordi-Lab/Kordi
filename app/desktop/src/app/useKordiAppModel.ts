@@ -26,7 +26,7 @@ import {
   bridgeMentionCandidateOptionText,
   bridgeMentionOwnerMatchesConversationHumans,
   buildBridgeMentionCandidates,
-  conversationHasGroupMentionScope,
+  conversationHasParticipantMentionScope,
   filterBridgeMentionCandidatesForConversation,
   filterBridgeMentionCandidatesForHost,
   mentionHandleForLabel,
@@ -613,7 +613,7 @@ export function useKordiAppModel() {
 
       const localAgentBaseLabel = 'Kordi';
       const ownerName = activeHost?.ownerName?.trim();
-      const includeLocalAgent = !conversationHasGroupMentionScope(conversation)
+      const includeLocalAgent = !conversationHasParticipantMentionScope(conversation)
         || bridgeMentionOwnerMatchesConversationHumans({ humanId: activeHost?.humanId, ownerName }, conversation);
       if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
         const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
