@@ -1,6 +1,7 @@
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { Check, SquareArrowOutUpRight } from 'lucide-react';
+import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { Check } from 'lucide-react';
 
+import { openDesktopExternalUrl } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
 type MarkdownInlinePart =
@@ -29,6 +30,56 @@ type MarkdownBlock =
   | { type: 'blockquote'; text: string }
   | { type: 'table'; headers: string[]; rows: string[][] };
 
+type ExternalMarkdownLinkClickEvent = Pick<ReactMouseEvent<HTMLAnchorElement>, 'preventDefault'> & {
+  altKey?: boolean;
+  button?: number;
+  ctrlKey?: boolean;
+  defaultPrevented?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+};
+
+type ExternalMarkdownLinkOpener = (url: string) => Promise<unknown> | unknown;
+
+const bareHttpUrlStartPattern = /https?:\/\//;
+const trailingBareUrlPunctuationPattern = /[.,!?;:]+$/;
+
+function splitBareHttpUrl(value: string) {
+  const href = value.replace(trailingBareUrlPunctuationPattern, '');
+  return {
+    href,
+    suffix: value.slice(href.length),
+  };
+}
+
+function nextInlineTokenIndex(slice: string) {
+  return [slice.indexOf('['), slice.indexOf('`'), slice.indexOf('*'), slice.search(bareHttpUrlStartPattern)]
+    .filter((value) => value >= 0)
+    .sort((left, right) => left - right)[0];
+}
+
+export function openExternalMarkdownLink(
+  event: ExternalMarkdownLinkClickEvent,
+  href: string,
+  openExternalUrl: ExternalMarkdownLinkOpener = openDesktopExternalUrl,
+) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return false;
+  }
+
+  event.preventDefault();
+
+  try {
+    void Promise.resolve(openExternalUrl(href)).catch((error: unknown) => {
+      console.error('[kordi] Unable to open external link', error);
+    });
+  } catch (error) {
+    console.error('[kordi] Unable to open external link', error);
+  }
+
+  return true;
+}
+
 function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
   const parts: MarkdownInlinePart[] = [];
   let index = 0;
@@ -37,6 +88,7 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     const slice = text.slice(index);
     const patterns = [
       { type: 'link' as const, match: slice.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/) },
+      { type: 'bareLink' as const, match: slice.match(/^https?:\/\/[^\s<>"']+/) },
       { type: 'code' as const, match: slice.match(/^`([^`]+)`/) },
       { type: 'strong' as const, match: slice.match(/^\*\*([^*]+)\*\*/) },
       { type: 'em' as const, match: slice.match(/^\*([^*]+)\*/) },
@@ -44,9 +96,7 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     const hit = patterns.find((entry) => entry.match);
 
     if (!hit?.match) {
-      const nextIndex = [slice.indexOf('['), slice.indexOf('`'), slice.indexOf('*')]
-        .filter((value) => value >= 0)
-        .sort((left, right) => left - right)[0];
+      const nextIndex = nextInlineTokenIndex(slice);
       if (nextIndex === undefined) {
         parts.push({ type: 'text', value: text.slice(index) });
         break;
@@ -65,6 +115,12 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     const [matched, first, second] = hit.match;
     if (hit.type === 'link') {
       parts.push({ type: 'link', label: first, href: second ?? '#' });
+    } else if (hit.type === 'bareLink') {
+      const { href, suffix } = splitBareHttpUrl(matched);
+      parts.push({ type: 'link', label: href, href });
+      if (suffix) {
+        parts.push({ type: 'text', value: suffix });
+      }
     } else if (hit.type === 'code') {
       parts.push({ type: 'code', value: first });
     } else if (hit.type === 'strong') {
@@ -113,14 +169,16 @@ function renderInlineMarkdown(text: string, tone: 'default' | 'muted' = 'default
           key={`link-${index}`}
           href={part.href}
           target="_blank"
-          rel="noreferrer"
+          rel="noreferrer noopener"
+          onClick={(event) => {
+            openExternalMarkdownLink(event, part.href);
+          }}
           className={cn(
-            'inline-flex max-w-full flex-wrap items-center gap-1 break-words [overflow-wrap:anywhere] underline decoration-cyan-400/50 underline-offset-4 transition',
-            tone === 'muted' ? 'text-cyan-200 hover:text-cyan-100' : 'text-cyan-300 hover:text-cyan-200',
+            'app-markdown-link break-words [overflow-wrap:anywhere] transition-colors',
+            tone === 'muted' && 'app-markdown-link-muted',
           )}
         >
           <span>{part.label}</span>
-          <SquareArrowOutUpRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
         </a>
       );
     }
