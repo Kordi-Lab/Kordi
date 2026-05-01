@@ -10,11 +10,12 @@ import {
   canCreateGroup,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
+  existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
   participantSpaceCanonicalSessionIds,
 } from '../src/features/chat/chatCreateFlows';
-import type { Agent, Contact, ParticipantSpaceViewModel } from '../src/kordi-app/types';
+import type { Agent, Contact, Conversation, ParticipantSpaceViewModel } from '../src/kordi-app/types';
 
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -83,6 +84,30 @@ function participantSpace(overrides: Partial<ParticipantSpaceViewModel> = {}): P
   };
 }
 
+function chatConversation(overrides: Partial<Conversation & { _updatedAtMs?: number }> = {}): Conversation & { _updatedAtMs?: number } {
+  return {
+    id: 'session:default',
+    canonicalSessionId: 'session:default',
+    name: 'New session',
+    type: 'owned-agent',
+    subtitle: 'New session',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct chat',
+    participants: ['Me', 'Kordi'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'agent:kordi', name: 'Kordi', kind: 'agent', role: 'delegate', source: 'local', agentId: 'agent:kordi', avatarKey: 'kordi' },
+    ],
+    messages: [],
+    canonicalMessageCount: 0,
+    updatedAtLabel: '10:00',
+    _updatedAtMs: 1,
+    ...overrides,
+  };
+}
+
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: 'agent:kordi',
@@ -139,6 +164,49 @@ test('agent create flow starts a new selected-agent session under Notes to self'
     agentId: 'agent:reviewer',
     participantSpaceKind: 'self',
   });
+});
+
+test('existingBlankSessionIdForAgentStart reuses the newest empty selected-agent session', () => {
+  const selectedAgent = agent({ id: 'agent:kordi', name: 'Kordi', isOwned: true });
+  const conversations = [
+    chatConversation({
+      id: 'session:self-agent:old-blank',
+      canonicalSessionId: 'session:self-agent:old-blank',
+      name: 'Kordi',
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      _updatedAtMs: 1,
+    }),
+    chatConversation({
+      id: 'session:self-agent:newer-real',
+      canonicalSessionId: 'session:self-agent:newer-real',
+      name: 'Kordi',
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      messages: [{ role: 'person', sender: 'Me', text: 'Use this one?', time: '10:02' }],
+      canonicalMessageCount: 1,
+      _updatedAtMs: 3,
+    }),
+    chatConversation({
+      id: 'session:self-agent:other-blank',
+      canonicalSessionId: 'session:self-agent:other-blank',
+      name: 'Reviewer',
+      participants: ['Me', 'Reviewer'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:reviewer', name: 'Reviewer', kind: 'agent', role: 'delegate', source: 'local', agentId: 'agent:reviewer', avatarKey: 'reviewer' },
+      ],
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:reviewer', participantSpaceKind: 'self' },
+      _updatedAtMs: 4,
+    }),
+    chatConversation({
+      id: 'session:self-agent:newest-blank',
+      canonicalSessionId: 'session:self-agent:newest-blank',
+      name: 'Kordi',
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      _updatedAtMs: 5,
+    }),
+  ];
+
+  assert.equal(existingBlankSessionIdForAgentStart(selectedAgent, conversations), 'session:self-agent:newest-blank');
 });
 
 test('canCreateGroup requires at least two unique people contacts', () => {

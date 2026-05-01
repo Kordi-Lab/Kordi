@@ -50,12 +50,29 @@ export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionV
     && isBlankSessionLabel(session.conversation.name);
 }
 
+function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
+  if (conversationHasUserContent(session.conversation) || session.conversation.type !== 'owned-agent') return null;
+  const metadata = metadataRecord(session.conversation.metadata);
+  const agent = nonSelfAgents(allDisplayParticipants(session.conversation))[0];
+  const agentKey = metadataStringValue(metadata, 'agentId')
+    || agent?.id
+    || agent?.agentId
+    || cleanOptionalText(session.title)
+    || cleanOptionalText(session.conversation.name);
+  return agentKey ? `agent:${agentKey}` : null;
+}
+
+function blankSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
+  return blankAgentSessionCollapseKey(session) ?? (isBlankParticipantSpaceSession(session) ? 'generic' : null);
+}
+
 function collapseDuplicateBlankSessions(sessions: ParticipantSpaceSessionViewModel[]) {
-  let hasBlankSession = false;
+  const blankKeys = new Set<string>();
   return sessions.filter((session) => {
-    if (!isBlankParticipantSpaceSession(session)) return true;
-    if (hasBlankSession) return false;
-    hasBlankSession = true;
+    const blankKey = blankSessionCollapseKey(session);
+    if (!blankKey) return true;
+    if (blankKeys.has(blankKey)) return false;
+    blankKeys.add(blankKey);
     return true;
   });
 }

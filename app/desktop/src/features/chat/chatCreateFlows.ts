@@ -2,6 +2,7 @@ import { isBlankParticipantSpaceSession } from './participantSpaces';
 import type {
   Agent,
   Contact,
+  Conversation,
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -108,6 +109,72 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
     agentId: agent.id,
     participantSpaceKind: 'self' as const,
   };
+}
+
+function conversationHasUserContent(conversation: Conversation) {
+  if (typeof conversation.canonicalMessageCount === 'number' && conversation.canonicalMessageCount > 0) return true;
+  if (conversation.queuedMessages?.length) return true;
+  return conversation.messages.some((message) => message.role !== 'system' && message.text.trim().length > 0);
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function metadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizedMatchKey(value?: string | null) {
+  return cleanText(value).toLowerCase();
+}
+
+function agentMatchKeys(agent: Agent) {
+  const canonicalIdentityId = agentCanonicalIdentityRequest(agent).id;
+  const baseKeys = uniqueNonEmpty([
+    agent.id,
+    cleanText(agent.id).replace(/^agent:/, ''),
+    agent.bridgeAgentId ?? '',
+    agent.contactId ?? '',
+    canonicalIdentityId ?? '',
+    cleanText(canonicalIdentityId).replace(/^agent:/, ''),
+  ]);
+  return new Set(baseKeys.map(normalizedMatchKey).filter(Boolean));
+}
+
+function conversationAgentMatchKeys(conversation: Conversation) {
+  const metadata = metadataRecord(conversation.metadata);
+  return uniqueNonEmpty([
+    metadataText(metadata, 'agentId'),
+    metadataText(metadata, 'contactId'),
+    conversation.bridgeTarget?.agentId ?? '',
+    ...(conversation.canonicalParticipants ?? []).filter((participant) => participant.kind === 'agent').flatMap((participant) => [
+      participant.id,
+      participant.agentId ?? '',
+      participant.avatarKey ?? '',
+    ]),
+  ]).flatMap((key) => [key, key.replace(/^agent:/, '')]);
+}
+
+function conversationUpdatedAtMs(conversation: Conversation) {
+  const raw = (conversation as Conversation & { _updatedAtMs?: number })._updatedAtMs;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+}
+
+export function existingBlankSessionIdForAgentStart(agent: Agent, conversations: Conversation[]) {
+  const agentKeys = agentMatchKeys(agent);
+  const blankConversation = conversations
+    .filter((conversation) => {
+      if (conversation.type !== 'owned-agent') return false;
+      if (conversationHasUserContent(conversation)) return false;
+      return conversationAgentMatchKeys(conversation).some((key) => agentKeys.has(normalizedMatchKey(key)));
+    })
+    .sort((left, right) => conversationUpdatedAtMs(right) - conversationUpdatedAtMs(left))[0];
+
+  return blankConversation?.canonicalSessionId ?? blankConversation?.id ?? null;
 }
 
 export function canCreateGroup(selectedContactIds: string[]) {

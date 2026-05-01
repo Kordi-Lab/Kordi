@@ -262,6 +262,83 @@ test('buildParticipantSpaces collapses duplicate blank sessions in a participant
   ]);
 });
 
+test('buildParticipantSpaces collapses duplicate blank selected-agent sessions by agent', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:self-agent:kordi-newer',
+      canonicalSessionId: 'session:self-agent:kordi-newer',
+      type: 'owned-agent',
+      name: 'Kordi',
+      subtitle: 'Kordi · 0 messages',
+      participants: ['Me', 'Kordi'],
+      messages: [],
+      canonicalMessageCount: 0,
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:kordi', name: 'Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'kordi' },
+      ],
+      _updatedAtMs: 4,
+    }),
+    conversation({
+      id: 'session:self-agent:reviewer-blank',
+      canonicalSessionId: 'session:self-agent:reviewer-blank',
+      type: 'owned-agent',
+      name: 'Reviewer',
+      subtitle: 'Reviewer · 0 messages',
+      participants: ['Me', 'Reviewer'],
+      messages: [],
+      canonicalMessageCount: 0,
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:reviewer', participantSpaceKind: 'self' },
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:reviewer', name: 'Reviewer', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'reviewer' },
+      ],
+      _updatedAtMs: 3,
+    }),
+    conversation({
+      id: 'session:self-agent:kordi-older',
+      canonicalSessionId: 'session:self-agent:kordi-older',
+      type: 'owned-agent',
+      name: 'Kordi',
+      subtitle: 'Kordi · 0 messages',
+      participants: ['Me', 'Kordi'],
+      messages: [],
+      canonicalMessageCount: 0,
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:kordi', name: 'Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'kordi' },
+      ],
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:self-agent:kordi-real',
+      canonicalSessionId: 'session:self-agent:kordi-real',
+      type: 'owned-agent',
+      name: 'Kordi',
+      subtitle: 'Need help',
+      participants: ['Me', 'Kordi'],
+      messages: [{ role: 'person', sender: 'Me', text: 'Need help', time: '10:00' }],
+      canonicalMessageCount: 1,
+      metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:kordi', participantSpaceKind: 'self' },
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:kordi', name: 'Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'kordi' },
+      ],
+      _updatedAtMs: 1,
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.sessionCount, 3);
+  assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), [
+    'session:self-agent:kordi-newer',
+    'session:self-agent:reviewer-blank',
+    'session:self-agent:kordi-real',
+  ]);
+});
+
 test('buildParticipantSpaces uses explicit custom group names before inferred people names', () => {
   const spaces = buildParticipantSpaces([
     conversation({

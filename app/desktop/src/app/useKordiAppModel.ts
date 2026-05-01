@@ -33,6 +33,7 @@ import {
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
+  existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
@@ -1093,6 +1094,11 @@ export function useKordiAppModel() {
       }
       if (agent.bridgeHostId && agent.bridgeAgentId && !agent.isBridgeActive) {
         await handleActivateBridgeAgent(agent.bridgeHostId, agent.bridgeAgentId);
+      }
+      const existingBlankSessionId = existingBlankSessionIdForAgentStart(agent, chatConversations);
+      if (existingBlankSessionId) {
+        selectNewChatSession(existingBlankSessionId);
+        return;
       }
       const identityRequest = agentCanonicalIdentityRequest(agent);
       const targetIdentityId = identityRequest.id?.trim();
