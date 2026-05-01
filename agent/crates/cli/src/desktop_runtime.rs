@@ -64,6 +64,7 @@ fn is_false(value: &bool) -> bool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+const DYNAMIC_SLASH_CONTEXT_CUSTOM_TYPE: &str = "desktop_dynamic_slash_context";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 const DESKTOP_MODEL_OPTIONS_CACHE_TTL: Duration = Duration::from_secs(300);
@@ -831,13 +832,11 @@ impl DesktopRuntimeSession {
             &attachment_paths,
             &self.setup.tool_ctx.cwd,
         );
-        let prompt_text = expand_desktop_dynamic_slash_prompt(
+        let prompt_parts = desktop_dynamic_slash_prompt_parts(
             expanded.text.trim(),
             &self.setup.session_resources,
-        )
-        .trim()
-        .to_string();
-        if prompt_text.is_empty() && expanded.image_paths.is_empty() {
+        );
+        if prompt_parts.prompt_text.trim().is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
         }
         let image_attachment_paths = attachment_paths
@@ -876,7 +875,7 @@ impl DesktopRuntimeSession {
         ensure_session_row_created(&mut self.setup)?;
         let session_title_seed = if prompt.is_empty() {
             attachment_summary_from_metadata(&attachment_metadata)
-                .unwrap_or_else(|| prompt_text.clone())
+                .unwrap_or_else(|| prompt_parts.prompt_text.clone())
         } else {
             prompt.clone()
         };
@@ -893,7 +892,7 @@ impl DesktopRuntimeSession {
         turn_runner::append_user_message_with_images(
             &sibling_conn,
             &self.setup.session_id,
-            &prompt_text,
+            &prompt_parts.visible_text,
             &images,
         )
         .await?;
@@ -904,9 +903,16 @@ impl DesktopRuntimeSession {
             &attachment_metadata,
         )
         .await?;
+        append_dynamic_slash_context_message(
+            &sibling_conn,
+            &self.setup.session_id,
+            prompt_parts.hidden_context_text.as_deref(),
+        )
+        .await?;
         refresh_provider_runtime_fields(&mut self.setup);
 
         let turn_config = build_turn_config(&mut self.setup, cancel)?;
+        let prompt_text = prompt_parts.prompt_text;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
         let handle =
             tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
@@ -1564,24 +1570,57 @@ fn is_desktop_dynamic_agent_slash_command(
         || parse_desktop_prompt_template(command, resources).is_some()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DesktopDynamicSlashPromptParts {
+    visible_text: String,
+    prompt_text: String,
+    hidden_context_text: Option<String>,
+}
+
+fn desktop_dynamic_slash_prompt_parts(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> DesktopDynamicSlashPromptParts {
+    let visible_text = text.trim().to_string();
+    let hidden_context_text = desktop_dynamic_slash_prompt_context_text(text, resources);
+    let prompt_text = hidden_context_text
+        .clone()
+        .unwrap_or_else(|| visible_text.clone());
+
+    DesktopDynamicSlashPromptParts {
+        visible_text,
+        prompt_text,
+        hidden_context_text,
+    }
+}
+
+#[cfg(test)]
 fn expand_desktop_dynamic_slash_prompt(
     text: &str,
     resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
 ) -> String {
+    desktop_dynamic_slash_prompt_context_text(text, resources)
+        .unwrap_or_else(|| text.to_string())
+}
+
+fn desktop_dynamic_slash_prompt_context_text(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Option<String> {
     if let Some((skill_name, user_args)) = parse_desktop_skill_command(text)
         && let Some(skill) = resources
             .skills
             .iter()
             .find(|skill| skill.info.name == skill_name)
     {
-        return format_desktop_resource_content(&skill.content, user_args);
+        return Some(format_desktop_resource_content(&skill.content, user_args));
     }
 
     if let Some((prompt, user_args)) = parse_desktop_prompt_template(text, resources) {
-        return format_desktop_resource_content(&prompt.content, user_args);
+        return Some(format_desktop_resource_content(&prompt.content, user_args));
     }
 
-    text.to_string()
+    None
 }
 
 fn parse_desktop_skill_command(text: &str) -> Option<(&str, Option<&str>)> {
@@ -2384,6 +2423,36 @@ async fn append_attachment_context_message(
         content,
         display: false,
         details: Some(serde_json::json!({ "attachments": attachments })),
+    };
+    kordi_session::store::append_entry(&conn, session_id, &entry)?;
+    Ok(())
+}
+
+async fn append_dynamic_slash_context_message(
+    conn: &Arc<tokio::sync::Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    context_text: Option<&str>,
+) -> Result<()> {
+    let Some(context_text) = context_text else {
+        return Ok(());
+    };
+    if context_text.trim().is_empty() {
+        return Ok(());
+    }
+
+    let conn = conn.lock().await;
+    let entry = SessionEntry::CustomMessage {
+        base: EntryBase {
+            id: EntryId::generate(),
+            parent_id: turn_runner::get_leaf_raw(&conn, session_id),
+            timestamp: Utc::now(),
+        },
+        custom_type: DYNAMIC_SLASH_CONTEXT_CUSTOM_TYPE.to_string(),
+        content: vec![ContentBlock::Text {
+            text: context_text.to_string(),
+        }],
+        display: false,
+        details: None,
     };
     kordi_session::store::append_entry(&conn, session_id, &entry)?;
     Ok(())
@@ -3196,9 +3265,8 @@ mod tests {
         local_provider_settings("lm-studio", "http://localhost:1234/v1")
     }
 
-    #[test]
-    fn desktop_dynamic_slash_prompt_expands_skills_and_prompt_templates() {
-        let resources = kordi_core::agent_session_extensions::SessionResourceBootstrap {
+    fn dynamic_slash_test_resources() -> kordi_core::agent_session_extensions::SessionResourceBootstrap {
+        kordi_core::agent_session_extensions::SessionResourceBootstrap {
             skills: vec![kordi_core::agent_session_extensions::SkillDefinition {
                 info: kordi_core::agent_session_extensions::SkillInfo {
                     name: "review".to_string(),
@@ -3218,7 +3286,12 @@ mod tests {
                 },
             ],
             ..Default::default()
-        };
+        }
+    }
+
+    #[test]
+    fn desktop_dynamic_slash_prompt_expands_skills_and_prompt_templates() {
+        let resources = dynamic_slash_test_resources();
 
         assert_eq!(
             expand_desktop_dynamic_slash_prompt("/skill:review focus on tests", &resources),
@@ -3232,6 +3305,47 @@ mod tests {
             expand_desktop_dynamic_slash_prompt("/unknown release notes", &resources),
             "/unknown release notes"
         );
+    }
+
+    #[tokio::test]
+    async fn desktop_dynamic_slash_prompt_context_is_hidden_from_loaded_messages() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-dynamic-slash-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+        let conn = Arc::new(tokio::sync::Mutex::new(conn));
+        let resources = dynamic_slash_test_resources();
+        let parts = desktop_dynamic_slash_prompt_parts("/skill:review focus on tests", &resources);
+
+        turn_runner::append_user_message_with_images(
+            &conn,
+            session_id,
+            &parts.visible_text,
+            &[],
+        )
+        .await?;
+        append_dynamic_slash_context_message(
+            &conn,
+            session_id,
+            parts.hidden_context_text.as_deref(),
+        )
+        .await?;
+
+        let guard = conn.lock().await;
+        let messages = load_session_messages(&guard, session_id)?;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].text, "/skill:review focus on tests");
+        assert!(!messages
+            .iter()
+            .any(|message| message.text.contains("Use the review skill.")));
+
+        let context = kordi_session::context::build_context(&guard, session_id)?;
+        let provider_messages = kordi_core::agent_session::messages_to_provider(&context.messages);
+        assert!(provider_messages.iter().any(|message| message
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| text.contains("Use the review skill."))));
+        Ok(())
     }
 
     #[test]
