@@ -378,6 +378,7 @@ pub(super) fn outreach_metadata_for_event(
         value.eq_ignore_ascii_case("session-relay")
             || value.eq_ignore_ascii_case("session-message")
             || value.eq_ignore_ascii_case("session-invite")
+            || value.eq_ignore_ascii_case("session-update")
     });
     let now = now_ms();
 

@@ -238,18 +238,23 @@ function metadataRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function customGroupTitle(latestSession: ParticipantSpaceSessionViewModel | undefined) {
-  const metadata = metadataRecord(latestSession?.conversation.metadata);
-  const customName = metadata.customName;
-  return typeof customName === 'string' ? safePreviewText(customName) : '';
+function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[]) {
+  for (const session of sessions) {
+    const metadata = metadataRecord(session.conversation.metadata);
+    const customName = metadata.customName;
+    const title = typeof customName === 'string' ? safePreviewText(customName) : '';
+    if (title) return title;
+  }
+  return '';
 }
 
 export const SELF_PARTICIPANT_SPACE_TITLE = 'My chats';
 
-function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
+function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], sessions: ParticipantSpaceSessionViewModel[]) {
+  const latestSession = sessions[0];
   if (kind === 'self') return SELF_PARTICIPANT_SPACE_TITLE;
   if (kind === 'group') {
-    return customGroupTitle(latestSession)
+    return customGroupTitle(sessions)
       || participantNameList(nonSelfHumans(participants))
       || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
       || safePreviewText(latestSession?.conversation.name)
@@ -304,7 +309,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       return {
         id,
         kind: group.kind,
-        title: spaceTitle(group.kind, group.participants, latest),
+        title: spaceTitle(group.kind, group.participants, sessions),
         participants: group.participants,
         participantCount: group.participants.length,
         sessionCount: sessions.length,

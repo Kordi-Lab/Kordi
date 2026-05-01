@@ -8,6 +8,8 @@ import {
   buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
+  buildChatGroupBridgeUpdateParticipants,
+  buildChatGroupBridgeUpdateTargets,
   buildChatCreatePersonOptions,
   canCreateGroup,
   chatSessionIdForAgentStart,
@@ -260,6 +262,25 @@ test('group create bridge invite metadata includes creator and selected people',
     { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
     { identityId: 'human:kh_user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
     { identityId: 'human:kh_user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
+  ]);
+});
+
+test('group update bridge metadata targets every other bridge-backed human and carries admin roles', () => {
+  const participants = [
+    { id: 'human:me', name: 'Testuser2', kind: 'human', role: 'self', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
+    { id: 'human:user1', name: 'Testuser1', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', avatarKey: 'user1' },
+    { id: 'human:user3', name: 'Testuser3', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', avatarKey: 'user3' },
+    { id: 'agent:local', name: 'My Kordi', kind: 'agent', role: 'owned-agent', source: 'local', avatarKey: 'agent' },
+  ] satisfies Conversation['canonicalParticipants'];
+
+  assert.deepEqual(buildChatGroupBridgeUpdateTargets({ actorIdentityId: 'human:me', participants }), [
+    { hostId: 'host-1', nodeId: 'kd_user1', displayName: 'Testuser1', ownerName: 'Testuser1', humanId: 'kh_user1' },
+    { hostId: 'host-1', nodeId: 'kd_user3', displayName: 'Testuser3', ownerName: 'Testuser3', humanId: 'kh_user3' },
+  ]);
+  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
+    { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
+    { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
   ]);
 });
 

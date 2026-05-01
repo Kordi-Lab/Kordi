@@ -76,6 +76,20 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
     : {};
 }
 
+function nonPlaceholderGroupTitle(value: string) {
+  const title = value.trim();
+  if (!title || /^(new session|session|group)$/i.test(title)) return null;
+  return title;
+}
+
+export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return session.metadata;
+  const metadata = sessionMetadata(session);
+  if (stringValue(metadata.customName)) return session.metadata;
+  const customName = nonPlaceholderGroupTitle(session.title);
+  return customName ? { ...metadata, customName } : session.metadata;
+}
+
 export function syntheticBridgeTarget(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -196,7 +210,7 @@ export function syntheticConversation(
     profileImageUrl: primary?.profileImageUrl ?? null,
     participantAvatarSeeds,
     participantSpaceId: syntheticParticipantSpaceId(session),
-    metadata: session.metadata,
+    metadata: sessionViewMetadata(session),
     bridgeTarget,
     canonicalStoragePath: undefined,
     canonicalParticipantCount: participants.length,

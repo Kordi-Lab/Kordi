@@ -42,7 +42,10 @@ import {
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupInviteText,
   buildChatCreateGroupMetadata,
+  buildChatGroupBridgeUpdateParticipants,
+  buildChatGroupBridgeUpdateTargets,
   CHAT_GROUP_INVITE_CONTEXT_POLICY,
+  CHAT_GROUP_UPDATE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
@@ -59,7 +62,7 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { Agent, CanonicalSessionState, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, Contact, ConversationParticipant, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
   addCanonicalSessionParticipants,
@@ -187,6 +190,36 @@ function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: str
       && participant.role === 'admin'
     ))
     .map((participant) => participant.identityId);
+}
+
+function canonicalGroupParticipantsForSession(state: CanonicalSessionState | null, sessionId: string): ConversationParticipant[] {
+  if (!state) return [];
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  return state.participants
+    .filter((participant) => participant.sessionId === sessionId && participant.state === 'active')
+    .flatMap((participant) => {
+      const identity = identityById.get(participant.identityId);
+      if (!identity) return [];
+      const role = identity.id === state.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
+      return [{
+        id: identity.id,
+        name: identity.displayName,
+        kind: identity.kind === 'agent' ? 'agent' : 'human',
+        role,
+        source: identity.source,
+        ownerIdentityId: identity.ownerIdentityId,
+        bridgeHostId: identity.sourceHostId,
+        bridgeNodeId: identity.bridgeNodeId,
+        humanId: identity.humanId,
+        agentId: identity.agentId,
+        avatarKey: identity.avatarKey,
+        profileImageUrl: identity.profileImageUrl,
+      } satisfies ConversationParticipant];
+    });
 }
 
 function isParticipantSpaceSelfIdentity(participant: ParticipantSpaceViewModel['participants'][number]) {
@@ -1251,6 +1284,7 @@ export function useKordiAppModel() {
       throw new Error('Select at least 2 people to start a group.');
     }
     const selectedNames = contacts.map((contact) => contact.name);
+    const groupDisplayName = request.name?.trim() || groupDefaultName(selectedNames);
     const sessionId = `session:group:${crypto.randomUUID()}`;
     const nextState = await openOrCreateCanonicalSession({
       id: sessionId,
@@ -1265,7 +1299,7 @@ export function useKordiAppModel() {
         creatorIdentityId,
         selectedContactIds: contacts.map((contact) => contact.id),
         selectedNames,
-        customName: request.name,
+        customName: groupDisplayName,
         groupSpaceId: sessionId,
       }),
     });
@@ -1287,7 +1321,7 @@ export function useKordiAppModel() {
       contacts,
     });
     if (inviteTargets.length > 0) {
-      const inviteText = buildChatCreateGroupInviteText(request.name?.trim() || groupDefaultName(selectedNames));
+      const inviteText = buildChatCreateGroupInviteText(groupDisplayName);
       try {
         for (const target of inviteTargets) {
           const inviteState = await createDesktopBridgeOutreach({
@@ -1304,7 +1338,7 @@ export function useKordiAppModel() {
             contextText: null,
             contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
             parentSessionId: sessionId,
-            parentSessionTitle: request.name?.trim() || groupDefaultName(selectedNames),
+            parentSessionTitle: groupDisplayName,
             parentSessionKind: 'group',
             parentSessionParticipants: inviteParticipants,
             parentSessionMessages: [],
@@ -1462,6 +1496,7 @@ export function useKordiAppModel() {
 
     const fallbackGroupSpaceId = groupSessionIds[0];
     let nextState = canonicalSessionState;
+    const renamedGroupIds = new Map<string, string>();
     for (const sessionId of groupSessionIds) {
       nextState = await renameCanonicalSession({
         sessionId,
@@ -1469,19 +1504,61 @@ export function useKordiAppModel() {
         requestedByIdentityId: actorIdentityId,
       });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
+      const groupId = metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId;
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
         requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
           customName: title,
-          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
+          groupId,
+          groupSpaceId: groupId,
         },
       });
+      renamedGroupIds.set(groupId, sessionId);
     }
     setCanonicalSessionState(nextState);
-  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
+
+    try {
+      for (const [groupId, sourceSessionId] of renamedGroupIds) {
+        const participants = canonicalGroupParticipantsForSession(nextState, sourceSessionId);
+        const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
+        if (targets.length === 0) continue;
+        const updateParticipants = buildChatGroupBridgeUpdateParticipants({
+          participants,
+          adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
+        });
+        for (const target of targets) {
+          const bridgeState = await createDesktopBridgeOutreach({
+            hostId: target.hostId,
+            targetNodeId: target.nodeId,
+            targetKind: 'bridge-person',
+            requestText: `Group renamed to ${title}`,
+            targetDisplayName: target.displayName,
+            targetOwnerName: target.ownerName,
+            targetRuntime: 'person',
+            targetHumanId: target.humanId,
+            targetAgentId: null,
+            triggerText: null,
+            contextText: null,
+            contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+            parentSessionId: groupId,
+            parentSessionTitle: title,
+            parentSessionKind: 'group',
+            parentSessionParticipants: updateParticipants,
+            parentSessionMessages: [],
+            parentTurnId: null,
+            parentMessageId: null,
+            projectId: null,
+            projectName: null,
+          });
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
+        }
+      }
+    } catch (error) {
+      setDesktopChatError(`Group renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [canonicalSessionState, isNativeShell, setDesktopBridgeState, setDesktopChatError]);
 
   const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;

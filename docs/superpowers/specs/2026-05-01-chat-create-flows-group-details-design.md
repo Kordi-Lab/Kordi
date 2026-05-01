@@ -59,7 +59,7 @@ When a participant space is drilled in, the header gains a `...` button. For gro
 
 Admins can:
 
-- rename the group
+- rename the group, with the new display name sent to all Bridge-backed group participants as a silent `session-update`
 - add people contacts
 - remove people contacts, except themselves when they are the only admin
 - promote/demote admins, preserving at least one admin
@@ -78,6 +78,7 @@ Use the existing canonical session tables for this foundation instead of adding 
 - People membership is represented by `session_participants` rows.
 - Admins and group policy metadata are represented in `sessions.metadata_json`.
 - Group display name is stored in metadata (`customName`), while session row titles are derived from the first few tokens of the first real message.
+- Bridge group rename sync uses a silent `session-update` outreach carrying the shared `groupId`, `parentSessionTitle`, admin ids, and participant list so receivers update the same group without adding transcript noise.
 
 This is intentionally compatible with a future dedicated `participant_spaces` backend. If/when that table is added, the metadata fields can be migrated without changing the UI contract.
 

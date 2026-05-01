@@ -138,6 +138,17 @@ pub(super) fn sync_parent_session_relay_join_event(
     Ok(())
 }
 
+fn outreach_targets_group_parent(
+    parent_session_id: &str,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> bool {
+    outreach
+        .parent_session_kind
+        .as_deref()
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+        || parent_session_id.starts_with("session:group:")
+}
+
 pub(super) fn sync_parent_session_invite(
     conn: &Connection,
     parent_session_id: &str,
@@ -148,12 +159,42 @@ pub(super) fn sync_parent_session_invite(
     relationship_identity_id: Option<&str>,
     remote_target_identity_id: &str,
 ) -> Result<(), String> {
-    let is_group_invite = outreach
-        .parent_session_kind
-        .as_deref()
-        .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
-        || parent_session_id.starts_with("session:group:");
-    if is_group_invite {
+    if outreach_targets_group_parent(parent_session_id, outreach) {
+        ensure_parent_group_session_participants(
+            conn,
+            parent_session_id,
+            outreach.parent_session_title.as_deref(),
+            local_human_identity_id,
+            remote_target_identity_id,
+            relationship_identity_id,
+            &conversation.host_id,
+            &outreach.parent_session_participants,
+        )
+    } else {
+        ensure_parent_session_participants(
+            conn,
+            parent_session_id,
+            outreach.parent_session_title.as_deref(),
+            local_human_identity_id,
+            local_agent_identity_id,
+            remote_target_identity_id,
+            relationship_identity_id,
+            false,
+        )
+    }
+}
+
+pub(super) fn sync_parent_session_update(
+    conn: &Connection,
+    parent_session_id: &str,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    local_human_identity_id: &str,
+    local_agent_identity_id: Option<&str>,
+    relationship_identity_id: Option<&str>,
+    remote_target_identity_id: &str,
+) -> Result<(), String> {
+    if outreach_targets_group_parent(parent_session_id, outreach) {
         ensure_parent_group_session_participants(
             conn,
             parent_session_id,

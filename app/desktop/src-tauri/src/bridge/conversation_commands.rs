@@ -180,6 +180,7 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
             value.eq_ignore_ascii_case("session-relay")
                 || value.eq_ignore_ascii_case("session-message")
                 || value.eq_ignore_ascii_case("session-invite")
+                || value.eq_ignore_ascii_case("session-update")
         });
     conversation.outreach = Some(DesktopBridgeOutreachMetadata {
         target_kind: target_kind.clone(),

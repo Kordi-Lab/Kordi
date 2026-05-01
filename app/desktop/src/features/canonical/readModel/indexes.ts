@@ -245,9 +245,14 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const name = ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName;
       const ownerName = owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null;
+      const role = identity.id === canonicalState.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
       const participantKey = [
         identity.kind,
-        participant.role,
+        role,
         name.trim().toLowerCase(),
         ownerName?.trim().toLowerCase() ?? '',
       ].join('\u0000');
@@ -257,7 +262,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         id: identity.id,
         name,
         kind: identity.kind,
-        role: participant.role,
+        role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
         ownerName,

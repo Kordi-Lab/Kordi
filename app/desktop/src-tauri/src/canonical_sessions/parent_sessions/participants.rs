@@ -63,6 +63,18 @@ fn metadata_string_array(metadata: &Map<String, Value>, key: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+fn group_display_name(value: Option<&str>) -> Option<String> {
+    let title = value?.trim();
+    if title.is_empty()
+        || title.eq_ignore_ascii_case("session")
+        || title.eq_ignore_ascii_case("new session")
+        || title.eq_ignore_ascii_case("group")
+    {
+        return None;
+    }
+    Some(title.to_string())
+}
+
 fn group_participant_identity_id(
     conn: &Connection,
     bridge_host_id: &str,
@@ -124,12 +136,9 @@ pub(super) fn ensure_parent_group_session_participants(
             .as_ref()
             .and_then(|session| session.metadata.as_ref()),
     );
-    let self_identity_id = existing_self_participant(conn, parent_session_id)?
-        .unwrap_or_else(|| local_human_identity_id.to_string());
-    let mut participant_ids = vec![
-        self_identity_id.clone(),
-        remote_target_identity_id.to_string(),
-    ];
+    let existing_self_identity_id = existing_self_participant(conn, parent_session_id)?;
+    let parent_group_name = group_display_name(parent_session_title);
+    let mut participant_ids = vec![remote_target_identity_id.to_string()];
     let mut admin_identity_ids = metadata_string_array(&metadata, "adminIdentityIds");
     if let Some(relationship_identity_id) = relationship_identity_id {
         participant_ids.push(relationship_identity_id.to_string());
@@ -147,6 +156,15 @@ pub(super) fn ensure_parent_group_session_participants(
             participant_ids.push(identity_id);
         }
     }
+    let incoming_names_local_human = participant_ids
+        .iter()
+        .any(|identity_id| identity_id == local_human_identity_id);
+    let self_identity_id = if incoming_names_local_human || existing_self_identity_id.is_none() {
+        local_human_identity_id.to_string()
+    } else {
+        existing_self_identity_id.unwrap_or_else(|| local_human_identity_id.to_string())
+    };
+    participant_ids.push(self_identity_id.clone());
     participant_ids.sort();
     participant_ids.dedup();
     admin_identity_ids.sort();
@@ -154,17 +172,19 @@ pub(super) fn ensure_parent_group_session_participants(
     metadata
         .entry("source".to_string())
         .or_insert_with(|| serde_json::json!("bridge-session-thread"));
-    metadata
-        .entry("groupId".to_string())
-        .or_insert_with(|| serde_json::json!(parent_session_id));
-    metadata
-        .entry("groupSpaceId".to_string())
-        .or_insert_with(|| serde_json::json!(parent_session_id));
+    metadata.insert("groupId".to_string(), serde_json::json!(parent_session_id));
+    metadata.insert(
+        "groupSpaceId".to_string(),
+        serde_json::json!(parent_session_id),
+    );
     if !admin_identity_ids.is_empty() {
         metadata.insert(
             "adminIdentityIds".to_string(),
             serde_json::json!(admin_identity_ids),
         );
+    }
+    if let Some(custom_name) = parent_group_name.as_deref() {
+        metadata.insert("customName".to_string(), serde_json::json!(custom_name));
     }
     let title = cleaned_parent_title
         .map(ToString::to_string)
@@ -175,7 +195,7 @@ pub(super) fn ensure_parent_group_session_participants(
                 .filter(|title| !title.is_empty())
         })
         .unwrap_or_else(|| "Group".to_string());
-    let created_by_identity_id = existing_session
+    let actual_created_by_identity_id = existing_session
         .as_ref()
         .map(|session| session.created_by_identity_id.clone())
         .or_else(|| {
@@ -192,7 +212,7 @@ pub(super) fn ensure_parent_group_session_participants(
             kind: "group".to_string(),
             title: Some(title),
             status: Some("active".to_string()),
-            created_by_identity_id,
+            created_by_identity_id: self_identity_id.clone(),
             primary_identity_id: Some(remote_target_identity_id.to_string()),
             project_id: None,
             project_name: None,
@@ -201,6 +221,14 @@ pub(super) fn ensure_parent_group_session_participants(
             metadata: Some(Value::Object(metadata)),
         },
     )?;
+
+    conn.execute(
+        "UPDATE session_participants
+         SET role = 'person'
+         WHERE session_id = ?1 AND role = 'self' AND identity_id != ?2",
+        params![parent_session_id, self_identity_id],
+    )
+    .map_err(|err| err.to_string())?;
 
     for identity_id in participant_ids {
         let role = if identity_id == self_identity_id {
@@ -217,6 +245,12 @@ pub(super) fn ensure_parent_group_session_participants(
             now,
         )?;
     }
+
+    conn.execute(
+        "UPDATE sessions SET created_by_identity_id = ?1 WHERE id = ?2",
+        params![actual_created_by_identity_id, parent_session_id],
+    )
+    .map_err(|err| err.to_string())?;
 
     Ok(())
 }

@@ -374,6 +374,56 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
 });
 
+test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:user1',
+      displayName: 'Testuser1',
+      humanIdentityId: 'human:user1',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:user1', kind: 'human', displayName: 'Testuser1', source: 'bridge', humanId: 'kh_user1', bridgeNodeId: 'kd_user1', avatarKey: 'user1', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user2', kind: 'human', displayName: 'Testuser2', source: 'bridge', humanId: 'kh_user2', bridgeNodeId: 'kd_user2', avatarKey: 'user2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user3', kind: 'human', displayName: 'Testuser3', source: 'bridge', humanId: 'kh_user3', bridgeNodeId: 'kd_user3', avatarKey: 'user3', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: 'session:group:shared',
+      kind: 'group',
+      title: 'New test group',
+      status: 'active',
+      createdByIdentityId: 'human:user2',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { source: 'bridge-session-thread', groupId: 'session:group:shared', groupSpaceId: 'session:group:shared' },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 2,
+    }],
+    participants: [
+      { sessionId: 'session:group:shared', identityId: 'human:user1', role: 'self', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId: 'session:group:shared', identityId: 'human:user2', role: 'self', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId: 'session:group:shared', identityId: 'human:user3', role: 'person', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId: 'session:group:shared', senderIdentityId: 'human:user2', senderRole: 'person', messageKind: 'text', contentText: 'hi every one', content: { sender: 'Testuser2', timeLabel: '00:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((candidate) => candidate.id === 'group:session:group:shared');
+
+  assert.equal(space?.title, 'New test group');
+  assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
+});
+
 test('canonical read model names chat-created direct and group sessions from the first user message', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

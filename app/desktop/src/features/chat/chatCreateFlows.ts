@@ -4,6 +4,7 @@ import type {
   CanonicalIdentity,
   Contact,
   Conversation,
+  ConversationParticipant,
   DesktopBridgeSessionParticipant,
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
@@ -206,6 +207,9 @@ export type ChatCreateGroupBridgeInviteTarget = {
 export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'bridgeNodeId' | 'humanId'>;
 
 export const CHAT_GROUP_INVITE_CONTEXT_POLICY = 'session-invite';
+export const CHAT_GROUP_UPDATE_CONTEXT_POLICY = 'session-update';
+
+export type ChatGroupBridgeUpdateTarget = ChatCreateGroupBridgeInviteTarget;
 
 export function buildChatCreateGroupInviteText(groupName?: string | null) {
   const name = cleanText(groupName);
@@ -260,6 +264,55 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
     });
   }
 
+  return [...participants.values()];
+}
+
+export function buildChatGroupBridgeUpdateTargets(input: {
+  actorIdentityId: string;
+  participants: ConversationParticipant[];
+}): ChatGroupBridgeUpdateTarget[] {
+  const actorIdentityId = cleanText(input.actorIdentityId);
+  const targets = new Map<string, ChatGroupBridgeUpdateTarget>();
+  for (const participant of input.participants) {
+    if (participant.kind !== 'human' || participant.id === actorIdentityId) continue;
+    const hostId = cleanText(participant.bridgeHostId);
+    const nodeId = cleanText(participant.bridgeNodeId);
+    if (!hostId || !nodeId) continue;
+    const displayName = firstNonEmpty(participant.name, participant.id);
+    const humanId = cleanText(participant.humanId) || null;
+    targets.set(`${hostId}:${nodeId}:${humanId ?? ''}`, {
+      hostId,
+      nodeId,
+      displayName,
+      ownerName: displayName,
+      humanId,
+    });
+  }
+  return [...targets.values()];
+}
+
+export function buildChatGroupBridgeUpdateParticipants(input: {
+  participants: ConversationParticipant[];
+  adminIdentityIds: string[];
+}): DesktopBridgeSessionParticipant[] {
+  const adminIds = new Set(uniqueNonEmpty(input.adminIdentityIds));
+  const participants = new Map<string, DesktopBridgeSessionParticipant>();
+  for (const participant of input.participants) {
+    if (participant.kind !== 'human') continue;
+    const displayName = firstNonEmpty(participant.name, participant.id);
+    const humanId = cleanText(participant.humanId) || null;
+    const bridgeNodeId = cleanText(participant.bridgeNodeId) || null;
+    const key = participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`;
+    if (!displayName || participants.has(key)) continue;
+    participants.set(key, {
+      identityId: cleanText(participant.id) || null,
+      displayName,
+      role: adminIds.has(participant.id) ? 'admin' : 'person',
+      bridgeNodeId,
+      humanId,
+      agentId: null,
+    });
+  }
   return [...participants.values()];
 }
 
