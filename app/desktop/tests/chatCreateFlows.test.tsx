@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  buildChatCreateAgentOptions,
+  buildChatCreateGroupMetadata,
+  buildChatCreatePersonOptions,
+  canCreateGroup,
+  groupDefaultName,
+} from '../src/features/chat/chatCreateFlows';
+import type { Agent, Contact } from '../src/kordi-app/types';
+
+function contact(overrides: Partial<Contact> = {}): Contact {
+  return {
+    id: 'contact:alice',
+    name: 'Alice',
+    initials: 'A',
+    classType: 'other-users',
+    entityType: 'Person',
+    subtitle: 'Human contact',
+    bridges: ['Bridge'],
+    status: 'Online',
+    discoverableOn: ['Bridge'],
+    detail: 'Works on product',
+    owner: 'Alice',
+    avatarSeed: 'alice',
+    profileImageUrl: null,
+    ...overrides,
+  };
+}
+
+function agent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'agent:kordi',
+    name: 'Kordi',
+    role: 'Coding partner',
+    messaging: 'Available',
+    status: 'Ready',
+    tasks: 0,
+    defaultProvider: 'openai',
+    defaultModel: 'gpt-5.2',
+    bridgesConfig: 'Bridge',
+    contactId: 'contact:kordi',
+    systemPrompt: '',
+    xMd: '',
+    identityFiles: [],
+    loadedTools: [],
+    loadedSkills: [],
+    loadedPlugins: [],
+    lastActivities: [],
+    avatarSeed: 'kordi',
+    profileImageUrl: null,
+    ...overrides,
+  };
+}
+
+test('buildChatCreatePersonOptions excludes agent contacts', () => {
+  const options = buildChatCreatePersonOptions([
+    contact({ id: 'person:alice', name: 'Alice', entityType: 'Person' }),
+    contact({ id: 'agent:one', name: 'Build bot', entityType: 'Owned agent', classType: 'my-agents' }),
+    contact({ id: 'agent:two', name: 'Review bot', entityType: 'External agent', classType: 'other-users-agents' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.id), ['person:alice']);
+  assert.equal(options[0]?.label, 'Alice');
+});
+
+test('buildChatCreateAgentOptions derives agent rows from displayed agents', () => {
+  const options = buildChatCreateAgentOptions([
+    agent({ id: 'agent:kordi', name: 'Kordi', role: 'Coding partner' }),
+    agent({ id: 'agent:reviewer', name: 'Reviewer', role: 'Code review' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.label), ['Kordi', 'Reviewer']);
+  assert.equal(options[0]?.detail, 'Coding partner');
+});
+
+test('canCreateGroup requires at least two unique people contacts', () => {
+  assert.equal(canCreateGroup([]), false);
+  assert.equal(canCreateGroup(['contact:alice']), false);
+  assert.equal(canCreateGroup(['contact:alice', 'contact:alice']), false);
+  assert.equal(canCreateGroup(['contact:alice', 'contact:bob']), true);
+});
+
+test('groupDefaultName uses people names only and truncates long groups', () => {
+  assert.equal(groupDefaultName(['Alice', 'Bob']), 'Alice, Bob');
+  assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
+});
+
+test('buildChatCreateGroupMetadata records stable admin and member policy', () => {
+  const metadata = buildChatCreateGroupMetadata({
+    creatorIdentityId: 'human:me',
+    selectedContactIds: ['contact:alice', 'contact:bob'],
+    selectedNames: ['Alice', 'Bob'],
+    customName: 'Design crew',
+  });
+
+  assert.deepEqual(metadata.adminIdentityIds, ['human:me']);
+  assert.deepEqual(metadata.initialContactIds, ['contact:alice', 'contact:bob']);
+  assert.equal(metadata.customName, 'Design crew');
+  assert.equal(metadata.memberApprovalPolicy, 'under-50-open');
+});

@@ -413,7 +413,7 @@ export type CanonicalSession = {
 export type CanonicalSessionParticipant = {
   sessionId: string;
   identityId: string;
-  role: 'self' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
+  role: 'self' | 'admin' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
   state: 'active' | 'invited' | 'pending' | 'left' | string;
   addedByIdentityId?: string | null;
   addedAtMs: number;
@@ -568,6 +568,33 @@ export type UpdateCanonicalPresenceRequest = {
   sessionId?: string | null;
   detail?: string | null;
   expiresAtMs?: number | null;
+};
+
+export type RenameCanonicalSessionRequest = {
+  sessionId: string;
+  title: string;
+};
+
+export type UpdateCanonicalSessionMetadataRequest = {
+  sessionId: string;
+  metadata: unknown;
+};
+
+export type AddCanonicalSessionParticipantsRequest = {
+  sessionId: string;
+  identityIds: string[];
+  addedByIdentityId: string;
+};
+
+export type RemoveCanonicalSessionParticipantRequest = {
+  sessionId: string;
+  identityId: string;
+};
+
+export type SetCanonicalSessionParticipantRoleRequest = {
+  sessionId: string;
+  identityId: string;
+  role: 'self' | 'admin' | 'person' | 'delegate' | string;
 };
 
 export type DesktopAuthState = {
