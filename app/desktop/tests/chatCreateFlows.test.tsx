@@ -7,6 +7,7 @@ import {
   buildChatCreatePersonOptions,
   canCreateGroup,
   chatSessionIdForParticipantSpaceContinuation,
+  existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
 } from '../src/features/chat/chatCreateFlows';
 import type { Agent, Contact, ParticipantSpaceViewModel } from '../src/kordi-app/types';
@@ -155,6 +156,107 @@ test('chatSessionIdForParticipantSpaceContinuation keeps Bridge human session id
     }), 'next-id'),
     'session:direct-person:next-id',
   );
+});
+
+test('existingBlankSessionIdForParticipantSpace reuses the newest blank session instead of creating another', () => {
+  const space = participantSpace({
+    sessions: [
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:bridge:humans:blank-newer',
+        canonicalSessionId: 'session:bridge:humans:blank-newer',
+        title: 'New session',
+        preview: 'New session',
+        updatedAtMs: 3,
+        conversation: {
+          ...participantSpace().sessions[0].conversation,
+          id: 'session:bridge:humans:blank-newer',
+          canonicalSessionId: 'session:bridge:humans:blank-newer',
+          name: 'New session',
+          subtitle: 'New session',
+          messages: [],
+        },
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:bridge:humans:real-thread',
+        canonicalSessionId: 'session:bridge:humans:real-thread',
+        title: 'Release plan',
+        preview: 'Ship it',
+        updatedAtMs: 2,
+        conversation: {
+          ...participantSpace().sessions[0].conversation,
+          id: 'session:bridge:humans:real-thread',
+          canonicalSessionId: 'session:bridge:humans:real-thread',
+          name: 'Release plan',
+          subtitle: 'Ship it',
+          messages: [{ role: 'person', sender: 'Alice', text: 'Ship it', time: '11:00' }],
+        },
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:bridge:humans:blank-older',
+        canonicalSessionId: 'session:bridge:humans:blank-older',
+        title: 'New session',
+        preview: 'New session',
+        updatedAtMs: 1,
+        conversation: {
+          ...participantSpace().sessions[0].conversation,
+          id: 'session:bridge:humans:blank-older',
+          canonicalSessionId: 'session:bridge:humans:blank-older',
+          name: 'New session',
+          subtitle: 'New session',
+          messages: [],
+        },
+      },
+    ],
+  });
+
+  assert.equal(existingBlankSessionIdForParticipantSpace(space), 'session:bridge:humans:blank-newer');
+});
+
+test('existingBlankSessionIdForParticipantSpace ignores inconsistent blank id families', () => {
+  const space = participantSpace({
+    sessions: [{
+      ...participantSpace().sessions[0],
+      id: 'session:direct-human:bad-blank',
+      canonicalSessionId: 'session:direct-human:bad-blank',
+      title: 'New session',
+      preview: 'New session',
+      conversation: {
+        ...participantSpace().sessions[0].conversation,
+        id: 'session:direct-human:bad-blank',
+        canonicalSessionId: 'session:direct-human:bad-blank',
+        name: 'New session',
+        subtitle: 'New session',
+        messages: [],
+      },
+    }],
+  });
+
+  assert.equal(existingBlankSessionIdForParticipantSpace(space), null);
+});
+
+test('existingBlankSessionIdForParticipantSpace ignores New session rows that already have messages', () => {
+  const space = participantSpace({
+    sessions: [{
+      ...participantSpace().sessions[0],
+      id: 'session:bridge:humans:nonblank',
+      canonicalSessionId: 'session:bridge:humans:nonblank',
+      title: 'New session',
+      preview: 'Hello',
+      conversation: {
+        ...participantSpace().sessions[0].conversation,
+        id: 'session:bridge:humans:nonblank',
+        canonicalSessionId: 'session:bridge:humans:nonblank',
+        name: 'New session',
+        subtitle: 'Hello',
+        messages: [{ role: 'person', sender: 'Alice', text: 'Hello', time: '11:00' }],
+      },
+    }],
+  });
+
+  assert.equal(existingBlankSessionIdForParticipantSpace(space), null);
 });
 
 test('buildChatCreateGroupMetadata records stable admin and member policy', () => {

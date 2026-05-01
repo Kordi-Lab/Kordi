@@ -31,6 +31,7 @@ import {
   buildChatCreatePersonOptions,
   chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
+  existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
@@ -212,6 +213,10 @@ function isNativeDesktopShell() {
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
 
+function participantSpaceCreateKey(space: ParticipantSpaceViewModel) {
+  return space.id.trim() || `${space.kind}:${space.participants.map((participant) => participant.id).join(',')}`;
+}
+
 export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const composerControlsRef = useRef<HTMLDivElement | null>(null);
@@ -223,6 +228,7 @@ export function useKordiAppModel() {
   const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; agent?: string | null }>({});
+  const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
   const localUi = useKordiLocalUiState();
   const {
@@ -576,6 +582,15 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
+
+  useEffect(() => {
+    for (const [spaceKey, sessionId] of pendingParticipantSpaceCreateRef.current) {
+      const space = participantSpaces.find((candidate) => participantSpaceCreateKey(candidate) === spaceKey);
+      if (!space || space.sessions.some((session) => session.id === sessionId || session.canonicalSessionId === sessionId)) {
+        pendingParticipantSpaceCreateRef.current.delete(spaceKey);
+      }
+    }
+  }, [participantSpaces]);
 
   useEffect(() => {
     setLocalProfileAvatarSeed(localProfileAvatarSeed);
@@ -1178,6 +1193,13 @@ export function useKordiAppModel() {
       await handleCreateChatSession();
       return;
     }
+
+    const existingBlankSessionId = existingBlankSessionIdForParticipantSpace(space);
+    if (existingBlankSessionId) {
+      selectNewChatSession(existingBlankSessionId);
+      return;
+    }
+
     if (!isNativeShell) return;
     setDesktopChatError(null);
 
@@ -1190,76 +1212,89 @@ export function useKordiAppModel() {
     const sourceSessionId = sourceSession?.canonicalSessionId ?? sourceSession?.id ?? null;
     const sourceMetadata = sourceSessionId ? sessionMetadataRecord(canonicalSessionState, sourceSessionId) : {};
     const sessionId = chatSessionIdForParticipantSpaceContinuation(space, crypto.randomUUID());
+    const createKey = participantSpaceCreateKey(space);
+    const pendingSessionId = pendingParticipantSpaceCreateRef.current.get(createKey);
+    if (pendingSessionId) {
+      selectNewChatSession(pendingSessionId);
+      return;
+    }
+    pendingParticipantSpaceCreateRef.current.set(createKey, sessionId);
 
-    if (space.kind === 'group') {
-      const members = participantSpaceNonSelfIdentities(space, 'human');
-      const participantIdentityIds = uniqueStrings(members.map((member) => member.id));
-      if (participantIdentityIds.length < 2) {
-        throw new Error('A group session needs at least 2 other people.');
+    try {
+      if (space.kind === 'group') {
+        const members = participantSpaceNonSelfIdentities(space, 'human');
+        const participantIdentityIds = uniqueStrings(members.map((member) => member.id));
+        if (participantIdentityIds.length < 2) {
+          throw new Error('A group session needs at least 2 other people.');
+        }
+
+        const adminIds = sourceSessionId
+          ? uniqueStrings(activeGroupAdminIds(canonicalSessionState, sourceSessionId))
+          : [];
+        const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
+        const customName = metadataString(sourceMetadata, 'customName') || space.title;
+        const participantNames = members.map((member) => member.name);
+        const nextState = await openOrCreateCanonicalSession({
+          id: sessionId,
+          kind: 'group',
+          title: 'New session',
+          status: 'active',
+          createdByIdentityId: creatorIdentityId,
+          primaryIdentityId: null,
+          relationshipIdentityId: null,
+          participantIdentityIds,
+          metadata: {
+            ...sourceMetadata,
+            schemaVersion: 1,
+            kind: 'chat-group',
+            customName,
+            adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
+            initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
+            initialParticipantNames: uniqueStrings([
+              ...metadataStringArray(sourceMetadata, 'initialParticipantNames'),
+              ...participantNames,
+            ]),
+            memberApprovalPolicy: 'under-50-open',
+            createdFrom: 'chat-create-flow',
+            continuedFromSessionId: sourceSessionId,
+            continuedFromSpaceId: space.id,
+          },
+        });
+        setCanonicalSessionState(nextState);
+        selectNewChatSession(sessionId);
+        return;
       }
 
-      const adminIds = sourceSessionId
-        ? uniqueStrings(activeGroupAdminIds(canonicalSessionState, sourceSessionId))
-        : [];
-      const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
-      const customName = metadataString(sourceMetadata, 'customName') || space.title;
-      const participantNames = members.map((member) => member.name);
+      const receiver = participantSpaceNonSelfIdentities(space)[0];
+      if (!receiver) {
+        pendingParticipantSpaceCreateRef.current.delete(createKey);
+        await handleCreateChatSession();
+        return;
+      }
+
+      const kind = receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
       const nextState = await openOrCreateCanonicalSession({
         id: sessionId,
-        kind: 'group',
+        kind,
         title: 'New session',
         status: 'active',
         createdByIdentityId: creatorIdentityId,
-        primaryIdentityId: null,
-        relationshipIdentityId: null,
-        participantIdentityIds,
+        primaryIdentityId: receiver.id,
+        relationshipIdentityId: receiver.id,
+        participantIdentityIds: [receiver.id],
         metadata: {
-          ...sourceMetadata,
-          schemaVersion: 1,
-          kind: 'chat-group',
-          customName,
-          adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
-          initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
-          initialParticipantNames: uniqueStrings([
-            ...metadataStringArray(sourceMetadata, 'initialParticipantNames'),
-            ...participantNames,
-          ]),
-          memberApprovalPolicy: 'under-50-open',
           createdFrom: 'chat-create-flow',
           continuedFromSessionId: sourceSessionId,
           continuedFromSpaceId: space.id,
+          participantSpaceKind: space.kind,
         },
       });
       setCanonicalSessionState(nextState);
       selectNewChatSession(sessionId);
-      return;
+    } catch (error) {
+      pendingParticipantSpaceCreateRef.current.delete(createKey);
+      throw error;
     }
-
-    const receiver = participantSpaceNonSelfIdentities(space)[0];
-    if (!receiver) {
-      await handleCreateChatSession();
-      return;
-    }
-
-    const kind = receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
-    const nextState = await openOrCreateCanonicalSession({
-      id: sessionId,
-      kind,
-      title: 'New session',
-      status: 'active',
-      createdByIdentityId: creatorIdentityId,
-      primaryIdentityId: receiver.id,
-      relationshipIdentityId: receiver.id,
-      participantIdentityIds: [receiver.id],
-      metadata: {
-        createdFrom: 'chat-create-flow',
-        continuedFromSessionId: sourceSessionId,
-        continuedFromSpaceId: space.id,
-        participantSpaceKind: space.kind,
-      },
-    });
-    setCanonicalSessionState(nextState);
-    selectNewChatSession(sessionId);
   }, [
     canonicalSessionState,
     handleCreateChatSession,

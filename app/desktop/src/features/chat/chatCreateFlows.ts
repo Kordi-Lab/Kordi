@@ -107,19 +107,54 @@ function participantSpaceHasBridgeHuman(space: ParticipantSpaceViewModel) {
   ));
 }
 
-export function chatSessionIdForParticipantSpaceContinuation(space: ParticipantSpaceViewModel, randomId: string) {
-  const id = cleanText(randomId) || Date.now().toString(36);
+function chatSessionIdPrefixForParticipantSpaceContinuation(space: ParticipantSpaceViewModel) {
   const sourceSessionId = cleanText(space.sessions[0]?.canonicalSessionId) || cleanText(space.sessions[0]?.id);
 
   if (space.kind === 'direct-human') {
     if (sourceSessionId.startsWith(BRIDGE_HUMAN_SESSION_PREFIX) || participantSpaceHasBridgeHuman(space)) {
-      return `${BRIDGE_HUMAN_SESSION_PREFIX}${id}`;
+      return BRIDGE_HUMAN_SESSION_PREFIX;
     }
-    return `session:direct-person:${id}`;
+    return 'session:direct-person:';
   }
-  if (space.kind === 'group') return `session:group:${id}`;
-  if (space.kind === 'direct-agent') return `session:direct-agent:${id}`;
-  return `session:self-agent:${id}`;
+  if (space.kind === 'group') return 'session:group:';
+  if (space.kind === 'direct-agent') return 'session:direct-agent:';
+  return 'session:self-agent:';
+}
+
+export function chatSessionIdForParticipantSpaceContinuation(space: ParticipantSpaceViewModel, randomId: string) {
+  const id = cleanText(randomId) || Date.now().toString(36);
+  return `${chatSessionIdPrefixForParticipantSpaceContinuation(space)}${id}`;
+}
+
+function isBlankSessionLabel(value: string) {
+  return /^(#\s*)?(new session|untitled session)$/i.test(value.trim());
+}
+
+function sessionHasUserContent(session: ParticipantSpaceViewModel['sessions'][number]) {
+  const conversation = session.conversation;
+  return conversation.messages.length > 0 || Boolean(conversation.queuedMessages?.length);
+}
+
+function isBlankParticipantSpaceSession(session: ParticipantSpaceViewModel['sessions'][number]) {
+  if (sessionHasUserContent(session)) return false;
+  const labels = [
+    session.title,
+    session.preview,
+    session.conversation.name,
+    session.conversation.subtitle,
+  ].map(cleanText).filter(Boolean);
+  return labels.length === 0 || labels.every(isBlankSessionLabel);
+}
+
+export function existingBlankSessionIdForParticipantSpace(space: ParticipantSpaceViewModel) {
+  const expectedPrefix = chatSessionIdPrefixForParticipantSpaceContinuation(space);
+  const blankSession = [...space.sessions]
+    .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
+    .find((session) => {
+      const sessionId = cleanText(session.canonicalSessionId) || cleanText(session.id);
+      return sessionId.startsWith(expectedPrefix) && isBlankParticipantSpaceSession(session);
+    });
+  return blankSession?.canonicalSessionId ?? blankSession?.id ?? null;
 }
 
 export function buildChatCreateGroupMetadata(input: {
