@@ -10,6 +10,10 @@ import type {
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
+function cleanOptionalText(value?: string | null) {
+  return value?.trim() ?? '';
+}
+
 function isRawSessionIdText(value: string) {
   const text = value.trim();
   return text.startsWith('session:')
@@ -203,7 +207,7 @@ function customGroupTitle(latestSession: ParticipantSpaceSessionViewModel | unde
 }
 
 function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], latestSession: ParticipantSpaceSessionViewModel | undefined) {
-  if (kind === 'self') return 'Myself';
+  if (kind === 'self') return 'Notes to self';
   if (kind === 'group') {
     return customGroupTitle(latestSession)
       || participantNameList(nonSelfHumans(participants))
@@ -275,22 +279,50 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-function participantSpaceAgentCount(space: ParticipantSpaceViewModel) {
-  return nonSelfAgents(space.participants).length;
+function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
+  if (chatFilter === 'latest') return true;
+  if (chatFilter === 'contacts') return space.kind === 'self' || space.kind === 'direct-human';
+  return space.kind === 'group';
 }
 
-function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
-  if (chatFilter === 'all') return true;
-  if (chatFilter === 'people') return space.kind === 'self' || space.kind === 'direct-human';
-  if (chatFilter === 'agents') return space.kind === 'direct-agent' || (space.kind === 'self' && participantSpaceAgentCount(space) > 0);
-  return space.kind === 'group'
-    || space.sessions.some((session) => session.conversation.directness !== 'Direct chat');
+export function ensureSelfParticipantSpace(
+  spaces: ParticipantSpaceViewModel[],
+  options: { avatarSeed?: string | null; profileImageUrl?: string | null } = {},
+) {
+  if (spaces.some((space) => space.kind === 'self')) return spaces;
+
+  const avatarSeed = cleanOptionalText(options.avatarSeed) || 'me';
+  const selfParticipant: ConversationParticipant = {
+    id: 'human:self',
+    name: 'Me',
+    kind: 'human',
+    role: 'self',
+    source: 'local',
+    avatarKey: avatarSeed,
+    profileImageUrl: cleanOptionalText(options.profileImageUrl) || null,
+  };
+
+  const selfSpace: ParticipantSpaceViewModel = {
+    id: 'self:local',
+    kind: 'self',
+    title: 'Notes to self',
+    participants: [selfParticipant],
+    participantCount: 1,
+    sessionCount: 0,
+    unread: 0,
+    updatedAtMs: 0,
+    preview: '',
+    avatarStack: [{ kind: 'human', seed: avatarSeed, imageUrl: selfParticipant.profileImageUrl ?? null }],
+    sessions: [],
+  };
+
+  return [...spaces, selfSpace];
 }
 
 export function filterParticipantSpaces(
   spaces: ParticipantSpaceViewModel[],
   query: string,
-  chatFilter: ChatFilter = 'all',
+  chatFilter: ChatFilter = 'latest',
 ) {
   const normalized = query.trim().toLowerCase();
   return spaces.filter((space) => {

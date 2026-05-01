@@ -107,7 +107,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onCreateChatSession: () => {},
     chatSearch: '',
     setChatSearch: () => {},
-    chatFilter: 'all',
+    chatFilter: 'latest',
     setChatFilter: () => {},
     isDesktopChatLoading: false,
     desktopChatError: null,
@@ -153,19 +153,31 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar renders participant spaces as the Chats first level', () => {
-  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps() as never));
+test('WorkspaceSidebar renders participant spaces as first-page expandable rows with row actions', () => {
+  const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
 
-  assert.match(markup, /data-chat-sidebar-mode="participant-spaces"/);
+  assert.match(markup, /data-chat-sidebar-mode="participant-spaces-inline"/);
+  assert.match(markup, /Contacts/);
+  assert.match(markup, /Groups/);
+  assert.match(markup, /Latest/);
+  assert.doesNotMatch(markup, />People</);
+  assert.doesNotMatch(markup, />Agents</);
   assert.match(markup, /Bob/);
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);
-  assert.match(markup, /data-participant-space-enter="true"/);
-  assert.match(markup, /app-participant-space-enter-action/);
-  assert.match(markup, /aria-label="Enter Bob"/);
-  assert.doesNotMatch(markup, /aria-label="Actions for Bob"/);
-  assert.doesNotMatch(markup, /Old Bob thread/);
-  assert.doesNotMatch(markup, /New Bob thread/);
+  assert.match(markup, /data-participant-space-toggle="true"/);
+  assert.match(markup, /aria-label="Collapse Bob"/);
+  assert.match(markup, /aria-label="Create session in Bob"/);
+  assert.match(markup, /data-participant-space-context-create="true"/);
+  assert.doesNotMatch(markup, /data-participant-space-enter="true"/);
+  assert.doesNotMatch(markup, /Back to chats/);
+  assert.match(markup, /Old Bob thread/);
+  assert.match(markup, /New Bob thread/);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
@@ -220,8 +232,8 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
 
   assert.match(markup, /shu/);
   assert.match(markup, /Person • 1 session/);
-  assert.match(markup, /Myself/);
-  assert.match(markup, /Myself • 2 sessions/);
+  assert.match(markup, /Notes to self/);
+  assert.match(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
   assert.doesNotMatch(markup, /Myself \+ 2 agents/);
   assert.doesNotMatch(markup, /Group • 1 session/);
@@ -315,7 +327,7 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Rename/);
 });
 
-test('WorkspaceSidebar selected participant space keeps contextual create in the header and rich child previews', () => {
+test('WorkspaceSidebar expanded participant space keeps contextual create on the first-page row and rich child previews', () => {
   const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     participantSpaces,
@@ -324,7 +336,8 @@ test('WorkspaceSidebar selected participant space keeps contextual create in the
   }) as never));
 
   assert.doesNotMatch(markup, /Page 2/);
-  assert.match(markup, /data-participant-space-header-actions="true"/);
+  assert.doesNotMatch(markup, /Back to chats/);
+  assert.match(markup, /data-participant-space-row-actions="true"/);
   assert.match(markup, /aria-label="Create session in Bob"/);
   assert.match(markup, /data-participant-space-context-create="true"/);
   assert.match(markup, /data-session-preview="New preview"/);
@@ -353,6 +366,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   }) as never));
 
   assert.match(markup, /aria-label="Open group management"/);
+  assert.match(markup, /data-participant-space-row-actions="true"/);
   assert.match(markup, /# Hi shu/);
 });
 
@@ -382,8 +396,8 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   }) as never));
 
   assert.match(markup, /shuyhere1, shuyhere2/);
-  assert.match(markup, /aria-label="Enter shuyhere1, shuyhere2"/);
-  assert.doesNotMatch(markup, /aria-label="Actions for shuyhere1, shuyhere2"/);
+  assert.match(markup, /aria-label="Expand shuyhere1, shuyhere2"/);
+  assert.match(markup, /aria-label="Create session in shuyhere1, shuyhere2"/);
   assert.match(markup, /Group • 2 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);

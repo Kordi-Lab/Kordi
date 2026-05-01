@@ -4,6 +4,7 @@ import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, Co
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
+  ChatFilter,
   Contact,
   ContactClass,
   ContactRequest,
@@ -75,8 +76,8 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateChatSession: () => Promise<void>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatFilter: 'all' | 'people' | 'agents' | 'delegated';
-  setChatFilter: Dispatch<SetStateAction<'all' | 'people' | 'agents' | 'delegated'>>;
+  chatFilter: ChatFilter;
+  setChatFilter: Dispatch<SetStateAction<ChatFilter>>;
   runtimeProjects: Project[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;

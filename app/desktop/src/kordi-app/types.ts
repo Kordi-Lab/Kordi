@@ -1,7 +1,7 @@
 import type { BridgeMessageDirection } from '@/features/bridge/messages';
 
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
-export type ChatFilter = 'all' | 'people' | 'agents' | 'delegated';
+export type ChatFilter = 'latest' | 'contacts' | 'groups';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
 export type ContactClass = 'my-agents' | 'other-users-agents' | 'other-users';

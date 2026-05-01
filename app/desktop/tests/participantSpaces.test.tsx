@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   buildParticipantSpaces,
+  ensureSelfParticipantSpace,
   filterParticipantSpaces,
 } from '../src/features/chat/participantSpaces';
 import type { Conversation } from '../src/kordi-app/types';
@@ -94,7 +95,7 @@ test('buildParticipantSpaces separates direct human and self spaces on same Brid
 
   assert.deepEqual(spaces.map((space) => [space.id, space.kind, space.title]), [
     ['direct-human:human:bob', 'direct-human', 'Bob'],
-    ['self:local', 'self', 'Myself'],
+    ['self:local', 'self', 'Notes to self'],
   ]);
 });
 
@@ -118,7 +119,7 @@ test('buildParticipantSpaces infers a local owned-agent session as part of the s
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
-  assert.equal(spaces[0]?.title, 'Myself');
+  assert.equal(spaces[0]?.title, 'Notes to self');
   assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', imageUrl: null }]);
 });
 
@@ -178,7 +179,7 @@ test('buildParticipantSpaces groups agent-only sessions into the default self sp
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
-  assert.equal(spaces[0]?.title, 'Myself');
+  assert.equal(spaces[0]?.title, 'Notes to self');
   assert.equal(spaces[0]?.sessionCount, 2);
   assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me']);
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:any-agent', 'session:my-kordi']);
@@ -346,7 +347,27 @@ test('filterParticipantSpaces matches title, participant names, preview, and chi
   assert.equal(filterParticipantSpaces(spaces, 'missing').length, 0);
 });
 
-test('filterParticipantSpaces applies chat filter tabs to human-centered spaces', () => {
+test('ensureSelfParticipantSpace adds Notes to self as a contact when no self sessions exist', () => {
+  const spaces = ensureSelfParticipantSpace(buildParticipantSpaces([
+    conversation({
+      id: 'session:bob-person',
+      type: 'person',
+      name: 'Bob',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+  ]), { avatarSeed: 'local-me' });
+
+  const selfSpace = spaces.find((space) => space.kind === 'self');
+  assert.equal(selfSpace?.title, 'Notes to self');
+  assert.equal(selfSpace?.sessionCount, 0);
+  assert.deepEqual(selfSpace?.avatarStack, [{ kind: 'human', seed: 'local-me', imageUrl: null }]);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contacts').map((space) => space.title), ['Bob', 'Notes to self']);
+});
+
+test('filterParticipantSpaces applies Contacts, Groups, and Latest tabs to participant spaces', () => {
   const spaces = buildParticipantSpaces([
     conversation({
       id: 'session:bob-person',
@@ -384,8 +405,8 @@ test('filterParticipantSpaces applies chat filter tabs to human-centered spaces'
     }),
   ]);
 
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'people').map((space) => space.kind), ['direct-human', 'self']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agents').map((space) => space.kind), ['self']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'delegated').map((space) => space.kind), ['group']);
-  assert.equal(filterParticipantSpaces(spaces, 'design', 'people').length, 0);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contacts').map((space) => space.kind), ['direct-human', 'self']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'groups').map((space) => space.kind), ['group']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'latest').map((space) => space.kind), ['direct-human', 'self', 'group']);
+  assert.equal(filterParticipantSpaces(spaces, 'design', 'contacts').length, 0);
 });
