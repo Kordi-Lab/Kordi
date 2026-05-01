@@ -337,6 +337,10 @@ export function preferLatestMessages(mappedMessages: Message[], cachedMessages: 
   return dedupeAdjacentAgentTurns(messages);
 }
 
+function liveTurnStatusIsTerminal(status: string) {
+  return ['cancelled', 'canceled', 'complete', 'completed', 'failed', 'succeeded'].includes(status.trim().toLowerCase());
+}
+
 export function buildSessionStatusIndicator({
   unreadCount,
   showBackgroundActivity,
@@ -348,8 +352,7 @@ export function buildSessionStatusIndicator({
   liveTurn?: DesktopChatTurnSnapshot;
   existingIndicator?: SessionStatusIndicator;
 }): SessionStatusIndicator | undefined {
-  if (existingIndicator?.live) return existingIndicator;
-  if (showBackgroundActivity && liveTurn && !liveTurn.completed) {
+  if (showBackgroundActivity && liveTurn && !liveTurn.completed && !liveTurnStatusIsTerminal(liveTurn.status)) {
     if (liveTurn.status === 'cancelling') {
       return { label: 'Stopping', tone: 'stopped', live: true };
     }
@@ -357,7 +360,7 @@ export function buildSessionStatusIndicator({
     return { label: 'Running', tone: 'running', live: true };
   }
 
-  if (existingIndicator) return existingIndicator;
+  if (existingIndicator && !existingIndicator.live) return existingIndicator;
 
   if (unreadCount > 0) {
     return { label: 'Unread', tone: 'ready' };
