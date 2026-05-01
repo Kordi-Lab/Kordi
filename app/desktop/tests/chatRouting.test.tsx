@@ -1422,6 +1422,110 @@ test('canonical read model keeps canonical parent transcript when bridge source 
   );
 });
 
+test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {
+  const sessionId = 'session:bridge:humans:failed-delegation';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser3', kind: 'human', displayName: 'Testuser3', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser3', humanId: 'human-testuser3', avatarKey: 'human-testuser3', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:testuser3', kind: 'agent', displayName: "Testuser3's Kordi", source: 'bridge', ownerIdentityId: 'human:testuser3', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser3-agent', agentId: 'agent-testuser3', avatarKey: 'agent-testuser3', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'can you see our chat history ?', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:testuser3', relationshipIdentityId: 'human:testuser3', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-testuser3', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:testuser3', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:testuser3', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@Testuser3sKordi can you see our chat history ?', content: { sender: 'Me', timeLabel: '00:45', mentions: [{ label: 'Testuser3sKordi', targetKind: 'bridge-agent', nodeId: 'node-testuser3-agent' }] }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'request' },
+      { id: 'msg:join', sessionId, senderIdentityId: 'human:me', senderRole: 'system', messageKind: 'status', contentText: "Testuser3's Kordi joined via @mention", content: { kind: 'delegation-join-event', targetDisplayName: "Testuser3's Kordi" }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'join' },
+    ],
+    delegatedExchanges: [{
+      id: 'delegation:bridge:failed',
+      sessionId,
+      initiatorIdentityId: 'human:me',
+      targetIdentityId: 'agent:testuser3',
+      triggerMessageId: 'msg:request',
+      requestMessageId: 'msg:request',
+      responseMessageId: null,
+      transport: 'bridge',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-testuser3:kordi-desktop',
+      bridgeRequestId: 'bridge_req_failed',
+      contextPolicy: 'recent-window',
+      status: 'failed',
+      error: 'ChatGPT OAuth credentials are not usable',
+      createdAtMs: 2,
+      updatedAtMs: 3,
+    }],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.deepEqual(conversations[0]?.messages[0]?.statusChips, ['failed']);
+  assert.equal(conversations[0]?.messages.some((message) => message.text.includes('ChatGPT OAuth credentials')), false);
+});
+
+test('canonical read model hides bridge agent failure detail behind a generic failed turn', () => {
+  const sessionId = 'session:bridge:humans:remote-agent-failure';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser2', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', humanId: 'human-testuser2', avatarKey: 'human-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', sourceHostId: 'host-1', bridgeNodeId: 'node-local-agent', agentId: 'agent-local', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'relationship', title: 'can you see our chat history ?', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:testuser2', relationshipIdentityId: 'human:testuser2', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-testuser2', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:testuser2', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:testuser2', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi can you see our chat history ?', content: { sender: 'Testuser2', timeLabel: '00:45', kind: 'mention-request' }, status: 'read', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
+      { id: 'msg:failed-response', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Failed: ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again.', content: { sender: 'My Kordi', timeLabel: '00:45', deliveryState: 'processing_failed', delegatedExchangeId: 'delegation:bridge:failed' }, status: 'failed', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'failed-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const turn = conversations[0]?.messages[1]?.turn;
+
+  assert.equal(turn?.status, 'failed');
+  assert.equal(turn?.assistantText, '');
+  assert.equal(turn?.error, 'Message failed');
+  assert.equal(JSON.stringify(conversations[0]?.messages).includes('ChatGPT OAuth credentials'), false);
+});
+
 test('canonical read model rewrites remote first-person agent mention labels', () => {
   const sessionId = 'session:bridge:humans:remote-local-agent-label';
   const canonicalState = {

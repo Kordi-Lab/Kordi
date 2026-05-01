@@ -76,6 +76,8 @@ When a contact or group row is expanded, unread/status lights move to the child 
 
 In direct person chats and group chats, the `@` menu is scoped to the people participating in that conversation plus those people's agents. Other Bridge people/agents discovered on the same server are hidden from that conversation's mention menu and send-time mention resolution.
 
+If a Bridge-mentioned agent fails on another user’s machine and does not return a response, the requester sees only a compact red `Failed` delivery state on the original `@` message. Bridge agent failure details are not rendered into shared chat history; local/remote transcripts show a generic compact `Message failed` state instead of provider credential text.
+
 ## Data model approach
 
 Use the existing canonical session tables for this foundation instead of adding a new storage table in this PR:

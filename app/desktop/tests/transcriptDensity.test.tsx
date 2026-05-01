@@ -29,6 +29,23 @@ test('renders live turn errors as compact inline rows instead of full-width card
   assert.doesNotMatch(markup, /px-4 py-3 text-sm text-rose-100/);
 });
 
+test('renders failed own message delivery as visible red failed text', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '@Testuser3sKordi can you see our chat history ?',
+    time: '00:45',
+    statusChips: ['failed'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, />Failed</);
+  assert.match(markup, /text-rose-400/);
+});
+
 test('renders transcript system notices with compact stable spacing', () => {
   const message: Message = {
     role: 'system',

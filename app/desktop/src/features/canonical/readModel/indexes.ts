@@ -298,6 +298,13 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return key ? [key] : [];
     }),
   );
+  const failedDelegationRequestMessageIds = new Set(
+    canonicalState.delegatedExchanges.flatMap((exchange) => {
+      if (!['failed', 'timeout'].includes(exchange.status.trim().toLowerCase())) return [];
+      const requestMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
+      return requestMessageId ? [requestMessageId] : [];
+    }),
+  );
   const processingDelegationMessagesBySessionId = new Map<string, Message[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
     const status = exchange.status.trim().toLowerCase();
@@ -374,7 +381,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           return [];
         }
         const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
-        return mapped ? [mapped] : [];
+        if (!mapped) return [];
+        if (mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)) {
+          return [{ ...mapped, statusChips: ['failed'] }];
+        }
+        return [mapped];
       }).concat(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
     );
   }

@@ -367,7 +367,9 @@ function MessageFooter({
   isUser?: boolean;
   compact?: boolean;
 }) {
+  const visual = messageDeliveryVisual(status);
   const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
+  const showFailedLabel = visual?.tone === 'red';
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
   return (
@@ -377,8 +379,9 @@ function MessageFooter({
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      {showFailedLabel ? <span className="font-semibold text-rose-400">{visual.label}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
-      <span className="inline-flex w-4 justify-center" title={status ?? undefined}>
+      <span className="inline-flex w-4 justify-center" title={visual?.label ?? status ?? undefined}>
         {glyph}
       </span>
     </div>
@@ -802,6 +805,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
   const deliveryStatus = primaryMessageStatus(msg);
+  const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
   const showHeaderMeta = Boolean((msg.showSenderMeta || isAgentMessage) && msg.sender);
   const hasText = msg.text.trim().length > 0;
@@ -856,6 +860,9 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
               )}>
                 {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
                   <span>{msg.detail}</span>
+                ) : null}
+                {isOwnHumanMessage && deliveryVisual?.tone === 'red' ? (
+                  <span className="font-semibold text-rose-400">{deliveryVisual.label}</span>
                 ) : null}
                 <span>{msg.time}</span>
                 {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
