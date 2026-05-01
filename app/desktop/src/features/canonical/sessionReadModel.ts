@@ -205,6 +205,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       return {
         ...conversation,
         canonicalSessionId: sessionId,
+        canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalStoragePath: indexes.storagePath,
         name: bridgePersonMessageTitle || session.title || conversation.name,
         subtitle: buildSubtitle(messages, conversation.subtitle),

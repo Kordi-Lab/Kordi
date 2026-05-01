@@ -101,7 +101,13 @@ function fallbackRoleAdminIds(members: ConversationParticipant[]) {
 function groupAdminIds(space: ParticipantSpaceViewModel | null, members: ConversationParticipant[]) {
   const metadataAdminIds = (space?.sessions ?? []).flatMap((session) => adminIdentityIdsFromMetadata(session.conversation.metadata));
   const uniqueMetadataAdminIds = [...new Set(metadataAdminIds.map((id) => id.trim()).filter(Boolean))];
-  return new Set(uniqueMetadataAdminIds.length > 0 ? uniqueMetadataAdminIds : fallbackRoleAdminIds(members));
+  if (uniqueMetadataAdminIds.length > 0) return new Set(uniqueMetadataAdminIds);
+  const roleAdminIds = fallbackRoleAdminIds(members);
+  if (roleAdminIds.length > 0) return new Set(roleAdminIds);
+  const creatorIds = (space?.sessions ?? [])
+    .map((session) => session.conversation.canonicalCreatedByIdentityId?.trim())
+    .filter((id): id is string => Boolean(id));
+  return new Set(creatorIds);
 }
 
 function displayCreatedLabel(space: ParticipantSpaceViewModel) {

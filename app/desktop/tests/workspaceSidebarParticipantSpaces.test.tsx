@@ -462,6 +462,37 @@ test('GroupDetailsDialog derives admins from group metadata instead of local sel
   assert.match(markup, /<button[^>]*disabled=""[^>]*>Make admin<\/button>/);
 });
 
+test('GroupDetailsDialog falls back to canonical creator when admin metadata is missing', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-legacy-admin',
+    canonicalSessionId: 'session:group-legacy-admin',
+    canonicalCreatedByIdentityId: 'human:me',
+    name: 'Legacy group',
+    metadata: { groupSpaceId: 'session:group-legacy-admin' },
+    participants: ['Me', 'Testuser1', 'Testuser3'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Testuser2', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:testuser1', name: 'Testuser1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'testuser1' },
+      { id: 'human:testuser3', name: 'Testuser3', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'testuser3' },
+    ],
+  })];
+  const [space] = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
+    isOpen: true,
+    space,
+    contacts: [],
+    onClose: () => {},
+    onRename: () => {},
+    onAddMembers: () => {},
+    onRemoveMember: () => {},
+    onSetAdmin: () => {},
+  }));
+
+  assert.match(markup, /3 participants • 1 admin/);
+  assert.match(markup, /Testuser2[\s\S]*?Admin/);
+  assert.doesNotMatch(markup, /<button[^>]*disabled=""[^>]*>Rename<\/button>/);
+});
+
 test('WorkspaceSidebar auto-expands the active My chats space with only the active session', () => {
   const chatConversations = [
     conversation({

@@ -157,6 +157,7 @@ export type ConversationBridgeTarget = {
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
+  canonicalCreatedByIdentityId?: string;
   canonicalStoragePath?: string;
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;

@@ -160,6 +160,7 @@ export function syntheticConversation(
   return {
     id: session.id,
     canonicalSessionId: session.id,
+    canonicalCreatedByIdentityId: session.createdByIdentityId,
     name: session.title,
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
