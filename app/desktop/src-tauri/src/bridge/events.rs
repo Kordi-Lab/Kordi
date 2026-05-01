@@ -375,7 +375,9 @@ pub(super) fn outreach_metadata_for_event(
         .and_then(|value| value.as_str())
         .map(ToString::to_string);
     let is_session_transport = context_policy.as_deref().is_some_and(|value| {
-        value.eq_ignore_ascii_case("session-relay") || value.eq_ignore_ascii_case("session-message")
+        value.eq_ignore_ascii_case("session-relay")
+            || value.eq_ignore_ascii_case("session-message")
+            || value.eq_ignore_ascii_case("session-invite")
     });
     let now = now_ms();
 

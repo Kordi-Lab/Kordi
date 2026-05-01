@@ -5,6 +5,8 @@ import {
   buildChatCreateAgentOptions,
   buildChatAgentSessionMetadata,
   buildChatAgentSessionKind,
+  buildChatCreateGroupBridgeInviteParticipants,
+  buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
   buildChatCreatePersonOptions,
   canCreateGroup,
@@ -219,6 +221,40 @@ test('canCreateGroup requires at least two unique people contacts', () => {
 test('groupDefaultName uses people names only and truncates long groups', () => {
   assert.equal(groupDefaultName(['Alice', 'Bob']), 'Alice, Bob');
   assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
+});
+
+test('group create bridge invites target every bridge-backed selected person', () => {
+  const targets = buildChatCreateGroupBridgeInviteTargets([
+    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice' }),
+    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob' }),
+    contact({ id: 'contact:local-only', name: 'Local' }),
+  ]);
+
+  assert.deepEqual(targets, [
+    { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', humanId: 'kh_alice' },
+    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bobby', humanId: 'kh_bob' },
+  ]);
+});
+
+test('group create bridge invite metadata includes creator and selected people', () => {
+  const participants = buildChatCreateGroupBridgeInviteParticipants({
+    creator: {
+      id: 'human:kh_me',
+      displayName: 'Testuser2',
+      bridgeNodeId: 'kd_me',
+      humanId: 'kh_me',
+    },
+    contacts: [
+      contact({ id: 'contact:user1', name: 'Testuser1', bridgePeerNodeId: 'kd_user1', bridgeHumanId: 'kh_user1' }),
+      contact({ id: 'contact:user3', name: 'Testuser3', bridgePeerNodeId: 'kd_user3', bridgeHumanId: 'kh_user3' }),
+    ],
+  });
+
+  assert.deepEqual(participants, [
+    { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:kh_user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
+    { identityId: 'human:kh_user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
+  ]);
 });
 
 test('chatSessionIdForParticipantSpaceContinuation keeps Bridge human session ids consistent', () => {

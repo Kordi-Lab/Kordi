@@ -1,8 +1,8 @@
 use rusqlite::{params, Connection};
 
 use super::super::bridge_routing::{
-    canonical_bridge_message_status, outreach_is_session_message, outreach_is_session_relay,
-    outreach_presence_status, outreach_status_to_exchange_status,
+    canonical_bridge_message_status, outreach_is_session_invite, outreach_is_session_message,
+    outreach_is_session_relay, outreach_presence_status, outreach_status_to_exchange_status,
 };
 use super::super::message_reconcile;
 use super::super::models::{
@@ -20,7 +20,10 @@ use super::messages::{sync_parent_session_bridge_messages, sync_parent_session_s
 use super::participants::{
     ensure_parent_session_participants, update_parent_session_bridge_metadata,
 };
-use super::relay::{sync_parent_session_relay_join_event, sync_parent_session_relay_messages};
+use super::relay::{
+    sync_parent_session_invite, sync_parent_session_relay_join_event,
+    sync_parent_session_relay_messages,
+};
 
 pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
     conn: &Connection,
@@ -44,7 +47,9 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
 
     let is_session_relay = outreach_is_session_relay(outreach);
     let is_session_message = outreach_is_session_message(outreach);
+    let is_session_invite = outreach_is_session_invite(outreach);
     if !is_session_relay
+        && !is_session_invite
         && outreach
             .bridge_request_id
             .as_deref()
@@ -75,6 +80,19 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
     };
     let target_was_participant = parent_session_existed
         && session_has_participant(conn, parent_session_id, prospective_target_identity_id)?;
+    if is_session_invite {
+        sync_parent_session_invite(
+            conn,
+            parent_session_id,
+            conversation,
+            outreach,
+            local_human_identity_id,
+            local_agent_identity_id,
+            relationship_identity_id,
+            remote_target_identity_id,
+        )?;
+        return Ok(true);
+    }
     if is_session_relay || is_session_message {
         sync_parent_session_relay_messages(
             conn,

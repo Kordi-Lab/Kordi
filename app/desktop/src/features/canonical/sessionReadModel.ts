@@ -16,6 +16,7 @@ import {
   shouldUseCanonicalMessages,
   syntheticBridgeTarget,
   syntheticConversation,
+  syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
 
@@ -32,6 +33,8 @@ type CanonicalConversationLike = {
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: { parentSessionId?: string | null } | null;
+  participantSpaceId?: string | null;
+  directness?: string | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   unread?: number;
@@ -208,6 +211,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         unread: scopedUnread,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
+        participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
+        directness: session.kind === 'group' ? 'Group chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,

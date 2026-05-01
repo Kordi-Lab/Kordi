@@ -1,8 +1,10 @@
 import { isBlankParticipantSpaceSession } from './participantSpaces';
 import type {
   Agent,
+  CanonicalIdentity,
   Contact,
   Conversation,
+  DesktopBridgeSessionParticipant,
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -185,6 +187,74 @@ export function groupDefaultName(names: string[]) {
   const clean = uniqueNonEmpty(names);
   if (clean.length <= 2) return clean.join(', ');
   return `${clean.slice(0, 2).join(', ')} +${clean.length - 2} more`;
+}
+
+export type ChatCreateGroupBridgeInviteTarget = {
+  hostId: string;
+  nodeId: string;
+  displayName: string;
+  ownerName: string;
+  humanId: string | null;
+};
+
+export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'bridgeNodeId' | 'humanId'>;
+
+export const CHAT_GROUP_INVITE_CONTEXT_POLICY = 'session-invite';
+
+export function buildChatCreateGroupInviteText(groupName?: string | null) {
+  const name = cleanText(groupName);
+  return name ? `You were added to ${name}` : 'You were added to a group chat';
+}
+
+export function buildChatCreateGroupBridgeInviteTargets(contacts: Contact[]): ChatCreateGroupBridgeInviteTarget[] {
+  const targets = new Map<string, ChatCreateGroupBridgeInviteTarget>();
+  for (const contact of contacts) {
+    const hostId = cleanText(contact.bridgeHostId);
+    const nodeId = cleanText(contact.bridgePeerNodeId);
+    if (!hostId || !nodeId) continue;
+    const displayName = firstNonEmpty(contact.name, contact.owner, contact.id);
+    const ownerName = firstNonEmpty(contact.owner, contact.name, contact.id);
+    const humanId = cleanText(contact.bridgeHumanId) || null;
+    targets.set(`${hostId}:${nodeId}:${humanId ?? ''}`, { hostId, nodeId, displayName, ownerName, humanId });
+  }
+  return [...targets.values()];
+}
+
+export function buildChatCreateGroupBridgeInviteParticipants(input: {
+  creator: ChatCreateGroupInviteCreator | null | undefined;
+  contacts: Contact[];
+}): DesktopBridgeSessionParticipant[] {
+  const participants = new Map<string, DesktopBridgeSessionParticipant>();
+  const append = (participant: DesktopBridgeSessionParticipant) => {
+    const key = participant.identityId || `${participant.bridgeNodeId ?? ''}:${participant.humanId ?? ''}:${participant.displayName}`;
+    if (!participant.displayName.trim() || participants.has(key)) return;
+    participants.set(key, participant);
+  };
+
+  if (input.creator) {
+    append({
+      identityId: cleanText(input.creator.id) || null,
+      displayName: firstNonEmpty(input.creator.displayName, input.creator.id),
+      role: 'self',
+      bridgeNodeId: cleanText(input.creator.bridgeNodeId) || null,
+      humanId: cleanText(input.creator.humanId) || null,
+      agentId: null,
+    });
+  }
+
+  for (const contact of input.contacts) {
+    const identity = contactCanonicalIdentityRequest(contact);
+    append({
+      identityId: cleanText(identity.id) || null,
+      displayName: firstNonEmpty(contact.name, contact.owner, contact.id),
+      role: 'person',
+      bridgeNodeId: cleanText(contact.bridgePeerNodeId) || null,
+      humanId: cleanText(contact.bridgeHumanId) || null,
+      agentId: null,
+    });
+  }
+
+  return [...participants.values()];
 }
 
 function participantSpaceHasBridgeHuman(space: ParticipantSpaceViewModel) {

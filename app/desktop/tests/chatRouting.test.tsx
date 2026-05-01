@@ -9,6 +9,7 @@ import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 
 function directPersonConversation() {
   return {
@@ -1515,6 +1516,87 @@ test('canonical read model excludes left group participants from active conversa
   const group = conversations.find((conversation) => conversation.id === 'session:group:left');
 
   assert.deepEqual(group?.canonicalParticipants?.map((participant) => participant.name), ['Me', 'Alice']);
+});
+
+test('canonical read model preserves group space when hydrating from a bridge outreach source', () => {
+  const canonicalState = {
+    storagePath: '/tmp/canonical.db',
+    profile: {
+      id: 'profile:local',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', avatarKey: 'bob', humanId: 'kh_bob', bridgeNodeId: 'kd_bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:group:invite',
+        kind: 'group',
+        title: 'Group',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        metadata: { groupSpaceId: 'session:group:invite', source: 'bridge-session-thread' },
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        lastMessageAtMs: 2,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:group:invite', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:invite', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      {
+        id: 'msg:group-invite',
+        sessionId: 'session:group:invite',
+        senderIdentityId: 'human:bob',
+        senderRole: 'person',
+        messageKind: 'text',
+        contentText: 'hi everyone',
+        content: { sender: 'Bob', timeLabel: '13:27' },
+        status: 'sent',
+        sequenceNum: 1,
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        contentHash: null,
+        sourceTransport: 'desktop-bridge-parent',
+        sourceEventId: 'bridge-group-1',
+      },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const bridgeSource = {
+    id: 'bridge:host:bob:person',
+    canonicalSessionId: 'session:bridge:humans:bob',
+    name: 'Bob',
+    type: 'person',
+    subtitle: 'hi everyone',
+    unread: 1,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct chat',
+    participants: ['Me', 'Bob'],
+    outreach: { parentSessionId: 'session:group:invite' },
+    bridgeUnreadByParentSessionId: { 'session:group:invite': 1 },
+    messages: [{ role: 'person', sender: 'Bob', text: 'hi everyone', time: '13:27' }],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([bridgeSource as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const group = conversations.find((conversation) => conversation.id === 'session:group:invite');
+  const spaces = buildParticipantSpaces(conversations as never);
+
+  assert.equal(group?.participantSpaceId, 'session:group:invite');
+  assert.equal(spaces[0]?.kind, 'group');
+  assert.equal(spaces[0]?.id, 'group:session:group:invite');
 });
 
 test('bridge chat visibility keeps empty conversations returned by backend state', () => {

@@ -263,7 +263,7 @@ function avatarParticipants(kind: ParticipantSpaceKind, participants: Conversati
     return primary ? [primary] : [];
   }
   if (kind === 'group') {
-    return nonSelfHumans(participants);
+    return participants.filter((participant) => participant.kind === 'human');
   }
   const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];

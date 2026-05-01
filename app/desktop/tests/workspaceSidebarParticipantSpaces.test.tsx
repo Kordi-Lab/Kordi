@@ -641,7 +641,7 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   assert.match(markup, /shuyhere1, shuyhere2/);
   assert.match(markup, /aria-label="Expand shuyhere1, shuyhere2"/);
   assert.match(markup, /aria-label="Create session in shuyhere1, shuyhere2"/);
-  assert.match(markup, /Group • 2 people • 1 session/);
+  assert.match(markup, /Group • 3 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);
 });

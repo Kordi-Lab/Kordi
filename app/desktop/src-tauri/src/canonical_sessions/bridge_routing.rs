@@ -204,6 +204,12 @@ pub(super) fn outreach_is_session_message(
     outreach_context_policy_is(outreach, "session-message")
 }
 
+pub(super) fn outreach_is_session_invite(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> bool {
+    outreach_context_policy_is(outreach, "session-invite")
+}
+
 pub(super) fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {
     match status {
         "sending" | "awaitingReply" => "replying".to_string(),

@@ -309,13 +309,8 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function isParticipantSpaceSelf(participant: ParticipantSpaceItem['participants'][number]) {
-  return participant.role === 'self'
-    || (participant.source === 'local' && participant.kind === 'human');
-}
-
 function participantSpaceHumanCount(space: ParticipantSpaceItem) {
-  return space.participants.filter((participant) => !isParticipantSpaceSelf(participant) && participant.kind === 'human').length;
+  return space.participants.filter((participant) => participant.kind === 'human').length;
 }
 
 function participantSpaceKindText(space: ParticipantSpaceItem) {

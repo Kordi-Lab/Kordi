@@ -207,7 +207,7 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
   assert.equal(spaces[0]?.kind, 'group');
   assert.equal(spaces[0]?.title, 'shu, Alex');
   assert.equal(spaces[0]?.participantCount, 4);
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shu', 'alex']);
 });
 
 test('buildParticipantSpaces collapses duplicate blank sessions in a participant space', () => {
@@ -472,7 +472,7 @@ test('buildParticipantSpaces truncates long inferred group names with a remainin
   ]);
 
   assert.equal(spaces[0]?.title, 'shuyhere1, shuyhere2 +103 more');
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shuyhere1', 'shuyhere2', 'shuyhere3', 'shuyhere4']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shuyhere1', 'shuyhere2', 'shuyhere3']);
 });
 
 test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {

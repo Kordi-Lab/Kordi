@@ -38,19 +38,24 @@ import {
   agentCanonicalIdentityRequest,
   buildChatAgentSessionKind,
   buildChatAgentSessionMetadata,
+  buildChatCreateGroupBridgeInviteParticipants,
+  buildChatCreateGroupBridgeInviteTargets,
+  buildChatCreateGroupInviteText,
   buildChatCreateGroupMetadata,
+  CHAT_GROUP_INVITE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
+  groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
-import { useBridgeState } from '@/features/bridge/useBridgeState';
+import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { Agent, CanonicalSessionState, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
@@ -58,6 +63,7 @@ import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
   addCanonicalSessionParticipants,
   archiveDesktopChatSession,
+  createDesktopBridgeOutreach,
   createDesktopProject,
   createDesktopProjectFromFolder,
   deleteDesktopChatSessionForever,
@@ -1213,8 +1219,9 @@ export function useKordiAppModel() {
   const handleCreateChatGroup = useCallback(async (request: { name?: string | null; contactIds: string[] }) => {
     if (!isNativeShell) return;
     setDesktopChatError(null);
-    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId) {
+    const currentCanonicalState = canonicalSessionState;
+    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId || !currentCanonicalState) {
       throw new Error('Local profile identity is not ready yet.');
     }
     const contacts = uniqueStrings(request.contactIds)
@@ -1258,12 +1265,64 @@ export function useKordiAppModel() {
       }),
     });
     setCanonicalSessionState(nextState);
+
+    const creatorIdentity = currentCanonicalState.identities.find((identity) => identity.id === creatorIdentityId);
+    const creatorInviteIdentity = {
+      id: creatorIdentityId,
+      displayName: creatorIdentity?.displayName?.trim()
+        || currentCanonicalState.profile.displayName?.trim()
+        || activeBridgeHost?.ownerName?.trim()
+        || 'Me',
+      bridgeNodeId: creatorIdentity?.bridgeNodeId?.trim() || activeBridgeHost?.nodeId?.trim() || null,
+      humanId: creatorIdentity?.humanId?.trim() || activeBridgeHost?.humanId?.trim() || null,
+    };
+    const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
+    const inviteParticipants = buildChatCreateGroupBridgeInviteParticipants({
+      creator: creatorInviteIdentity,
+      contacts,
+    });
+    if (inviteTargets.length > 0) {
+      const inviteText = buildChatCreateGroupInviteText(request.name?.trim() || groupDefaultName(selectedNames));
+      try {
+        for (const target of inviteTargets) {
+          const inviteState = await createDesktopBridgeOutreach({
+            hostId: target.hostId,
+            targetNodeId: target.nodeId,
+            targetKind: 'bridge-person',
+            requestText: inviteText,
+            targetDisplayName: target.displayName,
+            targetOwnerName: target.ownerName,
+            targetRuntime: 'person',
+            targetHumanId: target.humanId,
+            targetAgentId: null,
+            triggerText: null,
+            contextText: null,
+            contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
+            parentSessionId: sessionId,
+            parentSessionTitle: request.name?.trim() || groupDefaultName(selectedNames),
+            parentSessionKind: 'group',
+            parentSessionParticipants: inviteParticipants,
+            parentSessionMessages: [],
+            parentTurnId: null,
+            parentMessageId: null,
+            projectId: null,
+            projectName: null,
+          });
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, inviteState));
+        }
+      } catch (error) {
+        setDesktopChatError(`Group created, but Bridge invites failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
     selectNewChatSession(sessionId);
   }, [
+    activeBridgeHost,
     canonicalSessionState,
     isNativeShell,
     peopleContactById,
     selectNewChatSession,
+    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 

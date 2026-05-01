@@ -1716,6 +1716,161 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
 }
 
 #[test]
+fn inbound_group_session_invite_reconstructs_group_parent_without_visible_message() {
+    let conn = test_conn();
+    for (id, display_name, human_id, node_id) in [
+        ("human:local-alice", "Alice", "kh_alice", "kd_alice"),
+        ("human:remote-bob", "Bob", "kh_bob", "kd_bob"),
+        ("human:carol", "Carol", "kh_carol", "kd_carol"),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: "human".to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some(node_id.to_string()),
+                human_id: Some(human_id.to_string()),
+                agent_id: None,
+                avatar_key: Some(human_id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:invite";
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Alice, Bob, Carol".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_session_participants: vec![
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:local-alice".to_string()),
+                display_name: "Alice".to_string(),
+                role: Some("self".to_string()),
+                bridge_node_id: Some("kd_alice".to_string()),
+                human_id: Some("kh_alice".to_string()),
+                agent_id: None,
+            },
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:remote-bob".to_string()),
+                display_name: "Bob".to_string(),
+                role: Some("person".to_string()),
+                bridge_node_id: Some("kd_bob".to_string()),
+                human_id: Some("kh_bob".to_string()),
+                agent_id: None,
+            },
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:carol".to_string()),
+                display_name: "Carol".to_string(),
+                role: Some("person".to_string()),
+                bridge_node_id: Some("kd_carol".to_string()),
+                human_id: Some("kh_carol".to_string()),
+                agent_id: None,
+            },
+        ],
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: None,
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:bob:person".to_string()),
+        bridge_request_id: Some("bridge_req_invite".to_string()),
+        delivery_state: None,
+        target_node_id: "kd_alice".to_string(),
+        target_human_id: Some("kh_alice".to_string()),
+        target_agent_id: None,
+        target_display_name: "Alice".to_string(),
+        target_owner_name: Some("Alice".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "You were added to Alice, Bob, Carol".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-invite".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: Some(1_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:bob:person".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_bob".to_string(),
+        peer_display_name: Some("Bob".to_string()),
+        peer_owner_name: Some("Bob".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Bob".to_string(),
+        subtitle: String::new(),
+        unread_count: 1,
+        updated_at_ms: 1_001,
+        updated_at_label: "13:27".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_invite".to_string(),
+        direction: "inbound".to_string(),
+        sender: Some("Bob".to_string()),
+        text: "You were added to Alice, Bob, Carol".to_string(),
+        time_label: "13:27".to_string(),
+        timestamp_ms: 1_001,
+        request_id: Some("bridge_req_invite".to_string()),
+        delivery_state: None,
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local-alice",
+        None,
+        Some("human:remote-bob"),
+        "human:remote-bob",
+        false,
+    )
+    .expect("sync inbound group invite");
+
+    let session = select_session(&conn, parent_session_id)
+        .expect("select session")
+        .expect("session exists");
+    assert_eq!(session.kind, "group");
+    let participant_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND state = 'active'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("participant count");
+    assert_eq!(participant_count, 3);
+    let message_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("message count");
+    assert_eq!(message_count, 0);
+}
+
+#[test]
 fn group_session_fanout_reconciles_duplicate_parent_message_copies() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [
