@@ -609,7 +609,7 @@ export function WorkspaceSidebar({
                       {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
                         const latestSession = space.sessions[0];
                         const isActiveSpace = activeParticipantSpaceId === space.id;
-                        const isExpanded = selectedParticipantSpaceId === space.id;
+                        const isExpanded = selectedParticipantSpaceId === space.id || isActiveSpace;
                         const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
                         const toggleSpace = () => {
                           setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);

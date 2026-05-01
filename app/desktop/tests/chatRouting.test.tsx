@@ -373,6 +373,54 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
 });
 
+test('canonical read model keeps blank selected-agent sessions visible under Notes to self', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:reviewer', kind: 'agent', displayName: 'Reviewer', source: 'local', avatarKey: 'reviewer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:self-agent:selected-reviewer',
+        kind: 'self-agent',
+        title: 'Reviewer',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'agent:reviewer',
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', agentId: 'agent:reviewer', participantSpaceKind: 'self' },
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        lastMessageAtMs: null,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:self-agent:selected-reviewer', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+      { sessionId: 'session:self-agent:selected-reviewer', identityId: 'agent:reviewer', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  });
+
+  const conversations = readModel?.buildChatConversations([], () => '') ?? [];
+
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0]?.id, 'session:self-agent:selected-reviewer');
+  assert.equal(conversations[0]?.type, 'owned-agent');
+});
+
 test('canonical read model keeps separate direct person bridge sessions for the same participant', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

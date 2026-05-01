@@ -276,8 +276,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
           const fallbackParticipants = this.participantDetails(fallbackSession.id);
           const fallbackMessages = this.messages(fallbackSession.id);
           const fallbackMetadata = sessionMetadata(fallbackSession);
+          const createdFromChatFlow = fallbackMetadata.createdFrom === 'chat-create-flow';
           if (fallbackMessages.length === 0 && (
-            fallbackSession.kind === 'self-agent'
+            (fallbackSession.kind === 'self-agent' && !createdFromChatFlow)
             || fallbackMetadata.source === 'desktop-bridge-conversation'
           )) {
             return [];
