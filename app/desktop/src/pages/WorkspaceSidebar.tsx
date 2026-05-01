@@ -609,13 +609,22 @@ export function WorkspaceSidebar({
                       {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
                         const latestSession = space.sessions[0];
                         const isActiveSpace = activeParticipantSpaceId === space.id;
-                        const isExpanded = selectedParticipantSpaceId === space.id || isActiveSpace;
+                        const isSelectedSpace = selectedParticipantSpaceId === space.id;
+                        const isExpanded = isSelectedSpace || isActiveSpace;
+                        const isAutoExpanded = isActiveSpace && !isSelectedSpace;
+                        const visibleSessions = isAutoExpanded
+                          ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
+                          : space.sessions;
                         const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
                         const toggleSpace = () => {
                           setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
                         };
                         return (
-                          <div key={space.id} className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}>
+                          <div
+                            key={space.id}
+                            className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}
+                            data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
+                          >
                             <div
                               className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
                               data-participant-space-row-shell="true"
@@ -679,14 +688,14 @@ export function WorkspaceSidebar({
                                     type="button"
                                     data-participant-space-toggle-button="true"
                                     className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                                    title={isExpanded ? 'Collapse sessions' : 'Expand sessions'}
-                                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${space.title}`}
+                                    title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
+                                    aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       toggleSpace();
                                     }}
                                   >
-                                    <ChevronDown className={cn('h-3.5 w-3.5 transition', isExpanded ? 'rotate-180' : '')} />
+                                    <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
                                   </button>
                                 </div>
                                 <div className="app-participant-space-row-meta">
@@ -703,7 +712,7 @@ export function WorkspaceSidebar({
 
                             {isExpanded ? (
                               <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
-                                {space.sessions.map((session) => {
+                                {visibleSessions.map((session) => {
                                   const conversation = session.conversation;
                                   const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
                                   const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';

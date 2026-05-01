@@ -366,7 +366,7 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Rename/);
 });
 
-test('WorkspaceSidebar expands and highlights the active Notes to self session', () => {
+test('WorkspaceSidebar auto-expands the active Notes to self space with only the active session', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:wrong',
@@ -379,6 +379,20 @@ test('WorkspaceSidebar expands and highlights the active Notes to self session',
         { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
       ],
       _updatedAtMs: 3,
+    }),
+    conversation({
+      id: 'session:self-agent:old-note',
+      canonicalSessionId: 'session:self-agent:old-note',
+      name: 'Old note',
+      type: 'owned-agent',
+      subtitle: 'Remember this',
+      participants: ['Me', 'Reviewer'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:reviewer', name: 'Reviewer', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'reviewer' },
+      ],
+      messages: [{ role: 'person', sender: 'Me', text: 'Remember this', time: '09:00' }],
+      _updatedAtMs: 2,
     }),
     conversation({
       id: 'session:self-agent:selected-reviewer',
@@ -405,8 +419,55 @@ test('WorkspaceSidebar expands and highlights the active Notes to self session',
   }) as never));
 
   assert.match(markup, /Notes to self/);
+  assert.match(markup, /aria-label="Expand Notes to self"/);
+  assert.match(markup, /# Reviewer/);
+  assert.doesNotMatch(markup, /# Old note/);
+});
+
+test('WorkspaceSidebar explicit expansion shows all sessions in the active Notes to self space', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:self-agent:old-note',
+      canonicalSessionId: 'session:self-agent:old-note',
+      name: 'Old note',
+      type: 'owned-agent',
+      subtitle: 'Remember this',
+      participants: ['Me', 'Reviewer'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:reviewer', name: 'Reviewer', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'reviewer' },
+      ],
+      messages: [{ role: 'person', sender: 'Me', text: 'Remember this', time: '09:00' }],
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:self-agent:selected-reviewer',
+      canonicalSessionId: 'session:self-agent:selected-reviewer',
+      name: 'Reviewer',
+      type: 'owned-agent',
+      subtitle: 'New session',
+      participants: ['Me', 'Reviewer'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:reviewer', name: 'Reviewer', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'reviewer' },
+      ],
+      messages: [],
+      _updatedAtMs: 4,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const notesSpace = participantSpaces.find((space) => space.kind === 'self');
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    filteredParticipantSpaces: participantSpaces,
+    activeConvId: 'session:self-agent:selected-reviewer',
+    initialSelectedParticipantSpaceId: notesSpace?.id,
+  }) as never));
+
   assert.match(markup, /aria-label="Collapse Notes to self"/);
   assert.match(markup, /# Reviewer/);
+  assert.match(markup, /# Old note/);
 });
 
 test('WorkspaceSidebar expanded participant space keeps contextual create on the first-page row and rich child previews', () => {
@@ -514,7 +575,7 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   }) as never));
 
   assert.match(markup, /shuyhere1, shuyhere2/);
-  assert.match(markup, /aria-label="Collapse shuyhere1, shuyhere2"/);
+  assert.match(markup, /aria-label="Expand shuyhere1, shuyhere2"/);
   assert.match(markup, /aria-label="Create session in shuyhere1, shuyhere2"/);
   assert.match(markup, /Group • 2 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
