@@ -33,26 +33,65 @@ export type ChatCreateDialogProps = {
 };
 
 type CreateMode = 'menu' | 'person' | 'agent' | 'group';
+type PopoverPlacement = 'right' | 'left' | 'floating';
+type PopoverStyle = CSSProperties & {
+  '--app-create-enter-x'?: string;
+  '--app-popover-origin'?: string;
+};
 
-function popoverStyle(anchorRect?: ChatCreatePopoverAnchor | null): CSSProperties {
-  const width = 344;
-  const fallbackLeft = 76;
-  const fallbackTop = 86;
+type PopoverGeometry = {
+  style: PopoverStyle;
+  arrowStyle: CSSProperties;
+  placement: PopoverPlacement;
+};
+
+function popoverGeometry(anchorRect?: ChatCreatePopoverAnchor | null): PopoverGeometry {
+  const width = 284;
+  const gap = 10;
+  const margin = 10;
+  const fallbackLeft = 92;
+  const fallbackTop = 74;
+
   if (!anchorRect) {
-    return { left: fallbackLeft, top: fallbackTop };
+    return {
+      placement: 'floating',
+      arrowStyle: { top: 18 },
+      style: {
+        left: fallbackLeft,
+        top: fallbackTop,
+        '--app-create-enter-x': '-6px',
+        '--app-popover-origin': 'left 22px',
+      },
+    };
   }
 
   const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
-  const anchorCenter = anchorRect.left + anchorRect.width / 2;
-  const left = Math.min(Math.max(12, anchorCenter - width / 2), Math.max(12, viewportWidth - width - 12));
-  const top = anchorRect.top + anchorRect.height + 12;
-  return { left, top };
+  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
+  const rightLeft = anchorRect.left + anchorRect.width + gap;
+  const leftLeft = anchorRect.left - width - gap;
+  const canFitRight = rightLeft + width <= viewportWidth - margin;
+  const canFitLeft = leftLeft >= margin;
+  const placement: PopoverPlacement = canFitRight || !canFitLeft ? 'right' : 'left';
+  const unclampedLeft = placement === 'right' ? rightLeft : leftLeft;
+  const left = Math.min(Math.max(margin, unclampedLeft), Math.max(margin, viewportWidth - width - margin));
+  const top = Math.min(Math.max(margin, anchorRect.top - 4), Math.max(margin, viewportHeight - 220));
+  const anchorCenterY = anchorRect.top + anchorRect.height / 2;
+  const arrowTop = Math.min(Math.max(18, anchorCenterY - top - 6), 54);
+
+  return {
+    placement,
+    arrowStyle: { top: arrowTop },
+    style: {
+      left,
+      top,
+      '--app-create-enter-x': placement === 'right' ? '-8px' : '8px',
+      '--app-popover-origin': placement === 'right' ? 'left 22px' : 'right 22px',
+    },
+  };
 }
 
 function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; onClose: () => void; anchorRect?: ChatCreatePopoverAnchor | null }) {
-  const style = popoverStyle(anchorRect);
-  const anchorCenter = anchorRect ? anchorRect.left + anchorRect.width / 2 : 184;
-  const arrowLeft = Math.min(Math.max(24, anchorCenter - Number(style.left ?? 0)), 320);
+  const { style, arrowStyle, placement } = popoverGeometry(anchorRect);
 
   return (
     <>
@@ -63,15 +102,21 @@ function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; on
         onClick={onClose}
       />
       <div
-        data-create-surface="popover"
-        className="fixed z-50 w-[min(21.5rem,calc(100vw-1.5rem))] rounded-[22px] border border-white/55 bg-white/80 p-3.5 text-slate-950 shadow-[0_24px_60px_rgba(15,23,42,0.28)] backdrop-blur-2xl backdrop-saturate-150"
+        data-create-surface="side-popover"
+        data-popover-placement={placement}
+        className="app-chat-create-popover app-chat-create-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-hidden rounded-[18px] p-2.5 backdrop-blur-2xl backdrop-saturate-150"
         style={style}
       >
-        <div
-          aria-hidden="true"
-          className="absolute -top-2.5 h-5 w-5 rotate-45 border-l border-t border-white/55 bg-white/80 backdrop-blur-2xl"
-          style={{ left: arrowLeft - 10 }}
-        />
+        {placement !== 'floating' ? (
+          <div
+            aria-hidden="true"
+            className={cn(
+              'app-chat-create-popover-arrow absolute h-3.5 w-3.5 rotate-45',
+              placement === 'right' ? '-left-[0.45rem]' : '-right-[0.45rem]',
+            )}
+            style={arrowStyle}
+          />
+        ) : null}
         <div className="relative">{children}</div>
       </div>
     </>
@@ -80,18 +125,18 @@ function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; on
 
 function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subtitle: string; onClose: () => void }) {
   return (
-    <div className="mb-3 flex items-start justify-between gap-3">
-      <div>
-        <div className="text-[15px] font-semibold text-slate-950">{title}</div>
-        <div className="mt-0.5 text-[11px] leading-4 text-slate-500">{subtitle}</div>
+    <div className="mb-2 flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-semibold leading-5 text-[color:var(--utility-foreground)]">{title}</div>
+        <div className="mt-px text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{subtitle}</div>
       </div>
       <button
         type="button"
         onClick={onClose}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] text-slate-500 transition hover:bg-slate-950/8 hover:text-slate-950"
+        className="app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] transition"
         aria-label="Close create chat"
       >
-        <X className="h-4 w-4" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -102,12 +147,12 @@ function ChoiceButton({ icon, title, detail, onClick }: { icon: ReactNode; title
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left transition hover:bg-slate-950/[0.06]"
+      className="app-chat-create-choice flex w-full items-center gap-2 rounded-[13px] px-2 py-2 text-left transition"
     >
-      <span className="grid h-9 w-9 place-items-center rounded-[14px] bg-slate-950/[0.08] text-slate-800">{icon}</span>
+      <span className="app-chat-create-icon grid h-7 w-7 shrink-0 place-items-center rounded-[10px]">{icon}</span>
       <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-slate-950">{title}</span>
-        <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{detail}</span>
+        <span className="block truncate text-[12.5px] font-semibold leading-4 text-[color:var(--utility-foreground)]">{title}</span>
+        <span className="mt-px block truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{detail}</span>
       </span>
     </button>
   );
@@ -154,65 +199,69 @@ export function ChatCreateDialog({
     <DialogCard onClose={close} anchorRect={anchorRect}>
       <CreateDialogHeader
         title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with person' : mode === 'agent' ? 'Chat with agent' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 people. Agents can be invited into sessions later, but not as group members.' : 'Choose who this conversation is with.'}
+        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : 'Choose who this conversation is with.'}
         onClose={close}
       />
 
       {mode === 'menu' ? (
-        <div className="space-y-2">
-          <ChoiceButton icon={<MessageSquare className="h-4 w-4" />} title="Chat with person" detail="Open a direct people conversation." onClick={() => setMode('person')} />
-          <ChoiceButton icon={<Bot className="h-4 w-4" />} title="Chat with agent" detail="Start with one Kordi agent." onClick={() => setMode('agent')} />
-          <ChoiceButton icon={<Users className="h-4 w-4" />} title="Start group" detail="Create a stable group with people contacts only." onClick={() => setMode('group')} />
+        <div className="space-y-1">
+          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with person" detail="Direct people conversation" onClick={() => setMode('person')} />
+          <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" detail="Start with one Kordi agent" onClick={() => setMode('agent')} />
+          <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" detail="Stable group with people only" onClick={() => setMode('group')} />
         </div>
       ) : null}
 
       {mode === 'person' ? (
         <div className="space-y-2">
-          {personOptions.length > 0 ? personOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => {
-                void onStartPerson(option.contact);
-                close();
-              }}
-              className="w-full rounded-[14px] border border-slate-950/10 bg-white/35 px-3 py-2.5 text-left transition hover:border-slate-950/15 hover:bg-white/60"
-            >
-              <span className="block text-[13px] font-medium text-slate-950">{option.label}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-slate-500">{option.detail}</span>
-            </button>
-          )) : (
-            <div className="rounded-[14px] border border-slate-950/10 bg-white/35 px-3 py-3 text-[12px] text-slate-500">No people contacts available.</div>
-          )}
-          <Button type="button" variant="secondary" className="w-full rounded-[14px]" onClick={() => setMode('menu')}>Back</Button>
+          <div className="app-chat-create-option-list max-h-[min(18rem,calc(100vh-8rem))] space-y-1 overflow-auto pr-1">
+            {personOptions.length > 0 ? personOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  void onStartPerson(option.contact);
+                  close();
+                }}
+                className="app-chat-create-list-item w-full rounded-[12px] border px-2.5 py-2 text-left transition"
+              >
+                <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
+                <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
+              </button>
+            )) : (
+              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No people contacts available.</div>
+            )}
+          </div>
+          <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
         </div>
       ) : null}
 
       {mode === 'agent' ? (
         <div className="space-y-2">
-          {agentOptions.length > 0 ? agentOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => {
-                void onStartAgent(option.agent);
-                close();
-              }}
-              className="w-full rounded-[14px] border border-slate-950/10 bg-white/35 px-3 py-2.5 text-left transition hover:border-slate-950/15 hover:bg-white/60"
-            >
-              <span className="block text-[13px] font-medium text-slate-950">{option.label}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-slate-500">{option.detail}</span>
-            </button>
-          )) : (
-            <div className="rounded-[14px] border border-slate-950/10 bg-white/35 px-3 py-3 text-[12px] text-slate-500">No agents available.</div>
-          )}
-          <Button type="button" variant="secondary" className="w-full rounded-[14px]" onClick={() => setMode('menu')}>Back</Button>
+          <div className="app-chat-create-option-list max-h-[min(18rem,calc(100vh-8rem))] space-y-1 overflow-auto pr-1">
+            {agentOptions.length > 0 ? agentOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  void onStartAgent(option.agent);
+                  close();
+                }}
+                className="app-chat-create-list-item w-full rounded-[12px] border px-2.5 py-2 text-left transition"
+              >
+                <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
+                <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
+              </button>
+            )) : (
+              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No agents available.</div>
+            )}
+          </div>
+          <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
         </div>
       ) : null}
 
       {mode === 'group' ? (
         <form
-          className="space-y-3"
+          className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
             if (!canSubmitGroup) return;
@@ -224,9 +273,9 @@ export function ChatCreateDialog({
             value={groupName}
             onChange={(event) => setGroupName(event.target.value)}
             placeholder={defaultGroupName || 'Group name (optional)'}
-            className="w-full rounded-[14px] border border-slate-950/10 bg-white/55 px-3 py-2 text-[13px] text-slate-950 outline-none placeholder:text-slate-500"
+            className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
           />
-          <div className="max-h-64 space-y-1 overflow-auto pr-1">
+          <div className="app-chat-create-option-list max-h-[min(14.5rem,calc(100vh-10rem))] space-y-1 overflow-auto pr-1">
             {personOptions.length > 0 ? personOptions.map((option) => {
               const selected = selectedContactIds.includes(option.id);
               return (
@@ -235,25 +284,25 @@ export function ChatCreateDialog({
                   type="button"
                   onClick={() => toggleContact(option.id)}
                   className={cn(
-                    'flex w-full items-center justify-between gap-3 rounded-[14px] border px-3 py-2.5 text-left transition',
-                    selected ? 'border-emerald-500/45 bg-emerald-400/15' : 'border-slate-950/10 bg-white/35 hover:border-slate-950/15 hover:bg-white/60',
+                    'app-chat-create-list-item flex w-full items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2 text-left transition',
+                    selected && 'app-chat-create-list-item-selected',
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block text-[13px] font-medium text-slate-950">{option.label}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-slate-500">{option.detail}</span>
+                    <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
+                    <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
                   </span>
-                  <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]', selected ? 'border-emerald-500 bg-emerald-400 text-slate-950' : 'border-slate-950/20 text-transparent')}>✓</span>
+                  <span className={cn('app-chat-create-check grid h-[1.125rem] w-[1.125rem] shrink-0 place-items-center rounded-full border text-[9px]', selected && 'app-chat-create-check-selected')}>✓</span>
                 </button>
               );
             }) : (
-              <div className="rounded-[14px] border border-slate-950/10 bg-white/35 px-3 py-3 text-[12px] text-slate-500">No people contacts available.</div>
+              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No people contacts available.</div>
             )}
           </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="secondary" className="flex-1 rounded-[14px]" onClick={() => setMode('menu')}>Back</Button>
-            <Button type="submit" className="flex-1 rounded-[14px]" disabled={!canSubmitGroup}>
-              {canSubmitGroup ? 'Create group' : 'Select at least 2 people'}
+          <div className="flex gap-1.5">
+            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!canSubmitGroup}>
+              {canSubmitGroup ? 'Create group' : 'Pick 2 people'}
             </Button>
           </div>
         </form>

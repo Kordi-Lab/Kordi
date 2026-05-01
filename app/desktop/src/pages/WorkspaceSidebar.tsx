@@ -558,45 +558,62 @@ export function WorkspaceSidebar({
                             const isActiveSpace = activeParticipantSpaceId === space.id;
                             const isSelectedSpace = selectedParticipantSpaceId === space.id;
                             const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
+                            const openSpace = () => {
+                              setSelectedParticipantSpaceId(space.id);
+                              if (latestSession && activeConvId !== latestSession.id) {
+                                onSelectChatSession(latestSession.id);
+                              }
+                            };
                             return (
-                              <button
-                                key={space.id}
-                                type="button"
-                                data-testid="participant-space-row"
-                                onClick={() => {
-                                  setSelectedParticipantSpaceId(space.id);
-                                  if (latestSession && activeConvId !== latestSession.id) {
-                                    onSelectChatSession(latestSession.id);
-                                  }
-                                }}
-                                className={cn(
-                                  'app-session-row block w-full px-2.5 py-2 text-left text-white',
-                                  (isActiveSpace || isSelectedSpace) && 'app-session-row-active',
-                                )}
-                              >
-                                <div className="flex items-start gap-2.5">
-                                  <ParticipantSpaceAvatarStack space={space} />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-start gap-2.5">
-                                      <div className="min-w-0 flex-1">
-                                        <div className="truncate text-[12px] font-medium text-slate-100" title={space.title}>{space.title}</div>
-                                        <div className={cn('mt-px truncate text-[10.5px] leading-[1.05rem]', isActiveSpace || isSelectedSpace ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
-                                          {space.preview || `${participantSpaceKindText(space)} space`}
+                              <div key={space.id} className="relative">
+                                <button
+                                  type="button"
+                                  data-testid="participant-space-row"
+                                  onClick={openSpace}
+                                  className={cn(
+                                    'app-session-row block w-full px-2.5 py-2 pr-9 text-left text-white',
+                                    (isActiveSpace || isSelectedSpace) && 'app-session-row-active',
+                                  )}
+                                >
+                                  <div className="flex items-start gap-2.5">
+                                    <ParticipantSpaceAvatarStack space={space} />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start gap-2.5">
+                                        <div className="min-w-0 flex-1">
+                                          <div className="truncate text-[12px] font-medium text-slate-100" title={space.title}>{space.title}</div>
+                                          <div className={cn('mt-px truncate text-[10.5px] leading-[1.05rem]', isActiveSpace || isSelectedSpace ? 'text-slate-300' : 'text-slate-500')} title={space.preview}>
+                                            {space.preview || `${participantSpaceKindText(space)} space`}
+                                          </div>
+                                          <div className="mt-px truncate text-[10px] leading-[0.95rem] text-slate-600">
+                                            {participantSpaceDetailText(space)}
+                                          </div>
                                         </div>
-                                        <div className="mt-px truncate text-[10px] leading-[0.95rem] text-slate-600">
-                                          {participantSpaceDetailText(space)}
-                                        </div>
+                                        <SidebarSessionMetaColumn
+                                          timeLabel={rowTimeLabel}
+                                          unreadCount={space.unread}
+                                          indicator={latestSession?.statusIndicator}
+                                          active={isActiveSpace || isSelectedSpace}
+                                        />
                                       </div>
-                                      <SidebarSessionMetaColumn
-                                        timeLabel={rowTimeLabel}
-                                        unreadCount={space.unread}
-                                        indicator={latestSession?.statusIndicator}
-                                        active={isActiveSpace || isSelectedSpace}
-                                      />
                                     </div>
                                   </div>
-                                </div>
-                              </button>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="app-participant-space-action absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[10px]"
+                                  title={space.kind === 'group' ? 'Group details' : 'Open sessions'}
+                                  aria-label={`Actions for ${space.title}`}
+                                  aria-haspopup={space.kind === 'group' ? 'dialog' : undefined}
+                                  onClick={() => {
+                                    openSpace();
+                                    if (space.kind === 'group') {
+                                      setIsGroupDetailsDialogOpen(true);
+                                    }
+                                  }}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             );
                           }) : (
                             <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">

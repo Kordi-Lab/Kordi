@@ -159,6 +159,7 @@ test('WorkspaceSidebar renders participant spaces as the Chats first level', () 
   assert.match(markup, /Bob/);
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);
+  assert.match(markup, /aria-label="Actions for Bob"/);
   assert.doesNotMatch(markup, /Old Bob thread/);
   assert.doesNotMatch(markup, /New Bob thread/);
 });
@@ -222,20 +223,24 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.doesNotMatch(markup, /Group • 1 session/);
 });
 
-test('ChatCreateDialog renders create menu choices in a frosted popover', () => {
+test('ChatCreateDialog renders compact theme-aware choices beside the plus button', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     contacts: [contact({ id: 'contact:alice', name: 'Alice' })],
     agents: [agent({ id: 'agent:kordi', name: 'Kordi' })],
+    anchorRect: { left: 460, top: 40, width: 32, height: 32 },
     onClose: () => {},
     onStartPerson: () => {},
     onStartAgent: () => {},
     onCreateGroup: () => {},
   }));
 
-  assert.match(markup, /data-create-surface="popover"/);
-  assert.match(markup, /backdrop-blur/);
-  assert.doesNotMatch(markup, /bg-slate-950\/70/);
+  assert.match(markup, /data-create-surface="side-popover"/);
+  assert.match(markup, /data-popover-placement="right"/);
+  assert.match(markup, /app-chat-create-popover/);
+  assert.match(markup, /app-chat-create-popover-enter/);
+  assert.doesNotMatch(markup, /bg-white\/80/);
+  assert.doesNotMatch(markup, /text-slate-950/);
   assert.doesNotMatch(markup, /fixed inset-0 z-50 flex items-center justify-center/);
   assert.match(markup, /Chat with person/);
   assert.match(markup, /Chat with agent/);
@@ -351,6 +356,7 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   }) as never));
 
   assert.match(markup, /shuyhere1, shuyhere2/);
+  assert.match(markup, /aria-label="Actions for shuyhere1, shuyhere2"/);
   assert.match(markup, /Group • 2 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);

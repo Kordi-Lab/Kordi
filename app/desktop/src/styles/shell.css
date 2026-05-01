@@ -131,6 +131,92 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 }
 
+.app-chat-create-popover {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: var(--app-modal-bg);
+  color: var(--utility-foreground);
+  box-shadow: var(--app-shadow-float);
+}
+
+.app-chat-create-popover-enter {
+  transform-origin: var(--app-popover-origin, left 22px);
+  animation: app-chat-create-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-chat-create-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 92%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: var(--app-modal-bg);
+}
+
+.app-chat-create-close {
+  color: var(--utility-muted-text);
+}
+
+.app-chat-create-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice,
+.app-chat-create-list-item {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice:hover,
+.app-chat-create-list-item:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 78%, transparent);
+}
+
+.app-chat-create-icon {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-list-item-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-chat-create-check {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  color: transparent;
+}
+
+.app-chat-create-check-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 74%, var(--app-divider));
+  background: color-mix(in oklab, oklch(74% 0.14 156) 74%, var(--utility-foreground));
+  color: rgb(15 23 42);
+}
+
+.app-chat-create-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-muted-text);
+}
+
+@keyframes app-chat-create-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-create-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-chat-create-popover-enter {
+    animation: none;
+  }
+}
+
 .app-code-panel {
   background: var(--app-code-bg);
 }
@@ -435,6 +521,31 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.app-participant-space-action {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 54%, transparent);
+  color: var(--utility-muted-text);
+  opacity: 0.82;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  transition:
+    opacity var(--app-motion-fast) var(--app-motion-ease),
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    transform var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-action:hover,
+.app-participant-space-action:focus-visible {
+  border-color: color-mix(in oklab, var(--app-divider) 96%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 86%, transparent);
+  color: var(--utility-foreground);
+  opacity: 1;
+  transform: translateY(-1px);
 }
 
 .app-composer-shell {
