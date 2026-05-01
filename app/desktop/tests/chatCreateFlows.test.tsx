@@ -176,6 +176,34 @@ test('agent create flow starts a new selected-agent session under My chats', () 
   });
 });
 
+test('external bridge agent create flow stores bridge target metadata for My chats routing', () => {
+  const remoteAgent = agent({
+    id: 'agent:bob',
+    name: 'Bob agent',
+    isOwned: false,
+    bridgeHostId: 'host-1',
+    bridgePeerNodeId: 'node-shared',
+    bridgePeerRuntime: 'kordi-desktop',
+    bridgeAgentId: 'agent-bob',
+    bridgeOwnerName: 'Bob',
+  });
+
+  assert.equal(buildChatAgentSessionKind(remoteAgent), 'direct-agent');
+  assert.equal(chatSessionIdForAgentStart(remoteAgent, 'next-id'), 'session:direct-agent:next-id');
+  assert.deepEqual(buildChatAgentSessionMetadata(remoteAgent), {
+    createdFrom: 'chat-create-flow',
+    agentId: 'agent:bob',
+    participantSpaceKind: 'self',
+    bridgeHostId: 'host-1',
+    peerNodeId: 'node-shared',
+    peerRuntime: 'kordi-desktop',
+    peerDisplayName: 'Bob agent',
+    peerOwnerName: 'Bob',
+    peerAgentId: 'agent-bob',
+    targetAgentId: 'agent-bob',
+  });
+});
+
 test('existingBlankSessionIdForAgentStart reuses the newest empty selected-agent session', () => {
   const selectedAgent = agent({ id: 'agent:kordi', name: 'Kordi', isOwned: true });
   const conversations = [

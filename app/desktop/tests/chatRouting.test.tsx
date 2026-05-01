@@ -128,6 +128,7 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     handleSelectChatSession: async (sessionId: string) => { calls.push(`select:${sessionId}`); },
     handleOpenBridgeConversation: async () => { calls.push('openBridge'); },
     handleStartBridgePersonSession: async (target: Record<string, unknown>) => { calls.push(`startPerson:${target.hostId}:${target.nodeId}:${target.humanId}`); },
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.bridgeHostId}:${agent.bridgePeerNodeId}:${agent.bridgeAgentId}`); },
     setContactOverlayMode: (value: unknown) => calls.push(`overlay:${String(value)}`),
     displayedAgents: [],
     filteredGroupedContacts: [],
@@ -241,7 +242,7 @@ test('contact Message starts a fresh person session instead of selecting an exis
   assert.deepEqual(calls, ['overlay:null', 'startPerson:host-1:node-shared:human-bob']);
 });
 
-test('agent Message switches to Chats before selecting an existing conversation', () => {
+test('agent Message starts a fresh external agent session under My chats', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
     chatConversations: [directAgentConversation()],
@@ -257,10 +258,10 @@ test('agent Message switches to Chats before selecting an existing conversation'
     bridgePeerRuntime: 'kordi-desktop',
   });
 
-  assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });
 
-test('external agent contact Message prefers the agent conversation over a same-node person conversation', () => {
+test('external agent contact Message starts an agent session instead of routing to the person space', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
     chatConversations: [directPersonConversation(), directAgentConversation()],
@@ -278,7 +279,7 @@ test('external agent contact Message prefers the agent conversation over a same-
     bridgePeerRuntime: 'kordi-desktop',
   });
 
-  assert.deepEqual(calls, ['overlay:null', 'nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['overlay:null', 'startAgent:host-1:node-shared:agent-bob']);
 });
 
 test('bridge Chat starts a fresh person session instead of selecting an existing one', () => {
@@ -302,7 +303,28 @@ test('bridge Chat starts a fresh person session instead of selecting an existing
   assert.deepEqual(calls, ['startPerson:host-1:node-shared:human-bob']);
 });
 
-test('bridge Chat uses target identity before selecting an existing same-node agent conversation', () => {
+test('bridge Add + chat without a peer runtime defaults to a person session', () => {
+  const calls: string[] = [];
+  const props = buildBridgePageProps(baseShellArgs(calls, {
+    activeNav: 'bridge',
+    chatConversations: [],
+  }) as never) as never as {
+    onOpenBridgeConversation: (
+      hostId: string,
+      peerNodeId: string,
+      peerDisplayName?: string | null,
+      peerOwnerName?: string | null,
+      peerRuntime?: string | null,
+      target?: { humanId?: string | null; agentId?: string | null },
+    ) => void;
+  };
+
+  props.onOpenBridgeConversation('host-1', 'node-new');
+
+  assert.deepEqual(calls, ['startPerson:host-1:node-new:undefined']);
+});
+
+test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {
   const calls: string[] = [];
   const props = buildBridgePageProps(baseShellArgs(calls, {
     activeNav: 'bridge',
@@ -320,7 +342,7 @@ test('bridge Chat uses target identity before selecting an existing same-node ag
 
   props.onOpenBridgeConversation('host-1', 'node-shared', 'Bob agent', 'Bob', 'kordi-desktop', { agentId: 'agent-bob' });
 
-  assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });
 
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {

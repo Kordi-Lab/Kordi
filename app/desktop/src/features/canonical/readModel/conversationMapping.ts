@@ -98,6 +98,9 @@ export function syntheticBridgeTarget(
   const metadataHostId = stringValue(metadata.bridgeHostId);
   const metadataNodeId = stringValue(metadata.peerNodeId);
   const runtime = stringValue(metadata.peerRuntime);
+  const metadataDisplayName = stringValue(metadata.peerDisplayName);
+  const metadataOwnerName = stringValue(metadata.peerOwnerName);
+  const metadataAgentId = stringValue(metadata.peerAgentId) ?? stringValue(metadata.targetAgentId);
 
   const matchingParticipant = metadataNodeId
     ? participants.find((participant) => participant.bridgeNodeId === metadataNodeId)
@@ -115,11 +118,11 @@ export function syntheticBridgeTarget(
   return {
     hostId,
     nodeId,
-    displayName: matchingParticipant?.name ?? stringValue(metadata.peerDisplayName) ?? null,
-    ownerName: matchingParticipant?.humanId ? matchingParticipant.name : null,
+    displayName: matchingParticipant?.name ?? metadataDisplayName ?? null,
+    ownerName: matchingParticipant?.ownerName ?? (matchingParticipant?.humanId ? matchingParticipant.name : null) ?? metadataOwnerName ?? null,
     runtime: runtime ?? (matchingParticipant?.kind === 'human' ? 'person' : null),
     humanId: matchingParticipant?.humanId ?? null,
-    agentId: matchingParticipant?.agentId ?? null,
+    agentId: matchingParticipant?.agentId ?? metadataAgentId ?? null,
   };
 }
 

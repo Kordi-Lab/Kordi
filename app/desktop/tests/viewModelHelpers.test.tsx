@@ -121,6 +121,11 @@ test('formatSessionIdSubtitle labels raw ids for display', () => {
   );
   assert.equal(formatSessionIdSubtitle('  '), '');
   assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
+  assert.equal(
+    formatSessionIdSubtitle('session:bridge:bridge:bridge_18e6ee0dbc0d4785a3454a64129fe23b:kd_4FiDc8WETK5o26Ece6XvHFm6b8g9'),
+    'Bridge agent thread',
+  );
+  assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Agent chat');
 });
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {

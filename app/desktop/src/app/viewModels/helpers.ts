@@ -211,10 +211,21 @@ function looksLikeSessionId(value: string) {
     || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
+function friendlySessionSubtitle(value: string) {
+  if (value.startsWith('session:bridge:bridge:')) return 'Bridge agent thread';
+  if (value.startsWith('session:direct-agent:')) return 'Agent chat';
+  if (value.startsWith('session:self-agent:')) return 'My Kordi chat';
+  if (value.startsWith('session:direct-person:') || value.startsWith('session:bridge:humans:')) return 'Direct chat';
+  if (value.startsWith('session:group:')) return 'Group chat';
+  return null;
+}
+
 export function formatSessionIdSubtitle(value?: string | null) {
   const trimmed = value?.trim() ?? '';
   if (!trimmed) return '';
   if (/^session id:/i.test(trimmed)) return trimmed;
+  const friendly = friendlySessionSubtitle(trimmed);
+  if (friendly) return friendly;
   return looksLikeSessionId(trimmed) ? `Session ID: ${trimmed}` : trimmed;
 }
 

@@ -3,9 +3,9 @@ import {
   buildBridgePageProps,
   buildChatsPageProps,
   buildProjectsPageProps,
-  openChatSessionFromExternalEntryPoint,
 } from '@/app/mainContentShellBuilders';
-import { findCanonicalConversationForTarget, findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
+import { findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
+import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
@@ -78,23 +78,16 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             return;
           }
 
-          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
-            humanId: null,
+          void args.handleStartChatWithAgent(bridgeAgentForChatStart({
+            hostId: contact.bridgeHostId,
+            nodeId: contact.bridgePeerNodeId,
+            displayName: contact.name,
+            ownerName: contact.owner,
+            runtime: contact.bridgePeerRuntime,
             agentId: contact.bridgeAgentId,
-            bridgeNodeId: contact.bridgePeerNodeId,
-          });
-          if (existingConversation) {
-            openChatSessionFromExternalEntryPoint(args, existingConversation.id);
-            return;
-          }
-
-          void args.handleOpenBridgeConversation(
-            contact.bridgeHostId,
-            contact.bridgePeerNodeId,
-            contact.name,
-            contact.owner,
-            contact.bridgePeerRuntime,
-          );
+            contactId: contact.id,
+            profileImageUrl: contact.profileImageUrl,
+          }));
         },
       }}
       agentsPageProps={{
@@ -138,17 +131,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             return;
           }
 
-          const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
-            agentId: agent.bridgeAgentId,
-            bridgeNodeId: agent.bridgePeerNodeId,
-          });
-          if (existingConversation) {
-            openChatSessionFromExternalEntryPoint(args, existingConversation.id);
-            return;
-          }
-
-          if (!agent.bridgeHostId || !agent.bridgePeerNodeId) return;
-          void args.handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
+          void args.handleStartChatWithAgent(agent);
         },
       }}
       bridgePageProps={buildBridgePageProps(args)}

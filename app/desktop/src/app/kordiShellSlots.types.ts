@@ -380,6 +380,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatConversations'
   | 'handleCreateChatSession'
   | 'handleSelectChatSession'
+  | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
   | 'isContactRequestsOpen'
   | 'setIsContactRequestsOpen'

@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
+import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
   ComposerScope,
@@ -98,6 +99,25 @@ export function bridgeConversationSendPlan({
 
 function cleanText(value?: string | null) {
   return value?.trim() || null;
+}
+
+function bridgeTargetIsAgent(target?: ConversationBridgeTarget | null) {
+  const runtime = cleanText(target?.runtime);
+  return Boolean(cleanText(target?.agentId) || (runtime && isBridgeAgentRuntime(runtime)));
+}
+
+export function bridgeSessionOutreachTarget(target: ConversationBridgeTarget) {
+  const targetIsAgent = bridgeTargetIsAgent(target);
+  const displayName = cleanText(target.displayName) ?? cleanText(target.ownerName);
+  const ownerName = cleanText(target.ownerName) ?? (targetIsAgent ? null : displayName);
+  return {
+    targetKind: targetIsAgent ? 'bridge-agent' as const : 'bridge-person' as const,
+    targetRuntime: targetIsAgent ? (cleanText(target.runtime) ?? 'kordi-desktop') : 'person',
+    targetDisplayName: displayName,
+    targetOwnerName: ownerName,
+    targetHumanId: targetIsAgent ? null : cleanText(target.humanId),
+    targetAgentId: targetIsAgent ? cleanText(target.agentId) : null,
+  };
 }
 
 function participantIsSelf(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
@@ -474,26 +494,33 @@ export function useChatMessageActions({
               return null;
             }
             if (shouldStayInCanonicalSession && activeConvBridgeTarget && activeConvCanonicalSessionId) {
+              const target = bridgeSessionOutreachTarget(activeConvBridgeTarget);
+              const targetIsAgent = target.targetKind === 'bridge-agent';
               return createDesktopBridgeOutreach({
                 hostId: activeConvBridgeTarget.hostId,
                 targetNodeId: activeConvBridgeTarget.nodeId,
-                targetKind: 'bridge-person',
+                targetKind: target.targetKind,
                 requestText: bridgeMessageText,
-                targetDisplayName: activeConvBridgeTarget.displayName ?? activeConvBridgeTarget.ownerName ?? null,
-                targetOwnerName: activeConvBridgeTarget.ownerName ?? activeConvBridgeTarget.displayName ?? null,
-                targetRuntime: 'person',
-                targetHumanId: activeConvBridgeTarget.humanId ?? null,
-                targetAgentId: null,
+                targetDisplayName: target.targetDisplayName,
+                targetOwnerName: target.targetOwnerName,
+                targetRuntime: target.targetRuntime,
+                targetHumanId: target.targetHumanId,
+                targetAgentId: target.targetAgentId,
                 triggerText: null,
-                contextText: null,
-                contextPolicy: 'session-message',
+                contextText: targetIsAgent
+                  ? combineContext(
+                    renderProjectContext(desktopChatState),
+                    renderRecentMessageContext(activeConvMessages),
+                  )
+                  : null,
+                contextPolicy: targetIsAgent ? 'recent-window' : 'session-message',
                 parentSessionId: activeConvCanonicalSessionId,
                 parentSessionTitle: null,
-                parentSessionMessages: [],
+                parentSessionMessages: targetIsAgent ? parentSessionMessagesForOutreach(activeConvMessages) : [],
                 parentTurnId: null,
                 parentMessageId: preparedCanonicalMessage?.messageId ?? null,
-                projectId: null,
-                projectName: null,
+                projectId: targetIsAgent ? desktopChatState?.activeSession.project?.root : null,
+                projectName: targetIsAgent ? desktopChatState?.activeSession.project?.name : null,
                 ...bridgeAttachmentTransportFields(chatComposerAttachments),
               });
             }
