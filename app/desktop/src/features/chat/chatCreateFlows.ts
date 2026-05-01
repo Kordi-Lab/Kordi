@@ -235,7 +235,7 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
     append({
       identityId: cleanText(input.creator.id) || null,
       displayName: firstNonEmpty(input.creator.displayName, input.creator.id),
-      role: 'self',
+      role: 'admin',
       bridgeNodeId: cleanText(input.creator.bridgeNodeId) || null,
       humanId: cleanText(input.creator.humanId) || null,
       agentId: null,

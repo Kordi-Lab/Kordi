@@ -237,6 +237,7 @@ pub struct UpdateCanonicalPresenceRequest {
 pub struct RenameCanonicalSessionRequest {
     pub session_id: String,
     pub title: String,
+    pub requested_by_identity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -244,6 +245,7 @@ pub struct RenameCanonicalSessionRequest {
 pub struct UpdateCanonicalSessionMetadataRequest {
     pub session_id: String,
     pub metadata: Value,
+    pub requested_by_identity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -259,6 +261,7 @@ pub struct AddCanonicalSessionParticipantsRequest {
 pub struct RemoveCanonicalSessionParticipantRequest {
     pub session_id: String,
     pub identity_id: String,
+    pub removed_by_identity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -267,4 +270,5 @@ pub struct SetCanonicalSessionParticipantRoleRequest {
     pub session_id: String,
     pub identity_id: String,
     pub role: String,
+    pub requested_by_identity_id: Option<String>,
 }

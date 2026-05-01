@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::{Map, Value};
 
 use super::super::models::{OpenCanonicalSessionRequest, UpsertCanonicalIdentityRequest};
 use super::super::{
@@ -37,6 +38,29 @@ fn existing_self_participant(
     )
     .optional()
     .map_err(|err| err.to_string())
+}
+
+fn metadata_object(value: Option<&Value>) -> Map<String, Value> {
+    value
+        .and_then(|value| value.as_object())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn metadata_string_array(metadata: &Map<String, Value>, key: &str) -> Vec<String> {
+    metadata
+        .get(key)
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 fn group_participant_identity_id(
@@ -94,41 +118,84 @@ pub(super) fn ensure_parent_group_session_participants(
     let cleaned_parent_title = parent_session_title
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let existing_session = select_session(conn, parent_session_id)?;
+    let mut metadata = metadata_object(
+        existing_session
+            .as_ref()
+            .and_then(|session| session.metadata.as_ref()),
+    );
     let self_identity_id = existing_self_participant(conn, parent_session_id)?
         .unwrap_or_else(|| local_human_identity_id.to_string());
     let mut participant_ids = vec![
         self_identity_id.clone(),
         remote_target_identity_id.to_string(),
     ];
+    let mut admin_identity_ids = metadata_string_array(&metadata, "adminIdentityIds");
     if let Some(relationship_identity_id) = relationship_identity_id {
         participant_ids.push(relationship_identity_id.to_string());
     }
     for participant in participants {
         if let Some(identity_id) = group_participant_identity_id(conn, bridge_host_id, participant)?
         {
+            if participant
+                .role
+                .as_deref()
+                .is_some_and(|role| role.eq_ignore_ascii_case("admin"))
+            {
+                admin_identity_ids.push(identity_id.clone());
+            }
             participant_ids.push(identity_id);
         }
     }
     participant_ids.sort();
     participant_ids.dedup();
+    admin_identity_ids.sort();
+    admin_identity_ids.dedup();
+    metadata
+        .entry("source".to_string())
+        .or_insert_with(|| serde_json::json!("bridge-session-thread"));
+    metadata
+        .entry("groupSpaceId".to_string())
+        .or_insert_with(|| serde_json::json!(parent_session_id));
+    if !admin_identity_ids.is_empty() {
+        metadata.insert(
+            "adminIdentityIds".to_string(),
+            serde_json::json!(admin_identity_ids),
+        );
+    }
+    let title = cleaned_parent_title
+        .map(ToString::to_string)
+        .or_else(|| {
+            existing_session
+                .as_ref()
+                .map(|session| session.title.trim().to_string())
+                .filter(|title| !title.is_empty())
+        })
+        .unwrap_or_else(|| "Group".to_string());
+    let created_by_identity_id = existing_session
+        .as_ref()
+        .map(|session| session.created_by_identity_id.clone())
+        .or_else(|| {
+            metadata_string_array(&metadata, "adminIdentityIds")
+                .into_iter()
+                .next()
+        })
+        .unwrap_or_else(|| self_identity_id.clone());
 
     open_or_create_session_in_db(
         conn,
         OpenCanonicalSessionRequest {
             id: Some(parent_session_id.to_string()),
             kind: "group".to_string(),
-            title: Some(cleaned_parent_title.unwrap_or("Group").to_string()),
+            title: Some(title),
             status: Some("active".to_string()),
-            created_by_identity_id: self_identity_id.clone(),
+            created_by_identity_id,
             primary_identity_id: Some(remote_target_identity_id.to_string()),
             project_id: None,
             project_name: None,
             relationship_identity_id: None,
             participant_identity_ids: participant_ids.clone(),
-            metadata: Some(serde_json::json!({
-                "source": "bridge-session-thread",
-                "groupSpaceId": parent_session_id,
-            })),
+            metadata: Some(Value::Object(metadata)),
         },
     )?;
 

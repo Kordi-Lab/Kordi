@@ -3,8 +3,8 @@ use rusqlite::Connection;
 use super::{
     add_session_participants_in_db, append_message_in_db, create_delegated_exchange_in_db,
     json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_session_in_db, select_delegated_exchange, select_identity, select_message,
-    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
+    rename_session_in_db, require_group_admin, select_delegated_exchange, select_identity,
+    select_message, select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
     update_presence_in_db, upsert_identity_in_db, AddCanonicalSessionParticipantsRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
     CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
@@ -188,6 +188,12 @@ pub(super) fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
+    require_group_admin(
+        &conn,
+        &request.session_id,
+        request.requested_by_identity_id.as_deref(),
+        "rename this group",
+    )?;
     rename_session_in_db(&conn, &request.session_id, &request.title)?;
     load_state_from_db(&conn)
 }
@@ -196,6 +202,12 @@ pub(super) fn desktop_canonical_update_session_metadata(
     request: UpdateCanonicalSessionMetadataRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
+    require_group_admin(
+        &conn,
+        &request.session_id,
+        request.requested_by_identity_id.as_deref(),
+        "change this group",
+    )?;
     set_session_metadata_in_db(&conn, &request.session_id, request.metadata)?;
     load_state_from_db(&conn)
 }
@@ -204,6 +216,12 @@ pub(super) fn desktop_canonical_add_session_participants(
     request: AddCanonicalSessionParticipantsRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
+    require_group_admin(
+        &conn,
+        &request.session_id,
+        Some(request.added_by_identity_id.as_str()),
+        "invite people to this group",
+    )?;
     add_session_participants_in_db(
         &conn,
         &request.session_id,
@@ -217,6 +235,12 @@ pub(super) fn desktop_canonical_remove_session_participant(
     request: RemoveCanonicalSessionParticipantRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
+    require_group_admin(
+        &conn,
+        &request.session_id,
+        request.removed_by_identity_id.as_deref(),
+        "remove people from this group",
+    )?;
     remove_session_participant_in_db(&conn, &request.session_id, &request.identity_id)?;
     load_state_from_db(&conn)
 }
@@ -225,6 +249,12 @@ pub(super) fn desktop_canonical_set_session_participant_role(
     request: SetCanonicalSessionParticipantRoleRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
+    require_group_admin(
+        &conn,
+        &request.session_id,
+        request.requested_by_identity_id.as_deref(),
+        "change group admins",
+    )?;
     set_session_participant_role_in_db(
         &conn,
         &request.session_id,

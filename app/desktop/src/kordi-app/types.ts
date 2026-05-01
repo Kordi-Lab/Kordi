@@ -574,11 +574,13 @@ export type UpdateCanonicalPresenceRequest = {
 export type RenameCanonicalSessionRequest = {
   sessionId: string;
   title: string;
+  requestedByIdentityId?: string | null;
 };
 
 export type UpdateCanonicalSessionMetadataRequest = {
   sessionId: string;
   metadata: unknown;
+  requestedByIdentityId?: string | null;
 };
 
 export type AddCanonicalSessionParticipantsRequest = {
@@ -590,12 +592,14 @@ export type AddCanonicalSessionParticipantsRequest = {
 export type RemoveCanonicalSessionParticipantRequest = {
   sessionId: string;
   identityId: string;
+  removedByIdentityId?: string | null;
 };
 
 export type SetCanonicalSessionParticipantRoleRequest = {
   sessionId: string;
   identityId: string;
   role: 'self' | 'admin' | 'person' | 'delegate' | string;
+  requestedByIdentityId?: string | null;
 };
 
 export type DesktopAuthState = {

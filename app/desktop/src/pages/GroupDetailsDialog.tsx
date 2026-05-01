@@ -3,7 +3,12 @@ import type { CSSProperties, FormEvent } from 'react';
 import { ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { buildChatCreatePersonOptions, contactCanonicalIdentityRequest, participantSpaceCanonicalSessionIds } from '@/features/chat/chatCreateFlows';
+import {
+  adminIdentityIdsFromMetadata,
+  buildChatCreatePersonOptions,
+  contactCanonicalIdentityRequest,
+  participantSpaceCanonicalSessionIds,
+} from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -85,8 +90,18 @@ function isHumanMember(participant: ConversationParticipant) {
   return participant.kind === 'human';
 }
 
-function isAdminMember(participant: ConversationParticipant) {
-  return participant.role === 'self' || participant.role === 'admin';
+function isSelfMember(participant: ConversationParticipant) {
+  return participant.role === 'self' || (participant.kind === 'human' && participant.source === 'local');
+}
+
+function fallbackRoleAdminIds(members: ConversationParticipant[]) {
+  return members.filter((member) => member.role === 'admin').map((member) => member.id);
+}
+
+function groupAdminIds(space: ParticipantSpaceViewModel | null, members: ConversationParticipant[]) {
+  const metadataAdminIds = (space?.sessions ?? []).flatMap((session) => adminIdentityIdsFromMetadata(session.conversation.metadata));
+  const uniqueMetadataAdminIds = [...new Set(metadataAdminIds.map((id) => id.trim()).filter(Boolean))];
+  return new Set(uniqueMetadataAdminIds.length > 0 ? uniqueMetadataAdminIds : fallbackRoleAdminIds(members));
 }
 
 function displayCreatedLabel(space: ParticipantSpaceViewModel) {
@@ -110,7 +125,10 @@ export function GroupDetailsDialog({
   const allParticipants = space?.participants ?? session?.conversation.canonicalParticipants ?? [];
   const members = allParticipants.filter(isHumanMember);
   const memberIds = new Set(members.map((member) => member.id));
-  const adminCount = members.filter(isAdminMember).length;
+  const adminIds = groupAdminIds(space, members);
+  const currentMember = members.find(isSelfMember);
+  const canManageGroup = Boolean(currentMember && adminIds.has(currentMember.id));
+  const adminCount = members.filter((member) => adminIds.has(member.id)).length;
   const [nameDraft, setNameDraft] = useState(space?.title ?? '');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const addOptions = useMemo(() => (
@@ -132,6 +150,7 @@ export function GroupDetailsDialog({
 
   const submitRename = (event: FormEvent) => {
     event.preventDefault();
+    if (!canManageGroup) return;
     const name = nameDraft.trim();
     if (!name) return;
     void onRename(groupSessionIds, name);
@@ -200,7 +219,7 @@ export function GroupDetailsDialog({
               placeholder="Group name"
               className="app-input-shell min-w-0 flex-1 rounded-[12px] px-3 py-2 text-[12px] outline-none"
             />
-            <Button type="submit" className="h-9 rounded-[12px] px-3 text-[12px]" disabled={!nameDraft.trim()}>Rename</Button>
+            <Button type="submit" className="h-9 rounded-[12px] px-3 text-[12px]" disabled={!canManageGroup || !nameDraft.trim()}>Rename</Button>
           </form>
 
           <div className="min-h-0 overflow-auto pr-1">
@@ -208,7 +227,7 @@ export function GroupDetailsDialog({
               <div className="app-group-management-section-label mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em]">Participants</div>
               <div className="space-y-1">
                 {members.map((member) => {
-                  const admin = isAdminMember(member);
+                  const admin = adminIds.has(member.id);
                   const isLastAdmin = admin && adminCount <= 1;
                   return (
                     <div key={member.id} className="app-group-management-member-row flex items-center gap-2 rounded-[13px] border px-2.5 py-2">
@@ -221,16 +240,16 @@ export function GroupDetailsDialog({
                       </div>
                       <button
                         type="button"
-                        className={cn('app-group-management-admin-button rounded-[10px] px-2 py-1 text-[10px] transition', admin && 'app-group-management-admin-button-active', isLastAdmin && 'cursor-not-allowed opacity-50')}
-                        disabled={isLastAdmin}
+                        className={cn('app-group-management-admin-button rounded-[10px] px-2 py-1 text-[10px] transition', admin && 'app-group-management-admin-button-active', (!canManageGroup || isLastAdmin) && 'cursor-not-allowed opacity-50')}
+                        disabled={!canManageGroup || isLastAdmin}
                         onClick={() => { void onSetAdmin(groupSessionIds, member.id, !admin); }}
                       >
                         {admin ? 'Demote' : 'Make admin'}
                       </button>
                       <button
                         type="button"
-                        className={cn('app-group-management-remove-button grid h-7 w-7 place-items-center rounded-[10px] transition', isLastAdmin && 'cursor-not-allowed opacity-50')}
-                        disabled={isLastAdmin}
+                        className={cn('app-group-management-remove-button grid h-7 w-7 place-items-center rounded-[10px] transition', (!canManageGroup || isLastAdmin) && 'cursor-not-allowed opacity-50')}
+                        disabled={!canManageGroup || isLastAdmin}
                         aria-label={`Remove ${member.name}`}
                         onClick={() => { void onRemoveMember(groupSessionIds, member.id); }}
                       >
@@ -253,7 +272,8 @@ export function GroupDetailsDialog({
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => toggleAddContact(option.id)}
+                      disabled={!canManageGroup}
+                      onClick={() => { if (canManageGroup) toggleAddContact(option.id); }}
                       className={cn('app-group-management-add-row flex w-full items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2 text-left text-[12px] transition', selected && 'app-group-management-add-row-selected')}
                     >
                       <span>{option.label}</span>
@@ -272,8 +292,9 @@ export function GroupDetailsDialog({
               <Button
                 type="button"
                 className="mt-2 h-9 w-full rounded-[12px] text-[12px]"
-                disabled={selectedContactIds.length === 0}
+                disabled={!canManageGroup || selectedContactIds.length === 0}
                 onClick={() => {
+                  if (!canManageGroup) return;
                   void onAddMembers(groupSessionIds, selectedContactIds);
                   setSelectedContactIds([]);
                 }}

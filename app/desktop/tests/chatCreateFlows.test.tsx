@@ -251,7 +251,7 @@ test('group create bridge invite metadata includes creator and selected people',
   });
 
   assert.deepEqual(participants, [
-    { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
     { identityId: 'human:kh_user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
     { identityId: 'human:kh_user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
   ]);

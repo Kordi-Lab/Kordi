@@ -1716,6 +1716,67 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
 }
 
 #[test]
+fn group_admin_count_uses_group_metadata_not_local_self_role() {
+    let conn = test_conn();
+    for (id, display_name) in [
+        ("human:creator", "Creator"),
+        ("human:receiver", "Receiver"),
+        ("human:other", "Other"),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: "human".to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some(format!("node-{id}")),
+                human_id: Some(id.to_string()),
+                agent_id: None,
+                avatar_key: Some(id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let session_id = "session:group:admin-source";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("Group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:creator".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:receiver".to_string(), "human:other".to_string()],
+            metadata: Some(serde_json::json!({
+                "adminIdentityIds": ["human:creator"],
+                "groupSpaceId": session_id,
+            })),
+        },
+    )
+    .expect("open group");
+    conn.execute(
+        "UPDATE session_participants SET role = 'self' WHERE session_id = ?1 AND identity_id = 'human:receiver'",
+        rusqlite::params![session_id],
+    )
+    .expect("simulate receiver-local self role");
+
+    assert_eq!(
+        group_admin_identity_ids(&conn, session_id).expect("admin ids"),
+        vec!["human:creator".to_string()],
+    );
+}
+
+#[test]
 fn inbound_group_session_invite_reconstructs_group_parent_without_visible_message() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [

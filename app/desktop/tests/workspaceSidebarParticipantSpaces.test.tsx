@@ -430,6 +430,38 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.match(markup, /Rename/);
 });
 
+test('GroupDetailsDialog derives admins from group metadata instead of local self role', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-admin-source',
+    canonicalSessionId: 'session:group-admin-source',
+    name: 'Bridge group',
+    metadata: { adminIdentityIds: ['human:creator'], groupSpaceId: 'session:group-admin-source' },
+    participants: ['Me', 'Testuser2', 'Testuser3'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Testuser1', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:creator', name: 'Testuser2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'testuser2' },
+      { id: 'human:testuser3', name: 'Testuser3', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'testuser3' },
+    ],
+  })];
+  const [space] = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
+    isOpen: true,
+    space,
+    contacts: [contact({ id: 'contact:chen', name: 'Chen' })],
+    onClose: () => {},
+    onRename: () => {},
+    onAddMembers: () => {},
+    onRemoveMember: () => {},
+    onSetAdmin: () => {},
+  }));
+
+  assert.match(markup, /3 participants • 1 admin/);
+  assert.match(markup, /Testuser2[\s\S]*?Admin/);
+  assert.match(markup, /Testuser1[\s\S]*?Member/);
+  assert.match(markup, /<button[^>]*disabled=""[^>]*>Rename<\/button>/);
+  assert.match(markup, /<button[^>]*disabled=""[^>]*>Make admin<\/button>/);
+});
+
 test('WorkspaceSidebar auto-expands the active My chats space with only the active session', () => {
   const chatConversations = [
     conversation({

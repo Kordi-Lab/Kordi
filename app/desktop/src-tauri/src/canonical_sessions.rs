@@ -558,13 +558,96 @@ fn add_session_participants_in_db(
     Ok(())
 }
 
-fn active_admin_count(conn: &Connection, session_id: &str) -> Result<i64, String> {
+fn metadata_admin_identity_ids(metadata: Option<&Value>) -> Vec<String> {
+    metadata
+        .and_then(|value| value.get("adminIdentityIds"))
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn participant_is_active(
+    conn: &Connection,
+    session_id: &str,
+    identity_id: &str,
+) -> Result<bool, String> {
     conn.query_row(
-        "SELECT COUNT(*) FROM session_participants WHERE session_id = ?1 AND role IN ('self', 'admin') AND state = 'active'",
-        params![session_id],
-        |row| row.get(0),
+        "SELECT EXISTS(SELECT 1 FROM session_participants WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active')",
+        params![session_id, identity_id],
+        |row| row.get::<_, i64>(0),
     )
+    .map(|value| value != 0)
     .map_err(|err| err.to_string())
+}
+
+fn group_admin_identity_ids(conn: &Connection, session_id: &str) -> Result<Vec<String>, String> {
+    let session = ensure_group_session(conn, session_id)?;
+    let mut admin_ids = Vec::new();
+    for identity_id in metadata_admin_identity_ids(session.metadata.as_ref()) {
+        if !admin_ids.contains(&identity_id)
+            && participant_is_active(conn, session_id, &identity_id)?
+        {
+            admin_ids.push(identity_id);
+        }
+    }
+    if !admin_ids.is_empty() {
+        return Ok(admin_ids);
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT identity_id FROM session_participants
+             WHERE session_id = ?1 AND role = 'admin' AND state = 'active'
+             ORDER BY added_at_ms ASC, identity_id ASC",
+        )
+        .map_err(|err| err.to_string())?;
+    let role_admins = stmt
+        .query_map(params![session_id], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    for identity_id in role_admins {
+        if !admin_ids.contains(&identity_id) {
+            admin_ids.push(identity_id);
+        }
+    }
+    if !admin_ids.is_empty() {
+        return Ok(admin_ids);
+    }
+
+    if participant_is_active(conn, session_id, &session.created_by_identity_id)? {
+        admin_ids.push(session.created_by_identity_id);
+    }
+    Ok(admin_ids)
+}
+
+fn require_group_admin(
+    conn: &Connection,
+    session_id: &str,
+    actor_identity_id: Option<&str>,
+    action: &str,
+) -> Result<(), String> {
+    let Some(actor_identity_id) = actor_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    if group_admin_identity_ids(conn, session_id)?
+        .iter()
+        .any(|admin_id| admin_id == actor_identity_id)
+    {
+        return Ok(());
+    }
+    Err(format!("Only group admins can {action}."))
 }
 
 fn set_session_participant_role_in_db(
@@ -589,9 +672,10 @@ fn set_session_participant_role_in_db(
     if existing_role.is_none() {
         return Err("Participant not found in group".to_string());
     }
-    if matches!(existing_role.as_deref(), Some("self" | "admin"))
-        && !matches!(role.as_str(), "self" | "admin")
-        && active_admin_count(conn, session_id)? <= 1
+    let admin_ids = group_admin_identity_ids(conn, session_id)?;
+    if admin_ids.iter().any(|admin_id| admin_id == identity_id)
+        && !matches!(role.as_str(), "admin")
+        && admin_ids.len() <= 1
     {
         return Err("Group must keep at least one admin".to_string());
     }
@@ -620,9 +704,8 @@ fn remove_session_participant_in_db(
     if existing_role.is_none() {
         return Err("Participant not found in group".to_string());
     }
-    if matches!(existing_role.as_deref(), Some("self" | "admin"))
-        && active_admin_count(conn, session_id)? <= 1
-    {
+    let admin_ids = group_admin_identity_ids(conn, session_id)?;
+    if admin_ids.iter().any(|admin_id| admin_id == identity_id) && admin_ids.len() <= 1 {
         return Err("Group must keep at least one admin".to_string());
     }
     conn.execute(

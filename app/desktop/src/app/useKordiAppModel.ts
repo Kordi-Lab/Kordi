@@ -71,6 +71,7 @@ import {
   moveDesktopChatSessionToProject,
   openOrCreateCanonicalSession,
   removeCanonicalSessionParticipant,
+  renameCanonicalSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -176,11 +177,13 @@ function sessionMetadataRecord(state: CanonicalSessionState | null, sessionId: s
 
 function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: string) {
   if (!state) return [];
+  const metadataAdminIds = adminIdentityIdsFromMetadata(sessionMetadataRecord(state, sessionId));
+  if (metadataAdminIds.length > 0) return metadataAdminIds;
   return state.participants
     .filter((participant) => (
       participant.sessionId === sessionId
       && participant.state === 'active'
-      && (participant.role === 'self' || participant.role === 'admin')
+      && participant.role === 'admin'
     ))
     .map((participant) => participant.identityId);
 }
@@ -1451,12 +1454,21 @@ export function useKordiAppModel() {
     if (!title) throw new Error('Group name is required.');
     setDesktopChatError(null);
 
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
+
     const fallbackGroupSpaceId = groupSessionIds[0];
     let nextState = canonicalSessionState;
     for (const sessionId of groupSessionIds) {
+      nextState = await renameCanonicalSession({
+        sessionId,
+        title,
+        requestedByIdentityId: actorIdentityId,
+      });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
+        requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
           customName: title,
@@ -1506,6 +1518,7 @@ export function useKordiAppModel() {
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
+        requestedByIdentityId: creatorIdentityId,
         metadata: {
           ...currentMetadata,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
@@ -1527,14 +1540,17 @@ export function useKordiAppModel() {
     const groupSessionIds = uniqueStrings(sessionIds);
     if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
     const fallbackGroupSpaceId = groupSessionIds[0];
     let nextState = canonicalSessionState;
     for (const sessionId of groupSessionIds) {
-      nextState = await removeCanonicalSessionParticipant({ sessionId, identityId });
+      nextState = await removeCanonicalSessionParticipant({ sessionId, identityId, removedByIdentityId: actorIdentityId });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       const adminIds = adminIdentityIdsFromMetadata(currentMetadata).filter((adminId) => adminId !== identityId);
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
+        requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
@@ -1550,6 +1566,8 @@ export function useKordiAppModel() {
     const groupSessionIds = uniqueStrings(sessionIds);
     if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
     const fallbackGroupSpaceId = groupSessionIds[0];
     let nextState = canonicalSessionState;
     for (const sessionId of groupSessionIds) {
@@ -1557,6 +1575,7 @@ export function useKordiAppModel() {
         sessionId,
         identityId,
         role: isAdmin ? 'admin' : 'person',
+        requestedByIdentityId: actorIdentityId,
       });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       const adminIds = uniqueStrings([
@@ -1568,6 +1587,7 @@ export function useKordiAppModel() {
         : adminIds.filter((adminId) => adminId !== identityId);
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
+        requestedByIdentityId: actorIdentityId,
         metadata: {
           ...currentMetadata,
           groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
