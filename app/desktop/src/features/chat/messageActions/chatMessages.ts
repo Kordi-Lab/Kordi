@@ -72,6 +72,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'activeConvCanonicalSessionId'
   | 'activeConvId'
   | 'activeConvMessages'
+  | 'activeConvMentionScope'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
   | 'composerSelections'
@@ -107,6 +108,7 @@ export function useChatMessageActions({
   activeConvCanonicalSessionId,
   activeConvId,
   activeConvMessages,
+  activeConvMentionScope,
   attachmentSummaryText,
   canonicalHumanIdentityId,
   chatComposerAttachments,
@@ -140,7 +142,7 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState);
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope);
 
     if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
       try {
@@ -643,6 +645,7 @@ export function useChatMessageActions({
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,
+    activeConvMentionScope,
     attachmentSummaryText,
     chatComposerAttachments,
     canonicalHumanIdentityId,

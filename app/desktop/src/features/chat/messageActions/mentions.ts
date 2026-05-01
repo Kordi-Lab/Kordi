@@ -1,6 +1,7 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import type {
+  Conversation,
   ConversationBridgeTarget,
   DesktopBridgeState,
   DesktopChatState,
@@ -61,6 +62,71 @@ export function mentionHandleForLabel(value: string, fallback = 'Participant') {
 
 export function normalizeMentionLabel(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizedOwnerKey(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function isSelfConversationParticipant(participant: { kind?: string | null; role?: string | null; source?: string | null }) {
+  return participant.role === 'self'
+    || (participant.source === 'local' && participant.kind === 'human');
+}
+
+function participantHumanOwnerKeys(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  const keys = [
+    participant.humanId,
+    participant.ownerName,
+    participant.name,
+    participant.id,
+    participant.id.startsWith('human:') ? participant.id.slice('human:'.length) : null,
+  ].map(normalizedOwnerKey).filter(Boolean);
+  return keys;
+}
+
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants'>>;
+
+function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
+  const keys = new Set<string>();
+  for (const participant of conversation?.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human') continue;
+    for (const key of participantHumanOwnerKeys(participant)) {
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
+export function conversationHasGroupMentionScope(conversation: MentionScopeConversation | null | undefined) {
+  if (!conversation) return false;
+  if (conversation.participantSpaceId?.trim()) return true;
+  const nonSelfHumanCount = (conversation.canonicalParticipants ?? []).filter((participant) => (
+    participant.kind === 'human' && !isSelfConversationParticipant(participant)
+  )).length;
+  return nonSelfHumanCount > 1;
+}
+
+export function bridgeMentionOwnerMatchesConversationHumans(
+  owner: Pick<DesktopBridgeState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'>,
+  conversation: MentionScopeConversation | null | undefined,
+) {
+  const groupHumanKeys = conversationHumanOwnerKeys(conversation);
+  if (groupHumanKeys.size === 0) return false;
+  return [owner.humanId, owner.ownerName]
+    .map(normalizedOwnerKey)
+    .filter(Boolean)
+    .some((key) => groupHumanKeys.has(key));
+}
+
+export function filterBridgeMentionCandidatesForConversation(
+  candidates: BridgeMentionCandidate[],
+  conversation: MentionScopeConversation | null | undefined,
+) {
+  if (!conversationHasGroupMentionScope(conversation)) return candidates;
+  return candidates.filter((candidate) => (
+    candidate.targetKind === 'bridge-agent'
+    && bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)
+  ));
 }
 
 function identitySuffixForCandidate(candidate: Pick<BridgeMentionCandidate, 'peer' | 'handle'>) {
@@ -324,8 +390,12 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
   return !next || /[\s:;,.!?—-]/.test(next);
 }
 
-export function resolveMentionedBridgeTarget(text: string, bridgeState: DesktopBridgeState | null) {
-  const candidates = buildBridgeMentionCandidates(bridgeState);
+export function resolveMentionedBridgeTarget(
+  text: string,
+  bridgeState: DesktopBridgeState | null,
+  conversation?: MentionScopeConversation | null,
+) {
+  const candidates = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), conversation);
   if (candidates.length === 0) return null;
   const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
   if (mentionMatches.length === 0) return null;

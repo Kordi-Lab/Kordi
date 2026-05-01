@@ -27,6 +27,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
   | 'activeConvBridgeTarget'
+  | 'activeConvMentionScope'
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'activeProjectRoot'
@@ -78,6 +79,7 @@ export function useComposerMessageActions({
   activeConvCanonicalSessionId,
   activeConvMessages,
   activeConvBridgeTarget,
+  activeConvMentionScope,
   activeProjectId,
   activeProjectSessionId,
   activeProjectRoot,
@@ -188,6 +190,7 @@ export function useComposerMessageActions({
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,
+    activeConvMentionScope,
     attachmentSummaryText,
     canonicalHumanIdentityId,
     chatComposerAttachments,

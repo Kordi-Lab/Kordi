@@ -5,6 +5,7 @@ import type {
   CanonicalSessionState,
   ComposerScope,
   ComposerSelectorType,
+  Conversation,
   ConversationBridgeTarget,
   DesktopBridgeState,
   DesktopChatState,
@@ -39,6 +40,7 @@ export type UseComposerControllerArgs = {
   activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants'>> | null;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeProjectRoot?: string | null;

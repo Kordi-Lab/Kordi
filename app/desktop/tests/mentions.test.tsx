@@ -4,13 +4,14 @@ import test from 'node:test';
 import {
   bridgeMentionCandidateOptionText,
   buildBridgeMentionCandidates,
+  filterBridgeMentionCandidatesForConversation,
   localAgentMentionLabels,
   mentionHandleForLabel,
   outreachIdentityForBridgeTarget,
   publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
 } from '../src/features/chat/messageActions/mentions';
-import type { DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
+import type { Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'nodeId' | 'runtime'>): DesktopBridgePeer {
   return {
@@ -55,6 +56,43 @@ function bridgeStateWithPeers(peers: DesktopBridgePeer[]): DesktopBridgeState {
       projects: [],
     }],
   };
+}
+
+function groupConversationWithHumans(humans: Array<{ id: string; name: string; humanId: string; bridgeNodeId: string }>): Conversation {
+  return {
+    id: 'session:group:test',
+    canonicalSessionId: 'session:group:test',
+    name: 'Group',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Host Owner', ...humans.map((human) => human.name)],
+    participantSpaceId: 'group:test',
+    canonicalParticipants: [
+      {
+        id: 'human:host',
+        name: 'Host Owner',
+        kind: 'human',
+        role: 'self',
+        source: 'bridge',
+        humanId: 'human-host',
+        bridgeNodeId: 'host-node-1',
+      },
+      ...humans.map((human) => ({
+        id: human.id,
+        name: human.name,
+        kind: 'human' as const,
+        role: 'person',
+        source: 'bridge',
+        humanId: human.humanId,
+        bridgeNodeId: human.bridgeNodeId,
+      })),
+    ],
+    messages: [],
+  } as Conversation;
 }
 
 test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
@@ -123,6 +161,85 @@ test('bridge mention option text shows display names and pairs people with their
   ]);
   assert.equal(options.some((option) => option.detail.includes('Host One')), false);
   assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
+});
+
+test('group mention candidates include only agents owned by current group humans', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-carol-agent',
+      displayName: "Carol's Kordi",
+      ownerName: 'Carol',
+      runtime: 'kordi-desktop',
+      humanId: 'human-carol',
+      agentId: 'agent-carol',
+      isDefaultAgent: true,
+    }),
+  ]);
+  const group = groupConversationWithHumans([
+    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+  ]);
+
+  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+
+  assert.deepEqual(
+    scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ["bridge-agent:Alice's Kordi", "bridge-agent:Bob's Kordi"],
+  );
+});
+
+test('group mention resolution rejects people and agents outside the current group humans', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-carol-agent',
+      displayName: "Carol's Kordi",
+      ownerName: 'Carol',
+      runtime: 'kordi-desktop',
+      humanId: 'human-carol',
+      agentId: 'agent-carol',
+      isDefaultAgent: true,
+    }),
+  ]);
+  const group = groupConversationWithHumans([
+    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+  ]);
+
+  const aliceAgent = resolveMentionedBridgeTarget('@AlicesKordi please join', bridgeState, group);
+  const alicePerson = resolveMentionedBridgeTarget('@Alice please join', bridgeState, group);
+  const carolAgent = resolveMentionedBridgeTarget('@CarolsKordi please join', bridgeState, group);
+
+  assert.equal(aliceAgent?.targetKind, 'bridge-agent');
+  assert.equal(aliceAgent?.peer.nodeId, 'node-alice-agent');
+  assert.equal(aliceAgent?.requestText, 'please join');
+  assert.equal(alicePerson, null);
+  assert.equal(carolAgent, null);
 });
 
 test('buildBridgeMentionCandidates does not expose node id duplicates when friendly labels exist', () => {

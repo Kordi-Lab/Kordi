@@ -22,7 +22,14 @@ import {
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import { bridgeMentionCandidateOptionText, buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
+import {
+  bridgeMentionCandidateOptionText,
+  bridgeMentionOwnerMatchesConversationHumans,
+  buildBridgeMentionCandidates,
+  conversationHasGroupMentionScope,
+  filterBridgeMentionCandidatesForConversation,
+  mentionHandleForLabel,
+} from '@/features/chat/messageActions/mentions';
 import {
   adminIdentityIdsFromMetadata,
   agentCanonicalIdentityRequest,
@@ -423,73 +430,6 @@ export function useKordiAppModel() {
     shouldAutoFollowChatRef,
   });
 
-  const bridgeMentionTargets = useMemo<ComposerMentionOption[]>(() => {
-    if (!isNativeShell) return [];
-
-    const hosts = desktopBridgeState?.hosts ?? [];
-    const options: ComposerMentionOption[] = [];
-    const seen = new Set<string>();
-    const pushOption = (option: ComposerMentionOption) => {
-      const key = `${option.targetKind}:${option.bridgeHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      options.push(option);
-    };
-
-    const activeHost = hosts.find((host) => host.id === desktopBridgeState?.activeHostId)
-      ?? hosts[0]
-      ?? null;
-    const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
-      ?? activeHost?.agents.find((agent) => agent.isActive)
-      ?? activeHost?.agents.find((agent) => agent.isDefault)
-      ?? activeHost?.agents[0]
-      ?? null;
-    const localAgentBaseLabel = 'Kordi';
-    if (desktopChatState?.localAgent || activeAgent) {
-      const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
-      const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
-      const ownerName = activeHost?.ownerName?.trim();
-      const hostDisplayName = activeHost?.displayName?.trim();
-      const localAgentLabel = ownerName
-        ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
-        : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
-      const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
-      pushOption({
-        value: localAgentHandle,
-        label: localAgentLabel,
-        detail: [
-          'My agent',
-          localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
-          activeAgent?.runtime,
-        ].filter((value): value is string => Boolean(value)).join(' • '),
-        targetKind: 'bridge-agent',
-        bridgeHostId: activeHost?.id ?? 'local',
-        nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
-        runtime: activeAgent?.runtime ?? 'kordi-local',
-      });
-    }
-
-    for (const candidate of buildBridgeMentionCandidates(desktopBridgeState)) {
-      const display = bridgeMentionCandidateOptionText(candidate);
-      pushOption({
-        value: candidate.handle,
-        label: display.label,
-        detail: display.detail,
-        targetKind: candidate.targetKind,
-        bridgeHostId: candidate.host.id,
-        nodeId: candidate.peer.nodeId,
-        runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
-      });
-    }
-
-    return options;
-  }, [desktopBridgeState?.hosts, desktopChatState?.localAgent?.label, isNativeShell]);
-
-  const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
-  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
-  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, chatMentionQuery), [bridgeMentionTargets, chatMentionQuery]);
-  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargets, projectMentionQuery), [bridgeMentionTargets, projectMentionQuery]);
-
   const avatarBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
     ?? desktopBridgeState?.hosts[0]
     ?? null;
@@ -595,6 +535,89 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     mapDesktopMessages,
   });
+
+  const bridgeMentionTargetsByScope = useMemo<{ chat: ComposerMentionOption[]; project: ComposerMentionOption[] }>(() => {
+    if (!isNativeShell) return { chat: [], project: [] };
+
+    const hosts = desktopBridgeState?.hosts ?? [];
+    const activeHost = hosts.find((host) => host.id === desktopBridgeState?.activeHostId)
+      ?? hosts[0]
+      ?? null;
+    const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
+      ?? activeHost?.agents.find((agent) => agent.isActive)
+      ?? activeHost?.agents.find((agent) => agent.isDefault)
+      ?? activeHost?.agents[0]
+      ?? null;
+
+    const buildTargets = (conversation: typeof activeConv | null): ComposerMentionOption[] => {
+      const options: ComposerMentionOption[] = [];
+      const seen = new Set<string>();
+      const pushOption = (option: ComposerMentionOption) => {
+        const key = `${option.targetKind}:${option.bridgeHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push(option);
+      };
+
+      const localAgentBaseLabel = 'Kordi';
+      const ownerName = activeHost?.ownerName?.trim();
+      const includeLocalAgent = !conversationHasGroupMentionScope(conversation)
+        || bridgeMentionOwnerMatchesConversationHumans({ humanId: activeHost?.humanId, ownerName }, conversation);
+      if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
+        const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
+        const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
+        const hostDisplayName = activeHost?.displayName?.trim();
+        const localAgentLabel = ownerName
+          ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
+          : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
+        const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
+        pushOption({
+          value: localAgentHandle,
+          label: localAgentLabel,
+          detail: [
+            'My agent',
+            localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
+            activeAgent?.runtime,
+          ].filter((value): value is string => Boolean(value)).join(' • '),
+          targetKind: 'bridge-agent',
+          bridgeHostId: activeHost?.id ?? 'local',
+          nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
+          runtime: activeAgent?.runtime ?? 'kordi-local',
+          humanId: activeHost?.humanId ?? null,
+          agentId: activeAgent?.id ?? null,
+          ownerName: ownerName ?? null,
+        });
+      }
+
+      for (const candidate of filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(desktopBridgeState), conversation)) {
+        const display = bridgeMentionCandidateOptionText(candidate);
+        pushOption({
+          value: candidate.handle,
+          label: display.label,
+          detail: display.detail,
+          targetKind: candidate.targetKind,
+          bridgeHostId: candidate.host.id,
+          nodeId: candidate.peer.nodeId,
+          runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
+          humanId: candidate.peer.humanId ?? null,
+          agentId: candidate.peer.agentId ?? null,
+          ownerName: candidate.peer.ownerName ?? null,
+        });
+      }
+
+      return options;
+    };
+
+    return {
+      chat: buildTargets(activeConv),
+      project: buildTargets(null),
+    };
+  }, [activeConv, desktopBridgeState, desktopChatState?.localAgent, isNativeShell]);
+
+  const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
+  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
+  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.chat, chatMentionQuery), [bridgeMentionTargetsByScope.chat, chatMentionQuery]);
+  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.project, projectMentionQuery), [bridgeMentionTargetsByScope.project, projectMentionQuery]);
 
   useEffect(() => {
     for (const [spaceKey, sessionId] of pendingParticipantSpaceCreateRef.current) {
@@ -778,6 +801,7 @@ export function useKordiAppModel() {
     activeConvCanonicalSessionId: activeConv.canonicalSessionId,
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
+    activeConvMentionScope: activeConv,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,
