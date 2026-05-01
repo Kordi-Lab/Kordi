@@ -215,7 +215,7 @@ test('existingBlankSessionIdForParticipantSpace reuses the newest blank session 
   assert.equal(existingBlankSessionIdForParticipantSpace(space), 'session:bridge:humans:blank-newer');
 });
 
-test('existingBlankSessionIdForParticipantSpace ignores inconsistent blank id families', () => {
+test('existingBlankSessionIdForParticipantSpace reuses legacy blank id families instead of creating another blank', () => {
   const space = participantSpace({
     sessions: [{
       ...participantSpace().sessions[0],
@@ -234,7 +234,7 @@ test('existingBlankSessionIdForParticipantSpace ignores inconsistent blank id fa
     }],
   });
 
-  assert.equal(existingBlankSessionIdForParticipantSpace(space), null);
+  assert.equal(existingBlankSessionIdForParticipantSpace(space), 'session:direct-human:bad-blank');
 });
 
 test('existingBlankSessionIdForParticipantSpace ignores New session rows that already have messages', () => {

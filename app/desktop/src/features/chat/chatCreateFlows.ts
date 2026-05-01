@@ -1,3 +1,4 @@
+import { isBlankParticipantSpaceSession } from './participantSpaces';
 import type {
   Agent,
   Contact,
@@ -126,34 +127,10 @@ export function chatSessionIdForParticipantSpaceContinuation(space: ParticipantS
   return `${chatSessionIdPrefixForParticipantSpaceContinuation(space)}${id}`;
 }
 
-function isBlankSessionLabel(value: string) {
-  return /^(#\s*)?(new session|untitled session)$/i.test(value.trim());
-}
-
-function sessionHasUserContent(session: ParticipantSpaceViewModel['sessions'][number]) {
-  const conversation = session.conversation;
-  return conversation.messages.length > 0 || Boolean(conversation.queuedMessages?.length);
-}
-
-function isBlankParticipantSpaceSession(session: ParticipantSpaceViewModel['sessions'][number]) {
-  if (sessionHasUserContent(session)) return false;
-  const labels = [
-    session.title,
-    session.preview,
-    session.conversation.name,
-    session.conversation.subtitle,
-  ].map(cleanText).filter(Boolean);
-  return labels.length === 0 || labels.every(isBlankSessionLabel);
-}
-
 export function existingBlankSessionIdForParticipantSpace(space: ParticipantSpaceViewModel) {
-  const expectedPrefix = chatSessionIdPrefixForParticipantSpaceContinuation(space);
   const blankSession = [...space.sessions]
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
-    .find((session) => {
-      const sessionId = cleanText(session.canonicalSessionId) || cleanText(session.id);
-      return sessionId.startsWith(expectedPrefix) && isBlankParticipantSpaceSession(session);
-    });
+    .find(isBlankParticipantSpaceSession);
   return blankSession?.canonicalSessionId ?? blankSession?.id ?? null;
 }
 

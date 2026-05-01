@@ -209,6 +209,58 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
   assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu', 'alex']);
 });
 
+test('buildParticipantSpaces collapses duplicate blank sessions in a participant space', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:bridge:humans:blank-newer',
+      canonicalSessionId: 'session:bridge:humans:blank-newer',
+      name: 'New session',
+      subtitle: 'New session',
+      messages: [],
+      canonicalMessageCount: 0,
+      updatedAtLabel: '13:19',
+      _updatedAtMs: 4,
+    }),
+    conversation({
+      id: 'session:direct-human:legacy-blank',
+      canonicalSessionId: 'session:direct-human:legacy-blank',
+      name: 'New session',
+      subtitle: 'Session ready',
+      messages: [{ role: 'system', text: 'Session ready', time: '13:18' }],
+      canonicalMessageCount: 0,
+      updatedAtLabel: '13:18',
+      _updatedAtMs: 3,
+    }),
+    conversation({
+      id: 'session:bridge:humans:real-thread',
+      canonicalSessionId: 'session:bridge:humans:real-thread',
+      name: 'Release plan',
+      subtitle: 'Ship it',
+      messages: [{ role: 'person', sender: 'Bob', text: 'Ship it', time: '13:17' }],
+      canonicalMessageCount: 1,
+      updatedAtLabel: '13:17',
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:bridge:humans:blank-older',
+      canonicalSessionId: 'session:bridge:humans:blank-older',
+      name: 'New session',
+      subtitle: 'New session',
+      messages: [],
+      canonicalMessageCount: 0,
+      updatedAtLabel: '13:16',
+      _updatedAtMs: 1,
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.sessionCount, 2);
+  assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), [
+    'session:bridge:humans:blank-newer',
+    'session:bridge:humans:real-thread',
+  ]);
+});
+
 test('buildParticipantSpaces uses explicit custom group names before inferred people names', () => {
   const spaces = buildParticipantSpaces([
     conversation({

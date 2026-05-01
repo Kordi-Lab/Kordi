@@ -586,7 +586,8 @@ export function useKordiAppModel() {
   useEffect(() => {
     for (const [spaceKey, sessionId] of pendingParticipantSpaceCreateRef.current) {
       const space = participantSpaces.find((candidate) => participantSpaceCreateKey(candidate) === spaceKey);
-      if (!space || space.sessions.some((session) => session.id === sessionId || session.canonicalSessionId === sessionId)) {
+      const pendingSessionIsVisible = space?.sessions.some((session) => session.id === sessionId || session.canonicalSessionId === sessionId);
+      if (!space || existingBlankSessionIdForParticipantSpace(space) || pendingSessionIsVisible) {
         pendingParticipantSpaceCreateRef.current.delete(spaceKey);
       }
     }

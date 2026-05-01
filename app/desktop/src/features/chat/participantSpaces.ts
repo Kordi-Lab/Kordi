@@ -29,6 +29,33 @@ function latestMessageText(conversation: Conversation) {
     || safePreviewText(conversation.name);
 }
 
+function isBlankSessionLabel(value: string | undefined | null) {
+  const text = value?.trim() ?? '';
+  return !text || /^(#\s*)?(new session|untitled session)$/i.test(text);
+}
+
+function conversationHasUserContent(conversation: Conversation) {
+  if (typeof conversation.canonicalMessageCount === 'number' && conversation.canonicalMessageCount > 0) return true;
+  if (conversation.queuedMessages?.length) return true;
+  return conversation.messages.some((message) => message.role !== 'system' && message.text.trim().length > 0);
+}
+
+export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionViewModel) {
+  return !conversationHasUserContent(session.conversation)
+    && isBlankSessionLabel(session.title)
+    && isBlankSessionLabel(session.conversation.name);
+}
+
+function collapseDuplicateBlankSessions(sessions: ParticipantSpaceSessionViewModel[]) {
+  let hasBlankSession = false;
+  return sessions.filter((session) => {
+    if (!isBlankParticipantSpaceSession(session)) return true;
+    if (hasBlankSession) return false;
+    hasBlankSession = true;
+    return true;
+  });
+}
+
 function conversationTimestamp(conversation: Conversation, fallbackIndex: number) {
   const raw = (conversation as ConversationWithTimestamp)._updatedAtMs;
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallbackIndex;
@@ -226,7 +253,9 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
 
   return [...groups.entries()]
     .map(([id, group]) => {
-      const sessions = group.sessions.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+      const sessions = collapseDuplicateBlankSessions(
+        group.sessions.sort((left, right) => right.updatedAtMs - left.updatedAtMs),
+      );
       const latest = sessions[0];
       return {
         id,
