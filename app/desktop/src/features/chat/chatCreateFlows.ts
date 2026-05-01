@@ -46,6 +46,10 @@ function isContactAgent(contact: Contact) {
   return entityType.includes('agent') || contact.classType === 'my-agents' || contact.classType === 'other-users-agents';
 }
 
+function stableIdentitySegment(value: string) {
+  return encodeURIComponent(value.trim()).replace(/%/g, '~');
+}
+
 function uniqueNonEmpty(values: string[]) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -123,14 +127,21 @@ export function adminIdentityIdsFromMetadata(metadata: unknown) {
 
 export function contactCanonicalIdentityRequest(contact: Contact): UpsertCanonicalIdentityRequest {
   const humanId = cleanText(contact.bridgeHumanId);
-  const explicitId = contact.id.startsWith('human:') ? contact.id : humanId ? `human:${humanId}` : null;
+  const bridgeNodeId = cleanText(contact.bridgePeerNodeId);
+  const explicitId = contact.id.startsWith('human:')
+    ? contact.id
+    : humanId
+      ? `human:${humanId}`
+      : bridgeNodeId
+        ? `human:bridge-node:${bridgeNodeId}`
+        : `human:contact:${stableIdentitySegment(contact.id)}`;
   return {
     id: explicitId,
     kind: 'human',
     displayName: firstNonEmpty(contact.name, contact.owner, contact.id),
     source: contact.bridgeHostId || contact.bridgePeerNodeId ? 'bridge' : 'local',
     sourceHostId: contact.bridgeHostId ?? null,
-    bridgeNodeId: contact.bridgePeerNodeId ?? null,
+    bridgeNodeId: bridgeNodeId || null,
     humanId: humanId || null,
     agentId: null,
     avatarKey: contact.avatarSeed ?? (humanId || contact.id),
@@ -145,7 +156,7 @@ export function contactCanonicalIdentityRequest(contact: Contact): UpsertCanonic
 
 export function agentCanonicalIdentityRequest(agent: Agent): UpsertCanonicalIdentityRequest {
   const agentId = cleanText(agent.bridgeAgentId) || cleanText(agent.id).replace(/^agent:/, '');
-  const explicitId = agent.id.startsWith('agent:') ? agent.id : agentId ? `agent:${agentId}` : null;
+  const explicitId = agent.id.startsWith('agent:') ? agent.id : agentId ? `agent:${stableIdentitySegment(agentId)}` : null;
   return {
     id: explicitId,
     kind: 'agent',

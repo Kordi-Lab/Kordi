@@ -13,11 +13,25 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { buildProjectRoutingGroups, canonicalProjectGroupIdFromRoot, isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import {
+  buildProjectRoutingGroups,
+  canonicalProjectGroupIdFromRoot,
+  findCanonicalConversationForTarget,
+  findOwnedAgentConversation,
+  isCanonicalBridgeSessionId,
+} from '@/features/canonical/sessionResolver';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { bridgeMentionCandidateOptionText, buildBridgeMentionCandidates, mentionHandleForLabel } from '@/features/chat/messageActions/mentions';
+import {
+  adminIdentityIdsFromMetadata,
+  agentCanonicalIdentityRequest,
+  buildChatCreateGroupMetadata,
+  buildChatCreatePersonOptions,
+  contactCanonicalIdentityRequest,
+  groupDefaultName,
+} from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -25,15 +39,22 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { useBridgeState } from '@/features/bridge/useBridgeState';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, Contact, DesktopChatState } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 import {
+  addCanonicalSessionParticipants,
   archiveDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
   deleteDesktopChatSessionForever,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
+  openOrCreateCanonicalSession,
+  removeCanonicalSessionParticipant,
+  renameCanonicalSession,
+  setCanonicalSessionParticipantRole,
+  updateCanonicalSessionMetadata,
+  upsertCanonicalIdentity,
 } from '@/lib/desktop';
 
 function normalizeMentionSearch(value: string) {
@@ -121,6 +142,45 @@ function removeSessionFromCanonicalState(state: CanonicalSessionState | null, se
     presence: state.presence.filter((presence) => presence.sessionId !== sessionId),
     contextSnapshots: state.contextSnapshots.filter((snapshot) => snapshot.sessionId !== sessionId),
   };
+}
+
+function canonicalMetadataRecord(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? { ...(metadata as Record<string, unknown>) }
+    : {};
+}
+
+function sessionMetadataRecord(state: CanonicalSessionState | null, sessionId: string) {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  return canonicalMetadataRecord(session?.metadata);
+}
+
+function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: string) {
+  if (!state) return [];
+  return state.participants
+    .filter((participant) => (
+      participant.sessionId === sessionId
+      && participant.state === 'active'
+      && (participant.role === 'self' || participant.role === 'admin')
+    ))
+    .map((participant) => participant.identityId);
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function chatSessionIdForIdentity(kind: 'direct-person' | 'direct-agent', creatorIdentityId: string, identityId: string) {
+  const scope = [creatorIdentityId, identityId].map((value) => encodeURIComponent(value).replace(/%/g, '~')).join(':');
+  return `session:${kind}:${scope}`;
 }
 
 function isNativeDesktopShell() {
@@ -901,6 +961,287 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
+  const peopleContactById = useMemo(() => new Map(
+    buildChatCreatePersonOptions(displayedContacts).map((option) => [option.id, option.contact]),
+  ), [displayedContacts]);
+
+  const selectNewChatSession = useCallback((sessionId: string) => {
+    setActiveNav('chats');
+    setActiveConvId(sessionId);
+    composerUi.setComposerDrafts((current) => ({ ...current, chat: '' }));
+    composerUi.setChatComposerAttachments([]);
+    composerUi.setOpenComposerSelector(null);
+  }, [
+    composerUi.setChatComposerAttachments,
+    composerUi.setComposerDrafts,
+    composerUi.setOpenComposerSelector,
+    setActiveConvId,
+    setActiveNav,
+  ]);
+
+  const handleStartChatWithPerson = useCallback(async (contact: Contact) => {
+    setDesktopChatError(null);
+    if (contact.bridgeHostId && contact.bridgePeerNodeId) {
+      await handleStartBridgePersonSession({
+        hostId: contact.bridgeHostId,
+        nodeId: contact.bridgePeerNodeId,
+        displayName: contact.name,
+        ownerName: contact.owner,
+        humanId: contact.bridgeHumanId,
+      });
+      return;
+    }
+
+    if (!isNativeShell) return;
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const identityRequest = contactCanonicalIdentityRequest(contact);
+    const targetIdentityId = identityRequest.id?.trim();
+    if (!targetIdentityId) {
+      throw new Error('Unable to resolve contact identity.');
+    }
+    const identityState = await upsertCanonicalIdentity(identityRequest);
+    setCanonicalSessionState(identityState);
+    const sessionId = chatSessionIdForIdentity('direct-person', creatorIdentityId, targetIdentityId);
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'direct-person',
+      title: contact.name,
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: targetIdentityId,
+      relationshipIdentityId: targetIdentityId,
+      participantIdentityIds: [targetIdentityId],
+      metadata: { createdFrom: 'chat-create-flow', contactId: contact.id },
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState?.profile.humanIdentityId,
+    handleStartBridgePersonSession,
+    isNativeShell,
+    selectNewChatSession,
+    setDesktopChatError,
+  ]);
+
+  const handleStartChatWithAgent = useCallback(async (agent: Agent) => {
+    setDesktopChatError(null);
+    setActiveNav('chats');
+
+    if (agent.isOwned) {
+      const existingLocalConversation = findOwnedAgentConversation(chatConversations);
+      if (existingLocalConversation) {
+        await handleSelectChatSession(existingLocalConversation.id);
+      } else {
+        await handleCreateChatSession();
+      }
+      return;
+    }
+
+    const existingConversation = findCanonicalConversationForTarget(chatConversations, {
+      agentId: agent.bridgeAgentId,
+      bridgeNodeId: agent.bridgePeerNodeId,
+    });
+    if (existingConversation) {
+      await handleSelectChatSession(existingConversation.id);
+      return;
+    }
+
+    if (agent.bridgeHostId && agent.bridgePeerNodeId) {
+      await handleOpenBridgeConversation(agent.bridgeHostId, agent.bridgePeerNodeId, agent.name, undefined, agent.bridgePeerRuntime);
+      return;
+    }
+
+    if (!isNativeShell) return;
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const identityRequest = agentCanonicalIdentityRequest(agent);
+    const targetIdentityId = identityRequest.id?.trim();
+    if (!targetIdentityId) {
+      throw new Error('Unable to resolve agent identity.');
+    }
+    const identityState = await upsertCanonicalIdentity(identityRequest);
+    setCanonicalSessionState(identityState);
+    const sessionId = chatSessionIdForIdentity('direct-agent', creatorIdentityId, targetIdentityId);
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'direct-agent',
+      title: agent.name,
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: targetIdentityId,
+      relationshipIdentityId: targetIdentityId,
+      participantIdentityIds: [targetIdentityId],
+      metadata: { createdFrom: 'chat-create-flow', agentId: agent.id },
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState?.profile.humanIdentityId,
+    chatConversations,
+    handleCreateChatSession,
+    handleOpenBridgeConversation,
+    handleSelectChatSession,
+    isNativeShell,
+    selectNewChatSession,
+    setActiveNav,
+    setDesktopChatError,
+  ]);
+
+  const handleCreateChatGroup = useCallback(async (request: { name?: string | null; contactIds: string[] }) => {
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const contacts = uniqueStrings(request.contactIds)
+      .map((contactId) => peopleContactById.get(contactId))
+      .filter((contact): contact is Contact => Boolean(contact));
+    if (contacts.length < 2) {
+      throw new Error('Select at least 2 people to start a group.');
+    }
+
+    const identityIds: string[] = [];
+    for (const contact of contacts) {
+      const identityRequest = contactCanonicalIdentityRequest(contact);
+      const identityId = identityRequest.id?.trim();
+      if (!identityId) continue;
+      const identityState = await upsertCanonicalIdentity(identityRequest);
+      setCanonicalSessionState(identityState);
+      identityIds.push(identityId);
+    }
+
+    const participantIdentityIds = uniqueStrings(identityIds);
+    if (participantIdentityIds.length < 2) {
+      throw new Error('Select at least 2 people to start a group.');
+    }
+    const selectedNames = contacts.map((contact) => contact.name);
+    const title = request.name?.trim() || groupDefaultName(selectedNames) || 'New group';
+    const sessionId = `session:group:${crypto.randomUUID()}`;
+    const nextState = await openOrCreateCanonicalSession({
+      id: sessionId,
+      kind: 'group',
+      title,
+      status: 'active',
+      createdByIdentityId: creatorIdentityId,
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      participantIdentityIds,
+      metadata: buildChatCreateGroupMetadata({
+        creatorIdentityId,
+        selectedContactIds: contacts.map((contact) => contact.id),
+        selectedNames,
+        customName: request.name,
+      }),
+    });
+    setCanonicalSessionState(nextState);
+    selectNewChatSession(sessionId);
+  }, [
+    canonicalSessionState,
+    isNativeShell,
+    peopleContactById,
+    selectNewChatSession,
+    setDesktopChatError,
+  ]);
+
+  const handleRenameChatGroup = useCallback(async (sessionId: string, name: string) => {
+    if (!isNativeShell) return;
+    const title = name.trim();
+    if (!title) throw new Error('Group name is required.');
+    setDesktopChatError(null);
+    const renamedState = await renameCanonicalSession({ sessionId, title });
+    setCanonicalSessionState(renamedState);
+    const metadata = {
+      ...sessionMetadataRecord(renamedState, sessionId),
+      customName: title,
+    };
+    const nextState = await updateCanonicalSessionMetadata({ sessionId, metadata });
+    setCanonicalSessionState(nextState);
+  }, [isNativeShell, setDesktopChatError]);
+
+  const handleAddChatGroupMembers = useCallback(async (sessionId: string, contactIds: string[]) => {
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId) {
+      throw new Error('Local profile identity is not ready yet.');
+    }
+    const contacts = uniqueStrings(contactIds)
+      .map((contactId) => peopleContactById.get(contactId))
+      .filter((contact): contact is Contact => Boolean(contact));
+    const identityIds: string[] = [];
+    for (const contact of contacts) {
+      const identityRequest = contactCanonicalIdentityRequest(contact);
+      const identityId = identityRequest.id?.trim();
+      if (!identityId) continue;
+      const identityState = await upsertCanonicalIdentity(identityRequest);
+      setCanonicalSessionState(identityState);
+      identityIds.push(identityId);
+    }
+    const participantIdentityIds = uniqueStrings(identityIds);
+    if (participantIdentityIds.length === 0) return;
+    const nextState = await addCanonicalSessionParticipants({
+      sessionId,
+      identityIds: participantIdentityIds,
+      addedByIdentityId: creatorIdentityId,
+    });
+    setCanonicalSessionState(nextState);
+  }, [
+    canonicalSessionState?.profile.humanIdentityId,
+    isNativeShell,
+    peopleContactById,
+    setDesktopChatError,
+  ]);
+
+  const handleRemoveChatGroupMember = useCallback(async (sessionId: string, identityId: string) => {
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+    const removedState = await removeCanonicalSessionParticipant({ sessionId, identityId });
+    setCanonicalSessionState(removedState);
+    const metadata = sessionMetadataRecord(removedState, sessionId);
+    const adminIds = adminIdentityIdsFromMetadata(metadata).filter((adminId) => adminId !== identityId);
+    const nextState = await updateCanonicalSessionMetadata({
+      sessionId,
+      metadata: {
+        ...metadata,
+        adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(removedState, sessionId),
+      },
+    });
+    setCanonicalSessionState(nextState);
+  }, [isNativeShell, setDesktopChatError]);
+
+  const handleSetChatGroupAdmin = useCallback(async (sessionId: string, identityId: string, isAdmin: boolean) => {
+    if (!isNativeShell) return;
+    setDesktopChatError(null);
+    const roleState = await setCanonicalSessionParticipantRole({
+      sessionId,
+      identityId,
+      role: isAdmin ? 'admin' : 'person',
+    });
+    setCanonicalSessionState(roleState);
+    const metadata = sessionMetadataRecord(roleState, sessionId);
+    const adminIds = uniqueStrings([
+      ...adminIdentityIdsFromMetadata(metadata),
+      ...activeGroupAdminIds(roleState, sessionId),
+    ]);
+    const nextAdminIds = isAdmin
+      ? uniqueStrings([...adminIds, identityId])
+      : adminIds.filter((adminId) => adminId !== identityId);
+    const nextState = await updateCanonicalSessionMetadata({
+      sessionId,
+      metadata: {
+        ...metadata,
+        adminIdentityIds: nextAdminIds.length > 0 ? nextAdminIds : activeGroupAdminIds(roleState, sessionId),
+      },
+    });
+    setCanonicalSessionState(nextState);
+  }, [isNativeShell, setDesktopChatError]);
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -957,6 +1298,13 @@ export function useKordiAppModel() {
     filteredParticipantSpaces,
     handleCreateChatSession,
     handleSelectChatSession,
+    handleStartChatWithPerson,
+    handleStartChatWithAgent,
+    handleCreateChatGroup,
+    handleRenameChatGroup,
+    handleAddChatGroupMembers,
+    handleRemoveChatGroupMember,
+    handleSetChatGroupAdmin,
     handleArchiveChatSession,
     handleDeleteChatSession,
     handleMoveChatSessionToProject,

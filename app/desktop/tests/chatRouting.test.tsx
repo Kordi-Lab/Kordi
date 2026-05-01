@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
+import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
 import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
@@ -56,6 +57,65 @@ function directAgentConversation() {
       agentId: 'agent-bob',
     }],
     messages: [],
+  };
+}
+
+function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
+  return {
+    isNativeShell: true,
+    isSingleWorkspacePage: false,
+    collapseChatSessions: false,
+    showSessionRail: true,
+    sessionRailWidth: 320,
+    activeNav: 'chats',
+    setActiveNav: () => {},
+    chatConversations: [],
+    handleCreateChatSession: async () => {},
+    chatSearch: '',
+    setChatSearch: () => {},
+    chatFilter: 'all',
+    setChatFilter: () => {},
+    isDesktopChatLoading: false,
+    desktopChatError: null,
+    filteredConversations: [],
+    participantSpaces: [],
+    filteredParticipantSpaces: [],
+    activeConvId: '',
+    handleSelectChatSession: async () => {},
+    handleStartChatWithPerson: async () => {},
+    handleStartChatWithAgent: async () => {},
+    handleCreateChatGroup: async () => {},
+    handleRenameChatGroup: async () => {},
+    handleAddChatGroupMembers: async () => {},
+    handleRemoveChatGroupMember: async () => {},
+    handleSetChatGroupAdmin: async () => {},
+    handleArchiveChatSession: async () => {},
+    handleDeleteChatSession: async () => {},
+    handleMoveChatSessionToProject: async () => {},
+    handleCreateProjectFromFolder: async () => {},
+    handleCreateProject: async () => {},
+    runtimeProjects: [],
+    projectSearch: '',
+    setProjectSearch: () => {},
+    filteredProjects: [],
+    activeProjectId: '',
+    activeProjectSessionId: '',
+    projectSelectedSessionIds: {},
+    selectProject: () => {},
+    expandedProjectIds: {},
+    setExpandedProjectIds: () => {},
+    handleSelectProjectSession: async () => {},
+    groupedContacts: [],
+    displayedContacts: [],
+    setActiveContactGroup: () => {},
+    setActiveContactId: () => {},
+    displayedAgents: [],
+    activeBridgeHost: null,
+    localProfileAvatarSeed: null,
+    refreshDesktopBridge: async () => {},
+    handleCopyBridgeText: async () => {},
+    handleCreateBridgeDraft: () => {},
+    ...overrides,
   };
 }
 
@@ -134,6 +194,33 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     ...overrides,
   };
 }
+
+test('sidebar shell forwards chat create and group management handlers', () => {
+  const startPerson = async () => {};
+  const startAgent = async () => {};
+  const createGroup = async () => {};
+  const renameGroup = async () => {};
+  const addMembers = async () => {};
+  const removeMember = async () => {};
+  const setAdmin = async () => {};
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    handleStartChatWithPerson: startPerson,
+    handleStartChatWithAgent: startAgent,
+    handleCreateChatGroup: createGroup,
+    handleRenameChatGroup: renameGroup,
+    handleAddChatGroupMembers: addMembers,
+    handleRemoveChatGroupMember: removeMember,
+    handleSetChatGroupAdmin: setAdmin,
+  }) as never) as never as { props: Record<string, unknown> };
+
+  assert.equal(element.props.onStartChatWithPerson, startPerson);
+  assert.equal(element.props.onStartChatWithAgent, startAgent);
+  assert.equal(element.props.onCreateChatGroup, createGroup);
+  assert.equal(element.props.onRenameChatGroup, renameGroup);
+  assert.equal(element.props.onAddChatGroupMembers, addMembers);
+  assert.equal(element.props.onRemoveChatGroupMember, removeMember);
+  assert.equal(element.props.onSetChatGroupAdmin, setAdmin);
+});
 
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {
   const calls: string[] = [];

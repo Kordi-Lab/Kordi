@@ -46,6 +46,11 @@ export type BridgeWizardDraft = {
   ownerName: string;
 };
 
+export type CreateChatGroupRequest = {
+  name?: string | null;
+  contactIds: string[];
+};
+
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
@@ -91,6 +96,13 @@ export type AssembleKordiShellSlotsArgs = {
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
+  handleStartChatWithPerson: (contact: Contact) => Promise<void>;
+  handleStartChatWithAgent: (agent: Agent) => Promise<void>;
+  handleCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void>;
+  handleRenameChatGroup: (sessionId: string, name: string) => Promise<void>;
+  handleAddChatGroupMembers: (sessionId: string, contactIds: string[]) => Promise<void>;
+  handleRemoveChatGroupMember: (sessionId: string, identityId: string) => Promise<void>;
+  handleSetChatGroupAdmin: (sessionId: string, identityId: string, isAdmin: boolean) => Promise<void>;
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
@@ -324,6 +336,13 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'filteredConversations'
   | 'activeConvId'
   | 'handleSelectChatSession'
+  | 'handleStartChatWithPerson'
+  | 'handleStartChatWithAgent'
+  | 'handleCreateChatGroup'
+  | 'handleRenameChatGroup'
+  | 'handleAddChatGroupMembers'
+  | 'handleRemoveChatGroupMember'
+  | 'handleSetChatGroupAdmin'
   | 'handleArchiveChatSession'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'

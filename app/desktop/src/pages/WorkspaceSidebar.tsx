@@ -17,7 +17,8 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { Agent, ChatFilter, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
@@ -74,21 +75,9 @@ type ContactGroupItem = {
   label: string;
 };
 
-type ContactItem = {
-  id: string;
-  classType: ContactClass;
-};
+type ContactItem = Contact;
 
-type AgentItem = {
-  id: string;
-  name: string;
-  status: string;
-  role: string;
-  messaging: string;
-  tasks: number;
-  avatarSeed?: string | null;
-  profileImageUrl?: string | null;
-};
+type AgentItem = Agent;
 
 type BridgeHostSummary = {
   serverUrl: string;
@@ -119,6 +108,13 @@ type WorkspaceSidebarProps = {
   filteredParticipantSpaces: ParticipantSpaceItem[];
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
+  onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
+  onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
+  onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onRenameChatGroup: (sessionId: string, name: string) => Promise<void> | void;
+  onAddChatGroupMembers: (sessionId: string, contactIds: string[]) => Promise<void> | void;
+  onRemoveChatGroupMember: (sessionId: string, identityId: string) => Promise<void> | void;
+  onSetChatGroupAdmin: (sessionId: string, identityId: string, isAdmin: boolean) => Promise<void> | void;
   onArchiveChatSession: (sessionId: string) => void;
   onDeleteChatSession: (sessionId: string) => void;
   onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
