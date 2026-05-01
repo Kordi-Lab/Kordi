@@ -455,6 +455,17 @@
   background: transparent;
 }
 
+.app-composer-text-measure {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 24px;
+  letter-spacing: 0;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-feature-settings: "kern" 0, "liga" 0, "calt" 0;
+  text-rendering: auto;
+}
+
 .app-composer-meta {
   border-top: 0;
 }

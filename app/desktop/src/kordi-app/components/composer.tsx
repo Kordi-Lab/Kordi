@@ -12,6 +12,7 @@ import {
   Wrench,
 } from 'lucide-react';
 
+import { leadingSlashCommandTextParts } from '@/features/chat/composerController.shared';
 import { cn } from '@/lib/utils';
 import { composerModeOptions, composerModelOptions, composerThinkingOptions } from '../data';
 import type {
@@ -59,6 +60,50 @@ export type ComposerMentionOption = {
   runtime: string;
 };
 
+function slashCommandInlineClass(kind: DesktopChatSlashCommand['kind']) {
+  switch (kind) {
+    case 'skill':
+      return 'text-violet-300';
+    case 'prompt':
+      return 'text-fuchsia-300';
+    case 'extension':
+      return 'text-amber-300';
+    case 'builtin':
+    default:
+      return 'text-sky-300';
+  }
+}
+
+export function hasComposerSlashCommandHighlight(text: string, slashCommands: DesktopChatSlashCommand[] = []) {
+  return Boolean(leadingSlashCommandTextParts(text, slashCommands));
+}
+
+export function ComposerSlashCommandHighlight({
+  text,
+  slashCommands = [],
+  className,
+}: {
+  text: string;
+  slashCommands?: DesktopChatSlashCommand[];
+  className?: string;
+}) {
+  const parts = leadingSlashCommandTextParts(text, slashCommands);
+  if (!parts) return null;
+
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        'app-composer-text-measure pointer-events-none absolute inset-0 z-0 min-h-[24px] overflow-hidden whitespace-pre-wrap break-words text-[15px] leading-6 text-[color:var(--utility-foreground)]',
+        className,
+      )}
+    >
+      <span className={slashCommandInlineClass(parts.kind)}>{parts.command}</span>
+      <span>{parts.rest}</span>
+    </div>
+  );
+}
+
 function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
   const value = item.value.toLowerCase();
   const kind = item.kind;
@@ -99,7 +144,7 @@ export function ComposerSlashMenu({
     <div className="app-modal-panel absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] px-2 py-2 shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
       <div className="flex items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
         <span>Command</span>
-        <span className="normal-case tracking-normal text-slate-600">Enter run · Tab complete</span>
+        <span className="normal-case tracking-normal text-slate-600">Enter run/select · Tab select</span>
       </div>
       <div className="max-h-[min(32rem,62vh)] overflow-y-auto pr-1 pt-1">
         <div className="space-y-0.5">

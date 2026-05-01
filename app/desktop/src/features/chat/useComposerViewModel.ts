@@ -9,7 +9,7 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 
-import { desktopSlashCommandKind, filterDesktopSlashCommands } from './composerController.shared';
+import { desktopSlashCommandKind, desktopSlashCommandQuery, filterDesktopSlashCommands } from './composerController.shared';
 
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
@@ -282,19 +282,9 @@ export function useComposerViewModel({
     };
   }, [composerSelections, desktopAuthState, resolveComposerProviderId]);
 
-  const chatSlashQuery = useMemo(() => {
-    const text = composerDrafts.chat;
-    if (!text.startsWith('/')) return null;
-    if (/\s/.test(text)) return null;
-    return text;
-  }, [composerDrafts.chat]);
+  const chatSlashQuery = useMemo(() => desktopSlashCommandQuery(composerDrafts.chat), [composerDrafts.chat]);
 
-  const projectSlashQuery = useMemo(() => {
-    const text = composerDrafts.project;
-    if (!text.startsWith('/')) return null;
-    if (/\s/.test(text)) return null;
-    return text;
-  }, [composerDrafts.project]);
+  const projectSlashQuery = useMemo(() => desktopSlashCommandQuery(composerDrafts.project), [composerDrafts.project]);
 
   const filterSlashCommands = useCallback((query: string | null, scope: ComposerScope) => {
     if (!isNativeShell || !desktopChatState?.slashCommands?.length || !query) {

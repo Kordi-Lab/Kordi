@@ -9,6 +9,7 @@ import { friendlyAttachmentName } from './composerAttachments';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
+  acceptedDesktopSlashCommandText,
   formatDesktopEventTime,
   formatThinkingSelectionLabel,
   parseModelSelection,
@@ -418,11 +419,11 @@ export function useComposerInputActions({
   }, [setComposerDrafts]);
 
   const acceptChatSlashCommand = useCallback((value: string) => {
-    setChatComposerText(`${value.trimEnd()} `);
+    setChatComposerText(acceptedDesktopSlashCommandText(value));
   }, [setChatComposerText]);
 
   const acceptProjectSlashCommand = useCallback((value: string) => {
-    setProjectComposerText(`${value.trimEnd()} `);
+    setProjectComposerText(acceptedDesktopSlashCommandText(value));
   }, [setProjectComposerText]);
 
   return {

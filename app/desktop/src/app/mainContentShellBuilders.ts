@@ -111,6 +111,7 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
       args.setIsDetailPanelCollapsed(false);
     },
     desktopLiveTurn: args.desktopLiveTurn,
+    desktopChatSlashCommands: args.desktopChatState?.slashCommands ?? [],
     filteredProjectSlashCommands: args.filteredProjectSlashCommands,
     filteredProjectMentionTargets: args.filteredProjectMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,

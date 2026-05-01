@@ -102,6 +102,35 @@ export function isDesktopHandledSlashCommand(command: string, catalog: DesktopCh
   return item ? desktopSlashCommandKind(item) === 'extension' : false;
 }
 
+export function acceptedDesktopSlashCommandText(command: string) {
+  return command.trimEnd();
+}
+
+export function desktopSlashCommandEnterAction(item?: DesktopChatSlashCommand | null): 'accept' | 'run' {
+  if (!item) return 'run';
+  const kind = desktopSlashCommandKind(item);
+  return kind === 'skill' || kind === 'prompt' ? 'accept' : 'run';
+}
+
+export function desktopSlashCommandQuery(text: string) {
+  if (!text.startsWith('/')) return null;
+  if (/\s/.test(text)) return null;
+  if (text.slice(1).includes('/') || text.includes('\\')) return null;
+  return text;
+}
+
+export function leadingSlashCommandTextParts(text: string, catalog: DesktopChatSlashCommand[] = []) {
+  if (!text.startsWith('/')) return null;
+  const command = text.match(/^\/\S*/)?.[0] ?? '';
+  if (!command || !desktopSlashCommandQuery(command)) return null;
+  const item = desktopSlashCatalogItem(command, catalog);
+  return {
+    command,
+    rest: text.slice(command.length),
+    kind: item ? desktopSlashCommandKind(item) : inferredDesktopSlashCommandKind(command),
+  };
+}
+
 export function desktopHotkeyHelpText() {
   return DESKTOP_HOTKEY_LINES;
 }
