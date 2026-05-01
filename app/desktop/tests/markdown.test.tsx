@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,6 +12,18 @@ test('renders bare http or https links as external markdown links', () => {
   assert.match(html, /<a[^>]+href="https:\/\/kordi\.ai\/docs"/);
   assert.match(html, /<span>https:\/\/kordi\.ai\/docs<\/span>/);
   assert.match(html, /target="_blank"/);
+});
+
+test('markdown links use a quiet URL treatment without underlines or external icons', () => {
+  const html = renderToStaticMarkup(createElement(MarkdownContent, { text: 'Open https://www.google.com/ now.' }));
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+
+  assert.match(html, /\bapp-markdown-link\b/);
+  assert.doesNotMatch(html, /\bunderline\b|decoration-cyan|text-cyan/);
+  assert.doesNotMatch(html, /<svg\b/);
+  assert.match(shellCss, /\.app-markdown-link\s*{[\s\S]*color:\s*var\(--app-markdown-link\);[\s\S]*text-decoration:\s*none;/);
+  assert.match(themeTokensCss, /--app-markdown-link:\s*oklch\(/);
 });
 
 test('routes markdown link clicks through the desktop external opener', () => {

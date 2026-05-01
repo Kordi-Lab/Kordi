@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { Check, SquareArrowOutUpRight } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -174,12 +174,11 @@ function renderInlineMarkdown(text: string, tone: 'default' | 'muted' = 'default
             openExternalMarkdownLink(event, part.href);
           }}
           className={cn(
-            'inline-flex max-w-full flex-wrap items-center gap-1 break-words [overflow-wrap:anywhere] underline decoration-cyan-400/50 underline-offset-4 transition',
-            tone === 'muted' ? 'text-cyan-200 hover:text-cyan-100' : 'text-cyan-300 hover:text-cyan-200',
+            'app-markdown-link break-words [overflow-wrap:anywhere] transition-colors',
+            tone === 'muted' && 'app-markdown-link-muted',
           )}
         >
           <span>{part.label}</span>
-          <SquareArrowOutUpRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
         </a>
       );
     }

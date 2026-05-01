@@ -4,6 +4,8 @@
   --utility-card: rgba(24, 24, 28, 0.9);
   --utility-muted: rgba(34, 34, 39, 0.9);
   --utility-muted-text: rgb(148 163 184);
+  --app-markdown-link: oklch(78% 0.055 218);
+  --app-markdown-link-hover: oklch(84% 0.065 218);
   --app-motion-fast: 180ms;
   --app-motion-base: 220ms;
   --app-motion-slow: 300ms;
@@ -64,6 +66,8 @@
   --utility-card: rgba(255, 255, 255, 0.9);
   --utility-muted: rgba(225, 218, 207, 0.88);
   --utility-muted-text: rgb(76 70 65);
+  --app-markdown-link: oklch(45% 0.065 218);
+  --app-markdown-link-hover: oklch(38% 0.075 218);
   --app-motion-fast: 200ms;
   --app-motion-base: 260ms;
   --app-motion-slow: 340ms;
