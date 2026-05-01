@@ -657,7 +657,7 @@
 
 .app-participant-space-row-button {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 0.625rem;
   border: 0;
@@ -671,8 +671,16 @@
   background: transparent;
 }
 
+.app-participant-space-row-side {
+  display: grid;
+  grid-template-rows: max-content 1fr;
+  justify-items: end;
+  min-height: 4.05rem;
+}
+
 .app-participant-space-row-meta {
-  padding-top: 1px;
+  align-self: end;
+  padding: 0 0.35rem 0.45rem 0;
 }
 
 .app-participant-space-row-actions {

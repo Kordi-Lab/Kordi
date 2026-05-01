@@ -231,21 +231,26 @@ function SidebarSessionMetaColumn({
   unreadCount,
   indicator,
   active = false,
+  reserveStatusSpace = true,
 }: {
   timeLabel: string;
   unreadCount?: number;
   indicator?: SessionStatusIndicator;
   active?: boolean;
+  reserveStatusSpace?: boolean;
 }) {
+  const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
       <span className={cn('whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
         {timeLabel}
       </span>
-      <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-        <SidebarUnreadBadge count={unreadCount} />
-        <SidebarSessionStatusIndicator indicator={indicator} active={active} />
-      </div>
+      {reserveStatusSpace || hasStatusLine ? (
+        <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
+          <SidebarUnreadBadge count={unreadCount} />
+          <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -589,16 +594,9 @@ export function WorkspaceSidebar({
                                     {participantSpaceDetailText(space)}
                                   </div>
                                 </div>
-                                <div className="app-participant-space-row-meta">
-                                  <SidebarSessionMetaColumn
-                                    timeLabel={rowTimeLabel}
-                                    unreadCount={space.unread}
-                                    indicator={latestSession?.statusIndicator}
-                                    active={isActiveSpace || isExpanded}
-                                  />
-                                </div>
                               </button>
-                              <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
+                              <div className="app-participant-space-row-side">
+                                <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
                                 {space.kind === 'group' ? (
                                   <button
                                     type="button"
@@ -633,19 +631,29 @@ export function WorkspaceSidebar({
                                 >
                                   <Plus className="h-3.5 w-3.5" />
                                 </button>
-                                <button
-                                  type="button"
-                                  data-participant-space-toggle-button="true"
-                                  className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                                  title={isExpanded ? 'Collapse sessions' : 'Expand sessions'}
-                                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${space.title}`}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleSpace();
-                                  }}
-                                >
-                                  <ChevronDown className={cn('h-3.5 w-3.5 transition', isExpanded ? 'rotate-180' : '')} />
-                                </button>
+                                  <button
+                                    type="button"
+                                    data-participant-space-toggle-button="true"
+                                    className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
+                                    title={isExpanded ? 'Collapse sessions' : 'Expand sessions'}
+                                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${space.title}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleSpace();
+                                    }}
+                                  >
+                                    <ChevronDown className={cn('h-3.5 w-3.5 transition', isExpanded ? 'rotate-180' : '')} />
+                                  </button>
+                                </div>
+                                <div className="app-participant-space-row-meta">
+                                  <SidebarSessionMetaColumn
+                                    timeLabel={rowTimeLabel}
+                                    unreadCount={space.unread}
+                                    indicator={latestSession?.statusIndicator}
+                                    active={isActiveSpace || isExpanded}
+                                    reserveStatusSpace={false}
+                                  />
+                                </div>
                               </div>
                             </div>
 
