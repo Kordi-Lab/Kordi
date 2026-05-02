@@ -13,7 +13,9 @@ export type ToolTimelineSummaryInput = {
   thinkingText?: string;
 };
 
-export type ToolTimelineFoldedLabelInput = ToolTimelineSummaryInput;
+export type ToolTimelineFoldedLabelInput = ToolTimelineSummaryInput & {
+  runningElapsed?: string | null;
+};
 
 function normalizedToolName(toolName: string) {
   return toolName.trim().toLowerCase();
@@ -46,6 +48,20 @@ function commandFromTool(tool: ToolTimelineInput) {
 
 function pathFromTool(tool: ToolTimelineInput) {
   return firstStringValue(safeParseToolArguments(tool.arguments), ['path', 'file', 'file_path', 'target_file', 'relative_path']);
+}
+
+function searchQueryFromTool(tool: ToolTimelineInput) {
+  return firstStringValue(safeParseToolArguments(tool.arguments), ['query', 'pattern', 'regex', 'term', 'search', 'input']);
+}
+
+function urlFromTool(tool: ToolTimelineInput) {
+  return firstStringValue(safeParseToolArguments(tool.arguments), ['url', 'uri', 'href', 'link']);
+}
+
+function inlineToolDetail(value: string, maxLength = 96) {
+  const compactValue = value.replace(/\s+/g, ' ').trim();
+  if (compactValue.length <= maxLength) return compactValue;
+  return `${compactValue.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
 function normalizedCommand(command: string) {
@@ -132,8 +148,8 @@ export function toolTimelineSummary({ tools, active, completed, thinkingText }: 
   const failedCount = tools.filter(timelineToolFailed).length;
   const runningCount = tools.filter((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool)).length;
 
+  if (runningCount > 0 || (failedCount === 0 && (active || !completed))) return 'Thinking and tool use · running…';
   if (failedCount > 0) return 'Tool use needs attention';
-  if (active || runningCount > 0 || !completed) return 'Thinking and tool use · running…';
   if (tools.length > 0) return `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'} · completed`;
   if (thinkingText?.trim()) return 'Reasoning trace';
   return 'Assistant activity';
@@ -168,26 +184,40 @@ function thinkingPhrase(thinkingText: string) {
     .trim();
 }
 
-function activeToolLabel(tool: ToolTimelineInput) {
+export function toolTimelineRunningToolLabel(tool: ToolTimelineInput) {
   const typeLabel = toolTimelineTypeLabel(tool);
-  if (typeLabel === 'Script') return 'Running command';
-  if (typeLabel === 'Search') return 'Searching';
-  if (typeLabel === 'Read') return 'Reading';
-  if (typeLabel === 'Edit') return 'Editing';
-  if (typeLabel === 'Web') return 'Fetching';
+  const command = commandFromTool(tool);
+  const path = pathFromTool(tool);
+  const searchQuery = searchQueryFromTool(tool);
+  const url = urlFromTool(tool);
+
+  if (typeLabel === 'Script') return command ? `Running command: ${inlineToolDetail(command)}` : 'Running command';
+  if (typeLabel === 'Search') return searchQuery ? `Searching: ${inlineToolDetail(searchQuery)}` : 'Searching';
+  if (typeLabel === 'Read') return path ? `Reading file: ${inlineToolDetail(path)}` : 'Reading';
+  if (typeLabel === 'Edit') return path ? `Editing file: ${inlineToolDetail(path)}` : 'Editing';
+  if (typeLabel === 'Web') return url ? `Fetching URL: ${inlineToolDetail(url)}` : 'Fetching';
+  if (typeLabel === 'Browse') return path ? `Finding files: ${inlineToolDetail(path)}` : 'Finding files';
+  if (typeLabel === 'Image') return path ? `Inspecting image: ${inlineToolDetail(path)}` : 'Inspecting image';
   return `Using ${typeLabel.toLowerCase()}`;
 }
 
-export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText }: ToolTimelineFoldedLabelInput) {
-  const failedCount = tools.filter(timelineToolFailed).length;
-  if (failedCount > 0) return 'Tool use needs attention';
+export function toolTimelineRunningPreviewLabel(tool: ToolTimelineInput, runningElapsed?: string | null) {
+  const label = toolTimelineRunningToolLabel(tool);
+  const elapsed = runningElapsed?.trim();
+  return elapsed ? `${label} · ${elapsed}` : label;
+}
 
+export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed }: ToolTimelineFoldedLabelInput) {
+  const failedCount = tools.filter(timelineToolFailed).length;
   const phrase = thinkingPhrase(thinkingText ?? '');
   const runningTool = tools.find((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
 
-  if (active || runningTool) {
+  if (runningTool) return toolTimelineRunningPreviewLabel(runningTool, runningElapsed);
+
+  if (failedCount > 0) return 'Tool use needs attention';
+
+  if (active) {
     if (phrase) return `Thinking about ${lowerCaseFirstLetter(phrase)}`;
-    if (runningTool) return activeToolLabel(runningTool);
     return 'Thinking';
   }
 
