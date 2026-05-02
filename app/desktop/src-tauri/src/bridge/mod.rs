@@ -1,3 +1,4 @@
+mod agent_jobs;
 mod constants;
 mod conversation_actions;
 mod conversation_commands;
