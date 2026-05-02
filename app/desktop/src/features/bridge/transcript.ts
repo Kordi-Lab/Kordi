@@ -154,7 +154,10 @@ export function mapBridgeConversationToViewModel(
   const hostLabel = bridgeHostLabel(host);
   const isPersonChat = isBridgeConversationPersonChat(conversation);
   const isAgent = !isPersonChat && isBridgeAgentRuntime(conversation.peerRuntime);
-  const activeAgentReplyMessage = conversation.awaitingReply
+  const hasSentBridgeRequest = Boolean(conversation.outreach?.bridgeRequestId)
+    || conversation.messages.some((message) => Boolean(message.requestId));
+  const awaitingReplyFromSentRequest = conversation.awaitingReply && hasSentBridgeRequest;
+  const activeAgentReplyMessage = awaitingReplyFromSentRequest
     ? [...conversation.messages].reverse().find((message) => (
         (message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE)
         && message.deliveryState === 'processing'
@@ -179,7 +182,8 @@ export function mapBridgeConversationToViewModel(
   };
 
   const awaitingAgentOutreach = conversation.outreach?.targetKind === 'bridge-agent'
-    && isActiveOutreachStatus(conversation.outreach.status);
+    && isActiveOutreachStatus(conversation.outreach.status)
+    && hasSentBridgeRequest;
   const outreachAgentLabel = conversation.outreach?.targetDisplayName || remoteAgentLabel;
   const outreachAgentAvatarSeed = conversation.outreach?.targetAgentId || remoteAgentAvatarSeed;
   const outreachPrefix = conversation.outreach && !isPersonChat
@@ -285,7 +289,7 @@ export function mapBridgeConversationToViewModel(
     };
   });
 
-  if (((isAgent && conversation.awaitingReply) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
+  if (((isAgent && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     messages.push({
       role: 'external-agent',
       sender: awaitingAgentOutreach ? outreachAgentLabel : remoteAgentLabel,

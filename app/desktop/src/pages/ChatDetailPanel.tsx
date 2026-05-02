@@ -1,7 +1,5 @@
 import { memo, type ReactNode } from 'react';
 
-import { MessageSquareMore } from 'lucide-react';
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
@@ -206,7 +204,6 @@ function ChatDetailPanelView({
   artifacts,
   activeArtifactId,
   onSelectArtifact,
-  onOpenOutreachThread,
 }: ChatDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
@@ -293,38 +290,6 @@ function ChatDetailPanelView({
           </div>
         </section>
 
-        {activeConv.outreachThreads && activeConv.outreachThreads.length > 0 ? (
-          <section className="app-detail-section">
-            <div className="app-detail-kicker">Outreach threads</div>
-            <div className="space-y-2">
-              {activeConv.outreachThreads.map((thread) => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  onClick={() => onOpenOutreachThread?.(thread.id)}
-                  className="group w-full rounded-[18px] border border-[color:var(--app-divider)] bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.045]"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.05] text-slate-300 ring-1 ring-white/10">
-                      <MessageSquareMore className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="truncate text-[13px] font-medium text-[color:var(--utility-foreground)]">{thread.targetDisplayName || thread.title}</div>
-                        <Badge variant="outline" className="shrink-0 rounded-full border-white/10 px-1.5 py-0 text-[10px] text-slate-400">
-                          {thread.targetKind === 'bridge-person' ? 'person' : 'agent'}
-                        </Badge>
-                      </div>
-                      <div className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{thread.subtitle}</div>
-                      <div className="mt-1 text-[11px] text-slate-500">{thread.status}{thread.updatedAtLabel ? ` • ${thread.updatedAtLabel}` : ''}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         {activeConv.outreach ? (
           <section className="app-detail-section">
             <div className="app-detail-kicker">Outreach</div>
@@ -336,7 +301,7 @@ function ChatDetailPanelView({
               <div className="app-inspector-meta-list">
                 <MetaRow label="Target" value={activeConv.outreach.targetDisplayName} />
                 <MetaRow label="Owner" value={activeConv.outreach.targetOwnerName} />
-                <MetaRow label="Parent session" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
+                <MetaRow label="Source chat ID" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
                 <MetaRow label="Local human" value={activeConv.identity?.localHumanName} />
                 <MetaRow label="Local agent" value={activeConv.identity?.localAgentName} />
                 <MetaRow label="Remote human" value={activeConv.identity?.remoteHumanName} />

@@ -30,7 +30,13 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         void args.handleSelectChatSession(sessionId);
       }}
       onStartChatWithPerson={args.handleStartChatWithPerson}
-      onStartChatWithAgent={args.handleStartChatWithAgent}
+      onStartChatWithAgent={async (agent) => {
+        if (agent.isOwned) {
+          await args.handleCreateChatSession();
+          return;
+        }
+        await args.handleStartChatWithAgent(agent);
+      }}
       onCreateChatGroup={args.handleCreateChatGroup}
       onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
       onRenameChatGroup={args.handleRenameChatGroup}

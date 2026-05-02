@@ -185,6 +185,43 @@ test('buildParticipantSpaces groups agent-only sessions into the default self sp
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:any-agent', 'session:my-kordi']);
 });
 
+test('buildParticipantSpaces folds generic bridge group continuations into the named group with the same people', () => {
+  const participants = [
+    { id: 'human:me', name: 'Me', kind: 'human' as const, role: 'self', source: 'local' as const, avatarKey: 'me' },
+    { id: 'human:alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'alice' },
+    { id: 'human:bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'bob' },
+  ];
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:group:root',
+      canonicalSessionId: 'session:group:root',
+      name: 'Codex learning',
+      type: 'owned-agent',
+      directness: 'Group chat',
+      participantSpaceId: 'group:session:group:root',
+      canonicalParticipants: participants,
+      metadata: { customName: 'Codex learning', groupSpaceId: 'session:group:root' },
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:group:child',
+      canonicalSessionId: 'session:group:child',
+      name: 'Group',
+      type: 'owned-agent',
+      directness: 'Group chat',
+      participantSpaceId: 'group:session:group:child',
+      canonicalParticipants: participants,
+      metadata: { source: 'bridge-session-thread', groupSpaceId: 'session:group:child' },
+      _updatedAtMs: 2,
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.id, 'group:session:group:root');
+  assert.equal(spaces[0]?.title, 'Codex learning');
+  assert.deepEqual(spaces[0]?.sessions.map((session) => session.canonicalSessionId), ['session:group:child', 'session:group:root']);
+});
+
 test('buildParticipantSpaces builds a true group when a conversation has multiple non-self humans', () => {
   const spaces = buildParticipantSpaces([
     conversation({

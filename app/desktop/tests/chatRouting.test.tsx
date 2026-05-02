@@ -128,6 +128,7 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     handleSelectChatSession: async (sessionId: string) => { calls.push(`select:${sessionId}`); },
     handleOpenBridgeConversation: async () => { calls.push('openBridge'); },
     handleStartBridgePersonSession: async (target: Record<string, unknown>) => { calls.push(`startPerson:${target.hostId}:${target.nodeId}:${target.humanId}`); },
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.bridgeHostId}:${agent.bridgePeerNodeId}:${agent.bridgeAgentId}`); },
     setContactOverlayMode: (value: unknown) => calls.push(`overlay:${String(value)}`),
     displayedAgents: [],
     filteredGroupedContacts: [],
@@ -215,12 +216,25 @@ test('sidebar shell forwards chat create and group management handlers', () => {
   }) as never) as never as { props: Record<string, unknown> };
 
   assert.equal(element.props.onStartChatWithPerson, startPerson);
-  assert.equal(element.props.onStartChatWithAgent, startAgent);
+  assert.equal(typeof element.props.onStartChatWithAgent, 'function');
   assert.equal(element.props.onCreateChatGroup, createGroup);
   assert.equal(element.props.onRenameChatGroup, renameGroup);
   assert.equal(element.props.onAddChatGroupMembers, addMembers);
   assert.equal(element.props.onRemoveChatGroupMember, removeMember);
   assert.equal(element.props.onSetChatGroupAdmin, setAdmin);
+});
+
+test('sidebar chat-create agent option opens owned agents with local My chats creation', async () => {
+  const calls: string[] = [];
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    handleCreateChatSession: async () => { calls.push('createLocal'); },
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.id}`); },
+  }) as never) as never as { props: { onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void> } };
+
+  await element.props.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
+  await element.props.onStartChatWithAgent({ id: 'agent:remote', isOwned: false });
+
+  assert.deepEqual(calls, ['createLocal', 'startAgent:agent:remote']);
 });
 
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {
@@ -241,7 +255,7 @@ test('contact Message starts a fresh person session instead of selecting an exis
   assert.deepEqual(calls, ['overlay:null', 'startPerson:host-1:node-shared:human-bob']);
 });
 
-test('agent Message switches to Chats before selecting an existing conversation', () => {
+test('agent Message starts a fresh external agent session under My chats', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
     chatConversations: [directAgentConversation()],
@@ -257,10 +271,10 @@ test('agent Message switches to Chats before selecting an existing conversation'
     bridgePeerRuntime: 'kordi-desktop',
   });
 
-  assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });
 
-test('external agent contact Message prefers the agent conversation over a same-node person conversation', () => {
+test('external agent contact Message starts an agent session instead of routing to the person space', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
     chatConversations: [directPersonConversation(), directAgentConversation()],
@@ -278,7 +292,7 @@ test('external agent contact Message prefers the agent conversation over a same-
     bridgePeerRuntime: 'kordi-desktop',
   });
 
-  assert.deepEqual(calls, ['overlay:null', 'nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['overlay:null', 'startAgent:host-1:node-shared:agent-bob']);
 });
 
 test('bridge Chat starts a fresh person session instead of selecting an existing one', () => {
@@ -302,7 +316,28 @@ test('bridge Chat starts a fresh person session instead of selecting an existing
   assert.deepEqual(calls, ['startPerson:host-1:node-shared:human-bob']);
 });
 
-test('bridge Chat uses target identity before selecting an existing same-node agent conversation', () => {
+test('bridge Add + chat without a peer runtime defaults to a person session', () => {
+  const calls: string[] = [];
+  const props = buildBridgePageProps(baseShellArgs(calls, {
+    activeNav: 'bridge',
+    chatConversations: [],
+  }) as never) as never as {
+    onOpenBridgeConversation: (
+      hostId: string,
+      peerNodeId: string,
+      peerDisplayName?: string | null,
+      peerOwnerName?: string | null,
+      peerRuntime?: string | null,
+      target?: { humanId?: string | null; agentId?: string | null },
+    ) => void;
+  };
+
+  props.onOpenBridgeConversation('host-1', 'node-new');
+
+  assert.deepEqual(calls, ['startPerson:host-1:node-new:undefined']);
+});
+
+test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {
   const calls: string[] = [];
   const props = buildBridgePageProps(baseShellArgs(calls, {
     activeNav: 'bridge',
@@ -320,7 +355,7 @@ test('bridge Chat uses target identity before selecting an existing same-node ag
 
   props.onOpenBridgeConversation('host-1', 'node-shared', 'Bob agent', 'Bob', 'kordi-desktop', { agentId: 'agent-bob' });
 
-  assert.deepEqual(calls, ['nav:chats', 'select:session:bridge:agents:bob-agent']);
+  assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });
 
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
@@ -422,6 +457,74 @@ test('canonical read model keeps receiver group display name and normalizes stal
 
   assert.equal(space?.title, 'New test group');
   assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
+});
+
+test('canonical read model sorts group latest by chat activity instead of metadata sync touches', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: 'session:group:old-empty',
+        kind: 'group',
+        title: 'Alice, Bob',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: null,
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', customName: 'Alice, Bob', groupId: 'session:group:old-empty', groupSpaceId: 'session:group:old-empty' },
+        createdAtMs: 1_000,
+        updatedAtMs: 50_000,
+        lastMessageAtMs: null,
+      },
+      {
+        id: 'session:group:testgroup-two',
+        kind: 'group',
+        title: 'testgroup two',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: null,
+        relationshipIdentityId: null,
+        metadata: { createdFrom: 'chat-create-flow', customName: 'testgroup two', groupId: 'session:group:testgroup-two', groupSpaceId: 'session:group:testgroup-two' },
+        createdAtMs: 40_000,
+        updatedAtMs: 40_000,
+        lastMessageAtMs: 45_000,
+      },
+    ],
+    participants: [
+      { sessionId: 'session:group:old-empty', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:old-empty', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:old-empty', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:testgroup-two', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:testgroup-two', identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:testgroup-two', identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:hi', sessionId: 'session:group:testgroup-two', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hi', content: { sender: 'Me', timeLabel: '09:41' }, status: 'sent', sequenceNum: 1, createdAtMs: 45_000, updatedAtMs: 45_000, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:hi' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[messages.length - 1]?.text ?? fallback ?? '') ?? [];
+  const spaces = buildParticipantSpaces(conversations);
+
+  assert.equal(spaces[0]?.title, 'testgroup two');
+  assert.equal(spaces[0]?.sessions[0]?.canonicalSessionId, 'session:group:testgroup-two');
 });
 
 test('canonical read model names chat-created direct and group sessions from the first user message', () => {
@@ -1127,6 +1230,86 @@ test('canonical read model prefers local rich owned-agent runtime over later pla
   assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
 
+test('canonical read model replaces bridge relay copy with active local owned-agent group turn', () => {
+  const sessionId = 'session:group:local-owner-duplicate';
+  const localText = 'I’ll quickly check current public info/reviews for Al-Marsa Restaurant pricing before answering.\n\nAl-Marsa Restaurant in KAUST is probably **medium to expensive**.';
+  const relayText = 'I’ll quickly check current public info/reviews for Al-Marsa Restaurant pricing before answering.Al-Marsa Restaurant in KAUST is probably **medium to expensive**.';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Testuser4',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Testuser4', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Testuser6', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'KAUST weekend', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@Kordi is Al-Marsa Restaurant expensive?', content: { sender: 'You', timeLabel: '12:51' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'request' },
+      { id: 'msg:bridge-relay', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: relayText, content: { sender: "Testuser4's Kordi", timeLabel: '12:52', kind: 'session-relay', deliveryState: 'responded', requestId: 'bridge_req_local_group' }, status: 'complete', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'relay' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const localRuntimeConversation = {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: 'KAUST weekend',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Group chat',
+    participants: ['Me', 'My Kordi', 'Testuser6'],
+    messages: [{
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      text: '',
+      time: '12:52',
+      turn: {
+        id: 'local-turn-al-marsa',
+        sessionId,
+        prompt: '@Kordi is Al-Marsa Restaurant expensive?',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: localText,
+        thinkingText: 'Considering web search options',
+        tools: [{ id: 'tool-search', name: 'web_search', status: 'done', arguments: '', liveOutput: '', resultText: 'Al Marsa listing', detail: null, isError: false }],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    }],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([localRuntimeConversation as never], (messages, fallback) => messages.at(-1)?.turn?.assistantText ?? fallback ?? '') ?? [];
+  const messages = conversations[0]?.messages ?? [];
+
+  assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), [
+    '@Kordi is Al-Marsa Restaurant expensive?',
+    localText,
+  ]);
+  assert.equal(messages[1]?.turn?.id, 'local-turn-al-marsa');
+  assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['web_search']);
+});
+
 test('canonical read model dedupes owned-agent runtime and bridge relay when only whitespace differs', () => {
   const sessionId = 'session:bridge:humans:whitespace-duplicate-runtime';
   const localText = 'I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**';
@@ -1360,6 +1543,48 @@ test('canonical read model keeps bridge unread when a local runtime source share
   assert.equal(conversations[0]?.unread, 1);
 });
 
+test('canonical read model hides duplicate local-agent group response fanout copies', () => {
+  const sessionId = 'session:group:fanout-agent';
+  const responseText = 'same weather answer';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:a', kind: 'human', displayName: 'A', source: 'bridge', avatarKey: 'a', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:b', kind: 'human', displayName: 'B', source: 'bridge', avatarKey: 'b', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:a', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:b', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi weather', content: { sender: 'Me', timeLabel: '10:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'request' },
+      { id: 'msg:copy-a', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: responseText, content: { sender: 'My Kordi', timeLabel: '10:03', kind: 'session-relay', requestId: 'bridge_req_same', bridgeConversationId: 'bridge:a' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'copy-a' },
+      { id: 'msg:copy-b', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: responseText, content: { sender: 'My Kordi', timeLabel: '10:03', kind: 'session-relay', requestId: 'bridge_req_same', bridgeConversationId: 'bridge:b' }, status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'copy-b' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const messages = readModel?.messages(sessionId) ?? [];
+  assert.equal(messages.filter((message) => message.role === 'owned-agent' && message.turn?.assistantText === responseText).length, 1);
+});
+
 test('canonical read model keeps canonical parent transcript when bridge source misses an agent response', () => {
   const sessionId = 'session:bridge:humans:flapping-parent';
   const canonicalState = {
@@ -1420,6 +1645,127 @@ test('canonical read model keeps canonical parent transcript when bridge source 
     conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
     ['@ShenzhesKordi show me the diskusage', 'I tried to check disk usage with `df -h`.'],
   );
+});
+
+test('canonical read model keeps chat-created bridge agent sessions scoped to their own messages', () => {
+  const sessionId = 'session:direct-agent:fresh-thread';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:owner', kind: 'human', displayName: 'Owner', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-owner', humanId: 'human-owner', avatarKey: 'owner', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:remote', kind: 'agent', displayName: "Owner's Kordi", source: 'bridge', ownerIdentityId: 'human:owner', sourceHostId: 'host-1', bridgeNodeId: 'node-owner', agentId: 'agent-remote', avatarKey: 'agent-remote', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-agent', title: "Owner's Kordi", status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:remote', relationshipIdentityId: null, metadata: { createdFrom: 'chat-create-flow', bridgeHostId: 'host-1', peerNodeId: 'node-owner', peerRuntime: 'kordi-desktop', targetAgentId: 'agent-remote' }, createdAtMs: 10, updatedAtMs: 20, lastMessageAtMs: 20 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 10 },
+      { sessionId, identityId: 'agent:remote', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 10 },
+      { sessionId, identityId: 'human:owner', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 20 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'fresh private question', content: { sender: 'Me', timeLabel: '14:11' }, status: 'sent', sequenceNum: 1, createdAtMs: 11, updatedAtMs: 11, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'request' },
+      { id: 'msg:response', sessionId, senderIdentityId: 'agent:remote', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'fresh private answer', content: { sender: "Owner's Kordi", timeLabel: '14:11' }, status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const staleBridgeAgentSource = {
+    id: 'bridge:host-1:node-owner',
+    canonicalSessionId: undefined,
+    name: "Owner's Kordi",
+    type: 'external-agent',
+    subtitle: 'Agent outreach • previous raw bridge store',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Agent outreach',
+    participants: ['Me', 'Owner', "Owner's Kordi"],
+    outreach: { parentSessionId: sessionId },
+    messages: [
+      { role: 'external-agent', sender: "Owner's Kordi", senderType: 'agent', text: '', turn: { id: 'old-turn', sessionId: 'bridge:host-1:node-owner', prompt: '', status: 'complete', message: 'Complete', assistantText: 'stale group answer', thinkingText: '', tools: [], completed: true, succeeded: true, error: null }, time: '12:20' },
+      { role: 'user', sender: 'Me', senderType: 'human', text: 'fresh private question', time: '14:11' },
+      { role: 'external-agent', sender: "Owner's Kordi", senderType: 'agent', text: '', turn: { id: 'fresh-turn', sessionId: 'bridge:host-1:node-owner', prompt: '', status: 'complete', message: 'Complete', assistantText: 'fresh private answer', thinkingText: '', tools: [], completed: true, succeeded: true, error: null }, time: '14:11' },
+    ],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([staleBridgeAgentSource as never], (messages, fallback) => messages[0]?.text || messages[0]?.turn?.assistantText || fallback || '') ?? [];
+  const conversation = conversations.find((candidate) => candidate.id === sessionId);
+
+  assert.deepEqual(
+    conversation?.messages.map((message) => message.text || message.turn?.assistantText),
+    ['fresh private question', 'fresh private answer'],
+  );
+  assert.deepEqual(conversation?.participants, ['Me', "Owner's Kordi"]);
+  assert.equal(conversation?.directness, 'Direct chat');
+});
+
+test('canonical read model does not show processing for bridge agent outreach without a sent bridge request', () => {
+  const sessionId = 'session:direct-agent:stale-outreach';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:testuser2', kind: 'human', displayName: 'testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', humanId: 'human-testuser2', avatarKey: 'human-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:testuser2', kind: 'agent', displayName: "testuser2's Kordi", source: 'bridge', ownerIdentityId: 'human:testuser2', sourceHostId: 'host-1', bridgeNodeId: 'node-testuser2', agentId: 'agent-testuser2', avatarKey: 'agent-testuser2', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-agent', title: "testuser2's Kordi", status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:testuser2', relationshipIdentityId: null, metadata: { createdFrom: 'chat-create-flow', bridgeHostId: 'host-1', peerNodeId: 'node-testuser2', peerRuntime: 'kordi-desktop', targetAgentId: 'agent-testuser2' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:testuser2', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello', content: { sender: 'Me', timeLabel: '02:26' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'request' },
+    ],
+    delegatedExchanges: [{
+      id: 'delegation:bridge:unsent',
+      sessionId,
+      initiatorIdentityId: 'human:me',
+      targetIdentityId: 'agent:testuser2',
+      triggerMessageId: 'msg:request',
+      requestMessageId: 'msg:request',
+      responseMessageId: null,
+      transport: 'bridge',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-testuser2:kordi-desktop',
+      bridgeRequestId: null,
+      contextPolicy: 'recent-window',
+      status: 'processing',
+      error: null,
+      createdAtMs: 2,
+      updatedAtMs: 2,
+    }],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+
+  assert.equal(conversations[0]?.messages.some((message) => message.turn?.status === 'processing'), false);
 });
 
 test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {

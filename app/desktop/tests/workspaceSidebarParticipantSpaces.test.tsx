@@ -8,7 +8,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import type { Agent, Contact, Conversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
-import { participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 
 type ConversationFixture = Conversation & { _updatedAtMs?: number };
 
@@ -422,9 +422,10 @@ test('ChatCreateDialog group picker requires at least 2 people and excludes agen
   assert.doesNotMatch(markup, /Helper Kordi/);
 });
 
-test('participant-space child session rows use hashtag titles', () => {
+test('participant-space child session rows use hashtag titles and show stable session ids', () => {
   assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
   assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
+  assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Session ID: session:group:child');
 });
 
 test('participant-space direct sessions expose archive and delete context menu targets', () => {
@@ -723,6 +724,7 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   assert.match(markup, /# 今天吃什么/);
   assert.match(markup, /data-session-message-count="1"/);
   assert.match(markup, /data-session-preview-line="今天吃什么 · 1 message"/);
+  assert.match(markup, /data-session-id-label="Session ID: session:group-duplicate-preview"/);
   assert.match(markup, /app-participant-space-session-preview/);
   assert.match(markup, /app-participant-space-session-title/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);

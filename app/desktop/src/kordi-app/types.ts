@@ -790,6 +790,7 @@ export type DesktopBridgeOutreachMetadata = {
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
   parentSessionKind?: string | null;
+  parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
@@ -871,6 +872,7 @@ export type DesktopBridgeCreateOutreachRequest = {
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
   parentSessionKind?: string | null;
+  parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;

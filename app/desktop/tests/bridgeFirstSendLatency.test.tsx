@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bridgeConversationSendPlan, chatSendIsBusy, localChatSendIsInFlightForTarget } from '../src/features/chat/messageActions/chatMessages';
+import { bridgeConversationSendPlan, bridgeSessionOutreachTarget, chatSendIsBusy, localChatSendIsInFlightForTarget } from '../src/features/chat/messageActions/chatMessages';
 
 test('new canonical person chat does not block optimistic send on Bridge conversation materialization', () => {
   const plan = bridgeConversationSendPlan({
@@ -38,6 +38,25 @@ test('chat send guard blocks repeated local sends while session creation is in f
   assert.equal(localChatSendIsInFlightForTarget({ sessionId: null }, null), true);
   assert.equal(localChatSendIsInFlightForTarget({ sessionId: 'session-a' }, 'session-a'), true);
   assert.equal(localChatSendIsInFlightForTarget({ sessionId: 'session-a' }, 'session-b'), false);
+});
+
+test('canonical external-agent sessions send session messages to the bridge agent target', () => {
+  assert.deepEqual(bridgeSessionOutreachTarget({
+    hostId: 'host-1',
+    nodeId: 'node-shared',
+    displayName: 'Bob agent',
+    ownerName: 'Bob',
+    runtime: 'kordi-desktop',
+    humanId: null,
+    agentId: 'agent-bob',
+  }), {
+    targetKind: 'bridge-agent',
+    targetRuntime: 'kordi-desktop',
+    targetDisplayName: 'Bob agent',
+    targetOwnerName: 'Bob',
+    targetHumanId: null,
+    targetAgentId: 'agent-bob',
+  });
 });
 
 test('existing Bridge conversation can still receive bridge-message optimistic state', () => {

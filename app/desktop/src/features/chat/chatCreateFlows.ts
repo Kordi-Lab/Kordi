@@ -30,6 +30,17 @@ export type ChatCreateAgentOption = {
 
 export type ChatAgentSessionKind = 'self-agent' | 'direct-agent';
 
+export type BridgeAgentStartInput = {
+  hostId: string;
+  nodeId: string;
+  displayName?: string | null;
+  ownerName?: string | null;
+  runtime?: string | null;
+  agentId?: string | null;
+  contactId?: string | null;
+  profileImageUrl?: string | null;
+};
+
 const BRIDGE_HUMAN_SESSION_PREFIX = 'session:bridge:humans:';
 
 export type ChatGroupMetadata = {
@@ -98,6 +109,45 @@ export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOpt
   }));
 }
 
+export function bridgeAgentForChatStart(input: BridgeAgentStartInput): Agent {
+  const hostId = cleanText(input.hostId);
+  const nodeId = cleanText(input.nodeId);
+  const agentId = cleanText(input.agentId);
+  const ownerName = cleanText(input.ownerName);
+  const displayName = firstNonEmpty(input.displayName, ownerName ? `${ownerName}'s Kordi` : null, agentId, nodeId);
+  const canonicalId = agentId
+    ? `agent:${stableIdentitySegment(agentId)}`
+    : `agent:bridge-node:${stableIdentitySegment(nodeId || displayName)}`;
+
+  return {
+    id: canonicalId,
+    name: displayName,
+    role: 'External Bridge agent',
+    messaging: 'Start a Bridge agent chat',
+    status: 'Available',
+    tasks: 0,
+    defaultProvider: '',
+    defaultModel: '',
+    bridgesConfig: 'Bridge',
+    contactId: cleanText(input.contactId) || canonicalId,
+    systemPrompt: '',
+    xMd: '',
+    identityFiles: [],
+    loadedTools: [],
+    loadedSkills: [],
+    loadedPlugins: [],
+    lastActivities: [],
+    bridgeHostId: hostId || undefined,
+    bridgePeerNodeId: nodeId || undefined,
+    bridgePeerRuntime: cleanText(input.runtime) || 'kordi-desktop',
+    bridgeAgentId: agentId || undefined,
+    bridgeOwnerName: ownerName || undefined,
+    isOwned: false,
+    avatarSeed: agentId || nodeId || canonicalId,
+    profileImageUrl: input.profileImageUrl ?? null,
+  };
+}
+
 export function buildChatAgentSessionKind(agent: Agent): ChatAgentSessionKind {
   return agent.isOwned ? 'self-agent' : 'direct-agent';
 }
@@ -113,10 +163,23 @@ export function chatSessionIdForAgentStart(agent: Agent, randomId: string) {
 }
 
 export function buildChatAgentSessionMetadata(agent: Agent) {
+  const bridgeHostId = cleanText(agent.bridgeHostId);
+  const peerNodeId = cleanText(agent.bridgePeerNodeId);
+  const peerRuntime = cleanText(agent.bridgePeerRuntime);
+  const peerDisplayName = cleanText(agent.name);
+  const peerOwnerName = cleanText(agent.bridgeOwnerName);
+  const peerAgentId = cleanText(agent.bridgeAgentId);
+
   return {
     createdFrom: 'chat-create-flow' as const,
     agentId: agent.id,
     participantSpaceKind: 'self' as const,
+    ...(bridgeHostId ? { bridgeHostId } : {}),
+    ...(peerNodeId ? { peerNodeId } : {}),
+    ...(peerRuntime ? { peerRuntime } : {}),
+    ...(peerDisplayName && bridgeHostId ? { peerDisplayName } : {}),
+    ...(peerOwnerName ? { peerOwnerName } : {}),
+    ...(peerAgentId ? { peerAgentId, targetAgentId: peerAgentId } : {}),
   };
 }
 

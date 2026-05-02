@@ -206,6 +206,7 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
             parent_session_id: request.parent_session_id.clone(),
             parent_session_title: None,
             parent_session_kind: None,
+            parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: request.parent_turn_id.clone(),

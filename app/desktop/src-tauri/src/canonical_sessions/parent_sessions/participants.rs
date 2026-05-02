@@ -75,6 +75,16 @@ fn group_display_name(value: Option<&str>) -> Option<String> {
     Some(title.to_string())
 }
 
+fn clean_group_space_id(value: Option<&str>) -> Option<String> {
+    let cleaned = clean_text(value)?;
+    Some(
+        cleaned
+            .strip_prefix("group:")
+            .unwrap_or(cleaned.as_str())
+            .to_string(),
+    )
+}
+
 fn group_participant_identity_id(
     conn: &Connection,
     bridge_host_id: &str,
@@ -120,6 +130,7 @@ pub(super) fn ensure_parent_group_session_participants(
     conn: &Connection,
     parent_session_id: &str,
     parent_session_title: Option<&str>,
+    parent_group_space_id: Option<&str>,
     local_human_identity_id: &str,
     remote_target_identity_id: &str,
     relationship_identity_id: Option<&str>,
@@ -172,10 +183,15 @@ pub(super) fn ensure_parent_group_session_participants(
     metadata
         .entry("source".to_string())
         .or_insert_with(|| serde_json::json!("bridge-session-thread"));
-    metadata.insert("groupId".to_string(), serde_json::json!(parent_session_id));
+    let group_space_id = clean_group_space_id(parent_group_space_id)
+        .unwrap_or_else(|| parent_session_id.to_string());
+    metadata.insert(
+        "groupId".to_string(),
+        serde_json::json!(group_space_id.clone()),
+    );
     metadata.insert(
         "groupSpaceId".to_string(),
-        serde_json::json!(parent_session_id),
+        serde_json::json!(group_space_id),
     );
     if !admin_identity_ids.is_empty() {
         metadata.insert(
@@ -269,15 +285,22 @@ pub(super) fn ensure_parent_session_participants(
     let cleaned_parent_title = parent_session_title
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if select_session(conn, parent_session_id)?.is_none() {
+    let existing_session = select_session(conn, parent_session_id)?;
+    let parent_is_direct_agent = existing_session
+        .as_ref()
+        .is_some_and(|session| session.kind == "direct-agent")
+        || parent_session_id.starts_with("session:direct-agent:");
+    if existing_session.is_none() {
         let mut participants = Vec::new();
         if include_local_agent {
             if let Some(agent_identity_id) = local_agent_identity_id {
                 participants.push(agent_identity_id.to_string());
             }
         }
-        if let Some(relationship_identity_id) = relationship_identity_id {
-            participants.push(relationship_identity_id.to_string());
+        if !parent_is_direct_agent {
+            if let Some(relationship_identity_id) = relationship_identity_id {
+                participants.push(relationship_identity_id.to_string());
+            }
         }
         participants.push(remote_target_identity_id.to_string());
         participants.sort();
@@ -334,15 +357,17 @@ pub(super) fn ensure_parent_session_participants(
             )?;
         }
     }
-    if let Some(relationship_identity_id) = relationship_identity_id {
-        upsert_participant(
-            conn,
-            parent_session_id,
-            relationship_identity_id,
-            "person",
-            Some(local_human_identity_id),
-            now,
-        )?;
+    if !parent_is_direct_agent {
+        if let Some(relationship_identity_id) = relationship_identity_id {
+            upsert_participant(
+                conn,
+                parent_session_id,
+                relationship_identity_id,
+                "person",
+                Some(local_human_identity_id),
+                now,
+            )?;
+        }
     }
     upsert_participant(
         conn,

@@ -41,6 +41,7 @@ struct LocalRealtimeTarget {
     host: DesktopBridgeHostConfig,
     sender_runtime: String,
     sender_agent_id: Option<String>,
+    owner_node_id: Option<String>,
     model_routing: Option<DesktopBridgeAgentModelRouting>,
     should_process_agent_asks: bool,
 }
@@ -83,6 +84,7 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
                     host: host.clone(),
                     sender_runtime: "person".to_string(),
                     sender_agent_id: None,
+                    owner_node_id: Some(host.node_id.clone()),
                     model_routing: None,
                     should_process_agent_asks: false,
                 },
@@ -112,6 +114,7 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
                     host: agent_host,
                     sender_runtime: agent.runtime.clone(),
                     sender_agent_id: Some(agent.id.clone()),
+                    owner_node_id: Some(host.node_id.clone()),
                     model_routing: Some(DesktopBridgeAgentModelRouting {
                         default_model: agent.default_model.clone(),
                         default_auth_provider: agent.default_auth_provider.clone(),

@@ -98,6 +98,9 @@ export function syntheticBridgeTarget(
   const metadataHostId = stringValue(metadata.bridgeHostId);
   const metadataNodeId = stringValue(metadata.peerNodeId);
   const runtime = stringValue(metadata.peerRuntime);
+  const metadataDisplayName = stringValue(metadata.peerDisplayName);
+  const metadataOwnerName = stringValue(metadata.peerOwnerName);
+  const metadataAgentId = stringValue(metadata.peerAgentId) ?? stringValue(metadata.targetAgentId);
 
   const matchingParticipant = metadataNodeId
     ? participants.find((participant) => participant.bridgeNodeId === metadataNodeId)
@@ -115,11 +118,11 @@ export function syntheticBridgeTarget(
   return {
     hostId,
     nodeId,
-    displayName: matchingParticipant?.name ?? stringValue(metadata.peerDisplayName) ?? null,
-    ownerName: matchingParticipant?.humanId ? matchingParticipant.name : null,
+    displayName: matchingParticipant?.name ?? metadataDisplayName ?? null,
+    ownerName: matchingParticipant?.ownerName ?? (matchingParticipant?.humanId ? matchingParticipant.name : null) ?? metadataOwnerName ?? null,
     runtime: runtime ?? (matchingParticipant?.kind === 'human' ? 'person' : null),
     humanId: matchingParticipant?.humanId ?? null,
-    agentId: matchingParticipant?.agentId ?? null,
+    agentId: matchingParticipant?.agentId ?? metadataAgentId ?? null,
   };
 }
 
@@ -144,7 +147,7 @@ function normalizeParticipantSpaceId(value: string) {
 export function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
   if (session.kind !== 'group') return null;
   const metadata = sessionMetadata(session);
-  const groupSpaceId = stringValue(metadata.groupId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.continuedFromSpaceId);
+  const groupSpaceId = stringValue(metadata.continuedFromSpaceId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.groupId);
   return groupSpaceId ? normalizeParticipantSpaceId(groupSpaceId) || null : null;
 }
 
@@ -171,6 +174,10 @@ export function sessionHasActiveProcessing(messages: Message[]) {
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
 }
 
+export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions'][number]) {
+  return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
+}
+
 export function syntheticConversation(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -187,7 +194,7 @@ export function syntheticConversation(
   }, {});
   const bridgeTarget = syntheticBridgeTarget(session, participants);
   const updatedAtLabel = messages[messages.length - 1]?.time
-    ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+    ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
 
   const displayTitle = sessionDisplayTitle(messages, session.title);
 

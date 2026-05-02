@@ -56,6 +56,7 @@ fn test_outreach(request_id: &str, delivery_state: Option<&str>) -> DesktopBridg
         parent_session_id: Some("session:bridge:humans:test".to_string()),
         parent_session_title: Some("Humans".to_string()),
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: Some("turn-1".to_string()),
@@ -318,6 +319,47 @@ fn sqlite_upsert_keeps_delivery_state_monotonic() {
     let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
     let message = &loaded.conversations[0].messages[0];
     assert_eq!(message.delivery_state.as_deref(), Some("responded"));
+}
+
+#[test]
+fn delivery_ack_does_not_turn_processing_response_into_plain_read_message() {
+    let mut conn = memory_conversation_db();
+    let conversation = test_conversation(vec![
+        test_message(
+            "msg-request",
+            "inbound",
+            "@MyKordi what do you think?",
+            1_000,
+            Some("req-agent"),
+            Some("processing"),
+        ),
+        test_message(
+            "msg-processing-response",
+            "outbound-response",
+            "processing...",
+            1_100,
+            Some("req-agent"),
+            Some("processing"),
+        ),
+    ]);
+    upsert_conversation_record(&conn, &conversation)
+        .expect("insert processing request and response");
+
+    update_message_delivery_state_in_db_for_test(&mut conn, "req-agent", "read")
+        .expect("apply read delivery ack");
+
+    let loaded = load_conversation_store_from_db(&conn).expect("load conversations");
+    let messages = &loaded.conversations[0].messages;
+    let request = messages
+        .iter()
+        .find(|message| message.id == "msg-request")
+        .expect("request row");
+    let response = messages
+        .iter()
+        .find(|message| message.id == "msg-processing-response")
+        .expect("response row");
+    assert_eq!(request.delivery_state.as_deref(), Some("read"));
+    assert_eq!(response.delivery_state.as_deref(), Some("processing"));
 }
 
 #[test]
