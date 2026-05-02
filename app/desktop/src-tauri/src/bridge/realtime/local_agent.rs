@@ -67,6 +67,10 @@ fn event_targets_group_session(event: &ParsedMailboxEvent) -> bool {
             .is_some_and(|value| !value.is_empty())
 }
 
+fn should_store_local_agent_processing_placeholder(event: &ParsedMailboxEvent) -> bool {
+    !event_targets_group_session(event)
+}
+
 fn group_session_thread_relay_targets(
     event: &ParsedMailboxEvent,
     local_node_id: &str,
@@ -312,18 +316,42 @@ fn spawn_local_agent_response(
     attachment_paths: Vec<String>,
 ) {
     tokio::spawn(async move {
-        let _ = emit_after_storage_write(
-            &app,
-            &local_server,
-            append_local_agent_outbound_response(
-                &target,
-                &event,
-                "processing...".to_string(),
-                "processing",
-                false,
-            ),
-        )
-        .await;
+        if should_store_local_agent_processing_placeholder(&event) {
+            let _ = emit_after_storage_write(
+                &app,
+                &local_server,
+                append_local_agent_outbound_response(
+                    &target,
+                    &event,
+                    "processing...".to_string(),
+                    "processing",
+                    false,
+                ),
+            )
+            .await;
+        }
+        if event_targets_group_session(&event) {
+            let response = serde_json::json!({
+                "from": target.host.node_id,
+                "fromDisplayName": target.host.display_name,
+                "fromOwnerName": target.host.owner,
+                "fromRuntime": target.sender_runtime,
+                "fromHumanId": target.host.human_id,
+                "fromAgentId": target.sender_agent_id,
+                "projectId": event.project_id,
+                "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+                "requestId": event.request_id,
+                "payload": bridge_response_payload(&event, "processing...", false),
+            });
+            send_realtime_or_relay(
+                &manager,
+                &target.host,
+                &event.from_node_id,
+                event.project_id.as_deref(),
+                &response,
+            )
+            .await;
+        }
         fanout_group_agent_response(&manager, &target, &event, "processing...", false).await;
 
         let final_snapshot = match run_bridge_agent_prompt(
@@ -625,6 +653,13 @@ mod tests {
             ),
             vec!["node-other".to_string()]
         );
+    }
+
+    #[test]
+    fn local_owner_processing_placeholder_is_not_stored_for_group_agent_mentions() {
+        assert!(!should_store_local_agent_processing_placeholder(
+            &test_group_event()
+        ));
     }
 
     #[test]

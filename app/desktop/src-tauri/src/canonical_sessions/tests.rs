@@ -2651,13 +2651,26 @@ fn group_bridge_agent_session_message_keeps_request_and_response() {
         .collect::<Result<Vec<_>, _>>()
         .expect("collect messages");
 
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].0, "person");
-    assert_eq!(rows[0].1, "text");
-    assert_eq!(rows[0].2, "@AgentOwnersKordi should we go golfing?");
-    assert_eq!(rows[1].0, "owned-agent");
-    assert_eq!(rows[1].1, "agent-turn");
-    assert_eq!(rows[1].2, "Yes, it looks good to go golfing today.");
+    assert!(rows.iter().any(
+        |(_, kind, text)| kind == "status" && text == "Agent Owner's Kordi joined via @mention"
+    ));
+    let visible_turns = rows
+        .iter()
+        .filter(|(_, kind, _)| kind != "status")
+        .collect::<Vec<_>>();
+    assert_eq!(visible_turns.len(), 2);
+    assert_eq!(visible_turns[0].0, "person");
+    assert_eq!(visible_turns[0].1, "text");
+    assert_eq!(
+        visible_turns[0].2,
+        "@AgentOwnersKordi should we go golfing?"
+    );
+    assert_eq!(visible_turns[1].0, "owned-agent");
+    assert_eq!(visible_turns[1].1, "agent-turn");
+    assert_eq!(
+        visible_turns[1].2,
+        "Yes, it looks good to go golfing today."
+    );
 }
 
 #[test]
@@ -3031,6 +3044,171 @@ fn inbound_group_agent_response_fanout_join_uses_remote_agent_label() {
         )
         .expect("response sender");
     assert_eq!(response_sender, "Testuser4's Kordi");
+}
+
+#[test]
+fn inbound_group_bridge_agent_request_emits_join_even_when_agent_already_participates() {
+    let conn = test_conn();
+    for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
+        (
+            "human:local",
+            "human",
+            "Testuser6",
+            Some("kh_local"),
+            Some("kd_local"),
+            None,
+            None,
+        ),
+        (
+            "human:requester",
+            "human",
+            "Testuser4",
+            Some("kh_requester"),
+            Some("kd_requester"),
+            None,
+            None,
+        ),
+        (
+            "agent:local",
+            "agent",
+            "Testuser6's Kordi",
+            None,
+            Some("kd_local"),
+            Some("human:local"),
+            Some("ka_local"),
+        ),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_id.map(ToString::to_string),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: node_id.map(ToString::to_string),
+                human_id: human_id.map(ToString::to_string),
+                agent_id: agent_id.map(ToString::to_string),
+                avatar_key: human_id.or(agent_id).map(ToString::to_string),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:local-agent-join";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("Group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "human:local".to_string(),
+                "human:requester".to_string(),
+                "agent:local".to_string(),
+            ],
+            metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
+        },
+    )
+    .expect("seed group");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Group".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some(parent_session_id.to_string()),
+        parent_session_participants: Vec::new(),
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:agent-request".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:requester:person".to_string()),
+        bridge_request_id: Some("bridge_req_local_agent_request".to_string()),
+        delivery_state: Some("processing".to_string()),
+        target_node_id: "kd_local".to_string(),
+        target_human_id: Some("kh_local".to_string()),
+        target_agent_id: Some("ka_local".to_string()),
+        target_display_name: "Testuser6's Kordi".to_string(),
+        target_owner_name: Some("Testuser6".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "@Testuser6sKordi easy food?".to_string(),
+        trigger_text: Some("@Testuser6sKordi easy food?".to_string()),
+        context_text: None,
+        context_policy: Some("session-message".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "processing".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: None,
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:requester:person".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_requester".to_string(),
+        peer_display_name: Some("Testuser4".to_string()),
+        peer_owner_name: Some("Testuser4".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Testuser4".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 1_000,
+        updated_at_label: "11:45".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_local_agent_request".to_string(),
+        direction: "inbound".to_string(),
+        sender: Some("Testuser4".to_string()),
+        text: "@Testuser6sKordi easy food?".to_string(),
+        time_label: "11:45".to_string(),
+        timestamp_ms: 1_000,
+        request_id: outreach.bridge_request_id.clone(),
+        delivery_state: Some("processing".to_string()),
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local",
+        Some("agent:local"),
+        Some("human:requester"),
+        "human:requester",
+        false,
+    )
+    .expect("sync local agent request");
+
+    let join_text: String = conn
+        .query_row(
+            "SELECT content_text FROM session_messages WHERE session_id = ?1 AND content_text LIKE '%joined via @mention%'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("join row");
+    assert_eq!(join_text, "Testuser6's Kordi joined via @mention");
 }
 
 #[test]

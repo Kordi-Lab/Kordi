@@ -63,6 +63,13 @@ fn bridge_response_is_done(event: &ParsedMailboxEvent) -> bool {
         .unwrap_or(true)
 }
 
+fn is_processing_placeholder_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.eq_ignore_ascii_case("processing")
+        || trimmed.eq_ignore_ascii_case("processing...")
+        || trimmed.eq_ignore_ascii_case("processing…")
+}
+
 fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
     if bridge_response_is_done(event) {
         return false;
@@ -73,6 +80,9 @@ fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
 
     let text = mailbox_payload_text(&event.payload);
     let normalized = text.trim();
+    if event_targets_group_session(event) && is_processing_placeholder_text(normalized) {
+        return false;
+    }
     if normalized.is_empty() {
         return true;
     }
@@ -583,28 +593,51 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     target.host.owner.as_deref(),
                     &target.host.node_id,
                 );
-                append_conversation_message_to_storage(
-                    &target.host.id,
-                    &event.from_node_id,
-                    peer_display_name.clone(),
-                    peer_owner_name.clone(),
-                    peer_runtime.clone(),
-                    event.project_id.clone(),
-                    None,
-                    Some(identity_snapshot_for_event(
+                if !event_targets_group_session(&event) {
+                    append_conversation_message_to_storage(
+                        &target.host.id,
+                        &event.from_node_id,
+                        peer_display_name.clone(),
+                        peer_owner_name.clone(),
+                        peer_runtime.clone(),
+                        event.project_id.clone(),
+                        None,
+                        Some(identity_snapshot_for_event(
+                            &target.host,
+                            &event,
+                            &peer_runtime,
+                        )),
+                        outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+                        Some(response_sender_name.clone()),
+                        "processing...".to_string(),
+                        event.request_id.clone(),
+                        Some("processing".to_string()),
+                        Vec::new(),
+                        false,
+                    )?;
+                }
+                if event_targets_group_session(&event) {
+                    let response = serde_json::json!({
+                        "from": target.host.node_id,
+                        "fromDisplayName": target.host.display_name,
+                        "fromOwnerName": target.host.owner,
+                        "fromRuntime": target.sender_runtime,
+                        "fromHumanId": target.host.human_id,
+                        "fromAgentId": target.sender_agent_id,
+                        "projectId": event.project_id,
+                        "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+                        "requestId": event.request_id,
+                        "payload": bridge_response_payload(&event, "processing...", false),
+                    });
+                    let _ = relay_plaintext_message(
                         &target.host,
-                        &event,
-                        &peer_runtime,
-                    )),
-                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                    Some(response_sender_name.clone()),
-                    "processing...".to_string(),
-                    event.request_id.clone(),
-                    Some("processing".to_string()),
-                    Vec::new(),
-                    false,
-                )?;
+                        &event.from_node_id,
+                        event.project_id.as_deref(),
+                        &response,
+                    )
+                    .await;
+                }
                 fanout_group_agent_response(&target, &event, "processing...", false).await;
 
                 let agent_result = run_bridge_agent_prompt(
@@ -939,6 +972,18 @@ mod tests {
             outreach_metadata_for_event(&host, &event, "kordi-desktop").expect("outreach metadata");
 
         assert_eq!(outreach.context_policy.as_deref(), Some("session-message"));
+    }
+
+    #[test]
+    fn group_processing_response_is_not_buffered_as_typing_only() {
+        let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RESPONSE, Some("kordi-desktop"), None);
+        event.payload["message"] = serde_json::json!("processing...");
+        event.payload["done"] = serde_json::json!(false);
+        event.payload["sessionThread"]["parentSessionKind"] = serde_json::json!("group");
+        event.payload["sessionThread"]["parentGroupSpaceId"] =
+            serde_json::json!("session:group:root");
+
+        assert!(!should_buffer_partial_agent_response(&event));
     }
 
     #[test]

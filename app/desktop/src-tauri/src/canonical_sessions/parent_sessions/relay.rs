@@ -10,8 +10,7 @@ use super::super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::super::schema::ensure_local_profile;
 use super::super::{
     existing_delegation_join_message_id, hash_hex, identity_display_name, now_ms,
-    session_has_participant, shared_agent_display_name, similar_agent_message_exists,
-    upsert_participant,
+    shared_agent_display_name, similar_agent_message_exists, upsert_participant,
 };
 use super::participants::{
     ensure_parent_group_session_participants, ensure_parent_session_participants,
@@ -181,10 +180,16 @@ pub(super) fn sync_parent_session_relay_join_event(
         relationship_identity_id,
         peer_is_agent,
     )?;
+    let is_local_bridge_agent_request = !peer_is_agent
+        && inbound_remote_agent_relay.is_none()
+        && outreach.target_kind == "bridge-agent"
+        && outreach.parent_turn_id.is_none();
     let target_identity_id = if peer_is_agent {
         remote_target_identity_id
     } else if let Some((remote_relay_agent_identity_id, _)) = inbound_remote_agent_relay.as_ref() {
         remote_relay_agent_identity_id.as_str()
+    } else if is_local_bridge_agent_request {
+        local_agent_identity_id.unwrap_or(local_human_identity_id)
     } else if outreach.parent_turn_id.is_some() {
         let Some(local_agent_identity_id) = local_agent_identity_id else {
             return Ok(());
@@ -195,12 +200,13 @@ pub(super) fn sync_parent_session_relay_join_event(
     };
 
     let is_remote_agent_relay = inbound_remote_agent_relay.is_some();
-    let initiator_identity_id = if peer_is_agent || is_remote_agent_relay {
-        relationship_identity_id.unwrap_or(remote_target_identity_id)
-    } else {
-        local_human_identity_id
-    };
-    let shared_target_display_name = if is_remote_agent_relay {
+    let initiator_identity_id =
+        if peer_is_agent || is_remote_agent_relay || is_local_bridge_agent_request {
+            relationship_identity_id.unwrap_or(remote_target_identity_id)
+        } else {
+            local_human_identity_id
+        };
+    let shared_target_display_name = if is_remote_agent_relay || is_local_bridge_agent_request {
         None
     } else {
         shared_agent_display_name(conn, target_identity_id)?
@@ -208,6 +214,12 @@ pub(super) fn sync_parent_session_relay_join_event(
     let target_display_name = inbound_remote_agent_relay
         .as_ref()
         .map(|(_, display_name)| display_name.clone())
+        .or_else(|| {
+            is_local_bridge_agent_request
+                .then(|| outreach.target_display_name.trim())
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
         .or(shared_target_display_name)
         .or_else(|| {
             identity_display_name(conn, target_identity_id)
@@ -220,7 +232,7 @@ pub(super) fn sync_parent_session_relay_join_event(
                 .flatten()
         })
         .unwrap_or_else(|| "Kordi".to_string());
-    let target_kind = if peer_is_agent || is_remote_agent_relay {
+    let target_kind = if peer_is_agent || is_remote_agent_relay || is_local_bridge_agent_request {
         "bridge-agent"
     } else {
         "local-agent"
@@ -232,8 +244,6 @@ pub(super) fn sync_parent_session_relay_join_event(
         .or(outreach.parent_message_id.as_deref())
         .unwrap_or(conversation.id.as_str());
 
-    let target_was_participant =
-        session_has_participant(conn, parent_session_id, target_identity_id)?;
     upsert_participant(
         conn,
         parent_session_id,
@@ -247,15 +257,14 @@ pub(super) fn sync_parent_session_relay_join_event(
         now_ms(),
     )?;
 
-    if target_was_participant
-        || existing_delegation_join_message_id(
-            conn,
-            parent_session_id,
-            target_identity_id,
-            target_kind,
-            &target_display_name,
-        )?
-        .is_some()
+    if existing_delegation_join_message_id(
+        conn,
+        parent_session_id,
+        target_identity_id,
+        target_kind,
+        &target_display_name,
+    )?
+    .is_some()
     {
         return Ok(());
     }
@@ -274,7 +283,7 @@ pub(super) fn sync_parent_session_relay_join_event(
                 "bridgeConversationId": conversation.id,
                 "targetKind": target_kind,
                 "targetDisplayName": target_display_name,
-                "targetNodeId": if peer_is_agent || is_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else { None },
+                "targetNodeId": if peer_is_agent || is_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else if is_local_bridge_agent_request { Some(outreach.target_node_id.as_str()) } else { None },
                 "initiatorIdentityId": initiator_identity_id,
                 "requestText": outreach.trigger_text.as_deref().unwrap_or(outreach.request_text.as_str()),
                 "contextPolicy": "session-relay",
