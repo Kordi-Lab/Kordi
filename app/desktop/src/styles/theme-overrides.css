@@ -704,7 +704,7 @@
 
 .bridge-app.theme-light .app-transcript-tool-pin-running,
 .bridge-app.theme-light .app-transcript-status-text-running {
-  color: rgb(146 64 14) !important;
+  color: var(--app-tool-running-fg) !important;
 }
 
 .bridge-app.theme-light .app-transcript-tool-pin-error,

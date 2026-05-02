@@ -132,8 +132,8 @@ export function toolTimelineSummary({ tools, active, completed, thinkingText }: 
   const failedCount = tools.filter(timelineToolFailed).length;
   const runningCount = tools.filter((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool)).length;
 
+  if (runningCount > 0 || (failedCount === 0 && (active || !completed))) return 'Thinking and tool use · running…';
   if (failedCount > 0) return 'Tool use needs attention';
-  if (active || runningCount > 0 || !completed) return 'Thinking and tool use · running…';
   if (tools.length > 0) return `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'} · completed`;
   if (thinkingText?.trim()) return 'Reasoning trace';
   return 'Assistant activity';
@@ -180,14 +180,18 @@ function activeToolLabel(tool: ToolTimelineInput) {
 
 export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText }: ToolTimelineFoldedLabelInput) {
   const failedCount = tools.filter(timelineToolFailed).length;
-  if (failedCount > 0) return 'Tool use needs attention';
-
   const phrase = thinkingPhrase(thinkingText ?? '');
   const runningTool = tools.find((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
 
-  if (active || runningTool) {
+  if (runningTool) {
     if (phrase) return `Thinking about ${lowerCaseFirstLetter(phrase)}`;
-    if (runningTool) return activeToolLabel(runningTool);
+    return activeToolLabel(runningTool);
+  }
+
+  if (failedCount > 0) return 'Tool use needs attention';
+
+  if (active) {
+    if (phrase) return `Thinking about ${lowerCaseFirstLetter(phrase)}`;
     return 'Thinking';
   }
 

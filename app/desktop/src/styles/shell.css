@@ -2046,7 +2046,7 @@
 }
 
 .app-transcript-tool-pin-running {
-  color: rgb(251 191 36);
+  color: var(--app-tool-running-fg);
 }
 
 .app-transcript-tool-pin-error {
@@ -2163,7 +2163,7 @@
 }
 
 .app-transcript-status-text-running {
-  color: rgb(251 191 36) !important;
+  color: var(--app-tool-running-fg) !important;
 }
 
 .app-transcript-tool-row-detail-block {
@@ -2229,28 +2229,19 @@
   height: 8px;
   margin: 7px 0 0 5px;
   border-radius: 999px;
-  background: rgb(251 191 36);
-  box-shadow: 0 0 0 5px rgba(251, 191, 36, 0.12), 0 0 18px rgba(251, 191, 36, 0.38);
-  animation: app-tool-running-pulse 1.4s ease-out infinite;
-}
-
-@keyframes app-tool-running-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.3), 0 0 14px rgba(251, 191, 36, 0.3); }
-  70% { box-shadow: 0 0 0 8px rgba(251, 191, 36, 0), 0 0 18px rgba(251, 191, 36, 0.38); }
-  100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0), 0 0 14px rgba(251, 191, 36, 0.3); }
+  background: var(--app-tool-running-fg);
 }
 
 .app-transcript-tool-row-running {
   margin: 4px 0;
-  border: 1px solid rgba(251, 191, 36, 0.22);
+  border: 1px solid var(--app-tool-running-border);
   border-radius: 12px;
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.11), rgba(251, 191, 36, 0.035));
-  box-shadow: inset 3px 0 0 rgba(251, 191, 36, 0.62);
+  background: var(--app-tool-running-bg);
 }
 
 .app-transcript-tool-row-running .app-transcript-tool-row-icon {
-  background: rgba(251, 191, 36, 0.12);
-  color: rgb(252 211 77);
+  background: color-mix(in oklab, var(--app-tool-running-fg) 14%, transparent);
+  color: var(--app-tool-running-icon);
 }
 
 .app-transcript-single-tool {
@@ -2262,9 +2253,8 @@
 
 .app-transcript-single-tool-running {
   border-radius: 14px;
-  border: 1px solid rgba(251, 191, 36, 0.22);
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.03));
-  box-shadow: inset 3px 0 0 rgba(251, 191, 36, 0.62);
+  border: 1px solid var(--app-tool-running-border);
+  background: var(--app-tool-running-bg);
   padding: 8px 8px 6px;
 }
 
@@ -2341,7 +2331,7 @@
 }
 
 .app-transcript-tool-timeline-summary-active .app-transcript-tool-timeline-summary-text {
-  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+  color: var(--app-tool-running-muted);
   animation: app-transcript-quiet-text-pulse 1.8s ease-in-out infinite;
 }
 
@@ -2377,10 +2367,13 @@
   color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
 }
 
-.app-transcript-timeline-row-running .app-transcript-timeline-node,
 .app-transcript-timeline-row-complete .app-transcript-timeline-node,
 .app-transcript-timeline-row-error .app-transcript-timeline-node {
   color: color-mix(in oklab, var(--utility-muted-text) 82%, transparent);
+}
+
+.app-transcript-timeline-row-running .app-transcript-timeline-node {
+  color: var(--app-tool-running-icon);
 }
 
 .app-transcript-timeline-row-body {
@@ -2404,6 +2397,7 @@
 }
 
 .app-transcript-timeline-row-running .app-transcript-timeline-row-title {
+  color: var(--app-tool-running-fg);
   animation: app-transcript-quiet-text-pulse 1.8s ease-in-out infinite;
 }
 
@@ -2428,7 +2422,7 @@
 }
 
 .app-transcript-timeline-running-time {
-  color: color-mix(in oklab, var(--utility-muted-text) 68%, transparent);
+  color: var(--app-tool-running-muted);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
