@@ -54,12 +54,15 @@ use self::storage::{
     bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
     desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
     format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
+    list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
+    load_bridge_inbox_event_from_storage, load_bridge_store, load_conversation_store,
+    load_legacy_bridge_config, mark_bridge_agent_job_retry_wait_in_storage,
+    mark_bridge_agent_job_running_in_storage, mark_bridge_agent_job_terminal_in_storage,
     mark_bridge_conversation_read_in_storage, normalize_imported_bridge_host, normalize_server_url,
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
     parse_imported_bridge_store, record_bridge_inbox_event_and_agent_job, save_bridge_store,
     save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
-    BridgeAgentJobInsert, BridgeInboxEventInsert,
+    BridgeAgentJobInsert, BridgeAgentJobRecord, BridgeInboxEventInsert, BridgeInboxEventRecord,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -21,6 +21,56 @@ pub(in crate::bridge) struct RunningBridgeAgentJob {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) enum AgentJobRunResult {
+    Responded,
+    TerminalFailure(String),
+    RetryableStartFailure(String),
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) struct AgentJobStatusUpdate {
+    pub status: String,
+    pub next_retry_at_ms: Option<i64>,
+    pub completed_at_ms: Option<i64>,
+    pub last_error: Option<String>,
+}
+
+fn retry_delay_ms(retry_count: i64) -> i64 {
+    let retry_count = retry_count.clamp(0, 4) as u32;
+    5_000_i64.saturating_mul(2_i64.saturating_pow(retry_count))
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn job_status_update_for_run_result(
+    result: AgentJobRunResult,
+    now_ms: i64,
+    retry_count: i64,
+) -> AgentJobStatusUpdate {
+    match result {
+        AgentJobRunResult::Responded => AgentJobStatusUpdate {
+            status: "responded".to_string(),
+            next_retry_at_ms: None,
+            completed_at_ms: Some(now_ms),
+            last_error: None,
+        },
+        AgentJobRunResult::TerminalFailure(error) => AgentJobStatusUpdate {
+            status: "processing_failed".to_string(),
+            next_retry_at_ms: None,
+            completed_at_ms: Some(now_ms),
+            last_error: Some(error),
+        },
+        AgentJobRunResult::RetryableStartFailure(error) => AgentJobStatusUpdate {
+            status: "retry_wait".to_string(),
+            next_retry_at_ms: Some(now_ms.saturating_add(retry_delay_ms(retry_count))),
+            completed_at_ms: None,
+            last_error: Some(error),
+        },
+    }
+}
+
+#[allow(dead_code)]
 pub(in crate::bridge) fn select_startable_jobs(
     queued_jobs: &[QueuedBridgeAgentJob],
     running_jobs: &[RunningBridgeAgentJob],
@@ -94,6 +144,45 @@ mod tests {
             requesting_user_key: requesting_user_key.to_string(),
             chat_queue_key: chat_queue_key.to_string(),
         }
+    }
+
+    #[test]
+    fn retryable_start_failure_returns_job_to_queue_not_failed() {
+        let update = job_status_update_for_run_result(
+            AgentJobRunResult::RetryableStartFailure("agent runtime busy".to_string()),
+            10_000,
+            2,
+        );
+
+        assert_eq!(update.status, "retry_wait");
+        assert_eq!(update.completed_at_ms, None);
+        assert_eq!(update.last_error.as_deref(), Some("agent runtime busy"));
+        assert!(update.next_retry_at_ms.expect("retry at") > 10_000);
+    }
+
+    #[test]
+    fn completed_job_starts_next_queued_same_user_job() {
+        let running_jobs: Vec<_> = (0..MAX_ACTIVE_AGENT_JOBS_PER_USER)
+            .map(|index| {
+                running(
+                    &format!("running-{index}"),
+                    "user-a",
+                    &format!("chat-a-{index}"),
+                )
+            })
+            .collect();
+        let queued_jobs = vec![queued("job-next", "user-a", "chat-next", 1_000)];
+        assert!(select_startable_jobs(&queued_jobs, &running_jobs, 2_000).is_empty());
+
+        let after_completion = running_jobs
+            .iter()
+            .filter(|job| job.id != "running-0")
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            select_startable_jobs(&queued_jobs, &after_completion, 2_000),
+            vec!["job-next".to_string()]
+        );
     }
 
     #[test]

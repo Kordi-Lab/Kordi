@@ -9,6 +9,7 @@ use super::{
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 
+#[derive(Clone)]
 pub(super) struct ParsedMailboxEvent {
     pub(super) from_node_id: String,
     pub(super) from_display_name: Option<String>,
