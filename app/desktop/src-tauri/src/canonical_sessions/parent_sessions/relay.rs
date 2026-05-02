@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::super::bridge_identities::upsert_bridge_agent_identity;
 use super::super::bridge_routing::{
@@ -9,8 +9,9 @@ use super::super::models::AppendCanonicalMessageRequest;
 use super::super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::super::schema::ensure_local_profile;
 use super::super::{
-    existing_delegation_join_message_id, identity_display_name, now_ms, session_has_participant,
-    shared_agent_display_name, similar_agent_message_exists, upsert_participant,
+    existing_delegation_join_message_id, hash_hex, identity_display_name, now_ms,
+    session_has_participant, shared_agent_display_name, similar_agent_message_exists,
+    upsert_participant,
 };
 use super::participants::{
     ensure_parent_group_session_participants, ensure_parent_session_participants,
@@ -44,10 +45,127 @@ fn delete_stale_legacy_agent_response_request_row(
     Ok(())
 }
 
+fn relay_response_sender_label(
+    messages: &[crate::bridge::DesktopBridgeConversationMessage],
+) -> Option<String> {
+    messages
+        .iter()
+        .filter(|message| message.direction.as_str() == "inbound-response")
+        .filter_map(|message| message.sender.as_deref())
+        .map(str::trim)
+        .find(|sender| !sender.is_empty())
+        .map(ToString::to_string)
+}
+
+fn select_existing_relay_agent_identity(
+    conn: &Connection,
+    relationship_identity_id: Option<&str>,
+    peer_node_id: &str,
+    display_name: &str,
+) -> Result<Option<String>, String> {
+    if let Some(relationship_identity_id) = relationship_identity_id {
+        let identity_id = conn
+            .query_row(
+                "SELECT id
+                 FROM identities
+                 WHERE kind = 'agent'
+                   AND owner_identity_id = ?1
+                   AND display_name = ?2
+                 ORDER BY updated_at_ms DESC
+                 LIMIT 1",
+                params![relationship_identity_id, display_name],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|err| err.to_string())?;
+        if identity_id.is_some() {
+            return Ok(identity_id);
+        }
+    }
+
+    conn.query_row(
+        "SELECT id
+         FROM identities
+         WHERE kind = 'agent'
+           AND bridge_node_id = ?1
+           AND display_name = ?2
+         ORDER BY updated_at_ms DESC
+         LIMIT 1",
+        params![peer_node_id, display_name],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn upsert_relay_agent_identity(
+    conn: &Connection,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    relationship_identity_id: Option<&str>,
+    display_name: &str,
+) -> Result<String, String> {
+    if let Some(existing_id) = select_existing_relay_agent_identity(
+        conn,
+        relationship_identity_id,
+        &conversation.peer_node_id,
+        display_name,
+    )? {
+        return Ok(existing_id);
+    }
+
+    let fallback_agent_id = format!(
+        "bridge-relay:{}",
+        hash_hex(
+            &format!("{}|{}", conversation.peer_node_id, display_name),
+            16
+        )
+    );
+    Ok(upsert_bridge_agent_identity(
+        conn,
+        Some(&conversation.host_id),
+        display_name,
+        relationship_identity_id.map(ToString::to_string),
+        Some(conversation.peer_node_id.clone()),
+        None,
+        Some(fallback_agent_id),
+        Some("kordi-desktop".to_string()),
+    )?
+    .id)
+}
+
+fn inbound_relay_agent_from_response_sender(
+    conn: &Connection,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    messages: &[crate::bridge::DesktopBridgeConversationMessage],
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    relationship_identity_id: Option<&str>,
+    peer_is_agent: bool,
+) -> Result<Option<(String, String)>, String> {
+    if peer_is_agent || outreach.parent_turn_id.is_none() {
+        return Ok(None);
+    }
+    let Some(display_name) = relay_response_sender_label(messages) else {
+        return Ok(None);
+    };
+    let peer_owner_name = conversation
+        .peer_owner_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if peer_owner_name.is_some_and(|owner| owner == display_name) {
+        return Ok(None);
+    }
+
+    let identity_id =
+        upsert_relay_agent_identity(conn, conversation, relationship_identity_id, &display_name)?;
+    Ok(Some((identity_id, display_name)))
+}
+
 pub(super) fn sync_parent_session_relay_join_event(
     conn: &Connection,
     parent_session_id: &str,
     conversation: &crate::bridge::DesktopBridgeConversation,
+    messages: &[crate::bridge::DesktopBridgeConversationMessage],
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
     local_human_identity_id: &str,
     local_agent_identity_id: Option<&str>,
@@ -55,41 +173,18 @@ pub(super) fn sync_parent_session_relay_join_event(
     remote_target_identity_id: &str,
     peer_is_agent: bool,
 ) -> Result<(), String> {
-    let peer_display_name = conversation
-        .peer_display_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let peer_owner_name = conversation
-        .peer_owner_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let inbound_remote_agent_relay = !peer_is_agent
-        && outreach.parent_turn_id.is_some()
-        && peer_display_name.is_some()
-        && peer_display_name != peer_owner_name;
-    let remote_relay_agent_identity_id = if inbound_remote_agent_relay {
-        Some(
-            upsert_bridge_agent_identity(
-                conn,
-                Some(&conversation.host_id),
-                peer_display_name.unwrap_or("Kordi"),
-                relationship_identity_id.map(ToString::to_string),
-                Some(conversation.peer_node_id.clone()),
-                None,
-                None,
-                Some("kordi-desktop".to_string()),
-            )?
-            .id,
-        )
-    } else {
-        None
-    };
+    let inbound_remote_agent_relay = inbound_relay_agent_from_response_sender(
+        conn,
+        conversation,
+        messages,
+        outreach,
+        relationship_identity_id,
+        peer_is_agent,
+    )?;
     let target_identity_id = if peer_is_agent {
         remote_target_identity_id
-    } else if let Some(remote_relay_agent_identity_id) = remote_relay_agent_identity_id.as_deref() {
-        remote_relay_agent_identity_id
+    } else if let Some((remote_relay_agent_identity_id, _)) = inbound_remote_agent_relay.as_ref() {
+        remote_relay_agent_identity_id.as_str()
     } else if outreach.parent_turn_id.is_some() {
         let Some(local_agent_identity_id) = local_agent_identity_id else {
             return Ok(());
@@ -99,19 +194,20 @@ pub(super) fn sync_parent_session_relay_join_event(
         return Ok(());
     };
 
-    let initiator_identity_id = if peer_is_agent || inbound_remote_agent_relay {
+    let is_remote_agent_relay = inbound_remote_agent_relay.is_some();
+    let initiator_identity_id = if peer_is_agent || is_remote_agent_relay {
         relationship_identity_id.unwrap_or(remote_target_identity_id)
     } else {
         local_human_identity_id
     };
-    let shared_target_display_name = if inbound_remote_agent_relay {
+    let shared_target_display_name = if is_remote_agent_relay {
         None
     } else {
         shared_agent_display_name(conn, target_identity_id)?
     };
     let target_display_name = inbound_remote_agent_relay
-        .then(|| peer_display_name.map(ToString::to_string))
-        .flatten()
+        .as_ref()
+        .map(|(_, display_name)| display_name.clone())
         .or(shared_target_display_name)
         .or_else(|| {
             identity_display_name(conn, target_identity_id)
@@ -124,7 +220,7 @@ pub(super) fn sync_parent_session_relay_join_event(
                 .flatten()
         })
         .unwrap_or_else(|| "Kordi".to_string());
-    let target_kind = if peer_is_agent || inbound_remote_agent_relay {
+    let target_kind = if peer_is_agent || is_remote_agent_relay {
         "bridge-agent"
     } else {
         "local-agent"
@@ -142,7 +238,7 @@ pub(super) fn sync_parent_session_relay_join_event(
         conn,
         parent_session_id,
         target_identity_id,
-        if peer_is_agent || inbound_remote_agent_relay {
+        if peer_is_agent || is_remote_agent_relay {
             "external-agent"
         } else {
             "owned-agent"
@@ -178,7 +274,7 @@ pub(super) fn sync_parent_session_relay_join_event(
                 "bridgeConversationId": conversation.id,
                 "targetKind": target_kind,
                 "targetDisplayName": target_display_name,
-                "targetNodeId": if peer_is_agent || inbound_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else { None },
+                "targetNodeId": if peer_is_agent || is_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else { None },
                 "initiatorIdentityId": initiator_identity_id,
                 "requestText": outreach.trigger_text.as_deref().unwrap_or(outreach.request_text.as_str()),
                 "contextPolicy": "session-relay",
@@ -366,37 +462,15 @@ pub(super) fn sync_parent_session_relay_messages(
     } else {
         None
     };
-    let peer_display_name = conversation
-        .peer_display_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let peer_owner_name = conversation
-        .peer_owner_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let inbound_remote_agent_relay = !peer_is_agent
-        && outreach.parent_turn_id.is_some()
-        && peer_display_name.is_some()
-        && peer_display_name != peer_owner_name;
-    let remote_relay_agent_identity_id = if inbound_remote_agent_relay {
-        Some(
-            upsert_bridge_agent_identity(
-                conn,
-                Some(&conversation.host_id),
-                peer_display_name.unwrap_or("Kordi"),
-                relationship_identity_id.map(ToString::to_string),
-                Some(conversation.peer_node_id.clone()),
-                None,
-                None,
-                Some("kordi-desktop".to_string()),
-            )?
-            .id,
-        )
-    } else {
-        None
-    };
+    let remote_relay_agent_identity_id = inbound_relay_agent_from_response_sender(
+        conn,
+        conversation,
+        messages,
+        outreach,
+        relationship_identity_id,
+        peer_is_agent,
+    )?
+    .map(|(identity_id, _)| identity_id);
     for message in messages.iter().filter(matches_relay_message) {
         let is_outbound = matches!(message.direction.as_str(), "outbound" | "outbound-response");
         let is_inbound = matches!(message.direction.as_str(), "inbound" | "inbound-response");

@@ -126,6 +126,7 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
             conn,
             parent_session_id,
             conversation,
+            messages,
             outreach,
             local_human_identity_id,
             local_agent_identity_id,
