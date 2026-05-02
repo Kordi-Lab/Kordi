@@ -51,6 +51,18 @@ function messageResponseText(message: Message) {
   return (message.turn?.assistantText ?? message.text).trim();
 }
 
+function comparableAgentResponseText(value: string) {
+  return value.trim().replace(/\s+/gu, '');
+}
+
+function sameAgentResponseText(left: string, right: string) {
+  const leftTrimmed = left.trim();
+  const rightTrimmed = right.trim();
+  if (!leftTrimmed || !rightTrimmed) return false;
+  return leftTrimmed === rightTrimmed
+    || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
+}
+
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
@@ -69,7 +81,7 @@ function mergeLocalOwnedAgentRuntimeStatus(
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
     const localText = messageResponseText(localMessage);
     const matchingCanonicalIndex = localText
-      ? merged.findIndex((message) => message.role === 'owned-agent' && messageResponseText(message) === localText)
+      ? merged.findIndex((message) => message.role === 'owned-agent' && sameAgentResponseText(messageResponseText(message), localText))
       : -1;
     if (matchingCanonicalIndex >= 0) {
       merged[matchingCanonicalIndex] = localMessage;

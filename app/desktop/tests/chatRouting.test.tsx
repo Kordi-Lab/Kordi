@@ -1217,6 +1217,86 @@ test('canonical read model prefers local rich owned-agent runtime over later pla
   assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
 
+test('canonical read model replaces bridge relay copy with active local owned-agent group turn', () => {
+  const sessionId = 'session:group:local-owner-duplicate';
+  const localText = 'I’ll quickly check current public info/reviews for Al-Marsa Restaurant pricing before answering.\n\nAl-Marsa Restaurant in KAUST is probably **medium to expensive**.';
+  const relayText = 'I’ll quickly check current public info/reviews for Al-Marsa Restaurant pricing before answering.Al-Marsa Restaurant in KAUST is probably **medium to expensive**.';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Testuser4',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Testuser4', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Testuser6', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'KAUST weekend', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@Kordi is Al-Marsa Restaurant expensive?', content: { sender: 'You', timeLabel: '12:51' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'request' },
+      { id: 'msg:bridge-relay', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: relayText, content: { sender: "Testuser4's Kordi", timeLabel: '12:52', kind: 'session-relay', deliveryState: 'responded', requestId: 'bridge_req_local_group' }, status: 'complete', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'relay' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const localRuntimeConversation = {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: 'KAUST weekend',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Group chat',
+    participants: ['Me', 'My Kordi', 'Testuser6'],
+    messages: [{
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      text: '',
+      time: '12:52',
+      turn: {
+        id: 'local-turn-al-marsa',
+        sessionId,
+        prompt: '@Kordi is Al-Marsa Restaurant expensive?',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: localText,
+        thinkingText: 'Considering web search options',
+        tools: [{ id: 'tool-search', name: 'web_search', status: 'done', arguments: '', liveOutput: '', resultText: 'Al Marsa listing', detail: null, isError: false }],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    }],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([localRuntimeConversation as never], (messages, fallback) => messages.at(-1)?.turn?.assistantText ?? fallback ?? '') ?? [];
+  const messages = conversations[0]?.messages ?? [];
+
+  assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), [
+    '@Kordi is Al-Marsa Restaurant expensive?',
+    localText,
+  ]);
+  assert.equal(messages[1]?.turn?.id, 'local-turn-al-marsa');
+  assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['web_search']);
+});
+
 test('canonical read model dedupes owned-agent runtime and bridge relay when only whitespace differs', () => {
   const sessionId = 'session:bridge:humans:whitespace-duplicate-runtime';
   const localText = 'I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**';
