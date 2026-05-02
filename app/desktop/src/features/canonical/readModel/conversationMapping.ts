@@ -174,6 +174,10 @@ export function sessionHasActiveProcessing(messages: Message[]) {
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
 }
 
+export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions'][number]) {
+  return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
+}
+
 export function syntheticConversation(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -190,7 +194,7 @@ export function syntheticConversation(
   }, {});
   const bridgeTarget = syntheticBridgeTarget(session, participants);
   const updatedAtLabel = messages[messages.length - 1]?.time
-    ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+    ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
 
   const displayTitle = sessionDisplayTitle(messages, session.title);
 

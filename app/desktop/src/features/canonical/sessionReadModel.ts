@@ -11,6 +11,7 @@ import { formatDesktopClockTime } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  sessionChatActivityAtMs,
   sessionDisplayTitle,
   sessionHasActiveProcessing,
   sessionMetadata,
@@ -155,11 +156,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
   const indexes = buildCanonicalIndexes(canonicalState);
   const chatSessions = canonicalState.sessions
     .filter((session) => session.kind !== 'project' && session.status !== 'archived')
-    .sort((left, right) => {
-      const leftTs = left.lastMessageAtMs ?? left.updatedAtMs ?? left.createdAtMs;
-      const rightTs = right.lastMessageAtMs ?? right.updatedAtMs ?? right.createdAtMs;
-      return rightTs - leftTs;
-    });
+    .sort((left, right) => sessionChatActivityAtMs(right) - sessionChatActivityAtMs(left));
 
   return {
     sessionTitle(sessionId, fallback) {
@@ -195,7 +192,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
-        ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+        ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
 
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
@@ -254,9 +251,10 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
 
       const hydrated = [...groups.values()]
         .sort((left, right) => {
-          const leftTs = left[0]?.lastMessageAtMs ?? left[0]?.updatedAtMs ?? left[0]?.createdAtMs ?? 0;
-          const rightTs = right[0]?.lastMessageAtMs ?? right[0]?.updatedAtMs ?? right[0]?.createdAtMs ?? 0;
-          return rightTs - leftTs;
+          const leftSession = left[0];
+          const rightSession = right[0];
+          return (rightSession ? sessionChatActivityAtMs(rightSession) : 0)
+            - (leftSession ? sessionChatActivityAtMs(leftSession) : 0);
         })
         .flatMap((sessions) => {
           const representativeWithMessages = sessions.find((session) => (indexes.rawMessageCountBySessionId.get(session.id) ?? 0) > 0);
