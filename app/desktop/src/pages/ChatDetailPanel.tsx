@@ -336,7 +336,7 @@ function ChatDetailPanelView({
               <div className="app-inspector-meta-list">
                 <MetaRow label="Target" value={activeConv.outreach.targetDisplayName} />
                 <MetaRow label="Owner" value={activeConv.outreach.targetOwnerName} />
-                <MetaRow label="Parent session" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
+                <MetaRow label="Source chat ID" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
                 <MetaRow label="Local human" value={activeConv.identity?.localHumanName} />
                 <MetaRow label="Local agent" value={activeConv.identity?.localAgentName} />
                 <MetaRow label="Remote human" value={activeConv.identity?.remoteHumanName} />

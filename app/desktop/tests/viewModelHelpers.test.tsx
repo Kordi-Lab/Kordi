@@ -123,9 +123,17 @@ test('formatSessionIdSubtitle labels raw ids for display', () => {
   assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
   assert.equal(
     formatSessionIdSubtitle('session:bridge:bridge:bridge_18e6ee0dbc0d4785a3454a64129fe23b:kd_4FiDc8WETK5o26Ece6XvHFm6b8g9'),
-    'Bridge agent thread',
+    'Session ID: session:bridge:bridge:bridge_18e6ee0dbc0d4785a3454a64129fe23b:kd_4FiDc8WETK5o26Ece6XvHFm6b8g9',
   );
-  assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Agent chat');
+  assert.equal(
+    formatSessionIdSubtitle('session:bridge:humans:c49e4abc'),
+    'Session ID: session:bridge:humans:c49e4abc',
+  );
+  assert.equal(
+    formatSessionIdSubtitle('session:group:437f306a-6278-4b64-a635-79a71d2cb3e0'),
+    'Session ID: session:group:437f306a-6278-4b64-a635-79a71d2cb3e0',
+  );
+  assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Session ID: session:direct-agent:next-id');
 });
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
