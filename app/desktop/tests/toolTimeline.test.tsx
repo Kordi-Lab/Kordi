@@ -76,8 +76,56 @@ test('running tool progress takes preview priority over earlier attention state'
     'Thinking and tool use · running…',
   );
   assert.equal(
-    toolTimelineFoldedLabel({ tools, active: true, completed: false }),
-    'Running command',
+    toolTimelineFoldedLabel({ tools, active: true, completed: false, runningElapsed: '12s' }),
+    'Running command: pnpm lint · 12s',
+  );
+});
+
+/**
+ * The folded active preview is the only visible tool state until the user expands
+ * the timeline, so it must identify the live work instead of repeating generic
+ * thinking copy.
+ */
+test('running folded preview includes live tool target and elapsed time before thinking text', () => {
+  assert.equal(
+    toolTimelineFoldedLabel({
+      tools: [{ name: 'bash', status: 'running', arguments: '{"command":"pnpm --dir app/desktop lint"}' }],
+      active: true,
+      completed: false,
+      thinkingText: 'Clarifying task requirements',
+      runningElapsed: '9s',
+    }),
+    'Running command: pnpm --dir app/desktop lint · 9s',
+  );
+
+  assert.equal(
+    toolTimelineFoldedLabel({
+      tools: [{ name: 'read', status: 'running', arguments: '{"path":"app/desktop/src/kordi-app/components/toolTimeline.ts"}' }],
+      active: true,
+      completed: false,
+      runningElapsed: '4s',
+    }),
+    'Reading file: app/desktop/src/kordi-app/components/toolTimeline.ts · 4s',
+  );
+
+  assert.equal(
+    toolTimelineFoldedLabel({
+      tools: [{ name: 'grep', status: 'running', arguments: '{"pattern":"toolTimelineFoldedLabel"}' }],
+      active: true,
+      completed: false,
+      runningElapsed: '6s',
+    }),
+    'Searching: toolTimelineFoldedLabel · 6s',
+  );
+
+  assert.equal(
+    toolTimelineFoldedLabel({
+      tools: [{ name: 'web_fetch', status: 'running', arguments: '{"url":"https://example.com/docs"}' }],
+      active: true,
+      completed: false,
+      runningElapsed: '7s',
+    }),
+    'Fetching URL: https://example.com/docs · 7s',
   );
 });
 
@@ -95,7 +143,7 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       completed: false,
       thinkingText: 'assessing current disk space usage and capacity',
     }),
-    'Thinking about assessing current disk space usage and capacity',
+    'Running command: df -h',
   );
   assert.equal(
     toolTimelineFoldedLabel({
@@ -112,7 +160,7 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       active: true,
       completed: false,
     }),
-    'Running command',
+    'Running command: echo hi',
   );
   assert.equal(
     toolTimelineFoldedLabel({
@@ -121,6 +169,6 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       completed: false,
       thinkingText: '**Checking disk usage**\n\nI need to inspect the filesystem.',
     }),
-    'Thinking about checking disk usage',
+    'Running command: df -h',
   );
 });

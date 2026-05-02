@@ -42,7 +42,7 @@ import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
-import { firstMeaningfulThinkingLine, formatRunningElapsed, toolTimelineFoldedLabel, toolTimelineToolLabel, toolTimelineTypeLabel } from './toolTimeline';
+import { firstMeaningfulThinkingLine, formatRunningElapsed, toolTimelineFoldedLabel, toolTimelineRunningToolLabel, toolTimelineToolLabel, toolTimelineTypeLabel } from './toolTimeline';
 import type {
   Contact,
   ContactRequest,
@@ -1072,26 +1072,31 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
   );
 }
 
-function useRunningElapsedLabel(running: boolean) {
+function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
+  const key = resetKey ?? '';
   const startedAtRef = useRef<number | null>(running ? Date.now() : null);
+  const runningKeyRef = useRef(key);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
     if (!running) {
       startedAtRef.current = null;
+      runningKeyRef.current = key;
       setElapsedMs(0);
       return undefined;
     }
 
-    if (startedAtRef.current === null) {
+    if (startedAtRef.current === null || runningKeyRef.current !== key) {
       startedAtRef.current = Date.now();
+      runningKeyRef.current = key;
+      setElapsedMs(0);
     }
 
     const updateElapsed = () => setElapsedMs(Date.now() - (startedAtRef.current ?? Date.now()));
     updateElapsed();
     const interval = window.setInterval(updateElapsed, 1_000);
     return () => window.clearInterval(interval);
-  }, [running]);
+  }, [key, running]);
 
   return running ? formatRunningElapsed(elapsedMs) : null;
 }
@@ -1103,8 +1108,8 @@ function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   const metaText = toolMetaText(tool);
   const running = isRunningTool(tool);
   const typeLabel = toolTimelineTypeLabel(tool);
-  const label = running && typeLabel === 'Script' ? 'Running command' : toolTimelineToolLabel(tool);
-  const runningElapsed = useRunningElapsedLabel(running);
+  const label = running ? toolTimelineRunningToolLabel(tool) : toolTimelineToolLabel(tool);
+  const runningElapsed = useRunningElapsedLabel(running, tool.id);
 
   return (
     <div className={cn('app-transcript-timeline-row', running && 'app-transcript-timeline-row-running')}>
@@ -1163,7 +1168,9 @@ function FoldableToolTimeline({
   const [expandedTimeline, setExpandedTimeline] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
   const failed = tools.some(isFailedTool);
-  const summary = toolTimelineFoldedLabel({ tools, active, completed, thinkingText });
+  const runningTool = tools.find(isRunningTool);
+  const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
+  const summary = toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
 
   if (!hasThinking && tools.length === 0) return null;
 
