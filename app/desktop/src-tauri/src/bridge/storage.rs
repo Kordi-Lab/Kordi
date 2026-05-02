@@ -26,7 +26,7 @@ use self::conversations::{
     find_conversation_for_peer, init_conversation_schema, load_conversation_store_from_db,
     reconcile_and_repair_persisted_conversation_rows,
     repair_split_bridge_person_session_relay_rows, scoped_conversation_id,
-    upsert_conversation_record,
+    update_message_delivery_state_in_db_for_test, upsert_conversation_record,
 };
 #[cfg(test)]
 use super::{

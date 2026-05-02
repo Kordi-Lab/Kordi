@@ -18,6 +18,8 @@ pub(in crate::bridge) use lookup::bridge_conversation_id;
 pub(in crate::bridge::storage) use repair::repair_split_bridge_person_session_relay_rows;
 
 #[cfg(test)]
+pub(in crate::bridge::storage) use actions::update_message_delivery_state_in_db_for_test;
+#[cfg(test)]
 pub(in crate::bridge::storage) use lookup::{find_conversation_for_peer, scoped_conversation_id};
 #[cfg(test)]
 pub(in crate::bridge::storage) use records::{
