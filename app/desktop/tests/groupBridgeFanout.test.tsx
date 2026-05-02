@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import {
   bridgeGroupSessionParticipants,
   bridgeGroupSessionSendTargets,
+  bridgeGroupSessionSpaceId,
+  bridgeLocalAgentRelayTargets,
   isBridgeGroupSession,
 } from '../src/features/chat/messageActions/chatMessages';
 import type { Conversation, ConversationBridgeTarget } from '../src/kordi-app/types';
@@ -56,6 +58,22 @@ test('group bridge send targets include every non-self human participant and exc
     { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', runtime: 'person', humanId: 'kh_alice', agentId: null },
     { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
   ]);
+});
+
+test('group local-agent relays fan out to every non-self human participant', () => {
+  assert.deepEqual(bridgeLocalAgentRelayTargets(groupConversation(), activeTarget), [
+    { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', runtime: 'person', humanId: 'kh_alice', agentId: null },
+    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
+  ]);
+});
+
+test('group session root id follows participant-space ids for continuations', () => {
+  assert.equal(bridgeGroupSessionSpaceId({
+    canonicalSessionId: 'session:group:child',
+    participantSpaceId: 'group:session:group:root',
+    directness: 'Group chat',
+    canonicalParticipants: groupConversation().canonicalParticipants,
+  }), 'session:group:root');
 });
 
 test('group bridge thread metadata carries all human members for remote group reconstruction', () => {

@@ -171,14 +171,40 @@ function metadataStringValue(metadata: Record<string, unknown>, key: string) {
 }
 
 function groupSpaceIdForConversation(conversation: Conversation) {
+  const metadata = metadataRecord(conversation.metadata);
+  const continuationSpaceId = metadataStringValue(metadata, 'continuedFromSpaceId');
+  if (continuationSpaceId) return normalizeGroupSpaceId(continuationSpaceId);
   const explicit = cleanOptionalText(conversation.participantSpaceId);
   if (explicit) return normalizeGroupSpaceId(explicit);
-  const metadata = metadataRecord(conversation.metadata);
   return normalizeGroupSpaceId(
-    metadataStringValue(metadata, 'groupId')
-    || metadataStringValue(metadata, 'groupSpaceId')
-    || metadataStringValue(metadata, 'continuedFromSpaceId'),
+    metadataStringValue(metadata, 'groupSpaceId')
+    || metadataStringValue(metadata, 'groupId'),
   );
+}
+
+function groupParticipantKey(conversation: Conversation) {
+  return allDisplayParticipants(conversation)
+    .filter((participant) => participant.kind === 'human')
+    .map((participant) => participant.id.trim())
+    .filter(Boolean)
+    .sort()
+    .join('+');
+}
+
+function groupHasCustomName(conversation: Conversation) {
+  return Boolean(metadataStringValue(metadataRecord(conversation.metadata), 'customName'));
+}
+
+function genericBridgeGroupContinuation(conversation: Conversation) {
+  const metadata = metadataRecord(conversation.metadata);
+  if (metadataStringValue(metadata, 'source') !== 'bridge-session-thread') return false;
+  if (groupHasCustomName(conversation)) return false;
+  const ownSessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  const explicitGroupId = normalizeGroupSpaceId(
+    metadataStringValue(metadata, 'groupSpaceId')
+    || metadataStringValue(metadata, 'groupId'),
+  );
+  return Boolean(ownSessionId && explicitGroupId === ownSessionId);
 }
 
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
@@ -276,6 +302,21 @@ function avatarParticipants(kind: ParticipantSpaceKind, participants: Conversati
 }
 
 export function buildParticipantSpaces(conversations: Conversation[]): ParticipantSpaceViewModel[] {
+  const namedGroupIdByParticipantKey = new Map<string, string | null>();
+  for (const conversation of conversations) {
+    const nonSelf = nonSelfParticipants(conversation)
+      .sort((left, right) => participantSortKey(left).localeCompare(participantSortKey(right)));
+    const displayParticipants = allDisplayParticipants(conversation);
+    const kind = spaceKindForConversation(conversation, nonSelf);
+    if (kind !== 'group' || !groupHasCustomName(conversation)) continue;
+    const primary = primaryParticipantForKind(kind, displayParticipants);
+    const id = spaceIdForConversation(kind, primary, conversation);
+    const participantKey = groupParticipantKey(conversation);
+    if (!participantKey) continue;
+    const existing = namedGroupIdByParticipantKey.get(participantKey);
+    namedGroupIdByParticipantKey.set(participantKey, existing && existing !== id ? null : id);
+  }
+
   const groups = new Map<string, {
     kind: ParticipantSpaceKind;
     participants: ConversationParticipant[];
@@ -288,7 +329,12 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const displayParticipants = allDisplayParticipants(conversation);
     const kind = spaceKindForConversation(conversation, nonSelf);
     const primary = primaryParticipantForKind(kind, displayParticipants);
-    const id = spaceIdForConversation(kind, primary, conversation);
+    const baseId = spaceIdForConversation(kind, primary, conversation);
+    const participantKey = kind === 'group' ? groupParticipantKey(conversation) : '';
+    const aliasId = kind === 'group' && genericBridgeGroupContinuation(conversation) && participantKey
+      ? namedGroupIdByParticipantKey.get(participantKey)
+      : null;
+    const id = aliasId || baseId;
     const updatedAtMs = conversationTimestamp(conversation, conversations.length - index);
     const session = buildSession(conversation, updatedAtMs);
     const existing = groups.get(id);

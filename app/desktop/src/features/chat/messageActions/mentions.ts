@@ -194,7 +194,7 @@ export function mentionScopeConversationForActiveConversation<T extends MentionS
 
   return {
     ...activeConversation,
-    participantSpaceId: activeConversation.participantSpaceId ?? rootConversation.participantSpaceId,
+    participantSpaceId: rootConversation.participantSpaceId ?? activeConversation.participantSpaceId,
     canonicalParticipants: rootConversation.canonicalParticipants ?? activeConversation.canonicalParticipants,
     participants: rootConversation.participants?.length ? rootConversation.participants : activeConversation.participants,
     directness: rootConversation.directness ?? activeConversation.directness,

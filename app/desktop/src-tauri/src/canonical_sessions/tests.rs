@@ -640,6 +640,7 @@ fn outreach_context_snapshot_is_session_scoped() {
         parent_session_id: Some(session.id.clone()),
         parent_session_title: Some("Parent".to_string()),
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: None,
@@ -1100,6 +1101,7 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
         parent_session_id: Some("session:bridge:humans:test".to_string()),
         parent_session_title: Some("hello".to_string()),
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: None,
@@ -1229,6 +1231,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
         parent_session_id: Some(session_id.to_string()),
         parent_session_title: None,
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: None,
@@ -1444,6 +1447,7 @@ fn inbound_session_message_creates_direct_person_parent_with_first_message_title
         parent_session_id: Some(parent_session_id.to_string()),
         parent_session_title: None,
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: None,
@@ -1577,12 +1581,14 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
         .expect("upsert identity");
     }
 
-    let parent_session_id = "session:group:triad";
+    let group_space_id = "session:group:triad";
+    let parent_session_id = "session:group:triad-child";
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-person".to_string(),
         parent_session_id: Some(parent_session_id.to_string()),
         parent_session_title: Some("Alice, Bob, Carol".to_string()),
         parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some(group_space_id.to_string()),
         parent_session_participants: vec![
             crate::bridge::DesktopBridgeSessionParticipant {
                 identity_id: Some("human:local-alice".to_string()),
@@ -1693,7 +1699,7 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
             .as_ref()
             .and_then(|metadata| metadata.get("groupId"))
             .and_then(|value| value.as_str()),
-        Some(parent_session_id),
+        Some(group_space_id),
     );
     assert_eq!(
         session
@@ -1701,7 +1707,7 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
             .as_ref()
             .and_then(|metadata| metadata.get("groupSpaceId"))
             .and_then(|value| value.as_str()),
-        Some(parent_session_id),
+        Some(group_space_id),
     );
     assert_eq!(
         session
@@ -1842,6 +1848,7 @@ fn inbound_group_session_invite_reconstructs_group_parent_without_visible_messag
         parent_session_id: Some(parent_session_id.to_string()),
         parent_session_title: Some("Alice, Bob, Carol".to_string()),
         parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: None,
         parent_session_participants: vec![
             crate::bridge::DesktopBridgeSessionParticipant {
                 identity_id: Some("human:local-alice".to_string()),
@@ -2055,6 +2062,7 @@ fn inbound_group_session_update_renames_group_without_visible_message() {
         parent_session_id: Some(parent_session_id.to_string()),
         parent_session_title: Some("Renamed group".to_string()),
         parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: None,
         parent_session_participants: vec![
             crate::bridge::DesktopBridgeSessionParticipant {
                 identity_id: Some("human:local-alice".to_string()),
@@ -2242,6 +2250,7 @@ fn group_session_fanout_reconciles_duplicate_parent_message_copies() {
             parent_session_id: Some(parent_session_id.to_string()),
             parent_session_title: Some("Group".to_string()),
             parent_session_kind: Some("group".to_string()),
+            parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: None,
@@ -2392,6 +2401,7 @@ fn attachment_only_session_message_syncs_into_parent_session() {
         parent_session_id: Some(parent_session_id.to_string()),
         parent_session_title: None,
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: Vec::new(),
         parent_turn_id: None,
@@ -2624,6 +2634,7 @@ fn snapshot_you_sender_uses_remote_human_name_for_receiver() {
         parent_session_id: Some("session:snapshot".to_string()),
         parent_session_title: Some("Shared".to_string()),
         parent_session_kind: None,
+        parent_group_space_id: None,
         parent_session_participants: Vec::new(),
         parent_session_messages: vec![crate::bridge::DesktopBridgeSessionThreadMessage {
             role: "user".to_string(),

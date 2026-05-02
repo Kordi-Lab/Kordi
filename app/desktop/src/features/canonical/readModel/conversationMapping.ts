@@ -147,7 +147,7 @@ function normalizeParticipantSpaceId(value: string) {
 export function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
   if (session.kind !== 'group') return null;
   const metadata = sessionMetadata(session);
-  const groupSpaceId = stringValue(metadata.groupId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.continuedFromSpaceId);
+  const groupSpaceId = stringValue(metadata.continuedFromSpaceId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.groupId);
   return groupSpaceId ? normalizeParticipantSpaceId(groupSpaceId) || null : null;
 }
 

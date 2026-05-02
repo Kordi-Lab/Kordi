@@ -301,6 +301,8 @@ pub struct DesktopBridgeOutreachMetadata {
     pub parent_session_id: Option<String>,
     pub parent_session_title: Option<String>,
     pub parent_session_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_group_space_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -510,6 +512,7 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub parent_session_id: Option<String>,
     pub parent_session_title: Option<String>,
     pub parent_session_kind: Option<String>,
+    pub parent_group_space_id: Option<String>,
     #[serde(default)]
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default)]

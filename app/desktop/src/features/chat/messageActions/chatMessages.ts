@@ -140,6 +140,17 @@ export function isBridgeGroupSession(conversation?: {
   return humanCount > 1;
 }
 
+export function bridgeGroupSessionSpaceId(conversation?: {
+  canonicalSessionId?: string | null;
+  participantSpaceId?: string | null;
+} | null) {
+  const participantSpaceId = cleanText(conversation?.participantSpaceId);
+  if (participantSpaceId) {
+    return participantSpaceId.startsWith('group:') ? participantSpaceId.slice('group:'.length) : participantSpaceId;
+  }
+  return cleanText(conversation?.canonicalSessionId);
+}
+
 export function bridgeGroupSessionSendTargets(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -172,6 +183,17 @@ export function bridgeGroupSessionSendTargets(
   }
 
   return [...targets.values()];
+}
+
+export function bridgeLocalAgentRelayTargets(
+  conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
+  fallbackTarget?: ConversationBridgeTarget | null,
+) {
+  if (isBridgeGroupSession(conversation)) {
+    return bridgeGroupSessionSendTargets(conversation, fallbackTarget);
+  }
+  if (!fallbackTarget?.hostId || !fallbackTarget.nodeId) return [];
+  return [{ ...fallbackTarget, runtime: 'person', agentId: null }];
 }
 
 export function bridgeGroupSessionParticipants(conversation: Pick<Conversation, 'canonicalParticipants'>): DesktopBridgeSessionParticipant[] {
@@ -278,6 +300,17 @@ export function useChatMessageActions({
     if (chatSendIsBusy({ isDesktopChatSending, desktopLiveTurn })) return;
 
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
+    const activeGroupSessionScope = {
+      canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
+      participantSpaceId: activeConvMentionScope?.participantSpaceId,
+      directness: activeConvMentionScope?.directness,
+      canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
+    };
+    const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
+    const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
+    const activeGroupSessionParticipants = activeGroupSessionIsGroup
+      ? bridgeGroupSessionParticipants(activeGroupSessionScope)
+      : [];
 
     if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
       try {
@@ -386,19 +419,11 @@ export function useChatMessageActions({
         ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
         : null;
       const shouldStayInCanonicalSession = Boolean(activeConvBridgeTarget && activeConvCanonicalSessionId);
-      const groupSessionScope = {
-        canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
-        participantSpaceId: activeConvMentionScope?.participantSpaceId,
-        directness: activeConvMentionScope?.directness,
-        canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
-      };
-      const isGroupSessionMessage = shouldStayInCanonicalSession && isBridgeGroupSession(groupSessionScope);
+      const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;
       const groupSendTargets = isGroupSessionMessage
-        ? bridgeGroupSessionSendTargets(groupSessionScope, activeConvBridgeTarget)
+        ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget)
         : [];
-      const groupSessionParticipants = isGroupSessionMessage
-        ? bridgeGroupSessionParticipants(groupSessionScope)
-        : [];
+      const groupSessionParticipants = isGroupSessionMessage ? activeGroupSessionParticipants : [];
       const sendPlan = bridgeConversationSendPlan({
         activeConvId,
         hasMaterializedBridgeConversation,
@@ -481,6 +506,7 @@ export function useChatMessageActions({
                   parentSessionId: activeConvCanonicalSessionId,
                   parentSessionTitle: null,
                   parentSessionKind: 'group',
+                  parentGroupSpaceId: activeGroupSessionSpaceId,
                   parentSessionParticipants: groupSessionParticipants,
                   parentSessionMessages: [],
                   parentTurnId: null,
@@ -516,6 +542,8 @@ export function useChatMessageActions({
                 contextPolicy: targetIsAgent ? 'recent-window' : 'session-message',
                 parentSessionId: activeConvCanonicalSessionId,
                 parentSessionTitle: null,
+                parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
+                parentGroupSpaceId: activeGroupSessionSpaceId,
                 parentSessionMessages: targetIsAgent ? parentSessionMessagesForOutreach(activeConvMessages) : [],
                 parentTurnId: null,
                 parentMessageId: preparedCanonicalMessage?.messageId ?? null,
@@ -686,12 +714,18 @@ export function useChatMessageActions({
         'desktop-chat-ui',
         willRelayToLocalAgent ? 'sent' : 'sending',
       );
-      const localAgentRelayTarget = willRelayToLocalAgent && activeConvBridgeTarget
+      const localAgentRelayTargets = willRelayToLocalAgent && activeConvBridgeTarget
+        ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget)
+        : [];
+      const localAgentRelayPlan = localAgentRelayTargets.length > 0
         ? {
-            target: activeConvBridgeTarget,
+            targets: localAgentRelayTargets,
             parentSessionId: parentSessionIdForMessage,
             parentMessageId: preparedCanonicalMessage?.messageId ?? null,
             parentSessionTitle: desktopChatState?.activeSession.title ?? null,
+            parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
+            parentGroupSpaceId: activeGroupSessionSpaceId,
+            parentSessionParticipants: activeGroupSessionParticipants,
           }
         : null;
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
@@ -707,10 +741,38 @@ export function useChatMessageActions({
       setComposerDrafts((current) => ({ ...current, chat: '' }));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
-      const runtimeMessageText = localAgentRelayTarget
+      const relayToLocalAgentTargets = async (
+        requestText: string,
+        parentTurnId?: string | null,
+        deliveryState?: 'processing' | 'responded',
+        bridgeRequestId?: string | null,
+        attachments?: typeof chatComposerAttachments,
+      ) => {
+        if (!localAgentRelayPlan) return;
+        for (const target of localAgentRelayPlan.targets) {
+          const nextState = await relaySharedSessionMessage(
+            target,
+            localAgentRelayPlan.parentSessionId,
+            requestText,
+            localAgentRelayPlan.parentSessionTitle,
+            localAgentRelayPlan.parentMessageId,
+            parentTurnId,
+            deliveryState,
+            bridgeRequestId,
+            {
+              parentSessionKind: localAgentRelayPlan.parentSessionKind,
+              parentGroupSpaceId: localAgentRelayPlan.parentGroupSpaceId,
+              parentSessionParticipants: localAgentRelayPlan.parentSessionParticipants,
+              attachments,
+            },
+          );
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+        }
+      };
+      const runtimeMessageText = localAgentRelayPlan
         ? localAgentRuntimeText(text, desktopChatState, desktopBridgeState)
         : text;
-      if (localAgentRelayTarget) {
+      if (localAgentRelayPlan) {
         setIsDesktopChatSending(true);
         const optimisticLiveTurnId = `local-agent-starting:${preparedCanonicalMessage?.messageId ?? Date.now()}`;
         setDesktopLiveTurnsBySession((current) => ({
@@ -735,56 +797,40 @@ export function useChatMessageActions({
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
         })
         .then(async () => {
-          const userRelayPromise = localAgentRelayTarget
-            ? relaySharedSessionMessage(
-              localAgentRelayTarget.target,
-              localAgentRelayTarget.parentSessionId,
+          const userRelayPromise = localAgentRelayPlan
+            ? relayToLocalAgentTargets(
               publicLocalAgentMentionText(text, desktopBridgeState),
-              localAgentRelayTarget.parentSessionTitle,
-              localAgentRelayTarget.parentMessageId,
               null,
               undefined,
               undefined,
               chatComposerAttachments,
-            )
-              .then((nextState) => {
-                setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-              })
-              .catch((error: unknown) => {
-                setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
-              })
+            ).catch((error: unknown) => {
+              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
+            })
             : null;
           const turn = await startDesktopChatMessage(
             resolvedSessionId,
             runtimeMessageText,
             attachmentPaths,
-            localAgentRelayTarget ? localAgentRuntimeRouteForBridgeState(desktopBridgeState, desktopChatState) : null,
+            localAgentRelayPlan ? localAgentRuntimeRouteForBridgeState(desktopBridgeState, desktopChatState) : null,
           );
           const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
           let processingRelayPromise: Promise<void> | null = null;
-          if (localAgentRelayTarget) {
+          if (localAgentRelayPlan) {
             await userRelayPromise;
-            processingRelayPromise = relaySharedSessionMessage(
-              localAgentRelayTarget.target,
-              localAgentRelayTarget.parentSessionId,
+            processingRelayPromise = relayToLocalAgentTargets(
               'processing...',
-              localAgentRelayTarget.parentSessionTitle,
-              localAgentRelayTarget.parentMessageId,
               turn.id,
               'processing',
               localAgentBridgeRequestId,
-            )
-              .then((nextState) => {
-                setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-              })
-              .catch((error: unknown) => {
-                setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
-              });
+            ).catch((error: unknown) => {
+              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
+            });
           }
           return { turn, processingRelayPromise, localAgentBridgeRequestId };
         })
         .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
-          if (!localAgentRelayTarget) {
+          if (!localAgentRelayPlan) {
             void watchDesktopLiveTurn(turn).finally(() => {
               if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
                 localChatSendInFlightRef.current = null;
@@ -804,17 +850,12 @@ export function useChatMessageActions({
                 localHumanAddressLabels(desktopBridgeState),
               );
               if (!completedTurn.succeeded || !assistantText) return;
-              const nextState = await relaySharedSessionMessage(
-                localAgentRelayTarget.target,
-                localAgentRelayTarget.parentSessionId,
+              await relayToLocalAgentTargets(
                 assistantText,
-                localAgentRelayTarget.parentSessionTitle,
-                localAgentRelayTarget.parentMessageId,
                 completedTurn.id,
                 'responded',
                 localAgentBridgeRequestId,
               );
-              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
             } finally {
               if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
                 localChatSendInFlightRef.current = null;
@@ -826,7 +867,7 @@ export function useChatMessageActions({
           });
         })
         .catch((error: unknown) => {
-          if (localAgentRelayTarget) {
+          if (localAgentRelayPlan) {
             if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
               localChatSendInFlightRef.current = null;
             }

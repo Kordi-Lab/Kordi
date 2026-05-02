@@ -1,4 +1,4 @@
-import type { ConversationBridgeTarget, DesktopBridgeState } from '@/kordi-app/types';
+import type { ConversationBridgeTarget, DesktopBridgeSessionParticipant, DesktopBridgeState } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
@@ -22,6 +22,13 @@ export function pendingOutreachFromState(
   };
 }
 
+export type RelaySharedSessionMessageOptions = {
+  parentSessionKind?: string | null;
+  parentGroupSpaceId?: string | null;
+  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
+  attachments?: AttachmentItem[];
+};
+
 export async function relaySharedSessionMessage(
   target: ConversationBridgeTarget,
   parentSessionId: string,
@@ -31,7 +38,7 @@ export async function relaySharedSessionMessage(
   parentTurnId?: string | null,
   deliveryState?: string | null,
   bridgeRequestId?: string | null,
-  attachments: AttachmentItem[] = [],
+  options: RelaySharedSessionMessageOptions = {},
 ) {
   return createDesktopBridgeOutreach({
     hostId: target.hostId,
@@ -48,6 +55,9 @@ export async function relaySharedSessionMessage(
     contextPolicy: 'session-relay',
     parentSessionId,
     parentSessionTitle,
+    parentSessionKind: options.parentSessionKind,
+    parentGroupSpaceId: options.parentGroupSpaceId,
+    parentSessionParticipants: options.parentSessionParticipants ?? [],
     parentSessionMessages: [],
     parentTurnId,
     parentMessageId,
@@ -55,6 +65,6 @@ export async function relaySharedSessionMessage(
     deliveryState,
     projectId: null,
     projectName: null,
-    ...bridgeAttachmentTransportFields(attachments),
+    ...bridgeAttachmentTransportFields(options.attachments ?? []),
   });
 }

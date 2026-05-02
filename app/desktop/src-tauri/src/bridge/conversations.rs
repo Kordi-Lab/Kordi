@@ -197,6 +197,7 @@ mod tests {
             parent_session_id: Some(parent_session_id.to_string()),
             parent_session_title: Some("Shared humans".to_string()),
             parent_session_kind: None,
+            parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: None,

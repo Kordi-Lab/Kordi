@@ -393,6 +393,10 @@ pub(super) fn outreach_metadata_for_event(
             .get("parentSessionKind")
             .and_then(|value| value.as_str())
             .map(ToString::to_string),
+        parent_group_space_id: thread
+            .get("parentGroupSpaceId")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
         parent_session_participants: thread
             .get("participants")
             .cloned()
