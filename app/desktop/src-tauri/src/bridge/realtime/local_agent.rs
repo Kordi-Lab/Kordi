@@ -67,8 +67,12 @@ fn event_targets_group_session(event: &ParsedMailboxEvent) -> bool {
             .is_some_and(|value| !value.is_empty())
 }
 
-fn should_store_local_agent_processing_placeholder(event: &ParsedMailboxEvent) -> bool {
-    !event_targets_group_session(event)
+fn should_store_local_agent_processing_placeholder(_event: &ParsedMailboxEvent) -> bool {
+    // The agent owner also needs a local copy so their group transcript shows the
+    // shared in-flight turn while their Kordi is processing. Storage reconciliation
+    // keys this row by request id + outbound response direction, so the final agent
+    // answer replaces it instead of creating another visible row.
+    true
 }
 
 fn group_session_thread_relay_targets(
@@ -656,8 +660,8 @@ mod tests {
     }
 
     #[test]
-    fn local_owner_processing_placeholder_is_not_stored_for_group_agent_mentions() {
-        assert!(!should_store_local_agent_processing_placeholder(
+    fn local_owner_processing_placeholder_is_stored_for_group_agent_mentions() {
+        assert!(should_store_local_agent_processing_placeholder(
             &test_group_event()
         ));
     }

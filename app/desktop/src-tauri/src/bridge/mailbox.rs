@@ -593,30 +593,28 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     target.host.owner.as_deref(),
                     &target.host.node_id,
                 );
-                if !event_targets_group_session(&event) {
-                    append_conversation_message_to_storage(
-                        &target.host.id,
-                        &event.from_node_id,
-                        peer_display_name.clone(),
-                        peer_owner_name.clone(),
-                        peer_runtime.clone(),
-                        event.project_id.clone(),
-                        None,
-                        Some(identity_snapshot_for_event(
-                            &target.host,
-                            &event,
-                            &peer_runtime,
-                        )),
-                        outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                        Some(response_sender_name.clone()),
-                        "processing...".to_string(),
-                        event.request_id.clone(),
-                        Some("processing".to_string()),
-                        Vec::new(),
-                        false,
-                    )?;
-                }
+                append_conversation_message_to_storage(
+                    &target.host.id,
+                    &event.from_node_id,
+                    peer_display_name.clone(),
+                    peer_owner_name.clone(),
+                    peer_runtime.clone(),
+                    event.project_id.clone(),
+                    None,
+                    Some(identity_snapshot_for_event(
+                        &target.host,
+                        &event,
+                        &peer_runtime,
+                    )),
+                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+                    Some(response_sender_name.clone()),
+                    "processing...".to_string(),
+                    event.request_id.clone(),
+                    Some("processing".to_string()),
+                    Vec::new(),
+                    false,
+                )?;
                 if event_targets_group_session(&event) {
                     let response = serde_json::json!({
                         "from": target.host.node_id,
