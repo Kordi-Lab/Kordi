@@ -872,6 +872,8 @@
   --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
   --app-message-bubble-stroke: transparent;
   --app-message-bubble-shadow: none;
+  --app-message-mention: var(--app-chat-mention-own);
+  --app-message-meta: var(--app-chat-meta-own);
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-user-text);
@@ -882,6 +884,8 @@
   --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
   --app-message-bubble-stroke: transparent;
   --app-message-bubble-shadow: none;
+  --app-message-mention: var(--app-chat-mention-peer);
+  --app-message-meta: var(--app-chat-meta-peer);
   border: 0;
   background: transparent;
   color: var(--utility-foreground);
@@ -938,8 +942,21 @@
   left: calc(-1 * var(--app-message-bubble-tail-width));
 }
 
+.app-message-mention {
+  color: var(--app-message-mention);
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.app-message-footer {
+  color: var(--app-message-meta);
+  opacity: 1;
+}
+
 .app-message-compact-footer {
-  opacity: 0.58;
+  opacity: 1;
 }
 
 .app-message-bubble-shape-fill {

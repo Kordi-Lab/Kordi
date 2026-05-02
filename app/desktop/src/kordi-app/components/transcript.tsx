@@ -259,10 +259,7 @@ function ProcessingStatusCircle({ className }: { className?: string }) {
 
 function mentionPill(label: string, key: string) {
   return (
-    <span
-      key={key}
-      className="inline-flex translate-y-[-1px] items-center rounded-full border border-sky-300/25 bg-sky-300/12 px-1.5 py-0.5 text-[0.92em] font-medium text-sky-100"
-    >
+    <span key={key} className="app-message-mention">
       {label}
     </span>
   );
@@ -374,7 +371,7 @@ function MessageFooter({
 
   return (
     <div className={cn(
-      'flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
+      'app-message-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
       compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'mt-1.5 justify-end',
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
@@ -855,7 +852,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
                 {renderTextWithMentionPills(msg.text, msg.mentions)}
               </span>
               <span className={cn(
-                'app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
+                'app-message-footer app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
                 isOwnHumanMessage ? 'text-black/45' : 'text-slate-500/80',
               )}>
                 {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
