@@ -11,7 +11,7 @@ use kordi_monitor::{
 };
 use kordi_provider::{
     CollectedResponse, CompletionRequest, ProviderAuthMode, ProviderRetryEvent, RequestOptions,
-    RetryCallback, StreamEvent,
+    RetryCallback, StreamEvent, is_retryable_provider_error_message,
 };
 use kordi_session::context;
 use sha2::{Digest, Sha256};
@@ -362,7 +362,7 @@ pub(crate) async fn run_turn_inner(
             let state = tracker.state().clone();
             prepare_request_metrics(&state, &request_metrics_snapshot(&request))?
         };
-        let stream = match collect_stream_events(config, event_tx, request).await {
+        let stream = match collect_stream_events_with_retry(config, event_tx, request).await {
             Ok(stream) => stream,
             Err(error) => {
                 if !config.cancel.is_cancelled() {
@@ -606,6 +606,62 @@ async fn apply_context_hook(
     }
 
     Ok((messages, rewritten))
+}
+
+async fn collect_stream_events_with_retry(
+    config: &TurnConfig,
+    event_tx: &mpsc::UnboundedSender<TurnEvent>,
+    request: CompletionRequest,
+) -> Result<StreamCollection> {
+    let max_attempts = if config.retry_enabled {
+        config.retry_max_retries.max(1)
+    } else {
+        1
+    };
+    let mut retry_attempt = 0_u32;
+
+    loop {
+        let stream = collect_stream_events(config, event_tx, request.clone()).await?;
+        let Some(message) = first_stream_error(&stream.events) else {
+            if retry_attempt > 0 {
+                let _ = event_tx.send(TurnEvent::AutoRetryEnd);
+            }
+            return Ok(stream);
+        };
+
+        let retryable = is_retryable_provider_error_message(&message);
+        if retryable && retry_attempt + 1 < max_attempts && !config.cancel.is_cancelled() {
+            retry_attempt += 1;
+            let uncapped_delay_ms = config
+                .retry_base_delay_ms
+                .saturating_mul(2_u64.saturating_pow(retry_attempt - 1));
+            let delay_ms = if config.retry_max_delay_ms > 0 {
+                uncapped_delay_ms.min(config.retry_max_delay_ms)
+            } else {
+                uncapped_delay_ms
+            };
+            let _ = event_tx.send(TurnEvent::AutoRetryStart {
+                attempt: retry_attempt,
+                max_attempts,
+                delay_ms,
+                error_message: message,
+            });
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
+                _ = config.cancel.cancelled() => {
+                    let _ = event_tx.send(TurnEvent::AutoRetryEnd);
+                    return Ok(stream);
+                }
+            }
+            continue;
+        }
+
+        if retry_attempt > 0 {
+            let _ = event_tx.send(TurnEvent::AutoRetryEnd);
+        }
+        let _ = event_tx.send(TurnEvent::Error(message));
+        return Ok(stream);
+    }
 }
 
 async fn collect_stream_events(
@@ -909,7 +965,6 @@ fn forward_stream_event(
             if is_context_overflow(message) {
                 *context_overflow_error = Some(message.clone());
             }
-            let _ = event_tx.send(TurnEvent::Error(message.clone()));
         }
         _ => {}
     }
