@@ -1,11 +1,10 @@
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::chat::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting, DesktopChatManager};
 
 use super::agent_jobs::{
-    job_status_update_for_run_result, select_startable_jobs, AgentJobRunResult,
-    QueuedBridgeAgentJob, RunningBridgeAgentJob,
+    bridge_agent_queue_records_for_event, job_status_update_for_run_result, select_startable_jobs,
+    AgentJobRunResult, QueuedBridgeAgentJob, RunningBridgeAgentJob,
 };
 
 use super::constants::{
@@ -31,9 +30,9 @@ use super::{
     mark_bridge_agent_job_terminal_in_storage, note_peer_heartbeat_in_storage,
     note_peer_typing_in_storage, now_ms, parse_mailbox_payload, poll_mailbox_v2,
     record_bridge_inbox_event_and_agent_job, relay_plaintext_message,
-    update_message_delivery_state_in_storage, AckedMailboxEntry, BridgeAgentJobInsert,
-    BridgeAgentJobRecord, BridgeInboxEventInsert, BridgeInboxEventRecord, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    update_message_delivery_state_in_storage, AckedMailboxEntry, BridgeAgentJobRecord,
+    BridgeInboxEventRecord, DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState,
+    DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -261,94 +260,6 @@ fn direction_for_inbound_event(event: &ParsedMailboxEvent) -> &'static str {
     }
 }
 
-fn event_string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value
-        .get(key)
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-}
-
-fn chat_queue_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
-    if let Some(thread) = event_session_thread(event) {
-        if let Some(group_space_id) = event_string_field(thread, "parentGroupSpaceId") {
-            return format!("group-space:{group_space_id}");
-        }
-        if let Some(parent_session_id) = event_string_field(thread, "parentSessionId") {
-            return format!("session:{parent_session_id}");
-        }
-    }
-
-    let project = event.project_id.as_deref().unwrap_or("direct");
-    format!("peer:{project}:{}", event.from_node_id)
-}
-
-fn requesting_user_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
-    event
-        .from_human_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|human_id| format!("human:{human_id}"))
-        .unwrap_or_else(|| format!("node:{}", event.from_node_id))
-}
-
-fn bridge_inbox_event_insert_for_agent_ask(
-    target: &LocalBridgeMailboxTarget,
-    event: &ParsedMailboxEvent,
-    server_message_id: Option<&str>,
-    received_at_ms: i64,
-) -> BridgeInboxEventInsert {
-    let id = server_message_id
-        .map(|_message_id| format!("bridge-inbox-{}", Uuid::new_v4().simple()))
-        .unwrap_or_else(|| format!("bridge-inbox-{}", Uuid::new_v4().simple()));
-    let chat_queue_key = chat_queue_key_for_agent_event(event);
-    let requesting_user_key = requesting_user_key_for_agent_event(event);
-    let payload_json = serde_json::to_string(&serde_json::json!({
-        "from": event.from_node_id,
-        "fromDisplayName": event.from_display_name,
-        "fromOwnerName": event.from_owner_name,
-        "fromRuntime": event.from_runtime,
-        "fromHumanId": event.from_human_id,
-        "fromAgentId": event.from_agent_id,
-        "messageType": event.message_type,
-        "requestId": event.request_id,
-        "projectId": event.project_id,
-        "payload": event.payload,
-    }))
-    .unwrap_or_else(|_| "{}".to_string());
-
-    BridgeInboxEventInsert {
-        id,
-        server_message_id: server_message_id.map(ToString::to_string),
-        host_id: target.host.id.clone(),
-        from_node_id: event.from_node_id.clone(),
-        request_id: event.request_id.clone(),
-        message_type: event.message_type.clone(),
-        chat_queue_key,
-        requesting_user_key,
-        payload_json,
-        status: "received".to_string(),
-        received_at_ms,
-    }
-}
-
-fn bridge_agent_job_insert_for_inbox_event(
-    inbox: &BridgeInboxEventInsert,
-    event: &ParsedMailboxEvent,
-    created_at_ms: i64,
-) -> BridgeAgentJobInsert {
-    BridgeAgentJobInsert {
-        id: format!("bridge-agent-job-{}", Uuid::new_v4().simple()),
-        inbox_event_id: inbox.id.clone(),
-        request_id: event.request_id.clone(),
-        requesting_user_key: inbox.requesting_user_key.clone(),
-        chat_queue_key: inbox.chat_queue_key.clone(),
-        status: "queued".to_string(),
-        created_at_ms,
-    }
-}
-
 fn mailbox_value_for_acked_entry(entry: &AckedMailboxEntry) -> Value {
     serde_json::to_value(entry).unwrap_or_else(|_| {
         serde_json::json!({
@@ -476,8 +387,8 @@ async fn enqueue_agent_ask_for_durable_processing(
     fanout_group_agent_response(target, event, "processing...", false).await;
 
     let now = now_ms();
-    let inbox = bridge_inbox_event_insert_for_agent_ask(target, event, server_message_id, now);
-    let job = bridge_agent_job_insert_for_inbox_event(&inbox, event, now);
+    let (inbox, job) =
+        bridge_agent_queue_records_for_event(&target.host.id, event, server_message_id, now);
     record_bridge_inbox_event_and_agent_job(&inbox, &job)?;
 
     Ok(true)
@@ -806,7 +717,7 @@ async fn execute_persisted_agent_job(
     Ok(())
 }
 
-async fn run_queued_agent_jobs_once(
+pub(in crate::bridge) async fn run_queued_agent_jobs_once(
     chat_manager: &DesktopChatManager,
     store: &DesktopBridgeStore,
 ) -> Result<bool, String> {
@@ -1257,8 +1168,12 @@ mod tests {
         let target = test_mailbox_target();
         let event = parsed_event(BRIDGE_MESSAGE_TYPE_ASK, Some("person"), None);
 
-        let inbox =
-            bridge_inbox_event_insert_for_agent_ask(&target, &event, Some("server-msg-1"), 1_000);
+        let (inbox, job) = bridge_agent_queue_records_for_event(
+            &target.host.id,
+            &event,
+            Some("server-msg-1"),
+            1_000,
+        );
         assert_eq!(inbox.server_message_id.as_deref(), Some("server-msg-1"));
         assert_eq!(inbox.host_id, "bridge-host");
         assert_eq!(inbox.from_node_id, "peer-node");
@@ -1268,7 +1183,6 @@ mod tests {
         assert_eq!(inbox.requesting_user_key, "human:human-peer");
         assert_eq!(inbox.status, "received");
 
-        let job = bridge_agent_job_insert_for_inbox_event(&inbox, &event, 1_100);
         assert_eq!(job.inbox_event_id, inbox.id);
         assert_eq!(job.request_id.as_deref(), Some("bridge_req_1"));
         assert_eq!(job.chat_queue_key, "session:session-1");

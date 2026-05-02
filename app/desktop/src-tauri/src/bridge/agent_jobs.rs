@@ -1,5 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use serde_json::Value;
+use uuid::Uuid;
+
+use super::events::ParsedMailboxEvent;
+use super::{BridgeAgentJobInsert, BridgeInboxEventInsert};
+
 pub(in crate::bridge) const MAX_ACTIVE_AGENT_JOBS_PER_USER: usize = 8;
 
 #[allow(dead_code)]
@@ -35,6 +41,90 @@ pub(in crate::bridge) struct AgentJobStatusUpdate {
     pub next_retry_at_ms: Option<i64>,
     pub completed_at_ms: Option<i64>,
     pub last_error: Option<String>,
+}
+
+fn event_session_thread(event: &ParsedMailboxEvent) -> Option<&Value> {
+    event.payload.get("sessionThread")
+}
+
+fn event_string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn chat_queue_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
+    if let Some(thread) = event_session_thread(event) {
+        if let Some(group_space_id) = event_string_field(thread, "parentGroupSpaceId") {
+            return format!("group-space:{group_space_id}");
+        }
+        if let Some(parent_session_id) = event_string_field(thread, "parentSessionId") {
+            return format!("session:{parent_session_id}");
+        }
+    }
+
+    let project = event.project_id.as_deref().unwrap_or("direct");
+    format!("peer:{project}:{}", event.from_node_id)
+}
+
+fn requesting_user_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
+    event
+        .from_human_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|human_id| format!("human:{human_id}"))
+        .unwrap_or_else(|| format!("node:{}", event.from_node_id))
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn bridge_agent_queue_records_for_event(
+    host_id: &str,
+    event: &ParsedMailboxEvent,
+    server_message_id: Option<&str>,
+    now_ms: i64,
+) -> (BridgeInboxEventInsert, BridgeAgentJobInsert) {
+    let chat_queue_key = chat_queue_key_for_agent_event(event);
+    let requesting_user_key = requesting_user_key_for_agent_event(event);
+    let payload_json = serde_json::to_string(&serde_json::json!({
+        "from": event.from_node_id,
+        "fromDisplayName": event.from_display_name,
+        "fromOwnerName": event.from_owner_name,
+        "fromRuntime": event.from_runtime,
+        "fromHumanId": event.from_human_id,
+        "fromAgentId": event.from_agent_id,
+        "messageType": event.message_type,
+        "requestId": event.request_id,
+        "projectId": event.project_id,
+        "payload": event.payload,
+    }))
+    .unwrap_or_else(|_| "{}".to_string());
+
+    let inbox = BridgeInboxEventInsert {
+        id: format!("bridge-inbox-{}", Uuid::new_v4().simple()),
+        server_message_id: server_message_id.map(ToString::to_string),
+        host_id: host_id.to_string(),
+        from_node_id: event.from_node_id.clone(),
+        request_id: event.request_id.clone(),
+        message_type: event.message_type.clone(),
+        chat_queue_key,
+        requesting_user_key,
+        payload_json,
+        status: "received".to_string(),
+        received_at_ms: now_ms,
+    };
+    let job = BridgeAgentJobInsert {
+        id: format!("bridge-agent-job-{}", Uuid::new_v4().simple()),
+        inbox_event_id: inbox.id.clone(),
+        request_id: event.request_id.clone(),
+        requesting_user_key: inbox.requesting_user_key.clone(),
+        chat_queue_key: inbox.chat_queue_key.clone(),
+        status: "queued".to_string(),
+        created_at_ms: now_ms,
+    };
+    (inbox, job)
 }
 
 fn retry_delay_ms(retry_count: i64) -> i64 {
