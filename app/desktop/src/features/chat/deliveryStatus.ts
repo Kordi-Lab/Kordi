@@ -1,5 +1,5 @@
 export type MessageDeliveryVisual = {
-  glyph: 'single-check' | 'double-check' | 'clock' | 'spinner' | 'error';
+  glyph: 'single-check' | 'double-check' | 'clock' | 'spinner' | 'exclamation';
   tone: 'gray' | 'blue' | 'red';
   label: string;
 };
@@ -24,7 +24,7 @@ export function messageDeliveryVisual(status?: string | null): MessageDeliveryVi
     return { glyph: 'spinner', tone: 'gray', label: 'Processing' };
   }
   if (normalized === 'failed' || normalized === 'processing_failed') {
-    return { glyph: 'error', tone: 'red', label: 'Failed' };
+    return { glyph: 'exclamation', tone: 'red', label: 'Failed' };
   }
   return null;
 }

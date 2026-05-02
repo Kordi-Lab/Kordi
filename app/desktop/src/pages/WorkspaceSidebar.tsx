@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
   ChevronDown,
   Copy,
+  MoreHorizontal,
   Plus,
   Search,
 } from 'lucide-react';
@@ -16,7 +17,8 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { ChatFilter, ContactClass, ConversationType, NavId, SessionStatusIndicator } from '@/kordi-app/types';
+import type { Agent, ChatFilter, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
@@ -26,9 +28,14 @@ import {
   type SessionActionTarget,
   type SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
+import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
+import type { ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
+import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
+import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
 type ConversationItem = {
   id: string;
+  canonicalSessionId?: string;
   name: string;
   subtitle: string;
   unread: number;
@@ -41,13 +48,76 @@ type ConversationItem = {
   avatarSeed?: string | null;
 };
 
-const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+type ParticipantSpaceItem = ParticipantSpaceViewModel;
 
-function isManageableLocalChatConversation(conversation: ConversationItem) {
+const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+const LOCAL_RUNTIME_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function participantSpaceSessionRowTitle(title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return '# Untitled session';
+  return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
+}
+
+export function participantSpaceSessionIdLabel(session: { id?: string | null; canonicalSessionId?: string | null }) {
+  const sessionId = (session.id || session.canonicalSessionId || '').trim();
+  if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return '';
+  return `Session ID: ${sessionId}`;
+}
+
+function participantSpaceSessionPreviewText(preview: string) {
+  const formatted = formatSessionIdSubtitle(preview);
+  if (/^session id:/i.test(formatted)) return '';
+  return formatted;
+}
+
+function participantSpaceSessionMessageCount(session: ParticipantSpaceItem['sessions'][number]) {
+  const canonicalCount = session.conversation.canonicalMessageCount;
+  if (typeof canonicalCount === 'number' && Number.isFinite(canonicalCount)) {
+    return Math.max(0, canonicalCount);
+  }
+  const visibleMessages = session.conversation.messages.filter((message) => message.role !== 'system' && message.text.trim().length > 0).length;
+  return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
+}
+
+function participantSpaceSessionMessageCountText(messageCount: number) {
+  return `${messageCount} message${messageCount === 1 ? '' : 's'}`;
+}
+
+function participantSpaceSessionPreviewLine(preview: string, messageCount: number) {
+  const text = preview.trim() || 'No messages yet';
+  return `${text} · ${participantSpaceSessionMessageCountText(messageCount)}`;
+}
+
+function sessionActionIdForConversation(conversation: ConversationItem) {
+  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return null;
+  if (sessionId.startsWith('bridge:')) return null;
+  return sessionId;
+}
+
+function canMoveConversationToProject(conversation: ConversationItem, sessionId: string) {
   return conversation.type === 'owned-agent'
-    && conversation.id !== 'draft:local-chat'
-    && !conversation.id.startsWith('bridge:')
-    && !conversation.id.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+    && sessionId === conversation.id.trim()
+    && LOCAL_RUNTIME_SESSION_ID_PATTERN.test(sessionId)
+    && !sessionId.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+}
+
+export function sessionContextMenuTargetForConversation(
+  conversation: ConversationItem,
+  x: number,
+  y: number,
+): SessionContextMenuTarget | null {
+  const sessionId = sessionActionIdForConversation(conversation);
+  if (!sessionId) return null;
+
+  return {
+    sessionId,
+    sessionName: conversation.name,
+    x,
+    y,
+    canMoveToProject: canMoveConversationToProject(conversation, sessionId),
+  };
 }
 
 type ProjectSessionItem = {
@@ -71,21 +141,9 @@ type ContactGroupItem = {
   label: string;
 };
 
-type ContactItem = {
-  id: string;
-  classType: ContactClass;
-};
+type ContactItem = Contact;
 
-type AgentItem = {
-  id: string;
-  name: string;
-  status: string;
-  role: string;
-  messaging: string;
-  tasks: number;
-  avatarSeed?: string | null;
-  profileImageUrl?: string | null;
-};
+type AgentItem = Agent;
 
 type BridgeHostSummary = {
   serverUrl: string;
@@ -112,8 +170,19 @@ type WorkspaceSidebarProps = {
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: ConversationItem[];
+  participantSpaces: ParticipantSpaceItem[];
+  filteredParticipantSpaces: ParticipantSpaceItem[];
+  initialSelectedParticipantSpaceId?: string | null;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
+  onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
+  onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
+  onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
+  onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
+  onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
+  onRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
+  onSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
   onArchiveChatSession: (sessionId: string) => void;
   onDeleteChatSession: (sessionId: string) => void;
   onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
@@ -197,11 +266,15 @@ function SidebarSessionStatusIndicator({
   );
 }
 
-function SidebarUnreadBadge({ count }: { count?: number }) {
+function SidebarUnreadBadge({ count, scope }: { count?: number; scope?: string }) {
   if (!count || count <= 0) return null;
 
   return (
-    <span className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]">
+    <span
+      className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]"
+      data-unread-scope={scope}
+      data-unread-count={count > 99 ? '99+' : count}
+    >
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -210,26 +283,101 @@ function SidebarUnreadBadge({ count }: { count?: number }) {
 function SidebarSessionMetaColumn({
   timeLabel,
   unreadCount,
+  unreadScope,
   indicator,
   active = false,
+  reserveStatusSpace = true,
 }: {
   timeLabel: string;
   unreadCount?: number;
+  unreadScope?: string;
   indicator?: SessionStatusIndicator;
   active?: boolean;
+  reserveStatusSpace?: boolean;
 }) {
   const visibleUnreadCount = active ? 0 : unreadCount;
   const visibleIndicator = active ? undefined : indicator;
+  const hasStatusLine = Boolean((visibleUnreadCount && visibleUnreadCount > 0) || visibleIndicator);
 
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
-      <span className={cn('whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active ? 'text-slate-300' : 'text-slate-500')}>
+      <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active && 'app-session-meta-time-active')}>
         {timeLabel}
       </span>
-      <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-        <SidebarUnreadBadge count={visibleUnreadCount} />
-        <SidebarSessionStatusIndicator indicator={visibleIndicator} active={active} />
+      {reserveStatusSpace || hasStatusLine ? (
+        <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
+          <SidebarUnreadBadge count={visibleUnreadCount} scope={unreadScope} />
+          <SidebarSessionStatusIndicator indicator={visibleIndicator} active={active} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function participantSpaceHumanCount(space: ParticipantSpaceItem) {
+  return space.participants.filter((participant) => participant.kind === 'human').length;
+}
+
+function participantSpaceKindText(space: ParticipantSpaceItem) {
+  if (space.kind === 'self') return 'Personal';
+  if (space.kind === 'direct-human') return 'Person';
+  if (space.kind === 'direct-agent') return 'Agent';
+  return 'Group';
+}
+
+function participantSpaceDetailText(space: ParticipantSpaceItem) {
+  const sessionText = pluralize(space.sessionCount, 'session');
+  if (space.kind === 'self') {
+    return `Personal • ${sessionText}`;
+  }
+  if (space.kind === 'direct-human') {
+    return `Person • ${sessionText}`;
+  }
+  if (space.kind === 'group') {
+    const humanCount = participantSpaceHumanCount(space);
+    const peopleText = humanCount > 0 ? `${pluralize(humanCount, 'person', 'people')} • ` : '';
+    return `Group • ${peopleText}${sessionText}`;
+  }
+  return `Agent • ${sessionText}`;
+}
+
+function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem }) {
+  const avatars = space.avatarStack.length > 0
+    ? space.avatarStack
+    : [{ kind: space.kind === 'direct-agent' ? 'agent' as const : 'human' as const, seed: space.id, imageUrl: null }];
+
+  if (avatars.length === 1) {
+    const avatar = avatars[0];
+    return (
+      <div className="relative h-9 w-9 shrink-0">
+        <IdentityAvatar
+          kind={avatar.kind}
+          seed={avatar.seed}
+          name={space.title}
+          imageUrl={avatar.imageUrl ?? undefined}
+          className="h-9 w-9 border border-white/10"
+        />
       </div>
+    );
+  }
+
+  return (
+    <div className="flex h-9 w-10 shrink-0 items-center -space-x-5" aria-hidden="true">
+      {avatars.slice(0, 3).map((avatar, index) => (
+        <span key={`${avatar.seed}-${index}`} className="relative inline-flex" style={{ zIndex: avatars.length - index }}>
+          <IdentityAvatar
+            kind={avatar.kind}
+            seed={avatar.seed}
+            name={space.title}
+            imageUrl={avatar.imageUrl ?? undefined}
+            className="h-7 w-7 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+          />
+        </span>
+      ))}
     </div>
   );
 }
@@ -243,15 +391,24 @@ export function WorkspaceSidebar({
   activeNav,
   setActiveNav,
   chatConversations,
-  onCreateChatSession,
   chatSearch,
   setChatSearch,
   chatFilter,
   setChatFilter,
   desktopChatError,
-  filteredConversations,
+  participantSpaces,
+  filteredParticipantSpaces,
+  initialSelectedParticipantSpaceId = null,
   activeConvId,
   onSelectChatSession,
+  onStartChatWithPerson,
+  onStartChatWithAgent,
+  onCreateChatGroup,
+  onCreateChatSessionInParticipantSpace,
+  onRenameChatGroup,
+  onAddChatGroupMembers,
+  onRemoveChatGroupMember,
+  onSetChatGroupAdmin,
   onArchiveChatSession,
   onDeleteChatSession,
   onMoveChatSessionToProject,
@@ -285,7 +442,24 @@ export function WorkspaceSidebar({
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
+  const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
+  const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
+  const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
+  const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const activeParticipantSpaceId = participantSpaces.find((space) => (
+    space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
+  ))?.id ?? null;
+  const selectedParticipantSpace = selectedParticipantSpaceId
+    ? participantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
+    : null;
+  const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setActiveNav('chats');
+    setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    setIsChatCreateDialogOpen(true);
+  };
 
   useEffect(() => {
     if (!sessionContextMenu) return;
@@ -301,6 +475,12 @@ export function WorkspaceSidebar({
       window.removeEventListener('keydown', handleEscape);
     };
   }, [sessionContextMenu]);
+
+  useEffect(() => {
+    if (selectedParticipantSpaceId && !participantSpaces.some((space) => space.id === selectedParticipantSpaceId)) {
+      setSelectedParticipantSpaceId(null);
+    }
+  }, [participantSpaces, selectedParticipantSpaceId]);
 
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
@@ -357,7 +537,7 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            <Button size="icon" className="h-9 w-9 rounded-[14px]">
+            <Button size="icon" className="h-9 w-9 rounded-[14px]" onClick={openChatCreateDialog} aria-label="Start a chat">
               <Plus className="h-4 w-4" />
             </Button>
             <IdentityAvatar
@@ -386,17 +566,17 @@ export function WorkspaceSidebar({
                     </div>
                     <button
                       type="button"
-                      onClick={onCreateChatSession}
+                      onClick={openChatCreateDialog}
                       className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="New chat session"
-                      aria-label="New chat session"
+                      title="Start a chat"
+                      aria-label="Start a chat"
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </button>
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    People, owned agents, and delegated sessions all stay in one list.
+                    Expand a contact, My chats, or a group to see its sessions.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -404,7 +584,7 @@ export function WorkspaceSidebar({
                     <input
                       value={chatSearch}
                       onChange={(event) => setChatSearch(event.target.value)}
-                      placeholder="Search sessions"
+                      placeholder="Search contacts, groups, sessions"
                       className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                     />
                   </div>
@@ -412,9 +592,9 @@ export function WorkspaceSidebar({
                   <div className="mb-2 space-y-1.5">
                     <div className="app-filter-tabs w-full">
                       {[
-                        { id: 'all', label: 'All' },
-                        { id: 'people', label: 'People' },
-                        { id: 'agents', label: 'Agents' },
+                        { id: 'contacts', label: 'Contacts' },
+                        { id: 'groups', label: 'Groups' },
+                        { id: 'latest', label: 'Latest' },
                       ].map((tab) => (
                         <button
                           key={tab.id}
@@ -434,62 +614,179 @@ export function WorkspaceSidebar({
                     </div>
                   ) : null}
 
-                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
-                    <div className="w-full space-y-1">
-                      {filteredConversations.map((conversation) => {
-                        const lastMessage = conversation.messages[conversation.messages.length - 1];
-                        const isActive = activeConvId === conversation.id;
-                        const rowTimeLabel = conversation.updatedAtLabel ?? lastMessage?.time ?? '--:--';
-                        const sessionSubtitle = formatSessionIdSubtitle(conversation.subtitle);
-
+                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="participant-spaces-inline">
+                    <div className="w-full space-y-0.5">
+                      {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
+                        const latestSession = space.sessions[0];
+                        const isActiveSpace = activeParticipantSpaceId === space.id;
+                        const isSelectedSpace = selectedParticipantSpaceId === space.id;
+                        const isExpanded = isSelectedSpace || isActiveSpace;
+                        const isAutoExpanded = isActiveSpace && !isSelectedSpace;
+                        const visibleSessions = isAutoExpanded
+                          ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
+                          : space.sessions;
+                        const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
+                        const toggleSpace = () => {
+                          setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
+                        };
                         return (
-                          <button
-                            key={conversation.id}
-                            type="button"
-                            onClick={() => onSelectChatSession(conversation.id)}
-                            onContextMenu={(event) => {
-                              if (!isManageableLocalChatConversation(conversation)) {
-                                return;
-                              }
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setSessionContextMenu({
-                                sessionId: conversation.id,
-                                sessionName: conversation.name,
-                                x: event.clientX,
-                                y: event.clientY,
-                              });
-                            }}
-                            className={`app-session-row block w-full px-2.5 py-[0.3125rem] text-left ${
-                              isActive ? 'app-session-row-active text-white' : 'text-white'
-                            }`}
+                          <div
+                            key={space.id}
+                            className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}
+                            data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
                           >
-                            <div className="flex items-start">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-start gap-2.5">
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[12px] font-medium text-slate-100" title={conversation.name}>{conversation.name}</div>
+                            <div
+                              className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
+                              data-participant-space-row-shell="true"
+                            >
+                              <button
+                                type="button"
+                                data-testid="participant-space-row"
+                                data-participant-space-toggle="true"
+                                aria-expanded={isExpanded}
+                                onClick={toggleSpace}
+                                className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
+                              >
+                                <ParticipantSpaceAvatarStack space={space} />
+                                <div className="min-w-0">
+                                  <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
+                                  <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
+                                    {space.preview || `${participantSpaceKindText(space)} space`}
                                   </div>
+                                  <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
+                                    {participantSpaceDetailText(space)}
+                                  </div>
+                                </div>
+                              </button>
+                              <div className="app-participant-space-row-side">
+                                <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
+                                {space.kind === 'group' ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedParticipantSpaceId(space.id);
+                                      const rect = event.currentTarget.getBoundingClientRect();
+                                      setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                                      setIsGroupDetailsDialogOpen(true);
+                                    }}
+                                    className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
+                                    title="Group management"
+                                    aria-label="Open group management"
+                                    aria-haspopup="dialog"
+                                  >
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
+                                )}
+                                <button
+                                  type="button"
+                                  data-participant-space-context-create="true"
+                                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
+                                  aria-label={`Create session in ${space.title}`}
+                                  title={`Create session in ${space.title}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedParticipantSpaceId(space.id);
+                                    void onCreateChatSessionInParticipantSpace(space);
+                                  }}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                                  <button
+                                    type="button"
+                                    data-participant-space-toggle-button="true"
+                                    className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
+                                    title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
+                                    aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleSpace();
+                                    }}
+                                  >
+                                    <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
+                                  </button>
+                                </div>
+                                <div className="app-participant-space-row-meta">
                                   <SidebarSessionMetaColumn
                                     timeLabel={rowTimeLabel}
-                                    unreadCount={conversation.unread}
-                                    indicator={conversation.statusIndicator}
-                                    active={isActive}
+                                    unreadCount={isExpanded ? 0 : space.unread}
+                                    unreadScope="participant-space"
+                                    indicator={isExpanded ? undefined : latestSession?.statusIndicator}
+                                    active={isActiveSpace || isExpanded}
+                                    reserveStatusSpace={false}
                                   />
                                 </div>
-                                {sessionSubtitle ? (
-                                  <div
-                                    className={cn('mt-px truncate font-mono text-[10.5px] leading-[1.05rem]', isActive ? 'text-slate-300' : 'text-slate-500')}
-                                    title={sessionSubtitle}
-                                  >
-                                    {sessionSubtitle}
-                                  </div>
-                                ) : null}
                               </div>
                             </div>
-                          </button>
+
+                            {isExpanded ? (
+                              <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
+                                {visibleSessions.map((session) => {
+                                  const conversation = session.conversation;
+                                  const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
+                                  const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
+                                  const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
+                                  const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
+                                  const sessionMessageCount = participantSpaceSessionMessageCount(session);
+                                  const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
+                                  const sessionIdLabel = participantSpaceSessionIdLabel(session);
+                                  return (
+                                    <button
+                                      key={session.id}
+                                      type="button"
+                                      data-testid="participant-space-session-row"
+                                      data-session-preview={sessionPreview}
+                                      data-session-preview-line={sessionPreviewLine}
+                                      data-session-id-label={sessionIdLabel}
+                                      data-session-message-count={sessionMessageCount}
+                                      data-session-updated-at={rowTimeLabel}
+                                      onClick={() => onSelectChatSession(session.id)}
+                                      onContextMenu={(event) => {
+                                        const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+                                        if (!target) return;
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setSessionContextMenu(target);
+                                      }}
+                                      className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
+                                        {sessionIdLabel ? (
+                                          <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
+                                        ) : null}
+                                        <div
+                                          className={cn(
+                                            'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                                            isActive ? 'text-slate-300' : 'text-slate-500',
+                                            session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+                                          )}
+                                          title={sessionPreviewLine}
+                                        >
+                                          {sessionPreviewLine}
+                                        </div>
+                                      </div>
+                                      <SidebarSessionMetaColumn
+                                        timeLabel={rowTimeLabel}
+                                        unreadCount={session.unread}
+                                        unreadScope="participant-session"
+                                        indicator={session.statusIndicator}
+                                        active={isActive}
+                                      />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
                         );
-                      })}
+                      }) : (
+                        <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
+                          No chat spaces match this filter.
+                        </div>
+                      )}
                     </div>
                   </ScrollArea>
                 </div>
@@ -776,6 +1073,35 @@ export function WorkspaceSidebar({
           onMoveToProject={onMoveChatSessionToProject}
         />
       ) : null}
+
+      <ChatCreateDialog
+        isOpen={isChatCreateDialogOpen}
+        contacts={displayedContacts}
+        agents={displayedAgents}
+        onClose={() => {
+          setIsChatCreateDialogOpen(false);
+          setChatCreateAnchor(null);
+        }}
+        onStartPerson={onStartChatWithPerson}
+        onStartAgent={onStartChatWithAgent}
+        onCreateGroup={onCreateChatGroup}
+        anchorRect={chatCreateAnchor}
+      />
+
+      <GroupDetailsDialog
+        isOpen={isGroupDetailsDialogOpen}
+        space={selectedParticipantSpace}
+        contacts={displayedContacts}
+        onClose={() => {
+          setIsGroupDetailsDialogOpen(false);
+          setGroupDetailsAnchor(null);
+        }}
+        onRename={onRenameChatGroup}
+        onAddMembers={onAddChatGroupMembers}
+        onRemoveMember={onRemoveChatGroupMember}
+        onSetAdmin={onSetChatGroupAdmin}
+        anchorRect={groupDetailsAnchor}
+      />
 
       {isCreateProjectDialogOpen ? (
         <ProjectCreateDialog

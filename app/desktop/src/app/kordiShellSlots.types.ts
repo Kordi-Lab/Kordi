@@ -4,6 +4,7 @@ import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, Co
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
+  ChatFilter,
   Contact,
   ContactClass,
   ContactRequest,
@@ -24,6 +25,7 @@ import type {
   QueuedDesktopChatMessage,
   EditFilePreview,
   Message,
+  ParticipantSpaceViewModel,
   Project,
   SessionArtifact,
   ThemeMode,
@@ -45,6 +47,11 @@ export type BridgeWizardDraft = {
   ownerName: string;
 };
 
+export type CreateChatGroupRequest = {
+  name?: string | null;
+  contactIds: string[];
+};
+
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
@@ -60,6 +67,8 @@ export type AssembleKordiShellSlotsArgs = {
   showSessionRail: boolean;
   sessionRailWidth: number;
   chatConversations: Conversation[];
+  participantSpaces: ParticipantSpaceViewModel[];
+  filteredParticipantSpaces: ParticipantSpaceViewModel[];
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -67,8 +76,8 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateChatSession: () => Promise<void>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatFilter: 'all' | 'people' | 'agents' | 'delegated';
-  setChatFilter: Dispatch<SetStateAction<'all' | 'people' | 'agents' | 'delegated'>>;
+  chatFilter: ChatFilter;
+  setChatFilter: Dispatch<SetStateAction<ChatFilter>>;
   runtimeProjects: Project[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;
@@ -88,6 +97,14 @@ export type AssembleKordiShellSlotsArgs = {
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
+  handleStartChatWithPerson: (contact: Contact) => Promise<void>;
+  handleStartChatWithAgent: (agent: Agent) => Promise<void>;
+  handleCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void>;
+  handleCreateChatSessionInParticipantSpace: (space: ParticipantSpaceViewModel) => Promise<void>;
+  handleRenameChatGroup: (sessionIds: string[], name: string) => Promise<void>;
+  handleAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void>;
+  handleRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void>;
+  handleSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void>;
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
@@ -309,6 +326,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
   | 'chatConversations'
+  | 'participantSpaces'
+  | 'filteredParticipantSpaces'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
@@ -319,6 +338,14 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'filteredConversations'
   | 'activeConvId'
   | 'handleSelectChatSession'
+  | 'handleStartChatWithPerson'
+  | 'handleStartChatWithAgent'
+  | 'handleCreateChatGroup'
+  | 'handleCreateChatSessionInParticipantSpace'
+  | 'handleRenameChatGroup'
+  | 'handleAddChatGroupMembers'
+  | 'handleRemoveChatGroupMember'
+  | 'handleSetChatGroupAdmin'
   | 'handleArchiveChatSession'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
@@ -353,6 +380,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatConversations'
   | 'handleCreateChatSession'
   | 'handleSelectChatSession'
+  | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
   | 'isContactRequestsOpen'
   | 'setIsContactRequestsOpen'

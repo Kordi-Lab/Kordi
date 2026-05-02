@@ -220,7 +220,9 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const failed = message.status === 'failed' || stringValue(content.deliveryState) === 'failed';
+  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed';
+  const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
   const tools = canonicalTools(content.tools);
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
@@ -250,9 +252,9 @@ export function mapCanonicalMessage(
     )
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
-    && stringValue(content.deliveryState)?.toLowerCase() === 'processing'
+    && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
-  const displayText = isProcessingAgentPlaceholder ? '' : rawDisplayText;
+  const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure ? '' : rawDisplayText;
 
   if (role === 'system' && !displayText.trim()) return null;
 
@@ -282,7 +284,7 @@ export function mapCanonicalMessage(
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: failed ? stringValue(content.error) ?? 'Message failed' : null,
+          error: failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
         }
       : undefined,
   };

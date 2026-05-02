@@ -1,4 +1,4 @@
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
 
 use super::super::config::now_ms;
@@ -256,12 +256,31 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
     load_conversation_store_from_db(&conn)
 }
 
-pub(in crate::bridge) fn update_message_delivery_state_in_storage(
+fn should_apply_delivery_state_update(
+    direction: &str,
+    current_state: Option<&str>,
+    next_state: &str,
+) -> bool {
+    let current = current_state.unwrap_or_default().trim().to_lowercase();
+    let next = next_state.trim().to_lowercase();
+    let is_response_row = matches!(
+        direction,
+        BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE | BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
+    );
+    if is_response_row
+        && current == "processing"
+        && matches!(next.as_str(), "sent" | "delivered" | "read")
+    {
+        return false;
+    }
+    delivery_state_rank(Some(next_state)) >= delivery_state_rank(current_state)
+}
+
+fn update_message_delivery_state_in_db(
+    conn: &mut Connection,
     request_id: &str,
     delivery_state: &str,
 ) -> Result<DesktopBridgeConversationStore, String> {
-    let mut conn = open_conversation_db()?;
-    migrate_legacy_conversation_json(&mut conn)?;
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
@@ -269,7 +288,7 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
 
     let mut statement = tx
         .prepare(
-            "SELECT id, conversation_id, delivery_state, text, outreach_metadata FROM bridge_messages\n             WHERE request_id = ?1",
+            "SELECT id, conversation_id, direction, delivery_state, text, outreach_metadata FROM bridge_messages\n             WHERE request_id = ?1",
         )
         .map_err(sqlite_error)?;
     let rows = statement
@@ -277,19 +296,19 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, String>(3)?,
-                parse_optional_json(row.get::<_, Option<String>>(4)?)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                parse_optional_json(row.get::<_, Option<String>>(5)?)?,
             ))
         })
         .map_err(sqlite_error)?;
 
     let mut updates = Vec::new();
     for row in rows {
-        let (message_id, conversation_id, current_state, text, outreach) =
+        let (message_id, conversation_id, direction, current_state, text, outreach) =
             row.map_err(sqlite_error)?;
-        if delivery_state_rank(Some(delivery_state))
-            >= delivery_state_rank(current_state.as_deref())
+        if should_apply_delivery_state_update(&direction, current_state.as_deref(), delivery_state)
         {
             updates.push((message_id, conversation_id, text, outreach));
         }
@@ -342,7 +361,25 @@ pub(in crate::bridge) fn update_message_delivery_state_in_storage(
     }
 
     tx.commit().map_err(sqlite_error)?;
-    load_conversation_store_from_db(&conn)
+    load_conversation_store_from_db(conn)
+}
+
+#[cfg(test)]
+pub(in crate::bridge::storage) fn update_message_delivery_state_in_db_for_test(
+    conn: &mut Connection,
+    request_id: &str,
+    delivery_state: &str,
+) -> Result<DesktopBridgeConversationStore, String> {
+    update_message_delivery_state_in_db(conn, request_id, delivery_state)
+}
+
+pub(in crate::bridge) fn update_message_delivery_state_in_storage(
+    request_id: &str,
+    delivery_state: &str,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    update_message_delivery_state_in_db(&mut conn, request_id, delivery_state)
 }
 
 pub(in crate::bridge) fn bridge_request_is_cancelled(request_id: &str) -> bool {

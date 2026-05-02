@@ -51,6 +51,20 @@ fn is_realtime_direct_chat(
             || is_agent_like_runtime(&conversation.peer_runtime))
 }
 
+fn should_fallback_direct_realtime_to_relay(
+    outreach: Option<&DesktopBridgeOutreachMetadata>,
+) -> bool {
+    outreach
+        .and_then(|outreach| outreach.context_policy.as_deref())
+        .map(str::trim)
+        .is_some_and(|policy| {
+            policy.eq_ignore_ascii_case("session-relay")
+                || policy.eq_ignore_ascii_case("session-message")
+                || policy.eq_ignore_ascii_case("session-invite")
+                || policy.eq_ignore_ascii_case("session-update")
+        })
+}
+
 fn pending_read_receipt_request_ids(conversation: &DesktopBridgeConversationRecord) -> Vec<String> {
     let mut request_ids = conversation
         .messages
@@ -126,12 +140,29 @@ pub(super) async fn rebuild_state(
     Ok(state)
 }
 
+fn should_retry_direct_serve_with_contact_fallback(
+    context: &ConversationContext,
+    error: &str,
+) -> bool {
+    context.host.api_style == API_STYLE_SERVE
+        && context.conversation.project_id.is_none()
+        && error.contains("HTTP 403")
+}
+
+async fn add_direct_contact_for_context(context: &ConversationContext) -> Result<(), String> {
+    add_serve_contact(
+        &context.host.coordination,
+        &context.host.api_key,
+        &context.conversation.peer_node_id,
+    )
+    .await
+}
+
 async fn relay_with_contact_fallback(
     context: &ConversationContext,
     payload: &Value,
 ) -> Result<(), String> {
     let project_id = context.conversation.project_id.as_deref();
-    let is_direct_serve_chat = project_id.is_none() && context.host.api_style == API_STYLE_SERVE;
 
     match relay_plaintext_message(
         &context.host,
@@ -142,17 +173,40 @@ async fn relay_with_contact_fallback(
     .await
     {
         Ok(()) => Ok(()),
-        Err(error) if is_direct_serve_chat && error.contains("HTTP 403") => {
-            add_serve_contact(
-                &context.host.coordination,
-                &context.host.api_key,
-                &context.conversation.peer_node_id,
-            )
-            .await?;
+        Err(error) if should_retry_direct_serve_with_contact_fallback(context, &error) => {
+            add_direct_contact_for_context(context).await?;
             relay_plaintext_message(
                 &context.host,
                 &context.conversation.peer_node_id,
                 project_id,
+                payload,
+            )
+            .await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn send_realtime_with_contact_fallback(
+    manager: &DesktopBridgeManager,
+    context: &ConversationContext,
+    payload: &Value,
+) -> Result<(), String> {
+    match send_realtime_payload(
+        manager,
+        &context.host,
+        &context.conversation.peer_node_id,
+        payload,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(error) if should_retry_direct_serve_with_contact_fallback(context, &error) => {
+            add_direct_contact_for_context(context).await?;
+            send_realtime_payload(
+                manager,
+                &context.host,
+                &context.conversation.peer_node_id,
                 payload,
             )
             .await
@@ -169,14 +223,7 @@ async fn send_read_receipt(
     let payload = read_receipt_payload(&context.host.node_id, request_id);
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        match send_realtime_payload(
-            manager,
-            &context.host,
-            &context.conversation.peer_node_id,
-            &payload,
-        )
-        .await
-        {
+        match send_realtime_with_contact_fallback(manager, context, &payload).await {
             Ok(()) => return Ok(()),
             Err(realtime_error) => {
                 eprintln!(
@@ -349,6 +396,9 @@ fn outbound_payload(
                 serde_json::json!({
                     "parentSessionId": parent_session_id,
                     "parentSessionTitle": outreach.parent_session_title.as_deref(),
+                    "parentSessionKind": outreach.parent_session_kind.as_deref(),
+                    "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
+                    "participants": &outreach.parent_session_participants,
                     "messages": &outreach.parent_session_messages,
                     "parentTurnId": outreach.parent_turn_id.as_deref(),
                     "parentMessageId": outreach.parent_message_id.as_deref(),
@@ -476,13 +526,7 @@ pub(super) async fn desktop_bridge_send_presence_impl(
         "payload": { "at": now_ms() },
     });
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        send_realtime_payload(
-            manager,
-            &context.host,
-            &context.conversation.peer_node_id,
-            &payload,
-        )
-        .await?;
+        send_realtime_with_contact_fallback(manager, &context, &payload).await?;
     } else {
         relay_with_contact_fallback(&context, &payload).await?;
     }
@@ -577,13 +621,15 @@ pub(super) async fn desktop_bridge_send_message_impl(
     );
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        send_realtime_payload(
-            manager,
-            &context.host,
-            &context.conversation.peer_node_id,
-            &payload,
-        )
-        .await?;
+        let realtime_result =
+            send_realtime_with_contact_fallback(manager, &context, &payload).await;
+        if let Err(error) = realtime_result {
+            if should_fallback_direct_realtime_to_relay(fresh_outreach_for_message.as_ref()) {
+                relay_with_contact_fallback(&context, &payload).await?;
+            } else {
+                return Err(error);
+            }
+        }
     } else {
         relay_with_contact_fallback(&context, &payload).await?;
     }
@@ -651,14 +697,22 @@ mod tests {
     fn test_conversation(
         messages: Vec<crate::bridge::DesktopBridgeConversationMessageRecord>,
     ) -> DesktopBridgeConversationRecord {
+        test_conversation_with_runtime("person", None, messages)
+    }
+
+    fn test_conversation_with_runtime(
+        peer_runtime: &str,
+        project_id: Option<&str>,
+        messages: Vec<crate::bridge::DesktopBridgeConversationMessageRecord>,
+    ) -> DesktopBridgeConversationRecord {
         DesktopBridgeConversationRecord {
             id: "bridge:host-1:peer-1:person".to_string(),
             host_id: "host-1".to_string(),
             peer_node_id: "peer-1".to_string(),
             peer_display_name: Some("Peer".to_string()),
             peer_owner_name: Some("Peer".to_string()),
-            peer_runtime: "person".to_string(),
-            project_id: None,
+            peer_runtime: peer_runtime.to_string(),
+            project_id: project_id.map(ToString::to_string),
             project_name: None,
             unread_count: 0,
             updated_at_ms: 1,
@@ -667,6 +721,22 @@ mod tests {
             outreach: None,
             identity: None,
             messages,
+        }
+    }
+
+    fn test_host(api_style: &str) -> DesktopBridgeHostConfig {
+        DesktopBridgeHostConfig {
+            id: "host-1".to_string(),
+            coordination: "http://127.0.0.1:17080".to_string(),
+            node_id: "self-1".to_string(),
+            api_key: "secret".to_string(),
+            display_name: Some("Self".to_string()),
+            owner: Some("Self".to_string()),
+            human_id: Some("human-self".to_string()),
+            discovery_mode: "open".to_string(),
+            active_agent_id: None,
+            agents: Vec::new(),
+            api_style: api_style.to_string(),
         }
     }
 
@@ -685,6 +755,36 @@ mod tests {
             outreach: None,
             attachments: Vec::new(),
         }
+    }
+
+    #[test]
+    fn direct_realtime_agent_send_retries_contact_fallback_after_forbidden_keys() {
+        let context = ConversationContext {
+            conversation: test_conversation_with_runtime(DEFAULT_BRIDGE_RUNTIME, None, Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+
+        assert!(should_retry_direct_serve_with_contact_fallback(
+            &context,
+            "Unable to fetch bridge recipient keys: HTTP 403 Forbidden",
+        ));
+    }
+
+    #[test]
+    fn project_realtime_forbidden_keys_do_not_use_direct_contact_fallback() {
+        let context = ConversationContext {
+            conversation: test_conversation_with_runtime(
+                DEFAULT_BRIDGE_RUNTIME,
+                Some("project-1"),
+                Vec::new(),
+            ),
+            host: test_host(API_STYLE_SERVE),
+        };
+
+        assert!(!should_retry_direct_serve_with_contact_fallback(
+            &context,
+            "Unable to fetch bridge recipient keys: HTTP 403 Forbidden",
+        ));
     }
 
     #[test]
@@ -720,6 +820,9 @@ mod tests {
             target_kind: "bridge-person".to_string(),
             parent_session_id: Some("session-1".to_string()),
             parent_session_title: Some("Shared".to_string()),
+            parent_session_kind: None,
+            parent_group_space_id: None,
+            parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
             parent_turn_id: parent_turn_id.map(ToString::to_string),
             parent_message_id: Some("msg-user".to_string()),
@@ -760,6 +863,27 @@ mod tests {
             outbound_direction(Some(&human_outreach)),
             BRIDGE_MESSAGE_DIRECTION_OUTBOUND
         );
+    }
+
+    #[test]
+    fn session_transport_uses_relay_fallback_when_direct_realtime_is_unavailable() {
+        let mut session_message = test_outreach(None);
+        session_message.context_policy = Some("session-message".to_string());
+        let mut session_invite = test_outreach(None);
+        session_invite.context_policy = Some("session-invite".to_string());
+        let mut ordinary_outreach = test_outreach(None);
+        ordinary_outreach.context_policy = Some("recent-window".to_string());
+
+        assert!(should_fallback_direct_realtime_to_relay(Some(
+            &session_message
+        )));
+        assert!(should_fallback_direct_realtime_to_relay(Some(
+            &session_invite
+        )));
+        assert!(!should_fallback_direct_realtime_to_relay(Some(
+            &ordinary_outreach
+        )));
+        assert!(!should_fallback_direct_realtime_to_relay(None));
     }
 
     #[test]

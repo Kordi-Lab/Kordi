@@ -3,17 +3,10 @@ import type { ComponentProps } from 'react';
 import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
-import { findCanonicalConversationForTarget } from '@/features/canonical/sessionResolver';
+import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
-
-export function openChatSessionFromExternalEntryPoint(
-  args: Pick<MainContentShellArgs, 'setActiveNav' | 'handleSelectChatSession'>,
-  sessionId: string,
-) {
-  args.setActiveNav('chats');
-  void args.handleSelectChatSession(sessionId);
-}
 
 export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps<typeof BridgeConfigPage> {
   return {
@@ -56,8 +49,10 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
     onRemoveBridgeContact: args.handleRemoveBridgeContact,
     onOpenBridgeConversation: (hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime, target) => {
-      const targetsPerson = peerRuntime?.trim().toLowerCase() === 'person'
-        || Boolean(target?.humanId && !target.agentId);
+      const normalizedRuntime = peerRuntime?.trim() ?? '';
+      const targetsAgent = Boolean(target?.agentId)
+        || (normalizedRuntime.length > 0 && normalizedRuntime.toLowerCase() !== 'person' && isBridgeAgentRuntime(normalizedRuntime));
+      const targetsPerson = !targetsAgent;
       if (targetsPerson) {
         void args.handleStartBridgePersonSession({
           hostId,
@@ -69,16 +64,14 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
         return;
       }
 
-      const existingConversation = findCanonicalConversationForTarget(args.chatConversations, {
-        humanId: target?.humanId,
+      void args.handleStartChatWithAgent(bridgeAgentForChatStart({
+        hostId,
+        nodeId: peerNodeId,
+        displayName: peerDisplayName,
+        ownerName: peerOwnerName,
+        runtime: peerRuntime,
         agentId: target?.agentId,
-        bridgeNodeId: peerNodeId,
-      });
-      if (existingConversation) {
-        openChatSessionFromExternalEntryPoint(args, existingConversation.id);
-        return;
-      }
-      void args.handleOpenBridgeConversation(hostId, peerNodeId, peerDisplayName, peerOwnerName, peerRuntime);
+      }));
     },
     onBridgeWizardPrimary: () => {
       void args.handleBridgeWizardPrimary();
@@ -177,7 +170,9 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     },
     desktopLiveTurn: args.desktopLiveTurn,
     queuedDesktopMessages: args.activeQueuedDesktopMessages,
-    filteredChatSlashCommands: args.filteredChatSlashCommands,
+    filteredChatSlashCommands: args.activeConv.type === 'owned-agent' && !args.activeConversationIsBridge
+      ? args.filteredChatSlashCommands
+      : [],
     filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,

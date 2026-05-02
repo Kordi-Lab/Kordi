@@ -58,6 +58,9 @@ export type ComposerMentionOption = {
   bridgeHostId: string;
   nodeId: string;
   runtime: string;
+  humanId?: string | null;
+  agentId?: string | null;
+  ownerName?: string | null;
 };
 
 function slashCommandInlineClass(kind: DesktopChatSlashCommand['kind']) {

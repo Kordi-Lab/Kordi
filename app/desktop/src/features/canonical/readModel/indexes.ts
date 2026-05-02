@@ -198,6 +198,47 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
   return duplicateIds;
 }
 
+function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {
+  const duplicateIds = new Set<string>();
+  const messagesByRequest = new Map<string, CanonicalSessionMessage[]>();
+
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-bridge-session-relay') continue;
+    if (message.messageKind !== 'agent-turn') continue;
+    if (message.senderRole !== 'owned-agent' && message.senderRole !== 'external-agent') continue;
+    const content = contentRecord(message.content);
+    if (stringValue(content.kind) !== 'session-relay') continue;
+    const requestId = stringValue(content.requestId)?.trim();
+    if (!requestId) continue;
+    const comparableText = comparableOwnedAgentResponseText(message.contentText);
+    if (!comparableText) continue;
+    const key = [
+      message.sessionId,
+      message.senderIdentityId,
+      message.senderRole,
+      requestId,
+      comparableText,
+    ].join('\u0000');
+    messagesByRequest.set(key, [...(messagesByRequest.get(key) ?? []), message]);
+  }
+
+  for (const duplicateGroup of messagesByRequest.values()) {
+    if (duplicateGroup.length <= 1) continue;
+    const duplicates = duplicateGroup
+      .sort((left, right) => (
+        left.createdAtMs - right.createdAtMs
+        || left.sequenceNum - right.sequenceNum
+        || left.id.localeCompare(right.id)
+      ))
+      .slice(1);
+    for (const duplicate of duplicates) {
+      duplicateIds.add(duplicate.id);
+    }
+  }
+
+  return duplicateIds;
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -231,6 +272,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
 
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
+    if (participant.state !== 'active') continue;
     participantsBySessionId.set(participant.sessionId, [...(participantsBySessionId.get(participant.sessionId) ?? []), participant]);
   }
 
@@ -244,9 +286,14 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const name = ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName;
       const ownerName = owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null;
+      const role = identity.id === canonicalState.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
       const participantKey = [
         identity.kind,
-        participant.role,
+        role,
         name.trim().toLowerCase(),
         ownerName?.trim().toLowerCase() ?? '',
       ].join('\u0000');
@@ -256,7 +303,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         id: identity.id,
         name,
         kind: identity.kind,
-        role: participant.role,
+        role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
         ownerName,
@@ -292,11 +339,19 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return key ? [key] : [];
     }),
   );
+  const failedDelegationRequestMessageIds = new Set(
+    canonicalState.delegatedExchanges.flatMap((exchange) => {
+      if (!['failed', 'timeout'].includes(exchange.status.trim().toLowerCase())) return [];
+      const requestMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
+      return requestMessageId ? [requestMessageId] : [];
+    }),
+  );
   const processingDelegationMessagesBySessionId = new Map<string, Message[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) continue;
     if (!exchange.bridgeRequestId) {
+      if (exchange.transport?.trim().toLowerCase() === 'bridge') continue;
       const fallbackKey = delegationOptimisticFallbackKey(exchange);
       if (fallbackKey && (bridgedDelegationFallbackKeys.has(fallbackKey) || completedDelegationFallbackKeys.has(fallbackKey))) continue;
     }
@@ -333,6 +388,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedBridgeUiEchoIds = bridgeUiOptimisticEchoIds(sortedMessages);
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
+    const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
@@ -342,6 +398,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           suppressedBridgeUiEchoIds.has(message.id)
           || suppressedLocalRuntimeEchoIds.has(message.id)
           || suppressedLocalRuntimeDuplicateIds.has(message.id)
+          || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
           || suppressedStaleProcessingPlaceholderIds.has(message.id)
         ) return [];
         const content = contentRecord(message.content);
@@ -368,7 +425,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           return [];
         }
         const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
-        return mapped ? [mapped] : [];
+        if (!mapped) return [];
+        if (mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)) {
+          return [{ ...mapped, statusChips: ['failed'] }];
+        }
+        return [mapped];
       }).concat(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
     );
   }

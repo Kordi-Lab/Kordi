@@ -13,6 +13,7 @@ import {
   appendDesktopSystemMessageToState,
   insertMentionIntoDraft,
   runLocalSlashCommand,
+  type LocalChatSendInFlight,
   type PendingBridgeOutreach,
   useChatMessageActions,
   useProjectMessageActions,
@@ -27,6 +28,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
   | 'activeConvBridgeTarget'
+  | 'activeConvMentionScope'
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'activeProjectRoot'
@@ -68,6 +70,7 @@ export function useComposerMessageActions({
   activeConvCanonicalSessionId,
   activeConvMessages,
   activeConvBridgeTarget,
+  activeConvMentionScope,
   activeProjectId,
   activeProjectSessionId,
   activeProjectRoot,
@@ -103,6 +106,7 @@ export function useComposerMessageActions({
   const [pendingBridgeOutreach, setPendingBridgeOutreach] = useState<PendingBridgeOutreach | null>(null);
   const pendingBridgeOutreachRef = useRef<PendingBridgeOutreach | null>(null);
   const pendingBridgeCancelRequestedRef = useRef(false);
+  const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
 
   useEffect(() => {
     pendingBridgeOutreachRef.current = pendingBridgeOutreach;
@@ -142,6 +146,7 @@ export function useComposerMessageActions({
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,
+    activeConvMentionScope,
     attachmentSummaryText,
     canonicalHumanIdentityId,
     chatComposerAttachments,
@@ -151,8 +156,10 @@ export function useComposerMessageActions({
     desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
+    isDesktopChatSending,
     isNativeShell,
     pendingBridgeCancelRequestedRef,
+    localChatSendInFlightRef,
     refreshDesktopChat,
     setActiveConvId,
     setCanonicalSessionState,
@@ -224,6 +231,7 @@ export function useComposerMessageActions({
     if (!desktopLiveTurn || desktopLiveTurn.completed) {
       if (isDesktopChatSending) {
         pendingBridgeCancelRequestedRef.current = true;
+        localChatSendInFlightRef.current = null;
         setIsDesktopChatSending(false);
       }
       return;
@@ -231,6 +239,7 @@ export function useComposerMessageActions({
 
     const stoppedSessionId = desktopLiveTurn.sessionId;
     setDesktopChatError(null);
+    localChatSendInFlightRef.current = null;
     setIsDesktopChatSending(false);
     setDesktopLiveTurnsBySession((current) => {
       if (!current[stoppedSessionId]) return current;

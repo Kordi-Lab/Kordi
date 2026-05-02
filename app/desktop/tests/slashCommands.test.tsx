@@ -212,3 +212,24 @@ test('own message slash command highlight uses dark high-contrast colors on the 
   assert.match(html, /text-violet-800/);
   assert.doesNotMatch(html, /text-violet-200/);
 });
+
+test('chat slash command menu is available only in my local agent chat', () => {
+  const chatsPage = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const mainContentBuilders = readFileSync(new URL('../src/app/mainContentShellBuilders.ts', import.meta.url), 'utf8');
+
+  assert.match(
+    chatsPage,
+    /const chatSlashCommands = activeConv\.type === 'owned-agent' && !activeConversationIsBridge[\s\S]*?\? filteredChatSlashCommands[\s\S]*?: \[\];/,
+    'ChatsPage should suppress the slash command menu outside local owned-agent chats',
+  );
+  assert.match(
+    chatsPage,
+    /hasComposerSlashCommandHighlight\(chatComposerText, chatSlashCommandCatalog\)/,
+    'composer highlighting should use the same scoped catalog as the menu',
+  );
+  assert.match(
+    mainContentBuilders,
+    /filteredChatSlashCommands: args\.activeConv\.type === 'owned-agent' && !args\.activeConversationIsBridge[\s\S]*?\? args\.filteredChatSlashCommands[\s\S]*?: \[\],/,
+    'chat slash commands should not be passed to person, group, or bridge chats',
+  );
+});

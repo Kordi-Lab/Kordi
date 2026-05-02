@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bridgeConversationSendPlan } from '../src/features/chat/messageActions/chatMessages';
+import { bridgeConversationSendPlan, bridgeSessionOutreachTarget, chatSendIsBusy, localChatSendIsInFlightForTarget } from '../src/features/chat/messageActions/chatMessages';
 
 test('new canonical person chat does not block optimistic send on Bridge conversation materialization', () => {
   const plan = bridgeConversationSendPlan({
@@ -27,6 +27,36 @@ test('raw Bridge conversations still materialize before bridge-message optimisti
   assert.equal(plan.targetConversationId, null);
   assert.equal(plan.shouldOpenBeforeOptimisticSend, true);
   assert.equal(plan.canAppendBridgeOptimisticMessage, false);
+});
+
+test('chat send guard blocks repeated local sends while session creation is in flight', () => {
+  assert.equal(chatSendIsBusy({ localSendInFlight: true }), true);
+  assert.equal(chatSendIsBusy({ isDesktopChatSending: true }), true);
+  assert.equal(chatSendIsBusy({ desktopLiveTurn: { completed: false } }), true);
+  assert.equal(chatSendIsBusy({ desktopLiveTurn: { completed: true } }), false);
+  assert.equal(chatSendIsBusy({}), false);
+  assert.equal(localChatSendIsInFlightForTarget({ sessionId: null }, null), true);
+  assert.equal(localChatSendIsInFlightForTarget({ sessionId: 'session-a' }, 'session-a'), true);
+  assert.equal(localChatSendIsInFlightForTarget({ sessionId: 'session-a' }, 'session-b'), false);
+});
+
+test('canonical external-agent sessions send session messages to the bridge agent target', () => {
+  assert.deepEqual(bridgeSessionOutreachTarget({
+    hostId: 'host-1',
+    nodeId: 'node-shared',
+    displayName: 'Bob agent',
+    ownerName: 'Bob',
+    runtime: 'kordi-desktop',
+    humanId: null,
+    agentId: 'agent-bob',
+  }), {
+    targetKind: 'bridge-agent',
+    targetRuntime: 'kordi-desktop',
+    targetDisplayName: 'Bob agent',
+    targetOwnerName: 'Bob',
+    targetHumanId: null,
+    targetAgentId: 'agent-bob',
+  });
 });
 
 test('existing Bridge conversation can still receive bridge-message optimistic state', () => {

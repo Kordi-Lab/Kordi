@@ -76,6 +76,20 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
     : {};
 }
 
+function nonPlaceholderGroupTitle(value: string) {
+  const title = value.trim();
+  if (!title || /^(new session|session|group)$/i.test(title)) return null;
+  return title;
+}
+
+export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return session.metadata;
+  const metadata = sessionMetadata(session);
+  if (stringValue(metadata.customName)) return session.metadata;
+  const customName = nonPlaceholderGroupTitle(session.title);
+  return customName ? { ...metadata, customName } : session.metadata;
+}
+
 export function syntheticBridgeTarget(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -84,6 +98,9 @@ export function syntheticBridgeTarget(
   const metadataHostId = stringValue(metadata.bridgeHostId);
   const metadataNodeId = stringValue(metadata.peerNodeId);
   const runtime = stringValue(metadata.peerRuntime);
+  const metadataDisplayName = stringValue(metadata.peerDisplayName);
+  const metadataOwnerName = stringValue(metadata.peerOwnerName);
+  const metadataAgentId = stringValue(metadata.peerAgentId) ?? stringValue(metadata.targetAgentId);
 
   const matchingParticipant = metadataNodeId
     ? participants.find((participant) => participant.bridgeNodeId === metadataNodeId)
@@ -101,11 +118,11 @@ export function syntheticBridgeTarget(
   return {
     hostId,
     nodeId,
-    displayName: matchingParticipant?.name ?? stringValue(metadata.peerDisplayName) ?? null,
-    ownerName: matchingParticipant?.humanId ? matchingParticipant.name : null,
+    displayName: matchingParticipant?.name ?? metadataDisplayName ?? null,
+    ownerName: matchingParticipant?.ownerName ?? (matchingParticipant?.humanId ? matchingParticipant.name : null) ?? metadataOwnerName ?? null,
     runtime: runtime ?? (matchingParticipant?.kind === 'human' ? 'person' : null),
     humanId: matchingParticipant?.humanId ?? null,
-    agentId: matchingParticipant?.agentId ?? null,
+    agentId: matchingParticipant?.agentId ?? metadataAgentId ?? null,
   };
 }
 
@@ -122,9 +139,43 @@ export function syntheticConversationType(
   return 'owned-agent';
 }
 
+function normalizeParticipantSpaceId(value: string) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('group:') ? trimmed.slice('group:'.length) : trimmed;
+}
+
+export function syntheticParticipantSpaceId(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'group') return null;
+  const metadata = sessionMetadata(session);
+  const groupSpaceId = stringValue(metadata.continuedFromSpaceId) ?? stringValue(metadata.groupSpaceId) ?? stringValue(metadata.groupId);
+  return groupSpaceId ? normalizeParticipantSpaceId(groupSpaceId) || null : null;
+}
+
+function firstMessageTitle(messages: Message[]) {
+  const text = messages
+    .find((message) => message.role !== 'system' && message.text.trim().length > 0)
+    ?.text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(' ')
+    .slice(0, 60)
+    .trim();
+  return text || null;
+}
+
+export function sessionDisplayTitle(messages: Message[], fallback: string) {
+  return firstMessageTitle(messages) ?? fallback;
+}
+
 export function sessionHasActiveProcessing(messages: Message[]) {
   return messages.some((message) => message.turn && !message.turn.completed)
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
+}
+
+export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions'][number]) {
+  return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
 }
 
 export function syntheticConversation(
@@ -143,12 +194,15 @@ export function syntheticConversation(
   }, {});
   const bridgeTarget = syntheticBridgeTarget(session, participants);
   const updatedAtLabel = messages[messages.length - 1]?.time
-    ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+    ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
+
+  const displayTitle = sessionDisplayTitle(messages, session.title);
 
   return {
     id: session.id,
     canonicalSessionId: session.id,
-    name: session.title,
+    canonicalCreatedByIdentityId: session.createdByIdentityId,
+    name: displayTitle,
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
     unread: 0,
@@ -162,6 +216,8 @@ export function syntheticConversation(
     avatarSeed: primary?.avatarKey ?? null,
     profileImageUrl: primary?.profileImageUrl ?? null,
     participantAvatarSeeds,
+    participantSpaceId: syntheticParticipantSpaceId(session),
+    metadata: sessionViewMetadata(session),
     bridgeTarget,
     canonicalStoragePath: undefined,
     canonicalParticipantCount: participants.length,

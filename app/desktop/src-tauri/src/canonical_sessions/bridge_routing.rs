@@ -63,6 +63,44 @@ pub(super) fn bridge_conversation_has_unrouted_direct_messages(
     })
 }
 
+fn should_restore_group_session_message_policy(
+    message: &crate::bridge::DesktopBridgeConversationMessage,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    parent_session_id: &str,
+) -> bool {
+    let context_policy_is_missing = outreach
+        .context_policy
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none();
+    if !context_policy_is_missing
+        || !matches!(
+            message.direction.as_str(),
+            "inbound-response" | "outbound-response"
+        )
+    {
+        return false;
+    }
+
+    let has_parent_message = outreach
+        .parent_message_id
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    has_parent_message
+        && (outreach
+            .parent_session_kind
+            .as_deref()
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+            || outreach
+                .parent_group_space_id
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+            || parent_session_id.starts_with("session:group:"))
+}
+
 pub(super) fn message_scoped_outreach_groups(
     conversation: &crate::bridge::DesktopBridgeConversation,
 ) -> Vec<(
@@ -92,6 +130,9 @@ pub(super) fn message_scoped_outreach_groups(
             continue;
         };
         outreach.parent_session_id = Some(parent_session_id.clone());
+        if should_restore_group_session_message_policy(message, &outreach, &parent_session_id) {
+            outreach.context_policy = Some("session-message".to_string());
+        }
         if outreach.bridge_conversation_id.is_none() {
             outreach.bridge_conversation_id = Some(conversation.id.clone());
         }
@@ -202,6 +243,18 @@ pub(super) fn outreach_is_session_message(
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
 ) -> bool {
     outreach_context_policy_is(outreach, "session-message")
+}
+
+pub(super) fn outreach_is_session_invite(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> bool {
+    outreach_context_policy_is(outreach, "session-invite")
+}
+
+pub(super) fn outreach_is_session_update(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> bool {
+    outreach_context_policy_is(outreach, "session-update")
 }
 
 pub(super) fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {

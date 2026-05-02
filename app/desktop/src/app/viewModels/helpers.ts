@@ -91,7 +91,12 @@ export function inlineRequestPreview(text: string) {
 export function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): Message[] {
   const outreach = conversation.outreach;
   if (!outreach) return [];
-  if (outreach.contextPolicy === 'session-relay' || outreach.contextPolicy === 'session-message') return [];
+  if (
+    outreach.contextPolicy === 'session-relay'
+    || outreach.contextPolicy === 'session-message'
+    || outreach.contextPolicy === 'session-invite'
+    || outreach.contextPolicy === 'session-update'
+  ) return [];
 
   const isAgent = outreach.targetKind === 'bridge-agent';
   const targetName = outreach.targetDisplayName || conversation.title;

@@ -29,6 +29,7 @@ struct LocalBridgeMailboxTarget {
     host: DesktopBridgeHostConfig,
     sender_runtime: String,
     sender_agent_id: Option<String>,
+    owner_node_id: Option<String>,
     model_routing: Option<DesktopBridgeAgentModelRouting>,
     should_process_agent_asks: bool,
 }
@@ -62,6 +63,13 @@ fn bridge_response_is_done(event: &ParsedMailboxEvent) -> bool {
         .unwrap_or(true)
 }
 
+fn is_processing_placeholder_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.eq_ignore_ascii_case("processing")
+        || trimmed.eq_ignore_ascii_case("processing...")
+        || trimmed.eq_ignore_ascii_case("processing…")
+}
+
 fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
     if bridge_response_is_done(event) {
         return false;
@@ -72,6 +80,9 @@ fn should_buffer_partial_agent_response(event: &ParsedMailboxEvent) -> bool {
 
     let text = mailbox_payload_text(&event.payload);
     let normalized = text.trim();
+    if event_targets_group_session(event) && is_processing_placeholder_text(normalized) {
+        return false;
+    }
     if normalized.is_empty() {
         return true;
     }
@@ -98,6 +109,107 @@ fn event_session_thread_has_parent_turn(event: &ParsedMailboxEvent) -> bool {
         .and_then(|value| value.as_str())
         .map(str::trim)
         .is_some_and(|value| !value.is_empty())
+}
+
+fn event_targets_group_session(event: &ParsedMailboxEvent) -> bool {
+    let Some(thread) = event_session_thread(event) else {
+        return false;
+    };
+    thread
+        .get("parentSessionKind")
+        .and_then(|value| value.as_str())
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+        || thread
+            .get("parentGroupSpaceId")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+}
+
+fn group_session_thread_relay_targets(
+    event: &ParsedMailboxEvent,
+    local_node_id: &str,
+    local_owner_node_id: Option<&str>,
+    requester_node_id: &str,
+) -> Vec<String> {
+    if !event_targets_group_session(event) {
+        return Vec::new();
+    }
+    let local_node_id = local_node_id.trim();
+    let local_owner_node_id = local_owner_node_id.map(str::trim).unwrap_or("");
+    let requester_node_id = requester_node_id.trim();
+    let mut targets = Vec::new();
+    if let Some(participants) = event_session_thread(event)
+        .and_then(|thread| thread.get("participants"))
+        .and_then(|value| value.as_array())
+    {
+        for participant in participants {
+            let Some(node_id) = participant
+                .get("bridgeNodeId")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            if node_id == local_node_id
+                || node_id == local_owner_node_id
+                || node_id == requester_node_id
+            {
+                continue;
+            }
+            if !targets.iter().any(|existing| existing == node_id) {
+                targets.push(node_id.to_string());
+            }
+        }
+    }
+    targets
+}
+
+fn bridge_response_payload(event: &ParsedMailboxEvent, message: &str, done: bool) -> Value {
+    let mut payload = serde_json::json!({ "message": message, "done": done });
+    if let Some(thread) = event_session_thread(event) {
+        payload["sessionThread"] = thread.clone();
+    }
+    payload
+}
+
+async fn fanout_group_agent_response(
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+    message: &str,
+    done: bool,
+) {
+    let relay_targets = group_session_thread_relay_targets(
+        event,
+        target.host.node_id.as_str(),
+        target.owner_node_id.as_deref(),
+        event.from_node_id.as_str(),
+    );
+    if relay_targets.is_empty() {
+        return;
+    }
+    let response = serde_json::json!({
+        "from": target.host.node_id,
+        "fromDisplayName": target.host.display_name,
+        "fromOwnerName": target.host.owner,
+        "fromRuntime": target.sender_runtime,
+        "fromHumanId": target.host.human_id,
+        "fromAgentId": target.sender_agent_id,
+        "projectId": event.project_id,
+        "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+        "requestId": event.request_id,
+        "payload": bridge_response_payload(event, message, done),
+    });
+    for relay_target in relay_targets {
+        let _ = relay_plaintext_message(
+            &target.host,
+            &relay_target,
+            event.project_id.as_deref(),
+            &response,
+        )
+        .await;
+    }
 }
 
 fn storage_peer_runtime_for_inbound_event(
@@ -159,6 +271,7 @@ fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> 
                 host: host.clone(),
                 sender_runtime: "person".to_string(),
                 sender_agent_id: None,
+                owner_node_id: Some(host.node_id.clone()),
                 model_routing: None,
                 should_process_agent_asks: false,
             });
@@ -184,6 +297,7 @@ fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> 
                 },
                 sender_runtime: agent.runtime.clone(),
                 sender_agent_id: Some(agent.id.clone()),
+                owner_node_id: Some(host.node_id.clone()),
                 model_routing: Some(DesktopBridgeAgentModelRouting {
                     default_model: agent.default_model.clone(),
                     default_auth_provider: agent.default_auth_provider.clone(),
@@ -501,6 +615,28 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     Vec::new(),
                     false,
                 )?;
+                if event_targets_group_session(&event) {
+                    let response = serde_json::json!({
+                        "from": target.host.node_id,
+                        "fromDisplayName": target.host.display_name,
+                        "fromOwnerName": target.host.owner,
+                        "fromRuntime": target.sender_runtime,
+                        "fromHumanId": target.host.human_id,
+                        "fromAgentId": target.sender_agent_id,
+                        "projectId": event.project_id,
+                        "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+                        "requestId": event.request_id,
+                        "payload": bridge_response_payload(&event, "processing...", false),
+                    });
+                    let _ = relay_plaintext_message(
+                        &target.host,
+                        &event.from_node_id,
+                        event.project_id.as_deref(),
+                        &response,
+                    )
+                    .await;
+                }
+                fanout_group_agent_response(&target, &event, "processing...", false).await;
 
                 let agent_result = run_bridge_agent_prompt(
                     chat_manager,
@@ -581,7 +717,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 "projectId": event.project_id,
                                 "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
                                 "requestId": event.request_id,
-                                "payload": { "message": assistant_text, "done": true },
+                                "payload": bridge_response_payload(&event, &assistant_text, true),
                             });
                             let _ = relay_plaintext_message(
                                 &target.host,
@@ -590,6 +726,8 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                                 &response,
                             )
                             .await;
+                            fanout_group_agent_response(&target, &event, &assistant_text, true)
+                                .await;
                         }
                         if let Some(request_id) = event.request_id.as_deref() {
                             update_message_delivery_state_in_storage(
@@ -713,6 +851,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
 mod tests {
     use super::*;
     use crate::bridge::constants::BRIDGE_MESSAGE_TYPE_RAW;
+    use crate::bridge::DesktopBridgeAgentConfig;
 
     fn parsed_event(
         message_type: &str,
@@ -789,6 +928,77 @@ mod tests {
         assert_eq!(
             direction_for_inbound_event(&event),
             BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+        );
+    }
+
+    #[test]
+    fn response_outreach_metadata_uses_session_thread_context_policy() {
+        let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RESPONSE, Some("kordi-desktop"), None);
+        event.payload["sessionThread"]["contextPolicy"] = serde_json::json!("session-message");
+        event.payload["sessionThread"]["targetKind"] = serde_json::json!("bridge-agent");
+        event.payload["sessionThread"]["targetDisplayName"] = serde_json::json!("Peer's Kordi");
+
+        let host = DesktopBridgeHostConfig {
+            id: "bridge-host".to_string(),
+            coordination: "https://bridge.test".to_string(),
+            node_id: "local-node".to_string(),
+            api_key: "api-key".to_string(),
+            display_name: Some("Local Kordi".to_string()),
+            owner: Some("Local".to_string()),
+            human_id: Some("human-local".to_string()),
+            discovery_mode: "open".to_string(),
+            active_agent_id: Some("agent-local".to_string()),
+            agents: vec![DesktopBridgeAgentConfig {
+                id: "agent-local".to_string(),
+                label: "Local Kordi".to_string(),
+                node_id: "local-node".to_string(),
+                api_key: "agent-key".to_string(),
+                runtime: "kordi-desktop".to_string(),
+                is_default: true,
+                default_model: None,
+                default_auth_provider: None,
+                default_auth_choice: None,
+                fallback_model: None,
+                fallback_auth_provider: None,
+                fallback_auth_choice: None,
+                thinking: None,
+            }],
+            api_style: "serve".to_string(),
+        };
+
+        let outreach =
+            outreach_metadata_for_event(&host, &event, "kordi-desktop").expect("outreach metadata");
+
+        assert_eq!(outreach.context_policy.as_deref(), Some("session-message"));
+    }
+
+    #[test]
+    fn group_processing_response_is_not_buffered_as_typing_only() {
+        let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RESPONSE, Some("kordi-desktop"), None);
+        event.payload["message"] = serde_json::json!("processing...");
+        event.payload["done"] = serde_json::json!(false);
+        event.payload["sessionThread"]["parentSessionKind"] = serde_json::json!("group");
+        event.payload["sessionThread"]["parentGroupSpaceId"] =
+            serde_json::json!("session:group:root");
+
+        assert!(!should_buffer_partial_agent_response(&event));
+    }
+
+    #[test]
+    fn mailbox_group_agent_response_targets_other_group_members() {
+        let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_ASK, Some("person"), None);
+        event.payload["sessionThread"]["parentSessionKind"] = serde_json::json!("group");
+        event.payload["sessionThread"]["parentGroupSpaceId"] =
+            serde_json::json!("session:group:root");
+        event.payload["sessionThread"]["participants"] = serde_json::json!([
+            { "displayName": "Requester", "bridgeNodeId": "peer-node" },
+            { "displayName": "Agent owner", "bridgeNodeId": "node-me" },
+            { "displayName": "Other", "bridgeNodeId": "node-other" }
+        ]);
+
+        assert_eq!(
+            group_session_thread_relay_targets(&event, "node-agent", Some("node-me"), "peer-node"),
+            vec!["node-other".to_string()]
         );
     }
 }

@@ -283,12 +283,28 @@ pub struct DesktopBridgeSessionThreadMessage {
     pub index: Option<usize>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeSessionParticipant {
+    pub identity_id: Option<String>,
+    pub display_name: String,
+    pub role: Option<String>,
+    pub bridge_node_id: Option<String>,
+    pub human_id: Option<String>,
+    pub agent_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopBridgeOutreachMetadata {
     pub target_kind: String,
     pub parent_session_id: Option<String>,
     pub parent_session_title: Option<String>,
+    pub parent_session_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_group_space_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
     pub parent_turn_id: Option<String>,
@@ -495,6 +511,10 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub context_policy: Option<String>,
     pub parent_session_id: Option<String>,
     pub parent_session_title: Option<String>,
+    pub parent_session_kind: Option<String>,
+    pub parent_group_space_id: Option<String>,
+    #[serde(default)]
+    pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default)]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
     pub parent_turn_id: Option<String>,

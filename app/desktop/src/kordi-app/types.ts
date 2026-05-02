@@ -1,7 +1,7 @@
 import type { BridgeMessageDirection } from '@/features/bridge/messages';
 
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
-export type ChatFilter = 'all' | 'people' | 'agents' | 'delegated';
+export type ChatFilter = 'latest' | 'contacts' | 'groups';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
 export type ContactClass = 'my-agents' | 'other-users-agents' | 'other-users';
@@ -157,6 +157,7 @@ export type ConversationBridgeTarget = {
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
+  canonicalCreatedByIdentityId?: string;
   canonicalStoragePath?: string;
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
@@ -183,6 +184,7 @@ export type Conversation = {
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
   participantSpaceId?: string | null;
+  metadata?: unknown;
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: DesktopBridgeOutreachMetadata | null;
@@ -190,7 +192,7 @@ export type Conversation = {
   outreachThreads?: OutreachThreadSummary[];
 };
 
-export type ParticipantSpaceKind = 'direct-human' | 'direct-agent' | 'group';
+export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
 
 export type ParticipantSpaceAvatar = {
   kind: 'human' | 'agent';
@@ -413,7 +415,7 @@ export type CanonicalSession = {
 export type CanonicalSessionParticipant = {
   sessionId: string;
   identityId: string;
-  role: 'self' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
+  role: 'self' | 'admin' | 'owned-agent' | 'person' | 'external-agent' | 'delegate' | string;
   state: 'active' | 'invited' | 'pending' | 'left' | string;
   addedByIdentityId?: string | null;
   addedAtMs: number;
@@ -568,6 +570,37 @@ export type UpdateCanonicalPresenceRequest = {
   sessionId?: string | null;
   detail?: string | null;
   expiresAtMs?: number | null;
+};
+
+export type RenameCanonicalSessionRequest = {
+  sessionId: string;
+  title: string;
+  requestedByIdentityId?: string | null;
+};
+
+export type UpdateCanonicalSessionMetadataRequest = {
+  sessionId: string;
+  metadata: unknown;
+  requestedByIdentityId?: string | null;
+};
+
+export type AddCanonicalSessionParticipantsRequest = {
+  sessionId: string;
+  identityIds: string[];
+  addedByIdentityId: string;
+};
+
+export type RemoveCanonicalSessionParticipantRequest = {
+  sessionId: string;
+  identityId: string;
+  removedByIdentityId?: string | null;
+};
+
+export type SetCanonicalSessionParticipantRoleRequest = {
+  sessionId: string;
+  identityId: string;
+  role: 'self' | 'admin' | 'person' | 'delegate' | string;
+  requestedByIdentityId?: string | null;
 };
 
 export type DesktopAuthState = {
@@ -744,10 +777,22 @@ export type DesktopBridgeSessionThreadMessage = {
   index?: number | null;
 };
 
+export type DesktopBridgeSessionParticipant = {
+  identityId?: string | null;
+  displayName: string;
+  role?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+};
+
 export type DesktopBridgeOutreachMetadata = {
   targetKind: 'bridge-agent' | 'bridge-person' | string;
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
+  parentSessionKind?: string | null;
+  parentGroupSpaceId?: string | null;
+  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
   parentMessageId?: string | null;
@@ -827,6 +872,9 @@ export type DesktopBridgeCreateOutreachRequest = {
   contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
+  parentSessionKind?: string | null;
+  parentGroupSpaceId?: string | null;
+  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
   parentTurnId?: string | null;
   parentMessageId?: string | null;

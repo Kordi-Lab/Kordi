@@ -372,10 +372,14 @@ pub(super) fn outreach_metadata_for_event(
     let context_policy = event
         .payload
         .get("contextPolicy")
+        .or_else(|| thread.get("contextPolicy"))
         .and_then(|value| value.as_str())
         .map(ToString::to_string);
     let is_session_transport = context_policy.as_deref().is_some_and(|value| {
-        value.eq_ignore_ascii_case("session-relay") || value.eq_ignore_ascii_case("session-message")
+        value.eq_ignore_ascii_case("session-relay")
+            || value.eq_ignore_ascii_case("session-message")
+            || value.eq_ignore_ascii_case("session-invite")
+            || value.eq_ignore_ascii_case("session-update")
     });
     let now = now_ms();
 
@@ -386,6 +390,19 @@ pub(super) fn outreach_metadata_for_event(
             .get("parentSessionTitle")
             .and_then(|value| value.as_str())
             .map(ToString::to_string),
+        parent_session_kind: thread
+            .get("parentSessionKind")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        parent_group_space_id: thread
+            .get("parentGroupSpaceId")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        parent_session_participants: thread
+            .get("participants")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default(),
         parent_session_messages: thread
             .get("messages")
             .cloned()

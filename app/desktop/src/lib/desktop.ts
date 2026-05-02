@@ -1,4 +1,5 @@
 import type {
+  AddCanonicalSessionParticipantsRequest,
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
@@ -15,7 +16,11 @@ import type {
   MessageAttachment,
   DesktopProjectSettings,
   OpenCanonicalSessionRequest,
+  RemoveCanonicalSessionParticipantRequest,
+  RenameCanonicalSessionRequest,
+  SetCanonicalSessionParticipantRoleRequest,
   UpdateCanonicalPresenceRequest,
+  UpdateCanonicalSessionMetadataRequest,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
@@ -523,6 +528,26 @@ export async function createCanonicalDelegatedExchange(request: CreateCanonicalD
 
 export async function updateCanonicalPresence(request: UpdateCanonicalPresenceRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_update_presence', { request });
+}
+
+export async function renameCanonicalSession(request: RenameCanonicalSessionRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_rename_session', { request });
+}
+
+export async function updateCanonicalSessionMetadata(request: UpdateCanonicalSessionMetadataRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_update_session_metadata', { request });
+}
+
+export async function addCanonicalSessionParticipants(request: AddCanonicalSessionParticipantsRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_add_session_participants', { request });
+}
+
+export async function removeCanonicalSessionParticipant(request: RemoveCanonicalSessionParticipantRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_remove_session_participant', { request });
+}
+
+export async function setCanonicalSessionParticipantRole(request: SetCanonicalSessionParticipantRoleRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_set_session_participant_role', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {

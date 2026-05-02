@@ -55,6 +55,7 @@ import type {
 import { desktopSlashCommandEnterAction, leadingSlashCommandTextParts } from '@/features/chat/composerController.shared';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -335,8 +336,16 @@ export function ChatsPage({
   const bridgeRoutingSelection = routingSelectionForBridgeAgent(selectedBridgeRoutingAgent);
   const bridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(bridgeRoutingAgents.length);
   const bridgeAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
-  const transcriptMessages = suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn);
-  const chatSlashCommandHighlight = hasComposerSlashCommandHighlight(chatComposerText, desktopChatState?.slashCommands ?? []);
+  const transcriptMessages = collapseAdjacentSessionConfigNotices(
+    suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
+  );
+  const chatSlashCommands = activeConv.type === 'owned-agent' && !activeConversationIsBridge
+    ? filteredChatSlashCommands
+    : [];
+  const chatSlashCommandCatalog = activeConv.type === 'owned-agent' && !activeConversationIsBridge
+    ? desktopChatState?.slashCommands ?? []
+    : [];
+  const chatSlashCommandHighlight = hasComposerSlashCommandHighlight(chatComposerText, chatSlashCommandCatalog);
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;
@@ -577,10 +586,10 @@ export function ChatsPage({
         </AnimatePresence>
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
-            {filteredChatSlashCommands.length > 0 ? (
+            {chatSlashCommands.length > 0 ? (
               <ComposerSlashMenu
-                items={filteredChatSlashCommands}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
+                items={chatSlashCommands}
+                selectedIndex={Math.min(chatSlashMenuIndex, chatSlashCommands.length - 1)}
                 onSelect={acceptChatSlashCommand}
               />
             ) : filteredChatMentionTargets.length > 0 ? (
@@ -632,7 +641,7 @@ export function ChatsPage({
               ) : null}
               <div className="relative">
                 {chatSlashCommandHighlight ? (
-                  <ComposerSlashCommandHighlight text={chatComposerText} slashCommands={desktopChatState?.slashCommands ?? []} />
+                  <ComposerSlashCommandHighlight text={chatComposerText} slashCommands={chatSlashCommandCatalog} />
                 ) : null}
                 <textarea
                   rows={1}
@@ -656,20 +665,20 @@ export function ChatsPage({
                     }
                   }}
                   onKeyDown={(event) => {
-                    if (filteredChatSlashCommands.length > 0) {
+                    if (chatSlashCommands.length > 0) {
                       if (event.key === 'ArrowDown') {
                         event.preventDefault();
-                        setChatSlashMenuIndex((current) => (current + 1) % filteredChatSlashCommands.length);
+                        setChatSlashMenuIndex((current) => (current + 1) % chatSlashCommands.length);
                         return;
                       }
                       if (event.key === 'ArrowUp') {
                         event.preventDefault();
-                        setChatSlashMenuIndex((current) => (current - 1 + filteredChatSlashCommands.length) % filteredChatSlashCommands.length);
+                        setChatSlashMenuIndex((current) => (current - 1 + chatSlashCommands.length) % chatSlashCommands.length);
                         return;
                       }
                       if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
                         event.preventDefault();
-                        const selectedCommandItem = filteredChatSlashCommands[Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)] ?? filteredChatSlashCommands[0];
+                        const selectedCommandItem = chatSlashCommands[Math.min(chatSlashMenuIndex, chatSlashCommands.length - 1)] ?? chatSlashCommands[0];
                         const selectedCommand = selectedCommandItem.value;
                         if (event.key === 'Enter' && desktopSlashCommandEnterAction(selectedCommandItem) === 'run') {
                           onSendChatMessage(selectedCommand);
@@ -699,7 +708,7 @@ export function ChatsPage({
                         return;
                       }
                     }
-                    if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
+                    if (event.key === 'Escape' && chatSlashCommands.length > 0) {
                       event.preventDefault();
                       setChatComposerText('/');
                       return;

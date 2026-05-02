@@ -12,12 +12,13 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
-import { buildParticipantSpaces, filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   CanonicalSessionState,
+  ChatFilter,
   Contact,
   Conversation,
   DesktopBridgeConversation,
@@ -100,7 +101,7 @@ type UseWorkspaceViewModelsArgs = {
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
-  chatFilter: 'all' | 'people' | 'agents' | 'delegated';
+  chatFilter: ChatFilter;
   chatSearch: string;
   projectSearch: string;
   contactSearch: string;
@@ -359,13 +360,11 @@ export function useWorkspaceViewModels({
 
     return chatConversations.filter((conversation) => {
       const matchesFilter =
-        chatFilter === 'all'
+        chatFilter === 'latest'
           ? true
-          : chatFilter === 'people'
-            ? conversation.type === 'person'
-            : chatFilter === 'agents'
-              ? conversation.type !== 'person'
-              : conversation.directness !== 'Direct chat';
+          : chatFilter === 'contacts'
+            ? conversation.type === 'person' || conversation.type === 'owned-agent'
+            : conversation.canonicalParticipantCount !== undefined && conversation.canonicalParticipantCount > 2;
 
       const matchesSearch =
         normalizedSearch.length === 0
@@ -378,10 +377,13 @@ export function useWorkspaceViewModels({
     });
   }, [chatConversations, chatFilter, chatSearch]);
 
-  const participantSpaces = useMemo(() => buildParticipantSpaces(chatConversations), [chatConversations]);
+  const participantSpaces = useMemo(
+    () => ensureSelfParticipantSpace(buildParticipantSpaces(chatConversations), { avatarSeed: getLocalProfileAvatarSeed() }),
+    [chatConversations],
+  );
   const filteredParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch),
-    [chatSearch, participantSpaces],
+    () => filterParticipantSpaces(participantSpaces, chatSearch, chatFilter),
+    [chatFilter, chatSearch, participantSpaces],
   );
 
   const displayedContacts = useMemo<Contact[]>(() => {

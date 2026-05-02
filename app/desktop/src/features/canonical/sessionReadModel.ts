@@ -11,11 +11,15 @@ import { formatDesktopClockTime } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  sessionChatActivityAtMs,
+  sessionDisplayTitle,
   sessionHasActiveProcessing,
   sessionMetadata,
+  sessionViewMetadata,
   shouldUseCanonicalMessages,
   syntheticBridgeTarget,
   syntheticConversation,
+  syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
 
@@ -32,6 +36,8 @@ type CanonicalConversationLike = {
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
   outreach?: { parentSessionId?: string | null } | null;
+  participantSpaceId?: string | null;
+  directness?: string | null;
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   unread?: number;
@@ -43,6 +49,18 @@ type CanonicalConversationLike = {
 
 function messageResponseText(message: Message) {
   return (message.turn?.assistantText ?? message.text).trim();
+}
+
+function comparableAgentResponseText(value: string) {
+  return value.trim().replace(/\s+/gu, '');
+}
+
+function sameAgentResponseText(left: string, right: string) {
+  const leftTrimmed = left.trim();
+  const rightTrimmed = right.trim();
+  if (!leftTrimmed || !rightTrimmed) return false;
+  return leftTrimmed === rightTrimmed
+    || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
 }
 
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
@@ -63,7 +81,7 @@ function mergeLocalOwnedAgentRuntimeStatus(
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
     const localText = messageResponseText(localMessage);
     const matchingCanonicalIndex = localText
-      ? merged.findIndex((message) => message.role === 'owned-agent' && messageResponseText(message) === localText)
+      ? merged.findIndex((message) => message.role === 'owned-agent' && sameAgentResponseText(messageResponseText(message), localText))
       : -1;
     if (matchingCanonicalIndex >= 0) {
       merged[matchingCanonicalIndex] = localMessage;
@@ -95,6 +113,22 @@ function shouldKeepLegacyChatConversationExtra(
     || isCanonicalBridgeSessionId(sessionId)
     || conversation.bridges.some((bridge) => bridge.trim().toLowerCase() === 'local')
     || !conversation.canonicalSessionId;
+}
+
+function isChatCreatedDirectAgentSession(session: CanonicalSessionState['sessions'][number]) {
+  return session.kind === 'direct-agent' && sessionMetadata(session).createdFrom === 'chat-create-flow';
+}
+
+function visibleParticipantsForSession(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+) {
+  if (!isChatCreatedDirectAgentSession(session)) return participants;
+  const primaryIdentityId = session.primaryIdentityId?.trim();
+  return participants.filter((participant) => (
+    participant.role === 'self'
+    || (primaryIdentityId && participant.id === primaryIdentityId)
+  ));
 }
 
 function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
@@ -150,11 +184,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
   const indexes = buildCanonicalIndexes(canonicalState);
   const chatSessions = canonicalState.sessions
     .filter((session) => session.kind !== 'project' && session.status !== 'archived')
-    .sort((left, right) => {
-      const leftTs = left.lastMessageAtMs ?? left.updatedAtMs ?? left.createdAtMs;
-      const rightTs = right.lastMessageAtMs ?? right.updatedAtMs ?? right.createdAtMs;
-      return rightTs - leftTs;
-    });
+    .sort((left, right) => sessionChatActivityAtMs(right) - sessionChatActivityAtMs(left));
 
   return {
     sessionTitle(sessionId, fallback) {
@@ -181,18 +211,22 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
 
       const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
       const isBridgeSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
+      const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
-      const messages = (isBridgePersonSession || isBridgeSessionThread) && canonicalMessages.length > 0
-        ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
+      const messages = (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
+        ? isChatCreatedDirectAgent
+          ? canonicalMessages
+          : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const participants = this.participantNames(sessionId, conversation.participants);
-      const bridgePersonMessageTitle = isBridgePersonSession
-        ? messages.find((message) => message.role !== 'system' && message.text.trim())?.text.trim()
-        : null;
-      const canonicalParticipants = this.participantDetails(sessionId);
+      const rawCanonicalParticipants = this.participantDetails(sessionId);
+      const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
+      const participants = canonicalParticipants.length > 0
+        ? canonicalParticipants.map((participant) => participant.name)
+        : conversation.participants;
+      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
-        ?? formatDesktopClockTime(session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+        ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
 
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
@@ -202,17 +236,21 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       return {
         ...conversation,
         canonicalSessionId: sessionId,
+        canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalStoragePath: indexes.storagePath,
-        name: bridgePersonMessageTitle || session.title || conversation.name,
+        name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread: scopedUnread,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
+        participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
+        metadata: sessionViewMetadata(session),
+        directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Direct chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
-        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, canonicalParticipants),
-        canonicalParticipantCount: (indexes.participantsBySessionId.get(sessionId) ?? []).length,
+        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants),
+        canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
         canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
         canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
@@ -247,9 +285,10 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
 
       const hydrated = [...groups.values()]
         .sort((left, right) => {
-          const leftTs = left[0]?.lastMessageAtMs ?? left[0]?.updatedAtMs ?? left[0]?.createdAtMs ?? 0;
-          const rightTs = right[0]?.lastMessageAtMs ?? right[0]?.updatedAtMs ?? right[0]?.createdAtMs ?? 0;
-          return rightTs - leftTs;
+          const leftSession = left[0];
+          const rightSession = right[0];
+          return (rightSession ? sessionChatActivityAtMs(rightSession) : 0)
+            - (leftSession ? sessionChatActivityAtMs(leftSession) : 0);
         })
         .flatMap((sessions) => {
           const representativeWithMessages = sessions.find((session) => (indexes.rawMessageCountBySessionId.get(session.id) ?? 0) > 0);
@@ -276,8 +315,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
           const fallbackParticipants = this.participantDetails(fallbackSession.id);
           const fallbackMessages = this.messages(fallbackSession.id);
           const fallbackMetadata = sessionMetadata(fallbackSession);
+          const createdFromChatFlow = fallbackMetadata.createdFrom === 'chat-create-flow';
           if (fallbackMessages.length === 0 && (
-            fallbackSession.kind === 'self-agent'
+            (fallbackSession.kind === 'self-agent' && !createdFromChatFlow)
             || fallbackMetadata.source === 'desktop-bridge-conversation'
           )) {
             return [];
