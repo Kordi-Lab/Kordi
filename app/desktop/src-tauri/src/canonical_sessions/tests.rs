@@ -616,6 +616,155 @@ fn source_event_reconcile_updates_streamed_agent_content() {
 }
 
 #[test]
+fn direct_agent_outreach_sync_keeps_owner_out_of_private_parent_participants() {
+    let conn = test_conn();
+    seed_identity(&conn, "human:local", "Me", "human");
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:owner".to_string()),
+            kind: "human".to_string(),
+            display_name: "Owner".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("host-1".to_string()),
+            bridge_node_id: Some("node-owner".to_string()),
+            human_id: Some("human-owner".to_string()),
+            agent_id: None,
+            avatar_key: Some("human-owner".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("owner identity");
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("agent:remote".to_string()),
+            kind: "agent".to_string(),
+            display_name: "Owner's Kordi".to_string(),
+            owner_identity_id: Some("human:owner".to_string()),
+            source: Some("bridge".to_string()),
+            source_host_id: Some("host-1".to_string()),
+            bridge_node_id: Some("node-owner".to_string()),
+            human_id: None,
+            agent_id: Some("agent-remote".to_string()),
+            avatar_key: Some("agent-remote".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("agent identity");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:direct-agent:private".to_string()),
+            kind: "direct-agent".to_string(),
+            title: Some("Owner's Kordi".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("agent:remote".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:remote".to_string()],
+            metadata: Some(serde_json::json!({ "createdFrom": "chat-create-flow" })),
+        },
+    )
+    .expect("open direct agent session");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some("session:direct-agent:private".to_string()),
+        parent_session_title: Some("Owner's Kordi".to_string()),
+        parent_session_kind: Some("direct-agent".to_string()),
+        parent_group_space_id: None,
+        parent_session_participants: Vec::new(),
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:request".to_string()),
+        bridge_host_id: "host-1".to_string(),
+        bridge_conversation_id: Some("bridge:host-1:node-owner".to_string()),
+        bridge_request_id: Some("bridge_req_private".to_string()),
+        delivery_state: None,
+        target_node_id: "node-owner".to_string(),
+        target_human_id: Some("human-owner".to_string()),
+        target_agent_id: Some("agent-remote".to_string()),
+        target_display_name: "Owner's Kordi".to_string(),
+        target_owner_name: Some("Owner".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "fresh private question".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("recent-window".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "complete".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 2_000,
+        completed_at_ms: Some(2_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host-1:node-owner".to_string(),
+        canonical_session_id: String::new(),
+        host_id: "host-1".to_string(),
+        peer_node_id: "node-owner".to_string(),
+        peer_display_name: Some("Owner's Kordi".to_string()),
+        peer_owner_name: Some("Owner".to_string()),
+        peer_runtime: "kordi-desktop".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Owner's Kordi".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_000,
+        updated_at_label: "14:11".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: Some(outreach.clone()),
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_response".to_string(),
+        direction: "inbound-response".to_string(),
+        sender: Some("Owner's Kordi".to_string()),
+        text: "fresh private answer".to_string(),
+        time_label: "14:11".to_string(),
+        timestamp_ms: 2_000,
+        request_id: Some("bridge_req_private".to_string()),
+        delivery_state: Some("responded".to_string()),
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local",
+        None,
+        Some("human:owner"),
+        "agent:remote",
+        true,
+    )
+    .expect("sync private direct-agent response");
+
+    let participants: Vec<String> = conn
+        .prepare("SELECT identity_id FROM session_participants WHERE session_id = ?1 ORDER BY identity_id")
+        .expect("prepare participants")
+        .query_map(["session:direct-agent:private"], |row| row.get::<_, String>(0))
+        .expect("query participants")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect participants");
+
+    assert_eq!(participants, vec!["agent:remote", "human:local"]);
+}
+
+#[test]
 fn outreach_context_snapshot_is_session_scoped() {
     let conn = test_conn();
     let session = open_or_create_session_in_db(

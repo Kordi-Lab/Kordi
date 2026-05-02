@@ -115,6 +115,22 @@ function shouldKeepLegacyChatConversationExtra(
     || !conversation.canonicalSessionId;
 }
 
+function isChatCreatedDirectAgentSession(session: CanonicalSessionState['sessions'][number]) {
+  return session.kind === 'direct-agent' && sessionMetadata(session).createdFrom === 'chat-create-flow';
+}
+
+function visibleParticipantsForSession(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+) {
+  if (!isChatCreatedDirectAgentSession(session)) return participants;
+  const primaryIdentityId = session.primaryIdentityId?.trim();
+  return participants.filter((participant) => (
+    participant.role === 'self'
+    || (primaryIdentityId && participant.id === primaryIdentityId)
+  ));
+}
+
 function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
   const normalizedSessionId = sessionId?.trim();
   const unread = Math.max(0, count ?? 0);
@@ -195,12 +211,18 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
 
       const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
       const isBridgeSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
+      const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
-      const messages = (isBridgePersonSession || isBridgeSessionThread) && canonicalMessages.length > 0
-        ? mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
+      const messages = (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
+        ? isChatCreatedDirectAgent
+          ? canonicalMessages
+          : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const participants = this.participantNames(sessionId, conversation.participants);
-      const canonicalParticipants = this.participantDetails(sessionId);
+      const rawCanonicalParticipants = this.participantDetails(sessionId);
+      const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
+      const participants = canonicalParticipants.length > 0
+        ? canonicalParticipants.map((participant) => participant.name)
+        : conversation.participants;
       const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
@@ -223,12 +245,12 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
         metadata: sessionViewMetadata(session),
-        directness: session.kind === 'group' ? 'Group chat' : conversation.directness,
+        directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Direct chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
-        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, canonicalParticipants),
-        canonicalParticipantCount: (indexes.participantsBySessionId.get(sessionId) ?? []).length,
+        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants),
+        canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
         canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
         canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,

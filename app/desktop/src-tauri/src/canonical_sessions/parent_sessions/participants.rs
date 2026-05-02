@@ -285,15 +285,22 @@ pub(super) fn ensure_parent_session_participants(
     let cleaned_parent_title = parent_session_title
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if select_session(conn, parent_session_id)?.is_none() {
+    let existing_session = select_session(conn, parent_session_id)?;
+    let parent_is_direct_agent = existing_session
+        .as_ref()
+        .is_some_and(|session| session.kind == "direct-agent")
+        || parent_session_id.starts_with("session:direct-agent:");
+    if existing_session.is_none() {
         let mut participants = Vec::new();
         if include_local_agent {
             if let Some(agent_identity_id) = local_agent_identity_id {
                 participants.push(agent_identity_id.to_string());
             }
         }
-        if let Some(relationship_identity_id) = relationship_identity_id {
-            participants.push(relationship_identity_id.to_string());
+        if !parent_is_direct_agent {
+            if let Some(relationship_identity_id) = relationship_identity_id {
+                participants.push(relationship_identity_id.to_string());
+            }
         }
         participants.push(remote_target_identity_id.to_string());
         participants.sort();
@@ -350,15 +357,17 @@ pub(super) fn ensure_parent_session_participants(
             )?;
         }
     }
-    if let Some(relationship_identity_id) = relationship_identity_id {
-        upsert_participant(
-            conn,
-            parent_session_id,
-            relationship_identity_id,
-            "person",
-            Some(local_human_identity_id),
-            now,
-        )?;
+    if !parent_is_direct_agent {
+        if let Some(relationship_identity_id) = relationship_identity_id {
+            upsert_participant(
+                conn,
+                parent_session_id,
+                relationship_identity_id,
+                "person",
+                Some(local_human_identity_id),
+                now,
+            )?;
+        }
     }
     upsert_participant(
         conn,
