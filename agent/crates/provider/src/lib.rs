@@ -13,6 +13,7 @@ mod transforms;
 mod types;
 
 pub use error::{ProviderError, Result};
+pub use retry::is_retryable_error_message as is_retryable_provider_error_message;
 pub use streaming::{CollectedResponse, CollectedToolCall};
 pub use traits::Provider;
 pub use types::{

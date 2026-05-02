@@ -63,6 +63,45 @@ impl Provider for DummyProvider {
     }
 }
 
+struct StreamErrorThenSuccessProvider {
+    call_count: AtomicUsize,
+}
+
+#[async_trait]
+impl Provider for StreamErrorThenSuccessProvider {
+    fn name(&self) -> &str {
+        "stream-error-then-success"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if call_index == 0 {
+            let _ = tx.send(StreamEvent::Error {
+                message: "Provider error: An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 61a29dd6-0976-43b0-968b-4daa23917199 in your message.".to_string(),
+            });
+        } else {
+            let _ = tx.send(StreamEvent::TextDelta {
+                text: "recovered".to_string(),
+            });
+        }
+        let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
+
 struct CancelAfterToolCallProvider;
 
 #[async_trait]
@@ -723,6 +762,69 @@ impl Drop for LocalModelTimeoutOverrideGuard {
 fn set_local_model_timeout_override(timeout: Duration) -> LocalModelTimeoutOverrideGuard {
     super::runner::set_local_model_overload_timeout_override_for_tests(Some(timeout));
     LocalModelTimeoutOverrideGuard
+}
+
+#[tokio::test]
+async fn run_turn_retries_retryable_stream_provider_errors_before_failing_the_turn() {
+    let conn = store::open_memory().expect("memory db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let provider = Arc::new(StreamErrorThenSuccessProvider {
+        call_count: AtomicUsize::new(0),
+    });
+
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id,
+        system_prompt: "system".to_string(),
+        model: test_model(128_000),
+        provider: provider.clone(),
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
+        tool_registry: ToolRegistry::default(),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: true,
+        retry_max_retries: 2,
+        retry_base_delay_ms: 1,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(config, event_tx, "hi".to_string()).await;
+    result.expect("transient streamed provider error should be retried");
+    assert_eq!(provider.call_count.load(Ordering::SeqCst), 2);
+
+    let mut saw_retry_start = false;
+    let mut saw_error = false;
+    let mut done_text = None;
+    while let Ok(event) = event_rx.try_recv() {
+        match event {
+            TurnEvent::AutoRetryStart { attempt, .. } => {
+                saw_retry_start = true;
+                assert_eq!(attempt, 1);
+            }
+            TurnEvent::Error(_) => saw_error = true,
+            TurnEvent::Done { text } => done_text = Some(text),
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_retry_start,
+        "should emit retry status for streamed provider errors"
+    );
+    assert!(
+        !saw_error,
+        "retryable streamed provider errors should not surface as final turn errors"
+    );
+    assert_eq!(done_text.as_deref(), Some("recovered"));
 }
 
 #[tokio::test]

@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::types::{ProviderRetryEvent, RetryCallback};
 
-fn is_retryable_error_message(message: &str) -> bool {
+pub fn is_retryable_error_message(message: &str) -> bool {
     let msg = message.to_ascii_lowercase();
     [
         "overloaded",
@@ -14,6 +14,10 @@ fn is_retryable_error_message(message: &str) -> bool {
         "rate limit",
         "too many requests",
         "resource exhausted",
+        "an error occurred while processing your request",
+        "you can retry your request",
+        "server_error",
+        "internal_error",
         "429",
         "500",
         "502",
@@ -25,11 +29,14 @@ fn is_retryable_error_message(message: &str) -> bool {
         "network error",
         "connection error",
         "connection refused",
+        "connection lost",
         "other side closed",
         "fetch failed",
         "upstream connect",
         "reset before headers",
         "socket hang up",
+        "ended without",
+        "http2 request did not get a response",
         "timed out",
         "timeout",
         "terminated",
@@ -279,6 +286,13 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert_eq!(counter.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn generic_openai_processing_errors_are_retryable() {
+        assert!(is_retryable_error_message(
+            "Provider error: An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 61a29dd6-0976-43b0-968b-4daa23917199 in your message."
+        ));
     }
 
     #[tokio::test]
