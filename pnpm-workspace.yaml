@@ -1,5 +1,6 @@
 packages:
   - app/desktop
+  - app/website
   - bridges
   - bridges/registry
   - shared/typescript/*
