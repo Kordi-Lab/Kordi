@@ -35,11 +35,12 @@ use self::conversations::{
 use self::local_server::{current_local_server_status, start_local_server, stop_local_server};
 #[allow(unused_imports)]
 use self::network::{
-    add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
+    ack_mailbox_v2, add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
     create_serve_project, decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target,
     fetch_mailbox, fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery,
-    health_check, join_serve_project, register_bridge_host, relay_plaintext_message,
-    remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
+    health_check, join_serve_project, poll_mailbox_v2, register_bridge_host,
+    relay_plaintext_message, remove_serve_contact, update_registered_registry_node,
+    update_serve_discovery_mode, AckedMailboxEntry,
 };
 #[allow(unused_imports)]
 use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
@@ -56,8 +57,9 @@ use self::storage::{
     load_bridge_store, load_conversation_store, load_legacy_bridge_config,
     mark_bridge_conversation_read_in_storage, normalize_imported_bridge_host, normalize_server_url,
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
-    parse_imported_bridge_store, save_bridge_store, save_conversation_store,
-    update_message_delivery_state_in_storage, write_bridge_store_export,
+    parse_imported_bridge_store, record_bridge_inbox_event_and_agent_job, save_bridge_store,
+    save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
+    BridgeAgentJobInsert, BridgeInboxEventInsert,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

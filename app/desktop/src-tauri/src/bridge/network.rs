@@ -8,7 +8,7 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE, DESKTOP_BRIDGE_RUNTIME};
 use super::storage::{
@@ -100,6 +100,33 @@ pub(super) struct ServeProjectMemberItem {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ServeCreateProjectResponse {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct AckedMailboxEntry {
+    pub(super) message_id: String,
+    pub(super) from: String,
+    pub(super) blob: String,
+    pub(super) project_id: Option<String>,
+    pub(super) timestamp: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AckedMailboxPollResponse {
+    entries: Vec<AckedMailboxEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct AckedMailboxPollRequest<'a> {
+    after: Option<&'a str>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AckedMailboxAckRequest<'a> {
+    message_ids: &'a [String],
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1032,6 +1059,56 @@ pub(super) async fn remove_serve_contact(
             "Unable to remove bridge contact",
         )
         .await);
+    }
+    Ok(())
+}
+
+pub(super) async fn poll_mailbox_v2(
+    base_url: &str,
+    api_key: &str,
+    after: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<AckedMailboxEntry>, String> {
+    let url = format!("{}/v1/mailbox/poll", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client()
+            .post(url)
+            .bearer_auth(api_key)
+            .json(&AckedMailboxPollRequest { after, limit }),
+        "Unable to poll bridge mailbox",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to poll bridge mailbox",
+            response.status(),
+        ));
+    }
+
+    parse_json_response::<AckedMailboxPollResponse>(response, "Unable to parse bridge mailbox poll")
+        .await
+        .map(|response| response.entries)
+}
+
+pub(super) async fn ack_mailbox_v2(
+    base_url: &str,
+    api_key: &str,
+    message_ids: &[String],
+) -> Result<(), String> {
+    let url = format!("{}/v1/mailbox/ack", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client()
+            .post(url)
+            .bearer_auth(api_key)
+            .json(&AckedMailboxAckRequest { message_ids }),
+        "Unable to acknowledge bridge mailbox",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to acknowledge bridge mailbox",
+            response.status(),
+        ));
     }
     Ok(())
 }

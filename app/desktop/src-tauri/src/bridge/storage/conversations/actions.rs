@@ -148,6 +148,20 @@ pub(in crate::bridge) fn mark_bridge_inbox_event_acked(
 }
 
 #[allow(dead_code)]
+pub(in crate::bridge) fn record_bridge_inbox_event_and_agent_job(
+    event: &BridgeInboxEventInsert,
+    job: &BridgeAgentJobInsert,
+) -> Result<(String, String), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let event_id = insert_bridge_inbox_event_if_absent(&conn, event)?;
+    let mut job = job.clone();
+    job.inbox_event_id = event_id.clone();
+    let job_id = create_bridge_agent_job_if_absent(&conn, &job)?;
+    Ok((event_id, job_id))
+}
+
+#[allow(dead_code)]
 pub(in crate::bridge) fn create_bridge_agent_job_if_absent(
     conn: &Connection,
     job: &BridgeAgentJobInsert,

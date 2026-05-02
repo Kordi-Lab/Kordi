@@ -10,7 +10,8 @@ pub(in crate::bridge) use actions::{
     append_conversation_message_to_storage, bridge_request_is_cancelled,
     delete_conversations_for_host, load_conversation_store,
     mark_bridge_conversation_read_in_storage, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, save_conversation_store, update_message_delivery_state_in_storage,
+    note_peer_typing_in_storage, record_bridge_inbox_event_and_agent_job, save_conversation_store,
+    update_message_delivery_state_in_storage, BridgeAgentJobInsert, BridgeInboxEventInsert,
 };
 pub(in crate::bridge) use lookup::bridge_conversation_id;
 
@@ -22,7 +23,6 @@ pub(in crate::bridge::storage) use actions::{
     create_bridge_agent_job_if_absent, insert_bridge_inbox_event_if_absent,
     list_runnable_bridge_agent_jobs, load_bridge_agent_job, mark_bridge_agent_job_running,
     mark_bridge_agent_job_terminal, update_message_delivery_state_in_db_for_test,
-    BridgeAgentJobInsert, BridgeInboxEventInsert,
 };
 #[cfg(test)]
 pub(in crate::bridge::storage) use lookup::{find_conversation_for_peer, scoped_conversation_id};

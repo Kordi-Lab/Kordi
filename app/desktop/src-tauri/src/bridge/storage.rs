@@ -13,7 +13,8 @@ pub(super) use self::conversations::{
     append_conversation_message_to_storage, bridge_conversation_id, bridge_request_is_cancelled,
     delete_conversations_for_host, load_conversation_store,
     mark_bridge_conversation_read_in_storage, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, save_conversation_store, update_message_delivery_state_in_storage,
+    note_peer_typing_in_storage, record_bridge_inbox_event_and_agent_job, save_conversation_store,
+    update_message_delivery_state_in_storage, BridgeAgentJobInsert, BridgeInboxEventInsert,
 };
 pub(super) use self::identity::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
@@ -28,8 +29,7 @@ use self::conversations::{
     load_conversation_store_from_db, mark_bridge_agent_job_running, mark_bridge_agent_job_terminal,
     reconcile_and_repair_persisted_conversation_rows,
     repair_split_bridge_person_session_relay_rows, scoped_conversation_id,
-    update_message_delivery_state_in_db_for_test, upsert_conversation_record, BridgeAgentJobInsert,
-    BridgeInboxEventInsert,
+    update_message_delivery_state_in_db_for_test, upsert_conversation_record,
 };
 #[cfg(test)]
 use super::{

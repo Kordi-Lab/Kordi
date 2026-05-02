@@ -1,4 +1,5 @@
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::chat::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting, DesktopChatManager};
 
@@ -17,11 +18,13 @@ use super::events::{
 };
 use super::outreach::mark_outreach_status;
 use super::{
-    append_conversation_message_to_storage, bridge_conversation_id, bridge_request_is_cancelled,
-    decrypt_bridge_payload_for_host, fetch_mailbox, load_bridge_store, load_conversation_store,
-    note_peer_heartbeat_in_storage, note_peer_typing_in_storage, parse_mailbox_payload,
-    relay_plaintext_message, update_message_delivery_state_in_storage, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    ack_mailbox_v2, append_conversation_message_to_storage, bridge_conversation_id,
+    bridge_request_is_cancelled, decrypt_bridge_payload_for_host, fetch_mailbox, load_bridge_store,
+    load_conversation_store, note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
+    parse_mailbox_payload, poll_mailbox_v2, record_bridge_inbox_event_and_agent_job,
+    relay_plaintext_message, update_message_delivery_state_in_storage, AckedMailboxEntry,
+    BridgeAgentJobInsert, BridgeInboxEventInsert, DesktopBridgeHostConfig, DesktopBridgeManager,
+    DesktopBridgeState, DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -247,6 +250,263 @@ fn direction_for_inbound_event(event: &ParsedMailboxEvent) -> &'static str {
     } else {
         BRIDGE_MESSAGE_DIRECTION_INBOUND
     }
+}
+
+fn event_string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn chat_queue_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
+    if let Some(thread) = event_session_thread(event) {
+        if let Some(group_space_id) = event_string_field(thread, "parentGroupSpaceId") {
+            return format!("group-space:{group_space_id}");
+        }
+        if let Some(parent_session_id) = event_string_field(thread, "parentSessionId") {
+            return format!("session:{parent_session_id}");
+        }
+    }
+
+    let project = event.project_id.as_deref().unwrap_or("direct");
+    format!("peer:{project}:{}", event.from_node_id)
+}
+
+fn requesting_user_key_for_agent_event(event: &ParsedMailboxEvent) -> String {
+    event
+        .from_human_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|human_id| format!("human:{human_id}"))
+        .unwrap_or_else(|| format!("node:{}", event.from_node_id))
+}
+
+fn bridge_inbox_event_insert_for_agent_ask(
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+    server_message_id: Option<&str>,
+    received_at_ms: i64,
+) -> BridgeInboxEventInsert {
+    let id = server_message_id
+        .map(|_message_id| format!("bridge-inbox-{}", Uuid::new_v4().simple()))
+        .unwrap_or_else(|| format!("bridge-inbox-{}", Uuid::new_v4().simple()));
+    let chat_queue_key = chat_queue_key_for_agent_event(event);
+    let requesting_user_key = requesting_user_key_for_agent_event(event);
+    let payload_json = serde_json::to_string(&serde_json::json!({
+        "from": event.from_node_id,
+        "fromDisplayName": event.from_display_name,
+        "fromOwnerName": event.from_owner_name,
+        "fromRuntime": event.from_runtime,
+        "fromHumanId": event.from_human_id,
+        "fromAgentId": event.from_agent_id,
+        "messageType": event.message_type,
+        "requestId": event.request_id,
+        "projectId": event.project_id,
+        "payload": event.payload,
+    }))
+    .unwrap_or_else(|_| "{}".to_string());
+
+    BridgeInboxEventInsert {
+        id,
+        server_message_id: server_message_id.map(ToString::to_string),
+        host_id: target.host.id.clone(),
+        from_node_id: event.from_node_id.clone(),
+        request_id: event.request_id.clone(),
+        message_type: event.message_type.clone(),
+        chat_queue_key,
+        requesting_user_key,
+        payload_json,
+        status: "received".to_string(),
+        received_at_ms,
+    }
+}
+
+fn bridge_agent_job_insert_for_inbox_event(
+    inbox: &BridgeInboxEventInsert,
+    event: &ParsedMailboxEvent,
+    created_at_ms: i64,
+) -> BridgeAgentJobInsert {
+    BridgeAgentJobInsert {
+        id: format!("bridge-agent-job-{}", Uuid::new_v4().simple()),
+        inbox_event_id: inbox.id.clone(),
+        request_id: event.request_id.clone(),
+        requesting_user_key: inbox.requesting_user_key.clone(),
+        chat_queue_key: inbox.chat_queue_key.clone(),
+        status: "queued".to_string(),
+        created_at_ms,
+    }
+}
+
+fn mailbox_value_for_acked_entry(entry: &AckedMailboxEntry) -> Value {
+    serde_json::to_value(entry).unwrap_or_else(|_| {
+        serde_json::json!({
+            "messageId": entry.message_id,
+            "from": entry.from,
+            "blob": entry.blob,
+            "projectId": entry.project_id,
+            "timestamp": entry.timestamp,
+        })
+    })
+}
+
+async fn enqueue_agent_ask_for_durable_processing(
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+    server_message_id: Option<&str>,
+) -> Result<bool, String> {
+    let text = mailbox_payload_text(&event.payload);
+    let attachments = mailbox_payload_attachments(&event.payload)?;
+    if text.trim().is_empty() && attachments.is_empty() {
+        return Ok(false);
+    }
+
+    let peer_display_name = event.from_display_name.clone();
+    let peer_owner_name = event.from_owner_name.clone();
+    let peer_runtime = event
+        .from_runtime
+        .clone()
+        .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
+    let sender_name = sender_name_for_runtime(
+        &peer_runtime,
+        peer_display_name.as_deref(),
+        peer_owner_name.as_deref(),
+        &event.from_node_id,
+    );
+
+    append_conversation_message_to_storage(
+        &target.host.id,
+        &event.from_node_id,
+        peer_display_name.clone(),
+        peer_owner_name.clone(),
+        peer_runtime.clone(),
+        event.project_id.clone(),
+        None,
+        Some(identity_snapshot_for_event(
+            &target.host,
+            event,
+            &peer_runtime,
+        )),
+        outreach_metadata_for_event(&target.host, event, &peer_runtime),
+        BRIDGE_MESSAGE_DIRECTION_INBOUND,
+        Some(sender_name),
+        text,
+        event.request_id.clone(),
+        Some("processing".to_string()),
+        attachments,
+        true,
+    )?;
+
+    if let Some(request_id) = event.request_id.as_deref() {
+        let processing = serde_json::json!({
+            "from": target.host.node_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+            "payload": { "requestId": request_id, "state": "processing" },
+        });
+        let _ = relay_plaintext_message(
+            &target.host,
+            &event.from_node_id,
+            event.project_id.as_deref(),
+            &processing,
+        )
+        .await;
+    }
+
+    let response_sender_name = sender_name_for_runtime(
+        &target.sender_runtime,
+        target.host.display_name.as_deref(),
+        target.host.owner.as_deref(),
+        &target.host.node_id,
+    );
+    append_conversation_message_to_storage(
+        &target.host.id,
+        &event.from_node_id,
+        peer_display_name,
+        peer_owner_name,
+        peer_runtime.clone(),
+        event.project_id.clone(),
+        None,
+        Some(identity_snapshot_for_event(
+            &target.host,
+            event,
+            &peer_runtime,
+        )),
+        outreach_metadata_for_event(&target.host, event, &peer_runtime),
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+        Some(response_sender_name),
+        "processing...".to_string(),
+        event.request_id.clone(),
+        Some("queued".to_string()),
+        Vec::new(),
+        false,
+    )?;
+
+    if event_targets_group_session(event) {
+        let response = serde_json::json!({
+            "from": target.host.node_id,
+            "fromDisplayName": target.host.display_name,
+            "fromOwnerName": target.host.owner,
+            "fromRuntime": target.sender_runtime,
+            "fromHumanId": target.host.human_id,
+            "fromAgentId": target.sender_agent_id,
+            "projectId": event.project_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+            "requestId": event.request_id,
+            "payload": bridge_response_payload(event, "processing...", false),
+        });
+        let _ = relay_plaintext_message(
+            &target.host,
+            &event.from_node_id,
+            event.project_id.as_deref(),
+            &response,
+        )
+        .await;
+    }
+    fanout_group_agent_response(target, event, "processing...", false).await;
+
+    let now = now_ms();
+    let inbox = bridge_inbox_event_insert_for_agent_ask(target, event, server_message_id, now);
+    let job = bridge_agent_job_insert_for_inbox_event(&inbox, event, now);
+    record_bridge_inbox_event_and_agent_job(&inbox, &job)?;
+
+    Ok(true)
+}
+
+async fn process_acked_mailbox_entries(
+    target: &LocalBridgeMailboxTarget,
+    entries: Vec<AckedMailboxEntry>,
+) -> Result<bool, String> {
+    let mut storage_changed = false;
+    let mut ack_ids = Vec::new();
+
+    for entry in entries {
+        let item = mailbox_value_for_acked_entry(&entry);
+        let Some(event) = parse_mailbox_event(&target.host, &item) else {
+            continue;
+        };
+
+        if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
+            if enqueue_agent_ask_for_durable_processing(target, &event, Some(&entry.message_id))
+                .await?
+            {
+                storage_changed = true;
+            }
+            ack_ids.push(entry.message_id);
+            continue;
+        }
+
+        apply_bridge_event_to_storage(&target.host, event, true).await?;
+        storage_changed = true;
+        ack_ids.push(entry.message_id);
+    }
+
+    if !ack_ids.is_empty() {
+        ack_mailbox_v2(&target.host.coordination, &target.host.api_key, &ack_ids).await?;
+    }
+
+    Ok(storage_changed)
 }
 
 fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> {
@@ -512,6 +772,23 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     let mut storage_changed = false;
 
     for target in mailbox_targets(&store) {
+        if let Ok(entries) = poll_mailbox_v2(
+            &target.host.coordination,
+            &target.host.api_key,
+            None,
+            Some(100),
+        )
+        .await
+        {
+            if entries.is_empty() {
+                continue;
+            }
+            if process_acked_mailbox_entries(&target, entries).await? {
+                storage_changed = true;
+            }
+            continue;
+        }
+
         let mailbox = match fetch_mailbox(&target.host.coordination, &target.host.api_key).await {
             Ok(mailbox) => mailbox,
             Err(_) => continue,
@@ -857,6 +1134,29 @@ mod tests {
     use crate::bridge::constants::BRIDGE_MESSAGE_TYPE_RAW;
     use crate::bridge::DesktopBridgeAgentConfig;
 
+    fn test_mailbox_target() -> LocalBridgeMailboxTarget {
+        LocalBridgeMailboxTarget {
+            host: DesktopBridgeHostConfig {
+                id: "bridge-host".to_string(),
+                coordination: "https://bridge.test".to_string(),
+                node_id: "local-agent-node".to_string(),
+                api_key: "api-key".to_string(),
+                display_name: Some("Local Kordi".to_string()),
+                owner: Some("Local".to_string()),
+                human_id: Some("human-local".to_string()),
+                discovery_mode: "open".to_string(),
+                active_agent_id: Some("agent-local".to_string()),
+                agents: vec![],
+                api_style: "serve".to_string(),
+            },
+            sender_runtime: "kordi-desktop".to_string(),
+            sender_agent_id: Some("agent-local".to_string()),
+            owner_node_id: Some("owner-node".to_string()),
+            model_routing: None,
+            should_process_agent_asks: true,
+        }
+    }
+
     fn parsed_event(
         message_type: &str,
         from_runtime: Option<&str>,
@@ -886,6 +1186,30 @@ mod tests {
             request_id: Some("bridge_req_1".to_string()),
             project_id: None,
         }
+    }
+
+    #[test]
+    fn mailbox_agent_ask_queue_records_use_server_message_and_chat_keys() {
+        let target = test_mailbox_target();
+        let event = parsed_event(BRIDGE_MESSAGE_TYPE_ASK, Some("person"), None);
+
+        let inbox =
+            bridge_inbox_event_insert_for_agent_ask(&target, &event, Some("server-msg-1"), 1_000);
+        assert_eq!(inbox.server_message_id.as_deref(), Some("server-msg-1"));
+        assert_eq!(inbox.host_id, "bridge-host");
+        assert_eq!(inbox.from_node_id, "peer-node");
+        assert_eq!(inbox.request_id.as_deref(), Some("bridge_req_1"));
+        assert_eq!(inbox.message_type, BRIDGE_MESSAGE_TYPE_ASK);
+        assert_eq!(inbox.chat_queue_key, "session:session-1");
+        assert_eq!(inbox.requesting_user_key, "human:human-peer");
+        assert_eq!(inbox.status, "received");
+
+        let job = bridge_agent_job_insert_for_inbox_event(&inbox, &event, 1_100);
+        assert_eq!(job.inbox_event_id, inbox.id);
+        assert_eq!(job.request_id.as_deref(), Some("bridge_req_1"));
+        assert_eq!(job.chat_queue_key, "session:session-1");
+        assert_eq!(job.requesting_user_key, "human:human-peer");
+        assert_eq!(job.status, "queued");
     }
 
     #[test]
