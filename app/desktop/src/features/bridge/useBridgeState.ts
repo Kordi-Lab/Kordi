@@ -33,6 +33,7 @@ import {
   sendDesktopBridgePresence,
   setDesktopActiveBridgeHost,
 } from '@/lib/desktop';
+import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 
 type UseBridgeStateArgs = {
   isNativeShell: boolean;
@@ -251,6 +252,7 @@ export function useBridgeState({
   });
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
+  const mailboxPollFlightRef = useRef(createSingleFlightState());
   const activeBridgeReadRequestRef = useRef<string | null>(null);
   const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
@@ -515,18 +517,20 @@ export function useBridgeState({
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
     const poll = () => {
-      setIsBridgePolling(true);
-      pollDesktopBridgeMailbox()
-        .then((state) => {
+      const run = requestSingleFlightRun(mailboxPollFlightRef.current, async () => {
+        try {
+          const state = await pollDesktopBridgeMailbox();
           setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
           setLastBridgePollAt(Date.now());
-        })
-        .catch(() => {
+        } catch {
           // keep polling lightweight; show errors only on explicit actions
-        })
-        .finally(() => {
-          setIsBridgePolling(false);
-        });
+        }
+      });
+      if (!run) return;
+      setIsBridgePolling(true);
+      void run.finally(() => {
+        setIsBridgePolling(false);
+      });
     };
     const interval = window.setInterval(poll, 4000);
     window.addEventListener('focus', poll);

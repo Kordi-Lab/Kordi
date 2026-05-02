@@ -62,6 +62,7 @@ import type { ComposerMentionOption } from '@/kordi-app/components';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { Agent, CanonicalSessionState, Contact, ConversationParticipant, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
+import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
   archiveDesktopChatSession,
@@ -288,6 +289,7 @@ export function useKordiAppModel() {
   const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; agent?: string | null }>({});
+  const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
   const localUi = useKordiLocalUiState();
@@ -512,11 +514,15 @@ export function useKordiAppModel() {
 
   const refreshCanonicalState = useCallback(async () => {
     if (!isNativeShell) return;
-    try {
-      setCanonicalSessionState(await fetchCanonicalSessionState());
-    } catch {
-      // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
-    }
+    const flight = canonicalRefreshFlightRef.current;
+    const run = requestSingleFlightRun(flight, async () => {
+      try {
+        setCanonicalSessionState(await fetchCanonicalSessionState());
+      } catch {
+        // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
+      }
+    });
+    await (run ?? flight.currentPromise ?? Promise.resolve());
   }, [isNativeShell]);
 
   useEffect(() => {
