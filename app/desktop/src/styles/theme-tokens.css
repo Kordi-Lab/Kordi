@@ -9,6 +9,10 @@
   --app-accent-ring: rgba(132, 122, 196, 0.26);
   --app-markdown-link: oklch(72% 0.085 285);
   --app-markdown-link-hover: oklch(78% 0.095 285);
+  --app-chat-mention-own: oklch(35% 0.08 215);
+  --app-chat-mention-peer: oklch(82% 0.065 215);
+  --app-chat-meta-own: oklch(34% 0.018 70);
+  --app-chat-meta-peer: oklch(74% 0.018 245);
   --app-motion-fast: 180ms;
   --app-motion-base: 220ms;
   --app-motion-slow: 300ms;
@@ -71,6 +75,10 @@
   --utility-meta-text: rgba(76, 70, 65, 0.58);
   --app-markdown-link: oklch(45% 0.065 218);
   --app-markdown-link-hover: oklch(38% 0.075 218);
+  --app-chat-mention-own: oklch(35% 0.075 215);
+  --app-chat-mention-peer: oklch(38% 0.07 215);
+  --app-chat-meta-own: oklch(34% 0.015 70);
+  --app-chat-meta-peer: oklch(42% 0.018 70);
   --app-motion-fast: 200ms;
   --app-motion-base: 260ms;
   --app-motion-slow: 340ms;
