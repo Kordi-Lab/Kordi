@@ -372,6 +372,7 @@ pub(super) fn outreach_metadata_for_event(
     let context_policy = event
         .payload
         .get("contextPolicy")
+        .or_else(|| thread.get("contextPolicy"))
         .and_then(|value| value.as_str())
         .map(ToString::to_string);
     let is_session_transport = context_policy.as_deref().is_some_and(|value| {

@@ -820,6 +820,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
 mod tests {
     use super::*;
     use crate::bridge::constants::BRIDGE_MESSAGE_TYPE_RAW;
+    use crate::bridge::DesktopBridgeAgentConfig;
 
     fn parsed_event(
         message_type: &str,
@@ -897,6 +898,47 @@ mod tests {
             direction_for_inbound_event(&event),
             BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
         );
+    }
+
+    #[test]
+    fn response_outreach_metadata_uses_session_thread_context_policy() {
+        let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RESPONSE, Some("kordi-desktop"), None);
+        event.payload["sessionThread"]["contextPolicy"] = serde_json::json!("session-message");
+        event.payload["sessionThread"]["targetKind"] = serde_json::json!("bridge-agent");
+        event.payload["sessionThread"]["targetDisplayName"] = serde_json::json!("Peer's Kordi");
+
+        let host = DesktopBridgeHostConfig {
+            id: "bridge-host".to_string(),
+            coordination: "https://bridge.test".to_string(),
+            node_id: "local-node".to_string(),
+            api_key: "api-key".to_string(),
+            display_name: Some("Local Kordi".to_string()),
+            owner: Some("Local".to_string()),
+            human_id: Some("human-local".to_string()),
+            discovery_mode: "open".to_string(),
+            active_agent_id: Some("agent-local".to_string()),
+            agents: vec![DesktopBridgeAgentConfig {
+                id: "agent-local".to_string(),
+                label: "Local Kordi".to_string(),
+                node_id: "local-node".to_string(),
+                api_key: "agent-key".to_string(),
+                runtime: "kordi-desktop".to_string(),
+                is_default: true,
+                default_model: None,
+                default_auth_provider: None,
+                default_auth_choice: None,
+                fallback_model: None,
+                fallback_auth_provider: None,
+                fallback_auth_choice: None,
+                thinking: None,
+            }],
+            api_style: "serve".to_string(),
+        };
+
+        let outreach =
+            outreach_metadata_for_event(&host, &event, "kordi-desktop").expect("outreach metadata");
+
+        assert_eq!(outreach.context_policy.as_deref(), Some("session-message"));
     }
 
     #[test]

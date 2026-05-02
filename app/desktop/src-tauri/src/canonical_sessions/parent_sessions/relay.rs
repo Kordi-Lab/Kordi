@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 
 use super::super::bridge_identities::upsert_bridge_agent_identity;
 use super::super::bridge_routing::{
@@ -22,6 +22,26 @@ fn is_processing_placeholder_text(text: &str) -> bool {
     trimmed.eq_ignore_ascii_case("processing")
         || trimmed.eq_ignore_ascii_case("processing...")
         || trimmed.eq_ignore_ascii_case("processing…")
+}
+
+fn delete_stale_legacy_agent_response_request_row(
+    conn: &Connection,
+    parent_session_id: &str,
+    conversation_id: &str,
+    message_id: &str,
+) -> Result<(), String> {
+    let stale_source_event_id =
+        format!("desktop-bridge-outreach:{conversation_id}:{message_id}:request");
+    conn.execute(
+        "DELETE FROM session_messages
+         WHERE session_id = ?1
+           AND source_transport = 'desktop-bridge-outreach'
+           AND source_event_id = ?2
+           AND message_kind = 'agent-turn'",
+        params![parent_session_id, stale_source_event_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 pub(super) fn sync_parent_session_relay_join_event(
@@ -460,6 +480,14 @@ pub(super) fn sync_parent_session_relay_messages(
             message.direction.as_str(),
             "inbound-response" | "outbound-response"
         );
+        if is_session_message && is_agent_response_message {
+            delete_stale_legacy_agent_response_request_row(
+                conn,
+                parent_session_id,
+                &conversation.id,
+                &message.id,
+            )?;
+        }
         let source_event_id = if is_session_message && is_agent_response_message {
             message
                 .request_id
