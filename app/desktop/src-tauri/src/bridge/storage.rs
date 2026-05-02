@@ -23,10 +23,13 @@ pub(super) use self::identity::{
 use self::config::{bridge_store_export, hydrate_bridge_store_secrets, DesktopBridgeSecretsStore};
 #[cfg(test)]
 use self::conversations::{
-    find_conversation_for_peer, init_conversation_schema, load_conversation_store_from_db,
+    create_bridge_agent_job_if_absent, find_conversation_for_peer, init_conversation_schema,
+    insert_bridge_inbox_event_if_absent, list_runnable_bridge_agent_jobs, load_bridge_agent_job,
+    load_conversation_store_from_db, mark_bridge_agent_job_running, mark_bridge_agent_job_terminal,
     reconcile_and_repair_persisted_conversation_rows,
     repair_split_bridge_person_session_relay_rows, scoped_conversation_id,
-    update_message_delivery_state_in_db_for_test, upsert_conversation_record,
+    update_message_delivery_state_in_db_for_test, upsert_conversation_record, BridgeAgentJobInsert,
+    BridgeInboxEventInsert,
 };
 #[cfg(test)]
 use super::{
