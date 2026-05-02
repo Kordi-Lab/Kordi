@@ -1450,6 +1450,48 @@ test('canonical read model keeps bridge unread when a local runtime source share
   assert.equal(conversations[0]?.unread, 1);
 });
 
+test('canonical read model hides duplicate local-agent group response fanout copies', () => {
+  const sessionId = 'session:group:fanout-agent';
+  const responseText = 'same weather answer';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:a', kind: 'human', displayName: 'A', source: 'bridge', avatarKey: 'a', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:b', kind: 'human', displayName: 'B', source: 'bridge', avatarKey: 'b', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:a', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:b', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi weather', content: { sender: 'Me', timeLabel: '10:02' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'request' },
+      { id: 'msg:copy-a', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: responseText, content: { sender: 'My Kordi', timeLabel: '10:03', kind: 'session-relay', requestId: 'bridge_req_same', bridgeConversationId: 'bridge:a' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'copy-a' },
+      { id: 'msg:copy-b', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: responseText, content: { sender: 'My Kordi', timeLabel: '10:03', kind: 'session-relay', requestId: 'bridge_req_same', bridgeConversationId: 'bridge:b' }, status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'copy-b' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const messages = readModel?.messages(sessionId) ?? [];
+  assert.equal(messages.filter((message) => message.role === 'owned-agent' && message.turn?.assistantText === responseText).length, 1);
+});
+
 test('canonical read model keeps canonical parent transcript when bridge source misses an agent response', () => {
   const sessionId = 'session:bridge:humans:flapping-parent';
   const canonicalState = {

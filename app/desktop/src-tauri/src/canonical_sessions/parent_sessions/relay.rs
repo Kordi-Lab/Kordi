@@ -388,6 +388,14 @@ pub(super) fn sync_parent_session_relay_messages(
                 .or(message.request_id.as_deref())
                 .unwrap_or(message.id.as_str())
                 .to_string()
+        } else if relay_is_local_agent_response && is_outbound {
+            message
+                .request_id
+                .as_deref()
+                .or(outreach.bridge_request_id.as_deref())
+                .or(outreach.parent_turn_id.as_deref())
+                .map(|stable_id| format!("agent-response:{stable_id}"))
+                .unwrap_or_else(|| format!("{}:{}", conversation.id, message.id))
         } else {
             format!("{}:{}", conversation.id, message.id)
         };

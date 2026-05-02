@@ -198,6 +198,47 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
   return duplicateIds;
 }
 
+function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {
+  const duplicateIds = new Set<string>();
+  const messagesByRequest = new Map<string, CanonicalSessionMessage[]>();
+
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-bridge-session-relay') continue;
+    if (message.messageKind !== 'agent-turn') continue;
+    if (message.senderRole !== 'owned-agent' && message.senderRole !== 'external-agent') continue;
+    const content = contentRecord(message.content);
+    if (stringValue(content.kind) !== 'session-relay') continue;
+    const requestId = stringValue(content.requestId)?.trim();
+    if (!requestId) continue;
+    const comparableText = comparableOwnedAgentResponseText(message.contentText);
+    if (!comparableText) continue;
+    const key = [
+      message.sessionId,
+      message.senderIdentityId,
+      message.senderRole,
+      requestId,
+      comparableText,
+    ].join('\u0000');
+    messagesByRequest.set(key, [...(messagesByRequest.get(key) ?? []), message]);
+  }
+
+  for (const duplicateGroup of messagesByRequest.values()) {
+    if (duplicateGroup.length <= 1) continue;
+    const duplicates = duplicateGroup
+      .sort((left, right) => (
+        left.createdAtMs - right.createdAtMs
+        || left.sequenceNum - right.sequenceNum
+        || left.id.localeCompare(right.id)
+      ))
+      .slice(1);
+    for (const duplicate of duplicates) {
+      duplicateIds.add(duplicate.id);
+    }
+  }
+
+  return duplicateIds;
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -347,6 +388,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedBridgeUiEchoIds = bridgeUiOptimisticEchoIds(sortedMessages);
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
+    const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
@@ -356,6 +398,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           suppressedBridgeUiEchoIds.has(message.id)
           || suppressedLocalRuntimeEchoIds.has(message.id)
           || suppressedLocalRuntimeDuplicateIds.has(message.id)
+          || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
           || suppressedStaleProcessingPlaceholderIds.has(message.id)
         ) return [];
         const content = contentRecord(message.content);
