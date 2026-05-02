@@ -124,6 +124,11 @@ function isActiveOutreachStatus(status: string | null | undefined) {
   return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
 }
 
+function isVisibleBridgeUnreadMessage(message: DesktopBridgeConversationMessage) {
+  const contextPolicy = message.outreach?.contextPolicy?.trim().toLowerCase();
+  return contextPolicy !== 'session-invite' && contextPolicy !== 'session-update';
+}
+
 function bridgeUnreadByParentSessionId(conversation: DesktopBridgeConversation) {
   const unreadCount = Math.max(0, conversation.unreadCount);
   if (unreadCount <= 0) return undefined;
@@ -136,6 +141,7 @@ function bridgeUnreadByParentSessionId(conversation: DesktopBridgeConversation) 
       continue;
     }
     countedUnreadMessages += 1;
+    if (!isVisibleBridgeUnreadMessage(message)) continue;
     const parentSessionId = message.outreach?.parentSessionId?.trim()
       || conversation.outreach?.parentSessionId?.trim()
       || conversation.canonicalSessionId?.trim();

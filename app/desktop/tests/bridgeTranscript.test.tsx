@@ -88,6 +88,98 @@ test('bridge transcript keeps implicit direct person session messages as typed',
   assert.equal(view.messages[0]?.mentions, undefined);
 });
 
+test('bridge transcript excludes hidden group invites from scoped unread badges', () => {
+  const groupSessionId = 'session:group:unread';
+  const view = mapBridgeConversationToViewModel(conversation({
+    canonicalSessionId: 'session:bridge:humans:peer',
+    unreadCount: 2,
+    messages: [{
+      id: 'msg-earlier-visible',
+      direction: 'inbound',
+      sender: 'Shenzhe',
+      text: 'earlier visible group message',
+      timeLabel: '16:35',
+      timestampMs: 1,
+      requestId: 'bridge_req_earlier_visible',
+      deliveryState: null,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: groupSessionId,
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_earlier_visible',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Shenzhe',
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'earlier visible group message',
+        triggerText: null,
+        contextText: null,
+        contextPolicy: 'session-message',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }, {
+      id: 'msg-group-invite',
+      direction: 'inbound',
+      sender: 'Shenzhe',
+      text: 'You were added to testgroup',
+      timeLabel: '16:36',
+      timestampMs: 2,
+      requestId: 'bridge_req_group_invite',
+      deliveryState: null,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: groupSessionId,
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_group_invite',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Shenzhe',
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'You were added to testgroup',
+        triggerText: null,
+        contextText: null,
+        contextPolicy: 'session-invite',
+        status: 'completed',
+        createdAtMs: 2,
+        updatedAtMs: 2,
+      },
+    }, {
+      id: 'msg-visible-group-message',
+      direction: 'inbound',
+      sender: 'Shenzhe',
+      text: 'hello every one',
+      timeLabel: '16:37',
+      timestampMs: 3,
+      requestId: 'bridge_req_visible_group_message',
+      deliveryState: null,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: groupSessionId,
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_visible_group_message',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Shenzhe',
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'hello every one',
+        triggerText: null,
+        contextText: null,
+        contextPolicy: 'session-message',
+        status: 'completed',
+        createdAtMs: 3,
+        updatedAtMs: 3,
+      },
+    }],
+  }), host(), 'My Kordi');
+
+  assert.deepEqual(view.bridgeUnreadByParentSessionId, { [groupSessionId]: 1 });
+});
+
 test('bridge transcript carries message attachments into the view model', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     messages: [{
