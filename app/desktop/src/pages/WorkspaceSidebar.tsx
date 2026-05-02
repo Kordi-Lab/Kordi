@@ -59,6 +59,12 @@ export function participantSpaceSessionRowTitle(title: string) {
   return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
 }
 
+export function participantSpaceSessionIdLabel(session: { id?: string | null; canonicalSessionId?: string | null }) {
+  const sessionId = (session.id || session.canonicalSessionId || '').trim();
+  if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return '';
+  return `Session ID: ${sessionId}`;
+}
+
 function participantSpaceSessionPreviewText(preview: string) {
   const formatted = formatSessionIdSubtitle(preview);
   if (/^session id:/i.test(formatted)) return '';
@@ -722,6 +728,7 @@ export function WorkspaceSidebar({
                                   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
                                   const sessionMessageCount = participantSpaceSessionMessageCount(session);
                                   const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
+                                  const sessionIdLabel = participantSpaceSessionIdLabel(session);
                                   return (
                                     <button
                                       key={session.id}
@@ -729,6 +736,7 @@ export function WorkspaceSidebar({
                                       data-testid="participant-space-session-row"
                                       data-session-preview={sessionPreview}
                                       data-session-preview-line={sessionPreviewLine}
+                                      data-session-id-label={sessionIdLabel}
                                       data-session-message-count={sessionMessageCount}
                                       data-session-updated-at={rowTimeLabel}
                                       onClick={() => onSelectChatSession(session.id)}
@@ -743,6 +751,9 @@ export function WorkspaceSidebar({
                                     >
                                       <div className="min-w-0">
                                         <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
+                                        {sessionIdLabel ? (
+                                          <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
+                                        ) : null}
                                         <div
                                           className={cn(
                                             'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',

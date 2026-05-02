@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   bridgeGroupSessionParticipants,
+  bridgeGroupMentionRelayTargets,
   bridgeGroupSessionSendTargets,
   bridgeGroupSessionSpaceId,
   bridgeLocalAgentRelayTargets,
@@ -63,6 +64,15 @@ test('group bridge send targets include every non-self human participant and exc
 test('group local-agent relays fan out to every non-self human participant', () => {
   assert.deepEqual(bridgeLocalAgentRelayTargets(groupConversation(), activeTarget), [
     { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', runtime: 'person', humanId: 'kh_alice', agentId: null },
+    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
+  ]);
+});
+
+test('group bridge-agent mentions relay the visible request to other humans but not the agent owner twice', () => {
+  assert.deepEqual(bridgeGroupMentionRelayTargets(groupConversation(), {
+    host: { id: 'host-1' },
+    peer: { nodeId: 'kd_alice', humanId: 'kh_alice' },
+  }, activeTarget), [
     { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
   ]);
 });
