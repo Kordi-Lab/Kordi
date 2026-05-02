@@ -18,8 +18,8 @@ use super::{
     load_bridge_store, load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
     relay_plaintext_message, send_realtime_payload, update_message_delivery_state_in_storage,
     DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
-    DesktopBridgeState, DesktopBridgeStore,
+    DesktopBridgeLocalServerStatus, DesktopBridgeManager, DesktopBridgeMessageAttachment,
+    DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: u64 = 10 * 1024 * 1024;
@@ -124,20 +124,46 @@ fn resolve_conversation_context(
     Ok(ConversationContext { conversation, host })
 }
 
+fn rebuild_conversation_state(
+    store: DesktopBridgeStore,
+    conversations: DesktopBridgeConversationStore,
+    local_server: DesktopBridgeLocalServerStatus,
+    sync_canonical_sessions: bool,
+) -> DesktopBridgeState {
+    let state = build_conversation_only_bridge_state(store, conversations, local_server);
+    if sync_canonical_sessions {
+        if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
+            eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
+        }
+    }
+    state
+}
+
 pub(super) async fn rebuild_state(
     manager: &DesktopBridgeManager,
     store: DesktopBridgeStore,
     conversations: DesktopBridgeConversationStore,
 ) -> Result<DesktopBridgeState, String> {
-    let state = build_conversation_only_bridge_state(
+    Ok(rebuild_conversation_state(
         store,
         conversations,
         current_local_server_status(manager).await,
-    );
-    if let Err(error) = crate::canonical_sessions::sync_bridge_state_sessions(&state) {
-        eprintln!("Unable to sync bridge sessions into canonical sessions: {error}");
-    }
-    Ok(state)
+        true,
+    ))
+}
+
+pub(super) async fn rebuild_state_after_mailbox_poll(
+    manager: &DesktopBridgeManager,
+    store: DesktopBridgeStore,
+    conversations: DesktopBridgeConversationStore,
+    storage_changed: bool,
+) -> Result<DesktopBridgeState, String> {
+    Ok(rebuild_conversation_state(
+        store,
+        conversations,
+        current_local_server_status(manager).await,
+        storage_changed,
+    ))
 }
 
 fn should_retry_direct_serve_with_contact_fallback(
@@ -693,6 +719,7 @@ mod tests {
     use crate::bridge::constants::{
         BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     };
+    use crate::bridge::{DesktopBridgeAgentRouting, DesktopBridgeLocalServerStatus};
 
     fn test_conversation(
         messages: Vec<crate::bridge::DesktopBridgeConversationMessageRecord>,
@@ -848,6 +875,52 @@ mod tests {
             completed_at_ms: Some(1),
             error: None,
         }
+    }
+
+    #[test]
+    fn mailbox_poll_rebuild_skips_canonical_sync_when_no_storage_changed() {
+        let storage_root = std::env::temp_dir().join(format!(
+            "kordi-mailbox-no-change-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+        let canonical_db_path = storage_root.join("canonical-sessions.sqlite3");
+        let store = DesktopBridgeStore {
+            active_host_id: Some("host-1".to_string()),
+            local_agent_routing: DesktopBridgeAgentRouting::default(),
+            hosts: vec![test_host("registry")],
+        };
+        let conversations = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation(Vec::new())],
+        };
+
+        let state = rebuild_conversation_state(
+            store.clone(),
+            conversations.clone(),
+            DesktopBridgeLocalServerStatus::default(),
+            false,
+        );
+
+        assert_eq!(state.conversations.len(), 1);
+        assert!(
+            !canonical_db_path.exists(),
+            "empty mailbox polls should not open/sync the canonical sessions database"
+        );
+
+        let _synced_state = rebuild_conversation_state(
+            store,
+            conversations,
+            DesktopBridgeLocalServerStatus::default(),
+            true,
+        );
+        assert!(
+            canonical_db_path.exists(),
+            "changed mailbox polls should still sync canonical sessions"
+        );
+
+        std::env::remove_var("KORDI_STORAGE_ROOT");
+        let _ = std::fs::remove_dir_all(storage_root);
     }
 
     #[test]

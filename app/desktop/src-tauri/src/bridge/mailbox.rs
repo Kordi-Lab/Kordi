@@ -9,7 +9,7 @@ use super::constants::{
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT,
     BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, DEFAULT_BRIDGE_RUNTIME,
 };
-use super::conversation_actions::rebuild_state;
+use super::conversation_actions::rebuild_state_after_mailbox_poll;
 use super::events::{
     identity_snapshot_for_event, mailbox_payload_agent_prompt_text, mailbox_payload_attachments,
     mailbox_payload_text, outreach_metadata_for_event, parse_bridge_event_payload,
@@ -509,6 +509,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     chat_manager: &DesktopChatManager,
 ) -> Result<DesktopBridgeState, String> {
     let store = load_bridge_store();
+    let mut storage_changed = false;
 
     for target in mailbox_targets(&store) {
         let mailbox = match fetch_mailbox(&target.host.coordination, &target.host.api_key).await {
@@ -615,6 +616,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
                     Vec::new(),
                     false,
                 )?;
+                storage_changed = true;
                 if event_targets_group_session(&event) {
                     let response = serde_json::json!({
                         "from": target.host.node_id,
@@ -841,10 +843,12 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
             }
 
             apply_bridge_event_to_storage(&target.host, event, true).await?;
+            storage_changed = true;
         }
     }
 
-    rebuild_state(manager, store, load_conversation_store()).await
+    rebuild_state_after_mailbox_poll(manager, store, load_conversation_store(), storage_changed)
+        .await
 }
 
 #[cfg(test)]
