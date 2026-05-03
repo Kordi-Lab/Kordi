@@ -290,11 +290,27 @@ test('styles folded source quote expand control as muted overlay on the fade', (
   const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 68%, var\(--utility-muted-text\)\)/);
+  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/);
   assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
   assert.match(sourceOverlayBlock, /position:\s*absolute/);
   assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
   assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(1\.2px\)/);
+});
+
+test('styles reply attribution surfaces with stronger dark-mode contrast', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const responsePanelBlock = shellCss.match(/\.app-live-turn-response-panel \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const responseSurfaceBlock = shellCss.match(/\.app-live-assistant-answer-surface \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteLabelBlock = shellCss.match(/\.app-source-message-quote-label \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteTextBlock = shellCss.match(/\.app-source-message-quote-text \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(responsePanelBlock, /var\(--app-control-bg\) 74%/);
+  assert.match(responseSurfaceBlock, /var\(--app-divider\) 78%/);
+  assert.match(responseSurfaceBlock, /background:\s*linear-gradient/);
+  assert.match(quoteLinkBlock, /var\(--utility-foreground\) 3\.5%/);
+  assert.match(quoteLabelBlock, /var\(--utility-foreground\) 92%/);
+  assert.match(quoteTextBlock, /var\(--utility-foreground\) 68%/);
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {
@@ -348,7 +364,7 @@ test('styles folded answer expand control as muted overlay on the fade', () => {
   const answerToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
   const overlayToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(answerToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 68%, var\(--utility-muted-text\)\)/);
+  assert.match(answerToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/);
   assert.doesNotMatch(answerToggleBlock, /rgb\(147 197 253\)/);
   assert.match(overlayToggleBlock, /position:\s*absolute/);
   assert.match(overlayToggleBlock, /bottom:\s*0\.18rem/);
