@@ -84,13 +84,17 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Workspace sidebar | `app/desktop/src/pages/WorkspaceSidebar.tsx` | Defer broad split. Extract participant-space row groups and menu actions separately. |
 | Model control centers | `app/desktop/src/kordi-app/auth/LmStudioModelControlCenter.tsx`, `app/desktop/src/kordi-app/auth/OllamaModelControlCenter.tsx` | Defer broad split. Split provider API/state-machine helpers before presentational components. |
 | Chats page | `app/desktop/src/pages/ChatsPage.tsx` | Defer broad split. Extract composer footer/routing controls when behavior changes require touching them. |
-| Desktop chat state | `app/desktop/src/features/chat/useDesktopChatState.ts` | Defer broad split. Extract live-turn store utilities and queue persistence helpers first. |
+| Desktop chat state | `app/desktop/src/features/chat/useDesktopChatState.ts` | Queue persistence helpers have been extracted to `app/desktop/src/features/chat/queuedDesktopMessages.ts`. Next safe slice: extract live-turn store utilities. |
 | Desktop API client | `app/desktop/src/lib/desktop.ts` | Defer broad split. Group exports by resource only when consumers can move in the same PR. |
 | Bridges CLI commands | `bridges/cli/src/commands.rs` | Defer broad split. Move one command family per PR with command-level tests. |
 | Bridges local API | `bridges/cli/src/local_api.rs` | Defer broad split. Split route handlers by resource without changing URLs. |
 | Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Defer until command/local API splits reduce shared coupling. |
 | Large tests | `app/desktop/src-tauri/src/canonical_sessions/tests.rs`, `app/desktop/tests/chatRouting.test.tsx`, `agent/crates/cli/src/turn_runner/tests.rs`, `agent/crates/cli/src/extensions/tests.rs`, `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Prefer splitting before production moves in the same domain. Preserve test names and move reusable fixtures only after duplication appears. |
 | CSS | `app/desktop/src/styles/shell.css`, `app/desktop/src/styles/theme-overrides.css` | Defer visual-risky moves. Split by responsibility with before/after screenshots or manual smoke checks. |
+
+## Completed slices
+
+- `app/desktop/src/features/chat/useDesktopChatState.ts`: queued-message localStorage persistence moved to `app/desktop/src/features/chat/queuedDesktopMessages.ts` with focused tests in `app/desktop/tests/queuedDesktopMessages.test.tsx`.
 
 ## PR checklist for future splits
 

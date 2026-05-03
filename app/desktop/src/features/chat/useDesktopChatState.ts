@@ -4,39 +4,12 @@ import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Mes
 import { fetchDesktopChatState, fetchDesktopChatTurnState } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
+import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
+
 type UseDesktopChatStateArgs = {
   isNativeShell: boolean;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
-
-const QUEUED_DESKTOP_MESSAGES_STORAGE_KEY = 'kordi.desktop.queuedDesktopMessages.v1';
-
-function loadQueuedDesktopMessagesBySession() {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed as Record<string, QueuedDesktopChatMessage[]>;
-  } catch {
-    return {};
-  }
-}
-
-function saveQueuedDesktopMessagesBySession(messages: Record<string, QueuedDesktopChatMessage[]>) {
-  if (typeof window === 'undefined') return;
-  try {
-    const hasQueuedMessages = Object.values(messages).some((items) => items.length > 0);
-    if (!hasQueuedMessages) {
-      window.localStorage.removeItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-  } catch {
-    // Best-effort draft preservation only; UI state remains authoritative.
-  }
-}
 
 function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, finishedAt: string): DesktopChatMessage {
   const assistantText = turn.assistantText.trim();
