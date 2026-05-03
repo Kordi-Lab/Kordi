@@ -288,6 +288,8 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (parentMessageId && parentMessageId !== message.id ? parentMessageId : null) || null
     : null;
+  const replyAliasIds = [parentMessageId, bridgeRequestId]
+    .filter((value): value is string => Boolean(value && value !== message.id));
   const pendingBridgeAgentRequest = isAgentTurn
     && !completed
     && deliveryState === 'processing'
@@ -346,6 +348,7 @@ export function mapCanonicalMessage(
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),
     replyToMessageId: replyToMessageId ?? undefined,
+    replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
     statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
     turn: isAgentTurn
       ? {

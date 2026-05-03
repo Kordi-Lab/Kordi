@@ -11,6 +11,11 @@ export type ReplyAttributionResult = {
   liveTurn?: DesktopChatTurnSnapshot;
 };
 
+type RequestCandidate = {
+  messageId: string;
+  message: Message;
+};
+
 function cleanText(value?: string | null) {
   return value?.trim() ?? '';
 }
@@ -53,8 +58,85 @@ function explicitReplyTargetForTurn(turn: DesktopChatTurnSnapshot) {
     || null;
 }
 
-function replyTargetForMessage(message: Message, latestRequestId: string | null, inferLatestHumanRequest: boolean) {
-  return explicitReplyTargetForMessage(message) ?? (inferLatestHumanRequest ? latestRequestId : null);
+function normalizedToken(value?: string | null) {
+  return cleanText(value)
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function compactUnique(values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach((value) => {
+    const cleaned = cleanText(value);
+    if (!cleaned || seen.has(cleaned)) return;
+    seen.add(cleaned);
+    result.push(cleaned);
+  });
+  return result;
+}
+
+function messageSourceLookupIds(message: Message, messageId: string) {
+  return compactUnique([messageId, ...(message.replyAliasIds ?? [])]);
+}
+
+function mentionTargetsForRequest(message: Message) {
+  const fromStructuredMentions = (message.mentions ?? []).map((mention) => mention.label);
+  const fromTextMentions = [...message.text.matchAll(/@([^\s:;,.!?，。；：！？)\]}]+)/gu)].map((match) => match[1]);
+  return new Set(
+    [...fromStructuredMentions, ...fromTextMentions]
+      .map(normalizedToken)
+      .filter(Boolean),
+  );
+}
+
+function agentTargetAliases(message: Message | DesktopChatTurnSnapshot) {
+  const role = 'role' in message ? message.role : undefined;
+  const sender = 'sender' in message ? message.sender : undefined;
+  const aliases = new Set<string>();
+  const senderAlias = normalizedToken(sender);
+  if (senderAlias) aliases.add(senderAlias);
+
+  if (role === 'owned-agent' || senderAlias === 'kordi' || senderAlias === 'mykordi') {
+    aliases.add('kordi');
+    aliases.add('mykordi');
+  }
+
+  return aliases;
+}
+
+function requestMentionsAgent(request: Message, agentMessage: Message) {
+  const mentionTargets = mentionTargetsForRequest(request);
+  if (mentionTargets.size === 0) return false;
+  const agentAliases = agentTargetAliases(agentMessage);
+  for (const mentionTarget of mentionTargets) {
+    if (agentAliases.has(mentionTarget)) return true;
+  }
+  return false;
+}
+
+function inferredReplyTargetForAgentMessage(
+  message: Message,
+  requestCandidates: readonly RequestCandidate[],
+  inferLatestHumanRequest: boolean,
+) {
+  for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
+    const candidate = requestCandidates[index];
+    if (requestMentionsAgent(candidate.message, message)) return candidate.messageId;
+  }
+
+  return inferLatestHumanRequest ? requestCandidates[requestCandidates.length - 1]?.messageId ?? null : null;
+}
+
+function replyTargetForMessage(
+  message: Message,
+  requestCandidates: readonly RequestCandidate[],
+  inferLatestHumanRequest: boolean,
+) {
+  return explicitReplyTargetForMessage(message)
+    ?? inferredReplyTargetForAgentMessage(message, requestCandidates, inferLatestHumanRequest);
 }
 
 function completedReplyCountable(message: Message) {
@@ -117,46 +199,48 @@ export function buildReplyAttribution(
   const sourceByMessageId = new Map<string, MessageSourceReference>();
   const summariesByRequestId = new Map<string, MessageReplySummary>();
   const messageIds = inputMessages.map(messageIdFor);
-  let latestRequestId: string | null = null;
+  const requestCandidates: RequestCandidate[] = [];
 
   const messagesWithIds = inputMessages.map((message, index) => {
     const messageId = messageIds[index];
     const withId = message.id === messageId ? message : { ...message, id: messageId };
     if (isHumanRequest(withId)) {
-      latestRequestId = messageId;
-      sourceByMessageId.set(messageId, sourceReferenceForMessage(withId, messageId));
+      const sourceReference = sourceReferenceForMessage(withId, messageId);
+      messageSourceLookupIds(withId, messageId).forEach((lookupId) => {
+        if (!sourceByMessageId.has(lookupId)) sourceByMessageId.set(lookupId, sourceReference);
+      });
     }
     return withId;
   });
 
-  latestRequestId = null;
   const linkedMessages = messagesWithIds.map((message, index) => {
     const messageId = messageIds[index];
     if (isHumanRequest(message)) {
-      latestRequestId = messageId;
+      requestCandidates.push({ messageId, message });
       return message;
     }
     if (!isAgentResponse(message)) return message;
 
-    const replyToMessageId = replyTargetForMessage(message, latestRequestId, inferLatestHumanRequest);
-    if (!replyToMessageId) return message;
-    const sourceMessage = sourceByMessageId.get(replyToMessageId);
+    const replyTargetId = replyTargetForMessage(message, requestCandidates, inferLatestHumanRequest);
+    if (!replyTargetId) return message;
+    const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return message;
 
-    addReplySummary(summariesByRequestId, replyToMessageId, messageId, completedReplyCountable(message));
-    return withSourceMessage({ ...message, replyToMessageId }, sourceMessage);
+    addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, completedReplyCountable(message));
+    return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
   });
 
   const linkedLiveTurn = (() => {
     if (!liveTurn) return undefined;
-    const replyToMessageId = explicitReplyTargetForTurn(liveTurn) ?? (inferLatestHumanRequest ? latestRequestId : null);
-    if (!replyToMessageId) return liveTurn;
-    const sourceMessage = sourceByMessageId.get(replyToMessageId);
+    const explicitTargetId = explicitReplyTargetForTurn(liveTurn);
+    const replyTargetId = explicitTargetId ?? (inferLatestHumanRequest ? requestCandidates[requestCandidates.length - 1]?.messageId ?? null : null);
+    if (!replyTargetId) return liveTurn;
+    const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return liveTurn;
-    addReplySummary(summariesByRequestId, replyToMessageId, liveTurn.id, liveTurn.completed);
+    addReplySummary(summariesByRequestId, sourceMessage.messageId, liveTurn.id, liveTurn.completed);
     return {
       ...liveTurn,
-      replyToMessageId,
+      replyToMessageId: sourceMessage.messageId,
       sourceMessage: liveTurn.sourceMessage ?? sourceMessage,
     };
   })();

@@ -1087,6 +1087,7 @@ function messageSnapshotKey(msg: Message) {
     msg.senderProfileImageUrl ?? '',
     msg.statusChips?.join(',') ?? '',
     msg.replyToMessageId ?? '',
+    msg.replyAliasIds?.join('|') ?? '',
     msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
     msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',

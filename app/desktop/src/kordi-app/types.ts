@@ -120,6 +120,7 @@ export type Message = {
   attachments?: MessageAttachment[];
   mentions?: MessageMention[];
   replyToMessageId?: string | null;
+  replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;

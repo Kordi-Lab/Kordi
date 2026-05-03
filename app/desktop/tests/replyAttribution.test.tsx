@@ -90,6 +90,40 @@ test('shouldInferLatestHumanReplyTarget enables fallback linking for person, ext
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
 });
 
+test('buildReplyAttribution resolves canonical bridge parent aliases as the source request', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:canonical-jiaxin-request',
+      role: 'person',
+      sender: 'Jiaxin',
+      isOwnMessage: false,
+      text: '@ShuyheresKordi add a github issue on not popping up new message count information pop-up.',
+      replyAliasIds: ['msg:ui:jiaxin-request', 'bridge_req_jiaxin'],
+    }),
+    {
+      id: 'msg:canonical-my-agent-response',
+      role: 'owned-agent',
+      sender: "Shuyhere's Kordi",
+      senderType: 'agent',
+      text: '',
+      time: '10:05',
+      replyToMessageId: 'msg:ui:jiaxin-request',
+      turn: turn({
+        id: 'turn-jiaxin-response',
+        assistantText: 'Done — filed as issue #214.',
+        replyToMessageId: 'msg:ui:jiaxin-request',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:canonical-jiaxin-request');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Jiaxin');
+});
+
 test('buildReplyAttribution can infer other peoples requests as source when explicit reply ids are missing', () => {
   const messages: Message[] = [
     humanRequest({
@@ -116,6 +150,46 @@ test('buildReplyAttribution can infer other peoples requests as source when expl
   assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
   assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:peer-request');
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Shenzhe Zhu');
+});
+
+test('buildReplyAttribution prefers the latest matching @mention over later non-request chat', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:my-kordi-request',
+      sender: 'Shuyhere',
+      text: '@MyKordi fully debug and create this issue for fix',
+    }),
+    humanRequest({
+      id: 'msg:peer-comment',
+      role: 'person',
+      sender: 'Shenzhe Zhu',
+      isOwnMessage: false,
+      text: 'I have already create the issue',
+    }),
+    humanRequest({
+      id: 'msg:peer-xs',
+      role: 'person',
+      sender: 'Shenzhe Zhu',
+      isOwnMessage: false,
+      text: 'xs',
+    }),
+    {
+      id: 'msg:my-kordi-response',
+      role: 'owned-agent',
+      sender: 'Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:06',
+      turn: turn({ id: 'turn-my-kordi', assistantText: 'Using systematic-debugging to investigate.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[2]?.replySummary, undefined);
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:my-kordi-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.text, '@MyKordi fully debug and create this issue for fix');
 });
 
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {
