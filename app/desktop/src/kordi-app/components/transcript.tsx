@@ -336,7 +336,7 @@ function SourceMessageQuote({
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          {expanded ? '— Hide request —' : '— Show full request —'}
+          {expanded ? '— Hide request —' : '— Click to show full request —'}
         </button>
       ) : null}
     </div>
@@ -398,7 +398,7 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
             onClick={() => setExpanded(true)}
             aria-expanded={expanded}
           >
-            — Show full response —
+            — Click to show full response —
           </button>
         ) : null}
       </div>
