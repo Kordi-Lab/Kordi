@@ -811,6 +811,7 @@ export type DesktopBridgeOutreachMetadata = {
   projectId?: string | null;
   projectName?: string | null;
   status: 'sending' | 'awaitingReply' | 'complete' | 'failed' | 'cancelled' | string;
+  deliveryState?: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   completedAtMs?: number | null;
