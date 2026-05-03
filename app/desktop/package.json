@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --host 127.0.0.1 --port 1420 --strictPort",
-    "build": "vite build",
+    "build": "vite build && pnpm check:bundle",
+    "check:bundle": "node scripts/check-js-chunk-budget.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "tsx --test tests/*.test.tsx",
     "lint": "eslint .",
