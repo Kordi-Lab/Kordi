@@ -60,6 +60,30 @@ fn inbox_event_insert_is_idempotent_by_server_message_id() {
 }
 
 #[test]
+fn inbox_event_insert_is_idempotent_by_request_id_without_server_message_id() {
+    let conn = memory_conversation_db();
+    let first = test_inbox_event("evt-1", None);
+    let first_id = insert_bridge_inbox_event_if_absent(&conn, &first)
+        .expect("insert first realtime inbox event");
+
+    let mut duplicate = test_inbox_event("evt-duplicate", None);
+    duplicate.payload_json = "{\"text\":\"duplicate realtime delivery\"}".to_string();
+    let duplicate_id = insert_bridge_inbox_event_if_absent(&conn, &duplicate)
+        .expect("dedupe duplicate realtime inbox event");
+
+    assert_eq!(first_id, "evt-1");
+    assert_eq!(duplicate_id, "evt-1");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bridge_inbox_events WHERE host_id = ?1 AND request_id = ?2",
+            rusqlite::params!["host-1", "req-1"],
+            |row| row.get(0),
+        )
+        .expect("count realtime inbox events");
+    assert_eq!(count, 1);
+}
+
+#[test]
 fn agent_job_tracks_queued_running_and_terminal_statuses() {
     let conn = memory_conversation_db();
     let event = test_inbox_event("evt-1", Some("server-msg-1"));

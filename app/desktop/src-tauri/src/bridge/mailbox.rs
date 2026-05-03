@@ -283,6 +283,11 @@ async fn enqueue_agent_ask_for_durable_processing(
         return Ok(false);
     }
 
+    let now = now_ms();
+    let (inbox, job) =
+        bridge_agent_queue_records_for_event(&target.host.id, event, server_message_id, now);
+    record_bridge_inbox_event_and_agent_job(&inbox, &job)?;
+
     let peer_display_name = event.from_display_name.clone();
     let peer_owner_name = event.from_owner_name.clone();
     let peer_runtime = event
@@ -385,11 +390,6 @@ async fn enqueue_agent_ask_for_durable_processing(
         .await;
     }
     fanout_group_agent_response(target, event, "processing...", false).await;
-
-    let now = now_ms();
-    let (inbox, job) =
-        bridge_agent_queue_records_for_event(&target.host.id, event, server_message_id, now);
-    record_bridge_inbox_event_and_agent_job(&inbox, &job)?;
 
     Ok(true)
 }

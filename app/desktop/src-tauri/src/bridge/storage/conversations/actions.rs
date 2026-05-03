@@ -125,6 +125,17 @@ pub(in crate::bridge) fn insert_bridge_inbox_event_if_absent(
             .map_err(sqlite_error);
     }
 
+    if let Some(request_id) = event.request_id.as_deref() {
+        return conn
+            .query_row(
+                "SELECT id FROM bridge_inbox_events
+                 WHERE host_id = ?1 AND from_node_id = ?2 AND message_type = ?3 AND request_id = ?4",
+                params![event.host_id, event.from_node_id, event.message_type, request_id],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error);
+    }
+
     conn.query_row(
         "SELECT id FROM bridge_inbox_events WHERE id = ?1",
         params![event.id],

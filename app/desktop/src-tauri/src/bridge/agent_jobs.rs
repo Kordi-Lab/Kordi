@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use serde_json::Value;
 use uuid::Uuid;
@@ -167,12 +167,10 @@ pub(in crate::bridge) fn select_startable_jobs(
     now_ms: i64,
 ) -> Vec<String> {
     let mut active_by_user: HashMap<&str, usize> = HashMap::new();
-    let mut blocked_chats: HashSet<&str> = HashSet::new();
     for job in running_jobs {
         *active_by_user
             .entry(job.requesting_user_key.as_str())
             .or_default() += 1;
-        blocked_chats.insert(job.chat_queue_key.as_str());
     }
 
     let mut runnable: Vec<&QueuedBridgeAgentJob> = queued_jobs
@@ -190,10 +188,6 @@ pub(in crate::bridge) fn select_startable_jobs(
 
     let mut selected = Vec::new();
     for job in runnable {
-        if blocked_chats.contains(job.chat_queue_key.as_str()) {
-            continue;
-        }
-
         let active_for_user = active_by_user
             .entry(job.requesting_user_key.as_str())
             .or_default();
@@ -203,7 +197,6 @@ pub(in crate::bridge) fn select_startable_jobs(
 
         selected.push(job.id.clone());
         *active_for_user += 1;
-        blocked_chats.insert(job.chat_queue_key.as_str());
     }
 
     selected
@@ -317,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_preserves_fifo_for_same_chat() {
+    fn scheduler_allows_parallel_same_chat_requests_under_user_limit() {
         let running_jobs = vec![running("running-a", "user-a", "chat-a")];
         let queued_jobs = vec![
             queued("job-a-later", "user-a", "chat-a", 1_000),
@@ -326,7 +319,11 @@ mod tests {
 
         let selected = select_startable_jobs(&queued_jobs, &running_jobs, 2_000);
 
-        assert_eq!(selected, vec!["job-b".to_string()]);
+        assert_eq!(
+            selected,
+            vec!["job-a-later".to_string(), "job-b".to_string()],
+            "same-chat work should not be serialized; requestId/jobId attribution keeps responses scoped",
+        );
     }
 
     #[test]
