@@ -351,4 +351,3 @@ test('bridge Chat starts an agent session instead of selecting an existing same-
 
   assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });
-

@@ -199,4 +199,3 @@ export function isNativeDesktopShell() {
 export function participantSpaceCreateKey(space: ParticipantSpaceViewModel) {
   return space.id.trim() || `${space.kind}:${space.participants.map((participant) => participant.id).join(',')}`;
 }
-

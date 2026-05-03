@@ -607,4 +607,3 @@ test('canonical read model suppresses stale raw bridge-parent processing placeho
   assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), ['hello']);
   assert.equal(messages.some((message) => message.turn?.message === 'Processing…'), false);
 });
-
