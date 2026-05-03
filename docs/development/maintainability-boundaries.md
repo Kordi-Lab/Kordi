@@ -79,7 +79,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are partitioned by scenario, and identity/session request helpers, group participant/admin mutations, and message lookup/dedup helpers have been extracted. The root file is now below the 1,000-line scan threshold. |
 | Bridge config/state | `app/desktop/src-tauri/src/bridge/mod.rs` | Defer broad split. Extract config/state summary helpers before moving command handlers. |
 | Bridge network | `app/desktop/src-tauri/src/bridge/network.rs` | Defer until relay/realtime tests are stable. Split client construction from request policy. |
-| Bridge mailbox | `app/desktop/src-tauri/src/bridge/mailbox.rs` | Defer broad split. Extract mailbox payload parsing and scheduling helpers first. |
+| Bridge mailbox | `app/desktop/src-tauri/src/bridge/mailbox.rs` | Mailbox event/thread helpers have been extracted. Next safe slice: split persisted-agent job execution or inbound storage append helpers. |
 | Frontend app model | `app/desktop/src/app/useKordiAppModel.ts` | Pure mention, avatar, metadata, session-pruning, and participant-space helpers have been extracted. Continue extracting feature selectors/effects as adjacent work touches them. |
 | Transcript UI | `app/desktop/src/kordi-app/components/transcript.tsx` | Attachment previews and live-turn/tool-timeline rendering have been isolated. Next safe slice: separate remaining message chrome/contact rows only when behavior changes require it. |
 | Workspace sidebar | `app/desktop/src/pages/WorkspaceSidebar.tsx` | Defer broad split. Extract participant-space row groups and menu actions separately. |
@@ -134,6 +134,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `bridges/cli/src/commands.rs`: doctor service/coordination/runtime/project/peer diagnostics moved to `bridges/cli/src/commands/doctor.rs`, while root command re-exports preserve existing CLI call sites.
 - `bridges/cli/src/local_api.rs`: delivery-stage parsing, pending response records, poll response DTOs, pending insert/update/remove helpers, and daemon-facing `store_delivery_event`/`store_response` functions moved to `bridges/cli/src/local_api/pending.rs`; root re-exports preserve existing daemon and CLI call sites.
 - `bridges/cli/src/local_api.rs`: send/ask/broadcast/debate/publish request DTOs, response DTOs, default broadcast message type, and route handlers moved to `bridges/cli/src/local_api/messages.rs`; route URLs and local API JSON shapes are unchanged, and the root file is now below the 1,000-line scan threshold.
+- `app/desktop/src-tauri/src/bridge/mailbox.rs`: response-done checks, processing-placeholder detection, partial response buffering decisions, session-thread metadata helpers, group relay target extraction, and response payload shaping moved to `app/desktop/src-tauri/src/bridge/mailbox_events.rs`.
 
 ## PR checklist for future splits
 
