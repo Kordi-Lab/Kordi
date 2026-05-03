@@ -527,13 +527,26 @@ function BridgeAgentStopButton({
   );
 }
 
-function assistantAnswerNeedsFold(text: string) {
-  return text.split(/\r?\n/).length > 6 || text.replace(/\s+/g, ' ').trim().length > 720;
+const ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES = 6;
+
+function assistantAnswerFoldInfo(text: string) {
+  const lines = text.split(/\r?\n/);
+  const hiddenLineCount = Math.max(0, lines.length - ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES);
+  const shouldFold = hiddenLineCount > 0 || text.replace(/\s+/g, ' ').trim().length > 720;
+  return { shouldFold, hiddenLineCount };
+}
+
+function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
+  if (hiddenLineCount > 0) {
+    return `— ${hiddenLineCount} more line${hiddenLineCount === 1 ? '' : 's'}. Click to show all —`;
+  }
+  return '— Click to show full response —';
 }
 
 function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const shouldFold = foldable && assistantAnswerNeedsFold(text);
+  const foldInfo = useMemo(() => assistantAnswerFoldInfo(text), [text]);
+  const shouldFold = foldable && foldInfo.shouldFold;
   const folded = shouldFold && !expanded;
 
   return (
@@ -547,7 +560,7 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
             onClick={() => setExpanded(true)}
             aria-expanded={expanded}
           >
-            — Click to show full response —
+            {foldedAssistantAnswerToggleLabel(foldInfo.hiddenLineCount)}
           </button>
         ) : null}
       </div>
@@ -665,7 +678,7 @@ function LiveChatTurnCardView({
         />
       ) : null}
 
-          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
+          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} /> : null}
 
           {visibleTurn.error ? (
             <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
