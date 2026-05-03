@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
@@ -11,6 +11,7 @@ import type {
   DesktopChatState,
   DesktopBridgeSessionParticipant,
   DesktopChatTurnSnapshot,
+  QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import {
   cancelDesktopBridgeOutreach,
@@ -23,7 +24,7 @@ import {
   updateDesktopChatSessionConfig,
 } from '@/lib/desktop';
 
-import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
+import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
@@ -60,20 +61,76 @@ export function localChatSendIsInFlightForTarget(
   targetSessionId: string | null,
 ) {
   if (!inFlight) return false;
-  if (!inFlight.sessionId || !targetSessionId) return true;
+  if (!inFlight.sessionId) return true;
+  if (!targetSessionId) return false;
   return inFlight.sessionId === targetSessionId;
+}
+
+export function localChatTargetHasRunningTurn(
+  desktopLiveTurn: { sessionId?: string | null; completed?: boolean } | null | undefined,
+  targetSessionId: string | null,
+) {
+  return Boolean(targetSessionId && desktopLiveTurn?.sessionId === targetSessionId && !desktopLiveTurn.completed);
+}
+
+export type LocalChatSendDelayReason = 'session-starting' | 'same-session-running';
+
+export function localChatSendDelayReason({
+  inFlight,
+  targetSessionId,
+  desktopLiveTurn,
+}: {
+  inFlight: LocalChatSendInFlight | null;
+  targetSessionId: string | null;
+  desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
+}): LocalChatSendDelayReason | null {
+  if (localChatSendIsInFlightForTarget(inFlight, targetSessionId)) {
+    return targetSessionId && inFlight?.sessionId === targetSessionId
+      ? 'same-session-running'
+      : 'session-starting';
+  }
+  if (localChatTargetHasRunningTurn(desktopLiveTurn, targetSessionId)) {
+    return 'same-session-running';
+  }
+  return null;
+}
+
+export function queuedDesktopChatMessageFromDraft({
+  sessionId,
+  text,
+  time,
+  attachments,
+  scope = 'chat',
+}: {
+  sessionId: string;
+  text: string;
+  time: string;
+  attachments: QueuedDesktopChatMessage['attachments'];
+  scope?: QueuedDesktopChatMessage['scope'];
+}): QueuedDesktopChatMessage {
+  const timestamp = Date.now();
+  const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${timestamp}-${Math.random().toString(16).slice(2)}`;
+  return {
+    id: `queued-local-chat:${sessionId}:${randomId}`,
+    sessionId,
+    scope,
+    text,
+    time,
+    attachments,
+  };
 }
 
 export function chatSendIsBusy({
   isDesktopChatSending = false,
-  desktopLiveTurn,
   localSendInFlight = false,
 }: {
   isDesktopChatSending?: boolean;
   desktopLiveTurn?: { completed?: boolean } | null;
   localSendInFlight?: boolean;
 }) {
-  return Boolean(isDesktopChatSending || localSendInFlight || (desktopLiveTurn && !desktopLiveTurn.completed));
+  return Boolean(isDesktopChatSending || localSendInFlight);
 }
 
 export type LocalAgentRelayTurnResult = Pick<DesktopChatTurnSnapshot, 'assistantText' | 'error' | 'succeeded'>;
@@ -261,6 +318,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'desktopLiveTurn'
   | 'isNativeShell'
   | 'isDesktopChatSending'
+  | 'queuedDesktopMessagesBySession'
   | 'refreshDesktopChat'
   | 'setActiveConvId'
   | 'setCanonicalSessionState'
@@ -273,6 +331,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'setIsDesktopChatSending'
   | 'setOpenComposerSelector'
   | 'setPendingUserChatMessage'
+  | 'setQueuedDesktopMessagesBySession'
   | 'shouldAutoFollowChatRef'
   | 'watchDesktopLiveTurn'
 > & {
@@ -299,8 +358,8 @@ export function useChatMessageActions({
   desktopChatState,
   desktopLiveTurn,
   handleLocalSlashCommand,
-  isDesktopChatSending,
   isNativeShell,
+  queuedDesktopMessagesBySession,
   pendingBridgeCancelRequestedRef,
   localChatSendInFlightRef,
   refreshDesktopChat,
@@ -316,15 +375,152 @@ export function useChatMessageActions({
   setOpenComposerSelector,
   setPendingBridgeOutreach,
   setPendingUserChatMessage,
+  setQueuedDesktopMessagesBySession,
   shouldAutoFollowChatRef,
   watchDesktopLiveTurn,
 }: UseChatMessageActionsArgs) {
+  const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
+  const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
+
+  useEffect(() => {
+    queuedDesktopMessagesBySessionRef.current = queuedDesktopMessagesBySession;
+  }, [queuedDesktopMessagesBySession]);
+
+  const setQueuedDesktopMessagesBySessionNow = useCallback((next: Record<string, QueuedDesktopChatMessage[]>) => {
+    queuedDesktopMessagesBySessionRef.current = next;
+    setQueuedDesktopMessagesBySession(next);
+  }, [setQueuedDesktopMessagesBySession]);
+
+  const enqueueLocalQueuedMessage = useCallback((message: QueuedDesktopChatMessage, position: 'back' | 'front' = 'back') => {
+    const current = queuedDesktopMessagesBySessionRef.current;
+    const existing = current[message.sessionId] ?? [];
+    const nextMessages = position === 'front' ? [message, ...existing] : [...existing, message];
+    setQueuedDesktopMessagesBySessionNow({
+      ...current,
+      [message.sessionId]: nextMessages,
+    });
+  }, [setQueuedDesktopMessagesBySessionNow]);
+
+  const dequeueLocalQueuedMessage = useCallback((sessionId: string) => {
+    const current = queuedDesktopMessagesBySessionRef.current;
+    const existing = current[sessionId] ?? [];
+    const [message, ...remaining] = existing;
+    if (!message) return null;
+    const next = { ...current };
+    if (remaining.length > 0) {
+      next[sessionId] = remaining;
+    } else {
+      delete next[sessionId];
+    }
+    setQueuedDesktopMessagesBySessionNow(next);
+    return message;
+  }, [setQueuedDesktopMessagesBySessionNow]);
+
+  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments']) => {
+    const queuedMessage = queuedDesktopChatMessageFromDraft({
+      sessionId,
+      text: draftText,
+      time: formatDesktopEventTime(),
+      attachments,
+    });
+    enqueueLocalQueuedMessage(queuedMessage);
+    shouldAutoFollowChatRef.current = true;
+    setDesktopChatError(null);
+    setComposerDrafts((current) => ({ ...current, chat: '' }));
+    setChatComposerAttachments([]);
+    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+  }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
+
+  const watchLocalTurnAndFlushQueue = useCallback((turn: DesktopChatTurnSnapshot) => {
+    void watchDesktopLiveTurn(turn).finally(() => {
+      if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
+        localChatSendInFlightRef.current = null;
+      }
+      flushQueuedDesktopMessagesForSessionRef.current(turn.sessionId);
+    });
+  }, [localChatSendInFlightRef, watchDesktopLiveTurn]);
+
+  const sendQueuedLocalMessage = useCallback(async (message: QueuedDesktopChatMessage) => {
+    const delayReason = localChatSendDelayReason({
+      inFlight: localChatSendInFlightRef.current,
+      targetSessionId: message.sessionId,
+      desktopLiveTurn: null,
+    });
+    if (delayReason) {
+      enqueueLocalQueuedMessage(message, 'front');
+      return;
+    }
+
+    localChatSendInFlightRef.current = { sessionId: message.sessionId };
+    try {
+      setDesktopChatError(null);
+      const attachmentPaths = message.attachments.map((item) => item.path);
+      const previewText = attachmentSummaryText(message.text);
+      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths);
+      const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        message.sessionId,
+        canonicalHumanIdentityId,
+        message.text,
+        message.attachments,
+        message.time,
+        'desktop-chat-ui',
+        'sending',
+      );
+      setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+      setDesktopChatState((current) => current
+        ? appendOptimisticOutboundMessage(current, message.sessionId, previewText, message.text, message.attachments, message.time)
+        : current);
+      await persistCanonicalUserMessage(preparedCanonicalMessage).catch((error: unknown) => {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to save queued message');
+      });
+      watchLocalTurnAndFlushQueue(turn);
+    } catch (error) {
+      if (localChatSendInFlightRef.current?.sessionId === message.sessionId) {
+        localChatSendInFlightRef.current = null;
+      }
+      enqueueLocalQueuedMessage(message, 'front');
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued chat message');
+    }
+  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, watchLocalTurnAndFlushQueue]);
+
+  useEffect(() => {
+    flushQueuedDesktopMessagesForSessionRef.current = (sessionId: string) => {
+      const nextMessage = dequeueLocalQueuedMessage(sessionId);
+      if (!nextMessage) return;
+      void sendQueuedLocalMessage(nextMessage);
+    };
+  }, [dequeueLocalQueuedMessage, sendQueuedLocalMessage]);
+
+  useEffect(() => {
+    if (!isNativeShell || activeConversationIsBridge || activeConvId.startsWith('bridge:') || isLocalDraftChatConversationId(activeConvId)) return;
+    if ((queuedDesktopMessagesBySession[activeConvId] ?? []).length === 0) return;
+    const delayReason = localChatSendDelayReason({
+      inFlight: localChatSendInFlightRef.current,
+      targetSessionId: activeConvId,
+      desktopLiveTurn,
+    });
+    if (delayReason) return;
+    flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
+  }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
+
   return useCallback(async (draftOverride?: string) => {
     if (!isNativeShell) return;
     const rawText = draftOverride ?? composerDrafts.chat;
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
-    if (chatSendIsBusy({ isDesktopChatSending, desktopLiveTurn })) return;
+
+    const activeLocalSessionHasRunningTurn = !activeConvId.startsWith('bridge:')
+      && !isLocalDraftChatConversationId(activeConvId)
+      && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
+    if (activeLocalSessionHasRunningTurn) {
+      const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
+      if (chatComposerAttachments.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {
+        setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
+        return;
+      }
+      queueLocalDraftForSession(activeConvId, text, chatComposerAttachments);
+      return;
+    }
 
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
     const activeGroupSessionScope = {
@@ -751,7 +947,19 @@ export function useChatMessageActions({
     }
 
     const localTargetSessionId = targetSessionId ?? null;
-    if (chatSendIsBusy({ localSendInFlight: localChatSendIsInFlightForTarget(localChatSendInFlightRef.current, localTargetSessionId) })) return;
+    const localSendDelayReason = localChatSendDelayReason({
+      inFlight: localChatSendInFlightRef.current,
+      targetSessionId: localTargetSessionId,
+      desktopLiveTurn,
+    });
+    if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
+      queueLocalDraftForSession(localTargetSessionId, text, chatComposerAttachments);
+      return;
+    }
+    if (localSendDelayReason) {
+      setDesktopChatError('Kordi is still preparing this session. Your draft and attachments are preserved.');
+      return;
+    }
     localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
 
     try {
@@ -896,11 +1104,7 @@ export function useChatMessageActions({
         })
         .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
           if (!localAgentRelayPlan) {
-            void watchDesktopLiveTurn(turn).finally(() => {
-              if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
-                localChatSendInFlightRef.current = null;
-              }
-            });
+            watchLocalTurnAndFlushQueue(turn);
             setIsDesktopChatSending(false);
             return;
           }
@@ -940,6 +1144,7 @@ export function useChatMessageActions({
                 localChatSendInFlightRef.current = null;
               }
               setIsDesktopChatSending(false);
+              flushQueuedDesktopMessagesForSessionRef.current(resolvedSessionId);
             }
           })().catch((error: unknown) => {
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent response');
@@ -987,9 +1192,9 @@ export function useChatMessageActions({
     desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
-    isDesktopChatSending,
     isNativeShell,
     localChatSendInFlightRef,
+    queueLocalDraftForSession,
     refreshDesktopChat,
     setActiveConvId,
     setCanonicalSessionState,
@@ -1003,6 +1208,7 @@ export function useChatMessageActions({
     setPendingUserChatMessage,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
+    watchLocalTurnAndFlushQueue,
   ]);
 
 
