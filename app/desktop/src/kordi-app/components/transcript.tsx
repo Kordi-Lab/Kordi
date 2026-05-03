@@ -315,7 +315,7 @@ function SourceMessageQuote({
       >
         <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
-          <span className="app-source-message-quote-label block truncate text-[11px] font-medium">Replying to {senderLabel}{attachmentText}</span>
+          <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
           <span className={cn('app-source-message-quote-text block text-[12px] leading-5', expanded ? 'whitespace-pre-wrap' : 'truncate')}>
             {sourceQuotePreviewText(sourceMessage, expanded)}
           </span>

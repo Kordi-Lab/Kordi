@@ -143,7 +143,8 @@ test('renders agent source quote and processing status without an output block b
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
   assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /Replying to/);
+  assert.match(markup, />You</);
+  assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /@AliceKordi review the copy/);
   assert.match(markup, /Processing/);
   assert.doesNotMatch(markup, /app-live-assistant-answer/);
