@@ -198,6 +198,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       chatModelOptions: args.chatModelOptions,
       isDesktopChatSending: args.isDesktopChatSending,
       handleStopDesktopChatTurn: args.handleStopDesktopChatTurn,
+      handleStopBridgeAgentRequest: args.handleStopBridgeAgentRequest,
       handleSendProjectMessage: args.handleSendProjectMessage,
       showChatDetailRail: args.showChatDetailRail,
       activeConv: args.activeConv,

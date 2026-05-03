@@ -8,6 +8,7 @@ import type {
 } from '@/kordi-app/types';
 
 import {
+  cancelledBridgeAgentDelegationMessage,
   contentRecord,
   delegationOptimisticFallbackKey,
   delegationTerminalStatus,
@@ -49,6 +50,57 @@ function emptyIndexes(): CanonicalIndexes {
     contextSnapshotCountBySessionId: new Map(),
     presenceSummaryBySessionId: new Map(),
   };
+}
+
+type CanonicalMessageSortPosition = {
+  sortAtMs: number;
+  sequenceNum: number;
+};
+
+type SortableCanonicalMessage = CanonicalMessageSortPosition & {
+  message: Message;
+  tieBreakAtMs: number;
+};
+
+function sortedCanonicalMessages(messages: SortableCanonicalMessage[]) {
+  return [...messages]
+    .sort((left, right) => left.sortAtMs - right.sortAtMs
+      || left.sequenceNum - right.sequenceNum
+      || left.tieBreakAtMs - right.tieBreakAtMs)
+    .map((entry) => entry.message);
+}
+
+function messageSortPosition(message: CanonicalSessionMessage): CanonicalMessageSortPosition {
+  return { sortAtMs: message.createdAtMs, sequenceNum: message.sequenceNum };
+}
+
+function childMessageSortPosition(
+  message: CanonicalSessionMessage,
+  messageSortById: Map<string, CanonicalMessageSortPosition>,
+): CanonicalMessageSortPosition {
+  const parentPosition = message.parentMessageId && message.parentMessageId !== message.id
+    ? messageSortById.get(message.parentMessageId)
+    : null;
+  if (!parentPosition) return messageSortPosition(message);
+  return {
+    sortAtMs: parentPosition.sortAtMs,
+    sequenceNum: parentPosition.sequenceNum + 0.5,
+  };
+}
+
+function exchangeSortPosition(
+  exchange: CanonicalSessionState['delegatedExchanges'][number],
+  messageSortById: Map<string, CanonicalMessageSortPosition>,
+): CanonicalMessageSortPosition {
+  const parentMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
+  const parentPosition = parentMessageId ? messageSortById.get(parentMessageId) : null;
+  if (parentPosition) {
+    return {
+      sortAtMs: parentPosition.sortAtMs,
+      sequenceNum: parentPosition.sequenceNum + 0.5,
+    };
+  }
+  return { sortAtMs: exchange.createdAtMs, sequenceNum: Number.MAX_SAFE_INTEGER };
 }
 
 function normalizedLeadingMentionText(value: string) {
@@ -377,8 +429,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   }
 
   const rawMessagesBySessionId = new Map<string, CanonicalSessionMessage[]>();
+  const messageSortById = new Map<string, CanonicalMessageSortPosition>();
   for (const message of canonicalState.messages) {
     rawMessagesBySessionId.set(message.sessionId, [...(rawMessagesBySessionId.get(message.sessionId) ?? []), message]);
+    messageSortById.set(message.id, messageSortPosition(message));
   }
 
   const bridgedDelegationFallbackKeys = new Set(
@@ -402,7 +456,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return requestMessageId ? [requestMessageId] : [];
     }),
   );
-  const processingDelegationMessagesBySessionId = new Map<string, Message[]>();
+  const processingDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
+  const cancelledDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) continue;
@@ -416,7 +471,33 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     if (!target || target.kind !== 'agent') continue;
     processingDelegationMessagesBySessionId.set(
       exchange.sessionId,
-      [...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId)],
+      [
+        ...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
+        {
+          message: processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId),
+          ...exchangeSortPosition(exchange, messageSortById),
+          tieBreakAtMs: exchange.createdAtMs,
+        },
+      ],
+    );
+  }
+
+  for (const exchange of canonicalState.delegatedExchanges) {
+    if (exchange.status.trim().toLowerCase() !== 'cancelled') continue;
+    const target = identityById.get(exchange.targetIdentityId);
+    if (!target || target.kind !== 'agent') continue;
+    const stoppedMessage = cancelledBridgeAgentDelegationMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId);
+    if (!stoppedMessage) continue;
+    cancelledDelegationMessagesBySessionId.set(
+      exchange.sessionId,
+      [
+        ...(cancelledDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
+        {
+          message: stoppedMessage,
+          ...exchangeSortPosition(exchange, messageSortById),
+          tieBreakAtMs: exchange.createdAtMs,
+        },
+      ],
     );
   }
 
@@ -450,53 +531,68 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       sortedMessages.filter(isStaleRawBridgeParentProcessingPlaceholder).map((message) => message.id),
     );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
+    const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
+      if (
+        suppressedBridgeUiEchoIds.has(message.id)
+        || suppressedLocalRuntimeEchoIds.has(message.id)
+        || suppressedLocalRuntimeDuplicateIds.has(message.id)
+        || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
+        || suppressedStaleProcessingPlaceholderIds.has(message.id)
+        || suppressedRawBridgeParentProcessingPlaceholderIds.has(message.id)
+      ) return [];
+      const content = contentRecord(message.content);
+      if (stringValue(content.kind) === 'delegation-join-event') {
+        const key = [
+          stringValue(content.targetKind) ?? 'target',
+          stringValue(content.targetNodeId)
+            ?? stringValue(content.targetDisplayName)
+            ?? message.senderIdentityId,
+          message.parentMessageId ?? message.sourceEventId ?? stringValue(content.requestText) ?? String(message.createdAtMs),
+        ].join(':');
+        if (seenJoinEventKeys.has(key)) return [];
+        seenJoinEventKeys.add(key);
+      }
+      if (message.sourceTransport === 'desktop-bridge'
+        && message.sourceEventId
+        && delegatedOutreachDirectSources.has(message.sourceEventId)) {
+        return [];
+      }
+      const duplicatedDirectBridgeSource = directBridgeSourceEventForOutreachDuplicate(message);
+      if (duplicatedDirectBridgeSource
+        && directBridgeSourceEvents.has(duplicatedDirectBridgeSource)
+        && !delegatedOutreachDirectSources.has(duplicatedDirectBridgeSource)) {
+        return [];
+      }
+      const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
+      if (!mapped) return [];
+      const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
+        ? { ...mapped, statusChips: ['failed'] }
+        : mapped;
+      return [{
+        message: displayMessage,
+        ...childMessageSortPosition(message, messageSortById),
+        tieBreakAtMs: message.createdAtMs,
+      }];
+    });
     canonicalMessagesBySessionId.set(
       sessionId,
-      sortedMessages.flatMap((message) => {
-        if (
-          suppressedBridgeUiEchoIds.has(message.id)
-          || suppressedLocalRuntimeEchoIds.has(message.id)
-          || suppressedLocalRuntimeDuplicateIds.has(message.id)
-          || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
-          || suppressedStaleProcessingPlaceholderIds.has(message.id)
-          || suppressedRawBridgeParentProcessingPlaceholderIds.has(message.id)
-        ) return [];
-        const content = contentRecord(message.content);
-        if (stringValue(content.kind) === 'delegation-join-event') {
-          const key = [
-            stringValue(content.targetKind) ?? 'target',
-            stringValue(content.targetNodeId)
-              ?? stringValue(content.targetDisplayName)
-              ?? message.senderIdentityId,
-            message.parentMessageId ?? message.sourceEventId ?? stringValue(content.requestText) ?? String(message.createdAtMs),
-          ].join(':');
-          if (seenJoinEventKeys.has(key)) return [];
-          seenJoinEventKeys.add(key);
-        }
-        if (message.sourceTransport === 'desktop-bridge'
-          && message.sourceEventId
-          && delegatedOutreachDirectSources.has(message.sourceEventId)) {
-          return [];
-        }
-        const duplicatedDirectBridgeSource = directBridgeSourceEventForOutreachDuplicate(message);
-        if (duplicatedDirectBridgeSource
-          && directBridgeSourceEvents.has(duplicatedDirectBridgeSource)
-          && !delegatedOutreachDirectSources.has(duplicatedDirectBridgeSource)) {
-          return [];
-        }
-        const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
-        if (!mapped) return [];
-        if (mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)) {
-          return [{ ...mapped, statusChips: ['failed'] }];
-        }
-        return [mapped];
-      }).concat(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
+      sortedCanonicalMessages([
+        ...mappedMessages,
+        ...(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
+        ...(cancelledDelegationMessagesBySessionId.get(sessionId) ?? []),
+      ]),
     );
   }
 
   for (const [sessionId, processingMessages] of processingDelegationMessagesBySessionId) {
     if (!canonicalMessagesBySessionId.has(sessionId)) {
-      canonicalMessagesBySessionId.set(sessionId, processingMessages);
+      canonicalMessagesBySessionId.set(sessionId, sortedCanonicalMessages(processingMessages));
+      rawMessageCountBySessionId.set(sessionId, 0);
+    }
+  }
+  for (const [sessionId, cancelledMessages] of cancelledDelegationMessagesBySessionId) {
+    if (!canonicalMessagesBySessionId.has(sessionId)) {
+      canonicalMessagesBySessionId.set(sessionId, sortedCanonicalMessages(cancelledMessages));
       rawMessageCountBySessionId.set(sessionId, 0);
     }
   }

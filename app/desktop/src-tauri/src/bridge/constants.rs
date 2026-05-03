@@ -57,6 +57,7 @@ pub(super) const PEER_TYPING_WINDOW_MS: i64 = 6_000;
 pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS: i64 = 90_000;
 pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT: &str = "Processing...";
 pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT: &str = "No response from agent";
+pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_CANCELLED_TEXT: &str = "Request stopped";
 
 pub(super) const BRIDGE_KEYCHAIN_SERVICE_NAME: &str = "app.kordi.desktop.bridge";
 pub(super) const BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX: &str = "host:";

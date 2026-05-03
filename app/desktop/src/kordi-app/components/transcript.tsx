@@ -24,6 +24,7 @@ import {
   Pencil,
   Search,
   Sparkles,
+  Square,
   SquareArrowOutUpRight,
   TerminalSquare,
   Undo2,
@@ -44,6 +45,7 @@ import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } fro
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import { firstMeaningfulThinkingLine, formatRunningElapsed, toolTimelineFoldedLabel, toolTimelineRunningToolLabel, toolTimelineToolLabel, toolTimelineTypeLabel } from './toolTimeline';
 import type {
+  BridgeAgentRequestControl,
   Contact,
   ContactRequest,
   ConversationType,
@@ -648,7 +650,15 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 
-function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
+function MessageBubbleView({
+  msg,
+  onOpenSource,
+  onStopBridgeAgentRequest,
+}: {
+  msg: Message;
+  onOpenSource?: (file: EditFilePreview) => void;
+  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+}) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
@@ -791,7 +801,11 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
-        <LiveChatTurnCard turn={msg.turn} historical={msg.turn.completed} />
+        <LiveChatTurnCard
+          turn={msg.turn}
+          historical={msg.turn.completed}
+          onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        />
       </div>
     );
   }
@@ -925,7 +939,8 @@ function messageSnapshotKey(msg: Message) {
 
 export const MessageBubble = memo(
   MessageBubbleView,
-  (previous, next) => previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg),
+  (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
 );
 
 function toolDisplayConfig(toolName: string) {
@@ -1271,14 +1286,56 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
   return shouldShow && visible;
 }
 
-function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatTurnSnapshot; historical?: boolean }) {
+type StopBridgeAgentRequestHandler = (request: BridgeAgentRequestControl) => Promise<void> | void;
+
+function BridgeAgentStopButton({
+  request,
+  onStop,
+}: {
+  request: BridgeAgentRequestControl;
+  onStop?: StopBridgeAgentRequestHandler;
+}) {
+  const [stopping, setStopping] = useState(false);
+  if (!onStop) return null;
+
+  return (
+    <button
+      type="button"
+      className="app-bridge-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
+      aria-label={stopping ? 'Stopping agent request' : 'Stop agent request'}
+      title={stopping ? 'Stopping…' : 'Stop agent request'}
+      disabled={stopping}
+      onClick={(event) => {
+        event.stopPropagation();
+        setStopping(true);
+        void Promise.resolve(onStop(request)).catch(() => {
+          setStopping(false);
+        });
+      }}
+    >
+      <Square className="h-2 w-2 fill-current" aria-hidden="true" />
+    </button>
+  );
+}
+
+function LiveChatTurnCardView({
+  turn,
+  historical = false,
+  onStopBridgeAgentRequest,
+}: {
+  turn: DesktopChatTurnSnapshot;
+  historical?: boolean;
+  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+}) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
-  const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id);
+  const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
+  const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
+    || Boolean(shouldShowLiveStatusHeader && pendingBridgeAgentRequest);
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -1307,6 +1364,12 @@ function LiveChatTurnCardView({ turn, historical = false }: { turn: DesktopChatT
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <ProcessingStatusCircle className="h-3.5 w-3.5" />
           <span className="text-slate-300">{liveStatusText}</span>
+          {pendingBridgeAgentRequest ? (
+            <BridgeAgentStopButton
+              request={pendingBridgeAgentRequest}
+              onStop={onStopBridgeAgentRequest}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -1370,6 +1433,8 @@ function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
+    turn.pendingBridgeAgentRequest?.conversationId ?? '',
+    turn.pendingBridgeAgentRequest?.requestId ?? '',
     ...turn.tools.map((tool) => [
       tool.id,
       tool.name,
@@ -1386,14 +1451,23 @@ function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
 export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
+    && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
-function LiveChatTurnMessageView({ turn, sender = 'My Kordi' }: { turn: DesktopChatTurnSnapshot; sender?: string }) {
+function LiveChatTurnMessageView({
+  turn,
+  sender = 'My Kordi',
+  onStopBridgeAgentRequest,
+}: {
+  turn: DesktopChatTurnSnapshot;
+  sender?: string;
+  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+}) {
   return (
     <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
       <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard turn={turn} />
+      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} />
     </div>
   );
 }
@@ -1401,6 +1475,7 @@ function LiveChatTurnMessageView({ turn, sender = 'My Kordi' }: { turn: DesktopC
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
+    && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
