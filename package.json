@@ -25,6 +25,7 @@
     "build:bridges": "cargo build --manifest-path bridges/cli/Cargo.toml --release",
     "clean:worktree-targets": "node scripts/clean-inactive-worktree-targets.mjs",
     "clean:worktree-targets:delete": "node scripts/clean-inactive-worktree-targets.mjs --delete",
+    "maintainability:scan": "node scripts/report-overlong-files.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
     "lint:web": "pnpm --dir app/desktop lint",
     "typecheck:web": "pnpm --dir app/desktop typecheck",
