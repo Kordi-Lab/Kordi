@@ -77,6 +77,98 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
   assert.deepEqual(conversations[0]?.messages[2]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
 
+test('canonical read model inherits bridge targets for participant-space continuations', () => {
+  const sourceSessionId = 'session:bridge:humans:source';
+  const continuationSessionId = 'session:bridge:humans:continuation';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: sourceSessionId,
+        kind: 'direct-person',
+        title: 'Peer',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'human:peer',
+        relationshipIdentityId: 'human:peer',
+        metadata: {
+          source: 'bridge-session-thread',
+          bridgeHostId: 'host-1',
+          peerNodeId: 'node-peer',
+          peerRuntime: 'person',
+          peerDisplayName: 'Peer display',
+          peerOwnerName: 'Peer owner',
+          peerHumanId: 'human-peer',
+        },
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        lastMessageAtMs: 1,
+      },
+      {
+        id: continuationSessionId,
+        kind: 'direct-person',
+        title: 'New session',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'human:peer',
+        relationshipIdentityId: 'human:peer',
+        metadata: {
+          createdFrom: 'chat-create-flow',
+          continuedFromSessionId: sourceSessionId,
+          continuedFromSpaceId: 'direct-human:human:peer',
+          participantSpaceKind: 'direct-human',
+        },
+        createdAtMs: 2,
+        updatedAtMs: 3,
+        lastMessageAtMs: 3,
+      },
+    ],
+    participants: [
+      { sessionId: sourceSessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: sourceSessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: sourceSessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: continuationSessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+      { sessionId: continuationSessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+      { sessionId: continuationSessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 2 },
+    ],
+    messages: [
+      { id: 'msg:continuation:1', sessionId: continuationSessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'new thread', content: { sender: 'Me', timeLabel: '13:30' }, status: 'sent', sequenceNum: 1, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'continuation-1' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const continuation = conversations.find((conversation) => conversation.canonicalSessionId === continuationSessionId);
+
+  assert.deepEqual(continuation?.bridgeTarget, {
+    hostId: 'host-1',
+    nodeId: 'node-peer',
+    displayName: 'Peer',
+    ownerName: 'Peer',
+    runtime: 'person',
+    humanId: 'human-peer',
+    agentId: null,
+  });
+  assert.deepEqual(continuation?.bridges, ['Bridge']);
+});
+
 test('canonical read model keeps shared relationship history when local runtime has richer tool details', () => {
   const sessionId = '91ecedce-0766-4d34-9b4f-feb572321b22';
   const canonicalState = {

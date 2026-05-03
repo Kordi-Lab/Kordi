@@ -100,6 +100,7 @@ export function syntheticBridgeTarget(
   const runtime = stringValue(metadata.peerRuntime);
   const metadataDisplayName = stringValue(metadata.peerDisplayName);
   const metadataOwnerName = stringValue(metadata.peerOwnerName);
+  const metadataHumanId = stringValue(metadata.peerHumanId);
   const metadataAgentId = stringValue(metadata.peerAgentId) ?? stringValue(metadata.targetAgentId);
 
   const matchingParticipant = metadataNodeId
@@ -121,7 +122,7 @@ export function syntheticBridgeTarget(
     displayName: matchingParticipant?.name ?? metadataDisplayName ?? null,
     ownerName: matchingParticipant?.ownerName ?? (matchingParticipant?.humanId ? matchingParticipant.name : null) ?? metadataOwnerName ?? null,
     runtime: runtime ?? (matchingParticipant?.kind === 'human' ? 'person' : null),
-    humanId: matchingParticipant?.humanId ?? null,
+    humanId: matchingParticipant?.humanId ?? metadataHumanId ?? null,
     agentId: matchingParticipant?.agentId ?? metadataAgentId ?? null,
   };
 }

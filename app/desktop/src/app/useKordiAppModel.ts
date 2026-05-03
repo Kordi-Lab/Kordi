@@ -36,6 +36,7 @@ import {
   CHAT_GROUP_INVITE_CONTEXT_POLICY,
   CHAT_GROUP_UPDATE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
+  buildParticipantSpaceContinuationMetadata,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   chatSessionIdForPersonStart,
@@ -1187,12 +1188,12 @@ export function useKordiAppModel() {
         primaryIdentityId: receiver.id,
         relationshipIdentityId: receiver.id,
         participantIdentityIds: [receiver.id],
-        metadata: {
-          createdFrom: 'chat-create-flow',
+        metadata: buildParticipantSpaceContinuationMetadata({
+          sourceMetadata,
           continuedFromSessionId: sourceSessionId,
           continuedFromSpaceId: space.id,
           participantSpaceKind: space.kind,
-        },
+        }),
       });
       setCanonicalSessionState(nextState);
       selectNewChatSession(sessionId);

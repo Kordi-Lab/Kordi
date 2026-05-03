@@ -35,6 +35,8 @@ type CanonicalConversationLike = {
   canonicalParticipants?: ConversationParticipant[];
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
+  bridges: string[];
+  trust: string;
   outreach?: { parentSessionId?: string | null } | null;
   participantSpaceId?: string | null;
   directness?: string | null;
@@ -129,6 +131,33 @@ function visibleParticipantsForSession(
     participant.role === 'self'
     || (primaryIdentityId && participant.id === primaryIdentityId)
   ));
+}
+
+function metadataStringValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function bridgeTargetForSession(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+  indexes: CanonicalIndexes,
+) {
+  let currentSession: CanonicalSessionState['sessions'][number] | undefined = session;
+  let currentParticipants = participants;
+  const visitedSessionIds = new Set<string>();
+
+  while (currentSession && !visitedSessionIds.has(currentSession.id)) {
+    visitedSessionIds.add(currentSession.id);
+    const target = syntheticBridgeTarget(currentSession, currentParticipants);
+    if (target) return target;
+
+    const sourceSessionId = metadataStringValue(sessionMetadata(currentSession).continuedFromSessionId);
+    if (!sourceSessionId) return null;
+    currentSession = indexes.sessionById.get(sourceSessionId);
+    currentParticipants = indexes.canonicalParticipantsBySessionId.get(sourceSessionId) ?? [];
+  }
+
+  return null;
 }
 
 function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
@@ -228,6 +257,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
+      const directBridgeTarget = conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants);
+      const bridgeTarget = directBridgeTarget ?? bridgeTargetForSession(session, rawCanonicalParticipants, indexes);
+      const inheritedBridgeTarget = !directBridgeTarget && Boolean(bridgeTarget);
 
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
         ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
@@ -241,6 +273,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread: scopedUnread,
+        bridges: inheritedBridgeTarget ? ['Bridge'] : conversation.bridges,
+        trust: inheritedBridgeTarget ? 'Bridge' : conversation.trust,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
@@ -249,7 +283,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
-        bridgeTarget: conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants),
+        bridgeTarget,
         canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
         canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
