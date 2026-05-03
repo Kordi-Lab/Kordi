@@ -1,7 +1,29 @@
 use serde_json::Value;
 
 use super::constants::is_agent_like_runtime;
-use super::events::{mailbox_payload_text, ParsedMailboxEvent};
+use super::events::{mailbox_payload_text, parse_bridge_event_payload, ParsedMailboxEvent};
+use super::{decrypt_bridge_payload_for_host, parse_mailbox_payload, DesktopBridgeHostConfig};
+
+pub(super) fn parse_mailbox_event(
+    host: &DesktopBridgeHostConfig,
+    item: &Value,
+) -> Option<ParsedMailboxEvent> {
+    let blob = item
+        .get("blob")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if blob.trim().is_empty() {
+        return None;
+    }
+
+    let mut parsed = decrypt_bridge_payload_for_host(host, parse_mailbox_payload(blob)?).ok()?;
+    if parsed.get("from").is_none() {
+        if let Some(from) = item.get("from") {
+            parsed["from"] = from.clone();
+        }
+    }
+    parse_bridge_event_payload(&parsed)
+}
 
 pub(super) fn bridge_response_is_done(event: &ParsedMailboxEvent) -> bool {
     event
