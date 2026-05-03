@@ -1941,7 +1941,11 @@
 .app-inline-expand-toggle {
   border: 0;
   background: transparent;
-  color: color-mix(in oklab, rgb(147 197 253) 82%, var(--utility-muted-text));
+  color: color-mix(in oklab, var(--utility-foreground) 68%, var(--utility-muted-text));
+}
+
+.app-live-assistant-answer-toggle {
+  color: color-mix(in oklab, var(--utility-foreground) 68%, var(--utility-muted-text));
 }
 
 .app-transcript-message-highlight {
@@ -2575,7 +2579,17 @@
 }
 
 .app-live-assistant-answer-content {
+  position: relative;
   min-width: 0;
+}
+
+.app-live-assistant-answer-toggle-overlay {
+  position: absolute;
+  bottom: 0.18rem;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  text-shadow: 0 1px 2px rgba(2, 6, 23, 0.55);
 }
 
 .app-live-assistant-answer-markdown > :not(:first-child) {
@@ -2603,10 +2617,12 @@
   right: 0;
   bottom: 0;
   left: 0;
-  height: 1.9rem;
+  z-index: 1;
+  height: 2.15rem;
   content: '';
   pointer-events: none;
   background: linear-gradient(180deg, transparent, var(--app-live-assistant-answer-bg) 88%);
+  backdrop-filter: blur(1.2px);
 }
 
 @media (max-width: 720px) {

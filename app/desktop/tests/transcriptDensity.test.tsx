@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -6,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
-test('renders live turn errors as compact inline rows instead of full-width cards', () => {
+test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-error',
     sessionId: 'session-1',
@@ -23,10 +24,12 @@ test('renders live turn errors as compact inline rows instead of full-width card
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
-  assert.match(markup, /app-live-turn-error/);
-  assert.match(markup, /inline-flex/);
+  assert.match(markup, /app-live-turn-error app-live-turn-error-text/);
   assert.match(markup, /text-\[12px\]/);
-  assert.doesNotMatch(markup, /px-4 py-3 text-sm text-rose-100/);
+  assert.doesNotMatch(markup, /rounded-\[14px\]/);
+  assert.doesNotMatch(markup, /border-rose-500/);
+  assert.doesNotMatch(markup, /bg-rose-500/);
+  assert.doesNotMatch(markup, /circle-alert/);
 });
 
 test('renders bridge agent stop control beside pending processing text', () => {
@@ -236,9 +239,21 @@ test('folds only substantially long completed agent responses by default', () =>
 
   assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
   assert.match(markup, /app-inline-expand-toggle/);
-  assert.match(markup, /app-live-assistant-answer-toggle/);
+  assert.match(markup, /app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay/);
   assert.match(markup, /text-\[10px\]/);
   assert.match(markup, /— Show full response —/);
+});
+
+test('styles folded answer expand control as muted overlay on the fade', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const answerToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const overlayToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(answerToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 68%, var\(--utility-muted-text\)\)/);
+  assert.doesNotMatch(answerToggleBlock, /rgb\(147 197 253\)/);
+  assert.match(overlayToggleBlock, /position:\s*absolute/);
+  assert.match(overlayToggleBlock, /bottom:\s*0\.18rem/);
+  assert.match(overlayToggleBlock, /z-index:\s*2/);
 });
 
 const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;

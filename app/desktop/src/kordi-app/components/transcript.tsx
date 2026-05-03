@@ -385,15 +385,25 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
     <div className="app-live-assistant-answer w-full text-[13px]">
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+        {shouldFold && folded ? (
+          <button
+            type="button"
+            className="app-inline-expand-toggle app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay mx-auto flex w-fit items-center px-3 text-[10px] font-medium"
+            onClick={() => setExpanded(true)}
+            aria-expanded={expanded}
+          >
+            — Show full response —
+          </button>
+        ) : null}
       </div>
-      {shouldFold ? (
+      {shouldFold && !folded ? (
         <button
           type="button"
           className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-1.5 flex w-fit items-center px-3 text-[10px] font-medium"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => setExpanded(false)}
           aria-expanded={expanded}
         >
-          {expanded ? '— Collapse response —' : '— Show full response —'}
+          — Collapse response —
         </button>
       ) : null}
     </div>
@@ -1586,9 +1596,8 @@ function LiveChatTurnCardView({
           {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
 
           {visibleTurn.error ? (
-            <div className="app-live-turn-error inline-flex w-fit max-w-full items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
-              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
-              <span className="min-w-0 break-words">{visibleTurn.error}</span>
+            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
+              {visibleTurn.error}
             </div>
           ) : null}
         </div>
