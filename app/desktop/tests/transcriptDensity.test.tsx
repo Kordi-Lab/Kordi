@@ -229,6 +229,7 @@ test('folds long source quotes after three lines while keeping the full request 
 
   assert.match(markup, /app-source-message-quote-text-frame app-source-message-quote-folded/);
   assert.match(markup, /app-source-message-quote-toggle app-source-message-quote-toggle-overlay/);
+  assert.match(markup, /text-\[9px\]/);
   assert.match(markup, /— Show full request —/);
   assert.match(markup, /Final acceptance detail should remain available when folded/);
   assert.doesNotMatch(markup, /Final acceptance detail should remain available when folded…/);

@@ -330,7 +330,7 @@ function SourceMessageQuote({
           className={cn(
             'app-inline-expand-toggle app-source-message-quote-toggle',
             !expanded && 'app-source-message-quote-toggle-overlay',
-            'flex w-fit items-center px-2 text-[10px] font-medium',
+            'flex w-fit items-center px-2 text-[9px] font-medium',
             expanded && 'mx-auto mt-1',
           )}
           onClick={() => setExpanded((current) => !current)}
