@@ -222,12 +222,7 @@ function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
     && isBridgeAgentProcessingPlaceholder(message);
 }
 
-function isRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
-  return message.sourceTransport === 'desktop-bridge-parent'
-    && isBridgeAgentProcessingPlaceholder(message);
-}
-
-const RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
+const BRIDGE_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
 
 function isActiveProcessingStatus(message: CanonicalSessionMessage) {
   const content = contentRecord(message.content);
@@ -236,12 +231,11 @@ function isActiveProcessingStatus(message: CanonicalSessionMessage) {
   return deliveryState === 'processing' || status === 'processing';
 }
 
-function isStaleRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
-  if (!isRawBridgeParentProcessingPlaceholder(message)) return false;
+function isAgedBridgeProcessingPlaceholder(message: CanonicalSessionMessage) {
+  if (!isStaleableProcessingPlaceholder(message)) return false;
   if (!isActiveProcessingStatus(message)) return true;
 
-  const referenceTimeMs = Math.max(message.updatedAtMs, message.createdAtMs);
-  return Date.now() - referenceTimeMs > RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
+  return Date.now() - message.createdAtMs > BRIDGE_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
 }
 
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
@@ -527,8 +521,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
-    const suppressedRawBridgeParentProcessingPlaceholderIds = new Set(
-      sortedMessages.filter(isStaleRawBridgeParentProcessingPlaceholder).map((message) => message.id),
+    const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
+      sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
     );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
@@ -538,7 +532,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedLocalRuntimeDuplicateIds.has(message.id)
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
-        || suppressedRawBridgeParentProcessingPlaceholderIds.has(message.id)
+        || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
       ) return [];
       const content = contentRecord(message.content);
       if (stringValue(content.kind) === 'delegation-join-event') {
