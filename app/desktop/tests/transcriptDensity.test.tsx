@@ -187,6 +187,7 @@ test('renders agent source quote and processing status without an output block b
 
   assert.match(markup, /app-live-turn-response-panel/);
   assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /app-source-message-quote-rail/);
   assert.match(markup, /app-source-message-quote-icon/);
   assert.match(markup, />You</);
   assert.doesNotMatch(markup, /Replying to/);
@@ -235,9 +236,9 @@ test('folds only substantially long completed agent responses by default', () =>
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /app-live-assistant-answer-folded/);
+  assert.match(markup, /app-inline-expand-toggle/);
   assert.match(markup, /app-live-assistant-answer-toggle/);
-  assert.match(markup, /ml-auto/);
-  assert.match(markup, /Show full response/);
+  assert.match(markup, /— Show full response —/);
 });
 
 test('does not fold active streaming agent responses while text is still arriving', () => {

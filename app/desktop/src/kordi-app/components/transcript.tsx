@@ -307,13 +307,14 @@ function SourceMessageQuote({
   };
 
   return (
-    <div className="app-source-message-quote w-full py-0.5">
+    <div className="app-source-message-quote w-full">
       <button
         type="button"
-        className="app-source-message-quote-link grid max-w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)_auto] items-start gap-2.5 text-left"
         onClick={navigate}
         title="Jump to original request"
       >
+        <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
           <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
           <span className={cn('app-source-message-quote-text block text-[12px] leading-5', expanded ? 'whitespace-pre-wrap' : 'truncate')}>
@@ -325,11 +326,11 @@ function SourceMessageQuote({
       {canFold ? (
         <button
           type="button"
-          className="app-source-message-quote-toggle ml-auto mt-1 flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
+          className="app-inline-expand-toggle app-source-message-quote-toggle mx-auto mt-1 flex w-fit items-center px-2 text-[11px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          {expanded ? 'Hide request' : 'Show request'}
+          {expanded ? '— Hide request —' : '— Show request —'}
         </button>
       ) : null}
     </div>
@@ -381,21 +382,19 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
   const folded = shouldFold && !expanded;
 
   return (
-    <>
-      <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full text-[13px]', folded && 'app-live-assistant-answer-folded')}>
-        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
-      </div>
+    <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full text-[13px]', folded && 'app-live-assistant-answer-folded')}>
+      <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
       {shouldFold ? (
         <button
           type="button"
-          className="app-live-assistant-answer-toggle ml-auto mt-2 flex w-fit items-center rounded-full px-3 py-1.5 text-[11px] font-medium"
+          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-2 flex w-fit items-center px-3 text-[11px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          {expanded ? 'Collapse response' : 'Show full response'}
+          {expanded ? '— Collapse response —' : '— Show full response —'}
         </button>
       ) : null}
-    </>
+    </div>
   );
 }
 
