@@ -21,16 +21,7 @@ import {
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import {
-  bridgeMentionCandidateOptionText,
-  buildBridgeMentionCandidates,
-  filterBridgeMentionCandidatesForConversation,
-  filterBridgeMentionCandidatesForHost,
-  mentionHandleForLabel,
-  mentionScopeConversationForActiveConversation,
-  shouldIncludeLocalAgentMentionForConversation,
-  type MentionScopeConversation,
-} from '@/features/chat/messageActions/mentions';
+import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
   adminIdentityIdsFromMetadata,
   agentCanonicalIdentityRequest,
@@ -58,10 +49,9 @@ import { useDesktopSessionController } from '@/features/chat/useDesktopSessionCo
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
-import type { ComposerMentionOption } from '@/kordi-app/components';
+import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { Agent, CanonicalSessionState, Contact, ConversationParticipant, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
-import { possessiveScopedLabel } from '@/lib/identityLabels';
+import type { Agent, CanonicalSessionState, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
@@ -80,203 +70,26 @@ import {
   upsertCanonicalIdentity,
 } from '@/lib/desktop';
 
-function normalizeMentionSearch(value: string) {
-  return value.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
-
-function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
-  if (!state) return null;
-  const activeSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
-  if (activeSeed) return activeSeed;
-  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
-  if (!profileHumanIdentityId) return null;
-  return state.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.source === 'local'
-    && identity.ownerIdentityId === profileHumanIdentityId
-  ))?.avatarKey?.trim() || null;
-}
-
-type MentionQuery = {
-  normalized: string;
-  raw: string;
-  trailingWhitespace: boolean;
-};
-
-function currentMentionQuery(text: string): MentionQuery | null {
-  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(text);
-  if (!match) return null;
-  const raw = match[2];
-  if (raw.length > 96) return null;
-  return {
-    normalized: normalizeMentionSearch(raw),
-    raw,
-    trailingWhitespace: /\s$/.test(raw),
-  };
-}
-
-function mentionTargetMatchesExactly(target: ComposerMentionOption, normalizedQuery: string) {
-  return [target.value, target.label]
-    .map(normalizeMentionSearch)
-    .some((value) => value === normalizedQuery);
-}
-
-function filterMentionTargets(targets: ComposerMentionOption[], query: MentionQuery | null) {
-  if (query === null) return [];
-  if (!query.normalized) return targets.slice(0, 8);
-  if (query.trailingWhitespace && targets.some((target) => mentionTargetMatchesExactly(target, query.normalized))) {
-    return [];
-  }
-
-  return targets
-    .filter((target) => {
-      const haystack = normalizeMentionSearch(`${target.label} ${target.detail ?? ''} ${target.nodeId} ${target.runtime}`);
-      return haystack.includes(query.normalized);
-    })
-    .slice(0, 8);
-}
-
-function removeSessionFromDesktopState(state: DesktopChatState | null, sessionId: string) {
-  if (!state) return state;
-  return {
-    ...state,
-    sessions: state.sessions.filter((session) => session.id !== sessionId),
-    projects: state.projects.map((project) => ({
-      ...project,
-      sessions: project.sessions.filter((session) => session.id !== sessionId),
-    })),
-  };
-}
-
-function removeSessionFromCanonicalState(state: CanonicalSessionState | null, sessionId: string) {
-  if (!state) return state;
-  return {
-    ...state,
-    sessions: state.sessions.filter((session) => session.id !== sessionId),
-    participants: state.participants.filter((participant) => participant.sessionId !== sessionId),
-    messages: state.messages.filter((message) => message.sessionId !== sessionId),
-    delegatedExchanges: state.delegatedExchanges.filter((exchange) => exchange.sessionId !== sessionId),
-    presence: state.presence.filter((presence) => presence.sessionId !== sessionId),
-    contextSnapshots: state.contextSnapshots.filter((snapshot) => snapshot.sessionId !== sessionId),
-  };
-}
-
-function canonicalMetadataRecord(metadata: unknown): Record<string, unknown> {
-  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
-    ? { ...(metadata as Record<string, unknown>) }
-    : {};
-}
-
-function sessionMetadataRecord(state: CanonicalSessionState | null, sessionId: string) {
-  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
-  return canonicalMetadataRecord(session?.metadata);
-}
-
-function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: string) {
-  if (!state) return [];
-  const metadataAdminIds = adminIdentityIdsFromMetadata(sessionMetadataRecord(state, sessionId));
-  if (metadataAdminIds.length > 0) return metadataAdminIds;
-  return state.participants
-    .filter((participant) => (
-      participant.sessionId === sessionId
-      && participant.state === 'active'
-      && participant.role === 'admin'
-    ))
-    .map((participant) => participant.identityId);
-}
-
-function canonicalGroupParticipantsForSession(state: CanonicalSessionState | null, sessionId: string): ConversationParticipant[] {
-  if (!state) return [];
-  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
-  return state.participants
-    .filter((participant) => participant.sessionId === sessionId && participant.state === 'active')
-    .flatMap((participant) => {
-      const identity = identityById.get(participant.identityId);
-      if (!identity) return [];
-      const role = identity.id === state.profile.humanIdentityId
-        ? 'self'
-        : participant.role === 'self'
-          ? 'person'
-          : participant.role;
-      return [{
-        id: identity.id,
-        name: identity.displayName,
-        kind: identity.kind === 'agent' ? 'agent' : 'human',
-        role,
-        source: identity.source,
-        ownerIdentityId: identity.ownerIdentityId,
-        bridgeHostId: identity.sourceHostId,
-        bridgeNodeId: identity.bridgeNodeId,
-        humanId: identity.humanId,
-        agentId: identity.agentId,
-        avatarKey: identity.avatarKey,
-        profileImageUrl: identity.profileImageUrl,
-      } satisfies ConversationParticipant];
-    });
-}
-
-function isParticipantSpaceSelfIdentity(participant: ParticipantSpaceViewModel['participants'][number]) {
-  return participant.role === 'self'
-    || (participant.kind === 'human' && participant.source === 'local');
-}
-
-function participantSpaceNonSelfIdentities(space: ParticipantSpaceViewModel, kind?: 'human' | 'agent') {
-  return space.participants.filter((participant) => (
-    !isParticipantSpaceSelfIdentity(participant)
-    && (!kind || participant.kind === kind)
-    && participant.id.trim()
-  ));
-}
-
-function metadataStringArray(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
-function metadataString(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeStoredGroupSpaceId(value: string) {
-  const text = value.trim();
-  return text.startsWith('group:') ? text.slice('group:'.length) : text;
-}
-
-function metadataGroupSpaceId(metadata: Record<string, unknown>) {
-  return normalizeStoredGroupSpaceId(
-    metadataString(metadata, 'groupId')
-    || metadataString(metadata, 'groupSpaceId')
-    || metadataString(metadata, 'continuedFromSpaceId'),
-  );
-}
-
-function uniqueStrings(values: string[]) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(normalized);
-  }
-  return result;
-}
-
-function isNativeDesktopShell() {
-  if (typeof window === 'undefined') return false;
-  return typeof window.__TAURI_INTERNALS__ !== 'undefined';
-}
-
-function participantSpaceCreateKey(space: ParticipantSpaceViewModel) {
-  return space.id.trim() || `${space.kind}:${space.participants.map((participant) => participant.id).join(',')}`;
-}
+import {
+  activeGroupAdminIds,
+  canonicalAvatarSeed,
+  canonicalGroupParticipantsForSession,
+  canonicalLocalAgentAvatarSeed,
+  currentMentionQuery,
+  filterMentionTargets,
+  isNativeDesktopShell,
+  metadataGroupSpaceId,
+  metadataString,
+  metadataStringArray,
+  normalizeMentionSearch,
+  normalizeStoredGroupSpaceId,
+  participantSpaceCreateKey,
+  participantSpaceNonSelfIdentities,
+  removeSessionFromCanonicalState,
+  removeSessionFromDesktopState,
+  sessionMetadataRecord,
+  uniqueStrings,
+} from '@/app/useKordiAppModelHelpers';
 
 export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
@@ -587,86 +400,12 @@ export function useKordiAppModel() {
     [activeConv, chatConversations],
   );
 
-  const bridgeMentionTargetsByScope = useMemo<{ chat: ComposerMentionOption[]; project: ComposerMentionOption[] }>(() => {
-    if (!isNativeShell) return { chat: [], project: [] };
-
-    const hosts = desktopBridgeState?.hosts ?? [];
-    const activeHost = hosts.find((host) => host.id === desktopBridgeState?.activeHostId)
-      ?? hosts[0]
-      ?? null;
-    const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
-      ?? activeHost?.agents.find((agent) => agent.isActive)
-      ?? activeHost?.agents.find((agent) => agent.isDefault)
-      ?? activeHost?.agents[0]
-      ?? null;
-
-    const buildTargets = (conversation: MentionScopeConversation | null): ComposerMentionOption[] => {
-      const options: ComposerMentionOption[] = [];
-      const seen = new Set<string>();
-      const pushOption = (option: ComposerMentionOption) => {
-        const key = `${option.targetKind}:${option.bridgeHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        options.push(option);
-      };
-
-      const localAgentBaseLabel = 'Kordi';
-      const ownerName = activeHost?.ownerName?.trim();
-      const includeLocalAgent = shouldIncludeLocalAgentMentionForConversation(
-        conversation,
-        { humanId: activeHost?.humanId ?? '', ownerName: ownerName ?? '' },
-      );
-      if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
-        const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
-        const bridgeAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
-        const hostDisplayName = activeHost?.displayName?.trim();
-        const localAgentLabel = ownerName
-          ? (possessiveScopedLabel(ownerName, bridgeAgentLabel, true) ?? bridgeAgentLabel)
-          : (bridgeAgentLabel || hostDisplayName || localAgentBaseLabel);
-        const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
-        pushOption({
-          value: localAgentHandle,
-          label: localAgentLabel,
-          detail: [
-            'My agent',
-            localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
-            activeAgent?.runtime,
-          ].filter((value): value is string => Boolean(value)).join(' • '),
-          targetKind: 'bridge-agent',
-          bridgeHostId: activeHost?.id ?? 'local',
-          nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
-          runtime: activeAgent?.runtime ?? 'kordi-local',
-          humanId: activeHost?.humanId ?? null,
-          agentId: activeAgent?.id ?? null,
-          ownerName: ownerName ?? null,
-        });
-      }
-
-      const bridgeCandidates = filterBridgeMentionCandidatesForHost(buildBridgeMentionCandidates(desktopBridgeState), activeHost);
-      for (const candidate of filterBridgeMentionCandidatesForConversation(bridgeCandidates, conversation)) {
-        const display = bridgeMentionCandidateOptionText(candidate);
-        pushOption({
-          value: candidate.handle,
-          label: display.label,
-          detail: display.detail,
-          targetKind: candidate.targetKind,
-          bridgeHostId: candidate.host.id,
-          nodeId: candidate.peer.nodeId,
-          runtime: candidate.targetKind === 'bridge-person' ? 'person' : candidate.peer.runtime,
-          humanId: candidate.peer.humanId ?? null,
-          agentId: candidate.peer.agentId ?? null,
-          ownerName: candidate.peer.ownerName ?? null,
-        });
-      }
-
-      return options;
-    };
-
-    return {
-      chat: buildTargets(activeConvMentionScope),
-      project: buildTargets(null),
-    };
-  }, [activeConvMentionScope, desktopBridgeState, desktopChatState?.localAgent, isNativeShell]);
+  const bridgeMentionTargetsByScope = useMemo(() => buildBridgeMentionTargetsByScope({
+    isNativeShell,
+    desktopBridgeState,
+    desktopChatState,
+    activeConvMentionScope,
+  }), [activeConvMentionScope, desktopBridgeState, desktopChatState, isNativeShell]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);

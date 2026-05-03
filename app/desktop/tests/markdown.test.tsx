@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { MarkdownContent, openExternalMarkdownLink } from '../src/kordi-app/components/markdown';
 
 test('renders bare http or https links as external markdown links', () => {
@@ -16,7 +17,7 @@ test('renders bare http or https links as external markdown links', () => {
 
 test('markdown links use a quiet URL treatment without underlines or external icons', () => {
   const html = renderToStaticMarkup(createElement(MarkdownContent, { text: 'Open https://www.google.com/ now.' }));
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
   assert.match(html, /\bapp-markdown-link\b/);

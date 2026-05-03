@@ -8,6 +8,7 @@ mod events;
 mod host_commands;
 mod local_server;
 mod mailbox;
+mod mailbox_events;
 mod network;
 mod outreach;
 mod project_commands;
