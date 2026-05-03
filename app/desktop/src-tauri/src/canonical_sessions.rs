@@ -9,6 +9,7 @@ mod core;
 mod desktop_sync;
 mod group_participants;
 mod identity_helpers;
+mod message_lookup;
 mod message_reconcile;
 mod models;
 mod parent_sessions;
@@ -62,6 +63,10 @@ use self::identity_helpers::{
 pub(crate) use self::identity_helpers::{
     clean_optional, identity_display_name, json_from_db, json_to_db, shared_agent_display_name,
     validate_status,
+};
+pub(crate) use self::message_lookup::{
+    existing_delegation_join_message_id, session_message_count, similar_agent_message_exists,
+    similar_agent_message_text,
 };
 #[cfg(test)]
 use self::parent_sessions::{
@@ -273,96 +278,6 @@ fn upsert_participant(
     )
     .map_err(|err| err.to_string())?;
     Ok(())
-}
-
-fn compact_agent_message_text(value: &str) -> String {
-    value.split_whitespace().collect::<String>()
-}
-
-fn similar_agent_message_text(left: &str, right: &str) -> bool {
-    let left = left.trim();
-    let right = right.trim();
-    if left.is_empty() || right.is_empty() {
-        return false;
-    }
-    left == right || compact_agent_message_text(left) == compact_agent_message_text(right)
-}
-
-fn similar_agent_message_exists(
-    conn: &Connection,
-    session_id: &str,
-    content_text: &str,
-    source_transport: &str,
-    created_at_ms: i64,
-    match_window_ms: i64,
-) -> Result<bool, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT content_text
-             FROM session_messages
-             WHERE session_id = ?1
-               AND message_kind = 'agent-turn'
-               AND sender_role IN ('owned-agent', 'external-agent')
-               AND source_transport = ?2
-               AND ABS(created_at_ms - ?3) <= ?4",
-        )
-        .map_err(|err| err.to_string())?;
-    let mut rows = stmt
-        .query(params![
-            session_id,
-            source_transport,
-            created_at_ms,
-            match_window_ms
-        ])
-        .map_err(|err| err.to_string())?;
-    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
-        let candidate_text: String = row.get(0).map_err(|err| err.to_string())?;
-        if similar_agent_message_text(&candidate_text, content_text) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn existing_delegation_join_message_id(
-    conn: &Connection,
-    session_id: &str,
-    target_identity_id: &str,
-    target_kind: &str,
-    target_display_name: &str,
-) -> Result<Option<String>, String> {
-    conn.query_row(
-        "SELECT id
-         FROM session_messages
-         WHERE session_id = ?1
-           AND message_kind = 'status'
-           AND json_extract(content_json, '$.kind') = 'delegation-join-event'
-           AND json_extract(content_json, '$.targetKind') = ?3
-           AND (
-             json_extract(content_json, '$.targetIdentityId') = ?2
-             OR json_extract(content_json, '$.targetDisplayName') = ?4
-           )
-         ORDER BY created_at_ms ASC, sequence_num ASC
-         LIMIT 1",
-        params![
-            session_id,
-            target_identity_id,
-            target_kind,
-            target_display_name
-        ],
-        |row| row.get::<_, String>(0),
-    )
-    .optional()
-    .map_err(|err| err.to_string())
-}
-
-fn session_message_count(conn: &Connection, session_id: &str) -> Result<i64, String> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-        params![session_id],
-        |row| row.get(0),
-    )
-    .map_err(|err| err.to_string())
 }
 
 fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession>, String> {
