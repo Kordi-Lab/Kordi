@@ -73,7 +73,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 
 | Area | File | Disposition |
 | --- | --- | --- |
-| Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers have been extracted. Next safe slice: extract session-title helpers or turn execution DTOs with tests. |
+| Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers and model option/thinking helpers have been extracted. Next safe slice: extract session-title helpers or turn execution DTOs with tests. |
 | Desktop Rust chat | `app/desktop/src-tauri/src/chat.rs` | Attachment/artifact helpers have been extracted. Next safe slice: move live-turn snapshot helpers or session action helpers behind existing Tauri command names. |
 | Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are now partitioned by scenario. Next safe slice: split command-facing DTOs from persistence helpers first. |
 | Bridge config/state | `app/desktop/src-tauri/src/bridge/mod.rs` | Defer broad split. Extract config/state summary helpers before moving command handlers. |
@@ -106,6 +106,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `agent/crates/cli/src/extensions/tests.rs`: parsing/result, package-resource, and command/runtime scenarios moved to child modules under `agent/crates/cli/src/extensions/tests/`, leaving shared imports and `node_available()` in the root test module.
 - `app/desktop/src/kordi-app/components/transcript.tsx`: attachment preview URL derivation, native open/download actions, image/file cards, and `AttachmentPreview` moved to `app/desktop/src/kordi-app/components/transcriptAttachments.tsx`.
 - `app/desktop/src/kordi-app/components/transcript.tsx`: live-turn cards, visible-turn merge helpers, delayed live status, tool timeline rows, and tool transcript detail blocks moved to `app/desktop/src/kordi-app/components/transcriptLiveTurns.tsx` while preserving existing transcript exports.
+- `agent/crates/cli/src/desktop_runtime.rs`: model option cache/loading, model resolution, auth-choice matching, and thinking-control helpers moved to `agent/crates/cli/src/desktop_runtime/model_options.rs` while preserving public desktop runtime exports.
 
 ## PR checklist for future splits
 
