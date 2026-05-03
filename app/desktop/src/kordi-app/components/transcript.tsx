@@ -326,7 +326,7 @@ function SourceMessageQuote({
       {canFold ? (
         <button
           type="button"
-          className="app-inline-expand-toggle app-source-message-quote-toggle mx-auto mt-1 flex w-fit items-center px-2 text-[11px] font-medium"
+          className="app-inline-expand-toggle app-source-message-quote-toggle mx-auto mt-1 flex w-fit items-center px-2 text-[10px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
@@ -382,12 +382,14 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
   const folded = shouldFold && !expanded;
 
   return (
-    <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full text-[13px]', folded && 'app-live-assistant-answer-folded')}>
-      <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+    <div className="app-live-assistant-answer w-full text-[13px]">
+      <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
+        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+      </div>
       {shouldFold ? (
         <button
           type="button"
-          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-2 flex w-fit items-center px-3 text-[11px] font-medium"
+          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-1.5 flex w-fit items-center px-3 text-[10px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
@@ -1522,19 +1524,19 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
 
-  const showResponsePanel = Boolean(
+  const hasResponseSurface = Boolean(
     visibleTurn.sourceMessage
       || showLiveStatusHeader
       || isCompressionStatus
       || hasTimelineActivity
-      || hasAssistant
-      || visibleTurn.error,
+      || hasAssistant,
   );
+  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div className="app-live-turn-response-panel w-full max-w-[min(100%,42rem)] space-y-2.5">
+        <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
           <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">

@@ -129,8 +129,7 @@ test('renders completed assistant responses as a compact contrast surface', () =
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
-  assert.match(markup, /app-live-turn-response-panel/);
-  assert.match(markup, /app-live-assistant-answer-surface/);
+  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /max-w-\[min\(100%,42rem\)\]/);
   assert.match(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /max-w-\[min\(100%,46rem\)\]/);
@@ -185,7 +184,7 @@ test('renders agent source quote and processing status without an output block b
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.match(markup, /app-live-turn-response-panel/);
+  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /app-source-message-quote/);
   assert.match(markup, /app-source-message-quote-rail/);
   assert.match(markup, /app-source-message-quote-icon/);
@@ -193,7 +192,7 @@ test('renders agent source quote and processing status without an output block b
   assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /@AliceKordi review the copy/);
   assert.match(markup, /Processing/);
-  assert.doesNotMatch(markup, /app-live-assistant-answer/);
+  assert.doesNotMatch(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });
 
@@ -235,10 +234,48 @@ test('folds only substantially long completed agent responses by default', () =>
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
-  assert.match(markup, /app-live-assistant-answer-folded/);
+  assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
   assert.match(markup, /app-inline-expand-toggle/);
   assert.match(markup, /app-live-assistant-answer-toggle/);
+  assert.match(markup, /text-\[10px\]/);
   assert.match(markup, /— Show full response —/);
+});
+
+const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;
+
+test('keeps source quote and tool summary inside the same assistant response background', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-source-tools-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Done — filed as issue #216.',
+    thinkingText: '',
+    tools: [{
+      id: 'tool-issue',
+      name: 'bash',
+      status: 'done',
+      arguments: '{"command":"gh issue create"}',
+      liveOutput: '',
+      resultText: 'https://github.com/Kordi-AI/Kordi/issues/216',
+      detail: null,
+      isError: false,
+    }],
+    completed: true,
+    succeeded: true,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Jiaxin',
+      text: '@JiaxinsKordi create a github issue about this bug.',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.match(markup, quoteToolAnswerSurfacePattern);
 });
 
 test('does not fold active streaming agent responses while text is still arriving', () => {
