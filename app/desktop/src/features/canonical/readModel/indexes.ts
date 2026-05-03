@@ -239,6 +239,13 @@ function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[])
   return duplicateIds;
 }
 
+const STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS = 10 * 60 * 1_000;
+
+function isHumanConversationActivity(message: CanonicalSessionMessage) {
+  return (message.senderRole === 'user' || message.senderRole === 'person')
+    && message.messageKind !== 'agent-turn';
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -248,6 +255,7 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
     && message.contentText.trim()
     && !['draft', 'sending', 'processing'].includes(message.status.trim().toLowerCase())
   ));
+  const laterHumanActivity = messages.filter(isHumanConversationActivity);
 
   for (const placeholder of messages.filter(isStaleableProcessingPlaceholder)) {
     const hasLaterResponse = completedAgentResponses.some((message) => (
@@ -255,9 +263,14 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
       && message.senderIdentityId === placeholder.senderIdentityId
       && message.senderRole === placeholder.senderRole
       && message.createdAtMs >= placeholder.createdAtMs
-      && message.createdAtMs - placeholder.createdAtMs <= 10 * 60 * 1_000
+      && message.createdAtMs - placeholder.createdAtMs <= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
     ));
-    if (hasLaterResponse) staleIds.add(placeholder.id);
+    const hasMuchLaterHumanActivity = laterHumanActivity.some((message) => (
+      message.sessionId === placeholder.sessionId
+      && message.createdAtMs > placeholder.createdAtMs
+      && message.createdAtMs - placeholder.createdAtMs >= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
+    ));
+    if (hasLaterResponse || hasMuchLaterHumanActivity) staleIds.add(placeholder.id);
   }
 
   return staleIds;

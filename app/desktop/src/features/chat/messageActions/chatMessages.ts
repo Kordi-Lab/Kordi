@@ -10,6 +10,7 @@ import type {
   ConversationBridgeTarget,
   DesktopChatState,
   DesktopBridgeSessionParticipant,
+  DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import {
   cancelDesktopBridgeOutreach,
@@ -73,6 +74,17 @@ export function chatSendIsBusy({
   localSendInFlight?: boolean;
 }) {
   return Boolean(isDesktopChatSending || localSendInFlight || (desktopLiveTurn && !desktopLiveTurn.completed));
+}
+
+export type LocalAgentRelayTurnResult = Pick<DesktopChatTurnSnapshot, 'assistantText' | 'error' | 'succeeded'>;
+export type LocalAgentRelayTerminalDeliveryState = 'responded' | 'processing_failed';
+
+export function localAgentRelayTerminalDeliveryState(turn: LocalAgentRelayTurnResult): LocalAgentRelayTerminalDeliveryState {
+  return turn.succeeded && turn.assistantText.trim() ? 'responded' : 'processing_failed';
+}
+
+export function localAgentRelayFailureText(_turn: Pick<LocalAgentRelayTurnResult, 'error'>) {
+  return 'Processing failed';
 }
 
 export function bridgeConversationSendPlan({
@@ -797,7 +809,7 @@ export function useChatMessageActions({
       const relayToLocalAgentTargets = async (
         requestText: string,
         parentTurnId?: string | null,
-        deliveryState?: 'processing' | 'responded',
+        deliveryState?: 'processing' | LocalAgentRelayTerminalDeliveryState,
         bridgeRequestId?: string | null,
         attachments?: typeof chatComposerAttachments,
       ) => {
@@ -894,21 +906,35 @@ export function useChatMessageActions({
           }
 
           void (async () => {
+            let completedTurn: DesktopChatTurnSnapshot | null = null;
             try {
               await watchDesktopLiveTurn(turn);
               await processingRelayPromise;
-              const completedTurn = await fetchDesktopChatTurnState(turn.id);
+              completedTurn = await fetchDesktopChatTurnState(turn.id);
               const assistantText = stripLeadingAddressMentions(
                 completedTurn.assistantText.trim(),
                 localHumanAddressLabels(desktopBridgeState),
               );
-              if (!completedTurn.succeeded || !assistantText) return;
-              await relayToLocalAgentTargets(
+              const terminalDeliveryState = localAgentRelayTerminalDeliveryState({
                 assistantText,
+                error: completedTurn.error,
+                succeeded: completedTurn.succeeded,
+              });
+              await relayToLocalAgentTargets(
+                terminalDeliveryState === 'responded' ? assistantText : localAgentRelayFailureText(completedTurn),
                 completedTurn.id,
-                'responded',
+                terminalDeliveryState,
                 localAgentBridgeRequestId,
               );
+            } catch (error) {
+              await processingRelayPromise;
+              await relayToLocalAgentTargets(
+                localAgentRelayFailureText(completedTurn ?? { error: error instanceof Error ? error.message : null }),
+                completedTurn?.id ?? turn.id,
+                'processing_failed',
+                localAgentBridgeRequestId,
+              );
+              throw error;
             } finally {
               if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
                 localChatSendInFlightRef.current = null;
