@@ -2051,6 +2051,52 @@ test('canonical read model hides bridge agent failure detail behind a generic fa
   assert.equal(JSON.stringify(conversations[0]?.messages).includes('ChatGPT OAuth credentials'), false);
 });
 
+test('canonical read model shows generic failed turn for timed-out bridge agent session messages', () => {
+  const sessionId = 'session:group:bridge-agent-timeout';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-jiaxin', humanId: 'human-jiaxin', avatarKey: 'human-jiaxin', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:jiaxin', kind: 'agent', displayName: "Jiaxin's Kordi", source: 'bridge', ownerIdentityId: 'human:jiaxin', sourceHostId: 'host-1', bridgeNodeId: 'node-jiaxin-agent', agentId: 'agent-jiaxin', avatarKey: 'agent-jiaxin', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Production group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:jiaxin', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:jiaxin', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@JiaxinsKordi what are you doing', content: { sender: 'Me', timeLabel: '11:51', deliveryState: 'delivered', requestId: 'bridge_req_timeout' }, status: 'delivered', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'request' },
+      { id: 'msg:timeout', sessionId, senderIdentityId: 'agent:jiaxin', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'No response from agent', content: { sender: "Jiaxin's Kordi", timeLabel: '11:52', deliveryState: 'processing_failed', requestId: 'bridge_req_timeout', bridgeConversationId: 'bridge:host-1:node-jiaxin-agent' }, status: 'failed', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'agent-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const turn = conversations[0]?.messages[1]?.turn;
+
+  assert.equal(conversations[0]?.messages[0]?.statusChips?.[0], 'delivered');
+  assert.equal(turn?.status, 'failed');
+  assert.equal(turn?.assistantText, '');
+  assert.equal(turn?.error, 'Message failed');
+  assert.equal(JSON.stringify(conversations[0]?.messages).includes('No response from agent'), false);
+});
+
 test('canonical read model rewrites remote first-person agent mention labels', () => {
   const sessionId = 'session:bridge:humans:remote-local-agent-label';
   const canonicalState = {

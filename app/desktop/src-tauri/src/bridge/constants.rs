@@ -54,6 +54,9 @@ pub(super) const DEFAULT_LOCAL_SERVER_HOST: &str = "http://127.0.0.1";
 pub(super) const DEFAULT_LOCAL_SERVER_PORT: u16 = 17080;
 pub(super) const LOCAL_SERVER_STARTUP_WAIT_MS: u64 = 900;
 pub(super) const PEER_TYPING_WINDOW_MS: i64 = 6_000;
+pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS: i64 = 90_000;
+pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT: &str = "Processing...";
+pub(crate) const BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT: &str = "No response from agent";
 
 pub(super) const BRIDGE_KEYCHAIN_SERVICE_NAME: &str = "app.kordi.desktop.bridge";
 pub(super) const BRIDGE_KEYCHAIN_HOST_ACCOUNT_PREFIX: &str = "host:";

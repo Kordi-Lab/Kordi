@@ -2112,6 +2112,235 @@ fn outbound_group_session_message_sent_ack_reconciles_as_delivered_with_attachme
 }
 
 #[test]
+fn outbound_group_bridge_agent_session_message_without_response_times_out() {
+    let conn = test_conn();
+    for (id, kind, display_name, owner_id, human_id, node_id, agent_id) in [
+        (
+            "human:local",
+            "human",
+            "Shuyhere",
+            None,
+            Some("kh_local"),
+            Some("kd_local"),
+            None,
+        ),
+        (
+            "human:jiaxin",
+            "human",
+            "Jiaxin",
+            None,
+            Some("kh_jiaxin"),
+            Some("kd_jiaxin_human"),
+            None,
+        ),
+        (
+            "agent:jiaxin",
+            "agent",
+            "Jiaxin's Kordi",
+            Some("human:jiaxin"),
+            None,
+            Some("kd_jiaxin_agent"),
+            Some("ka_jiaxin"),
+        ),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_id.map(ToString::to_string),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: node_id.map(ToString::to_string),
+                human_id: human_id.map(ToString::to_string),
+                agent_id: agent_id.map(ToString::to_string),
+                avatar_key: human_id.or(agent_id).map(ToString::to_string),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:bridge-agent-timeout";
+    let timed_out_at_ms = now_ms().saturating_sub(120_000);
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("Production group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:local".to_string(), "human:jiaxin".to_string()],
+            metadata: Some(serde_json::json!({
+                "groupSpaceId": parent_session_id,
+            })),
+        },
+    )
+    .expect("open group");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:remote-agent-request".to_string()),
+            session_id: parent_session_id.to_string(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "@JiaxinsKordi what are you doing".to_string(),
+            content: Some(serde_json::json!({
+                "sender": "Me",
+                "timeLabel": "11:51",
+            })),
+            created_at_ms: Some(timed_out_at_ms),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            source_transport: Some("desktop-bridge-ui".to_string()),
+            source_event_id: Some(format!("desktop-bridge-ui:{parent_session_id}:1000")),
+        },
+    )
+    .expect("append optimistic group message");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Production group".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some(parent_session_id.to_string()),
+        parent_session_participants: vec![
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:local".to_string()),
+                display_name: "Shuyhere".to_string(),
+                role: Some("self".to_string()),
+                bridge_node_id: Some("kd_local".to_string()),
+                human_id: Some("kh_local".to_string()),
+                agent_id: None,
+            },
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:jiaxin".to_string()),
+                display_name: "Jiaxin".to_string(),
+                role: Some("person".to_string()),
+                bridge_node_id: Some("kd_jiaxin_human".to_string()),
+                human_id: Some("kh_jiaxin".to_string()),
+                agent_id: None,
+            },
+        ],
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: Some("msg:remote-agent-request".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:jiaxin:kordi".to_string()),
+        bridge_request_id: Some("bridge_req_group_agent_timeout".to_string()),
+        delivery_state: Some("sent".to_string()),
+        target_node_id: "kd_jiaxin_agent".to_string(),
+        target_human_id: Some("kh_jiaxin".to_string()),
+        target_agent_id: Some("ka_jiaxin".to_string()),
+        target_display_name: "Jiaxin's Kordi".to_string(),
+        target_owner_name: Some("Jiaxin".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "@JiaxinsKordi what are you doing".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-message".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: timed_out_at_ms,
+        updated_at_ms: timed_out_at_ms,
+        completed_at_ms: Some(timed_out_at_ms),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:jiaxin:kordi".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_jiaxin_agent".to_string(),
+        peer_display_name: Some("Jiaxin's Kordi".to_string()),
+        peer_owner_name: Some("Jiaxin".to_string()),
+        peer_runtime: "kordi-desktop".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Jiaxin's Kordi".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: timed_out_at_ms,
+        updated_at_label: "11:51".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_group_agent_timeout".to_string(),
+        direction: "outbound".to_string(),
+        sender: Some("Shuyhere's Kordi".to_string()),
+        text: "@JiaxinsKordi what are you doing".to_string(),
+        time_label: "11:51".to_string(),
+        timestamp_ms: timed_out_at_ms,
+        request_id: Some("bridge_req_group_agent_timeout".to_string()),
+        delivery_state: Some("sent".to_string()),
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local",
+        None,
+        Some("human:jiaxin"),
+        "agent:jiaxin",
+        true,
+    )
+    .expect("sync timed-out outbound group bridge-agent message");
+
+    let user_status: String = conn
+        .query_row(
+            "SELECT status FROM session_messages WHERE id = 'msg:remote-agent-request'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("user message status");
+    assert_eq!(user_status, "delivered");
+
+    let (sender_role, message_kind, status, text, delivery_state, source_event_id): (
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+    ) = conn
+        .query_row(
+            "SELECT sender_role, message_kind, status, content_text, json_extract(content_json, '$.deliveryState'), source_event_id
+             FROM session_messages
+             WHERE session_id = ?1 AND source_event_id LIKE '%agent-response:bridge_req_group_agent_timeout'",
+            rusqlite::params![parent_session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        )
+        .expect("timeout agent turn");
+    assert_eq!(sender_role, "external-agent");
+    assert_eq!(message_kind, "agent-turn");
+    assert_eq!(status, "failed");
+    assert_eq!(text, "No response from agent");
+    assert_eq!(delivery_state, "processing_failed");
+    assert_eq!(
+        source_event_id,
+        format!("desktop-bridge-parent:{parent_session_id}:agent-response:bridge_req_group_agent_timeout")
+    );
+}
+
+#[test]
 fn group_admin_count_uses_group_metadata_not_local_self_role() {
     let conn = test_conn();
     for (id, display_name) in [
