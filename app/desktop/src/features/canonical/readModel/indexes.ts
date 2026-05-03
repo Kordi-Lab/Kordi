@@ -391,7 +391,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         ...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
         {
           message: processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId),
-          sortAtMs: exchange.updatedAtMs || exchange.createdAtMs,
+          sortAtMs: exchange.createdAtMs,
           sequenceNum: Number.MAX_SAFE_INTEGER,
         },
       ],
@@ -410,7 +410,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         ...(cancelledDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
         {
           message: stoppedMessage,
-          sortAtMs: exchange.updatedAtMs || exchange.createdAtMs,
+          sortAtMs: exchange.createdAtMs,
           sequenceNum: Number.MAX_SAFE_INTEGER,
         },
       ],

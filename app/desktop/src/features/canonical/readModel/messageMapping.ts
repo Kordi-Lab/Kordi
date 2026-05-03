@@ -194,7 +194,7 @@ export function processingAgentMessage(
   profileHumanIdentityId?: string | null,
 ): Message {
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
-  const time = formatDesktopClockTime(exchange.updatedAtMs || exchange.createdAtMs);
+  const time = formatDesktopClockTime(exchange.createdAtMs);
   const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
   return {
     role,
@@ -232,7 +232,7 @@ export function cancelledBridgeAgentDelegationMessage(
   if (exchange.initiatorIdentityId !== profileHumanIdentityId) return null;
   if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
-  const time = formatDesktopClockTime(exchange.updatedAtMs || exchange.createdAtMs);
+  const time = formatDesktopClockTime(exchange.createdAtMs);
   return {
     role,
     sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,

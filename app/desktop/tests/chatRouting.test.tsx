@@ -1945,7 +1945,7 @@ test('canonical read model renders cancelled bridge agent requests as stopped te
   assert.equal(stoppedTurn?.pendingBridgeAgentRequest, undefined);
 });
 
-test('canonical read model orders cancelled bridge agent request at the stop time', () => {
+test('canonical read model does not append cancelled bridge agent requests after later sync touches', () => {
   const sessionId = 'session:group:stop-order';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
@@ -1993,7 +1993,7 @@ test('canonical read model orders cancelled bridge agent request at the stop tim
       status: 'cancelled',
       error: 'Cancelled by user',
       createdAtMs: 1_100,
-      updatedAtMs: 3_000,
+      updatedAtMs: 5_000,
     }],
     presence: [],
     contextSnapshots: [],
@@ -2006,7 +2006,7 @@ test('canonical read model orders cancelled bridge agent request at the stop tim
 
   assert.ok(stoppedIndex >= 0, 'expected a terminal stopped turn');
   assert.ok(laterUserIndex >= 0, 'expected the later local user message');
-  assert.ok(stoppedIndex < laterUserIndex, 'stopped turn should stay at the cancellation time, not append to the end');
+  assert.ok(stoppedIndex < laterUserIndex, 'stopped turn should stay near its request, not append to the end after a later sync touch');
 });
 
 test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {
