@@ -21,6 +21,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
+import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import {
   firstMeaningfulThinkingLine,
@@ -526,14 +527,54 @@ function BridgeAgentStopButton({
   );
 }
 
+function assistantAnswerNeedsFold(text: string) {
+  return text.split(/\r?\n/).length > 6 || text.replace(/\s+/g, ' ').trim().length > 720;
+}
+
+function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldFold = foldable && assistantAnswerNeedsFold(text);
+  const folded = shouldFold && !expanded;
+
+  return (
+    <div className="app-live-assistant-answer w-full text-[13px]">
+      <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
+        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+        {shouldFold && folded ? (
+          <button
+            type="button"
+            className="app-inline-expand-toggle app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay mx-auto flex w-fit items-center px-3 text-[10px] font-medium"
+            onClick={() => setExpanded(true)}
+            aria-expanded={expanded}
+          >
+            — Click to show full response —
+          </button>
+        ) : null}
+      </div>
+      {shouldFold && !folded ? (
+        <button
+          type="button"
+          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-1.5 flex w-fit items-center px-3 text-[10px] font-medium"
+          onClick={() => setExpanded(false)}
+          aria-expanded={expanded}
+        >
+          — Click to hide response —
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function LiveChatTurnCardView({
   turn,
   historical = false,
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
@@ -543,7 +584,7 @@ function LiveChatTurnCardView({
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && pendingBridgeAgentRequest);
+    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -565,24 +606,35 @@ function LiveChatTurnCardView({
                     : 'Working…';
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
+  const hasResponseSurface = Boolean(
+    visibleTurn.sourceMessage
+      || showLiveStatusHeader
+      || isCompressionStatus
+      || hasTimelineActivity
+      || hasAssistant,
+  );
+  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
 
   return (
-    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
-      {showLiveStatusHeader ? (
-        <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-          <ProcessingStatusCircle className="h-3.5 w-3.5" />
-          <span className="text-slate-300">{liveStatusText}</span>
-          {pendingBridgeAgentRequest ? (
-            <BridgeAgentStopButton
-              request={pendingBridgeAgentRequest}
-              onStop={onStopBridgeAgentRequest}
-            />
+    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
+      {showResponsePanel ? (
+        <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
+          <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          {showLiveStatusHeader ? (
+            <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
+              <ProcessingStatusCircle className="h-3.5 w-3.5" />
+              <span className="text-slate-300">{liveStatusText}</span>
+              {pendingBridgeAgentRequest ? (
+                <BridgeAgentStopButton
+                  request={pendingBridgeAgentRequest}
+                  onStop={onStopBridgeAgentRequest}
+                />
+              ) : null}
+            </div>
           ) : null}
-        </div>
-      ) : null}
 
-      {isCompressionStatus ? (
-        <div className={cn(
+          {isCompressionStatus ? (
+            <div className={cn(
           'app-compression-card rounded-2xl px-4 py-3 text-sm',
           visibleTurn.status === 'compaction_failed'
             ? 'app-compression-card-error'
@@ -613,16 +665,13 @@ function LiveChatTurnCardView({
         />
       ) : null}
 
-      {hasAssistant ? (
-        <div className="app-live-assistant-answer w-full max-w-[min(100%,46rem)] py-1 text-[13px]">
-          <MarkdownContent text={visibleTurn.assistantText} />
-        </div>
-      ) : null}
+          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
 
-      {visibleTurn.error ? (
-        <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
-          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
-          <span className="min-w-0 break-words">{visibleTurn.error}</span>
+          {visibleTurn.error ? (
+            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
+              {visibleTurn.error}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -641,6 +690,8 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
+    turn.replyToMessageId ?? '',
+    turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? ''].join(':') : '',
     turn.pendingBridgeAgentRequest?.conversationId ?? '',
     turn.pendingBridgeAgentRequest?.requestId ?? '',
     ...turn.tools.map((tool) => [
@@ -660,6 +711,7 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
@@ -667,15 +719,20 @@ function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   return (
-    <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+    <div
+      id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
+      className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+    >
       <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} />
+      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} onNavigateToMessage={onNavigateToMessage} />
     </div>
   );
 }
@@ -684,5 +741,6 @@ export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );

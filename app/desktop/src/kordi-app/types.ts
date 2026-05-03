@@ -90,7 +90,22 @@ export type MessageMention = {
   agentId?: string | null;
 };
 
+export type MessageSourceReference = {
+  messageId: string;
+  senderLabel?: string | null;
+  text: string;
+  attachmentCount?: number;
+  time?: string | null;
+};
+
+export type MessageReplySummary = {
+  replyCount: number;
+  pending: boolean;
+  targetMessageId?: string | null;
+};
+
 export type Message = {
+  id?: string;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
   senderType?: 'human' | 'agent';
@@ -104,6 +119,10 @@ export type Message = {
   statusChips?: string[];
   attachments?: MessageAttachment[];
   mentions?: MessageMention[];
+  replyToMessageId?: string | null;
+  replyAliasIds?: string[];
+  replySummary?: MessageReplySummary;
+  sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {
     files: EditFilePreview[];
@@ -811,6 +830,7 @@ export type DesktopBridgeOutreachMetadata = {
   projectId?: string | null;
   projectName?: string | null;
   status: 'sending' | 'awaitingReply' | 'complete' | 'failed' | 'cancelled' | string;
+  deliveryState?: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   completedAtMs?: number | null;
@@ -1022,5 +1042,7 @@ export type DesktopChatTurnSnapshot = {
   succeeded: boolean;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
+  replyToMessageId?: string | null;
+  sourceMessage?: MessageSourceReference | null;
   pendingBridgeAgentRequest?: BridgeAgentRequestControl | null;
 };

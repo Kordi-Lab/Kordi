@@ -48,16 +48,38 @@ import type {
   DesktopChatState,
   DesktopChatTurnSnapshot,
   EditFilePreview,
+  Message,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+
+function humanTranscriptGroupKey(message?: Message) {
+  if (!message || message.role === 'system' || message.role === 'action' || message.role === 'edit' || message.turn) return null;
+  const senderType = message.senderType ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
+  const isOwnHuman = (message.isOwnMessage ?? message.role === 'user') && senderType === 'human';
+  const isPeerHuman = !isOwnHuman && (senderType === 'human' || message.role === 'person');
+  if (!isOwnHuman && !isPeerHuman) return null;
+
+  const side = isOwnHuman ? 'own' : 'peer';
+  const senderKey = message.senderAvatarSeed?.trim()
+    || message.senderProfileImageUrl?.trim()
+    || message.sender?.trim()
+    || side;
+  return `${side}:${senderKey}`;
+}
+
+function isGroupedWithAdjacentHumanMessage(messages: readonly Message[], index: number, offset: -1 | 1) {
+  const currentKey = humanTranscriptGroupKey(messages[index]);
+  return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
+}
 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
@@ -293,7 +315,6 @@ export function ChatsPage({
   const composerStopMode = composerSubmitMode === 'stop';
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
-  const shouldRenderLiveTurn = Boolean(activeTranscriptLiveTurn && !activeTranscriptLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
@@ -332,6 +353,16 @@ export function ChatsPage({
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
+  const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
+  const attributedTranscript = useMemo(
+    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
+      inferLatestHumanRequest: inferLatestHumanReplyTarget,
+    }),
+    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, transcriptMessages],
+  );
+  const attributedTranscriptMessages = attributedTranscript.messages;
+  const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
+  const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;
@@ -535,17 +566,19 @@ export function ChatsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {transcriptMessages.map((msg, idx) => (
+            {attributedTranscriptMessages.map((msg, idx) => (
               <MessageBubble
-                key={`${msg.role}-${msg.time}-${idx}`}
+                key={`${msg.id ?? msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
+                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />
             ))}
-            {shouldRenderLiveTurn && activeTranscriptLiveTurn ? (
+            {shouldRenderLiveTurn && attributedActiveTranscriptLiveTurn ? (
               <LiveChatTurnMessage
-                turn={activeTranscriptLiveTurn}
+                turn={attributedActiveTranscriptLiveTurn}
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               />
