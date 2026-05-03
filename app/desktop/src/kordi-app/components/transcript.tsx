@@ -12,6 +12,7 @@ import {
   ChevronUp,
   CircleAlert,
   Clock3,
+  CornerDownLeft,
   Download,
   ExternalLink,
   FileText,
@@ -37,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { replyStatusText } from '@/features/chat/replyAttribution';
 import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -54,6 +56,8 @@ import type {
   Message,
   MessageAttachment,
   MessageMention,
+  MessageReplySummary,
+  MessageSourceReference,
 } from '../types';
 
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -256,6 +260,169 @@ function ProcessingStatusCircle({ className }: { className?: string }) {
       )}
       aria-hidden="true"
     />
+  );
+}
+
+function transcriptMessageDomId(messageId: string) {
+  return `app-transcript-message-${messageId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+}
+
+function navigateToTranscriptMessage(messageId: string) {
+  if (typeof document === 'undefined') return;
+  const target = document.getElementById(transcriptMessageDomId(messageId));
+  if (!target) return;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.classList.add('app-transcript-message-highlight');
+  window.setTimeout(() => target.classList.remove('app-transcript-message-highlight'), 1500);
+}
+
+function sourceQuoteText(sourceMessage: MessageSourceReference) {
+  return sourceMessage.text.trim();
+}
+
+function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
+  const text = sourceQuoteText(sourceMessage);
+  return text.split(/\r?\n/).length > 3 || text.replace(/\s+/g, ' ').length > 260;
+}
+
+function SourceMessageQuote({
+  sourceMessage,
+  onNavigateToMessage,
+}: {
+  sourceMessage?: MessageSourceReference | null;
+  onNavigateToMessage?: (messageId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!sourceMessage) return null;
+  const canFold = sourceQuoteNeedsFold(sourceMessage);
+  const senderLabel = sourceMessage.senderLabel?.trim() || 'message';
+  const attachmentText = sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '';
+  const navigate = () => {
+    if (onNavigateToMessage) {
+      onNavigateToMessage(sourceMessage.messageId);
+      return;
+    }
+    navigateToTranscriptMessage(sourceMessage.messageId);
+  };
+
+  return (
+    <div className="app-source-message-quote w-full">
+      <button
+        type="button"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)_auto] items-start gap-2.5 text-left"
+        onClick={navigate}
+        title="Jump to original request"
+      >
+        <span className="app-source-message-quote-rail" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
+          <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
+            <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5">
+              {sourceQuoteText(sourceMessage)}
+            </span>
+          </span>
+        </span>
+        <CornerDownLeft className="app-source-message-quote-icon mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      </button>
+      {canFold ? (
+        <button
+          type="button"
+          className={cn(
+            'app-inline-expand-toggle app-source-message-quote-toggle',
+            !expanded && 'app-source-message-quote-toggle-overlay',
+            'flex w-fit items-center px-2 text-[9px] font-medium',
+            expanded && 'mx-auto mt-1',
+          )}
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+        >
+          {expanded ? '— Click to hide request —' : '— Click to show full request —'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function senderAccentStyle(label?: string | null): CSSProperties {
+  const text = label?.trim() || 'sender';
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+  }
+  const hue = Math.abs(hash) % 360;
+  return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
+}
+
+function RequestReplyLine({
+  summary,
+  own,
+  onNavigateToMessage,
+}: {
+  summary?: MessageReplySummary;
+  own: boolean;
+  onNavigateToMessage?: (messageId: string) => void;
+}) {
+  const text = replyStatusText(summary);
+  if (!summary || !text) return null;
+  const targetMessageId = summary.targetMessageId?.trim();
+  const navigate = () => {
+    if (!targetMessageId) return;
+    if (onNavigateToMessage) {
+      onNavigateToMessage(targetMessageId);
+      return;
+    }
+    navigateToTranscriptMessage(targetMessageId);
+  };
+
+  return (
+    <button
+      type="button"
+      className={cn('app-message-reply-line inline-flex max-w-[26rem] items-center gap-1.5 truncate px-1 text-[11px] font-medium leading-4', own ? 'self-end text-right' : 'self-start text-left')}
+      onClick={navigate}
+      disabled={!targetMessageId}
+      title={targetMessageId ? 'Jump to replies for this message' : undefined}
+    >
+      <span>{text}</span>
+      <CornerDownLeft className="app-message-reply-line-icon h-3 w-3 shrink-0" aria-hidden="true" />
+    </button>
+  );
+}
+
+function assistantAnswerNeedsFold(text: string) {
+  return text.split(/\r?\n/).length > 6 || text.replace(/\s+/g, ' ').trim().length > 720;
+}
+
+function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldFold = foldable && assistantAnswerNeedsFold(text);
+  const folded = shouldFold && !expanded;
+
+  return (
+    <div className="app-live-assistant-answer w-full text-[13px]">
+      <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
+        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+        {shouldFold && folded ? (
+          <button
+            type="button"
+            className="app-inline-expand-toggle app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay mx-auto flex w-fit items-center px-3 text-[10px] font-medium"
+            onClick={() => setExpanded(true)}
+            aria-expanded={expanded}
+          >
+            — Click to show full response —
+          </button>
+        ) : null}
+      </div>
+      {shouldFold && !folded ? (
+        <button
+          type="button"
+          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-1.5 flex w-fit items-center px-3 text-[10px] font-medium"
+          onClick={() => setExpanded(false)}
+          aria-expanded={expanded}
+        >
+          — Click to hide response —
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -654,10 +821,16 @@ function MessageBubbleView({
   msg,
   onOpenSource,
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
+  isGroupedWithPrevious = false,
+  isGroupedWithNext = false,
 }: {
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
+  isGroupedWithPrevious?: boolean;
+  isGroupedWithNext?: boolean;
 }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
@@ -797,7 +970,10 @@ function MessageBubbleView({
 
   if (msg.turn) {
     return (
-      <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+      <div
+        id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+        className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+      >
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -805,6 +981,7 @@ function MessageBubbleView({
           turn={msg.turn}
           historical={msg.turn.completed}
           onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+          onNavigateToMessage={onNavigateToMessage}
         />
       </div>
     );
@@ -818,7 +995,7 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
-  const showHeaderMeta = Boolean((msg.showSenderMeta || isAgentMessage) && msg.sender);
+  const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
@@ -829,16 +1006,27 @@ function MessageBubbleView({
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
-  const showAvatar = !isAgentMessage;
+  const showInlineHumanSender = Boolean(!isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showAvatarSlot = !isAgentMessage;
+  const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
   return (
-    <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
+    <div
+      id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      className={cn(
+        'flex flex-col gap-1',
+        isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
+        isGroupedWithNext ? 'pb-0' : 'pb-1',
+        align,
+        isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
+      )}
+    >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end', showAvatar ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+      <div className={cn('flex items-end', showAvatarSlot ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
         {showAvatar ? (
           <IdentityAvatar
             kind={avatarKind}
@@ -847,18 +1035,29 @@ function MessageBubbleView({
             imageUrl={msg.senderProfileImageUrl}
             className="mb-0.5 h-7 w-7 border border-white/10"
           />
+        ) : showAvatarSlot ? (
+          <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />
         ) : null}
         <div className={cn(
-          'min-w-0 text-[13px] shadow-sm',
+          'min-w-0 shadow-sm',
+          isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('own'))
+            ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('peer'))
+              ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           bubble,
         )}>
         {isOwnHumanMessage ? <MessageBubbleShapeBackdrop side="own" /> : null}
         {isPeerHumanMessage ? <MessageBubbleShapeBackdrop side="peer" /> : null}
+        {showInlineHumanSender ? (
+          <div
+            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
+            style={senderAccentStyle(msg.sender)}
+          >
+            {msg.sender}
+          </div>
+        ) : null}
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
@@ -913,12 +1112,20 @@ function MessageBubbleView({
         )}
         </div>
       </div>
+      {showCompactFooter ? (
+        <RequestReplyLine
+          summary={msg.replySummary}
+          own={isOwnHumanMessage}
+          onNavigateToMessage={onNavigateToMessage}
+        />
+      ) : null}
     </div>
   );
 }
 
 function messageSnapshotKey(msg: Message) {
   return [
+    msg.id ?? '',
     msg.role,
     msg.sender ?? '',
     msg.senderType ?? '',
@@ -930,6 +1137,10 @@ function messageSnapshotKey(msg: Message) {
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',
     msg.statusChips?.join(',') ?? '',
+    msg.replyToMessageId ?? '',
+    msg.replyAliasIds?.join('|') ?? '',
+    msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
+    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     msg.mentions?.map((mention) => mention.label).join('|') ?? '',
     msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
@@ -940,6 +1151,9 @@ function messageSnapshotKey(msg: Message) {
 export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
+    && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
 );
 
@@ -1322,10 +1536,12 @@ function LiveChatTurnCardView({
   turn,
   historical = false,
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
@@ -1335,7 +1551,7 @@ function LiveChatTurnCardView({
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && pendingBridgeAgentRequest);
+    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -1358,63 +1574,72 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
 
+  const hasResponseSurface = Boolean(
+    visibleTurn.sourceMessage
+      || showLiveStatusHeader
+      || isCompressionStatus
+      || hasTimelineActivity
+      || hasAssistant,
+  );
+  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
+
   return (
-    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
-      {showLiveStatusHeader ? (
-        <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-          <ProcessingStatusCircle className="h-3.5 w-3.5" />
-          <span className="text-slate-300">{liveStatusText}</span>
-          {pendingBridgeAgentRequest ? (
-            <BridgeAgentStopButton
-              request={pendingBridgeAgentRequest}
-              onStop={onStopBridgeAgentRequest}
+    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
+      {showResponsePanel ? (
+        <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
+          <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          {showLiveStatusHeader ? (
+            <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
+              <ProcessingStatusCircle className="h-3.5 w-3.5" />
+              <span className="text-slate-300">{liveStatusText}</span>
+              {pendingBridgeAgentRequest ? (
+                <BridgeAgentStopButton
+                  request={pendingBridgeAgentRequest}
+                  onStop={onStopBridgeAgentRequest}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          {isCompressionStatus ? (
+            <div className={cn(
+              'app-compression-card rounded-2xl px-4 py-3 text-sm',
+              visibleTurn.status === 'compaction_failed'
+                ? 'app-compression-card-error'
+                : visibleTurn.status === 'compacted'
+                  ? 'app-compression-card-success'
+                  : 'app-compression-card-active',
+            )}>
+              <div className="app-compression-title flex items-center gap-2 font-medium">
+                {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+                <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
+              </div>
+              <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
+                {visibleTurn.status === 'compacting'
+                  ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
+                  : visibleTurn.status === 'compacted'
+                    ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
+                    : (visibleTurn.error ?? visibleTurn.message)}
+              </div>
+            </div>
+          ) : null}
+
+          {hasTimelineActivity ? (
+            <FoldableToolTimeline
+              tools={visibleTurn.tools}
+              thinkingText={visibleTurn.thinkingText}
+              active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
+              completed={visibleTurn.completed}
             />
           ) : null}
-        </div>
-      ) : null}
 
-      {isCompressionStatus ? (
-        <div className={cn(
-          'app-compression-card rounded-2xl px-4 py-3 text-sm',
-          visibleTurn.status === 'compaction_failed'
-            ? 'app-compression-card-error'
-            : visibleTurn.status === 'compacted'
-              ? 'app-compression-card-success'
-              : 'app-compression-card-active',
-        )}>
-          <div className="app-compression-title flex items-center gap-2 font-medium">
-            {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
-          </div>
-          <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
-            {visibleTurn.status === 'compacting'
-              ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
-              : visibleTurn.status === 'compacted'
-                ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
-                : (visibleTurn.error ?? visibleTurn.message)}
-          </div>
-        </div>
-      ) : null}
+          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
 
-      {hasTimelineActivity ? (
-        <FoldableToolTimeline
-          tools={visibleTurn.tools}
-          thinkingText={visibleTurn.thinkingText}
-          active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
-          completed={visibleTurn.completed}
-        />
-      ) : null}
-
-      {hasAssistant ? (
-        <div className="app-live-assistant-answer w-full max-w-[min(100%,46rem)] py-1 text-[13px]">
-          <MarkdownContent text={visibleTurn.assistantText} />
-        </div>
-      ) : null}
-
-      {visibleTurn.error ? (
-        <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
-          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
-          <span className="min-w-0 break-words">{visibleTurn.error}</span>
+          {visibleTurn.error ? (
+            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
+              {visibleTurn.error}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1433,6 +1658,8 @@ function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
+    turn.replyToMessageId ?? '',
+    turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? ''].join(':') : '',
     turn.pendingBridgeAgentRequest?.conversationId ?? '',
     turn.pendingBridgeAgentRequest?.requestId ?? '',
     ...turn.tools.map((tool) => [
@@ -1452,6 +1679,7 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
@@ -1459,15 +1687,20 @@ function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   return (
-    <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+    <div
+      id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
+      className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+    >
       <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} />
+      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} onNavigateToMessage={onNavigateToMessage} />
     </div>
   );
 }
@@ -1476,6 +1709,7 @@ export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 

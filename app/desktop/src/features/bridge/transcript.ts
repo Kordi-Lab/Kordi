@@ -236,6 +236,16 @@ export function mapBridgeConversationToViewModel(
     [remoteHumanLabel]: remoteHumanAvatarSeed,
     [remoteAgentLabel]: remoteAgentAvatarSeed,
   };
+  const bridgeViewMessageId = (message: DesktopBridgeConversationMessage) => `bridge-message:${conversation.id}:${message.id}`;
+  const requestMessageIdByRequestId = new Map<string, string>();
+  for (const message of conversation.messages) {
+    const requestId = message.requestId?.trim();
+    if (!requestId) continue;
+    if (message.direction !== BRIDGE_MESSAGE_DIRECTION_OUTBOUND && message.direction !== BRIDGE_MESSAGE_DIRECTION_INBOUND) continue;
+    if (!requestMessageIdByRequestId.has(requestId)) {
+      requestMessageIdByRequestId.set(requestId, bridgeViewMessageId(message));
+    }
+  }
 
   const awaitingAgentOutreach = conversation.outreach?.targetKind === 'bridge-agent'
     && isActiveOutreachStatus(conversation.outreach.status)
@@ -250,6 +260,10 @@ export function mapBridgeConversationToViewModel(
     : null;
   const messages: Message[] = conversation.messages.flatMap((message) => {
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
+    const messageId = bridgeViewMessageId(message);
+    const replyToMessageId = message.requestId?.trim()
+      ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? null
+      : null;
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
     const mentions = bridgeMessageMentions(conversation, message);
     const attachments = bridgeMessageAttachments(message);
@@ -297,6 +311,7 @@ export function mapBridgeConversationToViewModel(
         || (isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel);
       const responseCancelled = isCancelledBridgeState(message.deliveryState);
       return [{
+        id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
         sender: responseSender,
         senderType: 'agent',
@@ -305,6 +320,7 @@ export function mapBridgeConversationToViewModel(
         senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
         text: '',
         time: message.timeLabel,
+        replyToMessageId,
         turn: {
           id: `bridge-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
@@ -317,11 +333,13 @@ export function mapBridgeConversationToViewModel(
           completed: responseCancelled || !isLiveAgentReply,
           succeeded: !responseCancelled && !isLiveAgentReply,
           error: null,
+          replyToMessageId,
         },
       }];
     }
 
     const mappedMessage: Message = {
+      id: messageId,
       role: isAgent
         ? (isOutboundHuman
             ? 'user'
@@ -350,6 +368,7 @@ export function mapBridgeConversationToViewModel(
 
     if (isAgent && isOutboundHuman && isCancelledBridgeState(message.deliveryState)) {
       return [mappedMessage, {
+        id: `bridge-live-turn:${conversation.id}:${message.id}:cancelled`,
         role: 'external-agent' as const,
         sender: remoteAgentLabel,
         senderType: 'agent' as const,
@@ -358,6 +377,7 @@ export function mapBridgeConversationToViewModel(
         senderAvatarSeed: remoteAgentAvatarSeed,
         text: '',
         time: message.timeLabel,
+        replyToMessageId,
         turn: {
           id: `bridge-live-turn:${conversation.id}:${message.id}:cancelled`,
           sessionId: conversation.id,
@@ -370,6 +390,7 @@ export function mapBridgeConversationToViewModel(
           completed: true,
           succeeded: false,
           error: null,
+          replyToMessageId,
         },
       }];
     }
@@ -378,7 +399,13 @@ export function mapBridgeConversationToViewModel(
   });
 
   if (((isAgent && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
+    const outreachRequestId = conversation.outreach?.bridgeRequestId?.trim();
+    const requestMessageIds = [...requestMessageIdByRequestId.values()];
+    const replyToMessageId = outreachRequestId
+      ? requestMessageIdByRequestId.get(outreachRequestId) ?? null
+      : requestMessageIds[requestMessageIds.length - 1] ?? null;
     messages.push({
+      id: `bridge-live-turn:${conversation.id}:processing`,
       role: 'external-agent',
       sender: awaitingAgentOutreach ? outreachAgentLabel : remoteAgentLabel,
       senderType: 'agent',
@@ -387,6 +414,7 @@ export function mapBridgeConversationToViewModel(
       senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : remoteAgentAvatarSeed,
       text: '',
       time: conversation.updatedAtLabel,
+      replyToMessageId,
       turn: {
         id: `bridge-live-turn:${conversation.id}:processing`,
         sessionId: conversation.id,
@@ -399,6 +427,7 @@ export function mapBridgeConversationToViewModel(
         completed: false,
         succeeded: false,
         error: null,
+        replyToMessageId,
       },
     });
   }
