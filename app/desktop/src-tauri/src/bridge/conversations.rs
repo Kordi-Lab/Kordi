@@ -77,6 +77,17 @@ fn conversation_matches(
             .unwrap_or(true)
 }
 
+fn is_terminal_agent_request_delivery_state(state: &str) -> bool {
+    matches!(
+        state.trim().to_ascii_lowercase().as_str(),
+        BRIDGE_DELIVERY_STATE_RESPONDED
+            | "cancelled"
+            | "failed"
+            | "processing_failed"
+            | "no_response"
+    )
+}
+
 pub(super) fn upsert_bridge_conversation<'a>(
     store: &'a mut DesktopBridgeConversationStore,
     host_id: &str,
@@ -189,7 +200,10 @@ pub(super) fn conversation_title(record: &DesktopBridgeConversationRecord) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::{DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata};
+    use crate::bridge::{
+        DesktopBridgeConversationMessageRecord, DesktopBridgeIdentitySnapshot,
+        DesktopBridgeOutreachMetadata,
+    };
 
     fn test_outreach(parent_session_id: &str) -> DesktopBridgeOutreachMetadata {
         DesktopBridgeOutreachMetadata {
@@ -281,6 +295,28 @@ mod tests {
         assert!(session_id.starts_with("session:bridge:humans:"));
         assert_ne!(session_id, "session:bridge:humans:parent");
     }
+
+    #[test]
+    fn agent_conversation_cancelled_request_is_not_awaiting_reply() {
+        let mut record = test_record("kordi-desktop");
+        record
+            .messages
+            .push(DesktopBridgeConversationMessageRecord {
+                id: "bridge_msg_cancelled".to_string(),
+                direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND.to_string(),
+                sender: Some("Local".to_string()),
+                text: "test test".to_string(),
+                timestamp_ms: 1,
+                request_id: Some("bridge_req_cancelled".to_string()),
+                delivery_state: Some("cancelled".to_string()),
+                outreach: None,
+                attachments: Vec::new(),
+            });
+
+        let state = build_conversation_state(&record);
+
+        assert!(!state.awaiting_reply);
+    }
 }
 
 pub(super) fn build_conversation_state(
@@ -313,7 +349,7 @@ pub(super) fn build_conversation_state(
             .rev()
             .find(|message| message.direction == BRIDGE_MESSAGE_DIRECTION_OUTBOUND)
             .and_then(|message| message.delivery_state.clone())
-            .map(|state| state != BRIDGE_DELIVERY_STATE_RESPONDED)
+            .map(|state| !is_terminal_agent_request_delivery_state(&state))
             .unwrap_or(false);
     let peer_typing = record
         .peer_last_typing_at_ms
