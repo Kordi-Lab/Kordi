@@ -388,6 +388,30 @@ pub(super) fn sync_parent_session_update(
     }
 }
 
+fn canonical_delivery_state_for_parent_session_relay(
+    message: &crate::bridge::DesktopBridgeConversationMessage,
+    is_group_session_message: bool,
+) -> Option<String> {
+    let delivery_state = message
+        .delivery_state
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    // Group chat has no per-participant read aggregate yet. For the parent group
+    // row, a successful Bridge fanout is the strongest durable signal we have, so
+    // surface sender-side `sent` as group-level `delivered` while preserving any
+    // explicit future `read` / failure states.
+    if is_group_session_message
+        && matches!(message.direction.as_str(), "outbound")
+        && delivery_state.is_some_and(|state| state.eq_ignore_ascii_case("sent"))
+    {
+        return Some("delivered".to_string());
+    }
+
+    delivery_state.map(ToString::to_string)
+}
+
 pub(super) fn sync_parent_session_relay_messages(
     conn: &Connection,
     parent_session_id: &str,
@@ -406,6 +430,11 @@ pub(super) fn sync_parent_session_relay_messages(
             .parent_session_kind
             .as_deref()
             .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+            || outreach
+                .parent_group_space_id
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
             || parent_session_id.starts_with("session:group:"));
     if is_group_session_message {
         ensure_parent_group_session_participants(
@@ -598,6 +627,8 @@ pub(super) fn sync_parent_session_relay_messages(
         } else {
             format!("{}:{}", conversation.id, message.id)
         };
+        let canonical_delivery_state =
+            canonical_delivery_state_for_parent_session_relay(message, is_group_session_message);
         message_reconcile::append_or_reconcile_message_from_sync(
             conn,
             AppendCanonicalMessageRequest {
@@ -617,7 +648,7 @@ pub(super) fn sync_parent_session_relay_messages(
                     "sender": message.sender,
                     "timeLabel": message.time_label,
                     "timestampMs": message.timestamp_ms,
-                    "deliveryState": message.delivery_state,
+                    "deliveryState": canonical_delivery_state,
                     "requestId": message.request_id,
                     "bridgeConversationId": conversation.id,
                     "attachments": message.attachments,
@@ -634,7 +665,7 @@ pub(super) fn sync_parent_session_relay_messages(
                 parent_message_id: outreach.parent_message_id.clone(),
                 delegated_exchange_id: None,
                 status: Some(canonical_bridge_message_status(
-                    message.delivery_state.as_deref(),
+                    canonical_delivery_state.as_deref(),
                 )),
                 source_transport: Some(relay_source_transport.to_string()),
                 source_event_id: Some(format!(
