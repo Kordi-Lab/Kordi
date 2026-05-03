@@ -8,6 +8,7 @@ import {
   bridgeGroupSessionSpaceId,
   bridgeLocalAgentRelayTargets,
   isBridgeGroupSession,
+  shouldUseBridgeConversationRouting,
 } from '../src/features/chat/messageActions/chatMessages';
 import type { Conversation, ConversationBridgeTarget } from '../src/kordi-app/types';
 
@@ -59,6 +60,14 @@ test('group bridge send targets include every non-self human participant and exc
     { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', runtime: 'person', humanId: 'kh_alice', agentId: null },
     { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
   ]);
+});
+
+test('group bridge routing remains enabled when the synthetic active target is missing', () => {
+  assert.equal(shouldUseBridgeConversationRouting({
+    activeConversationIsBridge: false,
+    activeConvBridgeTarget: null,
+    activeGroupSessionScope: groupConversation(),
+  }), true);
 });
 
 test('group local-agent relays fan out to every non-self human participant', () => {

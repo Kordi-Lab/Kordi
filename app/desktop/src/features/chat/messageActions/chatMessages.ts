@@ -254,6 +254,27 @@ export function bridgeGroupSessionSendTargets(
   return [...targets.values()];
 }
 
+export function shouldUseBridgeConversationRouting({
+  activeConversationIsBridge,
+  activeConvBridgeTarget,
+  activeGroupSessionScope,
+}: {
+  activeConversationIsBridge: boolean;
+  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeGroupSessionScope?: (Pick<Conversation, 'canonicalParticipants'> & {
+    canonicalSessionId?: string | null;
+    participantSpaceId?: string | null;
+    directness?: string | null;
+  }) | null;
+}) {
+  return activeConversationIsBridge
+    || Boolean(activeConvBridgeTarget)
+    || Boolean(
+      isBridgeGroupSession(activeGroupSessionScope)
+      && bridgeGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvBridgeTarget).length > 0,
+    );
+}
+
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -530,12 +551,17 @@ export function useChatMessageActions({
       canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
     };
     const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
+    const activeConversationUsesBridgeRouting = shouldUseBridgeConversationRouting({
+      activeConversationIsBridge,
+      activeConvBridgeTarget,
+      activeGroupSessionScope,
+    });
     const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
       ? bridgeGroupSessionParticipants(activeGroupSessionScope)
       : [];
 
-    if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
+    if (mentionedTarget && activeConversationUsesBridgeRouting) {
       try {
         shouldAutoFollowChatRef.current = true;
         pendingBridgeCancelRequestedRef.current = false;
@@ -670,7 +696,7 @@ export function useChatMessageActions({
       return;
     }
 
-    if ((activeConversationIsBridge || activeConvBridgeTarget) && !mentionsLocalAgent(text, desktopChatState, desktopBridgeState)) {
+    if (activeConversationUsesBridgeRouting && !mentionsLocalAgent(text, desktopChatState, desktopBridgeState)) {
       const sentAt = formatDesktopEventTime();
       const previewText = attachmentSummaryText(text);
       const bridgeMessageText = text;
@@ -679,7 +705,7 @@ export function useChatMessageActions({
       const existingTargetConversation = activeConvBridgeTarget && desktopBridgeState
         ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
         : null;
-      const shouldStayInCanonicalSession = Boolean(activeConvBridgeTarget && activeConvCanonicalSessionId);
+      const shouldStayInCanonicalSession = Boolean(activeConvCanonicalSessionId && (activeConvBridgeTarget || activeGroupSessionIsGroup));
       const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;
       const groupSendTargets = isGroupSessionMessage
         ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget)
