@@ -359,6 +359,15 @@ test('folds only substantially long completed agent responses by default', () =>
   assert.doesNotMatch(markup, /— Show full response —/);
 });
 
+test('expanded fold controls use click-to-hide copy consistently', () => {
+  const transcriptSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+
+  assert.match(transcriptSource, /— Click to hide request —/);
+  assert.match(transcriptSource, /— Click to hide response —/);
+  assert.doesNotMatch(transcriptSource, /— Hide request —/);
+  assert.doesNotMatch(transcriptSource, /— Collapse response —/);
+});
+
 test('styles folded answer expand control as muted overlay on the fade', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
   const answerToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
