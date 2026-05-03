@@ -363,7 +363,7 @@ async fn enqueue_agent_ask_for_durable_processing(
         Some(response_sender_name),
         "processing...".to_string(),
         event.request_id.clone(),
-        Some("queued".to_string()),
+        Some("processing".to_string()),
         Vec::new(),
         false,
     )?;

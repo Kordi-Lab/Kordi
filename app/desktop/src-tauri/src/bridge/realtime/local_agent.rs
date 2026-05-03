@@ -305,7 +305,7 @@ pub(super) async fn handle_incoming_payload(
                     target,
                     &event,
                     "processing...".to_string(),
-                    "queued",
+                    "processing",
                     false,
                 ),
             )

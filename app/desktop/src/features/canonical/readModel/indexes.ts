@@ -165,13 +165,31 @@ function isBridgeAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
 }
 
 function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
-  return message.sourceTransport === 'desktop-bridge-session-relay'
+  return (message.sourceTransport === 'desktop-bridge-session-relay'
+    || message.sourceTransport === 'desktop-bridge-parent')
     && isBridgeAgentProcessingPlaceholder(message);
 }
 
 function isRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
   return message.sourceTransport === 'desktop-bridge-parent'
     && isBridgeAgentProcessingPlaceholder(message);
+}
+
+const RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
+
+function isActiveProcessingStatus(message: CanonicalSessionMessage) {
+  const content = contentRecord(message.content);
+  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const status = message.status.trim().toLowerCase();
+  return deliveryState === 'processing' || status === 'processing';
+}
+
+function isStaleRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
+  if (!isRawBridgeParentProcessingPlaceholder(message)) return false;
+  if (!isActiveProcessingStatus(message)) return true;
+
+  const referenceTimeMs = Math.max(message.updatedAtMs, message.createdAtMs);
+  return Date.now() - referenceTimeMs > RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
 }
 
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
@@ -413,7 +431,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedRawBridgeParentProcessingPlaceholderIds = new Set(
-      sortedMessages.filter(isRawBridgeParentProcessingPlaceholder).map((message) => message.id),
+      sortedMessages.filter(isStaleRawBridgeParentProcessingPlaceholder).map((message) => message.id),
     );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     canonicalMessagesBySessionId.set(
