@@ -275,6 +275,21 @@ export function shouldUseBridgeConversationRouting({
     );
 }
 
+export function activeLocalTurnShouldDelayChatSend({
+  activeConversationUsesBridgeRouting,
+  activeConvId,
+  desktopLiveTurn,
+}: {
+  activeConversationUsesBridgeRouting: boolean;
+  activeConvId: string;
+  desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
+}) {
+  return !activeConversationUsesBridgeRouting
+    && !activeConvId.startsWith('bridge:')
+    && !isLocalDraftChatConversationId(activeConvId)
+    && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
+}
+
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -530,19 +545,6 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const activeLocalSessionHasRunningTurn = !activeConvId.startsWith('bridge:')
-      && !isLocalDraftChatConversationId(activeConvId)
-      && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
-    if (activeLocalSessionHasRunningTurn) {
-      const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
-      if (chatComposerAttachments.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {
-        setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
-        return;
-      }
-      queueLocalDraftForSession(activeConvId, text, chatComposerAttachments);
-      return;
-    }
-
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
@@ -560,6 +562,16 @@ export function useChatMessageActions({
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
       ? bridgeGroupSessionParticipants(activeGroupSessionScope)
       : [];
+
+    if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
+      const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
+      if (chatComposerAttachments.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {
+        setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
+        return;
+      }
+      queueLocalDraftForSession(activeConvId, text, chatComposerAttachments);
+      return;
+    }
 
     if (mentionedTarget && activeConversationUsesBridgeRouting) {
       try {

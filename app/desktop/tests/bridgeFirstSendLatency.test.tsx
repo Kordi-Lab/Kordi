@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  activeLocalTurnShouldDelayChatSend,
   bridgeConversationSendPlan,
   bridgeSessionOutreachTarget,
   chatSendIsBusy,
@@ -77,6 +78,30 @@ test('chat composer sends drafts instead of showing stop while a local turn is r
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'stop');
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: true }), 'send');
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: true, activeLiveTurnIsRunning: false, hasDraft: true }), 'send');
+});
+
+test('chat composer stays in send mode for bridge-routed sessions while an agent is streaming', () => {
+  assert.equal(chatComposerSubmitMode({
+    isDesktopChatSending: true,
+    activeLiveTurnIsRunning: true,
+    hasDraft: false,
+    canSendWhileBusy: true,
+  }), 'send');
+});
+
+test('active local turns only delay sends that need the local runtime route', () => {
+  const runningTurn = { sessionId: 'session:group:team', completed: false };
+
+  assert.equal(activeLocalTurnShouldDelayChatSend({
+    activeConversationUsesBridgeRouting: false,
+    activeConvId: 'session:group:team',
+    desktopLiveTurn: runningTurn,
+  }), true);
+  assert.equal(activeLocalTurnShouldDelayChatSend({
+    activeConversationUsesBridgeRouting: true,
+    activeConvId: 'session:group:team',
+    desktopLiveTurn: runningTurn,
+  }), false);
 });
 
 test('canonical external-agent sessions send session messages to the bridge agent target', () => {

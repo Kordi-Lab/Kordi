@@ -356,7 +356,7 @@ test('folds only substantially long completed agent responses by default', () =>
   assert.match(markup, /app-inline-expand-toggle/);
   assert.match(markup, /app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay/);
   assert.match(markup, /text-\[10px\]/);
-  assert.match(markup, /— Click to show full response —/);
+  assert.match(markup, /— 1 more line\. Click to show all —/);
   assert.doesNotMatch(markup, /— Show full response —/);
 });
 
@@ -421,7 +421,7 @@ test('keeps source quote and tool summary inside the same assistant response bac
   assert.match(markup, quoteToolAnswerSurfacePattern);
 });
 
-test('does not fold active streaming agent responses while text is still arriving', () => {
+test('keeps short active streaming agent responses expanded while text is still arriving', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-streaming-answer',
     sessionId: 'session-1',
@@ -440,4 +440,25 @@ test('does not fold active streaming agent responses while text is still arrivin
 
   assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
   assert.doesNotMatch(markup, /Show full response/);
+});
+
+test('folds very long active streaming agent responses with remaining line count copy', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-streaming-long-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'streaming',
+    message: 'Replying…',
+    assistantText: 'Line one\nLine two\nLine three\nLine four\nLine five\nLine six\nLine seven\nLine eight',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
+  assert.match(markup, /— 2 more lines\. Click to show all —/);
 });
