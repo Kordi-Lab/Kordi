@@ -26,22 +26,23 @@ test('chat sidebar timestamps use the tertiary text token', () => {
   assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid transparent;[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
 });
 
-test('composer send area has a clearly separated surface and focused input affordance', () => {
+test('composer send area keeps the outer surface without an inner input pop or divider', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const composerShellBlock = shellCss.match(/\.app-composer-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerInputBlock = shellCss.match(/\.app-composer-input \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerMetaBlock = shellCss.match(/\.app-composer-meta \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerFocusBlock = shellCss.match(/\.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightComposerInputBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:[^}]*\}/)?.[0] ?? '';
   const lightComposerFocusBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(composerShellBlock, /var\(--app-divider\) 86%/);
   assert.match(composerShellBlock, /box-shadow:/);
-  assert.match(composerInputBlock, /border:\s*1px solid/);
-  assert.match(composerInputBlock, /background:\s*color-mix/);
-  assert.match(composerMetaBlock, /border-top:\s*1px solid/);
+  assert.match(composerInputBlock, /border:\s*0/);
+  assert.match(composerInputBlock, /background:\s*transparent/);
+  assert.match(composerInputBlock, /box-shadow:\s*none/);
+  assert.match(composerMetaBlock, /border-top:\s*0/);
   assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
-  assert.match(lightComposerInputBlock, /background:\s*rgba\(255,\s*255,\s*255,\s*0\.54\)/);
+  assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
+  assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
   assert.match(lightComposerFocusBlock, /box-shadow:/);
 });
