@@ -16,5 +16,17 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 700,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          minSize: 20_000,
+          groups: [
+            { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
+            { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
+            { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
 })
