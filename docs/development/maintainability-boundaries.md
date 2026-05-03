@@ -88,7 +88,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Desktop chat state | `app/desktop/src/features/chat/useDesktopChatState.ts` | Queue persistence, live-turn snapshot helpers, and refresh/cache reducers have been extracted to focused modules. Next safe slice: split live-turn polling/completion orchestration or notification side effects. |
 | Desktop API client | `app/desktop/src/lib/desktop.ts` | Defer broad split. Group exports by resource only when consumers can move in the same PR. |
 | Bridges CLI commands | `bridges/cli/src/commands.rs` | Setup/runtime-selection, project lifecycle, identity lifecycle, and doctor diagnostics command logic have been extracted. Continue one command family per PR with command-level tests; next safe slice: move session or outbound ask/debate command helpers. |
-| Bridges local API | `bridges/cli/src/local_api.rs` | Defer broad split. Split route handlers by resource without changing URLs. |
+| Bridges local API | `bridges/cli/src/local_api.rs` | Pending request state, delivery-stage tracking, poll response DTOs, and daemon-facing response/delivery event storage have been extracted. Continue splitting route handlers by resource without changing URLs. |
 | Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Defer until command/local API splits reduce shared coupling. |
 | Large tests | `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Canonical session, turn-runner, and extension tests are split into child modules, and chat-start plus bridge canonical read-model coverage has been split out of `chatRouting.test.tsx`. Continue partitioning large tests by domain before production moves in the same area. |
 | CSS | `app/desktop/src/styles/shell.css`, `app/desktop/src/styles/theme-overrides.css` | Shell CSS is split into popover, bubble, transcript, sidebar, and page layers. Next safe slice: split remaining layout/control shell rules or `theme-overrides.css` with screenshot/manual smoke checks. |
@@ -121,6 +121,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `bridges/cli/src/commands.rs`: project create/invite/join/member commands and shareable invite helpers moved to `bridges/cli/src/commands/projects.rs`, while root command re-exports preserve existing CLI call sites.
 - `bridges/cli/src/commands.rs`: registration, identity status/revoke/rotate commands, and identity lifecycle diagnostic helpers moved to `bridges/cli/src/commands/identity_commands.rs`, while root command re-exports preserve existing CLI call sites.
 - `bridges/cli/src/commands.rs`: doctor service/coordination/runtime/project/peer diagnostics moved to `bridges/cli/src/commands/doctor.rs`, while root command re-exports preserve existing CLI call sites.
+- `bridges/cli/src/local_api.rs`: delivery-stage parsing, pending response records, poll response DTOs, pending insert/update/remove helpers, and daemon-facing `store_delivery_event`/`store_response` functions moved to `bridges/cli/src/local_api/pending.rs`; root re-exports preserve existing daemon and CLI call sites.
 
 ## PR checklist for future splits
 
