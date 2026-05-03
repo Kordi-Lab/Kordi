@@ -5,14 +5,12 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::bridge::DesktopBridgeManager;
 use kordi_cli::desktop_runtime::{
     DesktopChatAgentProfile, DesktopChatModelOption, DesktopChatProjectGroup,
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
     DesktopRuntimeSession,
 };
-use kordi_core::settings::Settings;
-
-use crate::bridge::DesktopBridgeManager;
 
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
@@ -34,7 +32,9 @@ use bridge_outreach::prepare_desktop_session_for_send;
 use canonical_sync::{
     desktop_state_for_canonical_sync, sync_completed_desktop_session_to_canonical,
 };
-use model_options::{authenticated_model_options_with_local_runtime, local_provider_port};
+use model_options::{
+    authenticated_model_options_with_local_runtime, ensure_provider_ready_for_send,
+};
 pub(super) use session_actions::expand_home_project_path;
 use session_actions::{
     resolve_existing_session_action_target, resolve_project_root_input,
@@ -163,47 +163,6 @@ pub struct DesktopArtifactDirectory {
 
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
-}
-
-async fn ensure_provider_ready_for_send(
-    provider: &str,
-    model: &str,
-    cwd: &std::path::Path,
-) -> Result<(), String> {
-    if provider != "lm-studio" && provider != "ollama" {
-        return Ok(());
-    }
-
-    if model.trim().is_empty() {
-        let label = if provider == "ollama" {
-            "Ollama"
-        } else {
-            "LM Studio"
-        };
-        return Err(format!("{label} selected, but no local model is selected."));
-    }
-
-    let settings = Settings::load_merged(cwd);
-    if provider == "ollama" {
-        crate::auth::ollama::ensure_server_running(local_provider_port(&settings, "ollama"))
-            .await
-            .map_err(|err| format!(
-                "Ollama selected, but its local server is not running. Open Authentication → Ollama and start the local server, or start it from Ollama. {err}"
-            ))?;
-        return Ok(());
-    }
-
-    crate::auth::lm_studio::ensure_server_running(local_provider_port(&settings, "lm-studio"))
-        .await
-        .map_err(|err| format!(
-            "LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio. {err}"
-        ))?;
-
-    crate::auth::lm_studio::ensure_model_loaded_with_best_context(model)
-        .await
-        .map_err(|err| format!(
-            "LM Studio selected, but Kordi could not load `{model}` with a larger supported context length. {err}"
-        ))
 }
 
 fn session_exists_globally(session_id: &str) -> Result<bool, String> {

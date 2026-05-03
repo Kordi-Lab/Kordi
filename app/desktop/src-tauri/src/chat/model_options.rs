@@ -126,6 +126,47 @@ pub(super) fn local_provider_base_url(
         .unwrap_or_else(|| fallback.to_string())
 }
 
+pub(super) async fn ensure_provider_ready_for_send(
+    provider: &str,
+    model: &str,
+    cwd: &std::path::Path,
+) -> Result<(), String> {
+    if provider != "lm-studio" && provider != "ollama" {
+        return Ok(());
+    }
+
+    if model.trim().is_empty() {
+        let label = if provider == "ollama" {
+            "Ollama"
+        } else {
+            "LM Studio"
+        };
+        return Err(format!("{label} selected, but no local model is selected."));
+    }
+
+    let settings = Settings::load_merged(cwd);
+    if provider == "ollama" {
+        crate::auth::ollama::ensure_server_running(local_provider_port(&settings, "ollama"))
+            .await
+            .map_err(|err| format!(
+                "Ollama selected, but its local server is not running. Open Authentication → Ollama and start the local server, or start it from Ollama. {err}"
+            ))?;
+        return Ok(());
+    }
+
+    crate::auth::lm_studio::ensure_server_running(local_provider_port(&settings, "lm-studio"))
+        .await
+        .map_err(|err| format!(
+            "LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio. {err}"
+        ))?;
+
+    crate::auth::lm_studio::ensure_model_loaded_with_best_context(model)
+        .await
+        .map_err(|err| format!(
+            "LM Studio selected, but Kordi could not load `{model}` with a larger supported context length. {err}"
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +188,12 @@ mod tests {
             local_provider_base_url(&settings, "lm-studio", LM_STUDIO_DEFAULT_BASE_URL,),
             "http://localhost:5678/v1",
         );
+    }
+    #[tokio::test]
+    async fn ensure_provider_ready_for_send_reports_empty_local_model_before_server_check() {
+        let error = ensure_provider_ready_for_send("ollama", "", std::path::Path::new("."))
+            .await
+            .expect_err("empty local model should be rejected before server checks");
+        assert!(error.contains("no local model is selected"));
     }
 }
