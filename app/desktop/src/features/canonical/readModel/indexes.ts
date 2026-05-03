@@ -273,6 +273,21 @@ function isHumanConversationActivity(message: CanonicalSessionMessage) {
     && message.messageKind !== 'agent-turn';
 }
 
+function bridgeRequestIdForMessage(message: CanonicalSessionMessage) {
+  const content = contentRecord(message.content);
+  const contentRequestId = stringValue(content.requestId)?.trim();
+  if (contentRequestId) return contentRequestId;
+
+  const sourceEventId = message.sourceEventId?.trim() ?? '';
+  return /\bbridge_req_[A-Za-z0-9_]+\b/u.exec(sourceEventId)?.[0] ?? null;
+}
+
+function bridgeRequestIdsDiffer(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
+  const leftRequestId = bridgeRequestIdForMessage(left);
+  const rightRequestId = bridgeRequestIdForMessage(right);
+  return Boolean(leftRequestId && rightRequestId && leftRequestId !== rightRequestId);
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -291,6 +306,7 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
       && message.senderRole === placeholder.senderRole
       && message.createdAtMs >= placeholder.createdAtMs
       && message.createdAtMs - placeholder.createdAtMs <= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
+      && !bridgeRequestIdsDiffer(placeholder, message)
     ));
     const hasMuchLaterHumanActivity = laterHumanActivity.some((message) => (
       message.sessionId === placeholder.sessionId

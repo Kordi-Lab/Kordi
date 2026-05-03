@@ -1434,7 +1434,7 @@ test('canonical read model hides stale bridge processing placeholders after late
     ],
     messages: [
       { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi check scholar', content: { sender: 'Me', timeLabel: '19:28' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'request' },
-      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: 'My Kordi', timeLabel: '19:28', kind: 'session-relay', deliveryState: 'read', requestId: 'bridge_req_processing' }, status: 'read', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'processing' },
+      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: 'My Kordi', timeLabel: '19:28', kind: 'session-relay', deliveryState: 'read', requestId: 'bridge_req_final' }, status: 'read', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'processing' },
       { id: 'msg:final', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: finalText, content: { sender: 'My Kordi', timeLabel: '19:29', kind: 'session-relay', deliveryState: 'responded', requestId: 'bridge_req_final' }, status: 'complete', sequenceNum: 3, createdAtMs: 10_000, updatedAtMs: 10_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'final' },
     ],
     delegatedExchanges: [],
@@ -1538,6 +1538,53 @@ test('canonical read model shows fresh bridge-parent processing placeholders for
 
   assert.equal(messages.some((message) => message.turn?.status === 'processing'), true);
   assert.equal(messages.find((message) => message.turn?.status === 'processing')?.turn?.message, 'Processing…');
+});
+
+test('canonical read model keeps later active processing placeholder when an earlier same-agent request completes', () => {
+  const sessionId = 'session:group:parallel-processing-same-agent';
+  const now = Date.now();
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:peer', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:first-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeersKordi check status line', content: { sender: 'Me', timeLabel: '13:12', direction: 'outbound', deliveryState: 'responded', requestId: 'bridge_req_first' }, status: 'complete', sequenceNum: 1, createdAtMs: now - 30_000, updatedAtMs: now - 30_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'first-request' },
+      { id: 'msg:first-processing', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Peer's Kordi", timeLabel: '13:12', kind: 'session-message', direction: 'inbound-response', deliveryState: 'processing', requestId: 'bridge_req_first' }, status: 'processing', sequenceNum: 2, createdAtMs: now - 29_000, updatedAtMs: now - 29_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'first-processing' },
+      { id: 'msg:second-request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@PeersKordi also check context window fields', content: { sender: 'Peer', timeLabel: '13:12', direction: 'inbound', deliveryState: 'delivered', requestId: 'bridge_req_second' }, status: 'delivered', sequenceNum: 3, createdAtMs: now - 10_000, updatedAtMs: now - 10_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'second-request' },
+      { id: 'msg:second-processing', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Peer's Kordi", timeLabel: '13:12', kind: 'session-message', direction: 'inbound-response', deliveryState: 'processing', requestId: 'bridge_req_second' }, status: 'processing', sequenceNum: 4, createdAtMs: now - 9_000, updatedAtMs: now - 9_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'second-processing' },
+      { id: 'msg:first-final', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'The status line docs describe how to customize the footer.', content: { sender: "Peer's Kordi", timeLabel: '13:13', kind: 'session-message', direction: 'inbound-response', deliveryState: 'responded', requestId: 'bridge_req_first' }, status: 'complete', sequenceNum: 5, createdAtMs: now - 3_000, updatedAtMs: now - 3_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'first-final' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+  const processingTurns = messages.filter((message) => message.turn?.status === 'processing');
+
+  assert.equal(processingTurns.length, 1);
+  assert.equal(processingTurns[0]?.turn?.id, 'canonical-turn:msg:second-processing');
 });
 
 test('canonical read model suppresses stale raw bridge-parent processing placeholders', () => {
