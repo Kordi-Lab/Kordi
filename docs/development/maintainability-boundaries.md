@@ -80,7 +80,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Bridge network | `app/desktop/src-tauri/src/bridge/network.rs` | Defer until relay/realtime tests are stable. Split client construction from request policy. |
 | Bridge mailbox | `app/desktop/src-tauri/src/bridge/mailbox.rs` | Defer broad split. Extract mailbox payload parsing and scheduling helpers first. |
 | Frontend app model | `app/desktop/src/app/useKordiAppModel.ts` | Defer broad split. Continue extracting feature selectors/effects as adjacent work touches them. |
-| Transcript UI | `app/desktop/src/kordi-app/components/transcript.tsx` | Defer broad split. Next safe slice: isolate attachment/markdown/tool rows with snapshot-style rendering tests. |
+| Transcript UI | `app/desktop/src/kordi-app/components/transcript.tsx` | Attachment previews have been isolated. Next safe slice: isolate markdown/tool rows with snapshot-style rendering tests. |
 | Workspace sidebar | `app/desktop/src/pages/WorkspaceSidebar.tsx` | Defer broad split. Extract participant-space row groups and menu actions separately. |
 | Model control centers | `app/desktop/src/kordi-app/auth/LmStudioModelControlCenter.tsx`, `app/desktop/src/kordi-app/auth/OllamaModelControlCenter.tsx` | Defer broad split. Split provider API/state-machine helpers before presentational components. |
 | Chats page | `app/desktop/src/pages/ChatsPage.tsx` | Defer broad split. Extract composer footer/routing controls when behavior changes require touching them. |
@@ -104,6 +104,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `app/desktop/src-tauri/src/canonical_sessions/tests.rs`: desktop sync, direct message sync, group message sync, group agent request, and group agent response scenarios moved to child modules under `app/desktop/src-tauri/src/canonical_sessions/tests/`, leaving common helpers and core canonical session tests in the root test module.
 - `agent/crates/cli/src/turn_runner/tests.rs`: provider-failure, tool-execution, and compaction scenarios moved to child modules under `agent/crates/cli/src/turn_runner/tests/`, leaving shared fake providers/tools in the root test module.
 - `agent/crates/cli/src/extensions/tests.rs`: parsing/result, package-resource, and command/runtime scenarios moved to child modules under `agent/crates/cli/src/extensions/tests/`, leaving shared imports and `node_available()` in the root test module.
+- `app/desktop/src/kordi-app/components/transcript.tsx`: attachment preview URL derivation, native open/download actions, image/file cards, and `AttachmentPreview` moved to `app/desktop/src/kordi-app/components/transcriptAttachments.tsx`.
 
 ## PR checklist for future splits
 
