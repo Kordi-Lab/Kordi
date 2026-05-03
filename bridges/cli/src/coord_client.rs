@@ -54,6 +54,39 @@ pub struct MemberInfo {
     pub role: Option<String>,
 }
 
+/// Ackable mailbox entry returned by `/v1/mailbox/poll`.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MailboxPollEntry {
+    #[serde(rename = "messageId")]
+    pub message_id: String,
+    pub from: String,
+    pub blob: String,
+    #[serde(rename = "projectId", skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    pub timestamp: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MailboxPollResp {
+    pub entries: Vec<MailboxPollEntry>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize)]
+struct MailboxPollReq<'a> {
+    after: Option<&'a str>,
+    limit: Option<usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize)]
+struct MailboxAckReq<'a> {
+    #[serde(rename = "messageIds")]
+    message_ids: &'a [String],
+}
+
 /// Client for the Bridges coordination server API.
 #[derive(Debug, Clone)]
 pub struct CoordClient {
@@ -271,6 +304,51 @@ impl CoordClient {
         resp.json::<Vec<serde_json::Value>>()
             .await
             .map_err(|e| format!("parse mailbox: {}", e))
+    }
+
+    /// Non-destructively poll pending messages from the server mailbox.
+    #[allow(dead_code)]
+    pub async fn poll_mailbox(
+        &self,
+        after: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<MailboxPollResp, String> {
+        let url = format!("{}/v1/mailbox/poll", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(&MailboxPollReq { after, limit })
+            .send()
+            .await
+            .map_err(|e| format!("poll_mailbox: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("poll_mailbox HTTP {}", resp.status()));
+        }
+
+        resp.json::<MailboxPollResp>()
+            .await
+            .map_err(|e| format!("parse mailbox poll: {}", e))
+    }
+
+    /// Acknowledge mailbox messages after they are durably persisted locally.
+    #[allow(dead_code)]
+    pub async fn ack_mailbox(&self, message_ids: &[String]) -> Result<(), String> {
+        let url = format!("{}/v1/mailbox/ack", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(&MailboxAckReq { message_ids })
+            .send()
+            .await
+            .map_err(|e| format!("ack_mailbox: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("ack_mailbox HTTP {}", resp.status()));
+        }
+        Ok(())
     }
 
     /// Relay an opaque blob to a target node via the coordination server.

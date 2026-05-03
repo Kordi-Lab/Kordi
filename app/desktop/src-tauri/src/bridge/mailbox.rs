@@ -2,6 +2,11 @@ use serde_json::Value;
 
 use crate::chat::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting, DesktopChatManager};
 
+use super::agent_jobs::{
+    bridge_agent_queue_records_for_event, job_status_update_for_run_result, select_startable_jobs,
+    AgentJobRunResult, QueuedBridgeAgentJob, RunningBridgeAgentJob,
+};
+
 use super::constants::{
     is_agent_like_runtime, BRIDGE_DELIVERY_STATE_DELIVERED, BRIDGE_DELIVERY_STATE_RESPONDED,
     BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
@@ -17,11 +22,17 @@ use super::events::{
 };
 use super::outreach::mark_outreach_status;
 use super::{
-    append_conversation_message_to_storage, bridge_conversation_id, bridge_request_is_cancelled,
-    decrypt_bridge_payload_for_host, fetch_mailbox, load_bridge_store, load_conversation_store,
-    note_peer_heartbeat_in_storage, note_peer_typing_in_storage, parse_mailbox_payload,
-    relay_plaintext_message, update_message_delivery_state_in_storage, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    ack_mailbox_v2, append_conversation_message_to_storage, bridge_conversation_id,
+    bridge_request_is_cancelled, decrypt_bridge_payload_for_host, fetch_mailbox,
+    list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
+    load_bridge_inbox_event_from_storage, load_bridge_store, load_conversation_store,
+    mark_bridge_agent_job_retry_wait_in_storage, mark_bridge_agent_job_running_in_storage,
+    mark_bridge_agent_job_terminal_in_storage, note_peer_heartbeat_in_storage,
+    note_peer_typing_in_storage, now_ms, parse_mailbox_payload, poll_mailbox_v2,
+    record_bridge_inbox_event_and_agent_job, relay_plaintext_message,
+    update_message_delivery_state_in_storage, AckedMailboxEntry, BridgeAgentJobRecord,
+    BridgeInboxEventRecord, DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState,
+    DesktopBridgeStore,
 };
 
 #[derive(Clone)]
@@ -247,6 +258,542 @@ fn direction_for_inbound_event(event: &ParsedMailboxEvent) -> &'static str {
     } else {
         BRIDGE_MESSAGE_DIRECTION_INBOUND
     }
+}
+
+fn mailbox_value_for_acked_entry(entry: &AckedMailboxEntry) -> Value {
+    serde_json::to_value(entry).unwrap_or_else(|_| {
+        serde_json::json!({
+            "messageId": entry.message_id,
+            "from": entry.from,
+            "blob": entry.blob,
+            "projectId": entry.project_id,
+            "timestamp": entry.timestamp,
+        })
+    })
+}
+
+async fn enqueue_agent_ask_for_durable_processing(
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+    server_message_id: Option<&str>,
+) -> Result<bool, String> {
+    let text = mailbox_payload_text(&event.payload);
+    let attachments = mailbox_payload_attachments(&event.payload)?;
+    if text.trim().is_empty() && attachments.is_empty() {
+        return Ok(false);
+    }
+
+    let now = now_ms();
+    let (inbox, job) =
+        bridge_agent_queue_records_for_event(&target.host.id, event, server_message_id, now);
+    record_bridge_inbox_event_and_agent_job(&inbox, &job)?;
+
+    let peer_display_name = event.from_display_name.clone();
+    let peer_owner_name = event.from_owner_name.clone();
+    let peer_runtime = event
+        .from_runtime
+        .clone()
+        .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
+    let sender_name = sender_name_for_runtime(
+        &peer_runtime,
+        peer_display_name.as_deref(),
+        peer_owner_name.as_deref(),
+        &event.from_node_id,
+    );
+
+    append_conversation_message_to_storage(
+        &target.host.id,
+        &event.from_node_id,
+        peer_display_name.clone(),
+        peer_owner_name.clone(),
+        peer_runtime.clone(),
+        event.project_id.clone(),
+        None,
+        Some(identity_snapshot_for_event(
+            &target.host,
+            event,
+            &peer_runtime,
+        )),
+        outreach_metadata_for_event(&target.host, event, &peer_runtime),
+        BRIDGE_MESSAGE_DIRECTION_INBOUND,
+        Some(sender_name),
+        text,
+        event.request_id.clone(),
+        Some("processing".to_string()),
+        attachments,
+        true,
+    )?;
+
+    if let Some(request_id) = event.request_id.as_deref() {
+        let processing = serde_json::json!({
+            "from": target.host.node_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+            "payload": { "requestId": request_id, "state": "processing" },
+        });
+        let _ = relay_plaintext_message(
+            &target.host,
+            &event.from_node_id,
+            event.project_id.as_deref(),
+            &processing,
+        )
+        .await;
+    }
+
+    let response_sender_name = sender_name_for_runtime(
+        &target.sender_runtime,
+        target.host.display_name.as_deref(),
+        target.host.owner.as_deref(),
+        &target.host.node_id,
+    );
+    append_conversation_message_to_storage(
+        &target.host.id,
+        &event.from_node_id,
+        peer_display_name,
+        peer_owner_name,
+        peer_runtime.clone(),
+        event.project_id.clone(),
+        None,
+        Some(identity_snapshot_for_event(
+            &target.host,
+            event,
+            &peer_runtime,
+        )),
+        outreach_metadata_for_event(&target.host, event, &peer_runtime),
+        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+        Some(response_sender_name),
+        "processing...".to_string(),
+        event.request_id.clone(),
+        Some("processing".to_string()),
+        Vec::new(),
+        false,
+    )?;
+
+    if event_targets_group_session(event) {
+        let response = serde_json::json!({
+            "from": target.host.node_id,
+            "fromDisplayName": target.host.display_name,
+            "fromOwnerName": target.host.owner,
+            "fromRuntime": target.sender_runtime,
+            "fromHumanId": target.host.human_id,
+            "fromAgentId": target.sender_agent_id,
+            "projectId": event.project_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+            "requestId": event.request_id,
+            "payload": bridge_response_payload(event, "processing...", false),
+        });
+        let _ = relay_plaintext_message(
+            &target.host,
+            &event.from_node_id,
+            event.project_id.as_deref(),
+            &response,
+        )
+        .await;
+    }
+    fanout_group_agent_response(target, event, "processing...", false).await;
+
+    Ok(true)
+}
+
+fn should_fallback_to_legacy_mailbox_fetch(poll_error: &str) -> bool {
+    poll_error.contains("HTTP 404")
+        || poll_error.contains("HTTP 405")
+        || poll_error.contains("HTTP 501")
+}
+
+async fn process_acked_mailbox_entries(
+    target: &LocalBridgeMailboxTarget,
+    entries: Vec<AckedMailboxEntry>,
+) -> Result<bool, String> {
+    let mut storage_changed = false;
+    let mut ack_ids = Vec::new();
+
+    for entry in entries {
+        let item = mailbox_value_for_acked_entry(&entry);
+        let Some(event) = parse_mailbox_event(&target.host, &item) else {
+            continue;
+        };
+
+        if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
+            if enqueue_agent_ask_for_durable_processing(target, &event, Some(&entry.message_id))
+                .await?
+            {
+                storage_changed = true;
+            }
+            ack_ids.push(entry.message_id);
+            continue;
+        }
+
+        apply_bridge_event_to_storage(&target.host, event, true).await?;
+        storage_changed = true;
+        ack_ids.push(entry.message_id);
+    }
+
+    if !ack_ids.is_empty() {
+        ack_mailbox_v2(&target.host.coordination, &target.host.api_key, &ack_ids).await?;
+    }
+
+    Ok(storage_changed)
+}
+
+fn queued_job_for_scheduler(job: &BridgeAgentJobRecord) -> QueuedBridgeAgentJob {
+    QueuedBridgeAgentJob {
+        id: job.id.clone(),
+        requesting_user_key: job.requesting_user_key.clone(),
+        chat_queue_key: job.chat_queue_key.clone(),
+        created_at_ms: job.created_at_ms,
+        next_retry_at_ms: job.next_retry_at_ms,
+    }
+}
+
+fn running_job_for_scheduler(job: &BridgeAgentJobRecord) -> RunningBridgeAgentJob {
+    RunningBridgeAgentJob {
+        id: job.id.clone(),
+        requesting_user_key: job.requesting_user_key.clone(),
+        chat_queue_key: job.chat_queue_key.clone(),
+    }
+}
+
+fn parse_persisted_inbox_event(record: &BridgeInboxEventRecord) -> Option<ParsedMailboxEvent> {
+    serde_json::from_str::<Value>(&record.payload_json)
+        .ok()
+        .and_then(|value| parse_bridge_event_payload(&value))
+}
+
+fn local_agent_target_for_inbox(
+    store: &DesktopBridgeStore,
+    inbox: &BridgeInboxEventRecord,
+) -> Option<LocalBridgeMailboxTarget> {
+    mailbox_targets(store).into_iter().find(|target| {
+        target.should_process_agent_asks
+            && target.host.id == inbox.host_id
+            && !target.host.node_id.trim().is_empty()
+            && !target.host.api_key.trim().is_empty()
+    })
+}
+
+fn is_retryable_agent_start_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("busy")
+        || normalized.contains("temporarily")
+        || normalized.contains("unavailable")
+        || normalized.contains("database is locked")
+        || normalized.contains("resource temporarily")
+        || normalized.contains("not running")
+}
+
+fn retry_bridge_agent_job(job: &BridgeAgentJobRecord, error: String) -> Result<(), String> {
+    let now = now_ms();
+    let update = job_status_update_for_run_result(
+        AgentJobRunResult::RetryableStartFailure(error),
+        now,
+        job.retry_count,
+    );
+    let retry_at = update
+        .next_retry_at_ms
+        .ok_or_else(|| "retryable Bridge agent job missing retry timestamp".to_string())?;
+    mark_bridge_agent_job_retry_wait_in_storage(&job.id, retry_at, update.last_error.as_deref())
+}
+
+fn terminal_bridge_agent_job(
+    job: &BridgeAgentJobRecord,
+    result: AgentJobRunResult,
+) -> Result<(), String> {
+    let update = job_status_update_for_run_result(result, now_ms(), job.retry_count);
+    let completed_at_ms = update
+        .completed_at_ms
+        .ok_or_else(|| "terminal Bridge agent job missing completion timestamp".to_string())?;
+    mark_bridge_agent_job_terminal_in_storage(
+        &job.id,
+        &update.status,
+        completed_at_ms,
+        update.last_error.as_deref(),
+    )
+}
+
+async fn execute_persisted_agent_job(
+    chat_manager: DesktopChatManager,
+    target: LocalBridgeMailboxTarget,
+    event: ParsedMailboxEvent,
+    job: BridgeAgentJobRecord,
+) -> Result<(), String> {
+    let attachments = mailbox_payload_attachments(&event.payload)?;
+    let attachment_paths = attachments
+        .iter()
+        .filter_map(|attachment| attachment.local_path.clone())
+        .collect::<Vec<_>>();
+    let agent_prompt_text = mailbox_payload_agent_prompt_text(&event.payload);
+    let peer_display_name = event.from_display_name.clone();
+    let peer_owner_name = event.from_owner_name.clone();
+    let peer_runtime = event
+        .from_runtime
+        .clone()
+        .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
+    let response_sender_name = sender_name_for_runtime(
+        &target.sender_runtime,
+        target.host.display_name.as_deref(),
+        target.host.owner.as_deref(),
+        &target.host.node_id,
+    );
+
+    let agent_result = run_bridge_agent_prompt(
+        &chat_manager,
+        &target.host.node_id,
+        &event.from_node_id,
+        agent_prompt_text,
+        attachment_paths,
+        target.model_routing.clone(),
+    )
+    .await;
+
+    if event
+        .request_id
+        .as_deref()
+        .is_some_and(bridge_request_is_cancelled)
+    {
+        append_conversation_message_to_storage(
+            &target.host.id,
+            &event.from_node_id,
+            peer_display_name,
+            peer_owner_name,
+            peer_runtime.clone(),
+            event.project_id.clone(),
+            None,
+            Some(identity_snapshot_for_event(
+                &target.host,
+                &event,
+                &peer_runtime,
+            )),
+            outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+            BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+            Some(response_sender_name),
+            "Cancelled".to_string(),
+            event.request_id.clone(),
+            Some("cancelled".to_string()),
+            Vec::new(),
+            false,
+        )?;
+        mark_bridge_agent_job_terminal_in_storage(&job.id, "cancelled", now_ms(), None)?;
+        return Ok(());
+    }
+
+    match agent_result {
+        Ok(final_snapshot) if final_snapshot.succeeded => {
+            let assistant_text =
+                sanitize_agent_response_for_event(&event, &final_snapshot.assistant_text);
+            if !assistant_text.trim().is_empty() {
+                append_conversation_message_to_storage(
+                    &target.host.id,
+                    &event.from_node_id,
+                    peer_display_name.clone(),
+                    peer_owner_name.clone(),
+                    peer_runtime.clone(),
+                    event.project_id.clone(),
+                    None,
+                    Some(identity_snapshot_for_event(
+                        &target.host,
+                        &event,
+                        &peer_runtime,
+                    )),
+                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+                    Some(response_sender_name.clone()),
+                    assistant_text.clone(),
+                    event.request_id.clone(),
+                    Some(BRIDGE_DELIVERY_STATE_RESPONDED.to_string()),
+                    Vec::new(),
+                    false,
+                )?;
+                let response = serde_json::json!({
+                    "from": target.host.node_id,
+                    "fromDisplayName": target.host.display_name,
+                    "fromOwnerName": target.host.owner,
+                    "fromRuntime": target.sender_runtime,
+                    "fromHumanId": target.host.human_id,
+                    "fromAgentId": target.sender_agent_id,
+                    "projectId": event.project_id,
+                    "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+                    "requestId": event.request_id,
+                    "payload": bridge_response_payload(&event, &assistant_text, true),
+                });
+                let _ = relay_plaintext_message(
+                    &target.host,
+                    &event.from_node_id,
+                    event.project_id.as_deref(),
+                    &response,
+                )
+                .await;
+                fanout_group_agent_response(&target, &event, &assistant_text, true).await;
+            }
+            if let Some(request_id) = event.request_id.as_deref() {
+                update_message_delivery_state_in_storage(
+                    request_id,
+                    BRIDGE_DELIVERY_STATE_RESPONDED,
+                )?;
+                let responded = serde_json::json!({
+                    "from": target.host.node_id,
+                    "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+                    "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_RESPONDED },
+                });
+                let _ = relay_plaintext_message(
+                    &target.host,
+                    &event.from_node_id,
+                    event.project_id.as_deref(),
+                    &responded,
+                )
+                .await;
+            }
+            terminal_bridge_agent_job(&job, AgentJobRunResult::Responded)?;
+        }
+        Ok(final_snapshot) => {
+            let error = final_snapshot
+                .error
+                .unwrap_or_else(|| final_snapshot.message.clone());
+            append_conversation_message_to_storage(
+                &target.host.id,
+                &event.from_node_id,
+                peer_display_name.clone(),
+                peer_owner_name.clone(),
+                peer_runtime.clone(),
+                event.project_id.clone(),
+                None,
+                Some(identity_snapshot_for_event(
+                    &target.host,
+                    &event,
+                    &peer_runtime,
+                )),
+                outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+                Some(response_sender_name.clone()),
+                format!("Failed: {error}"),
+                event.request_id.clone(),
+                Some("processing_failed".to_string()),
+                Vec::new(),
+                false,
+            )?;
+            if let Some(request_id) = event.request_id.as_deref() {
+                update_message_delivery_state_in_storage(request_id, "processing_failed")?;
+                let failed = serde_json::json!({
+                    "from": target.host.node_id,
+                    "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
+                    "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
+                });
+                let _ = relay_plaintext_message(
+                    &target.host,
+                    &event.from_node_id,
+                    event.project_id.as_deref(),
+                    &failed,
+                )
+                .await;
+            }
+            terminal_bridge_agent_job(&job, AgentJobRunResult::TerminalFailure(error))?;
+        }
+        Err(error) if is_retryable_agent_start_error(&error) => {
+            retry_bridge_agent_job(&job, error)?;
+        }
+        Err(error) => {
+            append_conversation_message_to_storage(
+                &target.host.id,
+                &event.from_node_id,
+                peer_display_name.clone(),
+                peer_owner_name.clone(),
+                peer_runtime.clone(),
+                event.project_id.clone(),
+                None,
+                Some(identity_snapshot_for_event(
+                    &target.host,
+                    &event,
+                    &peer_runtime,
+                )),
+                outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+                Some(response_sender_name.clone()),
+                format!("Failed: {error}"),
+                event.request_id.clone(),
+                Some("processing_failed".to_string()),
+                Vec::new(),
+                false,
+            )?;
+            if let Some(request_id) = event.request_id.as_deref() {
+                update_message_delivery_state_in_storage(request_id, "processing_failed")?;
+            }
+            terminal_bridge_agent_job(&job, AgentJobRunResult::TerminalFailure(error))?;
+        }
+    }
+
+    Ok(())
+}
+
+pub(in crate::bridge) async fn run_queued_agent_jobs_once(
+    chat_manager: &DesktopChatManager,
+    store: &DesktopBridgeStore,
+) -> Result<bool, String> {
+    let now = now_ms();
+    let queued_records = list_runnable_bridge_agent_jobs_from_storage(now, 128)?;
+    if queued_records.is_empty() {
+        return Ok(false);
+    }
+    let running_records = list_running_bridge_agent_jobs_from_storage()?;
+    let queued = queued_records
+        .iter()
+        .map(queued_job_for_scheduler)
+        .collect::<Vec<_>>();
+    let running = running_records
+        .iter()
+        .map(running_job_for_scheduler)
+        .collect::<Vec<_>>();
+    let selected = select_startable_jobs(&queued, &running, now);
+    if selected.is_empty() {
+        return Ok(false);
+    }
+
+    let mut changed_any = false;
+    for job_id in selected {
+        let Some(job) = queued_records.iter().find(|job| job.id == job_id).cloned() else {
+            continue;
+        };
+        let Some(inbox) = load_bridge_inbox_event_from_storage(&job.inbox_event_id)? else {
+            terminal_bridge_agent_job(
+                &job,
+                AgentJobRunResult::TerminalFailure(
+                    "Missing durable Bridge inbox event".to_string(),
+                ),
+            )?;
+            changed_any = true;
+            continue;
+        };
+        let Some(event) = parse_persisted_inbox_event(&inbox) else {
+            terminal_bridge_agent_job(
+                &job,
+                AgentJobRunResult::TerminalFailure(
+                    "Invalid durable Bridge inbox event".to_string(),
+                ),
+            )?;
+            changed_any = true;
+            continue;
+        };
+        let Some(target) = local_agent_target_for_inbox(store, &inbox) else {
+            retry_bridge_agent_job(&job, "Bridge agent target is not available".to_string())?;
+            changed_any = true;
+            continue;
+        };
+
+        mark_bridge_agent_job_running_in_storage(&job.id, now_ms())?;
+        let chat_manager = chat_manager.clone();
+        let job_for_error = job.clone();
+        tokio::spawn(async move {
+            if let Err(error) = execute_persisted_agent_job(chat_manager, target, event, job).await
+            {
+                eprintln!("Bridge agent job failed: {error}");
+                let _ = terminal_bridge_agent_job(
+                    &job_for_error,
+                    AgentJobRunResult::TerminalFailure(error),
+                );
+            }
+        });
+        changed_any = true;
+    }
+
+    Ok(changed_any)
 }
 
 fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> {
@@ -512,6 +1059,27 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     let mut storage_changed = false;
 
     for target in mailbox_targets(&store) {
+        match poll_mailbox_v2(
+            &target.host.coordination,
+            &target.host.api_key,
+            None,
+            Some(100),
+        )
+        .await
+        {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    continue;
+                }
+                if process_acked_mailbox_entries(&target, entries).await? {
+                    storage_changed = true;
+                }
+                continue;
+            }
+            Err(error) if should_fallback_to_legacy_mailbox_fetch(&error) => {}
+            Err(_) => continue,
+        }
+
         let mailbox = match fetch_mailbox(&target.host.coordination, &target.host.api_key).await {
             Ok(mailbox) => mailbox,
             Err(_) => continue,
@@ -526,325 +1094,19 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
             };
 
             if target.should_process_agent_asks && event.message_type == BRIDGE_MESSAGE_TYPE_ASK {
-                let text = mailbox_payload_text(&event.payload);
-                let attachments = mailbox_payload_attachments(&event.payload)?;
-                let attachment_paths = attachments
-                    .iter()
-                    .filter_map(|attachment| attachment.local_path.clone())
-                    .collect::<Vec<_>>();
-                let agent_prompt_text = mailbox_payload_agent_prompt_text(&event.payload);
-                if text.trim().is_empty() && attachments.is_empty() {
-                    continue;
+                if enqueue_agent_ask_for_durable_processing(&target, &event, None).await? {
+                    storage_changed = true;
                 }
-
-                let peer_display_name = event.from_display_name.clone();
-                let peer_owner_name = event.from_owner_name.clone();
-                let peer_runtime = event
-                    .from_runtime
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_BRIDGE_RUNTIME.to_string());
-                let sender_name = sender_name_for_runtime(
-                    &peer_runtime,
-                    peer_display_name.as_deref(),
-                    peer_owner_name.as_deref(),
-                    &event.from_node_id,
-                );
-
-                append_conversation_message_to_storage(
-                    &target.host.id,
-                    &event.from_node_id,
-                    peer_display_name.clone(),
-                    peer_owner_name.clone(),
-                    peer_runtime.clone(),
-                    event.project_id.clone(),
-                    None,
-                    Some(identity_snapshot_for_event(
-                        &target.host,
-                        &event,
-                        &peer_runtime,
-                    )),
-                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                    BRIDGE_MESSAGE_DIRECTION_INBOUND,
-                    Some(sender_name),
-                    text.clone(),
-                    event.request_id.clone(),
-                    Some("processing".to_string()),
-                    attachments.clone(),
-                    true,
-                )?;
-
-                if let Some(request_id) = event.request_id.as_deref() {
-                    let processing = serde_json::json!({
-                        "from": target.host.node_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                        "payload": { "requestId": request_id, "state": "processing" },
-                    });
-                    let _ = relay_plaintext_message(
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &processing,
-                    )
-                    .await;
-                }
-
-                let response_sender_name = sender_name_for_runtime(
-                    &target.sender_runtime,
-                    target.host.display_name.as_deref(),
-                    target.host.owner.as_deref(),
-                    &target.host.node_id,
-                );
-                append_conversation_message_to_storage(
-                    &target.host.id,
-                    &event.from_node_id,
-                    peer_display_name.clone(),
-                    peer_owner_name.clone(),
-                    peer_runtime.clone(),
-                    event.project_id.clone(),
-                    None,
-                    Some(identity_snapshot_for_event(
-                        &target.host,
-                        &event,
-                        &peer_runtime,
-                    )),
-                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                    BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                    Some(response_sender_name.clone()),
-                    "processing...".to_string(),
-                    event.request_id.clone(),
-                    Some("processing".to_string()),
-                    Vec::new(),
-                    false,
-                )?;
-                storage_changed = true;
-                if event_targets_group_session(&event) {
-                    let response = serde_json::json!({
-                        "from": target.host.node_id,
-                        "fromDisplayName": target.host.display_name,
-                        "fromOwnerName": target.host.owner,
-                        "fromRuntime": target.sender_runtime,
-                        "fromHumanId": target.host.human_id,
-                        "fromAgentId": target.sender_agent_id,
-                        "projectId": event.project_id,
-                        "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
-                        "requestId": event.request_id,
-                        "payload": bridge_response_payload(&event, "processing...", false),
-                    });
-                    let _ = relay_plaintext_message(
-                        &target.host,
-                        &event.from_node_id,
-                        event.project_id.as_deref(),
-                        &response,
-                    )
-                    .await;
-                }
-                fanout_group_agent_response(&target, &event, "processing...", false).await;
-
-                let agent_result = run_bridge_agent_prompt(
-                    chat_manager,
-                    &target.host.node_id,
-                    &event.from_node_id,
-                    agent_prompt_text,
-                    attachment_paths,
-                    target.model_routing.clone(),
-                )
-                .await;
-
-                if event
-                    .request_id
-                    .as_deref()
-                    .is_some_and(bridge_request_is_cancelled)
-                {
-                    append_conversation_message_to_storage(
-                        &target.host.id,
-                        &event.from_node_id,
-                        peer_display_name.clone(),
-                        peer_owner_name.clone(),
-                        peer_runtime.clone(),
-                        event.project_id.clone(),
-                        None,
-                        Some(identity_snapshot_for_event(
-                            &target.host,
-                            &event,
-                            &peer_runtime,
-                        )),
-                        outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                        BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                        Some(response_sender_name.clone()),
-                        "Cancelled".to_string(),
-                        event.request_id.clone(),
-                        Some("cancelled".to_string()),
-                        Vec::new(),
-                        false,
-                    )?;
-                    continue;
-                }
-
-                match agent_result {
-                    Ok(final_snapshot) if final_snapshot.succeeded => {
-                        let assistant_text = sanitize_agent_response_for_event(
-                            &event,
-                            &final_snapshot.assistant_text,
-                        );
-                        if !assistant_text.trim().is_empty() {
-                            append_conversation_message_to_storage(
-                                &target.host.id,
-                                &event.from_node_id,
-                                peer_display_name.clone(),
-                                peer_owner_name.clone(),
-                                peer_runtime.clone(),
-                                event.project_id.clone(),
-                                None,
-                                Some(identity_snapshot_for_event(
-                                    &target.host,
-                                    &event,
-                                    &peer_runtime,
-                                )),
-                                outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                                BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                                Some(response_sender_name.clone()),
-                                assistant_text.clone(),
-                                event.request_id.clone(),
-                                Some(BRIDGE_DELIVERY_STATE_RESPONDED.to_string()),
-                                Vec::new(),
-                                false,
-                            )?;
-                            let response = serde_json::json!({
-                                "from": target.host.node_id,
-                                "fromDisplayName": target.host.display_name,
-                                "fromOwnerName": target.host.owner,
-                                "fromRuntime": target.sender_runtime,
-                                "fromHumanId": target.host.human_id,
-                                "fromAgentId": target.sender_agent_id,
-                                "projectId": event.project_id,
-                                "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
-                                "requestId": event.request_id,
-                                "payload": bridge_response_payload(&event, &assistant_text, true),
-                            });
-                            let _ = relay_plaintext_message(
-                                &target.host,
-                                &event.from_node_id,
-                                event.project_id.as_deref(),
-                                &response,
-                            )
-                            .await;
-                            fanout_group_agent_response(&target, &event, &assistant_text, true)
-                                .await;
-                        }
-                        if let Some(request_id) = event.request_id.as_deref() {
-                            update_message_delivery_state_in_storage(
-                                request_id,
-                                BRIDGE_DELIVERY_STATE_RESPONDED,
-                            )?;
-                            let responded = serde_json::json!({
-                                "from": target.host.node_id,
-                                "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                                "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_RESPONDED },
-                            });
-                            let _ = relay_plaintext_message(
-                                &target.host,
-                                &event.from_node_id,
-                                event.project_id.as_deref(),
-                                &responded,
-                            )
-                            .await;
-                        }
-                    }
-                    Ok(final_snapshot) => {
-                        let error = final_snapshot
-                            .error
-                            .unwrap_or_else(|| final_snapshot.message.clone());
-                        append_conversation_message_to_storage(
-                            &target.host.id,
-                            &event.from_node_id,
-                            peer_display_name.clone(),
-                            peer_owner_name.clone(),
-                            peer_runtime.clone(),
-                            event.project_id.clone(),
-                            None,
-                            Some(identity_snapshot_for_event(
-                                &target.host,
-                                &event,
-                                &peer_runtime,
-                            )),
-                            outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                            BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                            Some(response_sender_name.clone()),
-                            format!("Failed: {error}"),
-                            event.request_id.clone(),
-                            Some("processing_failed".to_string()),
-                            Vec::new(),
-                            false,
-                        )?;
-                        if let Some(request_id) = event.request_id.as_deref() {
-                            update_message_delivery_state_in_storage(
-                                request_id,
-                                "processing_failed",
-                            )?;
-                            let failed = serde_json::json!({
-                                "from": target.host.node_id,
-                                "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                                "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
-                            });
-                            let _ = relay_plaintext_message(
-                                &target.host,
-                                &event.from_node_id,
-                                event.project_id.as_deref(),
-                                &failed,
-                            )
-                            .await;
-                        }
-                    }
-                    Err(error) => {
-                        append_conversation_message_to_storage(
-                            &target.host.id,
-                            &event.from_node_id,
-                            peer_display_name.clone(),
-                            peer_owner_name.clone(),
-                            peer_runtime.clone(),
-                            event.project_id.clone(),
-                            None,
-                            Some(identity_snapshot_for_event(
-                                &target.host,
-                                &event,
-                                &peer_runtime,
-                            )),
-                            outreach_metadata_for_event(&target.host, &event, &peer_runtime),
-                            BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
-                            Some(response_sender_name.clone()),
-                            format!("Failed: {error}"),
-                            event.request_id.clone(),
-                            Some("processing_failed".to_string()),
-                            Vec::new(),
-                            false,
-                        )?;
-                        if let Some(request_id) = event.request_id.as_deref() {
-                            update_message_delivery_state_in_storage(
-                                request_id,
-                                "processing_failed",
-                            )?;
-                            let failed = serde_json::json!({
-                                "from": target.host.node_id,
-                                "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
-                                "payload": { "requestId": request_id, "state": "processing_failed", "error": error },
-                            });
-                            let _ = relay_plaintext_message(
-                                &target.host,
-                                &event.from_node_id,
-                                event.project_id.as_deref(),
-                                &failed,
-                            )
-                            .await;
-                        }
-                    }
-                }
-
                 continue;
             }
 
             apply_bridge_event_to_storage(&target.host, event, true).await?;
             storage_changed = true;
         }
+    }
+
+    if run_queued_agent_jobs_once(chat_manager, &store).await? {
+        storage_changed = true;
     }
 
     rebuild_state_after_mailbox_poll(manager, store, load_conversation_store(), storage_changed)
@@ -856,6 +1118,29 @@ mod tests {
     use super::*;
     use crate::bridge::constants::BRIDGE_MESSAGE_TYPE_RAW;
     use crate::bridge::DesktopBridgeAgentConfig;
+
+    fn test_mailbox_target() -> LocalBridgeMailboxTarget {
+        LocalBridgeMailboxTarget {
+            host: DesktopBridgeHostConfig {
+                id: "bridge-host".to_string(),
+                coordination: "https://bridge.test".to_string(),
+                node_id: "local-agent-node".to_string(),
+                api_key: "api-key".to_string(),
+                display_name: Some("Local Kordi".to_string()),
+                owner: Some("Local".to_string()),
+                human_id: Some("human-local".to_string()),
+                discovery_mode: "open".to_string(),
+                active_agent_id: Some("agent-local".to_string()),
+                agents: vec![],
+                api_style: "serve".to_string(),
+            },
+            sender_runtime: "kordi-desktop".to_string(),
+            sender_agent_id: Some("agent-local".to_string()),
+            owner_node_id: Some("owner-node".to_string()),
+            model_routing: None,
+            should_process_agent_asks: true,
+        }
+    }
 
     fn parsed_event(
         message_type: &str,
@@ -886,6 +1171,33 @@ mod tests {
             request_id: Some("bridge_req_1".to_string()),
             project_id: None,
         }
+    }
+
+    #[test]
+    fn mailbox_agent_ask_queue_records_use_server_message_and_chat_keys() {
+        let target = test_mailbox_target();
+        let event = parsed_event(BRIDGE_MESSAGE_TYPE_ASK, Some("person"), None);
+
+        let (inbox, job) = bridge_agent_queue_records_for_event(
+            &target.host.id,
+            &event,
+            Some("server-msg-1"),
+            1_000,
+        );
+        assert_eq!(inbox.server_message_id.as_deref(), Some("server-msg-1"));
+        assert_eq!(inbox.host_id, "bridge-host");
+        assert_eq!(inbox.from_node_id, "peer-node");
+        assert_eq!(inbox.request_id.as_deref(), Some("bridge_req_1"));
+        assert_eq!(inbox.message_type, BRIDGE_MESSAGE_TYPE_ASK);
+        assert_eq!(inbox.chat_queue_key, "session:session-1");
+        assert_eq!(inbox.requesting_user_key, "human:human-peer");
+        assert_eq!(inbox.status, "received");
+
+        assert_eq!(job.inbox_event_id, inbox.id);
+        assert_eq!(job.request_id.as_deref(), Some("bridge_req_1"));
+        assert_eq!(job.chat_queue_key, "session:session-1");
+        assert_eq!(job.requesting_user_key, "human:human-peer");
+        assert_eq!(job.status, "queued");
     }
 
     #[test]
@@ -974,6 +1286,25 @@ mod tests {
             outreach_metadata_for_event(&host, &event, "kordi-desktop").expect("outreach metadata");
 
         assert_eq!(outreach.context_policy.as_deref(), Some("session-message"));
+    }
+
+    #[test]
+    fn mailbox_poll_uses_legacy_drain_only_when_ack_endpoint_is_missing() {
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 404 Not Found"
+        ));
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 405 Method Not Allowed"
+        ));
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 501 Not Implemented"
+        ));
+        assert!(!should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 500 Internal Server Error"
+        ));
+        assert!(!should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: connection reset"
+        ));
     }
 
     #[test]

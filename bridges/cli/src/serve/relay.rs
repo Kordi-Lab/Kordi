@@ -6,7 +6,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{middleware, Extension, Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -60,6 +60,34 @@ struct MailboxEntry {
     timestamp: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct MailboxPollReq {
+    limit: Option<usize>,
+    after: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct MailboxPollResp {
+    entries: Vec<MailboxPollEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct MailboxPollEntry {
+    #[serde(rename = "messageId")]
+    message_id: String,
+    from: String,
+    blob: String,
+    #[serde(rename = "projectId", skip_serializing_if = "Option::is_none")]
+    project_id: Option<String>,
+    timestamp: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MailboxAckReq {
+    #[serde(rename = "messageIds")]
+    message_ids: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct DerpFrame {
     src: Option<String>,
@@ -109,6 +137,8 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route("/v1/relay", post(relay_message))
         .route("/v1/broadcast", post(broadcast_message))
         .route("/v1/mailbox", post(fetch_mailbox))
+        .route("/v1/mailbox/poll", post(poll_mailbox_v2))
+        .route("/v1/mailbox/ack", post(ack_mailbox_v2))
         .route("/ws/derp", get(derp_ws))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -230,6 +260,36 @@ async fn fetch_mailbox(
     let messages =
         drain_mailbox_entries(&mut db, &auth.0).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(messages))
+}
+
+/// Non-destructively poll pending encrypted messages for this node.
+/// Messages remain in the mailbox until explicitly acknowledged through
+/// `/v1/mailbox/ack`, allowing clients to persist them locally before acking.
+async fn poll_mailbox_v2(
+    State(state): State<Arc<ServerState>>,
+    Extension(auth): Extension<AuthNode>,
+    Json(req): Json<MailboxPollReq>,
+) -> Result<Json<MailboxPollResp>, StatusCode> {
+    let db = state
+        .open_connection()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let entries = poll_mailbox_entries(&db, &auth.0, req.after.as_deref(), req.limit)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(MailboxPollResp { entries }))
+}
+
+/// Acknowledge previously polled mailbox messages after local durable persistence.
+async fn ack_mailbox_v2(
+    State(state): State<Arc<ServerState>>,
+    Extension(auth): Extension<AuthNode>,
+    Json(req): Json<MailboxAckReq>,
+) -> Result<StatusCode, StatusCode> {
+    let mut db = state
+        .open_connection()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ack_mailbox_entries(&mut db, &auth.0, &req.message_ids)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn derp_ws(
@@ -389,6 +449,76 @@ fn enqueue_broadcast_entries(
     Ok(sent_to)
 }
 
+fn poll_mailbox_entries(
+    conn: &Connection,
+    target_node_id: &str,
+    after_message_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MailboxPollEntry>, rusqlite::Error> {
+    let limit = limit
+        .unwrap_or(MAX_MAILBOX_PER_NODE)
+        .min(MAX_MAILBOX_PER_NODE) as i64;
+    let cursor = after_message_id
+        .map(|message_id| {
+            conn.query_row(
+                "SELECT created_at FROM server_mailbox WHERE target_node_id = ?1 AND message_id = ?2",
+                params![target_node_id, message_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+        })
+        .transpose()?
+        .flatten();
+
+    let mut stmt = conn.prepare(
+        "SELECT message_id, from_node_id, blob, project_id, created_at \
+         FROM server_mailbox \
+         WHERE target_node_id = ?1 \
+           AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND message_id > ?3)) \
+         ORDER BY created_at ASC, message_id ASC \
+         LIMIT ?4",
+    )?;
+    let rows = stmt.query_map(
+        params![target_node_id, cursor.as_deref(), after_message_id, limit],
+        |row| {
+            Ok(MailboxPollEntry {
+                message_id: row.get(0)?,
+                from: row.get(1)?,
+                blob: row.get(2)?,
+                project_id: row.get(3)?,
+                timestamp: row.get(4)?,
+            })
+        },
+    )?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(row?);
+    }
+    Ok(entries)
+}
+
+fn ack_mailbox_entries(
+    conn: &mut Connection,
+    target_node_id: &str,
+    message_ids: &[String],
+) -> Result<usize, rusqlite::Error> {
+    if message_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.transaction()?;
+    let mut acked = 0;
+    for message_id in message_ids {
+        acked += tx.execute(
+            "DELETE FROM server_mailbox WHERE target_node_id = ?1 AND message_id = ?2",
+            params![target_node_id, message_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(acked)
+}
+
 fn drain_mailbox_entries(
     conn: &mut Connection,
     target_node_id: &str,
@@ -446,10 +576,157 @@ mod tests {
         Arc::new(ServerState::new(db_path.to_path_buf()))
     }
 
+    fn seed_mailbox_entry(state: &ServerState, from: &str, to: &str, blob: &str) {
+        let mut conn = state.open_connection().unwrap();
+        let entry = MailboxEntry {
+            from: from.to_string(),
+            blob: blob.to_string(),
+            project_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        assert!(enqueue_mailbox_entry(&mut conn, to, &entry).unwrap());
+    }
+
+    fn seed_contact(state: &ServerState, left: &str, right: &str) {
+        let conn = state.open_connection().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![left, right, &now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![right, left, now],
+        )
+        .unwrap();
+    }
+
+    fn seed_project_members(state: &ServerState, project_id: &str, node_ids: &[&str]) {
+        let conn = state.open_connection().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        for node_id in node_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO server_members (project_id, node_id, agent_role, joined_at) VALUES (?1, ?2, 'member', ?3)",
+                rusqlite::params![project_id, node_id, &now],
+            )
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn mailbox_poll_requires_ack_before_removal() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_mailbox_entry(&state, "sender", "receiver", "blob-1");
+        seed_mailbox_entry(&state, "sender", "receiver", "blob-2");
+
+        let first = poll_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert_eq!(first.entries.len(), 2);
+
+        let second = poll_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox again")
+        .0;
+        assert_eq!(second.entries.len(), 2, "poll must not destructively drain");
+
+        let ack_ids = first
+            .entries
+            .iter()
+            .map(|entry| entry.message_id.clone())
+            .collect();
+        ack_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxAckReq {
+                message_ids: ack_ids,
+            }),
+        )
+        .await
+        .expect("ack mailbox");
+
+        let after_ack = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll after ack")
+        .0;
+        assert_eq!(after_ack.entries.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn mailbox_poll_after_acked_cursor_returns_remaining_entries() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_mailbox_entry(&state, "sender", "receiver", "blob-1");
+        seed_mailbox_entry(&state, "sender", "receiver", "blob-2");
+
+        let first_page = poll_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(1),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll first page")
+        .0;
+        assert_eq!(first_page.entries.len(), 1);
+        let first_message_id = first_page.entries[0].message_id.clone();
+
+        ack_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxAckReq {
+                message_ids: vec![first_message_id.clone()],
+            }),
+        )
+        .await
+        .expect("ack first message");
+
+        let remaining = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: Some(first_message_id),
+            }),
+        )
+        .await
+        .expect("poll after acked cursor")
+        .0;
+        assert_eq!(remaining.entries.len(), 1);
+        assert_eq!(remaining.entries[0].blob, "blob-2");
+    }
+
     #[tokio::test]
     async fn mailbox_survives_state_restart_until_fetched() {
         let db_path = test_db_path();
         let state = test_state_for_path(&db_path);
+        seed_project_members(&state, "proj_1", &["sender", "receiver"]);
 
         let _ = relay_message(
             State(state.clone()),
@@ -482,6 +759,7 @@ mod tests {
     async fn mailbox_fetch_drains_only_once() {
         let db_path = test_db_path();
         let state = test_state_for_path(&db_path);
+        seed_contact(&state, "sender", "receiver");
 
         for blob in ["one", "two"] {
             let _ = relay_message(

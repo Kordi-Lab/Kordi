@@ -7,6 +7,139 @@ fn memory_conversation_db() -> Connection {
     conn
 }
 
+fn test_inbox_event(id: &str, server_message_id: Option<&str>) -> BridgeInboxEventInsert {
+    BridgeInboxEventInsert {
+        id: id.to_string(),
+        server_message_id: server_message_id.map(ToString::to_string),
+        host_id: "host-1".to_string(),
+        from_node_id: "sender-1".to_string(),
+        request_id: Some("req-1".to_string()),
+        message_type: "local_agent_ask".to_string(),
+        chat_queue_key: "chat:group-1".to_string(),
+        requesting_user_key: "user:sender-1".to_string(),
+        payload_json: "{\"text\":\"hello\"}".to_string(),
+        status: "received".to_string(),
+        received_at_ms: 1_000,
+    }
+}
+
+fn test_agent_job(id: &str, inbox_event_id: &str) -> BridgeAgentJobInsert {
+    BridgeAgentJobInsert {
+        id: id.to_string(),
+        inbox_event_id: inbox_event_id.to_string(),
+        request_id: Some("req-1".to_string()),
+        requesting_user_key: "user:sender-1".to_string(),
+        chat_queue_key: "chat:group-1".to_string(),
+        status: "queued".to_string(),
+        created_at_ms: 1_100,
+    }
+}
+
+#[test]
+fn inbox_event_insert_is_idempotent_by_server_message_id() {
+    let conn = memory_conversation_db();
+    let first = test_inbox_event("evt-1", Some("server-msg-1"));
+    let first_id =
+        insert_bridge_inbox_event_if_absent(&conn, &first).expect("insert first inbox event");
+
+    let mut duplicate = test_inbox_event("evt-duplicate", Some("server-msg-1"));
+    duplicate.payload_json = "{\"text\":\"duplicate delivery\"}".to_string();
+    let duplicate_id = insert_bridge_inbox_event_if_absent(&conn, &duplicate)
+        .expect("dedupe duplicate inbox event");
+
+    assert_eq!(first_id, "evt-1");
+    assert_eq!(duplicate_id, "evt-1");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bridge_inbox_events WHERE host_id = ?1",
+            rusqlite::params!["host-1"],
+            |row| row.get(0),
+        )
+        .expect("count inbox events");
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn inbox_event_insert_is_idempotent_by_request_id_without_server_message_id() {
+    let conn = memory_conversation_db();
+    let first = test_inbox_event("evt-1", None);
+    let first_id = insert_bridge_inbox_event_if_absent(&conn, &first)
+        .expect("insert first realtime inbox event");
+
+    let mut duplicate = test_inbox_event("evt-duplicate", None);
+    duplicate.payload_json = "{\"text\":\"duplicate realtime delivery\"}".to_string();
+    let duplicate_id = insert_bridge_inbox_event_if_absent(&conn, &duplicate)
+        .expect("dedupe duplicate realtime inbox event");
+
+    assert_eq!(first_id, "evt-1");
+    assert_eq!(duplicate_id, "evt-1");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bridge_inbox_events WHERE host_id = ?1 AND request_id = ?2",
+            rusqlite::params!["host-1", "req-1"],
+            |row| row.get(0),
+        )
+        .expect("count realtime inbox events");
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn agent_job_tracks_queued_running_and_terminal_statuses() {
+    let conn = memory_conversation_db();
+    let event = test_inbox_event("evt-1", Some("server-msg-1"));
+    insert_bridge_inbox_event_if_absent(&conn, &event).expect("insert inbox event");
+    let job = test_agent_job("job-1", "evt-1");
+    create_bridge_agent_job_if_absent(&conn, &job).expect("create agent job");
+
+    let queued = load_bridge_agent_job(&conn, "job-1")
+        .expect("load queued job")
+        .expect("queued job exists");
+    assert_eq!(queued.status, "queued");
+    assert_eq!(queued.retry_count, 0);
+
+    mark_bridge_agent_job_running(&conn, "job-1", 1_200).expect("mark job running");
+    let running = load_bridge_agent_job(&conn, "job-1")
+        .expect("load running job")
+        .expect("running job exists");
+    assert_eq!(running.status, "running");
+    assert_eq!(running.started_at_ms, Some(1_200));
+
+    mark_bridge_agent_job_terminal(&conn, "job-1", "responded", 1_500, None)
+        .expect("mark job terminal");
+    let responded = load_bridge_agent_job(&conn, "job-1")
+        .expect("load responded job")
+        .expect("responded job exists");
+    assert_eq!(responded.status, "responded");
+    assert_eq!(responded.completed_at_ms, Some(1_500));
+    assert_eq!(responded.last_error, None);
+}
+
+#[test]
+fn queued_agent_jobs_resume_after_reopening_database() {
+    let db_path = std::env::temp_dir().join(format!(
+        "kordi-bridge-agent-jobs-{}.db",
+        uuid::Uuid::new_v4()
+    ));
+    {
+        let conn = Connection::open(&db_path).expect("open temporary conversation db");
+        init_conversation_schema(&conn).expect("init conversation schema");
+        let event = test_inbox_event("evt-1", Some("server-msg-1"));
+        insert_bridge_inbox_event_if_absent(&conn, &event).expect("insert inbox event");
+        let job = test_agent_job("job-1", "evt-1");
+        create_bridge_agent_job_if_absent(&conn, &job).expect("create queued job");
+    }
+
+    let reopened = Connection::open(&db_path).expect("reopen temporary conversation db");
+    init_conversation_schema(&reopened).expect("re-init conversation schema");
+    let queued =
+        list_runnable_bridge_agent_jobs(&reopened, 2_000, 10).expect("list runnable queued jobs");
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].id, "job-1");
+    assert_eq!(queued[0].status, "queued");
+
+    let _ = std::fs::remove_file(db_path);
+}
+
 fn test_conversation(
     messages: Vec<DesktopBridgeConversationMessageRecord>,
 ) -> DesktopBridgeConversationRecord {
