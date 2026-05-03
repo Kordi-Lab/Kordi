@@ -115,6 +115,54 @@ test('renders human messages with a larger reading width than before', () => {
   assert.doesNotMatch(markup, /max-w-\[26rem\]/);
 });
 
+test('renders peer human sender names inside the bubble with colorful bold styling', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'xin hai Mouse',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: '我都不知道',
+    time: '10:00',
+    senderAvatarSeed: 'person:xinhai',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-chat-bubble-peer[\s\S]*app-message-inline-sender/);
+  assert.match(markup, /app-message-inline-sender[^>]*font-semibold/);
+  assert.match(markup, /--app-message-sender-accent/);
+  assert.match(markup, />xin hai Mouse</);
+  assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
+});
+
+test('groups consecutive same-sender human messages with one inline name and one avatar', () => {
+  const first: Message = {
+    id: 'msg:first',
+    role: 'person',
+    sender: '成龙',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: '一会草坪婚礼还有重头戏',
+    time: '09:57',
+    senderAvatarSeed: 'person:chenglong',
+  };
+  const second: Message = {
+    ...first,
+    id: 'msg:second',
+    text: '俩人要念清真言',
+  };
+
+  const markup = renderToStaticMarkup(createElement('div', null,
+    createElement(MessageBubble, { msg: first, isGroupedWithNext: true }),
+    createElement(MessageBubble, { msg: second, isGroupedWithPrevious: true }),
+  ));
+
+  assert.equal((markup.match(/app-message-inline-sender/g) ?? []).length, 1);
+  assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
+});
+
 test('renders completed assistant responses as a compact contrast surface', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-contrast-answer',

@@ -343,6 +343,16 @@ function SourceMessageQuote({
   );
 }
 
+function senderAccentStyle(label?: string | null): CSSProperties {
+  const text = label?.trim() || 'sender';
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+  }
+  const hue = Math.abs(hash) % 360;
+  return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
+}
+
 function RequestReplyLine({
   summary,
   own,
@@ -812,11 +822,15 @@ function MessageBubbleView({
   onOpenSource,
   onStopBridgeAgentRequest,
   onNavigateToMessage,
+  isGroupedWithPrevious = false,
+  isGroupedWithNext = false,
 }: {
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  isGroupedWithPrevious?: boolean;
+  isGroupedWithNext?: boolean;
 }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
@@ -981,7 +995,7 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
-  const showHeaderMeta = Boolean((msg.showSenderMeta || isAgentMessage) && msg.sender);
+  const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
@@ -992,19 +1006,27 @@ function MessageBubbleView({
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
-  const showAvatar = !isAgentMessage;
+  const showInlineHumanSender = Boolean(!isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showAvatarSlot = !isAgentMessage;
+  const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
-      className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}
+      className={cn(
+        'flex flex-col gap-1',
+        isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
+        isGroupedWithNext ? 'pb-0' : 'pb-1',
+        align,
+        isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
+      )}
     >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end', showAvatar ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+      <div className={cn('flex items-end', showAvatarSlot ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
         {showAvatar ? (
           <IdentityAvatar
             kind={avatarKind}
@@ -1013,6 +1035,8 @@ function MessageBubbleView({
             imageUrl={msg.senderProfileImageUrl}
             className="mb-0.5 h-7 w-7 border border-white/10"
           />
+        ) : showAvatarSlot ? (
+          <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />
         ) : null}
         <div className={cn(
           'min-w-0 shadow-sm',
@@ -1026,6 +1050,14 @@ function MessageBubbleView({
         )}>
         {isOwnHumanMessage ? <MessageBubbleShapeBackdrop side="own" /> : null}
         {isPeerHumanMessage ? <MessageBubbleShapeBackdrop side="peer" /> : null}
+        {showInlineHumanSender ? (
+          <div
+            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
+            style={senderAccentStyle(msg.sender)}
+          >
+            {msg.sender}
+          </div>
+        ) : null}
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
@@ -1120,6 +1152,8 @@ export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
+    && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
 );
 

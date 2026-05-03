@@ -1863,6 +1863,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.app-message-inline-sender {
+  color: var(--app-message-sender-accent, color-mix(in oklab, rgb(244 114 182) 76%, var(--utility-foreground)));
+}
+
 .app-message-reply-line {
   display: inline-flex;
   align-items: center;

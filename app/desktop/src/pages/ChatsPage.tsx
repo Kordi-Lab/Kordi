@@ -48,6 +48,7 @@ import type {
   DesktopChatState,
   DesktopChatTurnSnapshot,
   EditFilePreview,
+  Message,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -59,6 +60,26 @@ import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+
+function humanTranscriptGroupKey(message?: Message) {
+  if (!message || message.role === 'system' || message.role === 'action' || message.role === 'edit' || message.turn) return null;
+  const senderType = message.senderType ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
+  const isOwnHuman = (message.isOwnMessage ?? message.role === 'user') && senderType === 'human';
+  const isPeerHuman = !isOwnHuman && (senderType === 'human' || message.role === 'person');
+  if (!isOwnHuman && !isPeerHuman) return null;
+
+  const side = isOwnHuman ? 'own' : 'peer';
+  const senderKey = message.senderAvatarSeed?.trim()
+    || message.senderProfileImageUrl?.trim()
+    || message.sender?.trim()
+    || side;
+  return `${side}:${senderKey}`;
+}
+
+function isGroupedWithAdjacentHumanMessage(messages: readonly Message[], index: number, offset: -1 | 1) {
+  const currentKey = humanTranscriptGroupKey(messages[index]);
+  return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
+}
 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
@@ -551,6 +572,8 @@ export function ChatsPage({
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
+                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />
             ))}
             {shouldRenderLiveTurn && attributedActiveTranscriptLiveTurn ? (
