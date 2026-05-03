@@ -9,6 +9,35 @@ type UseDesktopChatStateArgs = {
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
 };
 
+const QUEUED_DESKTOP_MESSAGES_STORAGE_KEY = 'kordi.desktop.queuedDesktopMessages.v1';
+
+function loadQueuedDesktopMessagesBySession() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed as Record<string, QueuedDesktopChatMessage[]>;
+  } catch {
+    return {};
+  }
+}
+
+function saveQueuedDesktopMessagesBySession(messages: Record<string, QueuedDesktopChatMessage[]>) {
+  if (typeof window === 'undefined') return;
+  try {
+    const hasQueuedMessages = Object.values(messages).some((items) => items.length > 0);
+    if (!hasQueuedMessages) {
+      window.localStorage.removeItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+  } catch {
+    // Best-effort draft preservation only; UI state remains authoritative.
+  }
+}
+
 function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, finishedAt: string): DesktopChatMessage {
   const assistantText = turn.assistantText.trim();
   const fallbackText = turn.error?.trim() || turn.message?.trim() || '';
@@ -257,7 +286,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [isDesktopChatSending, setIsDesktopChatSending] = useState(false);
   const [desktopLiveTurnsBySession, setDesktopLiveTurnsBySession] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [pendingUserChatMessage, setPendingUserChatMessage] = useState<{ text: string; time: string } | null>(null);
-  const [queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession] = useState<Record<string, QueuedDesktopChatMessage[]>>({});
+  const [queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession] = useState<Record<string, QueuedDesktopChatMessage[]>>(() => loadQueuedDesktopMessagesBySession());
   const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
   const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
@@ -274,6 +303,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   useEffect(() => {
     desktopLiveTurnsBySessionRef.current = desktopLiveTurnsBySession;
   }, [desktopLiveTurnsBySession]);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    saveQueuedDesktopMessagesBySession(queuedDesktopMessagesBySession);
+  }, [isNativeShell, queuedDesktopMessagesBySession]);
 
   const clearScheduledLiveTurnSnapshot = useCallback((sessionId: string) => {
     const timer = liveTurnCommitTimersRef.current[sessionId];
