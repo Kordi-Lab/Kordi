@@ -1,6 +1,6 @@
 # Overlong Hotspot Cleanup Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Reduce the four next #235 overlong hotspots with small behavior-preserving splits.
 
@@ -16,7 +16,7 @@
 - Create: `app/desktop/tests/chatStartRouting.test.tsx`
 - Modify: `app/desktop/tests/chatRouting.test.tsx`
 
-- [ ] **Step 1: Capture baseline test names**
+- [x] **Step 1: Capture baseline test names**
 
 Run:
 ```bash
@@ -25,7 +25,7 @@ rg "^test\\(" app/desktop/tests/chatRouting.test.tsx -n
 ```
 Expected: test names include `sidebar shell forwards chat create and group management handlers` through `bridge Chat starts an agent session instead of selecting an existing same-node person conversation` at the top of `chatRouting.test.tsx`.
 
-- [ ] **Step 2: Move the chat-start test helpers and tests**
+- [x] **Step 2: Move the chat-start test helpers and tests**
 
 Create `app/desktop/tests/chatStartRouting.test.tsx` containing:
 ```ts
@@ -40,7 +40,7 @@ import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
 
 Remove those moved helpers/tests from `app/desktop/tests/chatRouting.test.tsx`. Keep every moved test name unchanged.
 
-- [ ] **Step 3: Verify desktop tests**
+- [x] **Step 3: Verify desktop tests**
 
 Run:
 ```bash
@@ -48,7 +48,7 @@ pnpm --dir app/desktop test:unit
 ```
 Expected: all desktop unit tests pass, with the same moved test names reported from `chatStartRouting.test.tsx`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 ```bash
@@ -66,7 +66,7 @@ git commit -m "Split chat start routing tests"
 - Modify: `app/desktop/src/index.css`
 - Modify test CSS readers that directly read `shell.css`.
 
-- [ ] **Step 1: Locate direct shell CSS readers**
+- [x] **Step 1: Locate direct shell CSS readers**
 
 Run:
 ```bash
@@ -74,7 +74,7 @@ rg "src/styles/shell.css|shellCss" app/desktop/tests -n
 ```
 Expected: direct readers in markdown, message bubble, theme token, tool timeline, transcript mention, and workspace sidebar tests.
 
-- [ ] **Step 2: Add a CSS test helper**
+- [x] **Step 2: Add a CSS test helper**
 
 Create `app/desktop/tests/helpers/readDesktopStyles.ts`:
 ```ts
@@ -97,7 +97,7 @@ export function readDesktopStyleCss() {
 
 Update direct CSS tests to use `readDesktopStyleCss()` where they need shell selectors after the split.
 
-- [ ] **Step 3: Move CSS selector groups without renaming selectors**
+- [x] **Step 3: Move CSS selector groups without renaming selectors**
 
 Move `.app-chat-create-*` and `.app-group-management-*` selectors to `shell-popovers.css`.
 Move `.app-message-bubble-*`, `.app-human-bubble-*`, and bubble path selectors to `shell-bubbles.css`.
@@ -112,7 +112,7 @@ Add imports to `app/desktop/src/index.css`:
 @import './styles/shell-transcript.css';
 ```
 
-- [ ] **Step 4: Verify affected frontend tests**
+- [x] **Step 4: Verify affected frontend tests**
 
 Run:
 ```bash
@@ -121,7 +121,7 @@ pnpm --dir app/desktop lint
 ```
 Expected: all desktop unit tests and lint pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 ```bash
@@ -135,7 +135,7 @@ git commit -m "Split shell CSS responsibility layers"
 - Create: `agent/crates/cli/src/desktop_runtime/attachments.rs`
 - Modify: `agent/crates/cli/src/desktop_runtime.rs`
 
-- [ ] **Step 1: Add focused attachment helper tests**
+- [x] **Step 1: Add focused attachment helper tests**
 
 In `agent/crates/cli/src/desktop_runtime/attachments.rs`, include tests for `attachment_metadata_from_path`, `attachment_summary_from_metadata`, and `expand_prompt_with_attachment_paths`:
 ```rust
@@ -152,7 +152,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Move attachment helper functions**
+- [x] **Step 2: Move attachment helper functions**
 
 Move these functions from `desktop_runtime.rs` to `desktop_runtime/attachments.rs` and expose them as `pub(super)` where needed:
 ```rust
@@ -172,7 +172,7 @@ load_images_from_paths
 
 Keep `append_attachment_context_message` in `desktop_runtime.rs` unless moving it requires unrelated session-store imports.
 
-- [ ] **Step 3: Wire imports**
+- [x] **Step 3: Wire imports**
 
 At the top of `desktop_runtime.rs`, add:
 ```rust
@@ -188,7 +188,7 @@ use attachments::{
 };
 ```
 
-- [ ] **Step 4: Verify Rust CLI tests**
+- [x] **Step 4: Verify Rust CLI tests**
 
 Run:
 ```bash
@@ -197,7 +197,7 @@ cargo test -p kordi-cli desktop_runtime --no-default-features
 ```
 Expected: formatting check and desktop runtime tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 ```bash
@@ -212,12 +212,12 @@ git commit -m "Extract desktop runtime attachment helpers"
 - Create: `app/desktop/src-tauri/src/chat/artifacts.rs`
 - Modify: `app/desktop/src-tauri/src/chat.rs`
 
-- [ ] **Step 1: Add focused helper tests in new modules**
+- [x] **Step 1: Add focused helper tests in new modules**
 
 In `app/desktop/src-tauri/src/chat/attachments.rs`, include tests for `safe_attachment_name` and extension-derived metadata.
 In `app/desktop/src-tauri/src/chat/artifacts.rs`, include tests for `normalize_path_lexically` and base-path containment.
 
-- [ ] **Step 2: Move attachment storage helpers and command functions**
+- [x] **Step 2: Move attachment storage helpers and command functions**
 
 Move these from `chat.rs` to `chat/attachments.rs`:
 ```rust
@@ -246,7 +246,7 @@ pub use attachments::{
 };
 ```
 
-- [ ] **Step 3: Move artifact helpers and command functions**
+- [x] **Step 3: Move artifact helpers and command functions**
 
 Move these from `chat.rs` to `chat/artifacts.rs`:
 ```rust
@@ -266,7 +266,7 @@ Re-export command functions from `chat.rs`:
 pub use artifacts::{desktop_chat_artifact_directory, desktop_chat_artifact_preview};
 ```
 
-- [ ] **Step 4: Verify desktop Rust tests**
+- [x] **Step 4: Verify desktop Rust tests**
 
 Run:
 ```bash
@@ -275,7 +275,7 @@ cargo test -p kordi-desktop --no-default-features
 ```
 Expected: formatting check and desktop Rust tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 ```bash
@@ -288,11 +288,11 @@ git commit -m "Extract desktop chat file helpers"
 **Files:**
 - Modify: `docs/development/maintainability-boundaries.md`
 
-- [ ] **Step 1: Update completed slices**
+- [x] **Step 1: Update completed slices**
 
 Add bullets describing the chat routing test split, shell CSS split, desktop runtime attachment helper extraction, and desktop Tauri chat file helper extraction.
 
-- [ ] **Step 2: Run final verification**
+- [x] **Step 2: Run final verification**
 
 Run:
 ```bash
@@ -308,7 +308,7 @@ git diff --check
 ```
 Expected: all commands pass; maintainability scan still reports remaining broad hotspots but reflects smaller split files.
 
-- [ ] **Step 3: Commit docs**
+- [x] **Step 3: Commit docs**
 
 Run:
 ```bash
