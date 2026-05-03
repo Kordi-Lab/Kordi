@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { replyStatusText } from '@/features/chat/replyAttribution';
 import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,8 @@ import type {
   Message,
   MessageAttachment,
   MessageMention,
+  MessageReplySummary,
+  MessageSourceReference,
 } from '../types';
 
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -256,6 +259,142 @@ function ProcessingStatusCircle({ className }: { className?: string }) {
       )}
       aria-hidden="true"
     />
+  );
+}
+
+function transcriptMessageDomId(messageId: string) {
+  return `app-transcript-message-${messageId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+}
+
+function navigateToTranscriptMessage(messageId: string) {
+  if (typeof document === 'undefined') return;
+  const target = document.getElementById(transcriptMessageDomId(messageId));
+  if (!target) return;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.classList.add('app-transcript-message-highlight');
+  window.setTimeout(() => target.classList.remove('app-transcript-message-highlight'), 1500);
+}
+
+function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
+  return sourceMessage.text.replace(/\s+/g, ' ').trim().length > 140 || sourceMessage.text.split(/\r?\n/).length > 2;
+}
+
+function sourceQuotePreviewText(sourceMessage: MessageSourceReference, expanded: boolean) {
+  const text = sourceMessage.text.replace(/\s+/g, ' ').trim();
+  if (expanded || text.length <= 140) return text;
+  return `${text.slice(0, 137).trimEnd()}…`;
+}
+
+function SourceMessageQuote({
+  sourceMessage,
+  onNavigateToMessage,
+}: {
+  sourceMessage?: MessageSourceReference | null;
+  onNavigateToMessage?: (messageId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!sourceMessage) return null;
+  const canFold = sourceQuoteNeedsFold(sourceMessage);
+  const senderLabel = sourceMessage.senderLabel?.trim() || 'message';
+  const attachmentText = sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '';
+  const navigate = () => {
+    if (onNavigateToMessage) {
+      onNavigateToMessage(sourceMessage.messageId);
+      return;
+    }
+    navigateToTranscriptMessage(sourceMessage.messageId);
+  };
+
+  return (
+    <div className="app-source-message-quote w-full max-w-[min(100%,34rem)] py-0.5">
+      <button
+        type="button"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)] gap-2.5 text-left"
+        onClick={navigate}
+        title="Jump to original request"
+      >
+        <span className="app-source-message-quote-rail" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="app-source-message-quote-label block truncate text-[11px] font-medium">Replying to {senderLabel}{attachmentText}</span>
+          <span className={cn('app-source-message-quote-text block text-[12px] leading-5', expanded ? 'whitespace-pre-wrap' : 'truncate')}>
+            {sourceQuotePreviewText(sourceMessage, expanded)}
+          </span>
+        </span>
+      </button>
+      {canFold ? (
+        <button
+          type="button"
+          className="app-source-message-quote-toggle ml-[13px] mt-0.5 text-[11px] font-medium"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+        >
+          {expanded ? 'Hide request' : 'Show request'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function RequestReplyLine({
+  summary,
+  own,
+  onNavigateToMessage,
+}: {
+  summary?: MessageReplySummary;
+  own: boolean;
+  onNavigateToMessage?: (messageId: string) => void;
+}) {
+  const text = replyStatusText(summary);
+  if (!summary || !text) return null;
+  const targetMessageId = summary.targetMessageId?.trim();
+  const navigate = () => {
+    if (!targetMessageId) return;
+    if (onNavigateToMessage) {
+      onNavigateToMessage(targetMessageId);
+      return;
+    }
+    navigateToTranscriptMessage(targetMessageId);
+  };
+
+  return (
+    <button
+      type="button"
+      className={cn('app-message-reply-line max-w-[26rem] truncate px-1 text-[11px] font-medium leading-4', own ? 'self-end text-right' : 'self-start text-left')}
+      onClick={navigate}
+      disabled={!targetMessageId}
+      title={targetMessageId ? 'Jump to replies for this message' : undefined}
+    >
+      <span className="app-message-reply-line-arrow" aria-hidden="true">↳</span>
+      <span>{text}</span>
+    </button>
+  );
+}
+
+function assistantAnswerNeedsFold(text: string) {
+  return text.split(/\r?\n/).length > 3 || text.replace(/\s+/g, ' ').trim().length > 360;
+}
+
+function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldFold = foldable && assistantAnswerNeedsFold(text);
+  const folded = shouldFold && !expanded;
+
+  return (
+    <>
+      <div className={cn('app-live-assistant-answer w-full max-w-[min(100%,46rem)] py-1 text-[13px]', folded && 'app-live-assistant-answer-folded')}>
+        <MarkdownContent text={text} />
+      </div>
+      {shouldFold ? (
+        <button
+          type="button"
+          className="app-live-assistant-answer-toggle w-fit text-[11px] font-medium"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+        >
+          {expanded ? 'Collapse' : 'Show full response'}
+        </button>
+      ) : null}
+    </>
   );
 }
 
@@ -654,10 +793,12 @@ function MessageBubbleView({
   msg,
   onOpenSource,
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
@@ -797,7 +938,10 @@ function MessageBubbleView({
 
   if (msg.turn) {
     return (
-      <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+      <div
+        id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+        className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+      >
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -805,6 +949,7 @@ function MessageBubbleView({
           turn={msg.turn}
           historical={msg.turn.completed}
           onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+          onNavigateToMessage={onNavigateToMessage}
         />
       </div>
     );
@@ -832,7 +977,10 @@ function MessageBubbleView({
   const showAvatar = !isAgentMessage;
 
   return (
-    <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
+    <div
+      id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}
+    >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
@@ -913,12 +1061,20 @@ function MessageBubbleView({
         )}
         </div>
       </div>
+      {showCompactFooter ? (
+        <RequestReplyLine
+          summary={msg.replySummary}
+          own={isOwnHumanMessage}
+          onNavigateToMessage={onNavigateToMessage}
+        />
+      ) : null}
     </div>
   );
 }
 
 function messageSnapshotKey(msg: Message) {
   return [
+    msg.id ?? '',
     msg.role,
     msg.sender ?? '',
     msg.senderType ?? '',
@@ -930,6 +1086,9 @@ function messageSnapshotKey(msg: Message) {
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',
     msg.statusChips?.join(',') ?? '',
+    msg.replyToMessageId ?? '',
+    msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
+    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     msg.mentions?.map((mention) => mention.label).join('|') ?? '',
     msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
@@ -940,6 +1099,7 @@ function messageSnapshotKey(msg: Message) {
 export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
 );
 
@@ -1322,10 +1482,12 @@ function LiveChatTurnCardView({
   turn,
   historical = false,
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
@@ -1335,7 +1497,7 @@ function LiveChatTurnCardView({
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && pendingBridgeAgentRequest);
+    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -1360,6 +1522,7 @@ function LiveChatTurnCardView({
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
+      <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
       {showLiveStatusHeader ? (
         <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
           <ProcessingStatusCircle className="h-3.5 w-3.5" />
@@ -1405,11 +1568,7 @@ function LiveChatTurnCardView({
         />
       ) : null}
 
-      {hasAssistant ? (
-        <div className="app-live-assistant-answer w-full max-w-[min(100%,46rem)] py-1 text-[13px]">
-          <MarkdownContent text={visibleTurn.assistantText} />
-        </div>
-      ) : null}
+      {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
 
       {visibleTurn.error ? (
         <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
@@ -1433,6 +1592,8 @@ function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
+    turn.replyToMessageId ?? '',
+    turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? ''].join(':') : '',
     turn.pendingBridgeAgentRequest?.conversationId ?? '',
     turn.pendingBridgeAgentRequest?.requestId ?? '',
     ...turn.tools.map((tool) => [
@@ -1452,6 +1613,7 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
@@ -1459,15 +1621,20 @@ function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
   onStopBridgeAgentRequest,
+  onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   return (
-    <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
+    <div
+      id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
+      className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+    >
       <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} />
+      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} onNavigateToMessage={onNavigateToMessage} />
     </div>
   );
 }
@@ -1476,6 +1643,7 @@ export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 

@@ -94,3 +94,100 @@ test('renders transcript system notices with compact stable spacing', () => {
   assert.match(markup, /py-0\.5/);
   assert.doesNotMatch(markup, /flex justify-center py-2/);
 });
+
+test('renders request reply status as an external plain one-line count without names', () => {
+  const message: Message = {
+    id: 'msg:request',
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '@SomeAgent please check launch risks.',
+    time: '10:00',
+    replySummary: {
+      replyCount: 1,
+      pending: true,
+      targetMessageId: 'msg:response',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-reply-line/);
+  assert.match(markup, />1 reply · replying…</);
+  assert.doesNotMatch(markup, /Alice|Bob|Kordi/);
+  assert.doesNotMatch(markup, /app-message-reply-pill/);
+});
+
+test('renders agent source quote and processing status without an output block before text exists', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-processing-with-source',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'processing',
+    message: 'Processing…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'You',
+      text: '@AliceKordi review the copy and call out confusing parts.',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /Replying to/);
+  assert.match(markup, /@AliceKordi review the copy/);
+  assert.match(markup, /Processing/);
+  assert.doesNotMatch(markup, /app-live-assistant-answer/);
+  assert.doesNotMatch(markup, /checking auth screenshots/);
+});
+
+test('folds completed agent responses longer than three lines by default', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-long-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Line one\nLine two\nLine three\nLine four',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.match(markup, /app-live-assistant-answer-folded/);
+  assert.match(markup, /Show full response/);
+});
+
+test('does not fold active streaming agent responses while text is still arriving', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-streaming-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'streaming',
+    message: 'Replying…',
+    assistantText: 'Line one\nLine two\nLine three\nLine four',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
+  assert.doesNotMatch(markup, /Show full response/);
+});

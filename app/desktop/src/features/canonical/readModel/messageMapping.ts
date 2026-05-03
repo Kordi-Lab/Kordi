@@ -196,7 +196,9 @@ export function processingAgentMessage(
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
+  const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
   return {
+    id: `canonical-delegation-processing:${exchange.id}`,
     role,
     sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,
     senderType: 'agent',
@@ -206,6 +208,7 @@ export function processingAgentMessage(
     showSenderMeta: role === 'external-agent',
     text: '',
     time,
+    replyToMessageId,
     turn: {
       id: `canonical-delegation-processing:${exchange.id}`,
       sessionId: exchange.sessionId,
@@ -218,6 +221,7 @@ export function processingAgentMessage(
       completed: false,
       succeeded: false,
       error: null,
+      replyToMessageId,
       pendingBridgeAgentRequest,
     },
   };
@@ -233,7 +237,9 @@ export function cancelledBridgeAgentDelegationMessage(
   if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
   const time = formatDesktopClockTime(exchange.createdAtMs);
+  const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
   return {
+    id: `canonical-delegation-cancelled:${exchange.id}`,
     role,
     sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,
     senderType: 'agent',
@@ -243,6 +249,7 @@ export function cancelledBridgeAgentDelegationMessage(
     showSenderMeta: role === 'external-agent',
     text: '',
     time,
+    replyToMessageId,
     turn: {
       id: `canonical-delegation-cancelled:${exchange.id}`,
       sessionId: exchange.sessionId,
@@ -255,6 +262,7 @@ export function cancelledBridgeAgentDelegationMessage(
       completed: true,
       succeeded: false,
       error: 'Request stopped',
+      replyToMessageId,
     },
   };
 }
@@ -275,6 +283,11 @@ export function mapCanonicalMessage(
   const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
   const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
   const bridgeRequestId = stringValue(content.requestId)?.trim();
+  const parentMessageId = message.parentMessageId?.trim();
+  const contentReplyToMessageId = stringValue(content.replyToMessageId)?.trim() || stringValue(content.requestMessageId)?.trim();
+  const replyToMessageId = isAgentTurn
+    ? contentReplyToMessageId || (parentMessageId && parentMessageId !== message.id ? parentMessageId : null) || null
+    : null;
   const pendingBridgeAgentRequest = isAgentTurn
     && !completed
     && deliveryState === 'processing'
@@ -319,6 +332,7 @@ export function mapCanonicalMessage(
   if (role === 'system' && !displayText.trim()) return null;
 
   return {
+    id: message.id,
     role,
     sender,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
@@ -331,6 +345,7 @@ export function mapCanonicalMessage(
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),
+    replyToMessageId: replyToMessageId ?? undefined,
     statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
     turn: isAgentTurn
       ? {
@@ -345,6 +360,7 @@ export function mapCanonicalMessage(
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
           error: cancelled ? 'Request stopped' : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          replyToMessageId,
           pendingBridgeAgentRequest,
         }
       : undefined,

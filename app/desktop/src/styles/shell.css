@@ -1863,6 +1863,75 @@
   font-variant-numeric: tabular-nums;
 }
 
+.app-message-reply-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-message-reply-line:hover {
+  color: color-mix(in oklab, var(--utility-foreground) 84%, var(--utility-muted-text));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.app-message-reply-line:disabled {
+  cursor: default;
+  opacity: 0.72;
+  text-decoration: none;
+}
+
+.app-message-reply-line-arrow {
+  color: color-mix(in oklab, rgb(147 197 253) 72%, var(--utility-muted-text));
+}
+
+.app-source-message-quote-link {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app-source-message-quote-rail {
+  display: block;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, rgb(147 197 253) 64%, var(--app-divider));
+}
+
+.app-source-message-quote-label {
+  color: color-mix(in oklab, var(--utility-foreground) 72%, var(--utility-muted-text));
+}
+
+.app-source-message-quote-text {
+  color: color-mix(in oklab, var(--utility-muted-text) 88%, transparent);
+}
+
+.app-source-message-quote-link:hover .app-source-message-quote-text,
+.app-source-message-quote-toggle:hover,
+.app-live-assistant-answer-toggle:hover {
+  color: color-mix(in oklab, var(--utility-foreground) 84%, var(--utility-muted-text));
+}
+
+.app-source-message-quote-toggle,
+.app-live-assistant-answer-toggle {
+  border: 0;
+  background: transparent;
+  color: color-mix(in oklab, rgb(147 197 253) 72%, var(--utility-muted-text));
+}
+
+.app-transcript-message-highlight {
+  border-radius: 18px;
+  outline: 2px solid color-mix(in oklab, rgb(147 197 253) 70%, transparent);
+  outline-offset: 4px;
+}
+
 .app-message-status-bar {
   display: flex;
   flex-wrap: wrap;
@@ -2470,6 +2539,23 @@
 .app-live-assistant-answer {
   color: var(--utility-foreground);
   line-height: 1.6;
+}
+
+.app-live-assistant-answer-folded {
+  position: relative;
+  max-height: calc(1.6em * 3);
+  overflow: hidden;
+}
+
+.app-live-assistant-answer-folded::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2.6rem;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--utility-background) 82%);
 }
 
 @media (max-width: 720px) {

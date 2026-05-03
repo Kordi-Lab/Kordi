@@ -53,6 +53,7 @@ import type {
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { buildReplyAttribution } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
@@ -293,7 +294,6 @@ export function ChatsPage({
   const composerStopMode = composerSubmitMode === 'stop';
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
-  const shouldRenderLiveTurn = Boolean(activeTranscriptLiveTurn && !activeTranscriptLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
@@ -332,6 +332,13 @@ export function ChatsPage({
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
+  const attributedTranscript = useMemo(
+    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn),
+    [activeTranscriptLiveTurn, transcriptMessages],
+  );
+  const attributedTranscriptMessages = attributedTranscript.messages;
+  const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
+  const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;
@@ -535,17 +542,17 @@ export function ChatsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {transcriptMessages.map((msg, idx) => (
+            {attributedTranscriptMessages.map((msg, idx) => (
               <MessageBubble
-                key={`${msg.role}-${msg.time}-${idx}`}
+                key={`${msg.id ?? msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               />
             ))}
-            {shouldRenderLiveTurn && activeTranscriptLiveTurn ? (
+            {shouldRenderLiveTurn && attributedActiveTranscriptLiveTurn ? (
               <LiveChatTurnMessage
-                turn={activeTranscriptLiveTurn}
+                turn={attributedActiveTranscriptLiveTurn}
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               />
