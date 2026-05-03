@@ -11,6 +11,7 @@ import {
   messageBubbleShapePath,
   queuedMessageBubbleShapeClass,
 } from '../src/features/chat/messageBubbleShape';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('human message bubble shape classes encode the selected clean squared soft-tail direction', () => {
   assert.equal(humanMessageBubbleShapeClass('own'), 'app-message-bubble app-message-bubble-own');
@@ -49,7 +50,7 @@ test('bubble backdrop renders one seamless vector path instead of separate tail 
 });
 
 test('bubble CSS uses the seamless shape layer with natural motion and no stitched pseudo-tail', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(shellCss, /\.app-message-bubble-shape-fill/);
   assert.match(shellCss, /vector-effect:\s*non-scaling-stroke/);
@@ -80,7 +81,7 @@ test('bubble path uses a small bottom-corner tail like the reference, not a side
 });
 
 test('human bubble styling avoids visible outline seams around the WhatsApp-style tail', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(shellCss, /\.app-chat-bubble-user\s*{[\s\S]*--app-message-bubble-stroke:\s*transparent;/);
   assert.match(shellCss, /\.app-chat-bubble-peer\s*{[\s\S]*--app-message-bubble-stroke:\s*transparent;/);

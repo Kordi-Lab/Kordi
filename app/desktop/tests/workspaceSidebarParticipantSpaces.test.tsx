@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import type { Agent, Contact, Conversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
@@ -297,7 +298,7 @@ test('WorkspaceSidebar moves participant-space running light from expanded paren
 });
 
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*position:\s*static/s);
@@ -718,7 +719,7 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
     activeConvId: 'session:group-duplicate-preview',
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.doesNotMatch(markup, /pl-\[3\.25rem\]/);
   assert.match(markup, /# 今天吃什么/);

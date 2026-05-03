@@ -1,0 +1,214 @@
+.app-composer-popover {
+  overflow: hidden;
+  border: 1px solid var(--app-divider);
+  background: var(--app-modal-bg);
+  box-shadow: var(--app-shadow-float);
+  backdrop-filter: blur(24px);
+}
+
+.app-composer-popover-title {
+  color: var(--utility-foreground);
+}
+
+.app-composer-popover-section-label {
+  color: var(--utility-muted-text);
+}
+
+.app-composer-popover-item {
+  border-radius: 12px;
+  color: var(--utility-foreground);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-composer-popover-item:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
+}
+
+.app-composer-popover-item-active {
+  background: color-mix(in oklab, var(--app-control-bg) 82%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.app-frosted-popover {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+  box-shadow:
+    0 14px 34px rgba(2, 6, 23, 0.2),
+    0 2px 10px rgba(2, 6, 23, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  backdrop-filter: blur(28px) saturate(155%);
+  -webkit-backdrop-filter: blur(28px) saturate(155%);
+}
+
+.app-chat-create-popover {
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-popover-enter {
+  transform-origin: var(--app-popover-origin, left 22px);
+  animation: app-chat-create-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-chat-create-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+}
+
+.app-chat-create-close {
+  color: var(--utility-muted-text);
+}
+
+.app-chat-create-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice,
+.app-chat-create-list-item {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-choice:hover,
+.app-chat-create-list-item:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 78%, transparent);
+}
+
+.app-chat-create-icon {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-create-list-item-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-chat-create-check {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  color: transparent;
+}
+
+.app-chat-create-check-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 74%, var(--app-divider));
+  background: color-mix(in oklab, oklch(74% 0.14 156) 74%, var(--utility-foreground));
+  color: rgb(15 23 42);
+}
+
+.app-chat-create-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 76%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-popover {
+  color: var(--utility-foreground);
+}
+
+.app-group-management-popover-enter {
+  transform-origin: var(--app-group-management-origin, left 26px);
+  animation: app-group-management-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-group-management-popover-arrow {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
+}
+
+.app-group-management-close {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-close:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-section-label {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-member-row,
+.app-group-management-add-row,
+.app-group-management-empty {
+  border-color: color-mix(in oklab, var(--app-divider) 74%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-add-row:hover,
+.app-group-management-member-row:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 70%, transparent);
+}
+
+.app-group-management-add-row-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 52%, var(--app-divider));
+  background: color-mix(in oklab, oklch(68% 0.13 156) 18%, var(--app-control-bg));
+}
+
+.app-group-management-admin-button {
+  background: color-mix(in oklab, var(--app-control-bg) 74%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-admin-button:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 86%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-group-management-admin-button-active {
+  background: color-mix(in oklab, oklch(68% 0.13 156) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(78% 0.12 156) 72%, var(--utility-foreground));
+}
+
+.app-group-management-remove-button {
+  color: var(--utility-muted-text);
+}
+
+.app-group-management-remove-button:hover {
+  background: color-mix(in oklab, oklch(62% 0.18 25) 16%, var(--app-control-bg));
+  color: color-mix(in oklab, oklch(76% 0.13 25) 74%, var(--utility-foreground));
+}
+
+@keyframes app-chat-create-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-create-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes app-group-management-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-group-management-enter-x, -6px), -2px, 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-chat-create-popover-enter,
+  .app-group-management-popover-enter {
+    animation: none;
+  }
+}

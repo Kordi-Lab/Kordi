@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { MessageBubble } from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
 
@@ -37,7 +38,7 @@ test('chat mentions render as inline colored text without pill chrome', () => {
 });
 
 test('chat mention and footer colors are tokenized by bubble context', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
   assert.match(themeTokensCss, /--app-chat-mention-own:\s*oklch\(/);
