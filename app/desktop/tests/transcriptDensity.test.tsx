@@ -56,6 +56,9 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /aria-label="Stop agent request"/);
   assert.match(markup, /title="Stop agent request"/);
   assert.match(markup, /app-bridge-agent-stop-button/);
+  assert.match(markup, /h-\[18px\] w-\[18px\]/);
+  assert.match(markup, /text-slate-400/);
+  assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
   assert.match(markup, /Processing/);
 });
 

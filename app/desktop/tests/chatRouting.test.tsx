@@ -2009,6 +2009,55 @@ test('canonical read model does not append cancelled bridge agent requests after
   assert.ok(stoppedIndex < laterUserIndex, 'stopped turn should stay near its request, not append to the end after a later sync touch');
 });
 
+test('canonical read model keeps cancelled session-message agent turn after its request even when bridge timestamp is earlier', () => {
+  const sessionId = 'session:group:stop-parent-anchor';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-jiaxin', humanId: 'human-jiaxin', avatarKey: 'human-jiaxin', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:jiaxin', kind: 'agent', displayName: "Jiaxin's Kordi", source: 'bridge', ownerIdentityId: 'human:jiaxin', sourceHostId: 'host-1', bridgeNodeId: 'node-jiaxin-agent', agentId: 'agent-jiaxin', avatarKey: 'agent-jiaxin', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Production group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { groupSpaceId: sessionId }, createdAtMs: 1_000, updatedAtMs: 4_000, lastMessageAtMs: 4_000 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:jiaxin', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:jiaxin', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:stopped', sessionId, senderIdentityId: 'agent:jiaxin', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Request stopped', content: { kind: 'session-message', deliveryState: 'cancelled', requestId: 'bridge_req_cancelled_parent', bridgeConversationId: 'bridge:host-1:node-jiaxin-agent' }, parentMessageId: 'msg:request', status: 'cancelled', sequenceNum: 2, createdAtMs: 3_000, updatedAtMs: 3_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'agent-response' },
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@JiaxinsKordi hi which human user you belong to', content: { sender: 'Me', timeLabel: '14:58', mentions: [{ label: 'JiaxinsKordi', targetKind: 'bridge-agent', nodeId: 'node-jiaxin-agent' }] }, parentMessageId: 'msg:request', status: 'delivered', sequenceNum: 1, createdAtMs: 4_000, updatedAtMs: 4_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'request' },
+      { id: 'msg:later', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'later message', content: { sender: 'Me', timeLabel: '14:59' }, status: 'sent', sequenceNum: 3, createdAtMs: 5_000, updatedAtMs: 5_000, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'later' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel?.buildChatConversations([], (items, fallback) => items[0]?.text ?? fallback ?? '')[0]?.messages ?? [];
+  const requestIndex = messages.findIndex((message) => message.text.startsWith('@JiaxinsKordi'));
+  const stoppedIndex = messages.findIndex((message) => message.turn?.error === 'Request stopped');
+  const laterIndex = messages.findIndex((message) => message.text === 'later message');
+
+  assert.ok(requestIndex >= 0, 'expected the request message');
+  assert.ok(stoppedIndex >= 0, 'expected the stopped agent turn');
+  assert.ok(laterIndex >= 0, 'expected the later message');
+  assert.ok(requestIndex < stoppedIndex, 'stopped agent turn should not move before its request');
+  assert.ok(stoppedIndex < laterIndex, 'stopped agent turn should remain attached to the request, not append after later messages');
+});
+
 test('canonical read model marks bridge mention requests failed when remote agent fails without a response', () => {
   const sessionId = 'session:bridge:humans:failed-delegation';
   const canonicalState = {

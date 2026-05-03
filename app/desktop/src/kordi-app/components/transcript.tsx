@@ -1301,7 +1301,7 @@ function BridgeAgentStopButton({
   return (
     <button
       type="button"
-      className="app-bridge-agent-stop-button inline-grid h-5.5 w-5.5 place-items-center rounded-full border border-rose-300/25 bg-rose-400/[0.08] text-rose-200 transition hover:border-rose-200/45 hover:bg-rose-400/[0.14] disabled:cursor-not-allowed disabled:opacity-55"
+      className="app-bridge-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
       aria-label={stopping ? 'Stopping agent request' : 'Stop agent request'}
       title={stopping ? 'Stopping…' : 'Stop agent request'}
       disabled={stopping}
@@ -1313,7 +1313,7 @@ function BridgeAgentStopButton({
         });
       }}
     >
-      <Square className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
+      <Square className="h-2 w-2 fill-current" aria-hidden="true" />
     </button>
   );
 }

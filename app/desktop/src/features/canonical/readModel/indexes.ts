@@ -52,16 +52,55 @@ function emptyIndexes(): CanonicalIndexes {
   };
 }
 
-type SortableCanonicalMessage = {
-  message: Message;
+type CanonicalMessageSortPosition = {
   sortAtMs: number;
   sequenceNum: number;
 };
 
+type SortableCanonicalMessage = CanonicalMessageSortPosition & {
+  message: Message;
+  tieBreakAtMs: number;
+};
+
 function sortedCanonicalMessages(messages: SortableCanonicalMessage[]) {
   return [...messages]
-    .sort((left, right) => left.sortAtMs - right.sortAtMs || left.sequenceNum - right.sequenceNum)
+    .sort((left, right) => left.sortAtMs - right.sortAtMs
+      || left.sequenceNum - right.sequenceNum
+      || left.tieBreakAtMs - right.tieBreakAtMs)
     .map((entry) => entry.message);
+}
+
+function messageSortPosition(message: CanonicalSessionMessage): CanonicalMessageSortPosition {
+  return { sortAtMs: message.createdAtMs, sequenceNum: message.sequenceNum };
+}
+
+function childMessageSortPosition(
+  message: CanonicalSessionMessage,
+  messageSortById: Map<string, CanonicalMessageSortPosition>,
+): CanonicalMessageSortPosition {
+  const parentPosition = message.parentMessageId && message.parentMessageId !== message.id
+    ? messageSortById.get(message.parentMessageId)
+    : null;
+  if (!parentPosition) return messageSortPosition(message);
+  return {
+    sortAtMs: parentPosition.sortAtMs,
+    sequenceNum: parentPosition.sequenceNum + 0.5,
+  };
+}
+
+function exchangeSortPosition(
+  exchange: CanonicalSessionState['delegatedExchanges'][number],
+  messageSortById: Map<string, CanonicalMessageSortPosition>,
+): CanonicalMessageSortPosition {
+  const parentMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
+  const parentPosition = parentMessageId ? messageSortById.get(parentMessageId) : null;
+  if (parentPosition) {
+    return {
+      sortAtMs: parentPosition.sortAtMs,
+      sequenceNum: parentPosition.sequenceNum + 0.5,
+    };
+  }
+  return { sortAtMs: exchange.createdAtMs, sequenceNum: Number.MAX_SAFE_INTEGER };
 }
 
 function normalizedLeadingMentionText(value: string) {
@@ -347,8 +386,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   }
 
   const rawMessagesBySessionId = new Map<string, CanonicalSessionMessage[]>();
+  const messageSortById = new Map<string, CanonicalMessageSortPosition>();
   for (const message of canonicalState.messages) {
     rawMessagesBySessionId.set(message.sessionId, [...(rawMessagesBySessionId.get(message.sessionId) ?? []), message]);
+    messageSortById.set(message.id, messageSortPosition(message));
   }
 
   const bridgedDelegationFallbackKeys = new Set(
@@ -391,8 +432,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         ...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
         {
           message: processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId),
-          sortAtMs: exchange.createdAtMs,
-          sequenceNum: Number.MAX_SAFE_INTEGER,
+          ...exchangeSortPosition(exchange, messageSortById),
+          tieBreakAtMs: exchange.createdAtMs,
         },
       ],
     );
@@ -410,8 +451,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         ...(cancelledDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
         {
           message: stoppedMessage,
-          sortAtMs: exchange.createdAtMs,
-          sequenceNum: Number.MAX_SAFE_INTEGER,
+          ...exchangeSortPosition(exchange, messageSortById),
+          tieBreakAtMs: exchange.createdAtMs,
         },
       ],
     );
@@ -480,7 +521,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
         ? { ...mapped, statusChips: ['failed'] }
         : mapped;
-      return [{ message: displayMessage, sortAtMs: message.createdAtMs, sequenceNum: message.sequenceNum }];
+      return [{
+        message: displayMessage,
+        ...childMessageSortPosition(message, messageSortById),
+        tieBreakAtMs: message.createdAtMs,
+      }];
     });
     canonicalMessagesBySessionId.set(
       sessionId,
