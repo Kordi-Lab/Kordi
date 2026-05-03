@@ -86,7 +86,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Chats page | `app/desktop/src/pages/ChatsPage.tsx` | Defer broad split. Extract composer footer/routing controls when behavior changes require touching them. |
 | Desktop chat state | `app/desktop/src/features/chat/useDesktopChatState.ts` | Queue persistence, live-turn snapshot helpers, and refresh/cache reducers have been extracted to focused modules. Next safe slice: split live-turn polling/completion orchestration or notification side effects. |
 | Desktop API client | `app/desktop/src/lib/desktop.ts` | Defer broad split. Group exports by resource only when consumers can move in the same PR. |
-| Bridges CLI commands | `bridges/cli/src/commands.rs` | Defer broad split. Move one command family per PR with command-level tests. |
+| Bridges CLI commands | `bridges/cli/src/commands.rs` | Setup/runtime-selection command logic has been extracted. Continue one command family per PR with command-level tests; next safe slice: move session or outbound ask/debate command helpers. |
 | Bridges local API | `bridges/cli/src/local_api.rs` | Defer broad split. Split route handlers by resource without changing URLs. |
 | Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Defer until command/local API splits reduce shared coupling. |
 | Large tests | `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Canonical session, turn-runner, and extension tests are split into child modules, and chat-start plus bridge canonical read-model coverage has been split out of `chatRouting.test.tsx`. Continue partitioning large tests by domain before production moves in the same area. |
@@ -108,6 +108,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `app/desktop/src/kordi-app/components/transcript.tsx`: live-turn cards, visible-turn merge helpers, delayed live status, tool timeline rows, and tool transcript detail blocks moved to `app/desktop/src/kordi-app/components/transcriptLiveTurns.tsx` while preserving existing transcript exports.
 - `agent/crates/cli/src/desktop_runtime.rs`: model option cache/loading, model resolution, auth-choice matching, and thinking-control helpers moved to `agent/crates/cli/src/desktop_runtime/model_options.rs` while preserving public desktop runtime exports.
 - `app/desktop/src-tauri/src/chat.rs`: live-turn snapshot locking, turn event application, running-turn pruning, and tool-output helper functions moved to `app/desktop/src-tauri/src/chat/turns.rs` without changing Tauri command DTOs or command names.
+- `bridges/cli/src/commands.rs`: setup/runtime-selection helpers and `cmd_setup` moved to `bridges/cli/src/commands/setup.rs`, while `crate::commands::cmd_setup` remains re-exported from the root command module.
 
 ## PR checklist for future splits
 
