@@ -12,6 +12,7 @@ import {
   ChevronUp,
   CircleAlert,
   Clock3,
+  CornerDownLeft,
   Download,
   ExternalLink,
   FileText,
@@ -306,25 +307,25 @@ function SourceMessageQuote({
   };
 
   return (
-    <div className="app-source-message-quote w-full max-w-[min(100%,34rem)] py-0.5">
+    <div className="app-source-message-quote w-full py-0.5">
       <button
         type="button"
-        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)] gap-2.5 text-left"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left"
         onClick={navigate}
         title="Jump to original request"
       >
-        <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
           <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
           <span className={cn('app-source-message-quote-text block text-[12px] leading-5', expanded ? 'whitespace-pre-wrap' : 'truncate')}>
             {sourceQuotePreviewText(sourceMessage, expanded)}
           </span>
         </span>
+        <CornerDownLeft className="app-source-message-quote-icon mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       </button>
       {canFold ? (
         <button
           type="button"
-          className="app-source-message-quote-toggle ml-[13px] mt-0.5 text-[11px] font-medium"
+          className="app-source-message-quote-toggle ml-auto mt-1 flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
@@ -359,13 +360,13 @@ function RequestReplyLine({
   return (
     <button
       type="button"
-      className={cn('app-message-reply-line max-w-[26rem] truncate px-1 text-[11px] font-medium leading-4', own ? 'self-end text-right' : 'self-start text-left')}
+      className={cn('app-message-reply-line inline-flex max-w-[26rem] items-center gap-1.5 truncate px-1 text-[11px] font-medium leading-4', own ? 'self-end text-right' : 'self-start text-left')}
       onClick={navigate}
       disabled={!targetMessageId}
       title={targetMessageId ? 'Jump to replies for this message' : undefined}
     >
-      <span className="app-message-reply-line-arrow" aria-hidden="true">↳</span>
       <span>{text}</span>
+      <CornerDownLeft className="app-message-reply-line-icon h-3 w-3 shrink-0" aria-hidden="true" />
     </button>
   );
 }
@@ -381,13 +382,13 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
 
   return (
     <>
-      <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full max-w-[min(100%,40rem)] text-[13px]', folded && 'app-live-assistant-answer-folded')}>
+      <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full text-[13px]', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
       </div>
       {shouldFold ? (
         <button
           type="button"
-          className="app-live-assistant-answer-toggle mt-2 w-fit text-[11px] font-medium"
+          className="app-live-assistant-answer-toggle ml-auto mt-2 flex w-fit items-center rounded-full px-3 py-1.5 text-[11px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
@@ -1522,60 +1523,73 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
 
+  const showResponsePanel = Boolean(
+    visibleTurn.sourceMessage
+      || showLiveStatusHeader
+      || isCompressionStatus
+      || hasTimelineActivity
+      || hasAssistant
+      || visibleTurn.error,
+  );
+
   return (
-    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] space-y-1.5 pb-1.5 [overflow-anchor:auto]">
-      <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
-      {showLiveStatusHeader ? (
-        <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-          <ProcessingStatusCircle className="h-3.5 w-3.5" />
-          <span className="text-slate-300">{liveStatusText}</span>
-          {pendingBridgeAgentRequest ? (
-            <BridgeAgentStopButton
-              request={pendingBridgeAgentRequest}
-              onStop={onStopBridgeAgentRequest}
+    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
+      {showResponsePanel ? (
+        <div className="app-live-turn-response-panel w-full max-w-[min(100%,42rem)] space-y-2.5">
+          <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          {showLiveStatusHeader ? (
+            <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
+              <ProcessingStatusCircle className="h-3.5 w-3.5" />
+              <span className="text-slate-300">{liveStatusText}</span>
+              {pendingBridgeAgentRequest ? (
+                <BridgeAgentStopButton
+                  request={pendingBridgeAgentRequest}
+                  onStop={onStopBridgeAgentRequest}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          {isCompressionStatus ? (
+            <div className={cn(
+              'app-compression-card rounded-2xl px-4 py-3 text-sm',
+              visibleTurn.status === 'compaction_failed'
+                ? 'app-compression-card-error'
+                : visibleTurn.status === 'compacted'
+                  ? 'app-compression-card-success'
+                  : 'app-compression-card-active',
+            )}>
+              <div className="app-compression-title flex items-center gap-2 font-medium">
+                {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+                <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
+              </div>
+              <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
+                {visibleTurn.status === 'compacting'
+                  ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
+                  : visibleTurn.status === 'compacted'
+                    ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
+                    : (visibleTurn.error ?? visibleTurn.message)}
+              </div>
+            </div>
+          ) : null}
+
+          {hasTimelineActivity ? (
+            <FoldableToolTimeline
+              tools={visibleTurn.tools}
+              thinkingText={visibleTurn.thinkingText}
+              active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
+              completed={visibleTurn.completed}
             />
           ) : null}
-        </div>
-      ) : null}
 
-      {isCompressionStatus ? (
-        <div className={cn(
-          'app-compression-card rounded-2xl px-4 py-3 text-sm',
-          visibleTurn.status === 'compaction_failed'
-            ? 'app-compression-card-error'
-            : visibleTurn.status === 'compacted'
-              ? 'app-compression-card-success'
-              : 'app-compression-card-active',
-        )}>
-          <div className="app-compression-title flex items-center gap-2 font-medium">
-            {visibleTurn.status === 'compacting' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : visibleTurn.status === 'compacted' ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            <span>{visibleTurn.status === 'compacting' ? 'Compressing conversation…' : visibleTurn.status === 'compacted' ? 'Conversation compressed' : 'Compression needs attention'}</span>
-          </div>
-          <div className="app-compression-detail mt-1.5 text-[12px] leading-5">
-            {visibleTurn.status === 'compacting'
-              ? 'Kordi is summarizing older history before sending the next model request. New messages will wait in the queue.'
-              : visibleTurn.status === 'compacted'
-                ? 'The preserved summary is in the session and Kordi is continuing with the queued request.'
-                : (visibleTurn.error ?? visibleTurn.message)}
-          </div>
-        </div>
-      ) : null}
+          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
 
-      {hasTimelineActivity ? (
-        <FoldableToolTimeline
-          tools={visibleTurn.tools}
-          thinkingText={visibleTurn.thinkingText}
-          active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
-          completed={visibleTurn.completed}
-        />
-      ) : null}
-
-      {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} foldable={visibleTurn.completed} /> : null}
-
-      {visibleTurn.error ? (
-        <div className="app-live-turn-error inline-flex w-fit max-w-[min(100%,42rem)] items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
-          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
-          <span className="min-w-0 break-words">{visibleTurn.error}</span>
+          {visibleTurn.error ? (
+            <div className="app-live-turn-error inline-flex w-fit max-w-full items-start gap-1.5 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[12px] leading-5 text-rose-100">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-300/90" />
+              <span className="min-w-0 break-words">{visibleTurn.error}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

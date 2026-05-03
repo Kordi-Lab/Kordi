@@ -129,8 +129,9 @@ test('renders completed assistant responses as a compact contrast surface', () =
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
+  assert.match(markup, /app-live-turn-response-panel/);
   assert.match(markup, /app-live-assistant-answer-surface/);
-  assert.match(markup, /max-w-\[min\(100%,40rem\)\]/);
+  assert.match(markup, /max-w-\[min\(100%,42rem\)\]/);
   assert.match(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /max-w-\[min\(100%,46rem\)\]/);
 });
@@ -154,7 +155,9 @@ test('renders request reply status as an external plain one-line count without n
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-message-reply-line/);
+  assert.match(markup, /app-message-reply-line-icon/);
   assert.match(markup, />1 reply · replying…</);
+  assert.doesNotMatch(markup, /↳/);
   assert.doesNotMatch(markup, /Alice|Bob|Kordi/);
   assert.doesNotMatch(markup, /app-message-reply-pill/);
 });
@@ -182,7 +185,9 @@ test('renders agent source quote and processing status without an output block b
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
+  assert.match(markup, /app-live-turn-response-panel/);
   assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /app-source-message-quote-icon/);
   assert.match(markup, />You</);
   assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /@AliceKordi review the copy/);
@@ -230,6 +235,8 @@ test('folds only substantially long completed agent responses by default', () =>
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /app-live-assistant-answer-folded/);
+  assert.match(markup, /app-live-assistant-answer-toggle/);
+  assert.match(markup, /ml-auto/);
   assert.match(markup, /Show full response/);
 });
 
