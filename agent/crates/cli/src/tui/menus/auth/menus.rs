@@ -474,6 +474,8 @@ mod tests {
             sibling_conn: None,
             extension_commands: ExtensionCommandRegistry::default(),
             extension_bootstrap: ExtensionBootstrap::default(),
+            session_resources:
+                kordi_core::agent_session_extensions::SessionResourceBootstrap::default(),
             slash_command_items: Vec::new(),
         };
         let (command_tx, command_rx) = mpsc::unbounded_channel();

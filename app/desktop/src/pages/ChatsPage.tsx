@@ -31,10 +31,12 @@ import {
   ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
+  ComposerSlashCommandHighlight,
   ComposerSlashMenu,
   LiveChatTurnMessage,
   MessageBubble,
   TypeBadge,
+  hasComposerSlashCommandHighlight,
   type ComposerAuthOption,
   type ComposerMentionOption,
   type ComposerModelOption,
@@ -50,6 +52,7 @@ import type {
   EditFilePreview,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
+import { desktopSlashCommandEnterAction, leadingSlashCommandTextParts } from '@/features/chat/composerController.shared';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
@@ -61,9 +64,35 @@ export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
   isCompressionActive: boolean;
+  slashCommands: DesktopChatSlashCommand[];
 };
 
-function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubbleProps) {
+function queuedSlashCommandInlineClass(kind: DesktopChatSlashCommand['kind']) {
+  switch (kind) {
+    case 'skill':
+      return 'text-violet-800 font-semibold';
+    case 'prompt':
+      return 'text-fuchsia-800 font-semibold';
+    case 'extension':
+      return 'text-amber-900 font-semibold';
+    case 'builtin':
+    default:
+      return 'text-sky-800 font-semibold';
+  }
+}
+
+function renderQueuedMessageText(text: string, slashCommands: DesktopChatSlashCommand[]) {
+  const parts = leadingSlashCommandTextParts(text, slashCommands);
+  if (!parts) return text;
+  return (
+    <>
+      <span className={queuedSlashCommandInlineClass(parts.kind)}>{parts.command}</span>
+      {parts.rest}
+    </>
+  );
+}
+
+function QueuedMessageBubble({ message, isCompressionActive, slashCommands }: QueuedMessageBubbleProps) {
   return (
     <div className="flex justify-end py-0.5">
       <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
@@ -74,7 +103,7 @@ function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubb
               <Clock3 className="h-2.5 w-2.5" />
               <span>{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
             </div>
-            <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
+            <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{renderQueuedMessageText(message.text, slashCommands)}</div>
           </div>
           <div className="app-queued-message-meta shrink-0 pb-0.5 text-[10px] leading-none">{message.time}</div>
         </div>
@@ -310,6 +339,13 @@ export function ChatsPage({
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
+  const chatSlashCommands = activeConv.type === 'owned-agent' && !activeConversationIsBridge
+    ? filteredChatSlashCommands
+    : [];
+  const chatSlashCommandCatalog = activeConv.type === 'owned-agent' && !activeConversationIsBridge
+    ? desktopChatState?.slashCommands ?? []
+    : [];
+  const chatSlashCommandHighlight = hasComposerSlashCommandHighlight(chatComposerText, chatSlashCommandCatalog);
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;
@@ -512,17 +548,18 @@ export function ChatsPage({
           className="h-full min-h-0 px-3.5 py-3 sm:px-4 sm:py-3.5"
           onScroll={onTranscriptScroll}
         >
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="space-y-1">
             {transcriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={`${msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
+                slashCommands={desktopChatState?.slashCommands ?? []}
               />
             ))}
             {shouldRenderLiveTurn && activeTranscriptLiveTurn ? <LiveChatTurnMessage turn={activeTranscriptLiveTurn} sender={liveTurnSender} /> : null}
             {queuedDesktopMessages.map((message) => (
-              <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
+              <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} slashCommands={desktopChatState?.slashCommands ?? []} />
             ))}
           </motion.div>
         </ScrollArea>
@@ -549,10 +586,10 @@ export function ChatsPage({
         </AnimatePresence>
         <div className="app-composer-shell rounded-[26px] p-3">
           <div className="relative">
-            {filteredChatSlashCommands.length > 0 ? (
+            {chatSlashCommands.length > 0 ? (
               <ComposerSlashMenu
-                items={filteredChatSlashCommands}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
+                items={chatSlashCommands}
+                selectedIndex={Math.min(chatSlashMenuIndex, chatSlashCommands.length - 1)}
                 onSelect={acceptChatSlashCommand}
               />
             ) : filteredChatMentionTargets.length > 0 ? (
@@ -602,83 +639,97 @@ export function ChatsPage({
                   ))}
                 </div>
               ) : null}
-              <textarea
-                rows={1}
-                value={chatComposerText}
-                onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
-                onPaste={(event) => {
-                  const files = extractClipboardFiles(event.clipboardData);
-                  if (files.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachments(files);
-                    return;
-                  }
+              <div className="relative">
+                {chatSlashCommandHighlight ? (
+                  <ComposerSlashCommandHighlight text={chatComposerText} slashCommands={chatSlashCommandCatalog} />
+                ) : null}
+                <textarea
+                  rows={1}
+                  value={chatComposerText}
+                  onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
+                  onPaste={(event) => {
+                    const files = extractClipboardFiles(event.clipboardData);
+                    if (files.length > 0) {
+                      event.preventDefault();
+                      void saveDesktopAttachments(files);
+                      return;
+                    }
 
-                  const pastedPaths = extractPastedLocalFilePaths(
-                    event.clipboardData.getData('text/plain'),
-                    event.clipboardData.getData('text/uri-list'),
-                  );
-                  if (pastedPaths.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachmentPaths(pastedPaths);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (filteredChatSlashCommands.length > 0) {
-                    if (event.key === 'ArrowDown') {
+                    const pastedPaths = extractPastedLocalFilePaths(
+                      event.clipboardData.getData('text/plain'),
+                      event.clipboardData.getData('text/uri-list'),
+                    );
+                    if (pastedPaths.length > 0) {
                       event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatSlashCommands.length);
+                      void saveDesktopAttachmentPaths(pastedPaths);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (chatSlashCommands.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setChatSlashMenuIndex((current) => (current + 1) % chatSlashCommands.length);
+                        return;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setChatSlashMenuIndex((current) => (current - 1 + chatSlashCommands.length) % chatSlashCommands.length);
+                        return;
+                      }
+                      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                        event.preventDefault();
+                        const selectedCommandItem = chatSlashCommands[Math.min(chatSlashMenuIndex, chatSlashCommands.length - 1)] ?? chatSlashCommands[0];
+                        const selectedCommand = selectedCommandItem.value;
+                        if (event.key === 'Enter' && desktopSlashCommandEnterAction(selectedCommandItem) === 'run') {
+                          onSendChatMessage(selectedCommand);
+                        } else {
+                          acceptChatSlashCommand(selectedCommand);
+                        }
+                        return;
+                      }
+                    }
+                    if (filteredChatMentionTargets.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
+                        return;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
+                        return;
+                      }
+                      if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
+                        return;
+                      }
+                    }
+                    if (event.key === 'Escape' && chatSlashCommands.length > 0) {
+                      event.preventDefault();
+                      setChatComposerText('/');
                       return;
                     }
-                    if (event.key === 'ArrowUp') {
+                    if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
                       event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatSlashCommands.length) % filteredChatSlashCommands.length);
+                      setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                       return;
                     }
-                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                    if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
-                      acceptChatSlashCommand(filteredChatSlashCommands[Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)]?.value ?? filteredChatSlashCommands[0].value);
-                      return;
+                      onSendChatMessage(event.currentTarget.value);
                     }
-                  }
-                  if (filteredChatMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
-                      return;
-                    }
-                  }
-                  if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
-                    event.preventDefault();
-                    setChatComposerText('/');
-                    return;
-                  }
-                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
-                    return;
-                  }
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    onSendChatMessage(event.currentTarget.value);
-                  }
-                }}
-                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                placeholder="Message a person, an agent, or delegate a task…"
-              />
+                  }}
+                  className={cn(
+                    'app-composer-text-measure relative z-10 min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]',
+                    chatSlashCommandHighlight ? 'text-transparent caret-[color:var(--utility-foreground)] selection:bg-sky-500/30' : null,
+                  )}
+                  placeholder="Message a person, an agent, or delegate a task…"
+                />
+              </div>
             </div>
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">

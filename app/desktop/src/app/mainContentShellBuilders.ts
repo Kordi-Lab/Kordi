@@ -104,6 +104,7 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
       args.setIsDetailPanelCollapsed(false);
     },
     desktopLiveTurn: args.desktopLiveTurn,
+    desktopChatSlashCommands: args.desktopChatState?.slashCommands ?? [],
     filteredProjectSlashCommands: args.filteredProjectSlashCommands,
     filteredProjectMentionTargets: args.filteredProjectMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
@@ -169,7 +170,9 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     },
     desktopLiveTurn: args.desktopLiveTurn,
     queuedDesktopMessages: args.activeQueuedDesktopMessages,
-    filteredChatSlashCommands: args.filteredChatSlashCommands,
+    filteredChatSlashCommands: args.activeConv.type === 'owned-agent' && !args.activeConversationIsBridge
+      ? args.filteredChatSlashCommands
+      : [],
     filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,

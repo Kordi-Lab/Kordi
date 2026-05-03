@@ -43,6 +43,7 @@ pub struct DesktopChatSlashCommand {
     pub label: String,
     pub detail: Option<String>,
     pub value: String,
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -63,6 +64,7 @@ fn is_false(value: &bool) -> bool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+const DYNAMIC_SLASH_CONTEXT_CUSTOM_TYPE: &str = "desktop_dynamic_slash_context";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 const DESKTOP_MODEL_OPTIONS_CACHE_TTL: Duration = Duration::from_secs(300);
@@ -351,6 +353,7 @@ impl DesktopRuntimeSession {
                 label: item.label.clone(),
                 detail: item.detail.clone(),
                 value: item.value.clone(),
+                kind: desktop_slash_command_kind(item.value.as_str(), &self.setup).to_string(),
             })
             .collect()
     }
@@ -492,6 +495,191 @@ impl DesktopRuntimeSession {
                 }))
             }
         }
+    }
+
+    async fn reload_runtime_setup(&mut self) -> Result<()> {
+        let cwd = self.setup.tool_ctx.cwd.clone();
+        let session_id = self.setup.session_id.clone();
+        let entry = SessionBootstrapOptions {
+            session: Some(session_id),
+            ..SessionBootstrapOptions::default()
+        };
+        let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        normalize_setup_thinking(&mut setup);
+        self.setup = setup;
+        Ok(())
+    }
+
+    pub async fn run_local_command(&mut self, text: &str) -> Result<Option<String>> {
+        let text = text.trim();
+        let command = text.split_whitespace().next().unwrap_or(text);
+        match command {
+            "/reload" => {
+                if text != "/reload" {
+                    return Ok(Some("Usage: /reload".to_string()));
+                }
+                self.reload_runtime_setup().await?;
+                Ok(Some(
+                    "Reloaded desktop runtime resources and slash commands.".to_string(),
+                ))
+            }
+            "/install" => self.run_install_command(text).await,
+            "/skill" => self.run_skill_command(text).await,
+            "/compact" => self.run_compact_command(text).await,
+            "/export" => self.run_export_command(text),
+            "/import" => self.run_import_command(text),
+            "/fork" => Ok(Some(
+                "Desktop /fork is reserved for the upcoming message fork flow (#172).".to_string(),
+            )),
+            "/tree" => Ok(Some(
+                "Desktop /tree is reserved for the upcoming session branch browser (#173)."
+                    .to_string(),
+            )),
+            _ if is_desktop_dynamic_agent_slash_command(command, &self.setup.session_resources) => {
+                Ok(None)
+            }
+            _ if self.setup.extension_commands.is_registered(text) => {
+                let note = self
+                    .setup
+                    .extension_commands
+                    .execute_text(text)
+                    .await?
+                    .unwrap_or_else(|| "Extension command completed.".to_string());
+                Ok(Some(note))
+            }
+            _ if self
+                .setup
+                .slash_command_items
+                .iter()
+                .any(|item| item.value == command) =>
+            {
+                Ok(Some(format!(
+                    "{command} is visible in the desktop command menu, but interactive execution is not wired yet."
+                )))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    async fn run_install_command(&mut self, text: &str) -> Result<Option<String>> {
+        match crate::slash::parse_install_command(text) {
+            Some(crate::slash::InstallSlashAction::Help) => {
+                Ok(Some(crate::slash::install_help_text()))
+            }
+            Some(crate::slash::InstallSlashAction::Install(install)) => {
+                let cwd = self.setup.tool_ctx.cwd.clone();
+                let scope = if install.local {
+                    crate::extensions::SettingsScope::Project
+                } else {
+                    crate::extensions::SettingsScope::Global
+                };
+                let source = install.source.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::extensions::install_package(&source, scope, &cwd)
+                })
+                .await
+                .map_err(|err| anyhow!("install task failed: {err}"))??;
+                self.reload_runtime_setup().await?;
+                Ok(Some(format!(
+                    "Installed {} and reloaded resources.",
+                    install.source
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn run_compact_command(&mut self, text: &str) -> Result<Option<String>> {
+        let instructions = text
+            .strip_prefix("/compact")
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let settings = kordi_core::types::CompactionSettings {
+            enabled: self.setup.compaction_enabled,
+            reserve_tokens: self.setup.compaction_reserve_tokens,
+            keep_recent_tokens: self.setup.compaction_keep_recent_tokens,
+        };
+        let entries = kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+        let parent_id = crate::turn_runner::get_leaf_raw(&self.setup.conn, &self.setup.session_id);
+        let db_path = self
+            .setup
+            .conn
+            .path()
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| anyhow!("Compaction requires a file-backed session database"))?;
+        let (auth_mode, auth_account_id) =
+            crate::compaction_exec::compaction_auth_options(self.setup.auth.as_ref());
+        let result = crate::compaction_exec::execute_session_compaction(
+            entries,
+            parent_id,
+            db_path,
+            &self.setup.session_id,
+            self.setup.provider.clone(),
+            &self.setup.model.id,
+            &self.setup.api_key,
+            auth_mode,
+            auth_account_id,
+            &self.setup.base_url,
+            &self.setup.headers,
+            &settings,
+            instructions,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        match result {
+            Ok(result) => Ok(Some(format!(
+                "Compaction complete • {} messages summarized • {} kept • {} tokens before",
+                result.summarized_count, result.kept_count, result.tokens_before
+            ))),
+            Err(err) if err.to_string() == "Nothing to compact" => {
+                let entries =
+                    kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+                let total_tokens: u64 = entries
+                    .iter()
+                    .map(kordi_session::compaction::estimate_tokens_row)
+                    .sum();
+                Ok(Some(format!(
+                    "Nothing to compact ({total_tokens} estimated tokens, {} entries)",
+                    entries.len()
+                )))
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn run_export_command(&mut self, text: &str) -> Result<Option<String>> {
+        let path = text
+            .strip_prefix("/export")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("session-export.jsonl");
+        let rows = kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)?;
+        let mut lines = Vec::new();
+        for row in &rows {
+            if let Ok(entry) = kordi_session::store::parse_entry(row)
+                && let Ok(json) = serde_json::to_string(&entry)
+            {
+                lines.push(json);
+            }
+        }
+        std::fs::write(path, format!("{}\n", lines.join("\n")))?;
+        let abs_path =
+            std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+        Ok(Some(format!("Exported session to: {}", abs_path.display())))
+    }
+
+    fn run_import_command(&mut self, text: &str) -> Result<Option<String>> {
+        let Some(path) = text
+            .strip_prefix("/import")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(Some("Usage: /import <path.jsonl>".to_string()));
+        };
+        Ok(Some(format!(
+            "Import from {path} is not supported in the desktop app yet."
+        )))
     }
 
     pub fn summary(&self) -> Result<DesktopChatSessionSummary> {
@@ -644,8 +832,11 @@ impl DesktopRuntimeSession {
             &attachment_paths,
             &self.setup.tool_ctx.cwd,
         );
-        let prompt_text = expanded.text.trim().to_string();
-        if prompt_text.is_empty() && expanded.image_paths.is_empty() {
+        let prompt_parts = desktop_dynamic_slash_prompt_parts(
+            expanded.text.trim(),
+            &self.setup.session_resources,
+        );
+        if prompt_parts.prompt_text.trim().is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
         }
         let image_attachment_paths = attachment_paths
@@ -684,7 +875,7 @@ impl DesktopRuntimeSession {
         ensure_session_row_created(&mut self.setup)?;
         let session_title_seed = if prompt.is_empty() {
             attachment_summary_from_metadata(&attachment_metadata)
-                .unwrap_or_else(|| prompt_text.clone())
+                .unwrap_or_else(|| prompt_parts.prompt_text.clone())
         } else {
             prompt.clone()
         };
@@ -701,7 +892,7 @@ impl DesktopRuntimeSession {
         turn_runner::append_user_message_with_images(
             &sibling_conn,
             &self.setup.session_id,
-            &prompt,
+            &prompt_parts.visible_text,
             &images,
         )
         .await?;
@@ -712,9 +903,16 @@ impl DesktopRuntimeSession {
             &attachment_metadata,
         )
         .await?;
+        append_dynamic_slash_context_message(
+            &sibling_conn,
+            &self.setup.session_id,
+            prompt_parts.hidden_context_text.as_deref(),
+        )
+        .await?;
         refresh_provider_runtime_fields(&mut self.setup);
 
         let turn_config = build_turn_config(&mut self.setup, cancel)?;
+        let prompt_text = prompt_parts.prompt_text;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
         let handle =
             tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
@@ -1343,6 +1541,138 @@ fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
     setup.thinking_level = effective_thinking_for_model(requested, &setup.model)
         .as_str()
         .to_string();
+}
+
+fn desktop_slash_command_kind(value: &str, setup: &SessionRuntimeSetup) -> &'static str {
+    let token = value.trim().split_whitespace().next().unwrap_or(value);
+    if token.starts_with("/skill:") {
+        return "skill";
+    }
+    if setup
+        .session_resources
+        .prompts
+        .iter()
+        .any(|prompt| format!("/{}", prompt.info.slash_command_name()) == token)
+    {
+        return "prompt";
+    }
+    if setup.extension_commands.is_registered(token) {
+        return "extension";
+    }
+    "builtin"
+}
+
+fn is_desktop_dynamic_agent_slash_command(
+    command: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> bool {
+    parse_desktop_skill_command(command).is_some()
+        || parse_desktop_prompt_template(command, resources).is_some()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DesktopDynamicSlashPromptParts {
+    visible_text: String,
+    prompt_text: String,
+    hidden_context_text: Option<String>,
+}
+
+fn desktop_dynamic_slash_prompt_parts(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> DesktopDynamicSlashPromptParts {
+    let visible_text = text.trim().to_string();
+    let hidden_context_text = desktop_dynamic_slash_prompt_context_text(text, resources);
+    let prompt_text = hidden_context_text
+        .clone()
+        .unwrap_or_else(|| visible_text.clone());
+
+    DesktopDynamicSlashPromptParts {
+        visible_text,
+        prompt_text,
+        hidden_context_text,
+    }
+}
+
+#[cfg(test)]
+fn expand_desktop_dynamic_slash_prompt(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> String {
+    desktop_dynamic_slash_prompt_context_text(text, resources)
+        .unwrap_or_else(|| text.to_string())
+}
+
+fn desktop_dynamic_slash_prompt_context_text(
+    text: &str,
+    resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Option<String> {
+    if let Some((skill_name, user_args)) = parse_desktop_skill_command(text)
+        && let Some(skill) = resources
+            .skills
+            .iter()
+            .find(|skill| skill.info.name == skill_name)
+    {
+        return Some(format_desktop_resource_content(&skill.content, user_args));
+    }
+
+    if let Some((prompt, user_args)) = parse_desktop_prompt_template(text, resources) {
+        return Some(format_desktop_resource_content(&prompt.content, user_args));
+    }
+
+    None
+}
+
+fn parse_desktop_skill_command(text: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = text.trim();
+    let remainder = trimmed.strip_prefix("/skill:")?;
+    split_desktop_slash_command_name_and_args(remainder)
+}
+
+fn parse_desktop_prompt_template<'a, 'b>(
+    text: &'b str,
+    resources: &'a kordi_core::agent_session_extensions::SessionResourceBootstrap,
+) -> Option<(
+    &'a kordi_core::agent_session_extensions::PromptTemplateDefinition,
+    Option<&'b str>,
+)> {
+    let (name, args) = parse_desktop_slash_command(text)?;
+    resources
+        .prompts
+        .iter()
+        .find(|prompt| prompt.info.slash_command_name() == name)
+        .map(|prompt| (prompt, args))
+}
+
+fn parse_desktop_slash_command(text: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = text.trim();
+    let remainder = trimmed.strip_prefix('/')?;
+    split_desktop_slash_command_name_and_args(remainder)
+}
+
+fn split_desktop_slash_command_name_and_args(input: &str) -> Option<(&str, Option<&str>)> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed.find(char::is_whitespace) {
+        Some(index) => {
+            let name = trimmed[..index].trim();
+            if name.is_empty() {
+                return None;
+            }
+            let args = trimmed[index..].trim();
+            Some((name, (!args.is_empty()).then_some(args)))
+        }
+        None => Some((trimmed, None)),
+    }
+}
+
+fn format_desktop_resource_content(content: &str, user_args: Option<&str>) -> String {
+    match user_args {
+        Some(args) => format!("{}\n\nUser: {}", content.trim_end(), args),
+        None => content.to_string(),
+    }
 }
 
 fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
@@ -2093,6 +2423,36 @@ async fn append_attachment_context_message(
         content,
         display: false,
         details: Some(serde_json::json!({ "attachments": attachments })),
+    };
+    kordi_session::store::append_entry(&conn, session_id, &entry)?;
+    Ok(())
+}
+
+async fn append_dynamic_slash_context_message(
+    conn: &Arc<tokio::sync::Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    context_text: Option<&str>,
+) -> Result<()> {
+    let Some(context_text) = context_text else {
+        return Ok(());
+    };
+    if context_text.trim().is_empty() {
+        return Ok(());
+    }
+
+    let conn = conn.lock().await;
+    let entry = SessionEntry::CustomMessage {
+        base: EntryBase {
+            id: EntryId::generate(),
+            parent_id: turn_runner::get_leaf_raw(&conn, session_id),
+            timestamp: Utc::now(),
+        },
+        custom_type: DYNAMIC_SLASH_CONTEXT_CUSTOM_TYPE.to_string(),
+        content: vec![ContentBlock::Text {
+            text: context_text.to_string(),
+        }],
+        display: false,
+        details: None,
     };
     kordi_session::store::append_entry(&conn, session_id, &entry)?;
     Ok(())
@@ -2903,6 +3263,89 @@ mod tests {
 
     fn lm_studio_settings() -> Settings {
         local_provider_settings("lm-studio", "http://localhost:1234/v1")
+    }
+
+    fn dynamic_slash_test_resources() -> kordi_core::agent_session_extensions::SessionResourceBootstrap {
+        kordi_core::agent_session_extensions::SessionResourceBootstrap {
+            skills: vec![kordi_core::agent_session_extensions::SkillDefinition {
+                info: kordi_core::agent_session_extensions::SkillInfo {
+                    name: "review".to_string(),
+                    description: "Review changes".to_string(),
+                    source_info: kordi_core::agent_session_extensions::SourceInfo::default(),
+                },
+                content: "Use the review skill.".to_string(),
+            }],
+            prompts: vec![
+                kordi_core::agent_session_extensions::PromptTemplateDefinition {
+                    info: kordi_core::agent_session_extensions::PromptTemplateInfo {
+                        name: "summarize".to_string(),
+                        description: "Summarize context".to_string(),
+                        source_info: kordi_core::agent_session_extensions::SourceInfo::default(),
+                    },
+                    content: "Summarize this context.".to_string(),
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn desktop_dynamic_slash_prompt_expands_skills_and_prompt_templates() {
+        let resources = dynamic_slash_test_resources();
+
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/skill:review focus on tests", &resources),
+            "Use the review skill.\n\nUser: focus on tests"
+        );
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/summarize release notes", &resources),
+            "Summarize this context.\n\nUser: release notes"
+        );
+        assert_eq!(
+            expand_desktop_dynamic_slash_prompt("/unknown release notes", &resources),
+            "/unknown release notes"
+        );
+    }
+
+    #[tokio::test]
+    async fn desktop_dynamic_slash_prompt_context_is_hidden_from_loaded_messages() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-dynamic-slash-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+        let conn = Arc::new(tokio::sync::Mutex::new(conn));
+        let resources = dynamic_slash_test_resources();
+        let parts = desktop_dynamic_slash_prompt_parts("/skill:review focus on tests", &resources);
+
+        turn_runner::append_user_message_with_images(
+            &conn,
+            session_id,
+            &parts.visible_text,
+            &[],
+        )
+        .await?;
+        append_dynamic_slash_context_message(
+            &conn,
+            session_id,
+            parts.hidden_context_text.as_deref(),
+        )
+        .await?;
+
+        let guard = conn.lock().await;
+        let messages = load_session_messages(&guard, session_id)?;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].text, "/skill:review focus on tests");
+        assert!(!messages
+            .iter()
+            .any(|message| message.text.contains("Use the review skill.")));
+
+        let context = kordi_session::context::build_context(&guard, session_id)?;
+        let provider_messages = kordi_core::agent_session::messages_to_provider(&context.messages);
+        assert!(provider_messages.iter().any(|message| message
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| text.contains("Use the review skill."))));
+        Ok(())
     }
 
     #[test]

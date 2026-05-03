@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import { buildSessionStatusIndicator, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
@@ -208,6 +208,30 @@ test('drops local intro fragment when the following final local turn extends it'
   const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
 
   assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('session status indicator ignores terminal live turn statuses even if a stale snapshot is incomplete', () => {
+  for (const status of ['complete', 'succeeded', 'failed', 'cancelled']) {
+    assert.equal(buildSessionStatusIndicator({
+      unreadCount: 0,
+      showBackgroundActivity: true,
+      liveTurn: turn({ status, completed: false }),
+    }), undefined, `${status} should not keep showing the running light`);
+  }
+});
+
+test('session status indicator does not preserve stale live indicators after the live turn ends', () => {
+  assert.equal(buildSessionStatusIndicator({
+    unreadCount: 0,
+    showBackgroundActivity: true,
+    existingIndicator: { label: 'Running', tone: 'running', live: true },
+  }), undefined);
+
+  assert.deepEqual(buildSessionStatusIndicator({
+    unreadCount: 2,
+    showBackgroundActivity: true,
+    existingIndicator: { label: 'Running', tone: 'running', live: true },
+  }), { label: 'Unread', tone: 'ready' });
 });
 
 test('suppresses all local owned-agent runtime fragments after the triggering user while live turn is rendered', () => {

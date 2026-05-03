@@ -9,6 +9,8 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 
+import { desktopSlashCommandQuery, filterDesktopSlashCommandsForQuery } from './composerController.shared';
+
 type ComposerSelections = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
 type ComposerDrafts = Record<ComposerScope, string>;
 
@@ -280,43 +282,20 @@ export function useComposerViewModel({
     };
   }, [composerSelections, desktopAuthState, resolveComposerProviderId]);
 
-  const chatSlashQuery = useMemo(() => {
-    const text = composerDrafts.chat.trim();
-    if (!text.startsWith('/')) return null;
-    if (/\s/.test(text)) return null;
-    return text;
-  }, [composerDrafts.chat]);
+  const chatSlashQuery = useMemo(() => desktopSlashCommandQuery(composerDrafts.chat), [composerDrafts.chat]);
 
-  const projectSlashQuery = useMemo(() => {
-    const text = composerDrafts.project.trim();
-    if (!text.startsWith('/')) return null;
-    if (/\s/.test(text)) return null;
-    return text;
-  }, [composerDrafts.project]);
+  const projectSlashQuery = useMemo(() => desktopSlashCommandQuery(composerDrafts.project), [composerDrafts.project]);
 
-  const filterSlashCommands = useCallback((query: string | null) => {
+  const filterSlashCommands = useCallback((query: string | null, scope: ComposerScope) => {
     if (!isNativeShell || !desktopChatState?.slashCommands?.length || !query) {
       return [] as DesktopChatSlashCommand[];
     }
 
-    const normalizedQuery = query.toLowerCase();
-    const search = normalizedQuery.slice(1);
-
-    return desktopChatState.slashCommands.filter((item) => {
-      if (!search) return true;
-      const value = item.value.toLowerCase();
-      const label = item.label.toLowerCase();
-      const detail = item.detail?.toLowerCase() ?? '';
-      return value.startsWith(normalizedQuery)
-        || label.startsWith(normalizedQuery)
-        || value.includes(search)
-        || label.includes(search)
-        || detail.includes(search);
-    });
+    return filterDesktopSlashCommandsForQuery(desktopChatState.slashCommands, query, scope);
   }, [desktopChatState?.slashCommands, isNativeShell]);
 
-  const filteredChatSlashCommands = useMemo(() => filterSlashCommands(chatSlashQuery), [chatSlashQuery, filterSlashCommands]);
-  const filteredProjectSlashCommands = useMemo(() => filterSlashCommands(projectSlashQuery), [filterSlashCommands, projectSlashQuery]);
+  const filteredChatSlashCommands = useMemo(() => filterSlashCommands(chatSlashQuery, 'chat'), [chatSlashQuery, filterSlashCommands]);
+  const filteredProjectSlashCommands = useMemo(() => filterSlashCommands(projectSlashQuery, 'project'), [filterSlashCommands, projectSlashQuery]);
 
   return {
     chatModelOptions,

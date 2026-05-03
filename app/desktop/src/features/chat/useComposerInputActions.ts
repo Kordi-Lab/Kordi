@@ -10,6 +10,7 @@ import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotic
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
+  acceptedDesktopSlashCommandText,
   formatDesktopEventTime,
   formatThinkingSelectionLabel,
   parseModelSelection,
@@ -418,11 +419,11 @@ export function useComposerInputActions({
   }, [setComposerDrafts]);
 
   const acceptChatSlashCommand = useCallback((value: string) => {
-    setChatComposerText(value);
+    setChatComposerText(acceptedDesktopSlashCommandText(value));
   }, [setChatComposerText]);
 
   const acceptProjectSlashCommand = useCallback((value: string) => {
-    setProjectComposerText(value);
+    setProjectComposerText(acceptedDesktopSlashCommandText(value));
   }, [setProjectComposerText]);
 
   return {

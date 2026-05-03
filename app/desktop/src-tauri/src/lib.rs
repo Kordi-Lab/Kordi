@@ -180,6 +180,7 @@ pub fn run() {
             chat::desktop_chat_send_message,
             chat::desktop_chat_start_message,
             chat::desktop_chat_run_skill_command,
+            chat::desktop_chat_run_local_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state
         ])

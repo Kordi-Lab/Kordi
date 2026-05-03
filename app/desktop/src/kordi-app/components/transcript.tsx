@@ -34,6 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
+import { leadingSlashCommandTextParts } from '@/features/chat/composerController.shared';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
@@ -47,6 +48,7 @@ import type {
   Contact,
   ContactRequest,
   ConversationType,
+  DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
@@ -271,7 +273,50 @@ function isMentionBoundary(text: string, index: number, length: number) {
   return (!before || /\s/.test(before)) && (!after || /[\s:;,.!?—-]/.test(after));
 }
 
-function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
+type SlashCommandTextSurface = 'darkSurface' | 'lightSenderBubble';
+
+function slashCommandInlineClass(kind: 'builtin' | 'skill' | 'prompt' | 'extension', surface: SlashCommandTextSurface) {
+  if (surface === 'lightSenderBubble') {
+    switch (kind) {
+      case 'skill':
+        return 'text-violet-800 font-semibold';
+      case 'prompt':
+        return 'text-fuchsia-800 font-semibold';
+      case 'extension':
+        return 'text-amber-900 font-semibold';
+      case 'builtin':
+      default:
+        return 'text-sky-800 font-semibold';
+    }
+  }
+
+  switch (kind) {
+    case 'skill':
+      return 'text-violet-200 font-semibold';
+    case 'prompt':
+      return 'text-fuchsia-200 font-semibold';
+    case 'extension':
+      return 'text-amber-200 font-semibold';
+    case 'builtin':
+    default:
+      return 'text-sky-200 font-semibold';
+  }
+}
+
+function renderTextWithMentionPills(
+  text: string,
+  mentions?: MessageMention[],
+  slashCommands: DesktopChatSlashCommand[] = [],
+  slashCommandSurface: SlashCommandTextSurface = 'darkSurface',
+): ReactNode[] {
+  const slashParts = leadingSlashCommandTextParts(text, slashCommands);
+  if (slashParts) {
+    return [
+      <span key="slash-command" className={slashCommandInlineClass(slashParts.kind, slashCommandSurface)}>{slashParts.command}</span>,
+      ...renderTextWithMentionPills(slashParts.rest, mentions, slashCommands, slashCommandSurface),
+    ];
+  }
+
   const labels = (mentions ?? [])
     .map((mention) => mention.label.trim())
     .filter(Boolean)
@@ -648,7 +693,15 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 
-function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?: (file: EditFilePreview) => void }) {
+function MessageBubbleView({
+  msg,
+  onOpenSource,
+  slashCommands = [],
+}: {
+  msg: Message;
+  onOpenSource?: (file: EditFilePreview) => void;
+  slashCommands?: DesktopChatSlashCommand[];
+}) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
@@ -816,6 +869,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
   const showAvatar = !isAgentMessage;
+  const slashCommandSurface: SlashCommandTextSurface = isOwnHumanMessage ? 'lightSenderBubble' : 'darkSurface';
 
   return (
     <div className={cn('flex flex-col gap-1 py-1', align, isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '')}>
@@ -849,7 +903,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words">
-                {renderTextWithMentionPills(msg.text, msg.mentions)}
+                {renderTextWithMentionPills(msg.text, msg.mentions, slashCommands, slashCommandSurface)}
               </span>
               <span className={cn(
                 'app-message-footer app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
@@ -869,7 +923,7 @@ function MessageBubbleView({ msg, onOpenSource }: { msg: Message; onOpenSource?:
             <>
               <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
                 {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions)}</div> : null}
+                {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions, slashCommands, slashCommandSurface)}</div> : null}
               </div>
               <MessageFooter
                 time={msg.time}
@@ -925,7 +979,8 @@ function messageSnapshotKey(msg: Message) {
 
 export const MessageBubble = memo(
   MessageBubbleView,
-  (previous, next) => previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg),
+  (previous, next) => (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg))
+    && previous.slashCommands === next.slashCommands,
 );
 
 function toolDisplayConfig(toolName: string) {

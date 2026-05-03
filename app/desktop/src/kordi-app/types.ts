@@ -637,6 +637,7 @@ export type DesktopChatSlashCommand = {
   label: string;
   detail?: string | null;
   value: string;
+  kind: 'builtin' | 'skill' | 'prompt' | 'extension';
 };
 
 export type DesktopChatAttachment = {

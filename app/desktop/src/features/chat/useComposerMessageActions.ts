@@ -45,17 +45,8 @@ type UseComposerMessageActionsArgs = Pick<
   | 'setOpenComposerSelector'
   | 'chatComposerAttachments'
   | 'setChatComposerAttachments'
-  | 'chatModelOptions'
   | 'refreshDesktopAuth'
   | 'refreshDesktopChat'
-  | 'handleCreateChatSession'
-  | 'handleRenameDesktopSession'
-  | 'setActiveNav'
-  | 'setActiveSettingsSectionId'
-  | 'setActiveDetailTab'
-  | 'setIsDetailPanelCollapsed'
-  | 'setDesktopSessionRenameDraft'
-  | 'setIsEditingDesktopSessionTitle'
   | 'setDesktopChatState'
   | 'setDesktopChatError'
   | 'isDesktopChatSending'
@@ -68,7 +59,6 @@ type UseComposerMessageActionsArgs = Pick<
   | 'setActiveConvId'
 > & {
   attachmentSummaryText: (text: string) => string;
-  selectComposerValue: (scope: ComposerScope, type: 'model', value: string) => Promise<void>;
   appendProjectDraft: (value: string) => void;
   appendChatDraft: (value: string) => void;
 };
@@ -97,17 +87,8 @@ export function useComposerMessageActions({
   setOpenComposerSelector,
   chatComposerAttachments,
   setChatComposerAttachments,
-  chatModelOptions,
   refreshDesktopAuth,
   refreshDesktopChat,
-  handleCreateChatSession,
-  handleRenameDesktopSession,
-  setActiveNav,
-  setActiveSettingsSectionId,
-  setActiveDetailTab,
-  setIsDetailPanelCollapsed,
-  setDesktopSessionRenameDraft,
-  setIsEditingDesktopSessionTitle,
   setDesktopChatState,
   setDesktopChatError,
   isDesktopChatSending,
@@ -119,7 +100,6 @@ export function useComposerMessageActions({
   shouldAutoFollowChatRef,
   setActiveConvId,
   attachmentSummaryText,
-  selectComposerValue,
   appendProjectDraft,
   appendChatDraft,
 }: UseComposerMessageActionsArgs) {
@@ -149,41 +129,15 @@ export function useComposerMessageActions({
   const handleLocalSlashCommand = useCallback((rawText: string, scope: ComposerScope = 'chat') => runLocalSlashCommand({
     rawText,
     scope,
-    activeConvId,
-    activeConvMessages,
     appendDesktopSystemMessage,
-    chatModelOptions,
     desktopChatState,
-    handleCreateChatSession,
-    handleRenameDesktopSession,
     refreshDesktopAuth,
     refreshDesktopChat,
-    selectComposerValue,
-    setActiveDetailTab,
-    setActiveNav,
-    setActiveSettingsSectionId,
-    setDesktopSessionRenameDraft,
-    setIsDetailPanelCollapsed,
-    setIsEditingDesktopSessionTitle,
-    setOpenComposerSelector,
   }), [
-    activeConvId,
-    activeConvMessages,
     appendDesktopSystemMessage,
-    chatModelOptions,
     desktopChatState,
-    handleCreateChatSession,
-    handleRenameDesktopSession,
     refreshDesktopAuth,
     refreshDesktopChat,
-    selectComposerValue,
-    setActiveDetailTab,
-    setActiveNav,
-    setActiveSettingsSectionId,
-    setDesktopSessionRenameDraft,
-    setIsDetailPanelCollapsed,
-    setIsEditingDesktopSessionTitle,
-    setOpenComposerSelector,
   ]);
 
   const handleSendChatMessage = useChatMessageActions({

@@ -124,6 +124,8 @@ pub(crate) struct SessionRuntimeSetup {
     pub extension_commands: ExtensionCommandRegistry,
     pub extension_bootstrap: ExtensionBootstrap,
     #[allow(dead_code)]
+    pub session_resources: kordi_core::agent_session_extensions::SessionResourceBootstrap,
+    #[allow(dead_code)]
     pub slash_command_items: Vec<kordi_tui::select_list::SelectItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
@@ -233,6 +235,28 @@ fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Pat
     format!("\n\n## Shared project memory\n{}", sections.join("\n\n"))
 }
 
+const DESKTOP_EXCLUDED_SLASH_COMMANDS: &[&str] = &[
+    "/help",
+    "/hotkeys",
+    "/settings",
+    "/login",
+    "/logout",
+    "/model",
+    "/new",
+    "/resume",
+    "/name",
+    "/session",
+    "/copy",
+    "/quit",
+    "/exit",
+    "/image",
+    "/update",
+];
+
+fn desktop_slash_command_is_excluded(value: &str) -> bool {
+    DESKTOP_EXCLUDED_SLASH_COMMANDS.contains(&value)
+}
+
 fn build_slash_command_items(
     session_resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
 ) -> Vec<kordi_tui::select_list::SelectItem> {
@@ -240,10 +264,7 @@ fn build_slash_command_items(
     let mut seen = std::collections::BTreeSet::new();
 
     for item in kordi_tui::slash_commands::shared_slash_command_select_items() {
-        if matches!(
-            item.value.as_str(),
-            "/settings" | "/model" | "/copy" | "/hotkeys" | "/login" | "/logout"
-        ) {
+        if desktop_slash_command_is_excluded(&item.value) {
             continue;
         }
         if seen.insert(item.value.clone()) {
@@ -527,6 +548,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         sibling_conn: Some(sibling_conn),
         extension_commands: commands,
         extension_bootstrap,
+        session_resources: session_resources.clone(),
         slash_command_items,
         request_metrics_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
             RequestMetricsTracker::new(),
@@ -586,12 +608,15 @@ fn resolve_startup_session_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionBootstrapOptions, prompt_label_for_cli, resolve_startup_session_id,
-        resolve_thinking_level, resolve_tool_selection_for_runtime,
+        SessionBootstrapOptions, build_slash_command_items, prompt_label_for_cli,
+        resolve_startup_session_id, resolve_thinking_level, resolve_tool_selection_for_runtime,
     };
     use crate::tool_registry::{ToolSelection, ToolSelectionPreference, build_tool_defs};
     use async_trait::async_trait;
     use kordi_core::agent_session::ThinkingLevel;
+    use kordi_core::agent_session_extensions::{
+        PromptTemplateDefinition, PromptTemplateInfo, SessionResourceBootstrap,
+    };
     use kordi_core::error::KordiResult;
     use kordi_tools::{Tool, ToolContext, ToolResult};
     use serde_json::{Value, json};
@@ -667,6 +692,64 @@ mod tests {
             _cancel: CancellationToken,
         ) -> KordiResult<ToolResult> {
             unreachable!("execution is not needed for bootstrap tests")
+        }
+    }
+
+    #[test]
+    fn desktop_slash_command_items_exclude_app_native_commands() {
+        let resources = SessionResourceBootstrap {
+            prompts: vec![PromptTemplateDefinition {
+                info: PromptTemplateInfo {
+                    name: "summarize".to_string(),
+                    description: "Summarize context".to_string(),
+                    source_info: Default::default(),
+                },
+                content: "Summarize this".to_string(),
+            }],
+            ..SessionResourceBootstrap::default()
+        };
+        let values = build_slash_command_items(&resources)
+            .into_iter()
+            .map(|item| item.value)
+            .collect::<Vec<_>>();
+
+        for excluded in [
+            "/help",
+            "/hotkeys",
+            "/settings",
+            "/login",
+            "/logout",
+            "/model",
+            "/new",
+            "/resume",
+            "/name",
+            "/session",
+            "/copy",
+            "/quit",
+            "/exit",
+            "/image",
+            "/update",
+        ] {
+            assert!(
+                !values.contains(&excluded.to_string()),
+                "{excluded} should be excluded from desktop commands"
+            );
+        }
+        for included in [
+            "/compact",
+            "/fork",
+            "/tree",
+            "/export",
+            "/import",
+            "/reload",
+            "/install",
+            "/skill",
+            "/summarize",
+        ] {
+            assert!(
+                values.contains(&included.to_string()),
+                "{included} should stay available in desktop commands"
+            );
         }
     }
 

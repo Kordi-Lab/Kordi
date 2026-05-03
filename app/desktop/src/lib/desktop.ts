@@ -647,6 +647,10 @@ export async function runDesktopChatSkillCommand(sessionId: string, text: string
   return invokeDesktop<string>('desktop_chat_run_skill_command', { sessionId, text });
 }
 
+export async function runDesktopChatLocalCommand(sessionId: string, text: string) {
+  return invokeDesktop<string>('desktop_chat_run_local_command', { sessionId, text });
+}
+
 export async function cancelDesktopChatTurn(turnId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_cancel_turn', { turnId });
 }

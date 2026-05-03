@@ -295,7 +295,10 @@ function SidebarSessionMetaColumn({
   active?: boolean;
   reserveStatusSpace?: boolean;
 }) {
-  const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
+  const visibleUnreadCount = active ? 0 : unreadCount;
+  const visibleIndicator = active ? undefined : indicator;
+  const hasStatusLine = Boolean((visibleUnreadCount && visibleUnreadCount > 0) || visibleIndicator);
+
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
       <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active && 'app-session-meta-time-active')}>
@@ -303,8 +306,8 @@ function SidebarSessionMetaColumn({
       </span>
       {reserveStatusSpace || hasStatusLine ? (
         <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-          <SidebarUnreadBadge count={unreadCount} scope={unreadScope} />
-          <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+          <SidebarUnreadBadge count={visibleUnreadCount} scope={unreadScope} />
+          <SidebarSessionStatusIndicator indicator={visibleIndicator} active={active} />
         </div>
       ) : null}
     </div>

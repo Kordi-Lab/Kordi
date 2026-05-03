@@ -24,14 +24,17 @@ import {
   ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
+  ComposerSlashCommandHighlight,
   ComposerSlashMenu,
   LiveChatTurnMessage,
   MessageBubble,
   type ComposerAuthOption,
   type ComposerMentionOption,
+  hasComposerSlashCommandHighlight,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
+import { desktopSlashCommandEnterAction } from '@/features/chat/composerController.shared';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import type {
   DesktopBridgeHost,
@@ -101,6 +104,7 @@ type ProjectsPageProps = {
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
+  desktopChatSlashCommands: DesktopChatSlashCommand[];
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredProjectMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
@@ -155,6 +159,7 @@ export function ProjectsPage({
   onTranscriptScroll,
   onOpenSource,
   desktopLiveTurn,
+  desktopChatSlashCommands,
   filteredProjectSlashCommands,
   filteredProjectMentionTargets,
   chatSlashMenuIndex,
@@ -192,6 +197,7 @@ export function ProjectsPage({
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeProjectLiveTurn = desktopLiveTurn?.sessionId === activeProjectSession.id ? desktopLiveTurn : undefined;
   const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
+  const projectSlashCommandHighlight = hasComposerSlashCommandHighlight(projectComposerText, desktopChatSlashCommands);
   const shouldRenderLiveTurn = Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeProjectSession);
 
@@ -330,12 +336,13 @@ export function ProjectsPage({
           className="h-full min-h-0 px-3.5 py-3 sm:px-4 sm:py-3.5"
           onScroll={onTranscriptScroll}
         >
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="space-y-1">
             {transcriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={`${activeProjectSession.id}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
+                slashCommands={desktopChatSlashCommands}
               />
             ))}
             {shouldRenderLiveTurn && activeProjectLiveTurn ? <LiveChatTurnMessage turn={activeProjectLiveTurn} sender={liveTurnSender} /> : null}
@@ -399,85 +406,99 @@ export function ProjectsPage({
                   ))}
                 </div>
               ) : null}
-              <textarea
-                rows={1}
-                value={projectComposerText}
-                onChange={(event) => updateProjectComposerDraft(event.target.value, event.target)}
-                onPaste={(event) => {
-                  const files = extractClipboardFiles(event.clipboardData);
-                  if (files.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachments(files);
-                    return;
-                  }
+              <div className="relative">
+                {projectSlashCommandHighlight ? (
+                  <ComposerSlashCommandHighlight text={projectComposerText} slashCommands={desktopChatSlashCommands} />
+                ) : null}
+                <textarea
+                  rows={1}
+                  value={projectComposerText}
+                  onChange={(event) => updateProjectComposerDraft(event.target.value, event.target)}
+                  onPaste={(event) => {
+                    const files = extractClipboardFiles(event.clipboardData);
+                    if (files.length > 0) {
+                      event.preventDefault();
+                      void saveDesktopAttachments(files);
+                      return;
+                    }
 
-                  const pastedPaths = extractPastedLocalFilePaths(
-                    event.clipboardData.getData('text/plain'),
-                    event.clipboardData.getData('text/uri-list'),
-                  );
-                  if (pastedPaths.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachmentPaths(pastedPaths);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (filteredProjectSlashCommands.length > 0) {
-                    if (event.key === 'ArrowDown') {
+                    const pastedPaths = extractPastedLocalFilePaths(
+                      event.clipboardData.getData('text/plain'),
+                      event.clipboardData.getData('text/uri-list'),
+                    );
+                    if (pastedPaths.length > 0) {
                       event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectSlashCommands.length);
+                      void saveDesktopAttachmentPaths(pastedPaths);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (filteredProjectSlashCommands.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setChatSlashMenuIndex((current) => (current + 1) % filteredProjectSlashCommands.length);
+                        return;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setChatSlashMenuIndex((current) => (current - 1 + filteredProjectSlashCommands.length) % filteredProjectSlashCommands.length);
+                        return;
+                      }
+                      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                        event.preventDefault();
+                        const selectedCommandItem = filteredProjectSlashCommands[Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)] ?? filteredProjectSlashCommands[0];
+                        const selectedCommand = selectedCommandItem.value;
+                        if (event.key === 'Enter' && desktopSlashCommandEnterAction(selectedCommandItem) === 'run') {
+                          onSendProjectMessage(selectedCommand);
+                        } else {
+                          acceptProjectSlashCommand(selectedCommand);
+                        }
+                        return;
+                      }
+                    }
+                    if (filteredProjectMentionTargets.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
+                        return;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
+                        return;
+                      }
+                      if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
+                        return;
+                      }
+                    }
+                    if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
+                      event.preventDefault();
+                      setProjectComposerText('/');
                       return;
                     }
-                    if (event.key === 'ArrowUp') {
+                    if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
                       event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectSlashCommands.length) % filteredProjectSlashCommands.length);
+                      setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                       return;
                     }
-                    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+                    if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
-                      acceptProjectSlashCommand(filteredProjectSlashCommands[Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)]?.value ?? filteredProjectSlashCommands[0].value);
-                      return;
+                      if (canSubmitProjectMessage) {
+                        onSendProjectMessage(event.currentTarget.value);
+                      }
                     }
-                  }
-                  if (filteredProjectMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
-                      return;
-                    }
-                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
-                      return;
-                    }
-                  }
-                  if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
-                    event.preventDefault();
-                    setProjectComposerText('/');
-                    return;
-                  }
-                  if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
-                    return;
-                  }
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    if (canSubmitProjectMessage) {
-                      onSendProjectMessage(event.currentTarget.value);
-                    }
-                  }
-                }}
-                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                placeholder="Post to this project session, ask a member, or start a new topic…"
-              />
+                  }}
+                  className={cn(
+                    'app-composer-text-measure relative z-10 min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]',
+                    projectSlashCommandHighlight ? 'text-transparent caret-[color:var(--utility-foreground)] selection:bg-sky-500/30' : null,
+                  )}
+                  placeholder="Post to this project session, ask a member, or start a new topic…"
+                />
+              </div>
             </div>
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">

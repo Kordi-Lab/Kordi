@@ -1151,6 +1151,27 @@ async fn ensure_loaded_session(
     Ok(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
 }
 
+async fn desktop_chat_session_handle_for_command(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+    session_id: String,
+) -> Result<DesktopSessionHandle, String> {
+    if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        return ensure_transient_draft_runtime(manager, cwd).await;
+    }
+
+    let target_session_id = ensure_loaded_session(manager, cwd, Some(session_id)).await?;
+    if target_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        return ensure_transient_draft_runtime(manager, cwd).await;
+    }
+
+    let sessions = manager.sessions.lock().await;
+    sessions
+        .get(&target_session_id)
+        .cloned()
+        .ok_or_else(|| "Session is unavailable".to_string())
+}
+
 async fn ensure_loaded_or_create_explicit_session(
     manager: &DesktopChatManager,
     cwd: &std::path::Path,
@@ -2436,20 +2457,29 @@ pub async fn desktop_chat_run_skill_command(
     text: String,
 ) -> Result<String, String> {
     let cwd = chat_cwd()?;
-    let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
-    let session = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Session is unavailable".to_string())?
-    };
+    let session = desktop_chat_session_handle_for_command(&manager, &cwd, session_id).await?;
     let mut session = session.lock().await;
     session
         .run_skill_command(&text)
         .await
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "Not a skill command".to_string())
+}
+
+#[tauri::command]
+pub async fn desktop_chat_run_local_command(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+    text: String,
+) -> Result<String, String> {
+    let cwd = chat_cwd()?;
+    let session = desktop_chat_session_handle_for_command(&manager, &cwd, session_id).await?;
+    let mut session = session.lock().await;
+    session
+        .run_local_command(&text)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "Not a desktop chat command".to_string())
 }
 
 #[tauri::command]
