@@ -32,6 +32,7 @@ import {
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
+import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import type {
   DesktopBridgeHost,
@@ -194,6 +195,7 @@ export function ProjectsPage({
   const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
   const shouldRenderLiveTurn = Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeProjectSession);
+  const projectImeCompositionGuard = useImeCompositionGuard();
 
   if (isNativeShell && !activeProject.id) {
     return (
@@ -420,7 +422,10 @@ export function ProjectsPage({
                     void saveDesktopAttachmentPaths(pastedPaths);
                   }
                 }}
+                onCompositionStart={projectImeCompositionGuard.onCompositionStart}
+                onCompositionEnd={projectImeCompositionGuard.onCompositionEnd}
                 onKeyDown={(event) => {
+                  if (projectImeCompositionGuard.isComposingKeyDown(event)) return;
                   if (filteredProjectSlashCommands.length > 0) {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
