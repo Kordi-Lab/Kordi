@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+// Browsers commonly report IME/process keydowns as keyCode 229. It is deprecated,
+// but still useful as a fallback when WebKit reports isComposing=false on the Enter
+// keydown that confirms an IME candidate.
 export const IME_PROCESS_KEY_CODE = 229;
 
 type ImeKeyboardMetadata = {
@@ -58,6 +61,8 @@ export function createImeCompositionState({ schedule, cancel }: ImeCompositionSt
   const endComposition = () => {
     cancelPendingClear();
     if (!composing) return;
+    // Defer clearing so Safari/WebKit does not double-count the same Enter as
+    // both IME confirmation and composer submission.
     pendingClearTimerId = schedule(() => {
       pendingClearTimerId = null;
       composing = false;
