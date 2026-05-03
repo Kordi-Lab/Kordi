@@ -75,7 +75,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | --- | --- | --- |
 | Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers have been extracted. Next safe slice: extract session-title helpers or turn execution DTOs with tests. |
 | Desktop Rust chat | `app/desktop/src-tauri/src/chat.rs` | Attachment/artifact helpers have been extracted. Next safe slice: move live-turn snapshot helpers or session action helpers behind existing Tauri command names. |
-| Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Defer until tests are partitioned. Split command-facing DTOs from persistence helpers first. |
+| Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are now partitioned by scenario. Next safe slice: split command-facing DTOs from persistence helpers first. |
 | Bridge config/state | `app/desktop/src-tauri/src/bridge/mod.rs` | Defer broad split. Extract config/state summary helpers before moving command handlers. |
 | Bridge network | `app/desktop/src-tauri/src/bridge/network.rs` | Defer until relay/realtime tests are stable. Split client construction from request policy. |
 | Bridge mailbox | `app/desktop/src-tauri/src/bridge/mailbox.rs` | Defer broad split. Extract mailbox payload parsing and scheduling helpers first. |
@@ -89,7 +89,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 | Bridges CLI commands | `bridges/cli/src/commands.rs` | Defer broad split. Move one command family per PR with command-level tests. |
 | Bridges local API | `bridges/cli/src/local_api.rs` | Defer broad split. Split route handlers by resource without changing URLs. |
 | Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Defer until command/local API splits reduce shared coupling. |
-| Large tests | `app/desktop/src-tauri/src/canonical_sessions/tests.rs`, `app/desktop/tests/chatRouting.test.tsx`, `agent/crates/cli/src/turn_runner/tests.rs`, `agent/crates/cli/src/extensions/tests.rs`, `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Chat-start routing and bridge canonical read-model coverage have been split out of `chatRouting.test.tsx`. Continue partitioning by domain before production moves in the same area. |
+| Large tests | `agent/crates/cli/src/turn_runner/tests.rs`, `agent/crates/cli/src/extensions/tests.rs`, `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Canonical session tests are split into child modules, and chat-start plus bridge canonical read-model coverage has been split out of `chatRouting.test.tsx`. Continue partitioning large tests by domain before production moves in the same area. |
 | CSS | `app/desktop/src/styles/shell.css`, `app/desktop/src/styles/theme-overrides.css` | Shell CSS is split into popover, bubble, transcript, sidebar, and page layers. Next safe slice: split remaining layout/control shell rules or `theme-overrides.css` with screenshot/manual smoke checks. |
 
 ## Completed slices
@@ -101,6 +101,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `app/desktop/src/styles/shell.css`: popover, bubble, transcript, sidebar, and page selectors moved to `app/desktop/src/styles/shell-popovers.css`, `app/desktop/src/styles/shell-bubbles.css`, `app/desktop/src/styles/shell-transcript.css`, `app/desktop/src/styles/shell-sidebar.css`, and `app/desktop/src/styles/shell-pages.css`; CSS tests now read the split shell bundle through `app/desktop/tests/helpers/readDesktopStyles.ts`.
 - `agent/crates/cli/src/desktop_runtime.rs`: attachment metadata, prompt attachment expansion, and image-loading helpers moved to `agent/crates/cli/src/desktop_runtime/attachments.rs` with focused Rust tests.
 - `app/desktop/src-tauri/src/chat.rs`: attachment storage/download and artifact preview/directory helpers moved to `app/desktop/src-tauri/src/chat/attachments.rs` and `app/desktop/src-tauri/src/chat/artifacts.rs` with focused Rust tests.
+- `app/desktop/src-tauri/src/canonical_sessions/tests.rs`: desktop sync, direct message sync, group message sync, group agent request, and group agent response scenarios moved to child modules under `app/desktop/src-tauri/src/canonical_sessions/tests/`, leaving common helpers and core canonical session tests in the root test module.
 
 ## PR checklist for future splits
 
