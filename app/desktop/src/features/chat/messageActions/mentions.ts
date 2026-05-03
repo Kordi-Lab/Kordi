@@ -73,15 +73,25 @@ function isSelfConversationParticipant(participant: { kind?: string | null; role
     || (participant.source === 'local' && participant.kind === 'human');
 }
 
-function participantHumanOwnerKeys(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
-  const keys = [
+function participantHumanIdentityKeys(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  const participantId = participant.id?.trim() ? participant.id : null;
+  return [
     participant.humanId,
-    participant.ownerName,
-    participant.name,
-    participant.id,
-    participant.id.startsWith('human:') ? participant.id.slice('human:'.length) : null,
+    participant.bridgeNodeId,
+    participantId,
+    participantId?.startsWith('human:') ? participantId.slice('human:'.length) : null,
   ].map(normalizedOwnerKey).filter(Boolean);
-  return keys;
+}
+
+function participantHumanNameKeys(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  return [participant.ownerName, participant.name].map(normalizedOwnerKey).filter(Boolean);
+}
+
+function participantHumanOwnerKeys(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  return [
+    ...participantHumanIdentityKeys(participant),
+    ...participantHumanNameKeys(participant),
+  ];
 }
 
 function conversationParticipantNameKeys(participants: string[] | undefined) {
@@ -128,15 +138,29 @@ export function conversationHasParticipantMentionScope(conversation: MentionScop
 }
 
 export function bridgeMentionOwnerMatchesConversationHumans(
-  owner: Pick<DesktopBridgeState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'>,
+  owner: Pick<DesktopBridgeState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'> & { nodeId?: string | null },
   conversation: MentionScopeConversation | null | undefined,
 ) {
-  const groupHumanKeys = conversationHumanOwnerKeys(conversation);
-  if (groupHumanKeys.size === 0) return false;
-  return [owner.humanId, owner.ownerName]
-    .map(normalizedOwnerKey)
-    .filter(Boolean)
-    .some((key) => groupHumanKeys.has(key));
+  const ownerHumanKey = normalizedOwnerKey(owner.humanId);
+  const ownerNodeKey = normalizedOwnerKey(owner.nodeId);
+  const ownerNameKey = normalizedOwnerKey(owner.ownerName);
+  let sawCanonicalNameMatch = false;
+
+  for (const participant of conversation?.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human') continue;
+    const identityKeys = participantHumanIdentityKeys(participant);
+    if (ownerHumanKey && identityKeys.includes(ownerHumanKey)) return true;
+    if (ownerNodeKey && identityKeys.includes(ownerNodeKey)) return true;
+
+    if (!ownerNameKey || !participantHumanNameKeys(participant).includes(ownerNameKey)) continue;
+    sawCanonicalNameMatch = true;
+    // A same-name candidate with a different explicit human id is usually a
+    // stale Bridge registration; do not let the display-name fallback target it.
+    if (!ownerHumanKey || identityKeys.length === 0) return true;
+  }
+
+  if (sawCanonicalNameMatch) return false;
+  return Boolean(ownerNameKey && conversationParticipantNameKeys(conversation?.participants).includes(ownerNameKey));
 }
 
 export function filterBridgeMentionCandidatesForConversation(
@@ -144,7 +168,9 @@ export function filterBridgeMentionCandidatesForConversation(
   conversation: MentionScopeConversation | null | undefined,
 ) {
   if (!conversationHasParticipantMentionScope(conversation)) return candidates;
-  return candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation));
+  return dedupeBridgeMentionCandidateHandles(
+    candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)),
+  );
 }
 
 function conversationImpliesLocalViewerParticipant(conversation: MentionScopeConversation | null | undefined) {
@@ -239,6 +265,36 @@ function uniqueHandle(baseHandle: string, suffix: string) {
   return `${baseHandle.slice(0, availableBaseLength)}${cleanSuffix}`;
 }
 
+function candidateWithBaseMentionHandle(candidate: BridgeMentionCandidate) {
+  const handle = mentionHandleForLabel(candidate.displayLabel, candidate.peer.nodeId);
+  return { ...candidate, handle, normalizedHandle: normalizeMentionLabel(handle) };
+}
+
+function dedupeBridgeMentionCandidateHandles(candidates: BridgeMentionCandidate[]) {
+  const baseCandidates = candidates.map(candidateWithBaseMentionHandle);
+  const handleCounts = new Map<string, number>();
+  for (const candidate of baseCandidates) {
+    handleCounts.set(candidate.normalizedHandle, (handleCounts.get(candidate.normalizedHandle) ?? 0) + 1);
+  }
+
+  const usedHandles = new Set<string>();
+  return baseCandidates.map((candidate) => {
+    let handle = candidate.handle;
+    if ((handleCounts.get(candidate.normalizedHandle) ?? 0) > 1) {
+      handle = uniqueHandle(candidate.handle, identitySuffixForCandidate(candidate));
+    }
+    let normalizedHandle = normalizeMentionLabel(handle);
+    let collisionIndex = 2;
+    while (usedHandles.has(normalizedHandle)) {
+      handle = uniqueHandle(candidate.handle, `${identitySuffixForCandidate(candidate)}${collisionIndex}`);
+      normalizedHandle = normalizeMentionLabel(handle);
+      collisionIndex += 1;
+    }
+    usedHandles.add(normalizedHandle);
+    return { ...candidate, handle, normalizedHandle };
+  });
+}
+
 export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
   if (!bridgeState) return [];
 
@@ -281,27 +337,7 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
     }
   }
 
-  const handleCounts = new Map<string, number>();
-  for (const candidate of rawCandidates) {
-    handleCounts.set(candidate.normalizedHandle, (handleCounts.get(candidate.normalizedHandle) ?? 0) + 1);
-  }
-
-  const usedHandles = new Set<string>();
-  return rawCandidates.map((candidate) => {
-    let handle = candidate.handle;
-    if ((handleCounts.get(candidate.normalizedHandle) ?? 0) > 1) {
-      handle = uniqueHandle(candidate.handle, identitySuffixForCandidate(candidate));
-    }
-    let normalizedHandle = normalizeMentionLabel(handle);
-    let collisionIndex = 2;
-    while (usedHandles.has(normalizedHandle)) {
-      handle = uniqueHandle(candidate.handle, `${identitySuffixForCandidate(candidate)}${collisionIndex}`);
-      normalizedHandle = normalizeMentionLabel(handle);
-      collisionIndex += 1;
-    }
-    usedHandles.add(normalizedHandle);
-    return { ...candidate, handle, normalizedHandle };
-  });
+  return dedupeBridgeMentionCandidateHandles(rawCandidates);
 }
 
 export function bridgeMentionCandidateOptionText(candidate: BridgeMentionCandidate) {

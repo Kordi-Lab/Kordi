@@ -489,6 +489,37 @@ test('send-time group mention action resolves member agents but not people or ou
   assert.equal(carolAgent, null);
 });
 
+test('group mention resolution ignores stale same-name agents with a different participant identity', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-stale-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-old-alice',
+      agentId: 'agent-old-alice',
+      isDefaultAgent: true,
+    }),
+    peer({
+      nodeId: 'node-current-alice-agent',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-current-alice',
+      agentId: 'agent-current-alice',
+      isDefaultAgent: true,
+    }),
+  ]);
+  const group = groupConversationWithHumans([
+    { id: 'human:alice-current', name: 'Alice', humanId: 'human-current-alice', bridgeNodeId: 'node-current-alice-agent' },
+  ]);
+
+  const target = resolveMentionedBridgeTarget('@AlicesKordi please check this', bridgeState, group, { targetKind: 'bridge-agent' });
+
+  assert.equal(target?.peer.nodeId, 'node-current-alice-agent');
+  assert.equal(target?.peer.humanId, 'human-current-alice');
+});
+
 test('buildBridgeMentionCandidates does not expose node id duplicates when friendly labels exist', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
