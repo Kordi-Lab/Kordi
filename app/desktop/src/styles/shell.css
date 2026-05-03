@@ -1891,6 +1891,7 @@
 }
 
 .app-source-message-quote {
+  position: relative;
   border-radius: 11px;
   background: transparent;
   padding: 0.18rem 0.08rem;
@@ -1924,8 +1925,31 @@
   color: color-mix(in oklab, var(--utility-foreground) 72%, var(--utility-muted-text));
 }
 
+.app-source-message-quote-text-frame {
+  position: relative;
+  min-width: 0;
+}
+
 .app-source-message-quote-text {
   color: color-mix(in oklab, var(--utility-muted-text) 88%, transparent);
+}
+
+.app-source-message-quote-folded {
+  max-height: calc(1.25rem * 3);
+  overflow: hidden;
+}
+
+.app-source-message-quote-folded::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 1.55rem;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--app-live-assistant-answer-bg) 88%);
+  backdrop-filter: blur(1.2px);
 }
 
 .app-source-message-quote-icon {
@@ -1944,8 +1968,21 @@
   color: color-mix(in oklab, var(--utility-foreground) 68%, var(--utility-muted-text));
 }
 
+.app-source-message-quote-toggle {
+  color: color-mix(in oklab, var(--utility-foreground) 68%, var(--utility-muted-text));
+}
+
 .app-live-assistant-answer-toggle {
   color: color-mix(in oklab, var(--utility-foreground) 68%, var(--utility-muted-text));
+}
+
+.app-source-message-quote-toggle-overlay {
+  position: absolute;
+  bottom: 0.1rem;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  text-shadow: 0 1px 2px rgba(2, 6, 23, 0.55);
 }
 
 .app-transcript-message-highlight {

@@ -276,14 +276,13 @@ function navigateToTranscriptMessage(messageId: string) {
   window.setTimeout(() => target.classList.remove('app-transcript-message-highlight'), 1500);
 }
 
-function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
-  return sourceMessage.text.replace(/\s+/g, ' ').trim().length > 140 || sourceMessage.text.split(/\r?\n/).length > 2;
+function sourceQuoteText(sourceMessage: MessageSourceReference) {
+  return sourceMessage.text.trim();
 }
 
-function sourceQuotePreviewText(sourceMessage: MessageSourceReference, expanded: boolean) {
-  const text = sourceMessage.text.replace(/\s+/g, ' ').trim();
-  if (expanded || text.length <= 140) return text;
-  return `${text.slice(0, 137).trimEnd()}…`;
+function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
+  const text = sourceQuoteText(sourceMessage);
+  return text.split(/\r?\n/).length > 3 || text.replace(/\s+/g, ' ').length > 260;
 }
 
 function SourceMessageQuote({
@@ -317,8 +316,10 @@ function SourceMessageQuote({
         <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
           <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
-          <span className={cn('app-source-message-quote-text block text-[12px] leading-5', expanded ? 'whitespace-pre-wrap' : 'truncate')}>
-            {sourceQuotePreviewText(sourceMessage, expanded)}
+          <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
+            <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5">
+              {sourceQuoteText(sourceMessage)}
+            </span>
           </span>
         </span>
         <CornerDownLeft className="app-source-message-quote-icon mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -326,11 +327,16 @@ function SourceMessageQuote({
       {canFold ? (
         <button
           type="button"
-          className="app-inline-expand-toggle app-source-message-quote-toggle mx-auto mt-1 flex w-fit items-center px-2 text-[10px] font-medium"
+          className={cn(
+            'app-inline-expand-toggle app-source-message-quote-toggle',
+            !expanded && 'app-source-message-quote-toggle-overlay',
+            'flex w-fit items-center px-2 text-[10px] font-medium',
+            expanded && 'mx-auto mt-1',
+          )}
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          {expanded ? '— Hide request —' : '— Show request —'}
+          {expanded ? '— Hide request —' : '— Show full request —'}
         </button>
       ) : null}
     </div>

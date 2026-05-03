@@ -199,6 +199,54 @@ test('renders agent source quote and processing status without an output block b
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });
 
+test('folds long source quotes after three lines while keeping the full request text in the DOM', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-long-source-quote',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'I filed the issue.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:long-request',
+      senderLabel: 'Jiaxin',
+      text: [
+        '@JiaxinsKordi create a github issue about this bug.',
+        'Use the current Kordi repo issue template and keep the reproduction details.',
+        'Mention that the bug affects Chinese Pinyin IME confirmation.',
+        'Final acceptance detail should remain available when folded.',
+      ].join('\n'),
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.match(markup, /app-source-message-quote-text-frame app-source-message-quote-folded/);
+  assert.match(markup, /app-source-message-quote-toggle app-source-message-quote-toggle-overlay/);
+  assert.match(markup, /— Show full request —/);
+  assert.match(markup, /Final acceptance detail should remain available when folded/);
+  assert.doesNotMatch(markup, /Final acceptance detail should remain available when folded…/);
+});
+
+test('styles folded source quote expand control as muted overlay on the fade', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const sourceToggleBlock = shellCss.match(/\.app-source-message-quote-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 68%, var\(--utility-muted-text\)\)/);
+  assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
+  assert.match(sourceOverlayBlock, /position:\s*absolute/);
+  assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
+  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(1\.2px\)/);
+});
+
 test('keeps medium completed agent responses readable without folding too early', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-long-answer',
