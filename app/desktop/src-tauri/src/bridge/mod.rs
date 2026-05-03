@@ -1,3 +1,4 @@
+mod agent_jobs;
 mod constants;
 mod conversation_actions;
 mod conversation_commands;
@@ -38,11 +39,12 @@ use self::conversations::{
 use self::local_server::{current_local_server_status, start_local_server, stop_local_server};
 #[allow(unused_imports)]
 use self::network::{
-    add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
+    ack_mailbox_v2, add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
     create_serve_project, decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target,
     fetch_mailbox, fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery,
-    health_check, join_serve_project, register_bridge_host, relay_plaintext_message,
-    remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
+    health_check, join_serve_project, poll_mailbox_v2, register_bridge_host,
+    relay_plaintext_message, remove_serve_contact, update_registered_registry_node,
+    update_serve_discovery_mode, AckedMailboxEntry,
 };
 #[allow(unused_imports)]
 use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
@@ -56,11 +58,15 @@ use self::storage::{
     bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
     desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
     format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
+    list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
+    load_bridge_inbox_event_from_storage, load_bridge_store, load_conversation_store,
+    load_legacy_bridge_config, mark_bridge_agent_job_retry_wait_in_storage,
+    mark_bridge_agent_job_running_in_storage, mark_bridge_agent_job_terminal_in_storage,
     mark_bridge_conversation_read_in_storage, normalize_imported_bridge_host, normalize_server_url,
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms,
-    parse_imported_bridge_store, save_bridge_store, save_conversation_store,
-    update_message_delivery_state_in_storage, write_bridge_store_export,
+    parse_imported_bridge_store, record_bridge_inbox_event_and_agent_job, save_bridge_store,
+    save_conversation_store, update_message_delivery_state_in_storage, write_bridge_store_export,
+    BridgeAgentJobInsert, BridgeAgentJobRecord, BridgeInboxEventInsert, BridgeInboxEventRecord,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

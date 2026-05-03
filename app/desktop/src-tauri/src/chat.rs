@@ -2522,6 +2522,35 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn running_turn_lookup_is_session_scoped() {
+        let manager = DesktopChatManager::default();
+        let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+            id: "turn-a".to_string(),
+            session_id: "session-a".to_string(),
+            prompt: "work".to_string(),
+            status: "processing".to_string(),
+            message: "Working…".to_string(),
+            assistant_text: String::new(),
+            thinking_text: String::new(),
+            tools: Vec::new(),
+            completed: false,
+            succeeded: false,
+            error: None,
+            transcript_refresh_required: false,
+        }));
+        manager.turns.lock().await.insert(
+            "turn-a".to_string(),
+            DesktopChatTurnHandle {
+                snapshot,
+                cancel: tokio_util::sync::CancellationToken::new(),
+            },
+        );
+
+        assert!(session_has_running_turn(&manager, "session-a").await);
+        assert!(!session_has_running_turn(&manager, "session-b").await);
+    }
+
     #[test]
     fn desktop_canonical_sync_state_omits_active_agent_tail_while_live_turn_runs() {
         let mut state = DesktopChatState {

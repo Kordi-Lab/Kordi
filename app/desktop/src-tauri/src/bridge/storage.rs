@@ -11,9 +11,14 @@ pub(super) use self::config::{
 };
 pub(super) use self::conversations::{
     append_conversation_message_to_storage, bridge_conversation_id, bridge_request_is_cancelled,
-    delete_conversations_for_host, load_conversation_store,
+    delete_conversations_for_host, list_runnable_bridge_agent_jobs_from_storage,
+    list_running_bridge_agent_jobs_from_storage, load_bridge_inbox_event_from_storage,
+    load_conversation_store, mark_bridge_agent_job_retry_wait_in_storage,
+    mark_bridge_agent_job_running_in_storage, mark_bridge_agent_job_terminal_in_storage,
     mark_bridge_conversation_read_in_storage, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, save_conversation_store, update_message_delivery_state_in_storage,
+    note_peer_typing_in_storage, record_bridge_inbox_event_and_agent_job, save_conversation_store,
+    update_message_delivery_state_in_storage, BridgeAgentJobInsert, BridgeAgentJobRecord,
+    BridgeInboxEventInsert, BridgeInboxEventRecord,
 };
 pub(super) use self::identity::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
@@ -23,7 +28,9 @@ pub(super) use self::identity::{
 use self::config::{bridge_store_export, hydrate_bridge_store_secrets, DesktopBridgeSecretsStore};
 #[cfg(test)]
 use self::conversations::{
-    find_conversation_for_peer, init_conversation_schema, load_conversation_store_from_db,
+    create_bridge_agent_job_if_absent, find_conversation_for_peer, init_conversation_schema,
+    insert_bridge_inbox_event_if_absent, list_runnable_bridge_agent_jobs, load_bridge_agent_job,
+    load_conversation_store_from_db, mark_bridge_agent_job_running, mark_bridge_agent_job_terminal,
     reconcile_and_repair_persisted_conversation_rows,
     repair_split_bridge_person_session_relay_rows, scoped_conversation_id,
     update_message_delivery_state_in_db_for_test, upsert_conversation_record,

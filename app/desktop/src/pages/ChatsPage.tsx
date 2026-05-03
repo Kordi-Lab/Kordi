@@ -107,6 +107,18 @@ function bridgeThinkingDisplayName(value?: string | null) {
   return value[0]?.toUpperCase() + value.slice(1);
 }
 
+export function chatComposerSubmitMode({
+  isDesktopChatSending,
+  activeLiveTurnIsRunning,
+  hasDraft,
+}: {
+  isDesktopChatSending: boolean;
+  activeLiveTurnIsRunning: boolean;
+  hasDraft: boolean;
+}) {
+  return (isDesktopChatSending || activeLiveTurnIsRunning) && !hasDraft ? 'stop' as const : 'send' as const;
+}
+
 function normalizeRoutingProviderId(providerId: string) {
   const normalized = providerId.trim().toLowerCase();
   return normalized === 'openai-codex' ? 'openai' : normalized;
@@ -272,7 +284,13 @@ export function ChatsPage({
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
-  const composerStopMode = isDesktopChatSending || activeLiveTurnIsRunning;
+  const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
+  const composerSubmitMode = chatComposerSubmitMode({
+    isDesktopChatSending,
+    activeLiveTurnIsRunning,
+    hasDraft: composerHasDraft,
+  });
+  const composerStopMode = composerSubmitMode === 'stop';
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const shouldRenderLiveTurn = Boolean(activeTranscriptLiveTurn && !activeTranscriptLiveTurn.completed);
@@ -836,7 +854,9 @@ export function ChatsPage({
                   }
                   onSendChatMessage();
                 }}
-                disabled={composerStopMode ? false : isDesktopChatSending}
+                disabled={false}
+                title={composerStopMode ? 'Stop running task' : activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
+                aria-label={composerStopMode ? 'Stop running task' : 'Send message'}
               >
                 {composerStopMode ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
               </Button>

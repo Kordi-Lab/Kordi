@@ -93,6 +93,13 @@ pub(crate) struct SessionAuthChoiceOverride {
     pub choice: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RuntimeSlashCommandItem {
+    pub label: String,
+    pub detail: Option<String>,
+    pub value: String,
+}
+
 pub(crate) struct SessionRuntimeSetup {
     pub conn: rusqlite::Connection,
     pub session_id: String,
@@ -124,7 +131,7 @@ pub(crate) struct SessionRuntimeSetup {
     pub extension_commands: ExtensionCommandRegistry,
     pub extension_bootstrap: ExtensionBootstrap,
     #[allow(dead_code)]
-    pub slash_command_items: Vec<kordi_tui::select_list::SelectItem>,
+    pub slash_command_items: Vec<RuntimeSlashCommandItem>,
     pub request_metrics_tracker: std::sync::Arc<tokio::sync::Mutex<RequestMetricsTracker>>,
     pub request_metrics_log_path: Option<std::path::PathBuf>,
 }
@@ -235,26 +242,30 @@ fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Pat
 
 fn build_slash_command_items(
     session_resources: &kordi_core::agent_session_extensions::SessionResourceBootstrap,
-) -> Vec<kordi_tui::select_list::SelectItem> {
+) -> Vec<RuntimeSlashCommandItem> {
     let mut items = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
 
-    for item in kordi_tui::slash_commands::shared_slash_command_select_items() {
+    for spec in kordi_core::slash_commands::shared_slash_commands() {
         if matches!(
-            item.value.as_str(),
+            spec.command,
             "/settings" | "/model" | "/copy" | "/hotkeys" | "/login" | "/logout"
         ) {
             continue;
         }
-        if seen.insert(item.value.clone()) {
-            items.push(item);
+        if seen.insert(spec.command.to_string()) {
+            items.push(RuntimeSlashCommandItem {
+                label: spec.command.to_string(),
+                detail: Some(spec.menu_detail.to_string()),
+                value: spec.command.to_string(),
+            });
         }
     }
 
     for skill in &session_resources.skills {
         let value = format!("/skill:{}", skill.info.name);
         if seen.insert(value.clone()) {
-            items.push(kordi_tui::select_list::SelectItem {
+            items.push(RuntimeSlashCommandItem {
                 label: value.clone(),
                 detail: None,
                 value,
@@ -265,7 +276,7 @@ fn build_slash_command_items(
     for prompt in &session_resources.prompts {
         let value = format!("/{}", prompt.info.name);
         if seen.insert(value.clone()) {
-            items.push(kordi_tui::select_list::SelectItem {
+            items.push(RuntimeSlashCommandItem {
                 label: value.clone(),
                 detail: Some(prompt.info.description.clone()),
                 value,
@@ -276,7 +287,7 @@ fn build_slash_command_items(
     for cmd in &session_resources.extensions.registered_commands {
         let value = format!("/{}", cmd.invocation_name);
         if seen.insert(value.clone()) {
-            items.push(kordi_tui::select_list::SelectItem {
+            items.push(RuntimeSlashCommandItem {
                 label: value.clone(),
                 detail: Some(cmd.description.clone()),
                 value,

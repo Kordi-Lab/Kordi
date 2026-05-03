@@ -8,9 +8,14 @@ mod schema;
 
 pub(in crate::bridge) use actions::{
     append_conversation_message_to_storage, bridge_request_is_cancelled,
-    delete_conversations_for_host, load_conversation_store,
+    delete_conversations_for_host, list_runnable_bridge_agent_jobs_from_storage,
+    list_running_bridge_agent_jobs_from_storage, load_bridge_inbox_event_from_storage,
+    load_conversation_store, mark_bridge_agent_job_retry_wait_in_storage,
+    mark_bridge_agent_job_running_in_storage, mark_bridge_agent_job_terminal_in_storage,
     mark_bridge_conversation_read_in_storage, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, save_conversation_store, update_message_delivery_state_in_storage,
+    note_peer_typing_in_storage, record_bridge_inbox_event_and_agent_job, save_conversation_store,
+    update_message_delivery_state_in_storage, BridgeAgentJobInsert, BridgeAgentJobRecord,
+    BridgeInboxEventInsert, BridgeInboxEventRecord,
 };
 pub(in crate::bridge) use lookup::bridge_conversation_id;
 
@@ -18,7 +23,11 @@ pub(in crate::bridge) use lookup::bridge_conversation_id;
 pub(in crate::bridge::storage) use repair::repair_split_bridge_person_session_relay_rows;
 
 #[cfg(test)]
-pub(in crate::bridge::storage) use actions::update_message_delivery_state_in_db_for_test;
+pub(in crate::bridge::storage) use actions::{
+    create_bridge_agent_job_if_absent, insert_bridge_inbox_event_if_absent,
+    list_runnable_bridge_agent_jobs, load_bridge_agent_job, mark_bridge_agent_job_running,
+    mark_bridge_agent_job_terminal, update_message_delivery_state_in_db_for_test,
+};
 #[cfg(test)]
 pub(in crate::bridge::storage) use lookup::{find_conversation_for_peer, scoped_conversation_id};
 #[cfg(test)]

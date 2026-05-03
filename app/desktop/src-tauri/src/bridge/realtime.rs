@@ -7,7 +7,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::Emitter;
 
-use crate::chat::DesktopBridgeAgentModelRouting;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -42,7 +41,6 @@ struct LocalRealtimeTarget {
     sender_runtime: String,
     sender_agent_id: Option<String>,
     owner_node_id: Option<String>,
-    model_routing: Option<DesktopBridgeAgentModelRouting>,
     should_process_agent_asks: bool,
 }
 
@@ -85,7 +83,6 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
                     sender_runtime: "person".to_string(),
                     sender_agent_id: None,
                     owner_node_id: Some(host.node_id.clone()),
-                    model_routing: None,
                     should_process_agent_asks: false,
                 },
             );
@@ -115,15 +112,6 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
                     sender_runtime: agent.runtime.clone(),
                     sender_agent_id: Some(agent.id.clone()),
                     owner_node_id: Some(host.node_id.clone()),
-                    model_routing: Some(DesktopBridgeAgentModelRouting {
-                        default_model: agent.default_model.clone(),
-                        default_auth_provider: agent.default_auth_provider.clone(),
-                        default_auth_choice: agent.default_auth_choice.clone(),
-                        fallback_model: agent.fallback_model.clone(),
-                        fallback_auth_provider: agent.fallback_auth_provider.clone(),
-                        fallback_auth_choice: agent.fallback_auth_choice.clone(),
-                        thinking: agent.thinking.clone(),
-                    }),
                     should_process_agent_asks: true,
                 },
             );

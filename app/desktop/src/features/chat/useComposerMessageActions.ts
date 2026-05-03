@@ -61,6 +61,8 @@ type UseComposerMessageActionsArgs = Pick<
   | 'isDesktopChatSending'
   | 'setIsDesktopChatSending'
   | 'setPendingUserChatMessage'
+  | 'queuedDesktopMessagesBySession'
+  | 'setQueuedDesktopMessagesBySession'
   | 'setDesktopLiveTurnsBySession'
   | 'setDesktopBridgeState'
   | 'watchDesktopLiveTurn'
@@ -113,6 +115,8 @@ export function useComposerMessageActions({
   isDesktopChatSending,
   setIsDesktopChatSending,
   setPendingUserChatMessage,
+  queuedDesktopMessagesBySession,
+  setQueuedDesktopMessagesBySession,
   setDesktopLiveTurnsBySession,
   setDesktopBridgeState,
   watchDesktopLiveTurn,
@@ -219,6 +223,8 @@ export function useComposerMessageActions({
     setOpenComposerSelector,
     setPendingBridgeOutreach,
     setPendingUserChatMessage,
+    queuedDesktopMessagesBySession,
+    setQueuedDesktopMessagesBySession,
     shouldAutoFollowChatRef,
     watchDesktopLiveTurn,
   });

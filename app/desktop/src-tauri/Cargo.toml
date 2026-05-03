@@ -7,14 +7,14 @@ edition = "2021"
 
 [lib]
 name = "kordi_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 kordi-core.workspace = true
-kordi-cli = { path = "../../../agent/crates/cli" }
+kordi-cli = { path = "../../../agent/crates/cli", default-features = false, features = ["desktop-runtime"] }
 kordi-tools = { path = "../../../agent/crates/tools" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

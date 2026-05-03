@@ -27,6 +27,414 @@ use crate::bridge::{
     DesktopBridgeOutreachMetadata,
 };
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) struct BridgeInboxEventInsert {
+    pub id: String,
+    pub server_message_id: Option<String>,
+    pub host_id: String,
+    pub from_node_id: String,
+    pub request_id: Option<String>,
+    pub message_type: String,
+    pub chat_queue_key: String,
+    pub requesting_user_key: String,
+    pub payload_json: String,
+    pub status: String,
+    pub received_at_ms: i64,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) struct BridgeInboxEventRecord {
+    pub id: String,
+    pub server_message_id: Option<String>,
+    pub host_id: String,
+    pub from_node_id: String,
+    pub request_id: Option<String>,
+    pub message_type: String,
+    pub chat_queue_key: String,
+    pub requesting_user_key: String,
+    pub payload_json: String,
+    pub status: String,
+    pub received_at_ms: i64,
+    pub acked_at_ms: Option<i64>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) struct BridgeAgentJobInsert {
+    pub id: String,
+    pub inbox_event_id: String,
+    pub request_id: Option<String>,
+    pub requesting_user_key: String,
+    pub chat_queue_key: String,
+    pub status: String,
+    pub created_at_ms: i64,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::bridge) struct BridgeAgentJobRecord {
+    pub id: String,
+    pub inbox_event_id: String,
+    pub request_id: Option<String>,
+    pub requesting_user_key: String,
+    pub chat_queue_key: String,
+    pub status: String,
+    pub retry_count: i64,
+    pub next_retry_at_ms: Option<i64>,
+    pub created_at_ms: i64,
+    pub started_at_ms: Option<i64>,
+    pub completed_at_ms: Option<i64>,
+    pub last_error: Option<String>,
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn insert_bridge_inbox_event_if_absent(
+    conn: &Connection,
+    event: &BridgeInboxEventInsert,
+) -> Result<String, String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO bridge_inbox_events (
+            id, server_message_id, host_id, from_node_id, request_id, message_type,
+            chat_queue_key, requesting_user_key, payload_json, status, received_at_ms, acked_at_ms
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL)",
+        params![
+            event.id,
+            event.server_message_id,
+            event.host_id,
+            event.from_node_id,
+            event.request_id,
+            event.message_type,
+            event.chat_queue_key,
+            event.requesting_user_key,
+            event.payload_json,
+            event.status,
+            event.received_at_ms,
+        ],
+    )
+    .map_err(sqlite_error)?;
+
+    if let Some(server_message_id) = event.server_message_id.as_deref() {
+        return conn
+            .query_row(
+                "SELECT id FROM bridge_inbox_events WHERE host_id = ?1 AND server_message_id = ?2",
+                params![event.host_id, server_message_id],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error);
+    }
+
+    if let Some(request_id) = event.request_id.as_deref() {
+        return conn
+            .query_row(
+                "SELECT id FROM bridge_inbox_events
+                 WHERE host_id = ?1 AND from_node_id = ?2 AND message_type = ?3 AND request_id = ?4",
+                params![event.host_id, event.from_node_id, event.message_type, request_id],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error);
+    }
+
+    conn.query_row(
+        "SELECT id FROM bridge_inbox_events WHERE id = ?1",
+        params![event.id],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
+}
+
+#[allow(dead_code)]
+fn read_bridge_inbox_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<BridgeInboxEventRecord> {
+    Ok(BridgeInboxEventRecord {
+        id: row.get(0)?,
+        server_message_id: row.get(1)?,
+        host_id: row.get(2)?,
+        from_node_id: row.get(3)?,
+        request_id: row.get(4)?,
+        message_type: row.get(5)?,
+        chat_queue_key: row.get(6)?,
+        requesting_user_key: row.get(7)?,
+        payload_json: row.get(8)?,
+        status: row.get(9)?,
+        received_at_ms: row.get(10)?,
+        acked_at_ms: row.get(11)?,
+    })
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn load_bridge_inbox_event(
+    conn: &Connection,
+    inbox_event_id: &str,
+) -> Result<Option<BridgeInboxEventRecord>, String> {
+    conn.query_row(
+        "SELECT id, server_message_id, host_id, from_node_id, request_id, message_type,
+                chat_queue_key, requesting_user_key, payload_json, status, received_at_ms, acked_at_ms
+         FROM bridge_inbox_events
+         WHERE id = ?1",
+        params![inbox_event_id],
+        read_bridge_inbox_event,
+    )
+    .optional()
+    .map_err(sqlite_error)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn load_bridge_inbox_event_from_storage(
+    inbox_event_id: &str,
+) -> Result<Option<BridgeInboxEventRecord>, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    load_bridge_inbox_event(&conn, inbox_event_id)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_inbox_event_acked(
+    conn: &Connection,
+    inbox_event_id: &str,
+    acked_at_ms: i64,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE bridge_inbox_events SET status = 'acked', acked_at_ms = ?1 WHERE id = ?2",
+        params![acked_at_ms, inbox_event_id],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn record_bridge_inbox_event_and_agent_job(
+    event: &BridgeInboxEventInsert,
+    job: &BridgeAgentJobInsert,
+) -> Result<(String, String), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    let event_id = insert_bridge_inbox_event_if_absent(&conn, event)?;
+    let mut job = job.clone();
+    job.inbox_event_id = event_id.clone();
+    let job_id = create_bridge_agent_job_if_absent(&conn, &job)?;
+    Ok((event_id, job_id))
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn create_bridge_agent_job_if_absent(
+    conn: &Connection,
+    job: &BridgeAgentJobInsert,
+) -> Result<String, String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO bridge_agent_jobs (
+            id, inbox_event_id, request_id, requesting_user_key, chat_queue_key, status,
+            retry_count, next_retry_at_ms, created_at_ms, started_at_ms, completed_at_ms, last_error
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, ?7, NULL, NULL, NULL)",
+        params![
+            job.id,
+            job.inbox_event_id,
+            job.request_id,
+            job.requesting_user_key,
+            job.chat_queue_key,
+            job.status,
+            job.created_at_ms,
+        ],
+    )
+    .map_err(sqlite_error)?;
+
+    conn.query_row(
+        "SELECT id FROM bridge_agent_jobs WHERE inbox_event_id = ?1",
+        params![job.inbox_event_id],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
+}
+
+#[allow(dead_code)]
+fn read_bridge_agent_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<BridgeAgentJobRecord> {
+    Ok(BridgeAgentJobRecord {
+        id: row.get(0)?,
+        inbox_event_id: row.get(1)?,
+        request_id: row.get(2)?,
+        requesting_user_key: row.get(3)?,
+        chat_queue_key: row.get(4)?,
+        status: row.get(5)?,
+        retry_count: row.get(6)?,
+        next_retry_at_ms: row.get(7)?,
+        created_at_ms: row.get(8)?,
+        started_at_ms: row.get(9)?,
+        completed_at_ms: row.get(10)?,
+        last_error: row.get(11)?,
+    })
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn load_bridge_agent_job(
+    conn: &Connection,
+    job_id: &str,
+) -> Result<Option<BridgeAgentJobRecord>, String> {
+    conn.query_row(
+        "SELECT id, inbox_event_id, request_id, requesting_user_key, chat_queue_key, status,
+                retry_count, next_retry_at_ms, created_at_ms, started_at_ms, completed_at_ms, last_error
+         FROM bridge_agent_jobs
+         WHERE id = ?1",
+        params![job_id],
+        read_bridge_agent_job,
+    )
+    .optional()
+    .map_err(sqlite_error)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn list_runnable_bridge_agent_jobs(
+    conn: &Connection,
+    now_ms: i64,
+    limit: usize,
+) -> Result<Vec<BridgeAgentJobRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, inbox_event_id, request_id, requesting_user_key, chat_queue_key, status,
+                    retry_count, next_retry_at_ms, created_at_ms, started_at_ms, completed_at_ms, last_error
+             FROM bridge_agent_jobs
+             WHERE status = 'queued'
+                OR (status = 'retry_wait' AND (next_retry_at_ms IS NULL OR next_retry_at_ms <= ?1))
+             ORDER BY created_at_ms ASC, id ASC
+             LIMIT ?2",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map(params![now_ms, limit as i64], read_bridge_agent_job)
+        .map_err(sqlite_error)?;
+
+    let mut jobs = Vec::new();
+    for row in rows {
+        jobs.push(row.map_err(sqlite_error)?);
+    }
+    Ok(jobs)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn list_runnable_bridge_agent_jobs_from_storage(
+    now_ms: i64,
+    limit: usize,
+) -> Result<Vec<BridgeAgentJobRecord>, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    list_runnable_bridge_agent_jobs(&conn, now_ms, limit)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn list_running_bridge_agent_jobs(
+    conn: &Connection,
+) -> Result<Vec<BridgeAgentJobRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, inbox_event_id, request_id, requesting_user_key, chat_queue_key, status,
+                    retry_count, next_retry_at_ms, created_at_ms, started_at_ms, completed_at_ms, last_error
+             FROM bridge_agent_jobs
+             WHERE status = 'running'
+             ORDER BY started_at_ms ASC, id ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([], read_bridge_agent_job)
+        .map_err(sqlite_error)?;
+
+    let mut jobs = Vec::new();
+    for row in rows {
+        jobs.push(row.map_err(sqlite_error)?);
+    }
+    Ok(jobs)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn list_running_bridge_agent_jobs_from_storage(
+) -> Result<Vec<BridgeAgentJobRecord>, String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    list_running_bridge_agent_jobs(&conn)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_running(
+    conn: &Connection,
+    job_id: &str,
+    started_at_ms: i64,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE bridge_agent_jobs
+         SET status = 'running', started_at_ms = ?1, next_retry_at_ms = NULL, last_error = NULL
+         WHERE id = ?2",
+        params![started_at_ms, job_id],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_running_in_storage(
+    job_id: &str,
+    started_at_ms: i64,
+) -> Result<(), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    mark_bridge_agent_job_running(&conn, job_id, started_at_ms)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_retry_wait(
+    conn: &Connection,
+    job_id: &str,
+    next_retry_at_ms: i64,
+    last_error: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE bridge_agent_jobs
+         SET status = 'retry_wait', retry_count = retry_count + 1, next_retry_at_ms = ?1, last_error = ?2
+         WHERE id = ?3",
+        params![next_retry_at_ms, last_error, job_id],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_retry_wait_in_storage(
+    job_id: &str,
+    next_retry_at_ms: i64,
+    last_error: Option<&str>,
+) -> Result<(), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    mark_bridge_agent_job_retry_wait(&conn, job_id, next_retry_at_ms, last_error)
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_terminal(
+    conn: &Connection,
+    job_id: &str,
+    status: &str,
+    completed_at_ms: i64,
+    last_error: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE bridge_agent_jobs
+         SET status = ?1, completed_at_ms = ?2, next_retry_at_ms = NULL, last_error = ?3
+         WHERE id = ?4",
+        params![status, completed_at_ms, last_error, job_id],
+    )
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub(in crate::bridge) fn mark_bridge_agent_job_terminal_in_storage(
+    job_id: &str,
+    status: &str,
+    completed_at_ms: i64,
+    last_error: Option<&str>,
+) -> Result<(), String> {
+    let mut conn = open_conversation_db()?;
+    migrate_legacy_conversation_json(&mut conn)?;
+    mark_bridge_agent_job_terminal(&conn, job_id, status, completed_at_ms, last_error)
+}
+
 pub(in crate::bridge) fn append_conversation_message_to_storage(
     host_id: &str,
     peer_node_id: &str,

@@ -210,11 +210,38 @@ function isOwnedAgentTurn(message: CanonicalSessionMessage) {
   return message.senderRole === 'owned-agent' && message.messageKind === 'agent-turn';
 }
 
-function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
-  return message.sourceTransport === 'desktop-bridge-session-relay'
-    && (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
+function isBridgeAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
+  return (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
     && message.messageKind === 'agent-turn'
     && isProcessingPlaceholderText(message.contentText);
+}
+
+function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
+  return (message.sourceTransport === 'desktop-bridge-session-relay'
+    || message.sourceTransport === 'desktop-bridge-parent')
+    && isBridgeAgentProcessingPlaceholder(message);
+}
+
+function isRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
+  return message.sourceTransport === 'desktop-bridge-parent'
+    && isBridgeAgentProcessingPlaceholder(message);
+}
+
+const RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
+
+function isActiveProcessingStatus(message: CanonicalSessionMessage) {
+  const content = contentRecord(message.content);
+  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const status = message.status.trim().toLowerCase();
+  return deliveryState === 'processing' || status === 'processing';
+}
+
+function isStaleRawBridgeParentProcessingPlaceholder(message: CanonicalSessionMessage) {
+  if (!isRawBridgeParentProcessingPlaceholder(message)) return false;
+  if (!isActiveProcessingStatus(message)) return true;
+
+  const referenceTimeMs = Math.max(message.updatedAtMs, message.createdAtMs);
+  return Date.now() - referenceTimeMs > RAW_BRIDGE_PARENT_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
 }
 
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
@@ -298,6 +325,21 @@ function isHumanConversationActivity(message: CanonicalSessionMessage) {
     && message.messageKind !== 'agent-turn';
 }
 
+function bridgeRequestIdForMessage(message: CanonicalSessionMessage) {
+  const content = contentRecord(message.content);
+  const contentRequestId = stringValue(content.requestId)?.trim();
+  if (contentRequestId) return contentRequestId;
+
+  const sourceEventId = message.sourceEventId?.trim() ?? '';
+  return /\bbridge_req_[A-Za-z0-9_]+\b/u.exec(sourceEventId)?.[0] ?? null;
+}
+
+function bridgeRequestIdsDiffer(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
+  const leftRequestId = bridgeRequestIdForMessage(left);
+  const rightRequestId = bridgeRequestIdForMessage(right);
+  return Boolean(leftRequestId && rightRequestId && leftRequestId !== rightRequestId);
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -316,6 +358,7 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
       && message.senderRole === placeholder.senderRole
       && message.createdAtMs >= placeholder.createdAtMs
       && message.createdAtMs - placeholder.createdAtMs <= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
+      && !bridgeRequestIdsDiffer(placeholder, message)
     ));
     const hasMuchLaterHumanActivity = laterHumanActivity.some((message) => (
       message.sessionId === placeholder.sessionId
@@ -484,6 +527,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
+    const suppressedRawBridgeParentProcessingPlaceholderIds = new Set(
+      sortedMessages.filter(isStaleRawBridgeParentProcessingPlaceholder).map((message) => message.id),
+    );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
       if (
@@ -492,6 +538,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedLocalRuntimeDuplicateIds.has(message.id)
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
+        || suppressedRawBridgeParentProcessingPlaceholderIds.has(message.id)
       ) return [];
       const content = contentRecord(message.content);
       if (stringValue(content.kind) === 'delegation-join-event') {

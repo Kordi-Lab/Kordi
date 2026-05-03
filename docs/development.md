@@ -57,6 +57,8 @@ pnpm dev:web
 pnpm build:desktop
 ```
 
+For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
+
 ### Build the web UI
 
 ```bash
