@@ -150,7 +150,7 @@ test('renders agent source quote and processing status without an output block b
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });
 
-test('folds completed agent responses longer than three lines by default', () => {
+test('keeps medium completed agent responses readable without folding too early', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-long-answer',
     sessionId: 'session-1',
@@ -158,6 +158,27 @@ test('folds completed agent responses longer than three lines by default', () =>
     status: 'complete',
     message: 'Complete',
     assistantText: 'Line one\nLine two\nLine three\nLine four',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
+  assert.doesNotMatch(markup, /Show full response/);
+});
+
+test('folds only substantially long completed agent responses by default', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-long-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Line one\nLine two\nLine three\nLine four\nLine five\nLine six\nLine seven',
     thinkingText: '',
     tools: [],
     completed: true,

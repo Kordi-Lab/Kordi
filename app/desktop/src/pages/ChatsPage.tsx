@@ -53,7 +53,7 @@ import type {
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { buildReplyAttribution } from '@/features/chat/replyAttribution';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
@@ -332,9 +332,12 @@ export function ChatsPage({
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
+  const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
   const attributedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn),
-    [activeTranscriptLiveTurn, transcriptMessages],
+    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
+      inferLatestHumanRequest: inferLatestHumanReplyTarget,
+    }),
+    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
   const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;

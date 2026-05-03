@@ -2543,7 +2543,7 @@
 
 .app-live-assistant-answer-folded {
   position: relative;
-  max-height: calc(1.6em * 3);
+  max-height: calc(1.6em * 6);
   overflow: hidden;
 }
 
@@ -2552,10 +2552,10 @@
   right: 0;
   bottom: 0;
   left: 0;
-  height: 2.6rem;
+  height: 1.9rem;
   content: '';
   pointer-events: none;
-  background: linear-gradient(180deg, transparent, var(--utility-background) 82%);
+  background: linear-gradient(180deg, transparent, var(--utility-background) 88%);
 }
 
 @media (max-width: 720px) {

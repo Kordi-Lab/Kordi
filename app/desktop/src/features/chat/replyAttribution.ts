@@ -1,4 +1,5 @@
 import type {
+  Conversation,
   DesktopChatTurnSnapshot,
   Message,
   MessageReplySummary,
@@ -86,6 +87,16 @@ function withSourceMessage(message: Message, sourceMessage: MessageSourceReferen
         }
       : message.turn,
   };
+}
+
+export function shouldInferLatestHumanReplyTarget(
+  conversation: Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipantCount' | 'canonicalParticipants'> | null | undefined,
+) {
+  if (!conversation) return false;
+  if (conversation.type === 'person' || conversation.type === 'external-agent') return true;
+  if (conversation.participantSpaceId?.trim()) return true;
+  const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
+  return participantCount > 2;
 }
 
 export function replyStatusText(summary: MessageReplySummary | null | undefined) {

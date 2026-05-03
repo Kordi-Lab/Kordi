@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplyAttribution, replyStatusText } from '../src/features/chat/replyAttribution';
+import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget } from '../src/features/chat/replyAttribution';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
@@ -81,6 +81,41 @@ test('buildReplyAttribution adds generic reply count and source quote without re
   assert.equal(aliceResponse.turn?.sourceMessage?.senderLabel, 'Me');
   assert.equal(aliceResponse.turn?.sourceMessage?.text, '@AliceKordi review the copy and call out confusing parts.');
   assert.equal(bobProcessing.turn?.sourceMessage?.messageId, 'msg:request');
+});
+
+test('shouldInferLatestHumanReplyTarget enables fallback linking for person, external-agent, and group chats', () => {
+  assert.equal(shouldInferLatestHumanReplyTarget({ type: 'person', participantSpaceId: null, canonicalParticipantCount: 2 }), true);
+  assert.equal(shouldInferLatestHumanReplyTarget({ type: 'external-agent', participantSpaceId: null, canonicalParticipantCount: 2 }), true);
+  assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: 'space-1', canonicalParticipantCount: 4 }), true);
+  assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
+});
+
+test('buildReplyAttribution can infer other peoples requests as source when explicit reply ids are missing', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:peer-request',
+      role: 'person',
+      sender: 'Shenzhe Zhu',
+      isOwnMessage: false,
+      text: '@ShuyheresKordi please file this issue from the template.',
+    }),
+    {
+      id: 'msg:my-agent-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:04',
+      turn: turn({ id: 'turn-my-agent', assistantText: 'Done — filed the issue.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:peer-request');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Shenzhe Zhu');
 });
 
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {

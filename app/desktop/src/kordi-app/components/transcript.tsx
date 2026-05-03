@@ -371,7 +371,7 @@ function RequestReplyLine({
 }
 
 function assistantAnswerNeedsFold(text: string) {
-  return text.split(/\r?\n/).length > 3 || text.replace(/\s+/g, ' ').trim().length > 360;
+  return text.split(/\r?\n/).length > 6 || text.replace(/\s+/g, ' ').trim().length > 720;
 }
 
 function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
@@ -387,11 +387,11 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
       {shouldFold ? (
         <button
           type="button"
-          className="app-live-assistant-answer-toggle w-fit text-[11px] font-medium"
+          className="app-live-assistant-answer-toggle mt-2 w-fit text-[11px] font-medium"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          {expanded ? 'Collapse' : 'Show full response'}
+          {expanded ? 'Collapse response' : 'Show full response'}
         </button>
       ) : null}
     </>
