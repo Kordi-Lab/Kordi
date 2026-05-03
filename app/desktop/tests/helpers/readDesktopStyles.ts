@@ -5,6 +5,8 @@ const SHELL_STYLE_FILES = [
   '../../src/styles/shell-popovers.css',
   '../../src/styles/shell-bubbles.css',
   '../../src/styles/shell-transcript.css',
+  '../../src/styles/shell-sidebar.css',
+  '../../src/styles/shell-pages.css',
 ] as const;
 
 export function readDesktopShellCss() {

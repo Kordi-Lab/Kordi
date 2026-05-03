@@ -6,4 +6,6 @@
 @import './styles/shell-popovers.css';
 @import './styles/shell-bubbles.css';
 @import './styles/shell-transcript.css';
+@import './styles/shell-sidebar.css';
+@import './styles/shell-pages.css';
 @import './styles/theme-overrides.css';

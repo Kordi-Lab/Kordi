@@ -1,0 +1,205 @@
+.app-workspace-sidebar .app-workspace-nav-button {
+  min-height: 44px;
+  color: var(--utility-muted-text);
+  border-color: color-mix(in oklab, var(--app-divider) 14%, transparent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-workspace-nav-button:hover {
+  border-color: color-mix(in oklab, var(--app-divider) 36%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 26%, transparent);
+}
+
+.app-workspace-sidebar .app-workspace-nav-button.app-list-item-active {
+  border-color: color-mix(in oklab, var(--app-divider) 56%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 10px 22px rgba(6, 10, 18, 0.12);
+}
+
+.app-workspace-sidebar .app-workspace-note {
+  border-color: color-mix(in oklab, var(--app-divider) 64%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-workspace-search,
+.app-workspace-sidebar .app-filter-tabs {
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-workspace-search {
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+}
+
+.app-workspace-sidebar .app-filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
+}
+
+.app-workspace-sidebar .app-filter-tab {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-workspace-sidebar .app-workspace-session-scroll {
+  scrollbar-gutter: auto;
+}
+
+.app-workspace-sidebar .app-session-row {
+  display: block;
+  border-radius: 14px;
+}
+
+.app-workspace-sidebar .app-session-row:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 46%, transparent);
+}
+
+.app-workspace-sidebar .app-participant-space-row-button {
+  display: grid;
+}
+
+.app-workspace-sidebar .app-participant-space-row-button:hover,
+.app-workspace-sidebar .app-participant-space-row-button:focus-visible {
+  background: transparent;
+}
+
+.app-workspace-sidebar .app-participant-space-row-title {
+  color: color-mix(in oklab, var(--utility-foreground) 96%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 68%, var(--utility-foreground));
+}
+
+.app-workspace-sidebar .app-participant-space-row-preview-active {
+  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-participant-space-row-detail {
+  color: color-mix(in oklab, var(--app-markdown-link) 48%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-session-row-active {
+  border-color: transparent;
+  box-shadow: 0 0 0 1px var(--app-accent-ring);
+  background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
+}
+
+.app-workspace-sidebar .app-participant-space-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.625rem;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-participant-space-session-row:hover {
+  background: var(--app-control-hover);
+}
+
+.app-workspace-sidebar .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-muted-text) 62%, var(--utility-foreground));
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
+  border: 0;
+  background: color-mix(in oklab, var(--app-control-active) 72%, var(--app-control-bg));
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-participant-space-session-row.app-session-row-active .app-participant-space-session-preview {
+  color: color-mix(in oklab, var(--utility-foreground) 74%, var(--utility-muted-text));
+}
+
+.app-workspace-sidebar .app-project-group {
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+.app-workspace-sidebar .app-project-group + .app-project-group {
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 42%, transparent);
+}
+
+.app-workspace-sidebar .app-project-group-toggle {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.app-workspace-sidebar .app-project-group-toggle:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 30%, transparent);
+}
+
+.app-workspace-sidebar .app-project-session-list {
+  border-left: 1px solid color-mix(in oklab, var(--app-divider) 44%, transparent);
+}
+
+.app-workspace-sidebar .app-project-session-row {
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-project-session-row:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent) !important;
+}
+
+.app-workspace-sidebar .app-project-session-row.border-white\/10 {
+  background: color-mix(in oklab, var(--app-control-active) 48%, transparent);
+}
+
+.app-workspace-sidebar .app-sidebar-panel {
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 44%, transparent);
+  padding-top: 2px;
+}
+
+.app-workspace-sidebar .app-sidebar-panel-section {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 42%, transparent);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
+  padding: 12px;
+  box-shadow: none;
+}
+
+.app-workspace-sidebar .app-sidebar-panel-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--utility-muted-text);
+}
+
+.app-workspace-sidebar .app-sidebar-meta-list {
+  display: grid;
+  gap: 8px;
+}
+
+.app-workspace-sidebar .app-sidebar-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--utility-muted-text);
+}
+
+.app-workspace-sidebar .app-sidebar-meta-row > span:last-child {
+  color: var(--utility-foreground);
+}
+
+.app-workspace-sidebar .app-sidebar-nav-row {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.app-workspace-sidebar .app-sidebar-nav-row:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+}
