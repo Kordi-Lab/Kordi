@@ -24,6 +24,10 @@ use uuid::Uuid;
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
 use self::local_server::LocalBridgeServerRuntime;
 
+pub(crate) use self::constants::{
+    BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS,
+    BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
+};
 pub(crate) use self::outreach::desktop_bridge_reach_out_impl;
 
 #[allow(unused_imports)]

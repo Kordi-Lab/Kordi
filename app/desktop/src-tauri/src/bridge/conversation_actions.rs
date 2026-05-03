@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use super::constants::{
     is_agent_like_runtime, is_inbound_message_direction, API_STYLE_SERVE,
-    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_SENT, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
+    BRIDGE_DELIVERY_STATE_READ, BRIDGE_DELIVERY_STATE_RESPONDED, BRIDGE_DELIVERY_STATE_SENT,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
     BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
@@ -16,10 +18,11 @@ use super::{
     add_serve_contact, append_conversation_message_to_storage,
     build_conversation_only_bridge_state, current_local_server_status, default_display_name,
     load_bridge_store, load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
-    relay_plaintext_message, send_realtime_payload, update_message_delivery_state_in_storage,
-    DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
-    DesktopBridgeLocalServerStatus, DesktopBridgeManager, DesktopBridgeMessageAttachment,
-    DesktopBridgeOutreachMetadata, DesktopBridgeState, DesktopBridgeStore,
+    relay_plaintext_message, save_conversation_store, send_realtime_payload,
+    update_message_delivery_state_in_storage, DesktopBridgeConversationRecord,
+    DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus,
+    DesktopBridgeManager, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
+    DesktopBridgeState, DesktopBridgeStore,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: u64 = 10 * 1024 * 1024;
@@ -158,12 +161,174 @@ pub(super) async fn rebuild_state_after_mailbox_poll(
     conversations: DesktopBridgeConversationStore,
     storage_changed: bool,
 ) -> Result<DesktopBridgeState, String> {
+    let sync_now_ms = now_ms();
+    let timed_out_conversations =
+        mark_bridge_agent_session_message_timeouts_in_storage(&conversations, sync_now_ms)?;
+    let timeout_storage_changed = timed_out_conversations.is_some();
+    let conversations = timed_out_conversations.unwrap_or(conversations);
+    let should_sync_canonical = storage_changed || timeout_storage_changed;
     Ok(rebuild_conversation_state(
         store,
         conversations,
         current_local_server_status(manager).await,
-        storage_changed,
+        should_sync_canonical,
     ))
+}
+
+fn is_processing_placeholder_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.eq_ignore_ascii_case("processing")
+        || trimmed.eq_ignore_ascii_case("processing...")
+        || trimmed.eq_ignore_ascii_case("processing…")
+}
+
+fn bridge_message_request_id(
+    message: &crate::bridge::DesktopBridgeConversationMessageRecord,
+) -> Option<&str> {
+    message
+        .request_id
+        .as_deref()
+        .or_else(|| {
+            message
+                .outreach
+                .as_ref()
+                .and_then(|outreach| outreach.bridge_request_id.as_deref())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn delivery_state_is_terminal_agent_request(delivery_state: Option<&str>) -> bool {
+    delivery_state.map(str::trim).is_some_and(|state| {
+        state.eq_ignore_ascii_case(BRIDGE_DELIVERY_STATE_RESPONDED)
+            || state.eq_ignore_ascii_case("processing_failed")
+            || state.eq_ignore_ascii_case("failed")
+            || state.eq_ignore_ascii_case("cancelled")
+    })
+}
+
+fn delivery_state_is_terminal_agent_response(delivery_state: Option<&str>) -> bool {
+    delivery_state.map(str::trim).is_some_and(|state| {
+        state.eq_ignore_ascii_case(BRIDGE_DELIVERY_STATE_RESPONDED)
+            || state.eq_ignore_ascii_case("processing_failed")
+            || state.eq_ignore_ascii_case("failed")
+            || state.eq_ignore_ascii_case("cancelled")
+            || state.eq_ignore_ascii_case(BRIDGE_DELIVERY_STATE_READ)
+    })
+}
+
+fn has_terminal_bridge_agent_response(
+    conversation: &DesktopBridgeConversationRecord,
+    request_id: &str,
+) -> bool {
+    conversation.messages.iter().any(|message| {
+        let same_request = message
+            .request_id
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| value == request_id);
+        if !same_request
+            || !matches!(
+                message.direction.as_str(),
+                BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+                    | BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
+            )
+        {
+            return false;
+        }
+
+        delivery_state_is_terminal_agent_response(message.delivery_state.as_deref())
+            || (!is_processing_placeholder_text(&message.text) && !message.text.trim().is_empty())
+    })
+}
+
+fn bridge_agent_timeout_marked(outreach: &DesktopBridgeOutreachMetadata) -> bool {
+    outreach.status.trim().eq_ignore_ascii_case("failed")
+        && outreach
+            .error
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|error| error == BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT)
+}
+
+fn bridge_agent_session_message_timeout_due_for_message(
+    conversation: &DesktopBridgeConversationRecord,
+    message: &crate::bridge::DesktopBridgeConversationMessageRecord,
+    sync_now_ms: i64,
+) -> bool {
+    if message.direction.as_str() != BRIDGE_MESSAGE_DIRECTION_OUTBOUND {
+        return false;
+    }
+    let Some(outreach) = message.outreach.as_ref() else {
+        return false;
+    };
+    let is_bridge_agent_session_message = outreach.target_kind == "bridge-agent"
+        && outreach
+            .context_policy
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|policy| policy.eq_ignore_ascii_case("session-message"));
+    if !is_bridge_agent_session_message
+        || bridge_agent_timeout_marked(outreach)
+        || delivery_state_is_terminal_agent_request(message.delivery_state.as_deref())
+        || sync_now_ms.saturating_sub(message.timestamp_ms)
+            < BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS
+    {
+        return false;
+    }
+    let Some(request_id) = bridge_message_request_id(message) else {
+        return false;
+    };
+    !has_terminal_bridge_agent_response(conversation, request_id)
+}
+
+fn bridge_agent_session_message_timeout_due(
+    conversations: &DesktopBridgeConversationStore,
+    sync_now_ms: i64,
+) -> bool {
+    conversations.conversations.iter().any(|conversation| {
+        conversation.messages.iter().any(|message| {
+            bridge_agent_session_message_timeout_due_for_message(conversation, message, sync_now_ms)
+        })
+    })
+}
+
+fn mark_bridge_agent_session_message_timeouts_in_storage(
+    conversations: &DesktopBridgeConversationStore,
+    sync_now_ms: i64,
+) -> Result<Option<DesktopBridgeConversationStore>, String> {
+    if !bridge_agent_session_message_timeout_due(conversations, sync_now_ms) {
+        return Ok(None);
+    }
+
+    let mut store = load_conversation_store();
+    let mut changed = false;
+    for conversation in &mut store.conversations {
+        let conversation_snapshot = conversation.clone();
+        for message in &mut conversation.messages {
+            if !bridge_agent_session_message_timeout_due_for_message(
+                &conversation_snapshot,
+                message,
+                sync_now_ms,
+            ) {
+                continue;
+            }
+            if let Some(outreach) = message.outreach.as_mut() {
+                outreach.status = "failed".to_string();
+                outreach.delivery_state = Some("processing_failed".to_string());
+                outreach.error = Some(BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT.to_string());
+                outreach.updated_at_ms = sync_now_ms;
+                outreach.completed_at_ms = Some(sync_now_ms);
+                changed = true;
+            }
+        }
+    }
+
+    if !changed {
+        return Ok(None);
+    }
+    save_conversation_store(&store)?;
+    Ok(Some(store))
 }
 
 fn should_retry_direct_serve_with_contact_fallback(
@@ -921,6 +1086,98 @@ mod tests {
 
         std::env::remove_var("KORDI_STORAGE_ROOT");
         let _ = std::fs::remove_dir_all(storage_root);
+    }
+
+    #[test]
+    fn bridge_agent_session_message_timeout_due_requires_stale_unanswered_agent_request() {
+        fn agent_session_message(
+            timestamp_ms: i64,
+            delivery_state: &str,
+        ) -> crate::bridge::DesktopBridgeConversationMessageRecord {
+            let mut outreach = test_outreach(None);
+            outreach.target_kind = "bridge-agent".to_string();
+            outreach.target_runtime = Some("kordi-desktop".to_string());
+            outreach.target_agent_id = Some("agent-peer".to_string());
+            outreach.context_policy = Some("session-message".to_string());
+            outreach.bridge_request_id = Some("bridge_req_timeout".to_string());
+            outreach.delivery_state = Some(delivery_state.to_string());
+            let mut message = test_message(
+                BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+                Some("bridge_req_timeout"),
+            );
+            message.timestamp_ms = timestamp_ms;
+            message.delivery_state = Some(delivery_state.to_string());
+            message.outreach = Some(outreach);
+            message
+        }
+
+        let now = crate::bridge::BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS + 2_000;
+        let due = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation_with_runtime(
+                "kordi-desktop",
+                None,
+                vec![agent_session_message(1, BRIDGE_DELIVERY_STATE_SENT)],
+            )],
+        };
+        assert!(bridge_agent_session_message_timeout_due(&due, now));
+
+        let read_but_unanswered = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation_with_runtime(
+                "kordi-desktop",
+                None,
+                vec![agent_session_message(1, BRIDGE_DELIVERY_STATE_READ)],
+            )],
+        };
+        assert!(bridge_agent_session_message_timeout_due(
+            &read_but_unanswered,
+            now
+        ));
+
+        let fresh = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation_with_runtime(
+                "kordi-desktop",
+                None,
+                vec![agent_session_message(
+                    now - 1_000,
+                    BRIDGE_DELIVERY_STATE_SENT,
+                )],
+            )],
+        };
+        assert!(!bridge_agent_session_message_timeout_due(&fresh, now));
+
+        let mut marked_message = agent_session_message(1, BRIDGE_DELIVERY_STATE_SENT);
+        if let Some(outreach) = marked_message.outreach.as_mut() {
+            outreach.status = "failed".to_string();
+            outreach.error = Some(BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT.to_string());
+        }
+        let already_marked = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation_with_runtime(
+                "kordi-desktop",
+                None,
+                vec![marked_message],
+            )],
+        };
+        assert!(!bridge_agent_session_message_timeout_due(
+            &already_marked,
+            now
+        ));
+
+        let mut response = test_message(
+            BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+            Some("bridge_req_timeout"),
+        );
+        response.delivery_state = Some(BRIDGE_DELIVERY_STATE_RESPONDED.to_string());
+        let answered = DesktopBridgeConversationStore {
+            conversations: vec![test_conversation_with_runtime(
+                "kordi-desktop",
+                None,
+                vec![
+                    agent_session_message(1, BRIDGE_DELIVERY_STATE_SENT),
+                    response,
+                ],
+            )],
+        };
+        assert!(!bridge_agent_session_message_timeout_due(&answered, now));
     }
 
     #[test]

@@ -1,5 +1,10 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::bridge::{
+    BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS,
+    BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
+};
+
 use super::super::bridge_identities::upsert_bridge_agent_identity;
 use super::super::bridge_routing::{
     canonical_bridge_message_status, outreach_is_session_message, outreach_is_session_relay,
@@ -412,6 +417,106 @@ fn canonical_delivery_state_for_parent_session_relay(
     delivery_state.map(ToString::to_string)
 }
 
+fn bridge_message_request_id<'a>(
+    message: &'a crate::bridge::DesktopBridgeConversationMessage,
+    outreach: &'a crate::bridge::DesktopBridgeOutreachMetadata,
+) -> Option<&'a str> {
+    message
+        .request_id
+        .as_deref()
+        .or(outreach.bridge_request_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn delivery_state_is_terminal_agent_request(delivery_state: Option<&str>) -> bool {
+    delivery_state.map(str::trim).is_some_and(|state| {
+        state.eq_ignore_ascii_case("responded")
+            || state.eq_ignore_ascii_case("processing_failed")
+            || state.eq_ignore_ascii_case("failed")
+            || state.eq_ignore_ascii_case("cancelled")
+    })
+}
+
+fn delivery_state_is_terminal_agent_response(delivery_state: Option<&str>) -> bool {
+    delivery_state.map(str::trim).is_some_and(|state| {
+        state.eq_ignore_ascii_case("responded")
+            || state.eq_ignore_ascii_case("processing_failed")
+            || state.eq_ignore_ascii_case("failed")
+            || state.eq_ignore_ascii_case("cancelled")
+            || state.eq_ignore_ascii_case("read")
+    })
+}
+
+fn bridge_agent_timeout_marked(outreach: &crate::bridge::DesktopBridgeOutreachMetadata) -> bool {
+    outreach.status.trim().eq_ignore_ascii_case("failed")
+        && outreach
+            .error
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|error| error == BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT)
+}
+
+fn has_terminal_bridge_agent_session_response(
+    messages: &[crate::bridge::DesktopBridgeConversationMessage],
+    request_id: &str,
+) -> bool {
+    messages.iter().any(|message| {
+        let same_request = message
+            .request_id
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| value == request_id);
+        if !same_request
+            || !matches!(
+                message.direction.as_str(),
+                "inbound-response" | "outbound-response"
+            )
+        {
+            return false;
+        }
+
+        delivery_state_is_terminal_agent_response(message.delivery_state.as_deref())
+            || (!is_processing_placeholder_text(&message.text) && !message.text.trim().is_empty())
+    })
+}
+
+fn bridge_agent_session_message_wait_state(
+    message: &crate::bridge::DesktopBridgeConversationMessage,
+    messages: &[crate::bridge::DesktopBridgeConversationMessage],
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    sync_now_ms: i64,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    if outreach.target_kind != "bridge-agent"
+        || !outreach_is_session_message(outreach)
+        || message.direction.as_str() != "outbound"
+        || delivery_state_is_terminal_agent_request(message.delivery_state.as_deref())
+    {
+        return None;
+    }
+    let request_id = bridge_message_request_id(message, outreach)?;
+    if has_terminal_bridge_agent_session_response(messages, request_id) {
+        return None;
+    }
+
+    if bridge_agent_timeout_marked(outreach)
+        || sync_now_ms.saturating_sub(message.timestamp_ms)
+            >= BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS
+    {
+        Some((
+            "processing_failed",
+            "failed",
+            BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
+        ))
+    } else {
+        Some((
+            "processing",
+            "processing",
+            BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT,
+        ))
+    }
+}
+
 pub(super) fn sync_parent_session_relay_messages(
     conn: &Connection,
     parent_session_id: &str,
@@ -509,6 +614,7 @@ pub(super) fn sync_parent_session_relay_messages(
         peer_is_agent,
     )?
     .map(|(identity_id, _)| identity_id);
+    let sync_now_ms = now_ms();
     for message in messages.iter().filter(matches_relay_message) {
         let is_outbound = matches!(message.direction.as_str(), "outbound" | "outbound-response");
         let is_inbound = matches!(message.direction.as_str(), "inbound" | "inbound-response");
@@ -676,6 +782,46 @@ pub(super) fn sync_parent_session_relay_messages(
             "desktop-bridge-ui",
             10_000,
         )?;
+
+        if let Some((wait_delivery_state, wait_status, wait_text)) =
+            bridge_agent_session_message_wait_state(message, messages, outreach, sync_now_ms)
+        {
+            if let Some(request_id) = bridge_message_request_id(message, outreach) {
+                message_reconcile::append_or_reconcile_message_from_sync(
+                    conn,
+                    AppendCanonicalMessageRequest {
+                        id: None,
+                        session_id: parent_session_id.to_string(),
+                        sender_identity_id: remote_target_identity_id.to_string(),
+                        sender_role: "external-agent".to_string(),
+                        message_kind: "agent-turn".to_string(),
+                        content_text: wait_text.to_string(),
+                        content: Some(serde_json::json!({
+                            "kind": "session-message",
+                            "direction": "inbound-response",
+                            "sender": outreach.target_display_name,
+                            "timeLabel": message.time_label,
+                            "timestampMs": sync_now_ms,
+                            "deliveryState": wait_delivery_state,
+                            "requestId": request_id,
+                            "bridgeConversationId": conversation.id,
+                            "error": if wait_delivery_state == "processing_failed" { Some(wait_text) } else { None },
+                        })),
+                        created_at_ms: Some(message.timestamp_ms.saturating_add(1)),
+                        parent_message_id: outreach.parent_message_id.clone(),
+                        delegated_exchange_id: None,
+                        status: Some(wait_status.to_string()),
+                        source_transport: Some(relay_source_transport.to_string()),
+                        source_event_id: Some(format!(
+                            "{}:{}:agent-response:{}",
+                            relay_source_transport, parent_session_id, request_id
+                        )),
+                    },
+                    "desktop-bridge-ui",
+                    10_000,
+                )?;
+            }
+        }
     }
 
     Ok(())
