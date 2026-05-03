@@ -95,6 +95,46 @@ test('renders transcript system notices with compact stable spacing', () => {
   assert.doesNotMatch(markup, /flex justify-center py-2/);
 });
 
+test('renders human messages with a larger reading width than before', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Shenzhe Zhu',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: '@ShenzheZhusKordi Based on the current Kordi repo issue template, I’d like to propose adding model awareness to the system prompt.',
+    time: '21:54',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /max-w-\[34rem\]/);
+  assert.match(markup, /text-\[14px\]/);
+  assert.doesNotMatch(markup, /max-w-\[26rem\]/);
+});
+
+test('renders completed assistant responses as a compact contrast surface', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-contrast-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Done — filed as issue #217 using the repo’s current Feature request template.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.match(markup, /app-live-assistant-answer-surface/);
+  assert.match(markup, /max-w-\[min\(100%,40rem\)\]/);
+  assert.match(markup, /app-live-assistant-answer-markdown/);
+  assert.doesNotMatch(markup, /max-w-\[min\(100%,46rem\)\]/);
+});
+
 test('renders request reply status as an external plain one-line count without names', () => {
   const message: Message = {
     id: 'msg:request',

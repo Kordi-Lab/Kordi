@@ -381,8 +381,8 @@ function FoldableAssistantAnswer({ text, foldable = true }: { text: string; fold
 
   return (
     <>
-      <div className={cn('app-live-assistant-answer w-full max-w-[min(100%,46rem)] py-1 text-[13px]', folded && 'app-live-assistant-answer-folded')}>
-        <MarkdownContent text={text} />
+      <div className={cn('app-live-assistant-answer app-live-assistant-answer-surface w-full max-w-[min(100%,40rem)] text-[13px]', folded && 'app-live-assistant-answer-folded')}>
+        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
       </div>
       {shouldFold ? (
         <button
@@ -997,11 +997,12 @@ function MessageBubbleView({
           />
         ) : null}
         <div className={cn(
-          'min-w-0 text-[13px] shadow-sm',
+          'min-w-0 shadow-sm',
+          isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('own'))
+            ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? cn('w-fit min-w-[6.75rem] max-w-[26rem] px-3.5 py-2', humanMessageBubbleShapeClass('peer'))
+              ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           bubble,
         )}>
