@@ -73,7 +73,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 
 | Area | File | Disposition |
 | --- | --- | --- |
-| Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers, model option/thinking helpers, and historical transcript projection have been extracted. Next safe slice: extract session-title/project summary helpers or turn execution DTOs with tests. |
+| Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers, model option/thinking helpers, historical transcript projection, and session catalog helpers have been extracted. Next safe slice: extract agent profile/detail assembly or turn execution DTOs with tests. |
 | Desktop Rust chat | `app/desktop/src-tauri/src/chat.rs` | Attachment/artifact helpers, live-turn state helpers, and Bridge-agent runner logic have been extracted. Next safe slice: move session action helpers behind existing Tauri command names. |
 | Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are now partitioned by scenario. Next safe slice: split command-facing DTOs from persistence helpers first. |
 | Bridge config/state | `app/desktop/src-tauri/src/bridge/mod.rs` | Defer broad split. Extract config/state summary helpers before moving command handlers. |
@@ -108,6 +108,7 @@ This table documents why the high-priority files from #235 are deferred from a s
 - `app/desktop/src/kordi-app/components/transcript.tsx`: live-turn cards, visible-turn merge helpers, delayed live status, tool timeline rows, and tool transcript detail blocks moved to `app/desktop/src/kordi-app/components/transcriptLiveTurns.tsx` while preserving existing transcript exports.
 - `agent/crates/cli/src/desktop_runtime.rs`: model option cache/loading, model resolution, auth-choice matching, and thinking-control helpers moved to `agent/crates/cli/src/desktop_runtime/model_options.rs` while preserving public desktop runtime exports.
 - `agent/crates/cli/src/desktop_runtime.rs`: historical session-entry transcript projection moved to `agent/crates/cli/src/desktop_runtime/transcript.rs`, while root runtime APIs continue to load desktop chat messages through the same private helper.
+- `agent/crates/cli/src/desktop_runtime.rs`: session title repair, session summaries, project group listing, registered project creation, runtime cwd lookup, and project info loading moved to `agent/crates/cli/src/desktop_runtime/session_catalog.rs`, while public runtime catalog APIs remain re-exported from the root module.
 - `app/desktop/src-tauri/src/chat.rs`: live-turn snapshot locking, turn event application, running-turn pruning, and tool-output helper functions moved to `app/desktop/src-tauri/src/chat/turns.rs` without changing Tauri command DTOs or command names.
 - `app/desktop/src-tauri/src/chat.rs`: Bridge-agent temporary execution session, route normalization, fallback selection, and `run_bridge_agent_prompt` moved to `app/desktop/src-tauri/src/chat/bridge_agent_runner.rs`, while crate-visible chat exports remain unchanged for Bridge mailbox call sites.
 - `bridges/cli/src/commands.rs`: setup/runtime-selection helpers and `cmd_setup` moved to `bridges/cli/src/commands/setup.rs`, while `crate::commands::cmd_setup` remains re-exported from the root command module.
