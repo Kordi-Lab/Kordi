@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowRightLeft,
@@ -204,6 +204,7 @@ type ChatsPageProps = {
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
+  onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -261,6 +262,7 @@ export function ChatsPage({
   chatModelOptions,
   isDesktopChatSending,
   onStopDesktopChatTurn,
+  onStopBridgeAgentRequest,
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
@@ -520,9 +522,16 @@ export function ChatsPage({
                 key={`${msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
+                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               />
             ))}
-            {shouldRenderLiveTurn && activeTranscriptLiveTurn ? <LiveChatTurnMessage turn={activeTranscriptLiveTurn} sender={liveTurnSender} /> : null}
+            {shouldRenderLiveTurn && activeTranscriptLiveTurn ? (
+              <LiveChatTurnMessage
+                turn={activeTranscriptLiveTurn}
+                sender={liveTurnSender}
+                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+              />
+            ) : null}
             {queuedDesktopMessages.map((message) => (
               <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
             ))}

@@ -30,5 +30,6 @@ export function useComposerController(args: UseComposerControllerArgs) {
     handleSendChatMessage: messageActions.handleSendChatMessage,
     handleSendProjectMessage: messageActions.handleSendProjectMessage,
     handleStopDesktopChatTurn: messageActions.handleStopDesktopChatTurn,
+    handleStopBridgeAgentRequest: messageActions.handleStopBridgeAgentRequest,
   };
 }

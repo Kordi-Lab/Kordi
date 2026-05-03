@@ -176,6 +176,17 @@ export function delegationOptimisticFallbackKey(exchange: CanonicalSessionState[
   return [exchange.sessionId, exchange.targetIdentityId, exchange.requestMessageId].join(':');
 }
 
+function bridgeAgentRequestControlForExchange(
+  exchange: CanonicalSessionState['delegatedExchanges'][number],
+  profileHumanIdentityId?: string | null,
+) {
+  if (exchange.initiatorIdentityId !== profileHumanIdentityId) return undefined;
+  const conversationId = exchange.bridgeConversationId?.trim();
+  const requestId = exchange.bridgeRequestId?.trim();
+  if (!conversationId || !requestId) return undefined;
+  return { conversationId, requestId };
+}
+
 export function processingAgentMessage(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   target: CanonicalIdentity,
@@ -184,6 +195,7 @@ export function processingAgentMessage(
 ): Message {
   const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
   const time = formatDesktopClockTime(exchange.updatedAtMs || exchange.createdAtMs);
+  const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
   return {
     role,
     sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,
@@ -206,6 +218,43 @@ export function processingAgentMessage(
       completed: false,
       succeeded: false,
       error: null,
+      pendingBridgeAgentRequest,
+    },
+  };
+}
+
+export function cancelledBridgeAgentDelegationMessage(
+  exchange: CanonicalSessionState['delegatedExchanges'][number],
+  target: CanonicalIdentity,
+  identityById: Map<string, CanonicalIdentity>,
+  profileHumanIdentityId?: string | null,
+): Message | null {
+  if (exchange.initiatorIdentityId !== profileHumanIdentityId) return null;
+  if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
+  const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
+  const time = formatDesktopClockTime(exchange.updatedAtMs || exchange.createdAtMs);
+  return {
+    role,
+    sender: ownerScopedAgentName(target, identityById, profileHumanIdentityId) ?? target.displayName,
+    senderType: 'agent',
+    senderProfileImageUrl: target.profileImageUrl ?? null,
+    senderAvatarSeed: target.avatarKey ?? null,
+    isOwnMessage: false,
+    showSenderMeta: role === 'external-agent',
+    text: '',
+    time,
+    turn: {
+      id: `canonical-delegation-cancelled:${exchange.id}`,
+      sessionId: exchange.sessionId,
+      prompt: '',
+      status: 'cancelled',
+      message: 'Stopped',
+      assistantText: '',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: false,
+      error: 'Request stopped',
     },
   };
 }
@@ -221,8 +270,19 @@ export function mapCanonicalMessage(
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
-  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed';
+  const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
+  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled;
   const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
+  const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
+  const bridgeRequestId = stringValue(content.requestId)?.trim();
+  const pendingBridgeAgentRequest = isAgentTurn
+    && !completed
+    && deliveryState === 'processing'
+    && message.sourceTransport?.startsWith('desktop-bridge')
+    && bridgeConversationId
+    && bridgeRequestId
+    ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
+    : undefined;
   const tools = canonicalTools(content.tools);
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
@@ -277,14 +337,15 @@ export function mapCanonicalMessage(
           id: `canonical-turn:${message.id}`,
           sessionId: message.sessionId,
           prompt: '',
-          status: completed ? (failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing'),
+          message: completed ? (cancelled ? 'Stopped' : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: displayText,
           thinkingText,
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          error: cancelled ? 'Request stopped' : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          pendingBridgeAgentRequest,
         }
       : undefined,
   };

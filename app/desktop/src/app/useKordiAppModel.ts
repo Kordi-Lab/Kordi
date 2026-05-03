@@ -848,6 +848,7 @@ export function useKordiAppModel() {
     handleSendChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
+    handleStopBridgeAgentRequest,
   } = useComposerController({
     isNativeShell,
     activeConversationIsBridge,
@@ -1897,6 +1898,7 @@ export function useKordiAppModel() {
     chatModelOptions: chatModelOptionsForShell,
     isDesktopChatSending,
     handleStopDesktopChatTurn: wrappedStopDesktopChatTurn,
+    handleStopBridgeAgentRequest,
     handleSendProjectMessage: wrappedSendProjectMessage,
     handleSendChatMessage: wrappedSendChatMessage,
     showChatDetailRail,

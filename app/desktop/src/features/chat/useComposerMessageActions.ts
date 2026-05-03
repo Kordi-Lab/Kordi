@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { ComposerScope } from '@/kordi-app/types';
+import type { BridgeAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import {
   cancelDesktopBridgeOutreach,
   cancelDesktopChatTurn,
@@ -259,17 +259,33 @@ export function useComposerMessageActions({
     resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
   }, [composerDrafts.project, setComposerDrafts]);
 
+  const stopBridgeOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
+    setDesktopChatError(null);
+    const pendingOutreach = pendingBridgeOutreachRef.current;
+    if (pendingOutreach?.conversationId === conversationId && pendingOutreach.requestId === requestId) {
+      setPendingBridgeOutreach(null);
+      setIsDesktopChatSending(false);
+    }
+    try {
+      const nextState = await cancelDesktopBridgeOutreach(conversationId, requestId);
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
+      throw error;
+    }
+  }, [setDesktopBridgeState, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
+
+  const handleStopBridgeAgentRequest = useCallback(async (request: BridgeAgentRequestControl) => {
+    await stopBridgeOutreach(request.conversationId, request.requestId);
+  }, [stopBridgeOutreach]);
+
   const handleStopDesktopChatTurn = useCallback(async () => {
     const pendingOutreach = pendingBridgeOutreachRef.current;
     if (pendingOutreach) {
-      setDesktopChatError(null);
-      setPendingBridgeOutreach(null);
-      setIsDesktopChatSending(false);
       try {
-        const nextState = await cancelDesktopBridgeOutreach(pendingOutreach.conversationId, pendingOutreach.requestId);
-        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-      } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
+        await stopBridgeOutreach(pendingOutreach.conversationId, pendingOutreach.requestId);
+      } catch {
+        // stopBridgeOutreach already surfaced the error in chat state.
       }
       return;
     }
@@ -299,12 +315,13 @@ export function useComposerMessageActions({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
     }
-  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopBridgeState, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending]);
+  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopBridgeOutreach]);
 
   return {
     handleSendChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
+    handleStopBridgeAgentRequest,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
     acceptChatMentionTarget,

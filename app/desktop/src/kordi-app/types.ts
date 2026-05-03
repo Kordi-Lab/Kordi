@@ -1004,6 +1004,11 @@ export type QueuedDesktopChatMessage = {
   attachments: (MessageAttachment & { id: string; path: string })[];
 };
 
+export type BridgeAgentRequestControl = {
+  conversationId: string;
+  requestId: string;
+};
+
 export type DesktopChatTurnSnapshot = {
   id: string;
   sessionId: string;
@@ -1017,4 +1022,5 @@ export type DesktopChatTurnSnapshot = {
   succeeded: boolean;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
+  pendingBridgeAgentRequest?: BridgeAgentRequestControl | null;
 };

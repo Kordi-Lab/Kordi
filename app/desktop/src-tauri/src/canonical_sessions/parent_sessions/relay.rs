@@ -1,8 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::bridge::{
-    BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS,
-    BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
+    BRIDGE_AGENT_SESSION_MESSAGE_CANCELLED_TEXT, BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT,
+    BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
 };
 
 use super::super::bridge_identities::upsert_bridge_agent_identity;
@@ -490,8 +490,22 @@ fn bridge_agent_session_message_wait_state(
     if outreach.target_kind != "bridge-agent"
         || !outreach_is_session_message(outreach)
         || message.direction.as_str() != "outbound"
-        || delivery_state_is_terminal_agent_request(message.delivery_state.as_deref())
     {
+        return None;
+    }
+    if message
+        .delivery_state
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|state| state.eq_ignore_ascii_case("cancelled"))
+    {
+        return Some((
+            "cancelled",
+            "cancelled",
+            BRIDGE_AGENT_SESSION_MESSAGE_CANCELLED_TEXT,
+        ));
+    }
+    if delivery_state_is_terminal_agent_request(message.delivery_state.as_deref()) {
         return None;
     }
     let request_id = bridge_message_request_id(message, outreach)?;
@@ -514,6 +528,79 @@ fn bridge_agent_session_message_wait_state(
             "processing",
             BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_outreach() -> crate::bridge::DesktopBridgeOutreachMetadata {
+        crate::bridge::DesktopBridgeOutreachMetadata {
+            target_kind: "bridge-agent".to_string(),
+            parent_session_id: Some("session:group:test".to_string()),
+            parent_session_title: None,
+            parent_session_kind: Some("group".to_string()),
+            parent_group_space_id: Some("session:group:test".to_string()),
+            parent_session_participants: Vec::new(),
+            parent_session_messages: Vec::new(),
+            parent_turn_id: None,
+            parent_message_id: Some("msg:request".to_string()),
+            bridge_host_id: "host-1".to_string(),
+            bridge_conversation_id: Some("bridge:host-1:agent".to_string()),
+            bridge_request_id: Some("bridge_req_cancel".to_string()),
+            delivery_state: Some("cancelled".to_string()),
+            target_node_id: "node-agent".to_string(),
+            target_human_id: Some("human-remote".to_string()),
+            target_agent_id: Some("agent-remote".to_string()),
+            target_display_name: "Remote Kordi".to_string(),
+            target_owner_name: Some("Remote".to_string()),
+            target_runtime: Some("kordi-desktop".to_string()),
+            request_text: "@RemoteKordi hello".to_string(),
+            trigger_text: Some("@RemoteKordi hello".to_string()),
+            context_text: None,
+            context_policy: Some("session-message".to_string()),
+            project_id: None,
+            project_name: None,
+            status: "cancelled".to_string(),
+            created_at_ms: 1_000,
+            updated_at_ms: 2_000,
+            completed_at_ms: Some(2_000),
+            error: Some("Cancelled by user".to_string()),
+        }
+    }
+
+    #[test]
+    fn cancelled_bridge_agent_session_message_wait_state_is_terminal() {
+        let outreach = test_outreach();
+        let message = crate::bridge::DesktopBridgeConversationMessage {
+            id: "bridge_msg_request".to_string(),
+            direction: "outbound".to_string(),
+            sender: Some("Me".to_string()),
+            text: "@RemoteKordi hello".to_string(),
+            time_label: "13:06".to_string(),
+            timestamp_ms: 1_000,
+            request_id: Some("bridge_req_cancel".to_string()),
+            delivery_state: Some("cancelled".to_string()),
+            outreach: Some(outreach.clone()),
+            attachments: Vec::new(),
+        };
+
+        let state = bridge_agent_session_message_wait_state(
+            &message,
+            std::slice::from_ref(&message),
+            &outreach,
+            2_000,
+        );
+
+        assert_eq!(
+            state,
+            Some((
+                "cancelled",
+                "cancelled",
+                BRIDGE_AGENT_SESSION_MESSAGE_CANCELLED_TEXT
+            ))
+        );
     }
 }
 

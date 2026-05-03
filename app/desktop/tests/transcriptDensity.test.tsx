@@ -29,6 +29,36 @@ test('renders live turn errors as compact inline rows instead of full-width card
   assert.doesNotMatch(markup, /px-4 py-3 text-sm text-rose-100/);
 });
 
+test('renders bridge agent stop control beside pending processing text', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-pending-bridge-agent',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'processing',
+    message: 'Processing…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    pendingBridgeAgentRequest: {
+      conversationId: 'bridge:host-1:node-agent',
+      requestId: 'bridge_req_stop',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    onStopBridgeAgentRequest: () => undefined,
+  }));
+
+  assert.match(markup, /aria-label="Stop agent request"/);
+  assert.match(markup, /title="Stop agent request"/);
+  assert.match(markup, /app-bridge-agent-stop-button/);
+  assert.match(markup, /Processing/);
+});
+
 test('renders failed own message delivery as visible red failed text', () => {
   const message: Message = {
     role: 'user',

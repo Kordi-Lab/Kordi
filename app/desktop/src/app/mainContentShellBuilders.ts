@@ -198,6 +198,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     chatModelOptions: args.chatModelOptions,
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
+    onStopBridgeAgentRequest: args.handleStopBridgeAgentRequest,
     onSendChatMessage: args.handleSendChatMessage,
     hasAnyAuth: args.desktopAuthState?.hasAnyAuth ?? false,
     onOpenAuthSettings: args.openAuthSettings,

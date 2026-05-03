@@ -4,6 +4,7 @@ import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, Co
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
+  BridgeAgentRequestControl,
   ChatFilter,
   Contact,
   ContactClass,
@@ -285,6 +286,7 @@ export type AssembleKordiShellSlotsArgs = {
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
+  handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
   handleSendChatMessage: (draftOverride?: string) => void;
   showChatDetailRail: boolean;
@@ -512,6 +514,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatModelOptions'
   | 'isDesktopChatSending'
   | 'handleStopDesktopChatTurn'
+  | 'handleStopBridgeAgentRequest'
   | 'handleSendProjectMessage'
   | 'showChatDetailRail'
   | 'activeConv'

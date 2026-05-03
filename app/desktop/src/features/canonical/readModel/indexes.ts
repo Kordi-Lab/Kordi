@@ -8,6 +8,7 @@ import type {
 } from '@/kordi-app/types';
 
 import {
+  cancelledBridgeAgentDelegationMessage,
   contentRecord,
   delegationOptimisticFallbackKey,
   delegationTerminalStatus,
@@ -360,6 +361,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     }),
   );
   const processingDelegationMessagesBySessionId = new Map<string, Message[]>();
+  const cancelledDelegationMessagesBySessionId = new Map<string, Message[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) continue;
@@ -374,6 +376,18 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     processingDelegationMessagesBySessionId.set(
       exchange.sessionId,
       [...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId)],
+    );
+  }
+
+  for (const exchange of canonicalState.delegatedExchanges) {
+    if (exchange.status.trim().toLowerCase() !== 'cancelled') continue;
+    const target = identityById.get(exchange.targetIdentityId);
+    if (!target || target.kind !== 'agent') continue;
+    const stoppedMessage = cancelledBridgeAgentDelegationMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId);
+    if (!stoppedMessage) continue;
+    cancelledDelegationMessagesBySessionId.set(
+      exchange.sessionId,
+      [...(cancelledDelegationMessagesBySessionId.get(exchange.sessionId) ?? []), stoppedMessage],
     );
   }
 
@@ -443,13 +457,21 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           return [{ ...mapped, statusChips: ['failed'] }];
         }
         return [mapped];
-      }).concat(processingDelegationMessagesBySessionId.get(sessionId) ?? []),
+      })
+        .concat(processingDelegationMessagesBySessionId.get(sessionId) ?? [])
+        .concat(cancelledDelegationMessagesBySessionId.get(sessionId) ?? []),
     );
   }
 
   for (const [sessionId, processingMessages] of processingDelegationMessagesBySessionId) {
     if (!canonicalMessagesBySessionId.has(sessionId)) {
       canonicalMessagesBySessionId.set(sessionId, processingMessages);
+      rawMessageCountBySessionId.set(sessionId, 0);
+    }
+  }
+  for (const [sessionId, cancelledMessages] of cancelledDelegationMessagesBySessionId) {
+    if (!canonicalMessagesBySessionId.has(sessionId)) {
+      canonicalMessagesBySessionId.set(sessionId, cancelledMessages);
       rawMessageCountBySessionId.set(sessionId, 0);
     }
   }
