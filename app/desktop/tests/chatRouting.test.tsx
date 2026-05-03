@@ -1451,6 +1451,52 @@ test('canonical read model hides stale bridge processing placeholders after late
   ]);
 });
 
+test('canonical read model hides stale bridge processing placeholders after later no-mention human activity', () => {
+  const sessionId = 'session:group:no-mention-after-processing';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 20 * 60_000, lastMessageAtMs: 20 * 60_000 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:peer', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:before', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'plain chat before', content: { sender: 'Me', timeLabel: '12:00' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'before' },
+      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Peer's Kordi", timeLabel: '12:01', kind: 'session-relay', deliveryState: 'processing', requestId: 'bridge_req_stale' }, status: 'processing', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'processing' },
+      { id: 'msg:image', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '', content: { sender: 'Me', timeLabel: '12:20', attachments: [{ kind: 'image', name: 'Screenshot.png', formatLabel: 'PNG', localPath: '/tmp/Screenshot.png' }] }, status: 'sent', sequenceNum: 3, createdAtMs: 20 * 60_000, updatedAtMs: 20 * 60_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'image-no-mention' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+
+  assert.equal(messages.some((message) => message.turn?.status === 'processing'), false);
+  assert.deepEqual(messages.map((message) => message.text || message.attachments?.[0]?.name || message.turn?.assistantText), [
+    'plain chat before',
+    'Screenshot.png',
+  ]);
+});
+
 test('activity marks bridge-backed chat sessions as visible local sessions for unread clearing', () => {
   assert.equal(visibleLocalSessionIdForActivity({
     activeNav: 'chats',

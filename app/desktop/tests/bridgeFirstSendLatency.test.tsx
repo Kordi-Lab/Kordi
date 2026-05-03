@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bridgeConversationSendPlan, bridgeSessionOutreachTarget, chatSendIsBusy, localChatSendIsInFlightForTarget } from '../src/features/chat/messageActions/chatMessages';
+import { bridgeConversationSendPlan, bridgeSessionOutreachTarget, chatSendIsBusy, localAgentRelayFailureText, localAgentRelayTerminalDeliveryState, localChatSendIsInFlightForTarget } from '../src/features/chat/messageActions/chatMessages';
 
 test('new canonical person chat does not block optimistic send on Bridge conversation materialization', () => {
   const plan = bridgeConversationSendPlan({
@@ -57,6 +57,20 @@ test('canonical external-agent sessions send session messages to the bridge agen
     targetHumanId: null,
     targetAgentId: 'agent-bob',
   });
+});
+
+test('failed local agent bridge relay turns produce a terminal failed delivery state', () => {
+  assert.equal(localAgentRelayTerminalDeliveryState({ succeeded: false, assistantText: '', error: 'Provider error' }), 'processing_failed');
+  assert.equal(localAgentRelayFailureText({ error: 'Provider error' }), 'Processing failed');
+});
+
+test('empty local agent bridge relay turns produce a terminal failed delivery state', () => {
+  assert.equal(localAgentRelayTerminalDeliveryState({ succeeded: true, assistantText: '   ', error: null }), 'processing_failed');
+  assert.equal(localAgentRelayFailureText({ error: null }), 'Processing failed');
+});
+
+test('successful local agent bridge relay turns still respond normally', () => {
+  assert.equal(localAgentRelayTerminalDeliveryState({ succeeded: true, assistantText: 'done', error: null }), 'responded');
 });
 
 test('existing Bridge conversation can still receive bridge-message optimistic state', () => {
