@@ -394,6 +394,12 @@ async fn enqueue_agent_ask_for_durable_processing(
     Ok(true)
 }
 
+fn should_fallback_to_legacy_mailbox_fetch(poll_error: &str) -> bool {
+    poll_error.contains("HTTP 404")
+        || poll_error.contains("HTTP 405")
+        || poll_error.contains("HTTP 501")
+}
+
 async fn process_acked_mailbox_entries(
     target: &LocalBridgeMailboxTarget,
     entries: Vec<AckedMailboxEntry>,
@@ -1053,7 +1059,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
     let mut storage_changed = false;
 
     for target in mailbox_targets(&store) {
-        if let Ok(entries) = poll_mailbox_v2(
+        match poll_mailbox_v2(
             &target.host.coordination,
             &target.host.api_key,
             None,
@@ -1061,13 +1067,17 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
         )
         .await
         {
-            if entries.is_empty() {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    continue;
+                }
+                if process_acked_mailbox_entries(&target, entries).await? {
+                    storage_changed = true;
+                }
                 continue;
             }
-            if process_acked_mailbox_entries(&target, entries).await? {
-                storage_changed = true;
-            }
-            continue;
+            Err(error) if should_fallback_to_legacy_mailbox_fetch(&error) => {}
+            Err(_) => continue,
         }
 
         let mailbox = match fetch_mailbox(&target.host.coordination, &target.host.api_key).await {
@@ -1276,6 +1286,25 @@ mod tests {
             outreach_metadata_for_event(&host, &event, "kordi-desktop").expect("outreach metadata");
 
         assert_eq!(outreach.context_policy.as_deref(), Some("session-message"));
+    }
+
+    #[test]
+    fn mailbox_poll_uses_legacy_drain_only_when_ack_endpoint_is_missing() {
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 404 Not Found"
+        ));
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 405 Method Not Allowed"
+        ));
+        assert!(should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 501 Not Implemented"
+        ));
+        assert!(!should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: HTTP 500 Internal Server Error"
+        ));
+        assert!(!should_fallback_to_legacy_mailbox_fetch(
+            "Unable to poll bridge mailbox: connection reset"
+        ));
     }
 
     #[test]
