@@ -57,6 +57,32 @@ test('queued desktop message storage ignores missing or malformed persisted data
   assert.deepEqual(loadQueuedDesktopMessagesBySession(storage), {});
 });
 
+test('queued desktop message storage treats unavailable browser storage as best-effort', () => {
+  const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const fakeWindow = {};
+  Object.defineProperty(fakeWindow, 'localStorage', {
+    configurable: true,
+    get() {
+      throw new Error('localStorage unavailable');
+    },
+  });
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: fakeWindow,
+  });
+
+  try {
+    assert.deepEqual(loadQueuedDesktopMessagesBySession(), {});
+    assert.doesNotThrow(() => saveQueuedDesktopMessagesBySession({ 'session-a': [] }));
+  } finally {
+    if (originalWindowDescriptor) {
+      Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
+  }
+});
+
 test('queued desktop message storage writes non-empty queues and removes empty queues', () => {
   const storage = new MemoryStorage();
 

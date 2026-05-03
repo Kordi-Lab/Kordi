@@ -11,11 +11,12 @@ function browserQueuedDesktopMessagesStorage(): QueuedDesktopMessagesStorage | n
 }
 
 export function loadQueuedDesktopMessagesBySession(
-  storage: QueuedDesktopMessagesStorage | null = browserQueuedDesktopMessagesStorage(),
+  storage: QueuedDesktopMessagesStorage | null | undefined = undefined,
 ): QueuedDesktopMessagesBySession {
-  if (!storage) return {};
   try {
-    const raw = storage.getItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
+    const resolvedStorage = storage === undefined ? browserQueuedDesktopMessagesStorage() : storage;
+    if (!resolvedStorage) return {};
+    const raw = resolvedStorage.getItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -27,16 +28,17 @@ export function loadQueuedDesktopMessagesBySession(
 
 export function saveQueuedDesktopMessagesBySession(
   messages: QueuedDesktopMessagesBySession,
-  storage: QueuedDesktopMessagesStorage | null = browserQueuedDesktopMessagesStorage(),
+  storage: QueuedDesktopMessagesStorage | null | undefined = undefined,
 ) {
-  if (!storage) return;
   try {
+    const resolvedStorage = storage === undefined ? browserQueuedDesktopMessagesStorage() : storage;
+    if (!resolvedStorage) return;
     const hasQueuedMessages = Object.values(messages).some((items) => items.length > 0);
     if (!hasQueuedMessages) {
-      storage.removeItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
+      resolvedStorage.removeItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY);
       return;
     }
-    storage.setItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+    resolvedStorage.setItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY, JSON.stringify(messages));
   } catch {
     // Best-effort draft preservation only; UI state remains authoritative.
   }
