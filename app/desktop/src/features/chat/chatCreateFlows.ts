@@ -183,6 +183,47 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
   };
 }
 
+export type ParticipantSpaceContinuationMetadataInput = {
+  sourceMetadata?: Record<string, unknown> | null;
+  continuedFromSessionId: string | null;
+  continuedFromSpaceId: string;
+  participantSpaceKind: ParticipantSpaceViewModel['kind'];
+};
+
+const BRIDGE_CONTINUATION_METADATA_KEYS = [
+  'source',
+  'bridgeConversationId',
+  'bridgeHostId',
+  'peerNodeId',
+  'peerRuntime',
+  'peerDisplayName',
+  'peerOwnerName',
+  'peerHumanId',
+  'peerAgentId',
+  'targetAgentId',
+] as const;
+
+export function buildParticipantSpaceContinuationMetadata(input: ParticipantSpaceContinuationMetadataInput) {
+  const sourceMetadata = metadataRecord(input.sourceMetadata);
+  const inheritedBridgeMetadata = BRIDGE_CONTINUATION_METADATA_KEYS.reduce<Record<string, string>>((metadata, key) => {
+    const value = sourceMetadata[key];
+    if (typeof value !== 'string') return metadata;
+    const trimmed = value.trim();
+    if (trimmed) {
+      metadata[key] = trimmed;
+    }
+    return metadata;
+  }, {});
+
+  return {
+    createdFrom: 'chat-create-flow' as const,
+    ...inheritedBridgeMetadata,
+    continuedFromSessionId: input.continuedFromSessionId,
+    continuedFromSpaceId: input.continuedFromSpaceId,
+    participantSpaceKind: input.participantSpaceKind,
+  };
+}
+
 function conversationHasUserContent(conversation: Conversation) {
   if (typeof conversation.canonicalMessageCount === 'number' && conversation.canonicalMessageCount > 0) return true;
   if (conversation.queuedMessages?.length) return true;

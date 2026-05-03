@@ -11,6 +11,7 @@ import {
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
   buildChatCreatePersonOptions,
+  buildParticipantSpaceContinuationMetadata,
   canCreateGroup,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
@@ -147,6 +148,37 @@ test('buildChatCreatePersonOptions excludes agent contacts', () => {
 
   assert.deepEqual(options.map((option) => option.id), ['person:alice']);
   assert.equal(options[0]?.label, 'Alice');
+});
+
+test('participant-space continuations inherit bridge target metadata from the source session', () => {
+  assert.deepEqual(buildParticipantSpaceContinuationMetadata({
+    sourceMetadata: {
+      source: 'bridge-session-thread',
+      bridgeConversationId: 'bridge:host:node:person',
+      bridgeHostId: 'host-1',
+      peerNodeId: 'node-peer',
+      peerRuntime: 'person',
+      peerDisplayName: 'Peer display',
+      peerOwnerName: 'Peer owner',
+      peerHumanId: 'human-peer',
+    },
+    continuedFromSessionId: 'session:bridge:humans:source',
+    continuedFromSpaceId: 'direct-human:human:peer',
+    participantSpaceKind: 'direct-human',
+  }), {
+    createdFrom: 'chat-create-flow',
+    source: 'bridge-session-thread',
+    bridgeConversationId: 'bridge:host:node:person',
+    bridgeHostId: 'host-1',
+    peerNodeId: 'node-peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer display',
+    peerOwnerName: 'Peer owner',
+    peerHumanId: 'human-peer',
+    continuedFromSessionId: 'session:bridge:humans:source',
+    continuedFromSpaceId: 'direct-human:human:peer',
+    participantSpaceKind: 'direct-human',
+  });
 });
 
 test('buildChatCreateAgentOptions derives agent rows from displayed agents', () => {
