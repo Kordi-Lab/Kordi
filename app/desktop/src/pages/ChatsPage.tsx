@@ -50,6 +50,7 @@ import type {
   EditFilePreview,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
+import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
@@ -277,6 +278,7 @@ export function ChatsPage({
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
+  const chatImeCompositionGuard = useImeCompositionGuard();
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
@@ -623,7 +625,10 @@ export function ChatsPage({
                     void saveDesktopAttachmentPaths(pastedPaths);
                   }
                 }}
+                onCompositionStart={chatImeCompositionGuard.onCompositionStart}
+                onCompositionEnd={chatImeCompositionGuard.onCompositionEnd}
                 onKeyDown={(event) => {
+                  if (chatImeCompositionGuard.isComposingKeyDown(event)) return;
                   if (filteredChatSlashCommands.length > 0) {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
