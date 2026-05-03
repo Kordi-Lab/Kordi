@@ -10,9 +10,15 @@ readme.workspace = true
 description = "Command-line interface for Kordi."
 publish = false
 
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:crossterm", "dep:kordi-tui"]
+desktop-runtime = []
+
 [[bin]]
 name = "kordi"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 kordi-core.workspace = true
@@ -21,7 +27,7 @@ kordi-tools.workspace = true
 kordi-provider.workspace = true
 kordi-hooks.workspace = true
 kordi-plugin-host.workspace = true
-kordi-tui.workspace = true
+kordi-tui = { workspace = true, optional = true }
 kordi-monitor.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -31,11 +37,11 @@ async-trait = "0.1"
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-clap.workspace = true
+clap = { workspace = true, optional = true }
 chrono.workspace = true
 rusqlite.workspace = true
 tokio-util.workspace = true
-crossterm = "0.28"
+crossterm = { version = "0.28", optional = true }
 url = "2"
 sha2 = { workspace = true }
 glob = "0.3"
