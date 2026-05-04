@@ -32,7 +32,24 @@ import type {
   Project,
   SessionStatusIndicator,
 } from '@/kordi-app/types';
+import { isSelfReferenceName } from '@/lib/identityLabels';
 import { getInitials } from '@/kordi-app/utils';
+
+function sanitizeRemotePeerName(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed && !isSelfReferenceName(trimmed)) return trimmed;
+  }
+  // All candidates were self-references or empty; return the first non-empty raw value as a
+  // last resort so the contact still renders something stable.
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) return trimmed;
+  }
+  return 'Bridge user';
+}
 import {
   buildConversationPreview,
   buildOutreachInlineMessages,
@@ -416,10 +433,11 @@ export function useWorkspaceViewModels({
           : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
         const existing = byId.get(id);
         const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
+        const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
         byId.set(id, {
           id,
-          name: peer.displayName || peer.ownerName || peer.nodeId,
-          initials: getInitials(peer.displayName || peer.ownerName || peer.nodeId),
+          name: peerName,
+          initials: getInitials(peerName),
           classType: isAgent ? 'other-users-agents' : 'other-users',
           entityType: isAgent ? 'External agent' : 'Person',
           subtitle: peer.sharedProjects.length > 0 ? `${peer.runtime} • ${peer.sharedProjects.length} shared project${peer.sharedProjects.length === 1 ? '' : 's'}` : peer.runtime,
@@ -440,10 +458,11 @@ export function useWorkspaceViewModels({
           const personId = `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? peer.ownerName}`;
           const existingPerson = byId.get(personId);
           const personBridges = Array.from(new Set([...(existingPerson?.bridges ?? []), label])).sort();
+          const personName = sanitizeRemotePeerName(peer.ownerName, peer.humanId, peer.nodeId);
           byId.set(personId, {
             id: personId,
-            name: peer.ownerName,
-            initials: getInitials(peer.ownerName),
+            name: personName,
+            initials: getInitials(personName),
             classType: 'other-users',
             entityType: 'Person',
             subtitle: `Owner of ${peer.displayName || 'external agent'}`,

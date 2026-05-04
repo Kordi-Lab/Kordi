@@ -125,3 +125,38 @@ test('group bridge thread metadata carries all human members for remote group re
     { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
   ]);
 });
+
+test('self-reference local label is replaced with the public bridge owner name when broadcasting', () => {
+  assert.deepEqual(
+    bridgeGroupSessionParticipants(groupConversation(), { selfPublicName: 'Kordi User 1' }),
+    [
+      { identityId: 'human:me', displayName: 'Kordi User 1', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me' },
+      { identityId: 'human:alice', displayName: 'Alice', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice' },
+      { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
+    ],
+  );
+});
+
+test('self-reference broadcast falls through to local label when no public name is provided', () => {
+  // Defensive: if the bridge host has no owner_name set yet, we still emit the local "Me"
+  // rather than dropping the participant entirely; the receiver's sanitizer is the second line of defence.
+  assert.deepEqual(
+    bridgeGroupSessionParticipants(groupConversation(), { selfPublicName: null }),
+    [
+      { identityId: 'human:me', displayName: 'Me', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me' },
+      { identityId: 'human:alice', displayName: 'Alice', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice' },
+      { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
+    ],
+  );
+});
+
+test('non-self-reference local label is preserved even when a public name is provided', () => {
+  const conversation: Conversation = {
+    ...groupConversation(),
+    canonicalParticipants: groupConversation().canonicalParticipants?.map((participant) => (
+      participant.role === 'self' ? { ...participant, name: 'Custom Self Label' } : participant
+    )),
+  };
+  const result = bridgeGroupSessionParticipants(conversation, { selfPublicName: 'Kordi User 1' });
+  assert.equal(result[0]?.displayName, 'Custom Self Label');
+});

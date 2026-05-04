@@ -349,16 +349,30 @@ export function bridgeGroupMentionRelayTargets(
   });
 }
 
-export function bridgeGroupSessionParticipants(conversation: Pick<Conversation, 'canonicalParticipants'>): DesktopBridgeSessionParticipant[] {
+function isSelfReferencePeerLabel(value: string | null | undefined) {
+  const trimmed = value?.trim().toLowerCase() ?? '';
+  return trimmed === 'me' || trimmed === 'you';
+}
+
+export function bridgeGroupSessionParticipants(
+  conversation: Pick<Conversation, 'canonicalParticipants'>,
+  options: { selfPublicName?: string | null } = {},
+): DesktopBridgeSessionParticipant[] {
+  const selfPublicName = cleanText(options.selfPublicName ?? undefined);
   const participants = new Map<string, DesktopBridgeSessionParticipant>();
   for (const participant of conversation.canonicalParticipants ?? []) {
     if (participant.kind !== 'human') continue;
-    const displayName = cleanText(participant.name);
-    if (!displayName) continue;
+    const rawDisplayName = cleanText(participant.name);
+    if (!rawDisplayName) continue;
     const bridgeNodeId = cleanText(participant.bridgeNodeId);
     const humanId = cleanText(participant.humanId);
     const isSelf = participantIsSelf(participant);
     if (isSelf && !bridgeNodeId && !humanId) continue;
+    // Don't broadcast self-reference labels like "Me"/"You" to other peers — those collide on
+    // the receiver side and end up rendered as "Me" for every group member.
+    const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
+      ? selfPublicName
+      : rawDisplayName;
     participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
       identityId: cleanText(participant.id),
       displayName,
@@ -600,8 +614,14 @@ export function useChatMessageActions({
       selfBridgeNodeIds: localBridgeNodeIds,
     });
     const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
+    const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
+      ?? desktopBridgeState?.hosts[0]
+      ?? null;
+    const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
+      || activeBridgeHost?.displayName?.trim()
+      || null;
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
-      ? bridgeGroupSessionParticipants(activeGroupSessionScope)
+      ? bridgeGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName })
       : [];
 
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
