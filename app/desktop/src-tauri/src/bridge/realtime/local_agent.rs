@@ -356,7 +356,8 @@ pub(super) async fn handle_incoming_payload(
 
         let chat_manager = app.state::<DesktopChatManager>().inner().clone();
         let store = load_bridge_store();
-        let _ = super::super::mailbox::run_queued_agent_jobs_once(&chat_manager, &store).await?;
+        let _ = super::super::mailbox::run_queued_agent_jobs_once(manager, &chat_manager, &store)
+            .await?;
         return emit_bridge_state(app, local_server).await;
     }
 

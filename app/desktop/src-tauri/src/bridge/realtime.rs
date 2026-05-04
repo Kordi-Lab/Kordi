@@ -232,7 +232,7 @@ fn realtime_payload_is_durable(payload: &Value) -> bool {
     )
 }
 
-async fn send_realtime_or_relay(
+pub(super) async fn send_realtime_or_relay(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,

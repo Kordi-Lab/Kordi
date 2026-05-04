@@ -13,6 +13,12 @@ function capitalizeFirst(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function hasThirdPersonPossessiveScope(value: string) {
+  const match = /^(.+?)['’]s\s+\S/u.exec(value.trim());
+  const owner = match?.[1]?.trim();
+  return Boolean(owner && !isSelfReferenceName(owner));
+}
+
 export function isSelfReferenceName(value?: string | null) {
   return SELF_REFERENCE_RE.test(cleanLabel(value));
 }
@@ -48,6 +54,7 @@ export function firstPersonPossessiveLabel(value?: string | null, ownerName?: st
   const label = cleanLabel(value);
   if (!label) return label;
   if (/^my\s+/i.test(label)) return label.replace(/^my/i, 'My');
+  if (isSelfReferenceName(ownerName) && hasThirdPersonPossessiveScope(label)) return label;
   const unscoped = stripSelfPossessivePrefix(label, ownerName) || label.replace(/^your\s+/i, '').trim();
   return `My ${capitalizeFirst(unscoped)}`;
 }
