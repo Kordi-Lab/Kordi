@@ -715,6 +715,15 @@ export function useKordiAppModel() {
     }
   }, [activeConvId, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
 
+  // KNOWN ISSUE: invoking this from the row context menu doesn't yet make the
+  // renamed title appear in the sidebar during manual testing, even though
+  // both renameCanonicalSession and renameDesktopChatSession appear to run.
+  // Diagnostics so far ruled out the Rust group-only guard (added a generic
+  // rename_any_session_title_in_db dispatch) and verified the sidebar reads
+  // the canonical title via canonicalReadModel.applyConversation. Open
+  // questions: whether the IPC sees the same session id the sidebar passes,
+  // and whether sync_desktop_chat_state is overwriting the canonical title
+  // on the very next build_chat_state.
   const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
     const nextTitle = title.trim();
@@ -723,9 +732,6 @@ export function useKordiAppModel() {
     const isDesktopRuntimeSession = (desktopChatState?.sessions ?? []).some((session) => session.id === sessionId);
     try {
       setDesktopChatError(null);
-      // The sidebar's row title is sourced from the canonical session title
-      // (see canonicalReadModel.applyConversation), so the canonical row must be
-      // updated for the new name to surface — runtime-only renames don't show.
       const nextCanonical = await renameCanonicalSession({
         sessionId,
         title: nextTitle,
