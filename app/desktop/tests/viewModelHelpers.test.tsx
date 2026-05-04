@@ -278,3 +278,77 @@ test('suppresses canonical owned-agent echo while an equivalent live turn is ren
 
   assert.deepEqual(suppressLiveTurnEchoMessages([user, canonicalEcho], liveTurn), [user]);
 });
+
+test('suppresses in-flight external-agent placeholder while an equivalent live turn is rendered', () => {
+  const user: Message = {
+    role: 'user',
+    text: '@KordiUser4sKordi show me the potential restaurant',
+    time: '22:43',
+  };
+  const externalAgentPlaceholder: Message = {
+    role: 'external-agent',
+    sender: "Kordi User 4's Kordi",
+    senderType: 'agent',
+    text: '',
+    time: '22:43',
+    turn: turn({
+      id: 'canonical-bridge-relay-processing-1',
+      status: 'processing',
+      message: 'Processing…',
+      completed: false,
+      assistantText: '',
+      thinkingText: '',
+    }),
+  };
+  const liveTurn = turn({
+    id: 'live-turn-1',
+    status: 'running',
+    message: 'Running',
+    completed: false,
+    assistantText: '',
+    thinkingText: '**Checking the restaurant directory**',
+  });
+
+  assert.deepEqual(
+    suppressLiveTurnEchoMessages([user, externalAgentPlaceholder], liveTurn),
+    [user],
+  );
+});
+
+test('keeps a completed external-agent reply visible alongside an active live turn', () => {
+  const user: Message = {
+    role: 'user',
+    text: 'follow up question',
+    time: '22:50',
+  };
+  // A completed prior reply from a remote agent should not be dropped — only in-flight
+  // placeholders are duplicates of the live overlay.
+  const completedRemoteReply: Message = {
+    role: 'external-agent',
+    sender: "Kordi User 4's Kordi",
+    senderType: 'agent',
+    text: 'Earlier answer.',
+    time: '22:50',
+    turn: turn({
+      id: 'canonical-bridge-relay-completed-1',
+      status: 'complete',
+      message: 'Complete',
+      completed: true,
+      assistantText: 'Earlier answer.',
+      thinkingText: '',
+    }),
+  };
+  const liveTurn = turn({
+    id: 'live-turn-2',
+    status: 'running',
+    message: 'Running',
+    completed: false,
+    assistantText: '',
+    thinkingText: '',
+  });
+
+  assert.deepEqual(
+    suppressLiveTurnEchoMessages([user, completedRemoteReply], liveTurn),
+    [user, completedRemoteReply],
+  );
+});

@@ -281,7 +281,13 @@ export function suppressLiveTurnEchoMessages(messages: Message[], turn?: Desktop
 
   const filtered = messages.filter((message, index) => {
     if (index <= lastUserIndex) return true;
-    return message.role !== 'owned-agent';
+    if (message.role === 'owned-agent') return false;
+    // The bridge fanout placeholder for an inbound ASK on the agent owner's instance
+    // surfaces as an external-agent agent-turn with an in-flight `turn`; the live turn
+    // overlay already represents that work. Drop in-flight external-agent rows so the
+    // viewer doesn't see a redundant "Processing…" row underneath the live turn.
+    if (message.role === 'external-agent' && message.turn && !message.turn.completed) return false;
+    return true;
   });
 
   return filtered.length === messages.length ? messages : filtered;

@@ -243,7 +243,12 @@ function isPureBridgeAgentStatusRow(message: CanonicalSessionMessage) {
   if (!isOwnedAgentTurn(message)) return false;
   const content = contentRecord(message.content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
-  return deliveryState === 'cancelled' || deliveryState === 'processing_failed';
+  // `processing` is the in-flight placeholder that the bridge fanout writes to peers; on the
+  // sender's own canonical session it duplicates the local desktop-chat turn until the
+  // assistant text streams in. Cancelled/failed are the terminal status markers.
+  return deliveryState === 'processing'
+    || deliveryState === 'cancelled'
+    || deliveryState === 'processing_failed';
 }
 
 function pairedLocalOwnedAgentTurnExists(
