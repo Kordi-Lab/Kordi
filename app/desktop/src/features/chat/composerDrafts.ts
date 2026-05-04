@@ -73,3 +73,49 @@ export function parseStoredComposerDrafts(raw: string | null | undefined): Compo
 export function serializeStoredComposerDrafts(state: ComposerDraftState): string {
   return JSON.stringify(state);
 }
+
+export const COMPOSER_DRAFTS_STORAGE_KEY = 'kordi.composerDrafts.v1';
+export const COMPOSER_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const COMPOSER_DRAFT_SCOPE_CAP = 200;
+
+type ComposerDraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+function browserStorage(): ComposerDraftStorage | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  return window.localStorage;
+}
+
+function pruneScope(scope: Record<string, ComposerDraftEntry>, now: number): Record<string, ComposerDraftEntry> {
+  const cutoff = now - COMPOSER_DRAFT_TTL_MS;
+  const fresh = Object.entries(scope).filter(([, entry]) => entry.updatedAt >= cutoff);
+  if (fresh.length <= COMPOSER_DRAFT_SCOPE_CAP) {
+    return Object.fromEntries(fresh);
+  }
+  fresh.sort((a, b) => b[1].updatedAt - a[1].updatedAt);
+  return Object.fromEntries(fresh.slice(0, COMPOSER_DRAFT_SCOPE_CAP));
+}
+
+export function readStoredComposerDrafts(
+  storage: ComposerDraftStorage | null = browserStorage(),
+  now: number = Date.now(),
+): ComposerDraftState {
+  if (!storage) return { chat: {}, project: {} };
+  const parsed = parseStoredComposerDrafts(storage.getItem(COMPOSER_DRAFTS_STORAGE_KEY));
+  return {
+    chat:    pruneScope(parsed.chat, now),
+    project: pruneScope(parsed.project, now),
+  };
+}
+
+export function writeStoredComposerDrafts(
+  state: ComposerDraftState,
+  storage: ComposerDraftStorage | null = browserStorage(),
+) {
+  if (!storage) return;
+  const isEmpty = Object.keys(state.chat).length === 0 && Object.keys(state.project).length === 0;
+  if (isEmpty) {
+    storage.removeItem(COMPOSER_DRAFTS_STORAGE_KEY);
+    return;
+  }
+  storage.setItem(COMPOSER_DRAFTS_STORAGE_KEY, serializeStoredComposerDrafts(state));
+}

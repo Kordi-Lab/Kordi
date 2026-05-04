@@ -6,6 +6,11 @@ import {
   updateScopeDraft,
   parseStoredComposerDrafts,
   serializeStoredComposerDrafts,
+  COMPOSER_DRAFTS_STORAGE_KEY,
+  COMPOSER_DRAFT_TTL_MS,
+  COMPOSER_DRAFT_SCOPE_CAP,
+  readStoredComposerDrafts,
+  writeStoredComposerDrafts,
 } from '../src/features/chat/composerDrafts';
 
 test('updateScopeDraft inserts a new entry with text and timestamp', () => {
@@ -78,4 +83,67 @@ test('serializeStoredComposerDrafts round-trips a valid state', () => {
   };
   const json = serializeStoredComposerDrafts(state);
   assert.deepEqual(parseStoredComposerDrafts(json), state);
+});
+
+function fakeStorage(initial: Record<string, string> = {}) {
+  const data = new Map<string, string>(Object.entries(initial));
+  return {
+    data,
+    getItem:    (key: string) => (data.has(key) ? data.get(key)! : null),
+    setItem:    (key: string, value: string) => { data.set(key, value); },
+    removeItem: (key: string) => { data.delete(key); },
+  };
+}
+
+test('readStoredComposerDrafts drops entries older than the TTL', () => {
+  const now = 1_700_000_000_000;
+  const fresh = now - 1000;
+  const stale = now - COMPOSER_DRAFT_TTL_MS - 1;
+  const storage = fakeStorage({
+    [COMPOSER_DRAFTS_STORAGE_KEY]: JSON.stringify({
+      chat: {
+        fresh: { text: 'fresh', updatedAt: fresh },
+        stale: { text: 'stale', updatedAt: stale },
+      },
+      project: {},
+    }),
+  });
+  const result = readStoredComposerDrafts(storage, now);
+  assert.deepEqual(Object.keys(result.chat), ['fresh']);
+});
+
+test('readStoredComposerDrafts caps each scope to COMPOSER_DRAFT_SCOPE_CAP, keeping the most recent', () => {
+  const now = 1_700_000_000_000;
+  const overflow = COMPOSER_DRAFT_SCOPE_CAP + 50;
+  const chat: Record<string, { text: string; updatedAt: number }> = {};
+  for (let i = 0; i < overflow; i++) {
+    chat[`session-${i}`] = { text: `text ${i}`, updatedAt: now - (overflow - i) };
+  }
+  const storage = fakeStorage({
+    [COMPOSER_DRAFTS_STORAGE_KEY]: JSON.stringify({ chat, project: {} }),
+  });
+  const result = readStoredComposerDrafts(storage, now);
+  assert.equal(Object.keys(result.chat).length, COMPOSER_DRAFT_SCOPE_CAP);
+  assert.equal(`session-${overflow - 1}` in result.chat, true);
+  assert.equal(`session-0` in result.chat, false);
+});
+
+test('writeStoredComposerDrafts removes the storage key when both scopes are empty', () => {
+  const storage = fakeStorage({ [COMPOSER_DRAFTS_STORAGE_KEY]: 'leftover' });
+  writeStoredComposerDrafts({ chat: {}, project: {} }, storage);
+  assert.equal(storage.data.has(COMPOSER_DRAFTS_STORAGE_KEY), false);
+});
+
+test('writeStoredComposerDrafts persists a non-empty state', () => {
+  const storage = fakeStorage();
+  writeStoredComposerDrafts(
+    { chat: { 'session-a': { text: 'hi', updatedAt: 1000 } }, project: {} },
+    storage,
+  );
+  const json = storage.data.get(COMPOSER_DRAFTS_STORAGE_KEY);
+  assert.ok(json, 'expected storage to contain the key');
+  assert.deepEqual(JSON.parse(json), {
+    chat:    { 'session-a': { text: 'hi', updatedAt: 1000 } },
+    project: {},
+  });
 });
