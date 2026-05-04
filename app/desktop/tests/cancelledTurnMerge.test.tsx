@@ -159,3 +159,59 @@ test('cancelled local turn with thinking but no tools or text dedupes via thinki
   const ownedAgentMessages = (conversations[0]?.messages ?? []).filter((message) => message.role === 'owned-agent');
   assert.equal(ownedAgentMessages.length, 1, `expected 1 owned-agent row, got ${ownedAgentMessages.length}`);
 });
+
+test('in-flight processing bridge-relay placeholder is deduped against a paired desktop-chat sibling', () => {
+  const sessionId = 'session:group:processing-test';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', metadata: { source: 'bridge-session-thread' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:user:1', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi run a tool', content: { sender: 'Me', timeLabel: '22:43' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'user-1' },
+      // Active local desktop-chat agent-turn (live but already persisted with thinking).
+      { id: 'msg:agent:desktop-chat', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '', content: { sender: 'Kordi', timeLabel: '22:43', thinkingText: 'Looking up the directory.', deliveryState: 'processing' }, status: 'processing', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'agent-1' },
+      // Pure status placeholder from the bridge fanout — same agent identity, in-flight processing.
+      { id: 'msg:agent:bridge-relay', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Kordi User 4's Kordi", timeLabel: '22:43', deliveryState: 'processing' }, status: 'processing', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'agent-relay-1' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversations = readModel?.buildChatConversations(
+    [{
+      id: sessionId,
+      canonicalSessionId: sessionId,
+      name: 'Group',
+      type: 'owned-agent',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Local'],
+      trust: 'Owned',
+      directness: 'Group chat',
+      participants: ['Me'],
+      messages: [],
+    } as never],
+    (messages, fallback) => messages[0]?.text ?? fallback ?? '',
+  ) ?? [];
+  const ownedAgentMessages = (conversations[0]?.messages ?? []).filter((message) => message.role === 'owned-agent');
+  assert.equal(ownedAgentMessages.length, 1, `expected 1 owned-agent row, got ${ownedAgentMessages.length}`);
+});
