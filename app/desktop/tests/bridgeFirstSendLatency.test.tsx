@@ -74,19 +74,21 @@ test('queued local chat messages preserve draft text and attachments', () => {
   assert.deepEqual(queued.attachments, [{ id: 'att-1', path: '/tmp/report.png', kind: 'image', name: 'report.png' }]);
 });
 
-test('chat composer sends drafts instead of showing stop while a local turn is running', () => {
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'stop');
+test('chat composer is always in send mode regardless of running/busy state', () => {
+  // The composer-side stop variant was removed (#273); the inline stop button on the
+  // running message is now the only stop affordance. The composer always sends/queues
+  // regardless of `isDesktopChatSending`, `activeLiveTurnIsRunning`, or `hasDraft`.
+  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: false, hasDraft: false }), 'send');
+  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'send');
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: true }), 'send');
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: true, activeLiveTurnIsRunning: false, hasDraft: true }), 'send');
-});
-
-test('chat composer stays in send mode for bridge-routed sessions while an agent is streaming', () => {
   assert.equal(chatComposerSubmitMode({
     isDesktopChatSending: true,
     activeLiveTurnIsRunning: true,
     hasDraft: false,
     canSendWhileBusy: true,
   }), 'send');
+  assert.equal(chatComposerSubmitMode(), 'send');
 });
 
 test('active local turns only delay sends that need the local runtime route', () => {
