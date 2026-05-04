@@ -21,6 +21,12 @@ pub(in crate::canonical_sessions) fn sync_parent_session_snapshot_messages(
         return Ok(());
     }
 
+    let snapshot_needs_agent_identity = outreach.parent_session_messages.iter().any(|message| {
+        matches!(
+            message.role.as_str(),
+            "owned-agent" | "external-agent" | "system"
+        )
+    });
     let snapshot_agent_display_name = outreach
         .parent_session_messages
         .iter()
@@ -34,54 +40,58 @@ pub(in crate::canonical_sessions) fn sync_parent_session_snapshot_messages(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("Kordi");
-    let snapshot_agent_identity_id = format!(
-        "agent:thread:{}",
-        hash_hex(
-            &format!(
-                "{}|{}|{}|{}",
-                parent_session_id,
-                remote_target_identity_id,
-                conversation.peer_node_id,
-                snapshot_agent_display_name
-            ),
-            16,
+    let snapshot_agent_identity_id = snapshot_needs_agent_identity.then(|| {
+        format!(
+            "agent:thread:{}",
+            hash_hex(
+                &format!(
+                    "{}|{}|{}|{}",
+                    parent_session_id,
+                    remote_target_identity_id,
+                    conversation.peer_node_id,
+                    snapshot_agent_display_name
+                ),
+                16,
+            )
         )
-    );
-    let snapshot_agent_id = format!(
-        "thread:{}",
-        hash_hex(
-            &format!("{}|{}", parent_session_id, snapshot_agent_display_name),
-            16
-        )
-    );
-    upsert_identity_in_db(
-        conn,
-        UpsertCanonicalIdentityRequest {
-            id: Some(snapshot_agent_identity_id.clone()),
-            kind: "agent".to_string(),
-            display_name: snapshot_agent_display_name.to_string(),
-            owner_identity_id: Some(remote_target_identity_id.to_string()),
-            source: Some("bridge".to_string()),
-            source_host_id: Some(conversation.host_id.clone()),
-            bridge_node_id: Some(conversation.peer_node_id.clone()),
-            human_id: None,
-            agent_id: Some(snapshot_agent_id),
-            avatar_key: Some(snapshot_agent_identity_id.clone()),
-            profile_image_url: None,
-            metadata: Some(serde_json::json!({
-                "source": "bridge-session-thread-snapshot",
-                "parentSessionId": parent_session_id,
-            })),
-        },
-    )?;
-    upsert_participant(
-        conn,
-        parent_session_id,
-        &snapshot_agent_identity_id,
-        "external-agent",
-        Some(remote_target_identity_id),
-        outreach.created_at_ms,
-    )?;
+    });
+    if let Some(snapshot_agent_identity_id) = snapshot_agent_identity_id.as_ref() {
+        let snapshot_agent_id = format!(
+            "thread:{}",
+            hash_hex(
+                &format!("{}|{}", parent_session_id, snapshot_agent_display_name),
+                16
+            )
+        );
+        upsert_identity_in_db(
+            conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(snapshot_agent_identity_id.clone()),
+                kind: "agent".to_string(),
+                display_name: snapshot_agent_display_name.to_string(),
+                owner_identity_id: Some(remote_target_identity_id.to_string()),
+                source: Some("bridge".to_string()),
+                source_host_id: Some(conversation.host_id.clone()),
+                bridge_node_id: Some(conversation.peer_node_id.clone()),
+                human_id: None,
+                agent_id: Some(snapshot_agent_id),
+                avatar_key: Some(snapshot_agent_identity_id.clone()),
+                profile_image_url: None,
+                metadata: Some(serde_json::json!({
+                    "source": "bridge-session-thread-snapshot",
+                    "parentSessionId": parent_session_id,
+                })),
+            },
+        )?;
+        upsert_participant(
+            conn,
+            parent_session_id,
+            snapshot_agent_identity_id,
+            "external-agent",
+            Some(remote_target_identity_id),
+            outreach.created_at_ms,
+        )?;
+    }
 
     let total = outreach.parent_session_messages.len() as i64;
     for (index, snapshot) in outreach.parent_session_messages.iter().enumerate() {
@@ -92,12 +102,20 @@ pub(in crate::canonical_sessions) fn sync_parent_session_snapshot_messages(
         let role = snapshot.role.trim();
         let (sender_identity_id, sender_role, message_kind) = match role {
             "owned-agent" | "external-agent" => (
-                snapshot_agent_identity_id.clone(),
+                snapshot_agent_identity_id.clone().unwrap_or_else(|| {
+                    local_agent_identity_id
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| local_human_identity_id.to_string())
+                }),
                 "external-agent".to_string(),
                 "agent-turn".to_string(),
             ),
             "system" => (
-                snapshot_agent_identity_id.clone(),
+                snapshot_agent_identity_id.clone().unwrap_or_else(|| {
+                    local_agent_identity_id
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| local_human_identity_id.to_string())
+                }),
                 "system".to_string(),
                 "system".to_string(),
             ),
