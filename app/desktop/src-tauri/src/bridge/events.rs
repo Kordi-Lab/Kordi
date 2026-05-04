@@ -202,6 +202,16 @@ fn parse_event_timestamp_ms(value: Option<&Value>) -> Option<i64> {
             value
                 .as_i64()
                 .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+                .or_else(|| {
+                    value.as_str().and_then(|text| {
+                        let trimmed = text.trim();
+                        trimmed.parse::<i64>().ok().or_else(|| {
+                            chrono::DateTime::parse_from_rfc3339(trimmed)
+                                .ok()
+                                .map(|timestamp| timestamp.timestamp_millis())
+                        })
+                    })
+                })
         })
         .filter(|value| *value > 0)
 }
@@ -253,13 +263,15 @@ pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailbox
             .get("projectId")
             .and_then(|value| value.as_str())
             .map(ToString::to_string),
-        sent_at_ms: parse_event_timestamp_ms(parsed.get("sentAtMs")).or_else(|| {
-            parse_event_timestamp_ms(
-                parsed
-                    .get("payload")
-                    .and_then(|payload| payload.get("sentAtMs")),
-            )
-        }),
+        sent_at_ms: parse_event_timestamp_ms(parsed.get("sentAtMs"))
+            .or_else(|| {
+                parse_event_timestamp_ms(
+                    parsed
+                        .get("payload")
+                        .and_then(|payload| payload.get("sentAtMs")),
+                )
+            })
+            .or_else(|| parse_event_timestamp_ms(parsed.get("timestamp"))),
     })
 }
 
@@ -279,6 +291,20 @@ mod tests {
         .expect("parse event");
 
         assert_eq!(event.sent_at_ms, Some(1_777_000_001_234));
+    }
+
+    #[test]
+    fn parse_bridge_event_payload_uses_server_timestamp_as_legacy_fallback() {
+        let event = parse_bridge_event_payload(&serde_json::json!({
+            "from": "peer-node",
+            "messageType": "raw",
+            "requestId": "bridge_req_legacy",
+            "timestamp": "2026-05-04T08:29:04.729656386+00:00",
+            "payload": { "message": "legacy hello" },
+        }))
+        .expect("parse event");
+
+        assert_eq!(event.sent_at_ms, Some(1_777_883_344_729));
     }
 }
 

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::Emitter;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -34,8 +34,13 @@ pub(super) struct RealtimeBridgeRuntime {
 
 struct RealtimeBridgeConnection {
     fingerprint: String,
-    sender: mpsc::UnboundedSender<String>,
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
     task: tokio::task::JoinHandle<()>,
+}
+
+struct RealtimeOutboundFrame {
+    text: String,
+    result: oneshot::Sender<Result<(), String>>,
 }
 
 #[derive(Clone)]
@@ -167,6 +172,22 @@ async fn emit_after_storage_write(
     emit_bridge_state(app, local_server).await
 }
 
+async fn send_realtime_frame_and_wait(
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
+    frame: String,
+) -> Result<(), String> {
+    let (result, waiter) = oneshot::channel();
+    sender
+        .send(RealtimeOutboundFrame {
+            text: frame,
+            result,
+        })
+        .map_err(|_| "Realtime bridge connection is unavailable".to_string())?;
+    waiter
+        .await
+        .map_err(|_| "Realtime bridge connection is unavailable".to_string())?
+}
+
 async fn try_send_connected_realtime_payload(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
@@ -176,15 +197,15 @@ async fn try_send_connected_realtime_payload(
     durable: bool,
 ) -> Result<(), String> {
     let frame = encode_outbound_frame(host, target_node_id, project_id, payload, durable).await?;
-    let runtime = manager.realtime.lock().await;
-    let connection = runtime
-        .connections
-        .get(&host.node_id)
-        .ok_or_else(|| "Realtime bridge connection is not ready yet".to_string())?;
-    connection
-        .sender
-        .send(frame)
-        .map_err(|_| "Realtime bridge connection is unavailable".to_string())
+    let sender = {
+        let runtime = manager.realtime.lock().await;
+        runtime
+            .connections
+            .get(&host.node_id)
+            .map(|connection| connection.sender.clone())
+            .ok_or_else(|| "Realtime bridge connection is not ready yet".to_string())?
+    };
+    send_realtime_frame_and_wait(sender, frame).await
 }
 
 fn realtime_payload_is_durable(payload: &Value) -> bool {
@@ -243,6 +264,19 @@ mod tests {
         assert!(!realtime_payload_is_durable(&delivery));
         assert!(realtime_payload_is_durable(&chat_message));
     }
+
+    #[tokio::test]
+    async fn realtime_send_waits_for_writer_failure_before_reporting_success() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<RealtimeOutboundFrame>();
+        let send_task = tokio::spawn(send_realtime_frame_and_wait(tx, "queued-frame".to_string()));
+
+        let outbound = rx.recv().await.expect("queued outbound frame");
+        assert_eq!(outbound.text, "queued-frame");
+        let _ = outbound.result.send(Err("writer send failed".to_string()));
+
+        let result = send_task.await.expect("send task completed");
+        assert_eq!(result.unwrap_err(), "writer send failed");
+    }
 }
 
 async fn run_realtime_connection(
@@ -250,7 +284,7 @@ async fn run_realtime_connection(
     app: tauri::AppHandle,
     local_server: std::sync::Arc<tokio::sync::Mutex<super::LocalBridgeServerRuntime>>,
     target: LocalRealtimeTarget,
-    mut receiver: mpsc::UnboundedReceiver<String>,
+    mut receiver: mpsc::UnboundedReceiver<RealtimeOutboundFrame>,
 ) {
     let ws_url = websocket_url(&target.host.coordination);
 
@@ -288,7 +322,13 @@ async fn run_realtime_connection(
                     let Some(outbound) = outbound else {
                         return;
                     };
-                    if writer.send(Message::Text(outbound)).await.is_err() {
+                    let result = writer
+                        .send(Message::Text(outbound.text))
+                        .await
+                        .map_err(|_| "Realtime bridge connection is unavailable".to_string());
+                    let should_reconnect = result.is_err();
+                    let _ = outbound.result.send(result);
+                    if should_reconnect {
                         break;
                     }
                 }

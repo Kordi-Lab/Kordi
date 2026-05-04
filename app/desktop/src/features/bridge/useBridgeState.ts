@@ -158,7 +158,7 @@ function mergeBridgeConversation(
   };
 }
 
-function markBridgeConversationsReadInState(
+export function markBridgeConversationsReadInState(
   state: DesktopBridgeState | null,
   conversationIds: string[],
 ): DesktopBridgeState | null {

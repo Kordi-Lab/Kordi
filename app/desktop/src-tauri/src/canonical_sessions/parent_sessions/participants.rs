@@ -93,13 +93,32 @@ fn group_participant_identity_id(
     let Some(display_name) = clean_text(Some(participant.display_name.as_str())) else {
         return Ok(None);
     };
+    let human_id = clean_text(participant.human_id.as_deref());
+    let bridge_node_id = clean_text(participant.bridge_node_id.as_deref());
     if let Some(identity_id) = clean_text(participant.identity_id.as_deref()) {
         if identity_exists(conn, &identity_id)? {
+            if human_id.is_some() || bridge_node_id.is_some() {
+                upsert_identity_in_db(
+                    conn,
+                    UpsertCanonicalIdentityRequest {
+                        id: Some(identity_id.clone()),
+                        kind: "human".to_string(),
+                        display_name,
+                        owner_identity_id: None,
+                        source: Some("bridge".to_string()),
+                        source_host_id: Some(bridge_host_id.to_string()),
+                        bridge_node_id,
+                        human_id: human_id.clone(),
+                        agent_id: None,
+                        avatar_key: human_id,
+                        profile_image_url: None,
+                        metadata: None,
+                    },
+                )?;
+            }
             return Ok(Some(identity_id));
         }
     }
-    let human_id = clean_text(participant.human_id.as_deref());
-    let bridge_node_id = clean_text(participant.bridge_node_id.as_deref());
     if human_id.is_none() && bridge_node_id.is_none() {
         return Ok(None);
     }

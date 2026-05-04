@@ -4,6 +4,28 @@ use super::constants::is_agent_like_runtime;
 use super::events::{mailbox_payload_text, parse_bridge_event_payload, ParsedMailboxEvent};
 use super::{decrypt_bridge_payload_for_host, parse_mailbox_payload, DesktopBridgeHostConfig};
 
+fn event_has_sender_timestamp(parsed: &Value) -> bool {
+    parsed.get("sentAtMs").is_some()
+        || parsed
+            .get("payload")
+            .and_then(|payload| payload.get("sentAtMs"))
+            .is_some()
+}
+
+fn apply_mailbox_metadata_fallbacks(mut parsed: Value, item: &Value) -> Value {
+    if parsed.get("from").is_none() {
+        if let Some(from) = item.get("from") {
+            parsed["from"] = from.clone();
+        }
+    }
+    if !event_has_sender_timestamp(&parsed) && parsed.get("timestamp").is_none() {
+        if let Some(timestamp) = item.get("timestamp") {
+            parsed["timestamp"] = timestamp.clone();
+        }
+    }
+    parsed
+}
+
 pub(super) fn parse_mailbox_event(
     host: &DesktopBridgeHostConfig,
     item: &Value,
@@ -16,12 +38,8 @@ pub(super) fn parse_mailbox_event(
         return None;
     }
 
-    let mut parsed = decrypt_bridge_payload_for_host(host, parse_mailbox_payload(blob)?).ok()?;
-    if parsed.get("from").is_none() {
-        if let Some(from) = item.get("from") {
-            parsed["from"] = from.clone();
-        }
-    }
+    let parsed = decrypt_bridge_payload_for_host(host, parse_mailbox_payload(blob)?).ok()?;
+    let parsed = apply_mailbox_metadata_fallbacks(parsed, item);
     parse_bridge_event_payload(&parsed)
 }
 
@@ -155,5 +173,31 @@ mod tests {
     #[test]
     fn processing_placeholder_text_accepts_unicode_ellipsis() {
         assert!(is_processing_placeholder_text("processing…"));
+    }
+
+    #[test]
+    fn mailbox_metadata_adds_server_timestamp_without_overwriting_sender_timestamp() {
+        let item = serde_json::json!({
+            "from": "peer-node",
+            "timestamp": "2026-05-04T08:29:04.729656386+00:00",
+        });
+        let parsed = apply_mailbox_metadata_fallbacks(
+            serde_json::json!({ "from": "peer-node", "payload": { "message": "legacy" } }),
+            &item,
+        );
+        assert_eq!(
+            parsed.get("timestamp").and_then(|value| value.as_str()),
+            Some("2026-05-04T08:29:04.729656386+00:00"),
+        );
+
+        let parsed_with_sender_time = apply_mailbox_metadata_fallbacks(
+            serde_json::json!({
+                "from": "peer-node",
+                "sentAtMs": 1_777_000_001_234i64,
+                "payload": { "message": "new" },
+            }),
+            &item,
+        );
+        assert!(parsed_with_sender_time.get("timestamp").is_none());
     }
 }

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
+import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
+import { markBridgeConversationsReadInState, mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
   ComposerScope,
   Conversation,
@@ -18,6 +19,7 @@ import {
   createDesktopBridgeOutreach,
   createDesktopChatSession,
   fetchDesktopChatTurnState,
+  markDesktopBridgeConversationRead,
   openDesktopBridgeConversation,
   sendDesktopBridgeMessage,
   startDesktopChatMessage,
@@ -774,6 +776,18 @@ export function useChatMessageActions({
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         if (targetConversationId && !isGroupSessionMessage) {
           setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
+        }
+        const activeBridgeReadConversationIds = bridgeConversationIdsToMarkReadOnUserActivity(
+          desktopBridgeState?.conversations ?? [],
+          activeConvCanonicalSessionId ?? activeConvId,
+        );
+        if (activeBridgeReadConversationIds.length > 0) {
+          setDesktopBridgeState((current) => markBridgeConversationsReadInState(current, activeBridgeReadConversationIds));
+          void Promise.all(activeBridgeReadConversationIds.map((conversationId) => markDesktopBridgeConversationRead(conversationId)))
+            .then((states) => {
+              setDesktopBridgeState((current) => states.reduce((merged, state) => mergeDesktopBridgeState(merged, state), current));
+            })
+            .catch(() => {});
         }
         setComposerDrafts((current) => ({ ...current, chat: '' }));
         setChatComposerAttachments([]);

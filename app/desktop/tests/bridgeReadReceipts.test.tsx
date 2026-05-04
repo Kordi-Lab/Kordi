@@ -6,12 +6,14 @@ import {
   activeBridgeConversationForSession,
   activeBridgeConversationsForSession,
   activeUnreadBridgeConversationsForSession,
+  bridgeConversationIdsToMarkReadOnUserActivity,
   bridgeReadReceiptBatchSignature,
   bridgeReadReceiptSignature,
   canAutoMarkBridgeRead,
   shouldMarkBridgeConversationRead,
 } from '../src/features/bridge/readReceipts';
-import type { DesktopBridgeConversation } from '../src/kordi-app/types';
+import { markBridgeConversationsReadInState } from '../src/features/bridge/useBridgeState';
+import type { DesktopBridgeConversation, DesktopBridgeState } from '../src/kordi-app/types';
 
 function conversation(overrides: Partial<DesktopBridgeConversation> = {}): DesktopBridgeConversation {
   return {
@@ -131,6 +133,49 @@ test('activeUnreadBridgeConversationsForSession finds unread bridge agent conver
   ], 'd17bf74f-f065-46cb-82d7-bf78ed7f910f');
 
   assert.deepEqual(active.map((item) => item.id), ['bridge:host-1:peer-1']);
+});
+
+test('bridgeConversationIdsToMarkReadOnUserActivity includes unread parent-session bridge threads', () => {
+  const ids = bridgeConversationIdsToMarkReadOnUserActivity([
+    conversation({
+      id: 'bridge:host-1:peer-1:person',
+      canonicalSessionId: 'session:bridge:humans:stable-pair',
+      unreadCount: 4,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'session:group:active-parent',
+        bridgeHostId: 'host-1',
+        targetNodeId: 'peer-1',
+        targetDisplayName: 'Peer',
+        requestText: 'hello',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }),
+  ], 'session:group:active-parent');
+
+  assert.deepEqual(ids, ['bridge:host-1:peer-1:person']);
+});
+
+test('markBridgeConversationsReadInState clears only the requested unread bridge threads', () => {
+  const state: DesktopBridgeState = {
+    configPath: '',
+    legacyConfigPath: '',
+    conversationsPath: '',
+    activeHostId: 'host-1',
+    hosts: [],
+    localServer: { running: false },
+    conversations: [
+      conversation({ id: 'bridge:read-me', unreadCount: 4 }),
+      conversation({ id: 'bridge:keep-me', unreadCount: 2 }),
+    ],
+  };
+
+  const nextState = markBridgeConversationsReadInState(state, ['bridge:read-me']);
+
+  assert.equal(nextState?.conversations.find((item) => item.id === 'bridge:read-me')?.unreadCount, 0);
+  assert.equal(nextState?.conversations.find((item) => item.id === 'bridge:keep-me')?.unreadCount, 2);
 });
 
 test('bridge read effects listen for focus and visibility changes', () => {
