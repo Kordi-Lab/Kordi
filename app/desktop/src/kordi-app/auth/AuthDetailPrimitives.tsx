@@ -61,6 +61,9 @@ export const nonDragStyle: CSSProperties = { WebkitAppRegion: 'no-drag' as const
 export const authButtonNeutralClass =
   'border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.065),rgba(255,255,255,0.035))] text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_10px_24px_rgba(0,0,0,0.16)] hover:border-white/14 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.085),rgba(255,255,255,0.05))]';
 
+export const authButtonPrimaryClass =
+  'border border-emerald-300/26 bg-[linear-gradient(180deg,rgba(16,185,129,0.18),rgba(5,150,105,0.14))] text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_24px_rgba(0,0,0,0.16)] hover:border-emerald-200/36 hover:bg-[linear-gradient(180deg,rgba(16,185,129,0.24),rgba(5,150,105,0.18))]';
+
 export const authButtonDangerClass =
   'border border-rose-400/20 bg-[linear-gradient(180deg,rgba(244,63,94,0.16),rgba(190,24,93,0.12))] text-rose-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_24px_rgba(0,0,0,0.16)] hover:border-rose-300/28 hover:bg-[linear-gradient(180deg,rgba(244,63,94,0.22),rgba(190,24,93,0.16))]';
 

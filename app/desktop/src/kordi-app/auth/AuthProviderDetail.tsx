@@ -10,6 +10,7 @@ import {
   authActiveBadgeClass,
   authButtonDangerClass,
   authButtonNeutralClass,
+  authButtonPrimaryClass,
 } from './AuthDetailPrimitives';
 import { LocalProviderSetup, localProviderEndpoint } from './LocalProviderSetup';
 
@@ -101,8 +102,10 @@ export function AuthProviderDetail({
   }
 
   const hasSavedProfiles = provider.methods.some((method) => method.options.some((option) => !!option.profileId));
+  const hasActiveProfile = provider.methods.some((method) => method.options.some((option) => option.active));
   const localEndpoint = localProviderEndpoint(provider);
   const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
+  const showCloudEnterChatCta = !isLocalModelControl && Boolean(onEnterChat) && hasActiveProfile;
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -319,6 +322,25 @@ export function AuthProviderDetail({
               </div>
             ))}
           </DetailSection>
+
+          {showCloudEnterChatCta ? (
+            <DetailSection title="Start chatting">
+              <DetailRow
+                title="Open chat with this provider"
+                detail={`Use the active ${provider.label} profile and jump straight into a new chat.`}
+                multiline
+                trailing={
+                  <AuthActionButton
+                    type="button"
+                    className={authButtonPrimaryClass}
+                    onClick={() => { void onEnterChat?.(); }}
+                  >
+                    Save & enter chat
+                  </AuthActionButton>
+                }
+              />
+            </DetailSection>
+          ) : null}
 
           <DetailSection title="Storage and cleanup">
             <DetailRow title="Shared auth store" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
