@@ -43,6 +43,8 @@ struct RealtimeOutboundFrame {
     result: oneshot::Sender<Result<(), String>>,
 }
 
+const REALTIME_SEND_RESULT_TIMEOUT: Duration = Duration::from_secs(3);
+
 #[derive(Clone)]
 struct LocalRealtimeTarget {
     host: DesktopBridgeHostConfig,
@@ -172,9 +174,10 @@ async fn emit_after_storage_write(
     emit_bridge_state(app, local_server).await
 }
 
-async fn send_realtime_frame_and_wait(
+async fn send_realtime_frame_and_wait_with_timeout(
     sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
     frame: String,
+    timeout_after: Duration,
 ) -> Result<(), String> {
     let (result, waiter) = oneshot::channel();
     sender
@@ -183,9 +186,17 @@ async fn send_realtime_frame_and_wait(
             result,
         })
         .map_err(|_| "Realtime bridge connection is unavailable".to_string())?;
-    waiter
+    tokio::time::timeout(timeout_after, waiter)
         .await
+        .map_err(|_| "Realtime bridge connection timed out".to_string())?
         .map_err(|_| "Realtime bridge connection is unavailable".to_string())?
+}
+
+async fn send_realtime_frame_and_wait(
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
+    frame: String,
+) -> Result<(), String> {
+    send_realtime_frame_and_wait_with_timeout(sender, frame, REALTIME_SEND_RESULT_TIMEOUT).await
 }
 
 async fn try_send_connected_realtime_payload(
@@ -276,6 +287,23 @@ mod tests {
 
         let result = send_task.await.expect("send task completed");
         assert_eq!(result.unwrap_err(), "writer send failed");
+    }
+
+    #[tokio::test]
+    async fn realtime_send_times_out_when_writer_does_not_report_result() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<RealtimeOutboundFrame>();
+        let send_task = tokio::spawn(send_realtime_frame_and_wait_with_timeout(
+            tx,
+            "queued-frame".to_string(),
+            Duration::from_millis(10),
+        ));
+
+        let outbound = rx.recv().await.expect("queued outbound frame");
+        assert_eq!(outbound.text, "queued-frame");
+
+        let result = send_task.await.expect("send task completed");
+        assert_eq!(result.unwrap_err(), "Realtime bridge connection timed out");
+        drop(outbound);
     }
 }
 
