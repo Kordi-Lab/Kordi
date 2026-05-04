@@ -130,6 +130,41 @@ function inferredReplyTargetForAgentMessage(
   return inferLatestHumanRequest ? requestCandidates[requestCandidates.length - 1]?.messageId ?? null : null;
 }
 
+function comparablePromptText(value?: string | null) {
+  return cleanText(value)
+    .replace(/^@(?:my\s*kordi|mykordi|kordi)\b\s*[:;,.!?—-]?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function requestMentionsLocalAgent(message: Message) {
+  const mentionTargets = mentionTargetsForRequest(message);
+  return mentionTargets.has('kordi') || mentionTargets.has('mykordi');
+}
+
+function inferredReplyTargetForLiveTurn(
+  liveTurn: DesktopChatTurnSnapshot,
+  requestCandidates: readonly RequestCandidate[],
+  inferLatestHumanRequest: boolean,
+) {
+  if (!inferLatestHumanRequest) return null;
+  const promptText = comparablePromptText(liveTurn.prompt);
+  if (promptText) {
+    for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
+      const candidate = requestCandidates[index];
+      if (comparablePromptText(candidate.message.text) === promptText) return candidate.messageId;
+    }
+  }
+
+  for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
+    const candidate = requestCandidates[index];
+    if (requestMentionsLocalAgent(candidate.message)) return candidate.messageId;
+  }
+
+  return inferLatestHumanRequest ? requestCandidates[requestCandidates.length - 1]?.messageId ?? null : null;
+}
+
 function replyTargetForMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
@@ -233,7 +268,7 @@ export function buildReplyAttribution(
   const linkedLiveTurn = (() => {
     if (!liveTurn) return undefined;
     const explicitTargetId = explicitReplyTargetForTurn(liveTurn);
-    const replyTargetId = explicitTargetId ?? (inferLatestHumanRequest ? requestCandidates[requestCandidates.length - 1]?.messageId ?? null : null);
+    const replyTargetId = explicitTargetId ?? inferredReplyTargetForLiveTurn(liveTurn, requestCandidates, inferLatestHumanRequest);
     if (!replyTargetId) return liveTurn;
     const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return liveTurn;
