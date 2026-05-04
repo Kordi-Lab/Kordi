@@ -51,6 +51,12 @@ type BridgeSettingsDraft = {
   ownerName: string;
 };
 
+export type BridgeMailboxPollTrigger = 'startup' | 'focus' | 'pageshow' | 'visibilitychange' | 'routine';
+
+export function shouldShowBridgeMailboxPollProgress(trigger: BridgeMailboxPollTrigger) {
+  return trigger !== 'routine';
+}
+
 type BridgeDraftHost = {
   id?: string | null;
   serverUrl?: string | null;
@@ -516,7 +522,7 @@ export function useBridgeState({
 
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
-    const poll = () => {
+    const poll = (trigger: BridgeMailboxPollTrigger) => {
       const run = requestSingleFlightRun(mailboxPollFlightRef.current, async () => {
         try {
           const state = await pollDesktopBridgeMailbox();
@@ -526,29 +532,35 @@ export function useBridgeState({
           // keep polling lightweight; show errors only on explicit actions
         }
       });
-      if (!run) return;
+      const shouldShowProgress = shouldShowBridgeMailboxPollProgress(trigger);
+      if (!shouldShowProgress) return;
+      const activeRun = run ?? mailboxPollFlightRef.current.currentPromise;
+      if (!activeRun) return;
       setIsBridgePolling(true);
-      void run.finally(() => {
+      void activeRun.finally(() => {
         setIsBridgePolling(false);
       });
     };
-    const pollWhenVisible = () => {
+    const pollWhenVisible = (trigger: BridgeMailboxPollTrigger) => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      poll();
+      poll(trigger);
     };
-    pollWhenVisible();
-    const interval = window.setInterval(poll, 4000);
-    window.addEventListener('focus', poll);
-    window.addEventListener('pageshow', pollWhenVisible);
+    pollWhenVisible('startup');
+    const interval = window.setInterval(() => poll('routine'), 4000);
+    const pollOnFocus = () => poll('focus');
+    const pollOnPageShow = () => pollWhenVisible('pageshow');
+    const pollOnVisibilityChange = () => pollWhenVisible('visibilitychange');
+    window.addEventListener('focus', pollOnFocus);
+    window.addEventListener('pageshow', pollOnPageShow);
     if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', pollWhenVisible);
+      document.addEventListener('visibilitychange', pollOnVisibilityChange);
     }
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('focus', poll);
-      window.removeEventListener('pageshow', pollWhenVisible);
+      window.removeEventListener('focus', pollOnFocus);
+      window.removeEventListener('pageshow', pollOnPageShow);
       if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', pollWhenVisible);
+        document.removeEventListener('visibilitychange', pollOnVisibilityChange);
       }
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
