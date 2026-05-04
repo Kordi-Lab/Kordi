@@ -66,6 +66,7 @@ import {
   openOrCreateCanonicalSession,
   removeCanonicalSessionParticipant,
   renameCanonicalSession,
+  renameDesktopChatSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -719,20 +720,28 @@ export function useKordiAppModel() {
     const nextTitle = title.trim();
     if (!nextTitle) return;
     const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || undefined;
+    const isDesktopRuntimeSession = (desktopChatState?.sessions ?? []).some((session) => session.id === sessionId);
     try {
       setDesktopChatError(null);
-      const nextState = await renameCanonicalSession({
-        sessionId,
-        title: nextTitle,
-        requestedByIdentityId: actorIdentityId,
-      });
-      setCanonicalSessionState(nextState);
+      if (isDesktopRuntimeSession) {
+        const nextDesktop = await renameDesktopChatSession(sessionId, nextTitle);
+        setDesktopChatState(nextDesktop);
+        await refreshCanonicalState();
+      } else {
+        const nextCanonical = await renameCanonicalSession({
+          sessionId,
+          title: nextTitle,
+          requestedByIdentityId: actorIdentityId,
+        });
+        setCanonicalSessionState(nextCanonical);
+        await refreshDesktopChat();
+      }
     } catch (error) {
       await refreshCanonicalState();
       const message = error instanceof Error ? error.message : 'Unable to rename session';
       setDesktopChatError(message);
     }
-  }, [canonicalSessionState?.profile.humanIdentityId, isNativeShell, refreshCanonicalState, setCanonicalSessionState, setDesktopChatError]);
+  }, [canonicalSessionState?.profile.humanIdentityId, desktopChatState?.sessions, isNativeShell, refreshCanonicalState, refreshDesktopChat, setCanonicalSessionState, setDesktopChatError, setDesktopChatState]);
 
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
