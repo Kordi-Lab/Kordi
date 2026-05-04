@@ -147,3 +147,12 @@ test('writeStoredComposerDrafts persists a non-empty state', () => {
     project: {},
   });
 });
+
+test('readStoredComposerDrafts returns the empty state when storage is null', () => {
+  assert.deepEqual(readStoredComposerDrafts(null, 1_700_000_000_000), { chat: {}, project: {} });
+});
+
+test('writeStoredComposerDrafts is a no-op when storage is null', () => {
+  // Should not throw.
+  writeStoredComposerDrafts({ chat: { 'session-a': { text: 'hi', updatedAt: 1000 } }, project: {} }, null);
+});
