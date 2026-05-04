@@ -35,6 +35,78 @@
   background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
 }
 
+.app-bridge-sync-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3125rem;
+  color: color-mix(in oklab, var(--app-markdown-link) 68%, var(--utility-muted-text));
+  transition: color 160ms var(--app-motion-ease);
+}
+
+.app-bridge-sync-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-bridge-sync-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 38deg,
+    oklch(76% 0.13 190),
+    oklch(74% 0.15 145),
+    oklch(78% 0.12 76),
+    oklch(76% 0.13 190)
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--app-divider) 28%, transparent),
+    0 1px 3px color-mix(in oklab, var(--app-markdown-link) 18%, transparent);
+}
+
+.app-bridge-sync-status[data-bridge-sync-status="idle"] {
+  color: color-mix(in oklab, var(--utility-muted-text) 80%, var(--app-markdown-link));
+}
+
+.app-bridge-sync-status[data-bridge-sync-status="idle"] .app-bridge-sync-dot {
+  background: radial-gradient(circle at 38% 32%, oklch(86% 0.08 152), oklch(62% 0.07 175));
+  opacity: 0.82;
+}
+
+.app-bridge-sync-status[data-bridge-sync-status="syncing"] {
+  color: color-mix(in oklab, var(--app-markdown-link) 82%, var(--utility-foreground));
+}
+
+.app-bridge-sync-status[data-bridge-sync-status="syncing"] .app-bridge-sync-dot {
+  animation: app-bridge-sync-pulse 1200ms var(--app-motion-ease) infinite;
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--app-markdown-link) 40%, transparent),
+    0 2px 7px color-mix(in oklab, var(--app-markdown-link) 26%, transparent);
+}
+
+@keyframes app-bridge-sync-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.86);
+  }
+
+  45% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-bridge-sync-status[data-bridge-sync-status="syncing"] .app-bridge-sync-dot {
+    animation: none;
+  }
+}
+
 .app-workspace-sidebar .app-filter-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
