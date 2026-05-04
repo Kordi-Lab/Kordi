@@ -53,8 +53,16 @@ type BridgeSettingsDraft = {
 
 export type BridgeMailboxPollTrigger = 'startup' | 'focus' | 'pageshow' | 'visibilitychange' | 'routine';
 
-export function shouldShowBridgeMailboxPollProgress(trigger: BridgeMailboxPollTrigger) {
-  return trigger !== 'routine';
+const BRIDGE_MAILBOX_PROGRESS_DELAY_MS = 600;
+const BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS = 15_000;
+
+export function shouldShowBridgeMailboxPollProgress(
+  trigger: BridgeMailboxPollTrigger,
+  nowMs: number,
+  lastShownAtMs: number,
+) {
+  if (trigger === 'routine') return false;
+  return lastShownAtMs <= 0 || nowMs - lastShownAtMs >= BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS;
 }
 
 type BridgeDraftHost = {
@@ -258,6 +266,8 @@ export function useBridgeState({
   });
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
+  const lastBridgePollProgressShownAtRef = useRef(0);
+  const bridgePollProgressTimerRef = useRef<number | null>(null);
   const mailboxPollFlightRef = useRef(createSingleFlightState());
   const activeBridgeReadRequestRef = useRef<string | null>(null);
   const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
@@ -532,12 +542,27 @@ export function useBridgeState({
           // keep polling lightweight; show errors only on explicit actions
         }
       });
-      const shouldShowProgress = shouldShowBridgeMailboxPollProgress(trigger);
+      const shouldShowProgress = shouldShowBridgeMailboxPollProgress(
+        trigger,
+        Date.now(),
+        lastBridgePollProgressShownAtRef.current,
+      );
       if (!shouldShowProgress) return;
       const activeRun = run ?? mailboxPollFlightRef.current.currentPromise;
       if (!activeRun) return;
-      setIsBridgePolling(true);
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+      }
+      bridgePollProgressTimerRef.current = window.setTimeout(() => {
+        bridgePollProgressTimerRef.current = null;
+        lastBridgePollProgressShownAtRef.current = Date.now();
+        setIsBridgePolling(true);
+      }, BRIDGE_MAILBOX_PROGRESS_DELAY_MS);
       void activeRun.finally(() => {
+        if (bridgePollProgressTimerRef.current !== null) {
+          window.clearTimeout(bridgePollProgressTimerRef.current);
+          bridgePollProgressTimerRef.current = null;
+        }
         setIsBridgePolling(false);
       });
     };
@@ -557,6 +582,10 @@ export function useBridgeState({
     }
     return () => {
       window.clearInterval(interval);
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+        bridgePollProgressTimerRef.current = null;
+      }
       window.removeEventListener('focus', pollOnFocus);
       window.removeEventListener('pageshow', pollOnPageShow);
       if (typeof document !== 'undefined') {
