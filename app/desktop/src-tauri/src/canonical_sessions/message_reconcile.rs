@@ -18,6 +18,28 @@ pub(super) fn append_or_reconcile_message_from_sync(
         request.source_event_id.as_deref(),
     ) {
         if let Some(message) = select_message_by_source(conn, source_transport, source_event_id)? {
+            if source_transport != optimistic_source_transport {
+                if let Some(optimistic_message_id) = select_optimistic_message_id(
+                    conn,
+                    &request,
+                    optimistic_source_transport,
+                    created_at_ms,
+                    match_window_ms,
+                )? {
+                    if optimistic_message_id != message.id {
+                        delete_message(conn, &message.id)?;
+                        update_optimistic_message(
+                            conn,
+                            &optimistic_message_id,
+                            &request,
+                            created_at_ms,
+                        )?;
+                        return select_message(conn, &optimistic_message_id)?.ok_or_else(|| {
+                            "Unable to load reconciled canonical message".to_string()
+                        });
+                    }
+                }
+            }
             update_optimistic_message(conn, &message.id, &request, created_at_ms)?;
             return select_message(conn, &message.id)?
                 .ok_or_else(|| "Unable to load updated canonical message".to_string());
@@ -46,32 +68,78 @@ fn select_optimistic_message_id(
     created_at_ms: i64,
     match_window_ms: i64,
 ) -> Result<Option<String>, String> {
+    let candidates = conn
+        .prepare(
+            "SELECT id, sender_identity_id
+             FROM session_messages
+             WHERE session_id = ?1
+               AND sender_role = ?2
+               AND message_kind = ?3
+               AND content_text = ?4
+               AND source_transport = ?5
+               AND ABS(created_at_ms - ?6) <= ?7
+             ORDER BY ABS(created_at_ms - ?6) ASC, sequence_num DESC",
+        )
+        .map_err(|err| err.to_string())?
+        .query_map(
+            params![
+                request.session_id,
+                request.sender_role,
+                request.message_kind,
+                request.content_text,
+                optimistic_source_transport,
+                created_at_ms,
+                match_window_ms,
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    for (message_id, sender_identity_id) in candidates {
+        if optimistic_sender_identity_matches(
+            conn,
+            &request.sender_identity_id,
+            &sender_identity_id,
+        )? {
+            return Ok(Some(message_id));
+        }
+    }
+
+    Ok(None)
+}
+
+fn optimistic_sender_identity_matches(
+    conn: &Connection,
+    request_sender_identity_id: &str,
+    optimistic_sender_identity_id: &str,
+) -> Result<bool, String> {
+    if request_sender_identity_id == optimistic_sender_identity_id {
+        return Ok(true);
+    }
+
     conn.query_row(
-        "SELECT id
-         FROM session_messages
-         WHERE session_id = ?1
-           AND sender_identity_id = ?2
-           AND sender_role = ?3
-           AND message_kind = ?4
-           AND content_text = ?5
-           AND source_transport = ?6
-           AND ABS(created_at_ms - ?7) <= ?8
-         ORDER BY ABS(created_at_ms - ?7) ASC, sequence_num DESC
+        "SELECT 1
+         FROM local_profile
+         WHERE TRIM(COALESCE(human_identity_id, '')) = ?1
+           AND ?2 = 'human:' || id
          LIMIT 1",
-        params![
-            request.session_id,
-            request.sender_identity_id,
-            request.sender_role,
-            request.message_kind,
-            request.content_text,
-            optimistic_source_transport,
-            created_at_ms,
-            match_window_ms,
-        ],
-        |row| row.get::<_, String>(0),
+        params![request_sender_identity_id, optimistic_sender_identity_id],
+        |_| Ok(()),
     )
     .optional()
+    .map(|match_row| match_row.is_some())
     .map_err(|err| err.to_string())
+}
+
+fn delete_message(conn: &Connection, message_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM session_messages WHERE id = ?1",
+        params![message_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 fn update_optimistic_message(
