@@ -126,6 +126,7 @@ async fn encode_outbound_frame(
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
+    durable: bool,
 ) -> Result<String, String> {
     let encrypted_payload =
         encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
@@ -133,6 +134,7 @@ async fn encode_outbound_frame(
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     Ok(serde_json::json!({
         "dst": target_node_id,
+        "durable": durable,
         "data": data,
     })
     .to_string())
@@ -168,8 +170,9 @@ async fn try_send_connected_realtime_payload(
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
-    let frame = encode_outbound_frame(host, target_node_id, project_id, payload).await?;
+    let frame = encode_outbound_frame(host, target_node_id, project_id, payload, durable).await?;
     let runtime = manager.realtime.lock().await;
     let connection = runtime
         .connections
@@ -188,7 +191,7 @@ async fn send_realtime_or_relay(
     project_id: Option<&str>,
     payload: &Value,
 ) {
-    if try_send_connected_realtime_payload(manager, host, target_node_id, project_id, payload)
+    if try_send_connected_realtime_payload(manager, host, target_node_id, project_id, payload, true)
         .await
         .is_err()
     {
@@ -349,6 +352,7 @@ pub(super) async fn send_realtime_payload(
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
     if !is_realtime_host(host) {
         return Err("Realtime bridge chat is not available for this host".to_string());
@@ -357,5 +361,5 @@ pub(super) async fn send_realtime_payload(
     let store = super::load_bridge_store();
     sync_realtime_connections(manager, &store).await;
 
-    try_send_connected_realtime_payload(manager, host, target_node_id, None, payload).await
+    try_send_connected_realtime_payload(manager, host, target_node_id, None, payload, durable).await
 }

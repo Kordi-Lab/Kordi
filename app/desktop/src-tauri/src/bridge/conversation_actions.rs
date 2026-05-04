@@ -382,12 +382,14 @@ async fn send_realtime_with_contact_fallback(
     manager: &DesktopBridgeManager,
     context: &ConversationContext,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
     match send_realtime_payload(
         manager,
         &context.host,
         &context.conversation.peer_node_id,
         payload,
+        durable,
     )
     .await
     {
@@ -399,6 +401,7 @@ async fn send_realtime_with_contact_fallback(
                 &context.host,
                 &context.conversation.peer_node_id,
                 payload,
+                durable,
             )
             .await
         }
@@ -414,7 +417,7 @@ async fn send_read_receipt(
     let payload = read_receipt_payload(&context.host.node_id, request_id);
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        match send_realtime_with_contact_fallback(manager, context, &payload).await {
+        match send_realtime_with_contact_fallback(manager, context, &payload, true).await {
             Ok(()) => return Ok(()),
             Err(realtime_error) => {
                 eprintln!(
@@ -717,7 +720,7 @@ pub(super) async fn desktop_bridge_send_presence_impl(
         "payload": { "at": now_ms() },
     });
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        send_realtime_with_contact_fallback(manager, &context, &payload).await?;
+        send_realtime_with_contact_fallback(manager, &context, &payload, false).await?;
     } else {
         relay_with_contact_fallback(&context, &payload).await?;
     }
@@ -771,6 +774,7 @@ pub(super) async fn desktop_bridge_cancel_outreach_impl(
             &context.host,
             &context.conversation.peer_node_id,
             &cancelled,
+            true,
         )
         .await;
     } else {
@@ -813,7 +817,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
         let realtime_result =
-            send_realtime_with_contact_fallback(manager, &context, &payload).await;
+            send_realtime_with_contact_fallback(manager, &context, &payload, true).await;
         if let Err(error) = realtime_result {
             if should_fallback_direct_realtime_to_relay(fresh_outreach_for_message.as_ref()) {
                 relay_with_contact_fallback(&context, &payload).await?;

@@ -55,6 +55,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       displayedAgents: args.displayedAgents,
       activeBridgeHost: args.activeBridgeHost,
       localProfileAvatarSeed: args.localProfileAvatarSeed,
+      isBridgePolling: args.isBridgePolling,
       refreshDesktopBridge: args.refreshDesktopBridge,
       handleCopyBridgeText: args.handleCopyBridgeText,
       handleCreateBridgeDraft: args.handleCreateBridgeDraft,

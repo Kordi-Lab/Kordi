@@ -193,6 +193,15 @@ function countMatches(value: string, pattern: RegExp) {
   return value.match(pattern)?.length ?? 0;
 }
 
+test('WorkspaceSidebar shows Bridge message sync progress above chat filters', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    isBridgePolling: true,
+  }) as never));
+
+  assert.match(markup, /Syncing messages/);
+  assert.match(markup, /data-bridge-sync-status="syncing"/);
+});
+
 test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
   const chatConversations = [
     conversation({

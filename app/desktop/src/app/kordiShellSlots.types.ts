@@ -371,6 +371,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'displayedAgents'
   | 'activeBridgeHost'
   | 'localProfileAvatarSeed'
+  | 'isBridgePolling'
   | 'refreshDesktopBridge'
   | 'handleCopyBridgeText'
   | 'handleCreateBridgeDraft'

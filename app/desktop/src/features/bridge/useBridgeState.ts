@@ -532,11 +532,24 @@ export function useBridgeState({
         setIsBridgePolling(false);
       });
     };
+    const pollWhenVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      poll();
+    };
+    pollWhenVisible();
     const interval = window.setInterval(poll, 4000);
     window.addEventListener('focus', poll);
+    window.addEventListener('pageshow', pollWhenVisible);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', pollWhenVisible);
+    }
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', poll);
+      window.removeEventListener('pageshow', pollWhenVisible);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', pollWhenVisible);
+      }
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
 

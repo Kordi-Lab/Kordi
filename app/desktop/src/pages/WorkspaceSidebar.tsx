@@ -206,6 +206,7 @@ type WorkspaceSidebarProps = {
   displayedAgents: AgentItem[];
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
+  isBridgePolling: boolean;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
@@ -429,6 +430,7 @@ export function WorkspaceSidebar({
   displayedAgents,
   activeBridgeHost,
   localProfileAvatarSeed,
+  isBridgePolling,
   onRefreshBridge,
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
@@ -604,6 +606,21 @@ export function WorkspaceSidebar({
                       ))}
                     </div>
                   </div>
+
+                  {isBridgePolling ? (
+                    <div
+                      className="mb-2 flex items-center gap-2 rounded-[14px] border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-[11px] text-cyan-100"
+                      data-bridge-sync-status="syncing"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300/60 motion-reduce:animate-none" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-200" />
+                      </span>
+                      <span>Syncing messages… pulling missed Bridge updates</span>
+                    </div>
+                  ) : null}
 
                   {desktopChatError ? (
                     <div className="mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">

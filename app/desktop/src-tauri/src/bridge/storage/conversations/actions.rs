@@ -116,24 +116,38 @@ pub(in crate::bridge) fn insert_bridge_inbox_event_if_absent(
     .map_err(sqlite_error)?;
 
     if let Some(server_message_id) = event.server_message_id.as_deref() {
-        return conn
+        if let Some(existing_id) = conn
             .query_row(
                 "SELECT id FROM bridge_inbox_events WHERE host_id = ?1 AND server_message_id = ?2",
                 params![event.host_id, server_message_id],
                 |row| row.get(0),
             )
-            .map_err(sqlite_error);
+            .optional()
+            .map_err(sqlite_error)?
+        {
+            return Ok(existing_id);
+        }
     }
 
     if let Some(request_id) = event.request_id.as_deref() {
-        return conn
+        let existing_id = conn
             .query_row(
                 "SELECT id FROM bridge_inbox_events
                  WHERE host_id = ?1 AND from_node_id = ?2 AND message_type = ?3 AND request_id = ?4",
                 params![event.host_id, event.from_node_id, event.message_type, request_id],
                 |row| row.get(0),
             )
-            .map_err(sqlite_error);
+            .map_err(sqlite_error)?;
+        if let Some(server_message_id) = event.server_message_id.as_deref() {
+            conn.execute(
+                "UPDATE bridge_inbox_events
+                 SET server_message_id = COALESCE(server_message_id, ?1)
+                 WHERE id = ?2",
+                params![server_message_id, existing_id],
+            )
+            .map_err(sqlite_error)?;
+        }
+        return Ok(existing_id);
     }
 
     conn.query_row(
