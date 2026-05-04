@@ -1,9 +1,9 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{
-    AppendCanonicalMessageRequest, CanonicalSessionMessage, append_message_in_db, clean_optional,
-    hash_hex, json_to_db, now_ms, schema::ensure_local_profile, select_message,
-    select_message_by_source, validate_status,
+    append_message_in_db, clean_optional, hash_hex, json_to_db, now_ms, select_message,
+    select_message_by_source, validate_status, AppendCanonicalMessageRequest,
+    CanonicalSessionMessage,
 };
 
 pub(super) fn append_or_reconcile_message_from_sync(
@@ -18,18 +18,26 @@ pub(super) fn append_or_reconcile_message_from_sync(
         request.source_event_id.as_deref(),
     ) {
         if let Some(message) = select_message_by_source(conn, source_transport, source_event_id)? {
-            if let Some(optimistic_message_id) = select_optimistic_message_id(
-                conn,
-                &request,
-                optimistic_source_transport,
-                created_at_ms,
-                match_window_ms,
-            )? {
-                if optimistic_message_id != message.id {
-                    delete_message(conn, &message.id)?;
-                    update_optimistic_message(conn, &optimistic_message_id, &request, created_at_ms)?;
-                    return select_message(conn, &optimistic_message_id)?
-                        .ok_or_else(|| "Unable to load reconciled canonical message".to_string());
+            if source_transport != optimistic_source_transport {
+                if let Some(optimistic_message_id) = select_optimistic_message_id(
+                    conn,
+                    &request,
+                    optimistic_source_transport,
+                    created_at_ms,
+                    match_window_ms,
+                )? {
+                    if optimistic_message_id != message.id {
+                        delete_message(conn, &message.id)?;
+                        update_optimistic_message(
+                            conn,
+                            &optimistic_message_id,
+                            &request,
+                            created_at_ms,
+                        )?;
+                        return select_message(conn, &optimistic_message_id)?.ok_or_else(|| {
+                            "Unable to load reconciled canonical message".to_string()
+                        });
+                    }
                 }
             }
             update_optimistic_message(conn, &message.id, &request, created_at_ms)?;
@@ -111,17 +119,18 @@ fn optimistic_sender_identity_matches(
         return Ok(true);
     }
 
-    let profile = ensure_local_profile(conn)?;
-    let active_profile_human_identity_id = profile
-        .human_identity_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if active_profile_human_identity_id != Some(request_sender_identity_id) {
-        return Ok(false);
-    }
-
-    Ok(optimistic_sender_identity_id == format!("human:{}", profile.id))
+    conn.query_row(
+        "SELECT 1
+         FROM local_profile
+         WHERE TRIM(COALESCE(human_identity_id, '')) = ?1
+           AND ?2 = 'human:' || id
+         LIMIT 1",
+        params![request_sender_identity_id, optimistic_sender_identity_id],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|match_row| match_row.is_some())
+    .map_err(|err| err.to_string())
 }
 
 fn delete_message(conn: &Connection, message_id: &str) -> Result<(), String> {

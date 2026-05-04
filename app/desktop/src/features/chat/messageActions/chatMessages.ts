@@ -254,6 +254,42 @@ export function bridgeGroupSessionSendTargets(
   return [...targets.values()];
 }
 
+export function shouldUseBridgeConversationRouting({
+  activeConversationIsBridge,
+  activeConvBridgeTarget,
+  activeGroupSessionScope,
+}: {
+  activeConversationIsBridge: boolean;
+  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeGroupSessionScope?: (Pick<Conversation, 'canonicalParticipants'> & {
+    canonicalSessionId?: string | null;
+    participantSpaceId?: string | null;
+    directness?: string | null;
+  }) | null;
+}) {
+  return activeConversationIsBridge
+    || Boolean(activeConvBridgeTarget)
+    || Boolean(
+      isBridgeGroupSession(activeGroupSessionScope)
+      && bridgeGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvBridgeTarget).length > 0,
+    );
+}
+
+export function activeLocalTurnShouldDelayChatSend({
+  activeConversationUsesBridgeRouting,
+  activeConvId,
+  desktopLiveTurn,
+}: {
+  activeConversationUsesBridgeRouting: boolean;
+  activeConvId: string;
+  desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
+}) {
+  return !activeConversationUsesBridgeRouting
+    && !activeConvId.startsWith('bridge:')
+    && !isLocalDraftChatConversationId(activeConvId)
+    && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
+}
+
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -509,10 +545,25 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const activeLocalSessionHasRunningTurn = !activeConvId.startsWith('bridge:')
-      && !isLocalDraftChatConversationId(activeConvId)
-      && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
-    if (activeLocalSessionHasRunningTurn) {
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
+    const activeGroupSessionScope = {
+      canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
+      participantSpaceId: activeConvMentionScope?.participantSpaceId,
+      directness: activeConvMentionScope?.directness,
+      canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
+    };
+    const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
+    const activeConversationUsesBridgeRouting = shouldUseBridgeConversationRouting({
+      activeConversationIsBridge,
+      activeConvBridgeTarget,
+      activeGroupSessionScope,
+    });
+    const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
+    const activeGroupSessionParticipants = activeGroupSessionIsGroup
+      ? bridgeGroupSessionParticipants(activeGroupSessionScope)
+      : [];
+
+    if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
       if (chatComposerAttachments.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {
         setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
@@ -522,20 +573,7 @@ export function useChatMessageActions({
       return;
     }
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
-    const activeGroupSessionScope = {
-      canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
-      participantSpaceId: activeConvMentionScope?.participantSpaceId,
-      directness: activeConvMentionScope?.directness,
-      canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
-    };
-    const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
-    const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
-    const activeGroupSessionParticipants = activeGroupSessionIsGroup
-      ? bridgeGroupSessionParticipants(activeGroupSessionScope)
-      : [];
-
-    if (mentionedTarget && (activeConversationIsBridge || activeConvBridgeTarget)) {
+    if (mentionedTarget && activeConversationUsesBridgeRouting) {
       try {
         shouldAutoFollowChatRef.current = true;
         pendingBridgeCancelRequestedRef.current = false;
@@ -670,7 +708,7 @@ export function useChatMessageActions({
       return;
     }
 
-    if ((activeConversationIsBridge || activeConvBridgeTarget) && !mentionsLocalAgent(text, desktopChatState, desktopBridgeState)) {
+    if (activeConversationUsesBridgeRouting && !mentionsLocalAgent(text, desktopChatState, desktopBridgeState)) {
       const sentAt = formatDesktopEventTime();
       const previewText = attachmentSummaryText(text);
       const bridgeMessageText = text;
@@ -679,7 +717,7 @@ export function useChatMessageActions({
       const existingTargetConversation = activeConvBridgeTarget && desktopBridgeState
         ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
         : null;
-      const shouldStayInCanonicalSession = Boolean(activeConvBridgeTarget && activeConvCanonicalSessionId);
+      const shouldStayInCanonicalSession = Boolean(activeConvCanonicalSessionId && (activeConvBridgeTarget || activeGroupSessionIsGroup));
       const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;
       const groupSendTargets = isGroupSessionMessage
         ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget)

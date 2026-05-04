@@ -58,6 +58,7 @@ pnpm build:desktop
 ```
 
 For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
+For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
 
 ### Build the web UI
 
@@ -136,6 +137,14 @@ pnpm build:registry
 ```
 
 ## Shared validation
+
+### Report overlong modules
+
+```bash
+pnpm maintainability:scan -- --min-lines 500 --limit 60
+```
+
+This is a planning signal for maintainability work, not a CI gate. See [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
 
 ### Lint the desktop app
 

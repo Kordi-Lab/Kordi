@@ -291,6 +291,96 @@ test('direct person bridge transcript renders remote agent responses as agent tu
   assert.deepEqual(message?.turn?.tools, []);
 });
 
+test('direct person bridge transcript hides historical processing placeholders after newer messages', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-user-asked-agent',
+      direction: 'outbound',
+      sender: 'Me',
+      text: '@MyKordi summarize PR 201',
+      timeLabel: '17:08',
+      timestampMs: 1,
+      requestId: 'bridge_req_user_ask',
+      deliveryState: 'sent',
+      outreach: null,
+    }, {
+      id: 'msg-stale-processing',
+      direction: 'outbound-response',
+      sender: "Me's Kordi",
+      text: 'processing...',
+      timeLabel: '17:08',
+      timestampMs: 2,
+      requestId: 'bridge_req_processing',
+      deliveryState: 'processing',
+      outreach: null,
+    }, {
+      id: 'msg-later-human-message',
+      direction: 'inbound',
+      sender: 'Shenzhe',
+      text: 'thanks',
+      timeLabel: '17:09',
+      timestampMs: 3,
+      requestId: 'bridge_req_later',
+      deliveryState: null,
+      outreach: null,
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
+  assert.deepEqual(view.messages.map((message) => message.turn?.id ?? message.text), [
+    '@MyKordi summarize PR 201',
+    'thanks',
+  ]);
+});
+
+test('bridge transcript renders cancelled bridge agent requests as stopped instead of processing', () => {
+  const requestId = 'bridge_req_cancelled';
+  const view = mapBridgeConversationToViewModel(conversation({
+    id: 'bridge:host-1:node-peer',
+    canonicalSessionId: 'session:bridge:agents:peer',
+    peerDisplayName: "Jiaxin's Kordi",
+    peerOwnerName: 'Jiaxin',
+    peerRuntime: 'kordi-desktop',
+    title: "Jiaxin's Kordi",
+    awaitingReply: true,
+    outreach: {
+      targetKind: 'bridge-agent',
+      parentSessionId: 'session:group:shared',
+      bridgeHostId: 'host-1',
+      bridgeConversationId: 'bridge:host-1:node-peer',
+      bridgeRequestId: requestId,
+      targetNodeId: 'node-peer',
+      targetDisplayName: "Jiaxin's Kordi",
+      targetOwnerName: 'Jiaxin',
+      targetRuntime: 'kordi-desktop',
+      requestText: 'test test',
+      triggerText: '@JiaxinsKordi test test',
+      contextText: null,
+      contextPolicy: 'recent-window',
+      status: 'cancelled',
+      deliveryState: 'cancelled',
+      createdAtMs: 1,
+      updatedAtMs: 2,
+    },
+    messages: [{
+      id: 'msg-cancelled-request',
+      direction: 'outbound',
+      sender: 'Me',
+      text: 'test test',
+      timeLabel: '17:08',
+      timestampMs: 1,
+      requestId,
+      deliveryState: 'cancelled',
+      outreach: null,
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
+  const stoppedTurn = view.messages.find((message) => message.turn?.status === 'cancelled')?.turn;
+  assert.equal(stoppedTurn?.completed, true);
+  assert.equal(stoppedTurn?.assistantText, 'Request stopped');
+});
+
 test('bridge transcript does not show processing for unsent agent outreach', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     peerRuntime: 'kordi-desktop',

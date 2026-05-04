@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { formatRunningElapsed, toolTimelineFoldedLabel, toolTimelineSummary, toolTimelineToolLabel, toolTimelineTypeLabel } from '../src/kordi-app/components/toolTimeline';
 
 function cssBlock(css: string, selector: string) {
@@ -39,7 +40,7 @@ test('summarizes foldable timeline state without raw tool activity wording', () 
 });
 
 test('running tool timeline styling uses muted amber tokens without glow', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
   assert.match(themeTokensCss, /--app-tool-running-fg:\s*oklch\([^)]*0\.0[0-8]/);

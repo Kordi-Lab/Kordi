@@ -133,11 +133,14 @@ export function chatComposerSubmitMode({
   isDesktopChatSending,
   activeLiveTurnIsRunning,
   hasDraft,
+  canSendWhileBusy = false,
 }: {
   isDesktopChatSending: boolean;
   activeLiveTurnIsRunning: boolean;
   hasDraft: boolean;
+  canSendWhileBusy?: boolean;
 }) {
+  if (canSendWhileBusy) return 'send' as const;
   return (isDesktopChatSending || activeLiveTurnIsRunning) && !hasDraft ? 'stop' as const : 'send' as const;
 }
 
@@ -307,10 +310,13 @@ export function ChatsPage({
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
+  const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
+  const composerCanSendWhileBusy = activeConversationIsBridge || Boolean(activeConv.bridgeTarget) || activeConvHasBridgeTransport;
   const composerSubmitMode = chatComposerSubmitMode({
     isDesktopChatSending,
     activeLiveTurnIsRunning,
     hasDraft: composerHasDraft,
+    canSendWhileBusy: composerCanSendWhileBusy,
   });
   const composerStopMode = composerSubmitMode === 'stop';
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);

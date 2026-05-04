@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
   const turn: DesktopChatTurnSnapshot = {
@@ -285,7 +286,7 @@ test('folds long source quotes after three lines while keeping the full request 
 });
 
 test('styles folded source quote expand control as muted overlay on the fade', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const sourceToggleBlock = shellCss.match(/\.app-source-message-quote-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
@@ -298,7 +299,7 @@ test('styles folded source quote expand control as muted overlay on the fade', (
 });
 
 test('styles reply attribution surfaces with stronger dark-mode contrast', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const responsePanelBlock = shellCss.match(/\.app-live-turn-response-panel \{[\s\S]*?\n\}/)?.[0] ?? '';
   const responseSurfaceBlock = shellCss.match(/\.app-live-assistant-answer-surface \{[\s\S]*?\n\}/)?.[0] ?? '';
   const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
@@ -355,12 +356,15 @@ test('folds only substantially long completed agent responses by default', () =>
   assert.match(markup, /app-inline-expand-toggle/);
   assert.match(markup, /app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay/);
   assert.match(markup, /text-\[10px\]/);
-  assert.match(markup, /— Click to show full response —/);
+  assert.match(markup, /— 1 more line\. Click to show all —/);
   assert.doesNotMatch(markup, /— Show full response —/);
 });
 
 test('expanded fold controls use click-to-hide copy consistently', () => {
-  const transcriptSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const transcriptSource = [
+    readFileSync(new URL('../src/kordi-app/components/transcriptReplyAttribution.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8'),
+  ].join('\n');
 
   assert.match(transcriptSource, /— Click to hide request —/);
   assert.match(transcriptSource, /— Click to hide response —/);
@@ -369,7 +373,7 @@ test('expanded fold controls use click-to-hide copy consistently', () => {
 });
 
 test('styles folded answer expand control as muted overlay on the fade', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const answerToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
   const overlayToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
 
@@ -417,7 +421,7 @@ test('keeps source quote and tool summary inside the same assistant response bac
   assert.match(markup, quoteToolAnswerSurfacePattern);
 });
 
-test('does not fold active streaming agent responses while text is still arriving', () => {
+test('keeps short active streaming agent responses expanded while text is still arriving', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-streaming-answer',
     sessionId: 'session-1',
@@ -436,4 +440,25 @@ test('does not fold active streaming agent responses while text is still arrivin
 
   assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
   assert.doesNotMatch(markup, /Show full response/);
+});
+
+test('folds very long active streaming agent responses with remaining line count copy', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-streaming-long-answer',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'streaming',
+    message: 'Replying…',
+    assistantText: 'Line one\nLine two\nLine three\nLine four\nLine five\nLine six\nLine seven\nLine eight',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
+  assert.match(markup, /— 2 more lines\. Click to show all —/);
 });
