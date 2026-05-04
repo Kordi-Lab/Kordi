@@ -265,3 +265,19 @@ fn mailbox_group_agent_response_delivery_targets_include_requester_and_other_mem
         vec!["peer-node".to_string(), "node-other".to_string()]
     );
 }
+
+#[test]
+fn mailbox_group_agent_response_delivery_targets_skip_self_requester() {
+    let target = test_mailbox_target();
+    let mut event = group_agent_ask_event();
+    event.from_node_id = target.host.node_id.clone();
+    event.payload["sessionThread"]["participants"] = serde_json::json!([
+        { "displayName": "Self", "bridgeNodeId": target.host.node_id.clone() },
+        { "displayName": "Other", "bridgeNodeId": "node-other" }
+    ]);
+
+    assert_eq!(
+        group_agent_response_delivery_targets(&target, &event),
+        vec!["node-other".to_string()]
+    );
+}

@@ -587,6 +587,7 @@ export function ChatsPage({
                 turn={attributedActiveTranscriptLiveTurn}
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onStopActiveTurn={onStopDesktopChatTurn}
               />
             ) : null}
             {queuedDesktopMessages.map((message) => (
