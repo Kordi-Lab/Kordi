@@ -715,10 +715,11 @@ export function useKordiAppModel() {
     setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
     setDesktopChatState((current) => removeSessionFromDesktopState(current, sessionId));
     setCanonicalSessionState((current) => removeSessionFromCanonicalState(current, sessionId));
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
     if (activeConvId === sessionId || desktopChatState?.activeSessionId === sessionId) {
       setActiveConvId(fallbackSessionId);
     }
-  }, [activeConvId, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
+  }, [activeConvId, composerUi.setComposerDrafts, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
 
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
     if (!isNativeShell || !sessionId.trim()) return;

@@ -88,3 +88,15 @@ test('serialization round-trips an arbitrary state', () => {
   );
   assert.deepEqual(parseStoredComposerDrafts(serializeStoredComposerDrafts(state)), state);
 });
+
+test('prune-on-delete removes the entry for a session', () => {
+  let state = EMPTY_COMPOSER_DRAFT_STATE;
+  state = updateScopeDraft(state, 'chat', 'session-A', 'leftover', 1000);
+  state = updateScopeDraft(state, 'chat', 'session-B', 'untouched', 1500);
+
+  // Simulate the prune that runs on optimisticallyRemoveChatSession:
+  state = updateScopeDraft(state, 'chat', 'session-A', '', 2000);
+
+  assert.equal(state.chat['session-A'], undefined);
+  assert.equal(state.chat['session-B']?.text ?? '', 'untouched');
+});
