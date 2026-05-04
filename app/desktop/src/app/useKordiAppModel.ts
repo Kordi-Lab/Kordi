@@ -46,13 +46,14 @@ import {
   groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
+import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
 import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { Agent, CanonicalSessionState, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
@@ -203,6 +204,11 @@ export function useKordiAppModel() {
     clearDesktopAuthError,
   });
 
+  const composerDraftsView = useMemo<Record<ComposerScope, string>>(() => ({
+    chat:    composerUi.composerDrafts.chat[activeConvId]?.text                ?? '',
+    project: composerUi.composerDrafts.project[activeProjectSessionId]?.text   ?? '',
+  }), [composerUi.composerDrafts, activeConvId, activeProjectSessionId]);
+
   const {
     chatModelOptions,
     composerProviderOptions,
@@ -218,7 +224,7 @@ export function useKordiAppModel() {
     desktopAuthState,
     desktopChatState,
     composerSelections: composerUi.composerSelections,
-    composerDrafts: composerUi.composerDrafts,
+    composerDrafts: composerDraftsView,
   });
 
   const {
@@ -283,7 +289,7 @@ export function useKordiAppModel() {
     activeNav,
     activeConvId,
     activeConversationIsBridge: isNativeShell && (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(activeConvId)),
-    composerChatText: composerUi.composerDrafts.chat,
+    composerChatText: composerDraftsView.chat,
     shouldAutoFollowChatRef,
   });
 
@@ -409,8 +415,8 @@ export function useKordiAppModel() {
     activeConvMentionScope,
   }), [activeConvMentionScope, desktopBridgeState, desktopChatState, isNativeShell]);
 
-  const chatMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.chat), [composerUi.composerDrafts.chat]);
-  const projectMentionQuery = useMemo(() => currentMentionQuery(composerUi.composerDrafts.project), [composerUi.composerDrafts.project]);
+  const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
+  const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
   const filteredChatMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.chat, chatMentionQuery), [bridgeMentionTargetsByScope.chat, chatMentionQuery]);
   const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(bridgeMentionTargetsByScope.project, projectMentionQuery), [bridgeMentionTargetsByScope.project, projectMentionQuery]);
 
@@ -609,7 +615,7 @@ export function useKordiAppModel() {
     desktopLiveTurn: activeDesktopLiveTurn,
     composerSelections: composerUi.composerSelections,
     setComposerSelections: composerUi.setComposerSelections,
-    composerDrafts: composerUi.composerDrafts,
+    composerDrafts: composerDraftsView,
     setComposerDrafts: composerUi.setComposerDrafts,
     setProjectWorkspaces: projectsUi.setProjectWorkspaces,
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
@@ -709,10 +715,11 @@ export function useKordiAppModel() {
     setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
     setDesktopChatState((current) => removeSessionFromDesktopState(current, sessionId));
     setCanonicalSessionState((current) => removeSessionFromCanonicalState(current, sessionId));
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
     if (activeConvId === sessionId || desktopChatState?.activeSessionId === sessionId) {
       setActiveConvId(fallbackSessionId);
     }
-  }, [activeConvId, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
+  }, [activeConvId, composerUi.setComposerDrafts, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
 
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
@@ -817,7 +824,7 @@ export function useKordiAppModel() {
     const draftSessionId = projectDraftSessionId(projectId);
     selectProjectSession(projectId, draftSessionId);
     projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
-    composerUi.setComposerDrafts((current) => ({ ...current, project: '' }));
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'project', draftSessionId, ''));
     composerUi.setChatComposerAttachments([]);
     composerUi.setOpenComposerSelector(null);
     setActiveNav('projects');
@@ -841,7 +848,7 @@ export function useKordiAppModel() {
   const selectNewChatSession = useCallback((sessionId: string) => {
     setActiveNav('chats');
     setActiveConvId(sessionId);
-    composerUi.setComposerDrafts((current) => ({ ...current, chat: '' }));
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
     composerUi.setChatComposerAttachments([]);
     composerUi.setOpenComposerSelector(null);
   }, [
@@ -1657,8 +1664,8 @@ export function useKordiAppModel() {
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
-    projectComposerText: composerUi.composerDrafts.project,
-    chatComposerText: composerUi.composerDrafts.chat,
+    projectComposerText: composerDraftsView.project,
+    chatComposerText: composerDraftsView.chat,
     updateProjectComposerDraft: (value, target) => updateComposerDraft('project', value, target),
     updateChatComposerDraft: (value, target) => updateComposerDraft('chat', value, target),
     setProjectComposerText,

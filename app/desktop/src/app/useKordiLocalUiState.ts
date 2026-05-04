@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 
 import { readStoredComposerAttachments, writeStoredComposerAttachments } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import {
+  readStoredComposerDrafts,
+  writeStoredComposerDrafts,
+  type ComposerDraftState,
+} from '@/features/chat/composerDrafts';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
 import type { ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
@@ -60,10 +65,17 @@ export function useKordiLocalUiState() {
     chat: { mode: 'Send as Me', model: 'GPT-5.4', thinking: 'xhigh' },
     project: { mode: 'Post update', model: 'GPT-5.4', thinking: 'high' },
   });
-  const [composerDrafts, setComposerDrafts] = useState<Record<ComposerScope, string>>({
-    chat: '',
-    project: '',
-  });
+  const [composerDrafts, setComposerDrafts] = useState<ComposerDraftState>(
+    () => readStoredComposerDrafts(),
+  );
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      writeStoredComposerDrafts(composerDrafts);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [composerDrafts]);
+
   const [openComposerSelector, setOpenComposerSelector] = useState<{ scope: ComposerScope; type: ComposerSelectorType } | null>(null);
   const [chatSlashMenuIndex, setChatSlashMenuIndex] = useState(0);
   const [chatComposerAttachments, setChatComposerAttachments] = useState<AttachmentItem[]>(() => readStoredComposerAttachments());

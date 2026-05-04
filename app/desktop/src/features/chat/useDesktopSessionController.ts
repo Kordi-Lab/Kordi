@@ -11,6 +11,7 @@ import {
   renameDesktopChatSession,
 } from '@/lib/desktop';
 
+import { updateScopeDraft, type ComposerDraftState } from './composerDrafts';
 import {
   LOCAL_DRAFT_CHAT_CONVERSATION_ID,
   isLocalDraftChatConversationId,
@@ -54,7 +55,7 @@ type UseDesktopSessionControllerArgs = {
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
-  setComposerDrafts: Dispatch<SetStateAction<Record<'chat' | 'project', string>>>;
+  setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
   setOpenComposerSelector: Dispatch<SetStateAction<{ scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null>>;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
@@ -119,7 +120,7 @@ export function useDesktopSessionController({
     setPendingUserChatMessage(null);
     setActiveConvId(LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     setDesktopChatState((current) => draftDesktopChatState(current));
-    setComposerDrafts((current) => ({ ...current, chat: '' }));
+    setComposerDrafts((current) => updateScopeDraft(current, 'chat', LOCAL_DRAFT_CHAT_CONVERSATION_ID, ''));
     setChatComposerAttachments([]);
     void prepareDesktopChatDraftSession().catch(() => {});
   }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
