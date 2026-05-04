@@ -420,6 +420,29 @@ test('group mention scope uses root group participants for legacy child continua
   );
 });
 
+test('group mention scope keeps active child participants when legacy root has no participant details', () => {
+  const root = {
+    ...groupConversationWithParticipantNames(['Host Owner', 'Alice', 'Bob']),
+    id: 'session:group:root-empty',
+    canonicalSessionId: 'session:group:root-empty',
+    canonicalParticipants: [],
+  } as Conversation;
+  const child = {
+    ...groupConversationWithHumans([
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+    ]),
+    id: 'session:group:child-with-participants',
+    canonicalSessionId: 'session:group:child-with-participants',
+    metadata: { continuedFromSessionId: 'session:group:root-empty' },
+  } as Conversation;
+
+  const scope = mentionScopeConversationForActiveConversation(child, [child, root]);
+
+  assert.equal(scope.canonicalParticipants?.length, 3);
+  assert.deepEqual(scope.canonicalParticipants?.map((participant) => participant.name), ['Host Owner', 'Alice', 'Bob']);
+});
+
 test('mention candidates hide active host person and agent duplicates', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
