@@ -163,9 +163,10 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   }) as never));
 
   assert.match(markup, /data-chat-sidebar-mode="participant-spaces-inline"/);
-  assert.doesNotMatch(markup, /app-filter-tabs/);
+  assert.match(markup, /app-filter-tab/);
+  assert.match(markup, />Contact</);
+  assert.match(markup, />Agent</);
   assert.doesNotMatch(markup, />People</);
-  assert.doesNotMatch(markup, />Agents</);
   assert.match(markup, /Bob/);
   assert.match(markup, /2 sessions/);
   assert.match(markup, /New preview/);

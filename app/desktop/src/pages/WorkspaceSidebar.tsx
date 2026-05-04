@@ -18,7 +18,7 @@ import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/component
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
-import type { Agent, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -410,6 +410,7 @@ export function WorkspaceSidebar({
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
+  const [chatChannel, setChatChannel] = useState<ChatChannel>('contact');
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
@@ -796,7 +797,9 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    Expand a contact or group to see its sessions.
+                    {chatChannel === 'contact'
+                      ? 'Expand a contact or group to see its sessions.'
+                      : 'Each row is a # session with one of your agents.'}
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -804,9 +807,27 @@ export function WorkspaceSidebar({
                     <input
                       value={chatSearch}
                       onChange={(event) => setChatSearch(event.target.value)}
-                      placeholder="Search contacts, groups, sessions"
+                      placeholder={chatChannel === 'contact' ? 'Search contacts, groups, sessions' : 'Search agent conversations'}
                       className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                     />
+                  </div>
+
+                  <div className="mb-2 space-y-1.5">
+                    <div className="app-filter-tabs w-full">
+                      {([
+                        { id: 'contact', label: 'Contact' },
+                        { id: 'agent', label: 'Agent' },
+                      ] as Array<{ id: ChatChannel; label: string }>).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setChatChannel(tab.id)}
+                          className={chatChannel === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {desktopChatError ? (
@@ -815,7 +836,9 @@ export function WorkspaceSidebar({
                     </div>
                   ) : null}
 
-                  {renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')}
+                  {chatChannel === 'contact'
+                    ? renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')
+                    : renderAgentSessionList(flatAgentSessions, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
 
@@ -974,40 +997,52 @@ export function WorkspaceSidebar({
               )}
 
               {activeNav === 'agents' && (
-                <div className="flex h-full flex-col p-2.5">
-                  <div className="mb-2 flex items-start justify-between gap-2.5">
-                    <div>
-                      <div className="text-[15px] font-semibold text-white">Agents</div>
-                      <div className="mt-0.5 text-[11px] text-slate-400">
-                        {flatAgentSessions.length} {flatAgentSessions.length === 1 ? 'conversation' : 'conversations'}
+                <div className="flex h-full flex-col p-3">
+                  <ScrollArea className="min-h-0 flex-1 pr-2">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-slate-400">Agents</div>
+                        <div className="text-xl font-semibold text-white">{displayedAgents.length} visible identities</div>
                       </div>
+                      <Button className="rounded-xl">
+                        <Plus className="mr-2 h-4 w-4" />New
+                      </Button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={openChatCreateDialog}
-                      className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="Start a chat with an agent"
-                      aria-label="Start a chat with an agent"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    Your conversations with agents. Expand a row to see its sessions.
-                  </div>
-
-                  <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
-                    <Search className="h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      value={chatSearch}
-                      onChange={(event) => setChatSearch(event.target.value)}
-                      placeholder="Search agent conversations"
-                      className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  {renderAgentSessionList(flatAgentSessions, 'No agent conversations yet. Start one to see it here.')}
+                    <div className="space-y-3">
+                      {displayedAgents.map((agent) => (
+                        <Card key={agent.id} className="rounded-3xl border-white/10 bg-white/5 text-white shadow-none">
+                          <CardContent className="p-4">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div className="flex min-w-0 items-start gap-3">
+                                <IdentityAvatar
+                                  kind="agent"
+                                  seed={agent.avatarSeed ?? agent.id}
+                                  name={agent.name}
+                                  imageUrl={agent.profileImageUrl}
+                                  className="h-10 w-10 border border-white/10"
+                                />
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium">{agent.name}</div>
+                                  <div className="truncate text-xs text-slate-400">{agent.id}</div>
+                                </div>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 border-white/20 text-slate-200">
+                                {agent.status}
+                              </Badge>
+                            </div>
+                            <div className="mb-2 text-sm text-slate-300">{agent.role}</div>
+                            <div className="mb-3 text-xs text-slate-400">Messaging: {agent.messaging}</div>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <span>{agent.tasks} active tasks</span>
+                              <Button size="sm" variant="secondary" className="rounded-xl">
+                                Open
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
               )}
 
