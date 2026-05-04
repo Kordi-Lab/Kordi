@@ -671,7 +671,7 @@ export function WorkspaceSidebar({
             <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
             <div className="inline-flex shrink-0 items-center gap-1.5">
               <SidebarUnreadBadge count={session.unread} scope="agent-session" />
-              <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActive} />
+              <SidebarSessionStatusIndicator indicator={session.statusIndicator} />
               <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums tracking-[0.03em] text-slate-400', isActive && 'app-session-meta-time-active')}>
                 {rowTimeLabel}
               </span>
