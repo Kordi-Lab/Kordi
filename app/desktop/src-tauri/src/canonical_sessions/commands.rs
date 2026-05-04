@@ -3,7 +3,8 @@ use rusqlite::Connection;
 use super::{
     add_session_participants_in_db, append_message_in_db, create_delegated_exchange_in_db,
     json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_session_in_db, require_group_admin, select_delegated_exchange, select_identity,
+    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    select_delegated_exchange, select_identity,
     select_message, select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
     update_presence_in_db, upsert_identity_in_db, AddCanonicalSessionParticipantsRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
@@ -188,13 +189,19 @@ pub(super) fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
-    require_group_admin(
-        &conn,
-        &request.session_id,
-        request.requested_by_identity_id.as_deref(),
-        "rename this group",
-    )?;
-    rename_session_in_db(&conn, &request.session_id, &request.title)?;
+    let session = select_session(&conn, &request.session_id)?
+        .ok_or_else(|| "Session not found".to_string())?;
+    if session.kind == "group" {
+        require_group_admin(
+            &conn,
+            &request.session_id,
+            request.requested_by_identity_id.as_deref(),
+            "rename this group",
+        )?;
+        rename_session_in_db(&conn, &request.session_id, &request.title)?;
+    } else {
+        rename_any_session_title_in_db(&conn, &request.session_id, &request.title)?;
+    }
     load_state_from_db(&conn)
 }
 

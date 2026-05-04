@@ -33,6 +33,24 @@ pub(crate) fn rename_session_in_db(
     Ok(())
 }
 
+pub(crate) fn rename_any_session_title_in_db(
+    conn: &Connection,
+    session_id: &str,
+    title: &str,
+) -> Result<(), String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("Session title is required".to_string());
+    }
+    select_session(conn, session_id)?.ok_or_else(|| "Session not found".to_string())?;
+    conn.execute(
+        "UPDATE sessions SET title = ?2, updated_at_ms = ?3 WHERE id = ?1",
+        params![session_id, title, now_ms()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
 pub(crate) fn set_session_metadata_in_db(
     conn: &Connection,
     session_id: &str,
