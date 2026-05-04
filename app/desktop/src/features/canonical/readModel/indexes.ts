@@ -238,6 +238,25 @@ function isAgedBridgeProcessingPlaceholder(message: CanonicalSessionMessage) {
   return Date.now() - message.createdAtMs > BRIDGE_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
 }
 
+function isPureBridgeAgentStatusRow(message: CanonicalSessionMessage) {
+  if (message.sourceTransport !== 'desktop-bridge-session-relay') return false;
+  if (!isOwnedAgentTurn(message)) return false;
+  const content = contentRecord(message.content);
+  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  return deliveryState === 'cancelled' || deliveryState === 'processing_failed';
+}
+
+function pairedLocalOwnedAgentTurnExists(
+  local: CanonicalSessionMessage,
+  bridge: CanonicalSessionMessage,
+) {
+  return local.sessionId === bridge.sessionId
+    && local.senderIdentityId === bridge.senderIdentityId
+    && local.senderRole === 'owned-agent'
+    && local.messageKind === 'agent-turn'
+    && Math.abs(local.createdAtMs - bridge.createdAtMs) <= 30_000;
+}
+
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   const duplicateIds = new Set<string>();
   const localRuntimeMessages = messages.filter((message) => (
@@ -251,7 +270,18 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
 
   for (const bridgeMessage of bridgeRelayMessages) {
     const matchingLocalMessages = localRuntimeMessages.filter((message) => sameOwnedAgentResponse(message, bridgeMessage));
-    if (matchingLocalMessages.length === 0) continue;
+    if (matchingLocalMessages.length === 0) {
+      // Cancelled/failed bridge fanout rows are pure status markers — when the
+      // sender's instance also has a desktop-chat owned-agent turn for the same
+      // request, the bridge row is the redundant copy.
+      if (
+        isPureBridgeAgentStatusRow(bridgeMessage)
+        && localRuntimeMessages.some((local) => pairedLocalOwnedAgentTurnExists(local, bridgeMessage))
+      ) {
+        duplicateIds.add(bridgeMessage.id);
+      }
+      continue;
+    }
 
     const bestLocal = matchingLocalMessages.reduce((best, candidate) => {
       const candidateRichness = ownedAgentRuntimeRichness(candidate);
@@ -525,6 +555,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
     );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
+    const senderIdentityIdByMessageId = new Map<string, string>(
+      sortedMessages.map((message) => [message.id, message.senderIdentityId]),
+    );
     const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
       if (
         suppressedBridgeUiEchoIds.has(message.id)
@@ -557,7 +590,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         && !delegatedOutreachDirectSources.has(duplicatedDirectBridgeSource)) {
         return [];
       }
-      const mapped = mapCanonicalMessage(message, identityById, canonicalState.profile.humanIdentityId);
+      const mapped = mapCanonicalMessage(
+        message,
+        identityById,
+        canonicalState.profile.humanIdentityId,
+        { senderIdentityIdByMessageId },
+      );
       if (!mapped) return [];
       const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
         ? { ...mapped, statusChips: ['failed'] }

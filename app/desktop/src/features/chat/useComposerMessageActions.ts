@@ -131,6 +131,7 @@ export function useComposerMessageActions({
   const pendingBridgeOutreachRef = useRef<PendingBridgeOutreach | null>(null);
   const pendingBridgeCancelRequestedRef = useRef(false);
   const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
+  const userCancelledTurnIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     pendingBridgeOutreachRef.current = pendingBridgeOutreach;
@@ -210,6 +211,7 @@ export function useComposerMessageActions({
     isNativeShell,
     pendingBridgeCancelRequestedRef,
     localChatSendInFlightRef,
+    userCancelledTurnIdsRef,
     refreshDesktopChat,
     setActiveConvId,
     setCanonicalSessionState,
@@ -306,6 +308,8 @@ export function useComposerMessageActions({
     }
 
     const stoppedSessionId = desktopLiveTurn.sessionId;
+    const stoppedTurnId = desktopLiveTurn.id;
+    userCancelledTurnIdsRef.current.add(stoppedTurnId);
     setDesktopChatError(null);
     localChatSendInFlightRef.current = null;
     setIsDesktopChatSending(false);
@@ -316,7 +320,7 @@ export function useComposerMessageActions({
     });
 
     try {
-      await cancelDesktopChatTurn(desktopLiveTurn.id);
+      await cancelDesktopChatTurn(stoppedTurnId);
       void refreshDesktopChat(stoppedSessionId).catch(() => {});
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');

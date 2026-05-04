@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Braces,
@@ -383,11 +383,13 @@ function FoldableToolTimeline({
   thinkingText,
   active,
   completed,
+  trailing,
 }: {
   tools: ToolSnapshot[];
   thinkingText: string;
   active: boolean;
   completed: boolean;
+  trailing?: ReactNode;
 }) {
   const [expandedTimeline, setExpandedTimeline] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
@@ -400,19 +402,22 @@ function FoldableToolTimeline({
 
   return (
     <section className={cn('app-transcript-tool-timeline', active && 'app-transcript-tool-timeline-active')}>
-      <button
-        type="button"
-        className={cn('app-transcript-tool-timeline-summary', active && 'app-transcript-tool-timeline-summary-active')}
-        onClick={() => setExpandedTimeline((current) => !current)}
-        aria-expanded={expandedTimeline}
-      >
-        <span className="app-transcript-tool-timeline-summary-copy min-w-0">
-          <span className="app-transcript-tool-timeline-summary-line min-w-0">
-            <span className="app-transcript-tool-timeline-summary-text truncate">{summary}</span>
-            <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', expandedTimeline && 'rotate-90')} aria-hidden="true" />
+      <div className="app-transcript-tool-timeline-row flex w-full items-center gap-2">
+        <button
+          type="button"
+          className={cn('app-transcript-tool-timeline-summary min-w-0 flex-1', active && 'app-transcript-tool-timeline-summary-active')}
+          onClick={() => setExpandedTimeline((current) => !current)}
+          aria-expanded={expandedTimeline}
+        >
+          <span className="app-transcript-tool-timeline-summary-copy min-w-0">
+            <span className="app-transcript-tool-timeline-summary-line min-w-0">
+              <span className="app-transcript-tool-timeline-summary-text truncate">{summary}</span>
+              <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', expandedTimeline && 'rotate-90')} aria-hidden="true" />
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        {trailing ? <div className="shrink-0">{trailing}</div> : null}
+      </div>
 
       {expandedTimeline ? (
         <div className="app-transcript-timeline-list">
@@ -496,13 +501,16 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
 }
 
 export type StopBridgeAgentRequestHandler = (request: BridgeAgentRequestControl) => Promise<void> | void;
+export type StopActiveTurnHandler = () => Promise<void> | void;
 
-function BridgeAgentStopButton({
-  request,
+function TurnStopButton({
   onStop,
+  ariaLabel = 'Stop agent request',
+  stoppingLabel = 'Stopping agent request',
 }: {
-  request: BridgeAgentRequestControl;
-  onStop?: StopBridgeAgentRequestHandler;
+  onStop?: StopActiveTurnHandler;
+  ariaLabel?: string;
+  stoppingLabel?: string;
 }) {
   const [stopping, setStopping] = useState(false);
   if (!onStop) return null;
@@ -511,13 +519,14 @@ function BridgeAgentStopButton({
     <button
       type="button"
       className="app-bridge-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
-      aria-label={stopping ? 'Stopping agent request' : 'Stop agent request'}
-      title={stopping ? 'Stopping…' : 'Stop agent request'}
+      aria-label={stopping ? stoppingLabel : ariaLabel}
+      title={stopping ? 'Stopping…' : ariaLabel}
       disabled={stopping}
       onClick={(event) => {
         event.stopPropagation();
+        event.preventDefault();
         setStopping(true);
-        void Promise.resolve(onStop(request)).catch(() => {
+        void Promise.resolve(onStop()).catch(() => {
           setStopping(false);
         });
       }}
@@ -525,6 +534,17 @@ function BridgeAgentStopButton({
       <Square className="h-2 w-2 fill-current" aria-hidden="true" />
     </button>
   );
+}
+
+function BridgeAgentStopButton({
+  request,
+  onStop,
+}: {
+  request: BridgeAgentRequestControl;
+  onStop?: StopBridgeAgentRequestHandler;
+}) {
+  if (!onStop) return null;
+  return <TurnStopButton onStop={() => onStop(request)} />;
 }
 
 const ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES = 6;
@@ -582,11 +602,13 @@ function LiveChatTurnCardView({
   turn,
   historical = false,
   onStopBridgeAgentRequest,
+  onStopActiveTurn,
   onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
@@ -596,8 +618,10 @@ function LiveChatTurnCardView({
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
+  const turnIsRunning = !historical && !visibleTurn.completed;
+  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingBridgeAgentRequest;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || visibleTurn.sourceMessage));
+    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.message?.trim().length
     ? visibleTurn.message
     : visibleTurn.status === 'cancelling'
@@ -642,6 +666,8 @@ function LiveChatTurnCardView({
                   request={pendingBridgeAgentRequest}
                   onStop={onStopBridgeAgentRequest}
                 />
+              ) : activeStopAvailable ? (
+                <TurnStopButton onStop={onStopActiveTurn} />
               ) : null}
             </div>
           ) : null}
@@ -675,6 +701,14 @@ function LiveChatTurnCardView({
           thinkingText={visibleTurn.thinkingText}
           active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
           completed={visibleTurn.completed}
+          trailing={pendingBridgeAgentRequest && onStopBridgeAgentRequest ? (
+            <BridgeAgentStopButton
+              request={pendingBridgeAgentRequest}
+              onStop={onStopBridgeAgentRequest}
+            />
+          ) : activeStopAvailable ? (
+            <TurnStopButton onStop={onStopActiveTurn} />
+          ) : null}
         />
       ) : null}
 
@@ -724,6 +758,7 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
@@ -732,11 +767,13 @@ function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
   onStopBridgeAgentRequest,
+  onStopActiveTurn,
   onNavigateToMessage,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   return (
@@ -745,7 +782,12 @@ function LiveChatTurnMessageView({
       className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
     >
       <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard turn={turn} onStopBridgeAgentRequest={onStopBridgeAgentRequest} onNavigateToMessage={onNavigateToMessage} />
+      <LiveChatTurnCard
+        turn={turn}
+        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopActiveTurn={onStopActiveTurn}
+        onNavigateToMessage={onNavigateToMessage}
+      />
     </div>
   );
 }
@@ -754,6 +796,7 @@ export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );

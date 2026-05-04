@@ -199,6 +199,17 @@ async fn send_realtime_frame_and_wait(
     send_realtime_frame_and_wait_with_timeout(sender, frame, REALTIME_SEND_RESULT_TIMEOUT).await
 }
 
+fn realtime_error_should_evict(error: &str) -> bool {
+    error.contains("timed out") || error.contains("is unavailable")
+}
+
+async fn evict_stale_realtime_connection(manager: &DesktopBridgeManager, node_id: &str) {
+    let mut runtime = manager.realtime.lock().await;
+    if let Some(existing) = runtime.connections.remove(node_id) {
+        existing.task.abort();
+    }
+}
+
 async fn try_send_connected_realtime_payload(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
@@ -216,7 +227,13 @@ async fn try_send_connected_realtime_payload(
             .map(|connection| connection.sender.clone())
             .ok_or_else(|| "Realtime bridge connection is not ready yet".to_string())?
     };
-    send_realtime_frame_and_wait(sender, frame).await
+    let result = send_realtime_frame_and_wait(sender, frame).await;
+    if let Err(error) = &result {
+        if realtime_error_should_evict(error) {
+            evict_stale_realtime_connection(manager, &host.node_id).await;
+        }
+    }
+    result
 }
 
 fn realtime_payload_is_durable(payload: &Value) -> bool {
@@ -238,9 +255,9 @@ pub(super) async fn send_realtime_or_relay(
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
-) {
+) -> Result<(), String> {
     let durable = realtime_payload_is_durable(payload);
-    if try_send_connected_realtime_payload(
+    let realtime_result = try_send_connected_realtime_payload(
         manager,
         host,
         target_node_id,
@@ -248,17 +265,30 @@ pub(super) async fn send_realtime_or_relay(
         payload,
         durable,
     )
-    .await
-    .is_err()
-        && durable
-    {
-        let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
+    .await;
+    match realtime_result {
+        Ok(()) => Ok(()),
+        Err(realtime_error) if !durable => Err(realtime_error),
+        Err(realtime_error) => match relay_plaintext_message(host, target_node_id, project_id, payload).await {
+            Ok(()) => Ok(()),
+            Err(relay_error) => Err(format!(
+                "realtime: {realtime_error}; relay: {relay_error}"
+            )),
+        },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn realtime_error_should_evict_recognises_stale_signals() {
+        assert!(realtime_error_should_evict("Realtime bridge connection timed out"));
+        assert!(realtime_error_should_evict("Realtime bridge connection is unavailable"));
+        assert!(!realtime_error_should_evict("Realtime bridge connection is not ready yet"));
+        assert!(!realtime_error_should_evict("HTTP 403 forbidden"));
+    }
 
     #[test]
     fn delivery_events_are_not_durable_realtime_payloads() {

@@ -10,10 +10,12 @@ use super::constants::{
     BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE, BRIDGE_MESSAGE_TYPE_ASK,
     BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT, BRIDGE_MESSAGE_TYPE_RAW,
-    BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX, DEFAULT_BRIDGE_RUNTIME,
+    BRIDGE_MESSAGE_TYPE_RESPONSE, BRIDGE_MESSAGE_TYPE_TYPING, BRIDGE_REQUEST_ID_PREFIX,
+    DEFAULT_BRIDGE_RUNTIME,
 };
 use super::events::sender_name_for_runtime;
 use super::outreach::mark_outreach_status;
+use super::realtime::send_realtime_or_relay;
 use super::{
     add_serve_contact, append_conversation_message_to_storage_with_timestamp,
     build_conversation_only_bridge_state, current_local_server_status, default_display_name,
@@ -730,6 +732,101 @@ pub(super) async fn desktop_bridge_send_presence_impl(
     rebuild_state(manager, store, conversations).await
 }
 
+fn outreach_targets_group_session(outreach: &DesktopBridgeOutreachMetadata) -> bool {
+    outreach
+        .parent_session_kind
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+        || outreach
+            .parent_group_space_id
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+        || outreach
+            .parent_session_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("session:group:"))
+}
+
+async fn fanout_remote_agent_cancellation_status(
+    manager: &DesktopBridgeManager,
+    context: &ConversationContext,
+    outreach: &DesktopBridgeOutreachMetadata,
+    request_id: &str,
+) {
+    if !outreach_targets_group_session(outreach) {
+        return;
+    }
+    if outreach.target_kind.trim() != "bridge-agent" {
+        return;
+    }
+    let host_node_id = context.host.node_id.trim();
+    let target_node_id = outreach.target_node_id.trim();
+    let now = now_ms();
+
+    let session_thread = serde_json::json!({
+        "parentSessionId": outreach.parent_session_id.as_deref(),
+        "parentSessionTitle": outreach.parent_session_title.as_deref(),
+        "parentSessionKind": outreach.parent_session_kind.as_deref(),
+        "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
+        "participants": &outreach.parent_session_participants,
+        "parentTurnId": request_id,
+        "parentMessageId": outreach.parent_message_id.as_deref(),
+        "targetKind": outreach.target_kind.as_str(),
+        "targetDisplayName": outreach.target_display_name.as_str(),
+        "targetNodeId": outreach.target_node_id.as_str(),
+        "requestText": outreach.request_text.as_str(),
+        "contextPolicy": "session-relay",
+    });
+
+    for participant in &outreach.parent_session_participants {
+        let Some(peer_node_id) = participant
+            .bridge_node_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if peer_node_id == host_node_id || peer_node_id == target_node_id {
+            continue;
+        }
+        let payload = serde_json::json!({
+            "from": context.host.node_id,
+            "fromDisplayName": outreach.target_display_name,
+            "fromOwnerName": outreach.target_owner_name,
+            "fromRuntime": outreach.target_runtime.as_deref().unwrap_or("kordi-desktop"),
+            "fromHumanId": outreach.target_human_id,
+            "fromAgentId": outreach.target_agent_id,
+            "projectId": outreach.project_id,
+            "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
+            "requestId": request_id,
+            "sentAtMs": now,
+            "payload": {
+                "message": "Stopped",
+                "done": true,
+                "deliveryState": "cancelled",
+                "sessionThread": session_thread.clone(),
+            },
+        });
+        if let Err(error) = send_realtime_or_relay(
+            manager,
+            &context.host,
+            peer_node_id,
+            outreach.project_id.as_deref(),
+            &payload,
+        )
+        .await
+        {
+            eprintln!(
+                "Bridge cancellation fanout failed; host={}, target={}, request_id={}, error={}",
+                context.host.id, peer_node_id, request_id, error
+            );
+        }
+    }
+}
+
 pub(super) async fn desktop_bridge_cancel_outreach_impl(
     manager: &DesktopBridgeManager,
     conversation_id: String,
@@ -782,6 +879,10 @@ pub(super) async fn desktop_bridge_cancel_outreach_impl(
         .await;
     } else {
         let _ = relay_with_contact_fallback(&context, &cancelled).await;
+    }
+
+    if let Some(outreach) = context.conversation.outreach.clone() {
+        fanout_remote_agent_cancellation_status(manager, &context, &outreach, &request_id).await;
     }
 
     rebuild_state(manager, bridge_store, load_conversation_store()).await
@@ -1015,6 +1116,26 @@ mod tests {
             pending_read_receipt_request_ids(&conversation),
             vec!["req-1".to_string()]
         );
+    }
+
+    #[test]
+    fn cancel_fanout_recognises_group_session_outreach() {
+        let mut outreach = test_outreach(None);
+        assert!(!outreach_targets_group_session(&outreach));
+
+        outreach.parent_session_kind = Some("group".to_string());
+        assert!(outreach_targets_group_session(&outreach));
+
+        outreach.parent_session_kind = None;
+        outreach.parent_group_space_id = Some("session:group:root".to_string());
+        assert!(outreach_targets_group_session(&outreach));
+
+        outreach.parent_group_space_id = None;
+        outreach.parent_session_id = Some("session:group:abc".to_string());
+        assert!(outreach_targets_group_session(&outreach));
+
+        outreach.parent_session_id = Some("session:bridge:humans:foo".to_string());
+        assert!(!outreach_targets_group_session(&outreach));
     }
 
     fn test_outreach(parent_turn_id: Option<&str>) -> DesktopBridgeOutreachMetadata {

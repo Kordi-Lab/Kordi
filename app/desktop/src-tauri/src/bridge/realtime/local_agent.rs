@@ -155,14 +155,20 @@ async fn fanout_group_agent_response(
         "payload": bridge_response_payload(event, message, done),
     });
     for relay_target in relay_targets {
-        send_realtime_or_relay(
+        if let Err(error) = send_realtime_or_relay(
             manager,
             &target.host,
             &relay_target,
             event.project_id.as_deref(),
             &response,
         )
-        .await;
+        .await
+        {
+            eprintln!(
+                "Bridge group agent response fanout failed; host={}, target={}, error={}",
+                target.host.id, relay_target, error
+            );
+        }
     }
 }
 
@@ -320,14 +326,20 @@ pub(super) async fn handle_incoming_payload(
                 "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                 "payload": { "requestId": request_id, "state": "processing" },
             });
-            send_realtime_or_relay(
+            if let Err(error) = send_realtime_or_relay(
                 manager,
                 &target.host,
                 &event.from_node_id,
                 event.project_id.as_deref(),
                 &processing,
             )
-            .await;
+            .await
+            {
+                eprintln!(
+                    "Bridge processing delivery event send failed; host={}, target={}, error={}",
+                    target.host.id, event.from_node_id, error
+                );
+            }
         }
 
         if event_targets_group_session(&event) {
@@ -343,14 +355,20 @@ pub(super) async fn handle_incoming_payload(
                 "requestId": event.request_id,
                 "payload": bridge_response_payload(&event, "processing...", false),
             });
-            send_realtime_or_relay(
+            if let Err(error) = send_realtime_or_relay(
                 manager,
                 &target.host,
                 &event.from_node_id,
                 event.project_id.as_deref(),
                 &response,
             )
-            .await;
+            .await
+            {
+                eprintln!(
+                    "Bridge group processing response send failed; host={}, target={}, error={}",
+                    target.host.id, event.from_node_id, error
+                );
+            }
         }
         fanout_group_agent_response(manager, target, &event, "processing...", false).await;
 
@@ -367,14 +385,20 @@ pub(super) async fn handle_incoming_payload(
 
     apply_bridge_event_to_storage(&target.host, event, false).await?;
     if let Some(delivery_ack) = delivery_ack {
-        send_realtime_or_relay(
+        if let Err(error) = send_realtime_or_relay(
             manager,
             &target.host,
             &delivery_ack_target_node_id,
             delivery_ack_project_id.as_deref(),
             &delivery_ack,
         )
-        .await;
+        .await
+        {
+            eprintln!(
+                "Bridge delivery ack send failed; host={}, target={}, error={}",
+                target.host.id, delivery_ack_target_node_id, error
+            );
+        }
     }
     emit_bridge_state(app, local_server).await
 }

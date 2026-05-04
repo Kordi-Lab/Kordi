@@ -340,7 +340,13 @@ export function ProjectsPage({
                 onOpenSource={onOpenSource}
               />
             ))}
-            {shouldRenderLiveTurn && activeProjectLiveTurn ? <LiveChatTurnMessage turn={activeProjectLiveTurn} sender={liveTurnSender} /> : null}
+            {shouldRenderLiveTurn && activeProjectLiveTurn ? (
+              <LiveChatTurnMessage
+                turn={activeProjectLiveTurn}
+                sender={liveTurnSender}
+                onStopActiveTurn={onStopDesktopChatTurn}
+              />
+            ) : null}
           </motion.div>
         </ScrollArea>
       </div>

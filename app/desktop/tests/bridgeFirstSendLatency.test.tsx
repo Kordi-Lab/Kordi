@@ -137,6 +137,14 @@ test('successful local agent bridge relay turns still respond normally', () => {
   assert.equal(localAgentRelayTerminalDeliveryState({ succeeded: true, assistantText: 'done', error: null }), 'responded');
 });
 
+test('user-stopped local agent bridge relay turns produce a cancelled delivery state', () => {
+  assert.equal(
+    localAgentRelayTerminalDeliveryState({ succeeded: false, assistantText: '', error: null, status: 'cancelled' }),
+    'cancelled',
+  );
+  assert.equal(localAgentRelayFailureText({ error: null, status: 'cancelled' }), 'Stopped');
+});
+
 test('existing Bridge conversation can still receive bridge-message optimistic state', () => {
   const plan = bridgeConversationSendPlan({
     activeConvId: 'session:bridge:humans:existing-chat',

@@ -56,7 +56,16 @@ fn group_agent_response_delivery_targets(
     target: &LocalBridgeMailboxTarget,
     event: &ParsedMailboxEvent,
 ) -> Vec<String> {
-    let mut targets = vec![event.from_node_id.clone()];
+    let host_node_id = target.host.node_id.trim();
+    let owner_node_id = target.owner_node_id.as_deref().map(str::trim).unwrap_or("");
+    let requester_node_id = event.from_node_id.trim();
+    let mut targets = Vec::new();
+    if !requester_node_id.is_empty()
+        && requester_node_id != host_node_id
+        && requester_node_id != owner_node_id
+    {
+        targets.push(requester_node_id.to_string());
+    }
     for relay_target in group_session_thread_relay_targets(
         event,
         target.host.node_id.as_str(),
@@ -77,10 +86,16 @@ async fn send_agent_response_payload(
     project_id: Option<&str>,
     payload: &Value,
 ) {
-    if let Some(manager) = manager {
-        send_realtime_or_relay(manager, host, target_node_id, project_id, payload).await;
+    let result = if let Some(manager) = manager {
+        send_realtime_or_relay(manager, host, target_node_id, project_id, payload).await
     } else {
-        let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
+        relay_plaintext_message(host, target_node_id, project_id, payload).await
+    };
+    if let Err(error) = result {
+        eprintln!(
+            "Bridge agent response delivery failed; host={}, target={}, error={}",
+            host.id, target_node_id, error
+        );
     }
 }
 
