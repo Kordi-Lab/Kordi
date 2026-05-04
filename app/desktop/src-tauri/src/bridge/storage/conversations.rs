@@ -7,13 +7,14 @@ mod repair;
 mod schema;
 
 pub(in crate::bridge) use actions::{
-    append_conversation_message_to_storage, bridge_request_is_cancelled,
-    delete_conversations_for_host, list_runnable_bridge_agent_jobs_from_storage,
-    list_running_bridge_agent_jobs_from_storage, load_bridge_inbox_event_from_storage,
-    load_conversation_store, mark_bridge_agent_job_retry_wait_in_storage,
-    mark_bridge_agent_job_running_in_storage, mark_bridge_agent_job_terminal_in_storage,
-    mark_bridge_conversation_read_in_storage, note_peer_heartbeat_in_storage,
-    note_peer_typing_in_storage, record_bridge_inbox_event_and_agent_job, save_conversation_store,
+    append_conversation_message_to_storage, append_conversation_message_to_storage_with_timestamp,
+    bridge_request_is_cancelled, delete_conversations_for_host,
+    list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
+    load_bridge_inbox_event_from_storage, load_conversation_store,
+    mark_bridge_agent_job_retry_wait_in_storage, mark_bridge_agent_job_running_in_storage,
+    mark_bridge_agent_job_terminal_in_storage, mark_bridge_conversation_read_in_storage,
+    note_peer_heartbeat_in_storage, note_peer_typing_in_storage,
+    record_bridge_inbox_event_and_agent_job, save_conversation_store,
     update_message_delivery_state_in_storage, BridgeAgentJobInsert, BridgeAgentJobRecord,
     BridgeInboxEventInsert, BridgeInboxEventRecord,
 };

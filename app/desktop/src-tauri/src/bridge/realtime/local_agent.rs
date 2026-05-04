@@ -18,8 +18,9 @@ use super::super::events::{
 };
 use super::super::mailbox::apply_bridge_event_to_storage;
 use super::super::{
-    append_conversation_message_to_storage, decrypt_bridge_payload_for_host, load_bridge_store,
-    now_ms, record_bridge_inbox_event_and_agent_job, update_message_delivery_state_in_storage,
+    append_conversation_message_to_storage, append_conversation_message_to_storage_with_timestamp,
+    decrypt_bridge_payload_for_host, load_bridge_store, now_ms,
+    record_bridge_inbox_event_and_agent_job, update_message_delivery_state_in_storage,
     BridgeAgentJobInsert, BridgeInboxEventInsert, DesktopBridgeConversationStore,
     DesktopBridgeManager, DesktopBridgeMessageAttachment, LocalBridgeServerRuntime,
 };
@@ -184,7 +185,7 @@ fn append_local_agent_inbound_message(
         &event.from_node_id,
     );
 
-    append_conversation_message_to_storage(
+    append_conversation_message_to_storage_with_timestamp(
         &target.host.id,
         &event.from_node_id,
         peer_display_name,
@@ -205,6 +206,7 @@ fn append_local_agent_inbound_message(
         Some("processing".to_string()),
         attachments,
         true,
+        event.sent_at_ms,
     )
 }
 
@@ -417,6 +419,7 @@ mod tests {
             payload: serde_json::json!({ "message": "hello" }),
             request_id: Some("bridge_req_1".to_string()),
             project_id: None,
+            sent_at_ms: None,
         }
     }
 

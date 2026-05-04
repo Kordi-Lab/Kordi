@@ -21,6 +21,7 @@ pub(super) struct ParsedMailboxEvent {
     pub(super) payload: Value,
     pub(super) request_id: Option<String>,
     pub(super) project_id: Option<String>,
+    pub(super) sent_at_ms: Option<i64>,
 }
 
 pub(super) fn mailbox_payload_text(payload: &Value) -> String {
@@ -195,6 +196,16 @@ pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {
     }
 }
 
+fn parse_event_timestamp_ms(value: Option<&Value>) -> Option<i64> {
+    value
+        .and_then(|value| {
+            value
+                .as_i64()
+                .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+        })
+        .filter(|value| *value > 0)
+}
+
 pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailboxEvent> {
     let from_node_id = parsed
         .get("from")
@@ -242,7 +253,33 @@ pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailbox
             .get("projectId")
             .and_then(|value| value.as_str())
             .map(ToString::to_string),
+        sent_at_ms: parse_event_timestamp_ms(parsed.get("sentAtMs")).or_else(|| {
+            parse_event_timestamp_ms(
+                parsed
+                    .get("payload")
+                    .and_then(|payload| payload.get("sentAtMs")),
+            )
+        }),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_bridge_event_payload_reads_sender_timestamp() {
+        let event = parse_bridge_event_payload(&serde_json::json!({
+            "from": "peer-node",
+            "messageType": "raw",
+            "requestId": "bridge_req_1",
+            "sentAtMs": 1_777_000_001_234i64,
+            "payload": { "message": "hello" },
+        }))
+        .expect("parse event");
+
+        assert_eq!(event.sent_at_ms, Some(1_777_000_001_234));
+    }
 }
 
 pub(super) fn sender_name_for_runtime(

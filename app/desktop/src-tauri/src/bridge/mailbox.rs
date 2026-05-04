@@ -28,7 +28,8 @@ use super::mailbox_events::{
 };
 use super::outreach::mark_outreach_status;
 use super::{
-    ack_mailbox_v2, append_conversation_message_to_storage, bridge_conversation_id,
+    ack_mailbox_v2, append_conversation_message_to_storage,
+    append_conversation_message_to_storage_with_timestamp, bridge_conversation_id,
     bridge_request_is_cancelled, fetch_mailbox, list_runnable_bridge_agent_jobs_from_storage,
     list_running_bridge_agent_jobs_from_storage, load_bridge_inbox_event_from_storage,
     load_bridge_store, load_conversation_store, mark_bridge_agent_job_retry_wait_in_storage,
@@ -805,7 +806,7 @@ fn append_inbound_event_message_to_storage(
         .and_then(|value| value.as_str())
         .map(ToString::to_string);
 
-    append_conversation_message_to_storage(
+    append_conversation_message_to_storage_with_timestamp(
         &host.id,
         &event.from_node_id,
         peer_display_name,
@@ -830,6 +831,7 @@ fn append_inbound_event_message_to_storage(
         },
         attachments,
         true,
+        event.sent_at_ms,
     )?;
     Ok(Some(text))
 }

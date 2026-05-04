@@ -14,6 +14,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tower_http::cors::{Any, CorsLayer};
 
@@ -34,8 +35,18 @@ impl ServerState {
     }
 
     pub fn open_connection(&self) -> Result<Connection, rusqlite::Error> {
-        Connection::open(&self.db_path)
+        let conn = Connection::open(&self.db_path)?;
+        configure_server_connection(&conn)?;
+        Ok(conn)
     }
+}
+
+fn configure_server_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;\n         PRAGMA journal_mode = WAL;\n         PRAGMA synchronous = NORMAL;",
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -265,6 +276,7 @@ async fn health() -> axum::Json<serde_json::Value> {
 /// Start the coordination server.
 pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open db: {}", e))?;
+    configure_server_connection(&conn).map_err(|e| format!("configure db: {}", e))?;
     init_server_db(&conn).map_err(|e| e.to_string())?;
     drop(conn);
 
@@ -309,6 +321,39 @@ pub(crate) fn nodes_share_project_or_contact(
             |_| Ok(()),
         )
         .is_ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_connections_apply_busy_timeout_for_concurrent_mailbox_writes() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-busy-timeout-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+        drop(conn);
+
+        let state = ServerState::new(db_path.clone());
+        let conn = state.open_connection().expect("open server connection");
+        let busy_timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .expect("read busy timeout");
+
+        assert!(
+            busy_timeout_ms >= 5_000,
+            "server writes should wait for transient SQLite locks instead of failing immediately"
+        );
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .expect("read journal mode");
+        assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+
+        let _ = std::fs::remove_file(db_path);
+    }
 }
 
 const SERVER_SCHEMA: &str = r#"

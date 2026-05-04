@@ -467,7 +467,47 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
     attachments: Vec<DesktopBridgeMessageAttachment>,
     increment_unread: bool,
 ) -> Result<DesktopBridgeConversationStore, String> {
-    let timestamp_ms = now_ms();
+    append_conversation_message_to_storage_with_timestamp(
+        host_id,
+        peer_node_id,
+        peer_display_name,
+        peer_owner_name,
+        peer_runtime,
+        project_id,
+        project_name,
+        identity,
+        outreach,
+        direction,
+        sender,
+        text,
+        request_id,
+        delivery_state,
+        attachments,
+        increment_unread,
+        None,
+    )
+}
+
+pub(in crate::bridge) fn append_conversation_message_to_storage_with_timestamp(
+    host_id: &str,
+    peer_node_id: &str,
+    peer_display_name: Option<String>,
+    peer_owner_name: Option<String>,
+    peer_runtime: String,
+    project_id: Option<String>,
+    project_name: Option<String>,
+    identity: Option<DesktopBridgeIdentitySnapshot>,
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+    direction: &str,
+    sender: Option<String>,
+    text: String,
+    request_id: Option<String>,
+    delivery_state: Option<String>,
+    attachments: Vec<DesktopBridgeMessageAttachment>,
+    increment_unread: bool,
+    timestamp_ms_override: Option<i64>,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let timestamp_ms = timestamp_ms_override.unwrap_or_else(now_ms);
     let request_id_for_status = request_id.clone();
     let delivery_state_for_status = delivery_state.clone();
     let text_for_status = text.clone();

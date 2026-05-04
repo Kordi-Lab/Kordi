@@ -12,7 +12,10 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use super::constants::API_STYLE_SERVE;
+use super::constants::{
+    API_STYLE_SERVE, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT,
+    BRIDGE_MESSAGE_TYPE_TYPING,
+};
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
     build_conversation_only_bridge_state, encrypt_bridge_payload_for_target,
@@ -184,6 +187,19 @@ async fn try_send_connected_realtime_payload(
         .map_err(|_| "Realtime bridge connection is unavailable".to_string())
 }
 
+fn realtime_payload_is_durable(payload: &Value) -> bool {
+    let message_type = payload
+        .get("messageType")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    !matches!(
+        message_type,
+        BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT
+            | BRIDGE_MESSAGE_TYPE_TYPING
+            | BRIDGE_MESSAGE_TYPE_HEARTBEAT
+    )
+}
+
 async fn send_realtime_or_relay(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
@@ -191,11 +207,41 @@ async fn send_realtime_or_relay(
     project_id: Option<&str>,
     payload: &Value,
 ) {
-    if try_send_connected_realtime_payload(manager, host, target_node_id, project_id, payload, true)
-        .await
-        .is_err()
+    let durable = realtime_payload_is_durable(payload);
+    if try_send_connected_realtime_payload(
+        manager,
+        host,
+        target_node_id,
+        project_id,
+        payload,
+        durable,
+    )
+    .await
+    .is_err()
+        && durable
     {
         let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delivery_events_are_not_durable_realtime_payloads() {
+        let delivery = serde_json::json!({
+            "messageType": "delivery_event",
+            "payload": { "requestId": "bridge_req_1", "state": "read" },
+        });
+        let chat_message = serde_json::json!({
+            "messageType": "raw",
+            "requestId": "bridge_req_2",
+            "payload": { "message": "hello" },
+        });
+
+        assert!(!realtime_payload_is_durable(&delivery));
+        assert!(realtime_payload_is_durable(&chat_message));
     }
 }
 

@@ -55,10 +55,11 @@ use self::state::{
 };
 #[allow(unused_imports)]
 use self::storage::{
-    append_conversation_message_to_storage, bridge_conversation_id, bridge_hosts_match,
-    bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
-    desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
-    format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
+    append_conversation_message_to_storage, append_conversation_message_to_storage_with_timestamp,
+    bridge_conversation_id, bridge_hosts_match, bridge_request_is_cancelled,
+    delete_bridge_host_secrets, delete_conversations_for_host, desktop_bridge_config_path,
+    desktop_bridge_conversations_path, format_time_label, format_time_label_with_seconds,
+    hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
     list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
     load_bridge_inbox_event_from_storage, load_bridge_store, load_conversation_store,
     load_legacy_bridge_config, mark_bridge_agent_job_retry_wait_in_storage,
