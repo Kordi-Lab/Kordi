@@ -33,7 +33,6 @@ export type {
 
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
 export type ChatChannel = 'contact' | 'agent';
-export type ChatSort = 'latest' | 'name';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
 export type ContactClass = 'my-agents' | 'other-users-agents' | 'other-users';

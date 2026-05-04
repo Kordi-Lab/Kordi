@@ -1,6 +1,5 @@
 import type {
   ChatChannel,
-  ChatSort,
   Conversation,
   ConversationParticipant,
   ParticipantSpaceAvatar,
@@ -376,11 +375,22 @@ export function spaceMatchesChannel(space: ParticipantSpaceViewModel, channel: C
   return space.kind === 'direct-human' || space.kind === 'group';
 }
 
-function compareSpacesBySort(left: ParticipantSpaceViewModel, right: ParticipantSpaceViewModel, sort: ChatSort) {
-  if (sort === 'name') {
-    return left.title.localeCompare(right.title) || right.updatedAtMs - left.updatedAtMs;
-  }
-  return right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title);
+export type AgentIdentity = {
+  name: string;
+  avatarSeed: string;
+  profileImageUrl: string | null;
+};
+
+export function primaryAgentForConversation(conversation: Conversation): AgentIdentity | null {
+  const canonical = conversation.canonicalParticipants ?? [];
+  const list = canonical.length > 0 ? canonical : fallbackParticipants(conversation);
+  const agent = list.find((participant) => !isSelfParticipant(participant) && participant.kind === 'agent');
+  if (!agent) return null;
+  return {
+    name: agent.name,
+    avatarSeed: agent.avatarKey || agent.id || agent.name,
+    profileImageUrl: agent.profileImageUrl ?? null,
+  };
 }
 
 export function ensureSelfParticipantSpace(
@@ -421,10 +431,9 @@ export function filterParticipantSpaces(
   spaces: ParticipantSpaceViewModel[],
   query: string,
   channel: ChatChannel,
-  sort: ChatSort = 'latest',
 ) {
   const normalized = query.trim().toLowerCase();
-  const filtered = spaces.filter((space) => {
+  return spaces.filter((space) => {
     if (!spaceMatchesChannel(space, channel)) return false;
     if (!normalized) return true;
     const haystack = [
@@ -435,6 +444,4 @@ export function filterParticipantSpaces(
     ].join(' ').toLowerCase();
     return haystack.includes(normalized);
   });
-
-  return [...filtered].sort((left, right) => compareSpacesBySort(left, right, sort));
 }

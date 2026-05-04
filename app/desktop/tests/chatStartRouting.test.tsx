@@ -68,8 +68,6 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     handleCreateChatSession: async () => {},
     chatSearch: '',
     setChatSearch: () => {},
-    chatSort: 'latest',
-    setChatSort: () => {},
     isDesktopChatLoading: false,
     desktopChatError: null,
     filteredConversations: [],

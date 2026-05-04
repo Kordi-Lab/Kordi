@@ -18,7 +18,6 @@ import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   CanonicalSessionState,
-  ChatSort,
   Contact,
   Conversation,
   DesktopBridgeConversation,
@@ -101,7 +100,6 @@ type UseWorkspaceViewModelsArgs = {
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
-  chatSort: ChatSort;
   chatSearch: string;
   projectSearch: string;
   contactSearch: string;
@@ -127,7 +125,6 @@ export function useWorkspaceViewModels({
   activeConvId,
   activeProjectId,
   activeProjectSessionId,
-  chatSort,
   chatSearch,
   projectSearch,
   contactSearch,
@@ -370,12 +367,12 @@ export function useWorkspaceViewModels({
     [chatConversations],
   );
   const contactParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact', chatSort),
-    [chatSearch, chatSort, participantSpaces],
+    () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact'),
+    [chatSearch, participantSpaces],
   );
   const agentParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'agent', chatSort),
-    [chatSearch, chatSort, participantSpaces],
+    () => filterParticipantSpaces(participantSpaces, chatSearch, 'agent'),
+    [chatSearch, participantSpaces],
   );
 
   const displayedContacts = useMemo<Contact[]>(() => {

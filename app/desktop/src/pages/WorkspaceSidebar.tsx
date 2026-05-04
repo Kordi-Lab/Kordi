@@ -17,7 +17,8 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { Agent, ChatSort, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
+import type { Agent, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -165,8 +166,6 @@ type WorkspaceSidebarProps = {
   onCreateChatSession: () => void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatSort: ChatSort;
-  setChatSort: Dispatch<SetStateAction<ChatSort>>;
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   participantSpaces: ParticipantSpaceItem[];
@@ -358,8 +357,6 @@ export function WorkspaceSidebar({
   chatConversations,
   chatSearch,
   setChatSearch,
-  chatSort,
-  setChatSort,
   desktopChatError,
   participantSpaces,
   contactParticipantSpaces,
@@ -633,24 +630,81 @@ export function WorkspaceSidebar({
     </ScrollArea>
   );
 
-  const renderSortToggle = () => (
-    <div className="mb-2 space-y-1.5">
-      <div className="app-filter-tabs w-full">
-        {([
-          { id: 'latest', label: 'Latest' },
-          { id: 'name', label: 'A–Z' },
-        ] as Array<{ id: ChatSort; label: string }>).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setChatSort(tab.id)}
-            className={chatSort === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
-          >
-            {tab.label}
-          </button>
-        ))}
+  const flatAgentSessions = agentParticipantSpaces
+    .flatMap((space) => space.sessions.map((session) => ({ session, space })))
+    .sort((left, right) => right.session.updatedAtMs - left.session.updatedAtMs
+      || left.session.title.localeCompare(right.session.title));
+
+  const renderAgentSessionRow = ({ session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }) => {
+    const conversation = session.conversation;
+    const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
+    const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
+    const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
+    const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
+    const sessionMessageCount = participantSpaceSessionMessageCount(session);
+    const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
+    const agentIdentity = primaryAgentForConversation(conversation);
+    const agentName = agentIdentity?.name ?? space.title;
+    const avatarSeed = agentIdentity?.avatarSeed ?? space.avatarStack[0]?.seed ?? space.id;
+    const avatarUrl = agentIdentity?.profileImageUrl ?? space.avatarStack[0]?.imageUrl ?? null;
+    return (
+      <button
+        key={session.id}
+        type="button"
+        data-testid="agent-session-row"
+        data-session-preview={sessionPreview}
+        data-session-preview-line={sessionPreviewLine}
+        data-session-message-count={sessionMessageCount}
+        data-session-updated-at={rowTimeLabel}
+        onClick={() => onSelectChatSession(session.id)}
+        onContextMenu={(event) => {
+          const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+          if (!target) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setSessionContextMenu(target);
+        }}
+        className={cn('app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white', isActive && 'app-session-row-active')}
+      >
+        <div className="relative h-9 w-9 shrink-0">
+          <IdentityAvatar
+            kind="agent"
+            seed={avatarSeed}
+            name={agentName}
+            imageUrl={avatarUrl ?? undefined}
+            className="h-9 w-9 border border-white/10"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</div>
+          <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', isActive && 'app-participant-space-row-preview-active', session.statusIndicator?.live && 'app-participant-space-session-preview-live')} title={sessionPreviewLine}>
+            {sessionPreviewLine}
+          </div>
+          <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]" title={agentName}>
+            {agentName}
+          </div>
+        </div>
+        <SidebarSessionMetaColumn
+          timeLabel={rowTimeLabel}
+          unreadCount={session.unread}
+          unreadScope="agent-session"
+          indicator={session.statusIndicator}
+          active={isActive}
+        />
+      </button>
+    );
+  };
+
+  const renderAgentSessionList = (rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>, emptyMessage: string) => (
+    <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="agent-sessions-flat">
+      <div className="w-full space-y-0.5">
+        {rows.length > 0 ? rows.map(renderAgentSessionRow) : (
+          <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
+            {emptyMessage}
+          </div>
+        )}
       </div>
-    </div>
+    </ScrollArea>
   );
 
   return (
@@ -754,8 +808,6 @@ export function WorkspaceSidebar({
                       className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                     />
                   </div>
-
-                  {renderSortToggle()}
 
                   {desktopChatError ? (
                     <div className="mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
@@ -927,7 +979,7 @@ export function WorkspaceSidebar({
                     <div>
                       <div className="text-[15px] font-semibold text-white">Agents</div>
                       <div className="mt-0.5 text-[11px] text-slate-400">
-                        {agentParticipantSpaces.length} {agentParticipantSpaces.length === 1 ? 'conversation' : 'conversations'}
+                        {flatAgentSessions.length} {flatAgentSessions.length === 1 ? 'conversation' : 'conversations'}
                       </div>
                     </div>
                     <button
@@ -955,9 +1007,7 @@ export function WorkspaceSidebar({
                     />
                   </div>
 
-                  {renderSortToggle()}
-
-                  {renderParticipantSpaceList(agentParticipantSpaces, 'No agent conversations yet. Start one to see it here.')}
+                  {renderAgentSessionList(flatAgentSessions, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
 

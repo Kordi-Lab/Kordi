@@ -109,8 +109,6 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onCreateChatSession: () => {},
     chatSearch: '',
     setChatSearch: () => {},
-    chatSort: 'latest',
-    setChatSort: () => {},
     isDesktopChatLoading: false,
     desktopChatError: null,
     filteredConversations: chatConversations,
@@ -165,8 +163,7 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   }) as never));
 
   assert.match(markup, /data-chat-sidebar-mode="participant-spaces-inline"/);
-  assert.match(markup, /Latest/);
-  assert.match(markup, /A–Z/);
+  assert.doesNotMatch(markup, /app-filter-tabs/);
   assert.doesNotMatch(markup, />People</);
   assert.doesNotMatch(markup, />Agents</);
   assert.match(markup, /Bob/);

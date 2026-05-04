@@ -16,8 +16,6 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleCreateChatSession: args.handleCreateChatSession,
       chatSearch: args.chatSearch,
       setChatSearch: args.setChatSearch,
-      chatSort: args.chatSort,
-      setChatSort: args.setChatSort,
       isDesktopChatLoading: args.isDesktopChatLoading,
       desktopChatError: args.desktopChatError,
       participantSpaces: args.participantSpaces,

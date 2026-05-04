@@ -644,7 +644,6 @@ test('filterParticipantSpaces splits spaces into Contact and Agent channels', ()
 
   assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.kind), ['direct-human', 'group']);
   assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.kind), ['self']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact', 'name').map((space) => space.title), ['Bob', 'Bob, Alex']);
   assert.equal(filterParticipantSpaces(spaces, 'design', 'contact').length, 1);
   assert.equal(filterParticipantSpaces(spaces, 'design', 'agent').length, 0);
   assert.equal(filterParticipantSpaces(spaces, 'kordi', 'agent').length, 1);

@@ -5,7 +5,6 @@ import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settin
 import type {
   Agent,
   BridgeAgentRequestControl,
-  ChatSort,
   Contact,
   ContactClass,
   ContactRequest,
@@ -78,8 +77,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateChatSession: () => Promise<void>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatSort: ChatSort;
-  setChatSort: Dispatch<SetStateAction<ChatSort>>;
   runtimeProjects: Project[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;
@@ -335,8 +332,6 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
-  | 'chatSort'
-  | 'setChatSort'
   | 'isDesktopChatLoading'
   | 'desktopChatError'
   | 'activeConvId'
