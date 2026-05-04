@@ -192,6 +192,67 @@ test('buildReplyAttribution prefers the latest matching @mention over later non-
   assert.equal(result.messages[3]?.turn?.sourceMessage?.text, '@MyKordi fully debug and create this issue for fix');
 });
 
+test('buildReplyAttribution keeps pending live turn on agent request before later person mention', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:my-kordi-request',
+      text: '@MyKordi can you check the related popular work for me',
+    }),
+    humanRequest({
+      id: 'msg:person-mention',
+      text: '@Testuser6 also you need find the popular github repo',
+      mentions: [{ label: 'Testuser6', targetKind: 'bridge-person' }],
+    }),
+  ];
+  const liveTurn = turn({
+    id: 'turn-my-kordi',
+    prompt: '@Kordi can you check the related popular work for me',
+    status: 'processing',
+    message: 'Processing…',
+    assistantText: '',
+    completed: false,
+    succeeded: false,
+  });
+
+  const result = buildReplyAttribution(messages, liveTurn, { inferLatestHumanRequest: true });
+
+  assert.equal(replyStatusText(result.messages[0]?.replySummary ?? null), 'Replying…');
+  assert.equal(result.messages[1]?.replySummary, undefined);
+  assert.equal(result.liveTurn?.sourceMessage?.messageId, 'msg:my-kordi-request');
+});
+
+test('buildReplyAttribution scopes inferred replies to each mentioned agent request', () => {
+  const messages: Message[] = [
+    humanRequest({ id: 'msg:alice-request', text: '@AliceKordi review the memory model.' }),
+    humanRequest({ id: 'msg:bob-request', text: '@BobKordi find related repos.' }),
+    {
+      id: 'msg:alice-response',
+      role: 'external-agent',
+      sender: 'AliceKordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:05',
+      turn: turn({ id: 'turn-alice', assistantText: 'Memory model notes.' }),
+    },
+    {
+      id: 'msg:bob-response',
+      role: 'external-agent',
+      sender: 'BobKordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:06',
+      turn: turn({ id: 'turn-bob', assistantText: 'Related repo notes.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[1]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[2]?.turn?.sourceMessage?.messageId, 'msg:alice-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:bob-request');
+});
+
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {
   const request = humanRequest({ id: 'msg:live-request', text: '@MyKordi summarize launch risks.' });
   const liveTurn = turn({
