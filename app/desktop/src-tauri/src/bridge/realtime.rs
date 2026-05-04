@@ -7,12 +7,15 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::Emitter;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use super::constants::API_STYLE_SERVE;
+use super::constants::{
+    API_STYLE_SERVE, BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT, BRIDGE_MESSAGE_TYPE_HEARTBEAT,
+    BRIDGE_MESSAGE_TYPE_TYPING,
+};
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
     build_conversation_only_bridge_state, encrypt_bridge_payload_for_target,
@@ -31,9 +34,16 @@ pub(super) struct RealtimeBridgeRuntime {
 
 struct RealtimeBridgeConnection {
     fingerprint: String,
-    sender: mpsc::UnboundedSender<String>,
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
     task: tokio::task::JoinHandle<()>,
 }
+
+struct RealtimeOutboundFrame {
+    text: String,
+    result: oneshot::Sender<Result<(), String>>,
+}
+
+const REALTIME_SEND_RESULT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
 struct LocalRealtimeTarget {
@@ -126,6 +136,7 @@ async fn encode_outbound_frame(
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
+    durable: bool,
 ) -> Result<String, String> {
     let encrypted_payload =
         encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
@@ -133,6 +144,7 @@ async fn encode_outbound_frame(
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     Ok(serde_json::json!({
         "dst": target_node_id,
+        "durable": durable,
         "data": data,
     })
     .to_string())
@@ -162,37 +174,136 @@ async fn emit_after_storage_write(
     emit_bridge_state(app, local_server).await
 }
 
+async fn send_realtime_frame_and_wait_with_timeout(
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
+    frame: String,
+    timeout_after: Duration,
+) -> Result<(), String> {
+    let (result, waiter) = oneshot::channel();
+    sender
+        .send(RealtimeOutboundFrame {
+            text: frame,
+            result,
+        })
+        .map_err(|_| "Realtime bridge connection is unavailable".to_string())?;
+    tokio::time::timeout(timeout_after, waiter)
+        .await
+        .map_err(|_| "Realtime bridge connection timed out".to_string())?
+        .map_err(|_| "Realtime bridge connection is unavailable".to_string())?
+}
+
+async fn send_realtime_frame_and_wait(
+    sender: mpsc::UnboundedSender<RealtimeOutboundFrame>,
+    frame: String,
+) -> Result<(), String> {
+    send_realtime_frame_and_wait_with_timeout(sender, frame, REALTIME_SEND_RESULT_TIMEOUT).await
+}
+
 async fn try_send_connected_realtime_payload(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
-    let frame = encode_outbound_frame(host, target_node_id, project_id, payload).await?;
-    let runtime = manager.realtime.lock().await;
-    let connection = runtime
-        .connections
-        .get(&host.node_id)
-        .ok_or_else(|| "Realtime bridge connection is not ready yet".to_string())?;
-    connection
-        .sender
-        .send(frame)
-        .map_err(|_| "Realtime bridge connection is unavailable".to_string())
+    let frame = encode_outbound_frame(host, target_node_id, project_id, payload, durable).await?;
+    let sender = {
+        let runtime = manager.realtime.lock().await;
+        runtime
+            .connections
+            .get(&host.node_id)
+            .map(|connection| connection.sender.clone())
+            .ok_or_else(|| "Realtime bridge connection is not ready yet".to_string())?
+    };
+    send_realtime_frame_and_wait(sender, frame).await
 }
 
-async fn send_realtime_or_relay(
+fn realtime_payload_is_durable(payload: &Value) -> bool {
+    let message_type = payload
+        .get("messageType")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    !matches!(
+        message_type,
+        BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT
+            | BRIDGE_MESSAGE_TYPE_TYPING
+            | BRIDGE_MESSAGE_TYPE_HEARTBEAT
+    )
+}
+
+pub(super) async fn send_realtime_or_relay(
     manager: &DesktopBridgeManager,
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     project_id: Option<&str>,
     payload: &Value,
 ) {
-    if try_send_connected_realtime_payload(manager, host, target_node_id, project_id, payload)
-        .await
-        .is_err()
+    let durable = realtime_payload_is_durable(payload);
+    if try_send_connected_realtime_payload(
+        manager,
+        host,
+        target_node_id,
+        project_id,
+        payload,
+        durable,
+    )
+    .await
+    .is_err()
+        && durable
     {
         let _ = relay_plaintext_message(host, target_node_id, project_id, payload).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delivery_events_are_not_durable_realtime_payloads() {
+        let delivery = serde_json::json!({
+            "messageType": "delivery_event",
+            "payload": { "requestId": "bridge_req_1", "state": "read" },
+        });
+        let chat_message = serde_json::json!({
+            "messageType": "raw",
+            "requestId": "bridge_req_2",
+            "payload": { "message": "hello" },
+        });
+
+        assert!(!realtime_payload_is_durable(&delivery));
+        assert!(realtime_payload_is_durable(&chat_message));
+    }
+
+    #[tokio::test]
+    async fn realtime_send_waits_for_writer_failure_before_reporting_success() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<RealtimeOutboundFrame>();
+        let send_task = tokio::spawn(send_realtime_frame_and_wait(tx, "queued-frame".to_string()));
+
+        let outbound = rx.recv().await.expect("queued outbound frame");
+        assert_eq!(outbound.text, "queued-frame");
+        let _ = outbound.result.send(Err("writer send failed".to_string()));
+
+        let result = send_task.await.expect("send task completed");
+        assert_eq!(result.unwrap_err(), "writer send failed");
+    }
+
+    #[tokio::test]
+    async fn realtime_send_times_out_when_writer_does_not_report_result() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<RealtimeOutboundFrame>();
+        let send_task = tokio::spawn(send_realtime_frame_and_wait_with_timeout(
+            tx,
+            "queued-frame".to_string(),
+            Duration::from_millis(10),
+        ));
+
+        let outbound = rx.recv().await.expect("queued outbound frame");
+        assert_eq!(outbound.text, "queued-frame");
+
+        let result = send_task.await.expect("send task completed");
+        assert_eq!(result.unwrap_err(), "Realtime bridge connection timed out");
+        drop(outbound);
     }
 }
 
@@ -201,7 +312,7 @@ async fn run_realtime_connection(
     app: tauri::AppHandle,
     local_server: std::sync::Arc<tokio::sync::Mutex<super::LocalBridgeServerRuntime>>,
     target: LocalRealtimeTarget,
-    mut receiver: mpsc::UnboundedReceiver<String>,
+    mut receiver: mpsc::UnboundedReceiver<RealtimeOutboundFrame>,
 ) {
     let ws_url = websocket_url(&target.host.coordination);
 
@@ -239,7 +350,13 @@ async fn run_realtime_connection(
                     let Some(outbound) = outbound else {
                         return;
                     };
-                    if writer.send(Message::Text(outbound)).await.is_err() {
+                    let result = writer
+                        .send(Message::Text(outbound.text))
+                        .await
+                        .map_err(|_| "Realtime bridge connection is unavailable".to_string());
+                    let should_reconnect = result.is_err();
+                    let _ = outbound.result.send(result);
+                    if should_reconnect {
                         break;
                     }
                 }
@@ -349,6 +466,7 @@ pub(super) async fn send_realtime_payload(
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
     if !is_realtime_host(host) {
         return Err("Realtime bridge chat is not available for this host".to_string());
@@ -357,5 +475,5 @@ pub(super) async fn send_realtime_payload(
     let store = super::load_bridge_store();
     sync_realtime_connections(manager, &store).await;
 
-    try_send_connected_realtime_payload(manager, host, target_node_id, None, payload).await
+    try_send_connected_realtime_payload(manager, host, target_node_id, None, payload, durable).await
 }

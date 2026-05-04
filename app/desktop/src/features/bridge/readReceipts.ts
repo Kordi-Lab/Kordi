@@ -56,6 +56,14 @@ export function activeUnreadBridgeConversationsForSession(
     .filter(shouldMarkBridgeConversationRead);
 }
 
+export function bridgeConversationIdsToMarkReadOnUserActivity(
+  conversations: DesktopBridgeConversation[],
+  activeSessionId: string,
+) {
+  return activeUnreadBridgeConversationsForSession(conversations, activeSessionId)
+    .map((conversation) => conversation.id);
+}
+
 export function bridgeReadReceiptSignature(conversation: DesktopBridgeConversation) {
   return [
     conversation.id,

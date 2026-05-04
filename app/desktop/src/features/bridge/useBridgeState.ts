@@ -51,6 +51,20 @@ type BridgeSettingsDraft = {
   ownerName: string;
 };
 
+export type BridgeMailboxPollTrigger = 'startup' | 'focus' | 'pageshow' | 'visibilitychange' | 'routine';
+
+const BRIDGE_MAILBOX_PROGRESS_DELAY_MS = 600;
+const BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS = 15_000;
+
+export function shouldShowBridgeMailboxPollProgress(
+  trigger: BridgeMailboxPollTrigger,
+  nowMs: number,
+  lastShownAtMs: number,
+) {
+  if (trigger === 'routine') return false;
+  return lastShownAtMs <= 0 || nowMs - lastShownAtMs >= BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS;
+}
+
 type BridgeDraftHost = {
   id?: string | null;
   serverUrl?: string | null;
@@ -144,7 +158,7 @@ function mergeBridgeConversation(
   };
 }
 
-function markBridgeConversationsReadInState(
+export function markBridgeConversationsReadInState(
   state: DesktopBridgeState | null,
   conversationIds: string[],
 ): DesktopBridgeState | null {
@@ -252,6 +266,8 @@ export function useBridgeState({
   });
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
+  const lastBridgePollProgressShownAtRef = useRef(0);
+  const bridgePollProgressTimerRef = useRef<number | null>(null);
   const mailboxPollFlightRef = useRef(createSingleFlightState());
   const activeBridgeReadRequestRef = useRef<string | null>(null);
   const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
@@ -516,7 +532,7 @@ export function useBridgeState({
 
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
-    const poll = () => {
+    const poll = (trigger: BridgeMailboxPollTrigger) => {
       const run = requestSingleFlightRun(mailboxPollFlightRef.current, async () => {
         try {
           const state = await pollDesktopBridgeMailbox();
@@ -526,17 +542,55 @@ export function useBridgeState({
           // keep polling lightweight; show errors only on explicit actions
         }
       });
-      if (!run) return;
-      setIsBridgePolling(true);
-      void run.finally(() => {
+      const shouldShowProgress = shouldShowBridgeMailboxPollProgress(
+        trigger,
+        Date.now(),
+        lastBridgePollProgressShownAtRef.current,
+      );
+      if (!shouldShowProgress) return;
+      const activeRun = run ?? mailboxPollFlightRef.current.currentPromise;
+      if (!activeRun) return;
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+      }
+      bridgePollProgressTimerRef.current = window.setTimeout(() => {
+        bridgePollProgressTimerRef.current = null;
+        lastBridgePollProgressShownAtRef.current = Date.now();
+        setIsBridgePolling(true);
+      }, BRIDGE_MAILBOX_PROGRESS_DELAY_MS);
+      void activeRun.finally(() => {
+        if (bridgePollProgressTimerRef.current !== null) {
+          window.clearTimeout(bridgePollProgressTimerRef.current);
+          bridgePollProgressTimerRef.current = null;
+        }
         setIsBridgePolling(false);
       });
     };
-    const interval = window.setInterval(poll, 4000);
-    window.addEventListener('focus', poll);
+    const pollWhenVisible = (trigger: BridgeMailboxPollTrigger) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      poll(trigger);
+    };
+    pollWhenVisible('startup');
+    const interval = window.setInterval(() => poll('routine'), 4000);
+    const pollOnFocus = () => poll('focus');
+    const pollOnPageShow = () => pollWhenVisible('pageshow');
+    const pollOnVisibilityChange = () => pollWhenVisible('visibilitychange');
+    window.addEventListener('focus', pollOnFocus);
+    window.addEventListener('pageshow', pollOnPageShow);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', pollOnVisibilityChange);
+    }
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('focus', poll);
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+        bridgePollProgressTimerRef.current = null;
+      }
+      window.removeEventListener('focus', pollOnFocus);
+      window.removeEventListener('pageshow', pollOnPageShow);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', pollOnVisibilityChange);
+      }
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
 

@@ -191,6 +191,35 @@ function countMatches(value: string, pattern: RegExp) {
   return value.match(pattern)?.length ?? 0;
 }
 
+test('WorkspaceSidebar shows Bridge message sync progress inline in the chats subtitle', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    isBridgePolling: true,
+  }) as never));
+
+  assert.match(markup, /2 total/);
+  assert.match(markup, /syncing…/);
+  assert.match(markup, /data-bridge-sync-status="syncing"/);
+  assert.match(markup, /app-bridge-sync-dot/);
+  assert.doesNotMatch(markup, /Syncing messages/);
+  assert.doesNotMatch(markup, /pulling missed Bridge updates/);
+});
+
+test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () => {
+  const caughtUpConversations = [
+    conversation({ id: 'chat-1', name: 'Alice', unread: 0 }),
+    conversation({ id: 'chat-2', name: 'Bob', unread: 0 }),
+  ];
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations: caughtUpConversations,
+    isBridgePolling: false,
+  }) as never));
+
+  assert.match(markup, /2 total/);
+  assert.match(markup, /all caught up/);
+  assert.match(markup, /data-bridge-sync-status="idle"/);
+  assert.doesNotMatch(markup, /syncing…/);
+});
+
 test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
   const chatConversations = [
     conversation({
@@ -313,6 +342,15 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*border:\s*0;[^}]*border-radius:\s*8px/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 62%, var\(--utility-foreground\)\)/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border:\s*0;[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 72%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*none/s);
+});
+
+test('Bridge sync subtitle CSS uses color and reduced-motion-safe animation', () => {
+  const shellCss = readDesktopShellCss();
+
+  assert.match(shellCss, /\.app-bridge-sync-status\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 68%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-bridge-sync-dot\s*{[^}]*background:\s*conic-gradient/s);
+  assert.match(shellCss, /\.app-bridge-sync-status\[data-bridge-sync-status="syncing"\]\s+\.app-bridge-sync-dot\s*{[^}]*animation:\s*app-bridge-sync-pulse/s);
+  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.app-bridge-sync-status\[data-bridge-sync-status="syncing"\]\s+\.app-bridge-sync-dot\s*{[^}]*animation:\s*none/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {

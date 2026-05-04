@@ -15,7 +15,7 @@ use super::constants::{
 use super::events::sender_name_for_runtime;
 use super::outreach::mark_outreach_status;
 use super::{
-    add_serve_contact, append_conversation_message_to_storage,
+    add_serve_contact, append_conversation_message_to_storage_with_timestamp,
     build_conversation_only_bridge_state, current_local_server_status, default_display_name,
     load_bridge_store, load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
     relay_plaintext_message, save_conversation_store, send_realtime_payload,
@@ -382,12 +382,14 @@ async fn send_realtime_with_contact_fallback(
     manager: &DesktopBridgeManager,
     context: &ConversationContext,
     payload: &Value,
+    durable: bool,
 ) -> Result<(), String> {
     match send_realtime_payload(
         manager,
         &context.host,
         &context.conversation.peer_node_id,
         payload,
+        durable,
     )
     .await
     {
@@ -399,6 +401,7 @@ async fn send_realtime_with_contact_fallback(
                 &context.host,
                 &context.conversation.peer_node_id,
                 payload,
+                durable,
             )
             .await
         }
@@ -414,18 +417,18 @@ async fn send_read_receipt(
     let payload = read_receipt_payload(&context.host.node_id, request_id);
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        match send_realtime_with_contact_fallback(manager, context, &payload).await {
-            Ok(()) => return Ok(()),
-            Err(realtime_error) => {
-                eprintln!(
-                    "Bridge read receipt realtime send failed; conversation_id={}, target_node_id={}, request_id={}, error={}",
-                    context.conversation.id,
-                    context.conversation.peer_node_id,
-                    request_id,
-                    realtime_error
-                );
-            }
+        if let Err(realtime_error) =
+            send_realtime_with_contact_fallback(manager, context, &payload, false).await
+        {
+            eprintln!(
+                "Bridge read receipt realtime send failed; conversation_id={}, target_node_id={}, request_id={}, error={}",
+                context.conversation.id,
+                context.conversation.peer_node_id,
+                request_id,
+                realtime_error
+            );
         }
+        return Ok(());
     }
 
     relay_with_contact_fallback(context, &payload).await
@@ -524,6 +527,7 @@ fn outbound_payload(
     message: &str,
     attachments: &[Value],
     outreach: Option<&DesktopBridgeOutreachMetadata>,
+    sent_at_ms: i64,
 ) -> Value {
     let active_agent = context
         .host
@@ -634,6 +638,7 @@ fn outbound_payload(
             "projectId": context.conversation.project_id,
             "messageType": BRIDGE_MESSAGE_TYPE_ASK,
             "requestId": request_id,
+            "sentAtMs": sent_at_ms,
             "payload": payload,
         })
     } else {
@@ -664,6 +669,7 @@ fn outbound_payload(
             "projectId": context.conversation.project_id,
             "messageType": BRIDGE_MESSAGE_TYPE_RAW,
             "requestId": request_id,
+            "sentAtMs": sent_at_ms,
             "payload": payload,
         })
     }
@@ -717,7 +723,7 @@ pub(super) async fn desktop_bridge_send_presence_impl(
         "payload": { "at": now_ms() },
     });
     if is_realtime_direct_chat(&context.conversation, &context.host) {
-        send_realtime_with_contact_fallback(manager, &context, &payload).await?;
+        send_realtime_with_contact_fallback(manager, &context, &payload, false).await?;
     } else {
         relay_with_contact_fallback(&context, &payload).await?;
     }
@@ -771,6 +777,7 @@ pub(super) async fn desktop_bridge_cancel_outreach_impl(
             &context.host,
             &context.conversation.peer_node_id,
             &cancelled,
+            true,
         )
         .await;
     } else {
@@ -803,17 +810,19 @@ pub(super) async fn desktop_bridge_send_message_impl(
         .as_ref()
         .and_then(|outreach| outreach.bridge_request_id.clone())
         .unwrap_or_else(|| format!("{}{}", BRIDGE_REQUEST_ID_PREFIX, Uuid::new_v4().simple()));
+    let sent_at_ms = now_ms();
     let payload = outbound_payload(
         &context,
         &request_id,
         message,
         &attachment_payloads,
         fresh_outreach_for_message.as_ref(),
+        sent_at_ms,
     );
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
         let realtime_result =
-            send_realtime_with_contact_fallback(manager, &context, &payload).await;
+            send_realtime_with_contact_fallback(manager, &context, &payload, true).await;
         if let Err(error) = realtime_result {
             if should_fallback_direct_realtime_to_relay(fresh_outreach_for_message.as_ref()) {
                 relay_with_contact_fallback(&context, &payload).await?;
@@ -853,7 +862,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
             )
         });
 
-    append_conversation_message_to_storage(
+    append_conversation_message_to_storage_with_timestamp(
         &context.conversation.host_id,
         &context.conversation.peer_node_id,
         context.conversation.peer_display_name.clone(),
@@ -873,6 +882,7 @@ pub(super) async fn desktop_bridge_send_message_impl(
             .or_else(|| Some(BRIDGE_DELIVERY_STATE_SENT.to_string())),
         attachments,
         false,
+        Some(sent_at_ms),
     )?;
     let conversations = mark_bridge_conversation_read_in_storage(&conversation_id)?;
     rebuild_state(manager, store, conversations).await

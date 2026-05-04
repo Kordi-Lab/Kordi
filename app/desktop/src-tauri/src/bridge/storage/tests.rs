@@ -84,6 +84,29 @@ fn inbox_event_insert_is_idempotent_by_request_id_without_server_message_id() {
 }
 
 #[test]
+fn inbox_event_insert_dedupes_mailbox_copy_after_realtime_delivery() {
+    let conn = memory_conversation_db();
+    let realtime = test_inbox_event("evt-realtime", None);
+    let realtime_id =
+        insert_bridge_inbox_event_if_absent(&conn, &realtime).expect("insert realtime inbox event");
+
+    let mailbox = test_inbox_event("evt-mailbox", Some("server-msg-after-realtime"));
+    let mailbox_id = insert_bridge_inbox_event_if_absent(&conn, &mailbox)
+        .expect("dedupe mailbox copy after realtime delivery");
+
+    assert_eq!(realtime_id, "evt-realtime");
+    assert_eq!(mailbox_id, "evt-realtime");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bridge_inbox_events WHERE host_id = ?1 AND request_id = ?2",
+            rusqlite::params!["host-1", "req-1"],
+            |row| row.get(0),
+        )
+        .expect("count inbox events");
+    assert_eq!(count, 1);
+}
+
+#[test]
 fn agent_job_tracks_queued_running_and_terminal_statuses() {
     let conn = memory_conversation_db();
     let event = test_inbox_event("evt-1", Some("server-msg-1"));

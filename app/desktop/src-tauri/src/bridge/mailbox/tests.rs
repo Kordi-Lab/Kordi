@@ -53,7 +53,38 @@ fn parsed_event(
         }),
         request_id: Some("bridge_req_1".to_string()),
         project_id: None,
+        sent_at_ms: None,
     }
+}
+
+#[tokio::test]
+async fn inbound_mailbox_messages_keep_sender_timestamp() {
+    let storage_root = std::env::temp_dir().join(format!(
+        "kordi-mailbox-sender-time-test-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+
+    let target = test_mailbox_target();
+    let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RAW, Some("person"), None);
+    event.payload["message"] = serde_json::json!("hello from peer");
+    event.sent_at_ms = Some(1_777_000_001_234);
+
+    apply_bridge_event_to_storage(&target.host, event, false)
+        .await
+        .expect("apply event");
+
+    let store = load_conversation_store();
+    let message = store.conversations[0]
+        .messages
+        .iter()
+        .find(|message| message.text == "hello from peer")
+        .expect("stored message");
+    assert_eq!(message.timestamp_ms, 1_777_000_001_234);
+
+    std::env::remove_var("KORDI_STORAGE_ROOT");
+    let _ = std::fs::remove_dir_all(storage_root);
 }
 
 #[test]
@@ -197,19 +228,40 @@ fn group_processing_response_is_not_buffered_as_typing_only() {
     assert!(!should_buffer_partial_agent_response(&event));
 }
 
-#[test]
-fn mailbox_group_agent_response_targets_other_group_members() {
+fn group_agent_ask_event() -> ParsedMailboxEvent {
     let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_ASK, Some("person"), None);
     event.payload["sessionThread"]["parentSessionKind"] = serde_json::json!("group");
     event.payload["sessionThread"]["parentGroupSpaceId"] = serde_json::json!("session:group:root");
     event.payload["sessionThread"]["participants"] = serde_json::json!([
         { "displayName": "Requester", "bridgeNodeId": "peer-node" },
-        { "displayName": "Agent owner", "bridgeNodeId": "node-me" },
+        { "displayName": "Agent owner", "bridgeNodeId": "owner-node" },
         { "displayName": "Other", "bridgeNodeId": "node-other" }
     ]);
+    event
+}
+
+#[test]
+fn mailbox_group_agent_response_targets_other_group_members() {
+    let event = group_agent_ask_event();
 
     assert_eq!(
-        group_session_thread_relay_targets(&event, "node-agent", Some("node-me"), "peer-node"),
+        group_session_thread_relay_targets(
+            &event,
+            "local-agent-node",
+            Some("owner-node"),
+            "peer-node"
+        ),
         vec!["node-other".to_string()]
+    );
+}
+
+#[test]
+fn mailbox_group_agent_response_delivery_targets_include_requester_and_other_members() {
+    let target = test_mailbox_target();
+    let event = group_agent_ask_event();
+
+    assert_eq!(
+        group_agent_response_delivery_targets(&target, &event),
+        vec!["peer-node".to_string(), "node-other".to_string()]
     );
 }

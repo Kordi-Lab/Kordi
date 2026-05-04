@@ -205,6 +205,7 @@ type WorkspaceSidebarProps = {
   displayedAgents: AgentItem[];
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
+  isBridgePolling: boolean;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
@@ -395,12 +396,24 @@ export function WorkspaceSidebar({
   displayedAgents,
   activeBridgeHost,
   localProfileAvatarSeed,
+  isBridgePolling,
   onRefreshBridge,
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
+  const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
+  const chatStatusLabel = isBridgePolling
+    ? 'syncing…'
+    : totalUnread > 0
+      ? `${formatUnreadCount(totalUnread)} unread`
+      : 'all caught up';
+  const bridgeSyncAriaLabel = isBridgePolling
+    ? 'Bridge is syncing missed messages'
+    : totalUnread > 0
+      ? `Bridge sync idle, ${formatUnreadCount(totalUnread)} unread`
+      : 'Bridge sync idle, all caught up';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
@@ -777,8 +790,19 @@ export function WorkspaceSidebar({
                   <div className="mb-2 flex items-start justify-between gap-2.5">
                     <div>
                       <div className="text-[15px] font-semibold text-white">Chats</div>
-                      <div className="mt-0.5 text-[11px] text-slate-400">
-                        {chatConversations.length} total • {totalUnread > 0 ? `${formatUnreadCount(totalUnread)} unread` : 'all caught up'}
+                      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-slate-400">
+                        <span>{chatConversations.length} total</span>
+                        <span aria-hidden="true">•</span>
+                        <span
+                          className="app-bridge-sync-status"
+                          data-bridge-sync-status={bridgeSyncStatus}
+                          role="status"
+                          aria-live="polite"
+                          aria-label={bridgeSyncAriaLabel}
+                        >
+                          <span className="app-bridge-sync-dot" aria-hidden="true" />
+                          <span className="app-bridge-sync-label">{chatStatusLabel}</span>
+                        </span>
                       </div>
                     </div>
                     <button

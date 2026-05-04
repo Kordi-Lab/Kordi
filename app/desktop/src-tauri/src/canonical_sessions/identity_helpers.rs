@@ -36,6 +36,19 @@ pub(crate) fn identity_display_name(
     .map_err(|err| err.to_string())
 }
 
+fn is_self_reference_name(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case("me") || value.trim().eq_ignore_ascii_case("you")
+}
+
+fn has_third_person_possessive_scope(value: &str) -> bool {
+    let trimmed = value.trim();
+    let Some(possessive_index) = trimmed.find("'s ").or_else(|| trimmed.find("’s ")) else {
+        return false;
+    };
+    let owner = trimmed[..possessive_index].trim();
+    !owner.is_empty() && !is_self_reference_name(owner)
+}
+
 pub(crate) fn shared_agent_display_name(
     conn: &Connection,
     identity_id: &str,
@@ -52,7 +65,9 @@ pub(crate) fn shared_agent_display_name(
             Ok(owner_name
                 .map(|owner| {
                     let prefix = format!("{}'s ", owner);
-                    if agent_name.starts_with(&prefix) {
+                    if agent_name.starts_with(&prefix)
+                        || has_third_person_possessive_scope(&agent_name)
+                    {
                         agent_name.clone()
                     } else {
                         format!("{}{}", prefix, agent_name)
