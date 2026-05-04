@@ -18,13 +18,11 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       }}
       chatSearch={args.chatSearch}
       setChatSearch={args.setChatSearch}
-      chatFilter={args.chatFilter}
-      setChatFilter={args.setChatFilter}
       isDesktopChatLoading={args.isDesktopChatLoading}
       desktopChatError={args.desktopChatError}
-      filteredConversations={args.filteredConversations}
       participantSpaces={args.participantSpaces}
-      filteredParticipantSpaces={args.filteredParticipantSpaces}
+      contactParticipantSpaces={args.contactParticipantSpaces}
+      agentParticipantSpaces={args.agentParticipantSpaces}
       activeConvId={args.activeConvId}
       onSelectChatSession={(sessionId) => {
         void args.handleSelectChatSession(sessionId);

@@ -1,5 +1,5 @@
 import type {
-  ChatFilter,
+  ChatChannel,
   Conversation,
   ConversationParticipant,
   ParticipantSpaceAvatar,
@@ -370,10 +370,27 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
-  if (chatFilter === 'latest') return true;
-  if (chatFilter === 'contacts') return space.kind === 'self' || space.kind === 'direct-human';
-  return space.kind === 'group';
+export function spaceMatchesChannel(space: ParticipantSpaceViewModel, channel: ChatChannel) {
+  if (channel === 'agent') return space.kind === 'self' || space.kind === 'direct-agent';
+  return space.kind === 'direct-human' || space.kind === 'group';
+}
+
+export type AgentIdentity = {
+  name: string;
+  avatarSeed: string;
+  profileImageUrl: string | null;
+};
+
+export function primaryAgentForConversation(conversation: Conversation): AgentIdentity | null {
+  const canonical = conversation.canonicalParticipants ?? [];
+  const list = canonical.length > 0 ? canonical : fallbackParticipants(conversation);
+  const agent = list.find((participant) => !isSelfParticipant(participant) && participant.kind === 'agent');
+  if (!agent) return null;
+  return {
+    name: agent.name,
+    avatarSeed: agent.avatarKey || agent.id || agent.name,
+    profileImageUrl: agent.profileImageUrl ?? null,
+  };
 }
 
 export function ensureSelfParticipantSpace(
@@ -413,11 +430,11 @@ export function ensureSelfParticipantSpace(
 export function filterParticipantSpaces(
   spaces: ParticipantSpaceViewModel[],
   query: string,
-  chatFilter: ChatFilter = 'latest',
+  channel: ChatChannel,
 ) {
   const normalized = query.trim().toLowerCase();
-  const filtered = spaces.filter((space) => {
-    if (!spaceMatchesChatFilter(space, chatFilter)) return false;
+  return spaces.filter((space) => {
+    if (!spaceMatchesChannel(space, channel)) return false;
     if (!normalized) return true;
     const haystack = [
       space.title,
@@ -426,12 +443,5 @@ export function filterParticipantSpaces(
       ...space.sessions.flatMap((session) => [session.title, session.preview]),
     ].join(' ').toLowerCase();
     return haystack.includes(normalized);
-  });
-
-  if (chatFilter !== 'contacts') return filtered;
-  return [...filtered].sort((left, right) => {
-    if (left.kind === 'self' && right.kind !== 'self') return -1;
-    if (right.kind === 'self' && left.kind !== 'self') return 1;
-    return 0;
   });
 }

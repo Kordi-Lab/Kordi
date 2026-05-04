@@ -37,7 +37,6 @@ test('workspace view model exposes participant spaces alongside flat chat conver
       activeConvId: 'c1',
       activeProjectId: '',
       activeProjectSessionId: '',
-      chatFilter: 'latest',
       chatSearch: '',
       projectSearch: '',
       contactSearch: '',
@@ -56,7 +55,8 @@ test('workspace view model exposes participant spaces alongside flat chat conver
 
   assert.ok(viewModels?.participantSpaces.length);
   assert.ok(viewModels?.participantSpaces[0]?.sessions.length);
-  assert.equal(viewModels?.filteredParticipantSpaces.length, viewModels?.participantSpaces.length);
+  const totalChannelSpaces = (viewModels?.contactParticipantSpaces.length ?? 0) + (viewModels?.agentParticipantSpaces.length ?? 0);
+  assert.equal(totalChannelSpaces, viewModels?.participantSpaces.length);
 });
 
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
@@ -651,7 +651,6 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
       activeConvId: 'draft:local-chat',
       activeProjectId: '',
       activeProjectSessionId: 'draft:project-chat',
-      chatFilter: 'latest',
       chatSearch: '',
       projectSearch: '',
       contactSearch: '',

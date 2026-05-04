@@ -5,7 +5,6 @@ import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settin
 import type {
   Agent,
   BridgeAgentRequestControl,
-  ChatFilter,
   Contact,
   ContactClass,
   ContactRequest,
@@ -69,7 +68,8 @@ export type AssembleKordiShellSlotsArgs = {
   sessionRailWidth: number;
   chatConversations: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
-  filteredParticipantSpaces: ParticipantSpaceViewModel[];
+  contactParticipantSpaces: ParticipantSpaceViewModel[];
+  agentParticipantSpaces: ParticipantSpaceViewModel[];
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -77,8 +77,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateChatSession: () => Promise<void>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatFilter: ChatFilter;
-  setChatFilter: Dispatch<SetStateAction<ChatFilter>>;
   runtimeProjects: Project[];
   projectSearch: string;
   setProjectSearch: Dispatch<SetStateAction<string>>;
@@ -329,15 +327,13 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveNav'
   | 'chatConversations'
   | 'participantSpaces'
-  | 'filteredParticipantSpaces'
+  | 'contactParticipantSpaces'
+  | 'agentParticipantSpaces'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
-  | 'chatFilter'
-  | 'setChatFilter'
   | 'isDesktopChatLoading'
   | 'desktopChatError'
-  | 'filteredConversations'
   | 'activeConvId'
   | 'handleSelectChatSession'
   | 'handleStartChatWithPerson'

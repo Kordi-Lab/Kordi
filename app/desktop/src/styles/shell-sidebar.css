@@ -37,7 +37,8 @@
 
 .app-workspace-sidebar .app-filter-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
   width: 100%;
   background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
 }
@@ -47,6 +48,15 @@
   min-width: 0;
   align-items: center;
   justify-content: center;
+  padding: 5px 10px;
+  letter-spacing: 0.02em;
+}
+
+.app-workspace-sidebar .app-filter-tab-active {
+  background: color-mix(in oklab, var(--app-control-active) 100%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 .app-workspace-sidebar .app-workspace-session-scroll {
