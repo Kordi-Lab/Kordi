@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use super::super::models::{OpenCanonicalSessionRequest, UpsertCanonicalIdentityRequest};
 use super::super::{
     clean_optional, identity_display_name, json_to_db, now_ms, open_or_create_session_in_db,
-    select_session, upsert_identity_in_db, upsert_participant,
+    sanitize_remote_peer_display_name, select_session, upsert_identity_in_db, upsert_participant,
 };
 
 fn clean_text(value: Option<&str>) -> Option<String> {
@@ -90,11 +90,20 @@ fn group_participant_identity_id(
     bridge_host_id: &str,
     participant: &crate::bridge::DesktopBridgeSessionParticipant,
 ) -> Result<Option<String>, String> {
-    let Some(display_name) = clean_text(Some(participant.display_name.as_str())) else {
+    let Some(raw_display_name) = clean_text(Some(participant.display_name.as_str())) else {
         return Ok(None);
     };
     let human_id = clean_text(participant.human_id.as_deref());
     let bridge_node_id = clean_text(participant.bridge_node_id.as_deref());
+    // Self-reference labels like "Me"/"You" leak the sender's local self-name; replace with a
+    // stable identifier so remote viewers don't see every group peer rendered as "Me".
+    let display_name = sanitize_remote_peer_display_name(
+        &raw_display_name,
+        human_id
+            .as_deref()
+            .or(bridge_node_id.as_deref())
+            .unwrap_or(&raw_display_name),
+    );
     if let Some(identity_id) = clean_text(participant.identity_id.as_deref()) {
         if identity_exists(conn, &identity_id)? {
             if human_id.is_some() || bridge_node_id.is_some() {

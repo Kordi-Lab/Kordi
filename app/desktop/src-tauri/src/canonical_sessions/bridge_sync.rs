@@ -20,7 +20,8 @@ use super::presence::update_presence_in_db;
 use super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::{
     open_db, open_or_create_session_in_db, reassign_stale_local_human_identities,
-    runtime_is_agent_like, update_local_profile_identities, upsert_identity_in_db,
+    runtime_is_agent_like, sanitize_remote_peer_display_name, update_local_profile_identities,
+    upsert_identity_in_db,
 };
 
 pub(crate) fn sync_bridge_state_identities(
@@ -117,13 +118,20 @@ pub(crate) fn sync_bridge_state_identities(
                     (Some(human_id), Some(owner_name))
                         if !human_id.trim().is_empty() && !owner_name.trim().is_empty() =>
                     {
+                        let display_name = sanitize_remote_peer_display_name(
+                            owner_name,
+                            &sanitize_remote_peer_display_name(
+                                peer.display_name.as_deref().unwrap_or(""),
+                                human_id,
+                            ),
+                        );
                         Some(
                             upsert_identity_in_db(
                                 &conn,
                                 UpsertCanonicalIdentityRequest {
                                     id: None,
                                     kind: "human".to_string(),
-                                    display_name: owner_name.to_string(),
+                                    display_name,
                                     owner_identity_id: None,
                                     source: Some("bridge".to_string()),
                                     source_host_id: Some(host.id.clone()),
@@ -158,11 +166,12 @@ pub(crate) fn sync_bridge_state_identities(
             }
 
             if peer.agent_id.is_some() || runtime_is_agent_like(&peer.runtime) {
-                let display_name = peer
+                let raw_display = peer
                     .display_name
                     .clone()
                     .or_else(|| peer.owner_name.clone())
                     .unwrap_or_else(|| peer.node_id.clone());
+                let display_name = sanitize_remote_peer_display_name(&raw_display, &peer.node_id);
                 let peer_agent = upsert_identity_in_db(
                     &conn,
                     UpsertCanonicalIdentityRequest {
