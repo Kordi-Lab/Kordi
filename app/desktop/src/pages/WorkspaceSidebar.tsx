@@ -211,58 +211,26 @@ type WorkspaceSidebarProps = {
   onCreateBridgeDraft: () => void;
 };
 
-function SidebarSessionStatusIndicator({
+const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = {
+  running: 'app-session-status-light-running',
+  ready: 'app-session-status-light-ready',
+  draft: 'app-session-status-light-draft',
+  error: 'app-session-status-light-error',
+  stopped: 'app-session-status-light-stopped',
+};
+
+export function SidebarSessionStatusIndicator({
   indicator,
-  active = false,
 }: {
   indicator?: SessionStatusIndicator;
-  active?: boolean;
 }) {
   if (!indicator) return null;
-
-  const toneClasses =
-    indicator.tone === 'running'
-      ? {
-          root: 'app-session-status-light app-session-status-light-running',
-          glow: active ? 'bg-sky-400/45' : 'bg-sky-500/38',
-          dot: active ? 'bg-sky-500 ring-sky-500/40' : 'bg-sky-500 ring-sky-500/34',
-        }
-      : indicator.tone === 'draft'
-        ? {
-            root: 'app-session-status-light app-session-status-light-draft',
-            glow: active ? 'bg-amber-400/34' : 'bg-amber-500/26',
-            dot: active ? 'bg-amber-500 ring-amber-500/30' : 'bg-amber-500 ring-amber-500/24',
-          }
-        : indicator.tone === 'error'
-          ? {
-              root: 'app-session-status-light app-session-status-light-error',
-              glow: active ? 'bg-rose-400/34' : 'bg-rose-500/28',
-              dot: active ? 'bg-rose-500 ring-rose-500/32' : 'bg-rose-500 ring-rose-500/28',
-            }
-          : indicator.tone === 'stopped'
-            ? {
-                root: 'app-session-status-light app-session-status-light-stopped',
-                glow: active ? 'bg-slate-400/22' : 'bg-slate-400/18',
-                dot: active ? 'bg-slate-400 ring-slate-400/24' : 'bg-slate-400 ring-slate-400/20',
-              }
-            : {
-                root: 'app-session-status-light app-session-status-light-unread',
-                glow: active ? 'bg-emerald-400/38' : 'bg-emerald-500/32',
-                dot: active ? 'bg-emerald-500 ring-emerald-500/34' : 'bg-emerald-500 ring-emerald-500/28',
-              };
-
   return (
     <span
-      className={cn('relative inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center', toneClasses.root)}
+      className={cn('app-session-status-light', SIDEBAR_STATUS_DOT_TONE[indicator.tone])}
       title={indicator.label}
       aria-label={indicator.label}
-    >
-      <span className={cn('absolute inset-[-4px] rounded-full blur-[4px]', toneClasses.glow)} />
-      {indicator.live ? (
-        <span className={cn('absolute inset-[-1px] rounded-full opacity-60 motion-safe:animate-ping motion-reduce:animate-none', toneClasses.glow)} />
-      ) : null}
-      <span className={cn('relative h-2.5 w-2.5 rounded-full ring-1', toneClasses.dot)} />
-    </span>
+    />
   );
 }
 
@@ -304,7 +272,7 @@ function SidebarSessionMetaColumn({
       {reserveStatusSpace || hasStatusLine ? (
         <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
           <SidebarUnreadBadge count={unreadCount} scope={unreadScope} />
-          <SidebarSessionStatusIndicator indicator={indicator} active={active} />
+          <SidebarSessionStatusIndicator indicator={indicator} />
         </div>
       ) : null}
     </div>
