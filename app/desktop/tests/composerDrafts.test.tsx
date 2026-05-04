@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   EMPTY_COMPOSER_DRAFT_STATE,
   updateScopeDraft,
+  parseStoredComposerDrafts,
+  serializeStoredComposerDrafts,
 } from '../src/features/chat/composerDrafts';
 
 test('updateScopeDraft inserts a new entry with text and timestamp', () => {
@@ -45,4 +47,35 @@ test('updateScopeDraft scopes are independent', () => {
 test('updateScopeDraft ignores empty session ids', () => {
   const next = updateScopeDraft(EMPTY_COMPOSER_DRAFT_STATE, 'chat', '', 'hello', 1000);
   assert.equal(next, EMPTY_COMPOSER_DRAFT_STATE);
+});
+
+test('parseStoredComposerDrafts returns the empty state for invalid input', () => {
+  for (const raw of [null, undefined, '', 'not json', '[]', '{"chat": "wrong"}']) {
+    assert.deepEqual(parseStoredComposerDrafts(raw), { chat: {}, project: {} });
+  }
+});
+
+test('parseStoredComposerDrafts drops malformed entries but keeps valid ones', () => {
+  const raw = JSON.stringify({
+    chat: {
+      good:  { text: 'ok', updatedAt: 1000 },
+      blank: { text: '', updatedAt: 1000 },
+      bad1:  { text: 42, updatedAt: 1000 },
+      bad2:  { text: 'ok', updatedAt: 'soon' },
+      bad3:  { text: 'ok', updatedAt: Number.NaN },
+    },
+    project: {},
+  });
+  const parsed = parseStoredComposerDrafts(raw);
+  assert.deepEqual(parsed.chat, { good: { text: 'ok', updatedAt: 1000 } });
+  assert.deepEqual(parsed.project, {});
+});
+
+test('serializeStoredComposerDrafts round-trips a valid state', () => {
+  const state = {
+    chat:    { 'session-a': { text: 'hello', updatedAt: 1000 } },
+    project: { 'session-b': { text: 'world', updatedAt: 2000 } },
+  };
+  const json = serializeStoredComposerDrafts(state);
+  assert.deepEqual(parseStoredComposerDrafts(json), state);
 });
