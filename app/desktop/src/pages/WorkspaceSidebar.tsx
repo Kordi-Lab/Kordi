@@ -646,8 +646,7 @@ export function WorkspaceSidebar({
     const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
     const agentIdentity = primaryAgentForConversation(conversation);
     const agentName = agentIdentity?.name ?? space.title;
-    const avatarSeed = agentIdentity?.avatarSeed ?? space.avatarStack[0]?.seed ?? space.id;
-    const avatarUrl = agentIdentity?.profileImageUrl ?? space.avatarStack[0]?.imageUrl ?? null;
+    const subtitleLine = agentName ? `${agentName} · ${sessionPreviewLine}` : sessionPreviewLine;
     return (
       <button
         key={session.id}
@@ -665,33 +664,30 @@ export function WorkspaceSidebar({
           event.stopPropagation();
           setSessionContextMenu(target);
         }}
-        className={cn('app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white', isActive && 'app-session-row-active')}
+        className={cn('app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
       >
-        <div className="relative h-9 w-9 shrink-0">
-          <IdentityAvatar
-            kind="agent"
-            seed={avatarSeed}
-            name={agentName}
-            imageUrl={avatarUrl ?? undefined}
-            className="h-9 w-9 border border-white/10"
-          />
-        </div>
         <div className="min-w-0 flex-1">
-          <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</div>
-          <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', isActive && 'app-participant-space-row-preview-active', session.statusIndicator?.live && 'app-participant-space-session-preview-live')} title={sessionPreviewLine}>
-            {sessionPreviewLine}
+          <div className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
+            <div className="inline-flex shrink-0 items-center gap-1.5">
+              <SidebarUnreadBadge count={session.unread} scope="agent-session" />
+              <SidebarSessionStatusIndicator indicator={session.statusIndicator} active={isActive} />
+              <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums tracking-[0.03em] text-slate-400', isActive && 'app-session-meta-time-active')}>
+                {rowTimeLabel}
+              </span>
+            </div>
           </div>
-          <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]" title={agentName}>
-            {agentName}
+          <div
+            className={cn(
+              'mt-0.5 truncate text-[10.5px] leading-[1rem]',
+              isActive ? 'text-slate-300' : 'text-slate-500',
+              session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+            )}
+            title={subtitleLine}
+          >
+            {subtitleLine}
           </div>
         </div>
-        <SidebarSessionMetaColumn
-          timeLabel={rowTimeLabel}
-          unreadCount={session.unread}
-          unreadScope="agent-session"
-          indicator={session.statusIndicator}
-          active={isActive}
-        />
       </button>
     );
   };
