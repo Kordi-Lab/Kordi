@@ -1,5 +1,6 @@
 import type {
-  ChatFilter,
+  ChatChannel,
+  ChatSort,
   Conversation,
   ConversationParticipant,
   ParticipantSpaceAvatar,
@@ -370,10 +371,16 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-function spaceMatchesChatFilter(space: ParticipantSpaceViewModel, chatFilter: ChatFilter) {
-  if (chatFilter === 'latest') return true;
-  if (chatFilter === 'contacts') return space.kind === 'self' || space.kind === 'direct-human';
-  return space.kind === 'group';
+export function spaceMatchesChannel(space: ParticipantSpaceViewModel, channel: ChatChannel) {
+  if (channel === 'agent') return space.kind === 'self' || space.kind === 'direct-agent';
+  return space.kind === 'direct-human' || space.kind === 'group';
+}
+
+function compareSpacesBySort(left: ParticipantSpaceViewModel, right: ParticipantSpaceViewModel, sort: ChatSort) {
+  if (sort === 'name') {
+    return left.title.localeCompare(right.title) || right.updatedAtMs - left.updatedAtMs;
+  }
+  return right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title);
 }
 
 export function ensureSelfParticipantSpace(
@@ -413,11 +420,12 @@ export function ensureSelfParticipantSpace(
 export function filterParticipantSpaces(
   spaces: ParticipantSpaceViewModel[],
   query: string,
-  chatFilter: ChatFilter = 'latest',
+  channel: ChatChannel,
+  sort: ChatSort = 'latest',
 ) {
   const normalized = query.trim().toLowerCase();
   const filtered = spaces.filter((space) => {
-    if (!spaceMatchesChatFilter(space, chatFilter)) return false;
+    if (!spaceMatchesChannel(space, channel)) return false;
     if (!normalized) return true;
     const haystack = [
       space.title,
@@ -428,10 +436,5 @@ export function filterParticipantSpaces(
     return haystack.includes(normalized);
   });
 
-  if (chatFilter !== 'contacts') return filtered;
-  return [...filtered].sort((left, right) => {
-    if (left.kind === 'self' && right.kind !== 'self') return -1;
-    if (right.kind === 'self' && left.kind !== 'self') return 1;
-    return 0;
-  });
+  return [...filtered].sort((left, right) => compareSpacesBySort(left, right, sort));
 }

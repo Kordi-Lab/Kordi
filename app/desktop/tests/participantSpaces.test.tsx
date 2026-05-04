@@ -578,9 +578,9 @@ test('filterParticipantSpaces matches title, participant names, preview, and chi
     }),
   ]);
 
-  assert.equal(filterParticipantSpaces(spaces, 'bob').length, 1);
-  assert.equal(filterParticipantSpaces(spaces, 'budget').length, 1);
-  assert.equal(filterParticipantSpaces(spaces, 'missing').length, 0);
+  assert.equal(filterParticipantSpaces(spaces, 'bob', 'contact').length, 1);
+  assert.equal(filterParticipantSpaces(spaces, 'budget', 'contact').length, 1);
+  assert.equal(filterParticipantSpaces(spaces, 'missing', 'contact').length, 0);
 });
 
 test('ensureSelfParticipantSpace adds My chats as a pinned contact when no self sessions exist', () => {
@@ -600,10 +600,11 @@ test('ensureSelfParticipantSpace adds My chats as a pinned contact when no self 
   assert.equal(selfSpace?.title, 'My chats');
   assert.equal(selfSpace?.sessionCount, 0);
   assert.deepEqual(selfSpace?.avatarStack, [{ kind: 'human', seed: 'local-me', imageUrl: null }]);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contacts').map((space) => space.title), ['My chats', 'Bob']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.title), ['Bob']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.title), ['My chats']);
 });
 
-test('filterParticipantSpaces applies Contacts, Groups, and Latest tabs to participant spaces', () => {
+test('filterParticipantSpaces splits spaces into Contact and Agent channels', () => {
   const spaces = buildParticipantSpaces([
     conversation({
       id: 'session:bob-person',
@@ -641,8 +642,10 @@ test('filterParticipantSpaces applies Contacts, Groups, and Latest tabs to parti
     }),
   ]);
 
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contacts').map((space) => space.kind), ['self', 'direct-human']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'groups').map((space) => space.kind), ['group']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'latest').map((space) => space.kind), ['direct-human', 'self', 'group']);
-  assert.equal(filterParticipantSpaces(spaces, 'design', 'contacts').length, 0);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.kind), ['direct-human', 'group']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.kind), ['self']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact', 'name').map((space) => space.title), ['Bob', 'Bob, Alex']);
+  assert.equal(filterParticipantSpaces(spaces, 'design', 'contact').length, 1);
+  assert.equal(filterParticipantSpaces(spaces, 'design', 'agent').length, 0);
+  assert.equal(filterParticipantSpaces(spaces, 'kordi', 'agent').length, 1);
 });

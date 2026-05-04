@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { readStoredComposerAttachments, writeStoredComposerAttachments } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
-import type { ChatFilter, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+import type { ChatSort, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 function getSystemThemeMode(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -72,7 +72,7 @@ export function useKordiLocalUiState() {
     writeStoredComposerAttachments(chatComposerAttachments);
   }, [chatComposerAttachments]);
 
-  const [chatFilter, setChatFilter] = useState<ChatFilter>('latest');
+  const [chatSort, setChatSort] = useState<ChatSort>('latest');
   const [chatSearch, setChatSearch] = useState('');
 
   return {
@@ -136,8 +136,8 @@ export function useKordiLocalUiState() {
       setChatComposerAttachments,
     },
     chatsUi: {
-      chatFilter,
-      setChatFilter,
+      chatSort,
+      setChatSort,
       chatSearch,
       setChatSearch,
     },

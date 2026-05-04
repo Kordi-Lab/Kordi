@@ -18,7 +18,7 @@ import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   CanonicalSessionState,
-  ChatFilter,
+  ChatSort,
   Contact,
   Conversation,
   DesktopBridgeConversation,
@@ -101,7 +101,7 @@ type UseWorkspaceViewModelsArgs = {
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
-  chatFilter: ChatFilter;
+  chatSort: ChatSort;
   chatSearch: string;
   projectSearch: string;
   contactSearch: string;
@@ -127,7 +127,7 @@ export function useWorkspaceViewModels({
   activeConvId,
   activeProjectId,
   activeProjectSessionId,
-  chatFilter,
+  chatSort,
   chatSearch,
   projectSearch,
   contactSearch,
@@ -357,33 +357,25 @@ export function useWorkspaceViewModels({
 
   const filteredConversations = useMemo(() => {
     const normalizedSearch = chatSearch.trim().toLowerCase();
-
-    return chatConversations.filter((conversation) => {
-      const matchesFilter =
-        chatFilter === 'latest'
-          ? true
-          : chatFilter === 'contacts'
-            ? conversation.type === 'person' || conversation.type === 'owned-agent'
-            : conversation.canonicalParticipantCount !== undefined && conversation.canonicalParticipantCount > 2;
-
-      const matchesSearch =
-        normalizedSearch.length === 0
-          ? true
-          : [conversation.name, conversation.subtitle, conversation.participants.join(' '), conversation.messages[conversation.messages.length - 1]?.text]
-              .filter(Boolean)
-              .some((value) => value.toLowerCase().includes(normalizedSearch));
-
-      return matchesFilter && matchesSearch;
-    });
-  }, [chatConversations, chatFilter, chatSearch]);
+    if (normalizedSearch.length === 0) return chatConversations;
+    return chatConversations.filter((conversation) => (
+      [conversation.name, conversation.subtitle, conversation.participants.join(' '), conversation.messages[conversation.messages.length - 1]?.text]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(normalizedSearch))
+    ));
+  }, [chatConversations, chatSearch]);
 
   const participantSpaces = useMemo(
     () => ensureSelfParticipantSpace(buildParticipantSpaces(chatConversations), { avatarSeed: getLocalProfileAvatarSeed() }),
     [chatConversations],
   );
-  const filteredParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, chatFilter),
-    [chatFilter, chatSearch, participantSpaces],
+  const contactParticipantSpaces = useMemo(
+    () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact', chatSort),
+    [chatSearch, chatSort, participantSpaces],
+  );
+  const agentParticipantSpaces = useMemo(
+    () => filterParticipantSpaces(participantSpaces, chatSearch, 'agent', chatSort),
+    [chatSearch, chatSort, participantSpaces],
   );
 
   const displayedContacts = useMemo<Contact[]>(() => {
@@ -842,7 +834,8 @@ export function useWorkspaceViewModels({
     chatConversations,
     filteredConversations,
     participantSpaces,
-    filteredParticipantSpaces,
+    contactParticipantSpaces,
+    agentParticipantSpaces,
     activeConv,
     activeConversationIsBridge,
     activeLastMessage,

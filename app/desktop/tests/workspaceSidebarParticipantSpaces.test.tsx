@@ -109,12 +109,13 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onCreateChatSession: () => {},
     chatSearch: '',
     setChatSearch: () => {},
-    chatFilter: 'latest',
-    setChatFilter: () => {},
+    chatSort: 'latest',
+    setChatSort: () => {},
     isDesktopChatLoading: false,
     desktopChatError: null,
     filteredConversations: chatConversations,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    agentParticipantSpaces: [],
     activeConvId: 'session:bob:new',
     onSelectChatSession: () => {},
     onStartChatWithPerson: () => {},
@@ -159,14 +160,13 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
 
   assert.match(markup, /data-chat-sidebar-mode="participant-spaces-inline"/);
-  assert.match(markup, /Contacts/);
-  assert.match(markup, /Groups/);
   assert.match(markup, /Latest/);
+  assert.match(markup, /A–Z/);
   assert.doesNotMatch(markup, />People</);
   assert.doesNotMatch(markup, />Agents</);
   assert.match(markup, /Bob/);
@@ -230,7 +230,7 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   const foldedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:outside-active',
   }) as never));
   assert.match(foldedMarkup, /data-unread-scope="participant-space"[^>]*data-unread-count="5"/);
@@ -239,7 +239,7 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   const expandedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     initialSelectedParticipantSpaceId: space?.id,
     activeConvId: 'session:group:two',
   }) as never));
@@ -282,7 +282,7 @@ test('WorkspaceSidebar moves participant-space running light from expanded paren
   const foldedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:outside-active',
   }) as never));
   assert.equal(countMatches(foldedMarkup, /app-session-status-light-running/g), 1);
@@ -290,7 +290,7 @@ test('WorkspaceSidebar moves participant-space running light from expanded paren
   const expandedMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     initialSelectedParticipantSpaceId: space?.id,
     activeConvId: 'session:group:one',
   }) as never));
@@ -363,7 +363,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:shu-agent',
   }) as never));
 
@@ -595,7 +595,7 @@ test('WorkspaceSidebar auto-expands the active My chats space with only the acti
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:self-agent:selected-reviewer',
     initialSelectedParticipantSpaceId: null,
   }) as never));
@@ -642,7 +642,7 @@ test('WorkspaceSidebar explicit expansion shows all sessions in the active My ch
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:self-agent:selected-reviewer',
     initialSelectedParticipantSpaceId: notesSpace?.id,
   }) as never));
@@ -656,7 +656,7 @@ test('WorkspaceSidebar expanded participant space keeps contextual create on the
   const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
 
@@ -685,7 +685,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:group-selected',
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
@@ -715,7 +715,7 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:group-duplicate-preview',
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
@@ -753,7 +753,7 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
     participantSpaces,
-    filteredParticipantSpaces: participantSpaces,
+    contactParticipantSpaces: participantSpaces,
     activeConvId: 'session:group-with-agent',
   }) as never));
 

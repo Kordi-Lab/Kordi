@@ -17,7 +17,7 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import type { Agent, ChatFilter, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { Agent, ChatSort, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -165,13 +165,13 @@ type WorkspaceSidebarProps = {
   onCreateChatSession: () => void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
-  chatFilter: ChatFilter;
-  setChatFilter: Dispatch<SetStateAction<ChatFilter>>;
+  chatSort: ChatSort;
+  setChatSort: Dispatch<SetStateAction<ChatSort>>;
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
-  filteredConversations: ConversationItem[];
   participantSpaces: ParticipantSpaceItem[];
-  filteredParticipantSpaces: ParticipantSpaceItem[];
+  contactParticipantSpaces: ParticipantSpaceItem[];
+  agentParticipantSpaces: ParticipantSpaceItem[];
   initialSelectedParticipantSpaceId?: string | null;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
@@ -358,11 +358,12 @@ export function WorkspaceSidebar({
   chatConversations,
   chatSearch,
   setChatSearch,
-  chatFilter,
-  setChatFilter,
+  chatSort,
+  setChatSort,
   desktopChatError,
   participantSpaces,
-  filteredParticipantSpaces,
+  contactParticipantSpaces,
+  agentParticipantSpaces,
   initialSelectedParticipantSpaceId = null,
   activeConvId,
   onSelectChatSession,
@@ -451,6 +452,206 @@ export function WorkspaceSidebar({
     setRemoveSessionTarget(null);
     setMoveSessionTarget(null);
   };
+
+  const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
+    const latestSession = space.sessions[0];
+    const isActiveSpace = activeParticipantSpaceId === space.id;
+    const isSelectedSpace = selectedParticipantSpaceId === space.id;
+    const isExpanded = isSelectedSpace || isActiveSpace;
+    const isAutoExpanded = isActiveSpace && !isSelectedSpace;
+    const visibleSessions = isAutoExpanded
+      ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
+      : space.sessions;
+    const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
+    const toggleSpace = () => {
+      setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
+    };
+    return (
+      <div
+        key={space.id}
+        className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}
+        data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
+      >
+        <div
+          className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
+          data-participant-space-row-shell="true"
+        >
+          <button
+            type="button"
+            data-testid="participant-space-row"
+            data-participant-space-toggle="true"
+            aria-expanded={isExpanded}
+            onClick={toggleSpace}
+            className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
+          >
+            <ParticipantSpaceAvatarStack space={space} />
+            <div className="min-w-0">
+              <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
+              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
+                {space.preview || `${participantSpaceKindText(space)} space`}
+              </div>
+              <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
+                {participantSpaceDetailText(space)}
+              </div>
+            </div>
+          </button>
+          <div className="app-participant-space-row-side">
+            <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
+              {space.kind === 'group' ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedParticipantSpaceId(space.id);
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                    setIsGroupDetailsDialogOpen(true);
+                  }}
+                  className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
+                  title="Group management"
+                  aria-label="Open group management"
+                  aria-haspopup="dialog"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
+              )}
+              <button
+                type="button"
+                data-participant-space-context-create="true"
+                className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
+                aria-label={`Create session in ${space.title}`}
+                title={`Create session in ${space.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedParticipantSpaceId(space.id);
+                  void onCreateChatSessionInParticipantSpace(space);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                data-participant-space-toggle-button="true"
+                className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
+                title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
+                aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSpace();
+                }}
+              >
+                <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
+              </button>
+            </div>
+            <div className="app-participant-space-row-meta">
+              <SidebarSessionMetaColumn
+                timeLabel={rowTimeLabel}
+                unreadCount={isExpanded ? 0 : space.unread}
+                unreadScope="participant-space"
+                indicator={isExpanded ? undefined : latestSession?.statusIndicator}
+                active={isActiveSpace || isExpanded}
+                reserveStatusSpace={false}
+              />
+            </div>
+          </div>
+        </div>
+
+        {isExpanded ? (
+          <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
+            {visibleSessions.map((session) => {
+              const conversation = session.conversation;
+              const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
+              const sessionRowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
+              const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
+              const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
+              const sessionMessageCount = participantSpaceSessionMessageCount(session);
+              const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
+              const sessionIdLabel = participantSpaceSessionIdLabel(session);
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  data-testid="participant-space-session-row"
+                  data-session-preview={sessionPreview}
+                  data-session-preview-line={sessionPreviewLine}
+                  data-session-id-label={sessionIdLabel}
+                  data-session-message-count={sessionMessageCount}
+                  data-session-updated-at={sessionRowTimeLabel}
+                  onClick={() => onSelectChatSession(session.id)}
+                  onContextMenu={(event) => {
+                    const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+                    if (!target) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setSessionContextMenu(target);
+                  }}
+                  className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
+                >
+                  <div className="min-w-0">
+                    <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
+                    {sessionIdLabel ? (
+                      <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
+                    ) : null}
+                    <div
+                      className={cn(
+                        'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                        isActive ? 'text-slate-300' : 'text-slate-500',
+                        session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+                      )}
+                      title={sessionPreviewLine}
+                    >
+                      {sessionPreviewLine}
+                    </div>
+                  </div>
+                  <SidebarSessionMetaColumn
+                    timeLabel={sessionRowTimeLabel}
+                    unreadCount={session.unread}
+                    unreadScope="participant-session"
+                    indicator={session.statusIndicator}
+                    active={isActive}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderParticipantSpaceList = (spaces: ParticipantSpaceItem[], emptyMessage: string) => (
+    <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="participant-spaces-inline">
+      <div className="w-full space-y-0.5">
+        {spaces.length > 0 ? spaces.map(renderParticipantSpaceItem) : (
+          <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </ScrollArea>
+  );
+
+  const renderSortToggle = () => (
+    <div className="mb-2 space-y-1.5">
+      <div className="app-filter-tabs w-full">
+        {([
+          { id: 'latest', label: 'Latest' },
+          { id: 'name', label: 'A–Z' },
+        ] as Array<{ id: ChatSort; label: string }>).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setChatSort(tab.id)}
+            className={chatSort === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -541,7 +742,7 @@ export function WorkspaceSidebar({
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                    Expand a contact, My chats, or a group to see its sessions.
+                    Expand a contact or group to see its sessions.
                   </div>
 
                   <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
@@ -554,24 +755,7 @@ export function WorkspaceSidebar({
                     />
                   </div>
 
-                  <div className="mb-2 space-y-1.5">
-                    <div className="app-filter-tabs w-full">
-                      {[
-                        { id: 'contacts', label: 'Contacts' },
-                        { id: 'groups', label: 'Groups' },
-                        { id: 'latest', label: 'Latest' },
-                      ].map((tab) => (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setChatFilter(tab.id as ChatFilter)}
-                          className={chatFilter === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {renderSortToggle()}
 
                   {desktopChatError ? (
                     <div className="mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
@@ -579,181 +763,7 @@ export function WorkspaceSidebar({
                     </div>
                   ) : null}
 
-                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="participant-spaces-inline">
-                    <div className="w-full space-y-0.5">
-                      {filteredParticipantSpaces.length > 0 ? filteredParticipantSpaces.map((space) => {
-                        const latestSession = space.sessions[0];
-                        const isActiveSpace = activeParticipantSpaceId === space.id;
-                        const isSelectedSpace = selectedParticipantSpaceId === space.id;
-                        const isExpanded = isSelectedSpace || isActiveSpace;
-                        const isAutoExpanded = isActiveSpace && !isSelectedSpace;
-                        const visibleSessions = isAutoExpanded
-                          ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
-                          : space.sessions;
-                        const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
-                        const toggleSpace = () => {
-                          setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
-                        };
-                        return (
-                          <div
-                            key={space.id}
-                            className={cn('app-participant-space-inline-group', isExpanded && 'app-participant-space-inline-group-expanded')}
-                            data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
-                          >
-                            <div
-                              className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
-                              data-participant-space-row-shell="true"
-                            >
-                              <button
-                                type="button"
-                                data-testid="participant-space-row"
-                                data-participant-space-toggle="true"
-                                aria-expanded={isExpanded}
-                                onClick={toggleSpace}
-                                className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
-                              >
-                                <ParticipantSpaceAvatarStack space={space} />
-                                <div className="min-w-0">
-                                  <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
-                                  <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
-                                    {space.preview || `${participantSpaceKindText(space)} space`}
-                                  </div>
-                                  <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
-                                    {participantSpaceDetailText(space)}
-                                  </div>
-                                </div>
-                              </button>
-                              <div className="app-participant-space-row-side">
-                                <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
-                                {space.kind === 'group' ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setSelectedParticipantSpaceId(space.id);
-                                      const rect = event.currentTarget.getBoundingClientRect();
-                                      setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-                                      setIsGroupDetailsDialogOpen(true);
-                                    }}
-                                    className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
-                                    title="Group management"
-                                    aria-label="Open group management"
-                                    aria-haspopup="dialog"
-                                  >
-                                    <MoreHorizontal className="h-3.5 w-3.5" />
-                                  </button>
-                                ) : (
-                                  <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
-                                )}
-                                <button
-                                  type="button"
-                                  data-participant-space-context-create="true"
-                                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
-                                  aria-label={`Create session in ${space.title}`}
-                                  title={`Create session in ${space.title}`}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedParticipantSpaceId(space.id);
-                                    void onCreateChatSessionInParticipantSpace(space);
-                                  }}
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                </button>
-                                  <button
-                                    type="button"
-                                    data-participant-space-toggle-button="true"
-                                    className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                                    title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
-                                    aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      toggleSpace();
-                                    }}
-                                  >
-                                    <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
-                                  </button>
-                                </div>
-                                <div className="app-participant-space-row-meta">
-                                  <SidebarSessionMetaColumn
-                                    timeLabel={rowTimeLabel}
-                                    unreadCount={isExpanded ? 0 : space.unread}
-                                    unreadScope="participant-space"
-                                    indicator={isExpanded ? undefined : latestSession?.statusIndicator}
-                                    active={isActiveSpace || isExpanded}
-                                    reserveStatusSpace={false}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {isExpanded ? (
-                              <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
-                                {visibleSessions.map((session) => {
-                                  const conversation = session.conversation;
-                                  const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
-                                  const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
-                                  const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
-                                  const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
-                                  const sessionMessageCount = participantSpaceSessionMessageCount(session);
-                                  const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
-                                  const sessionIdLabel = participantSpaceSessionIdLabel(session);
-                                  return (
-                                    <button
-                                      key={session.id}
-                                      type="button"
-                                      data-testid="participant-space-session-row"
-                                      data-session-preview={sessionPreview}
-                                      data-session-preview-line={sessionPreviewLine}
-                                      data-session-id-label={sessionIdLabel}
-                                      data-session-message-count={sessionMessageCount}
-                                      data-session-updated-at={rowTimeLabel}
-                                      onClick={() => onSelectChatSession(session.id)}
-                                      onContextMenu={(event) => {
-                                        const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
-                                        if (!target) return;
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        setSessionContextMenu(target);
-                                      }}
-                                      className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
-                                        {sessionIdLabel ? (
-                                          <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
-                                        ) : null}
-                                        <div
-                                          className={cn(
-                                            'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
-                                            isActive ? 'text-slate-300' : 'text-slate-500',
-                                            session.statusIndicator?.live && 'app-participant-space-session-preview-live',
-                                          )}
-                                          title={sessionPreviewLine}
-                                        >
-                                          {sessionPreviewLine}
-                                        </div>
-                                      </div>
-                                      <SidebarSessionMetaColumn
-                                        timeLabel={rowTimeLabel}
-                                        unreadCount={session.unread}
-                                        unreadScope="participant-session"
-                                        indicator={session.statusIndicator}
-                                        active={isActive}
-                                      />
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      }) : (
-                        <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
-                          No chat spaces match this filter.
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
+                  {renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')}
                 </div>
               )}
 
@@ -912,52 +922,42 @@ export function WorkspaceSidebar({
               )}
 
               {activeNav === 'agents' && (
-                <div className="flex h-full flex-col p-3">
-                  <ScrollArea className="min-h-0 flex-1 pr-2">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <div className="text-sm text-slate-400">Agents</div>
-                        <div className="text-xl font-semibold text-white">{displayedAgents.length} visible identities</div>
+                <div className="flex h-full flex-col p-2.5">
+                  <div className="mb-2 flex items-start justify-between gap-2.5">
+                    <div>
+                      <div className="text-[15px] font-semibold text-white">Agents</div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        {agentParticipantSpaces.length} {agentParticipantSpaces.length === 1 ? 'conversation' : 'conversations'}
                       </div>
-                      <Button className="rounded-xl">
-                        <Plus className="mr-2 h-4 w-4" />New
-                      </Button>
                     </div>
-                    <div className="space-y-3">
-                      {displayedAgents.map((agent) => (
-                        <Card key={agent.id} className="rounded-3xl border-white/10 bg-white/5 text-white shadow-none">
-                          <CardContent className="p-4">
-                            <div className="mb-3 flex items-start justify-between gap-3">
-                              <div className="flex min-w-0 items-start gap-3">
-                                <IdentityAvatar
-                                  kind="agent"
-                                  seed={agent.avatarSeed ?? agent.id}
-                                  name={agent.name}
-                                  imageUrl={agent.profileImageUrl}
-                                  className="h-10 w-10 border border-white/10"
-                                />
-                                <div className="min-w-0">
-                                  <div className="truncate font-medium">{agent.name}</div>
-                                  <div className="truncate text-xs text-slate-400">{agent.id}</div>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="shrink-0 border-white/20 text-slate-200">
-                                {agent.status}
-                              </Badge>
-                            </div>
-                            <div className="mb-2 text-sm text-slate-300">{agent.role}</div>
-                            <div className="mb-3 text-xs text-slate-400">Messaging: {agent.messaging}</div>
-                            <div className="flex items-center justify-between text-xs text-slate-400">
-                              <span>{agent.tasks} active tasks</span>
-                              <Button size="sm" variant="secondary" className="rounded-xl">
-                                Open
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                    <button
+                      type="button"
+                      onClick={openChatCreateDialog}
+                      className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
+                      title="Start a chat with an agent"
+                      aria-label="Start a chat with an agent"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
+                    Your conversations with agents. Expand a row to see its sessions.
+                  </div>
+
+                  <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
+                    <Search className="h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      value={chatSearch}
+                      onChange={(event) => setChatSearch(event.target.value)}
+                      placeholder="Search agent conversations"
+                      className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  {renderSortToggle()}
+
+                  {renderParticipantSpaceList(agentParticipantSpaces, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
 
