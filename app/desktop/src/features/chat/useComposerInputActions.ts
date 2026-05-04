@@ -5,6 +5,7 @@ import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/m
 import { storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import { friendlyAttachmentName } from './composerAttachments';
+import { updateScopeDraft } from './composerDrafts';
 import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
@@ -408,14 +409,14 @@ export function useComposerInputActions({
   }, [setChatComposerAttachments]);
 
   const setChatComposerText = useCallback((value: string) => {
-    setComposerDrafts((current: ComposerDraftState) => ({ ...current, chat: value }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, value));
     resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', value);
-  }, [setComposerDrafts]);
+  }, [activeConvId, setComposerDrafts]);
 
   const setProjectComposerText = useCallback((value: string) => {
-    setComposerDrafts((current: ComposerDraftState) => ({ ...current, project: value }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'project', activeProjectSessionId, value));
     resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', value);
-  }, [setComposerDrafts]);
+  }, [activeProjectSessionId, setComposerDrafts]);
 
   const acceptChatSlashCommand = useCallback((value: string) => {
     setChatComposerText(value);

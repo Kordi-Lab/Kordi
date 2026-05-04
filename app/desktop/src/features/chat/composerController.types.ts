@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
+import type { ComposerDraftState } from './composerDrafts';
 import type {
   CanonicalSessionState,
   ComposerScope,
@@ -19,7 +20,7 @@ import type {
 } from '@/kordi-app/types';
 
 export type ComposerSelectionState = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
-export type ComposerDraftState = Record<ComposerScope, string>;
+export type { ComposerDraftEntry, ComposerDraftState } from './composerDrafts';
 export type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelectorType } | null;
 export type AttachmentItem = MessageAttachment & { id: string; path: string };
 export type MinimalModelOption = {
@@ -52,7 +53,7 @@ export type UseComposerControllerArgs = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   composerSelections: ComposerSelectionState;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;
-  composerDrafts: ComposerDraftState;
+  composerDrafts: Record<ComposerScope, string>;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
   setProjectWorkspaces: Dispatch<SetStateAction<Project[]>>;
   setOpenComposerSelector: Dispatch<SetStateAction<ComposerSelectorState>>;

@@ -28,6 +28,7 @@ import {
 
 import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
+import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import {
@@ -496,7 +497,7 @@ export function useChatMessageActions({
     enqueueLocalQueuedMessage(queuedMessage);
     shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
-    setComposerDrafts((current) => ({ ...current, chat: '' }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
     resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
   }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
@@ -619,7 +620,7 @@ export function useChatMessageActions({
         pendingBridgeCancelRequestedRef.current = false;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const sentAt = formatDesktopEventTime();
@@ -827,7 +828,7 @@ export function useChatMessageActions({
             })
             .catch(() => {});
         }
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const resolvedConversationId = targetConversationId;
@@ -940,7 +941,7 @@ export function useChatMessageActions({
       targetSessionId = null;
     }
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
+      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       setOpenComposerSelector(null);
       return;
@@ -974,7 +975,7 @@ export function useChatMessageActions({
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const parentSessionId = await ensureLocalSessionId();
@@ -1101,7 +1102,7 @@ export function useChatMessageActions({
         }
         return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
       });
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
+      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', resolvedSessionId, ''));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       const relayToLocalAgentTargets = async (
