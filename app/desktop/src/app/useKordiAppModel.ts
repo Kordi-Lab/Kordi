@@ -723,17 +723,19 @@ export function useKordiAppModel() {
     const isDesktopRuntimeSession = (desktopChatState?.sessions ?? []).some((session) => session.id === sessionId);
     try {
       setDesktopChatError(null);
+      // The sidebar's row title is sourced from the canonical session title
+      // (see canonicalReadModel.applyConversation), so the canonical row must be
+      // updated for the new name to surface — runtime-only renames don't show.
+      const nextCanonical = await renameCanonicalSession({
+        sessionId,
+        title: nextTitle,
+        requestedByIdentityId: actorIdentityId,
+      });
+      setCanonicalSessionState(nextCanonical);
       if (isDesktopRuntimeSession) {
         const nextDesktop = await renameDesktopChatSession(sessionId, nextTitle);
         setDesktopChatState(nextDesktop);
-        await refreshCanonicalState();
       } else {
-        const nextCanonical = await renameCanonicalSession({
-          sessionId,
-          title: nextTitle,
-          requestedByIdentityId: actorIdentityId,
-        });
-        setCanonicalSessionState(nextCanonical);
         await refreshDesktopChat();
       }
     } catch (error) {
