@@ -74,6 +74,7 @@ import {
 import {
   activeGroupAdminIds,
   canonicalAvatarSeed,
+  canonicalGroupInviteContextForSession,
   canonicalGroupParticipantsForSession,
   canonicalLocalAgentAvatarSeed,
   currentMentionQuery,
@@ -1336,10 +1337,54 @@ export function useKordiAppModel() {
       });
     }
     setCanonicalSessionState(nextState);
+
+    const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
+    if (inviteTargets.length > 0) {
+      try {
+        for (const sessionId of groupSessionIds) {
+          const inviteContext = canonicalGroupInviteContextForSession(
+            nextState,
+            sessionId,
+            fallbackGroupSpaceId,
+          );
+          const inviteText = buildChatCreateGroupInviteText(inviteContext.parentSessionTitle);
+          for (const target of inviteTargets) {
+            const inviteState = await createDesktopBridgeOutreach({
+              hostId: target.hostId,
+              targetNodeId: target.nodeId,
+              targetKind: 'bridge-person',
+              requestText: inviteText,
+              targetDisplayName: target.displayName,
+              targetOwnerName: target.ownerName,
+              targetRuntime: 'person',
+              targetHumanId: target.humanId,
+              targetAgentId: null,
+              triggerText: null,
+              contextText: null,
+              contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
+              parentSessionId: sessionId,
+              parentSessionTitle: inviteContext.parentSessionTitle,
+              parentSessionKind: 'group',
+              parentGroupSpaceId: inviteContext.parentGroupSpaceId,
+              parentSessionParticipants: inviteContext.parentSessionParticipants,
+              parentSessionMessages: inviteContext.parentSessionMessages,
+              parentTurnId: null,
+              parentMessageId: null,
+              projectId: null,
+              projectName: null,
+            });
+            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, inviteState));
+          }
+        }
+      } catch (error) {
+        setDesktopChatError(`Group members added, but Bridge invites failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }, [
     canonicalSessionState,
     isNativeShell,
     peopleContactById,
+    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 

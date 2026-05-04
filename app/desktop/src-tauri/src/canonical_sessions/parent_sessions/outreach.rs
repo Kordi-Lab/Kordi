@@ -94,6 +94,17 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
             relationship_identity_id,
             remote_target_identity_id,
         )?;
+        if is_inbound_outreach {
+            sync_parent_session_snapshot_messages(
+                conn,
+                parent_session_id,
+                conversation,
+                outreach,
+                local_human_identity_id,
+                local_agent_identity_id,
+                remote_target_identity_id,
+            )?;
+        }
         return Ok(true);
     }
     if is_session_update {

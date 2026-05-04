@@ -1,6 +1,17 @@
-import { adminIdentityIdsFromMetadata } from '@/features/chat/chatCreateFlows';
+import {
+  adminIdentityIdsFromMetadata,
+  buildChatGroupBridgeUpdateParticipants,
+} from '@/features/chat/chatCreateFlows';
 import type { ComposerMentionOption } from '@/kordi-app/components';
-import type { CanonicalSessionState, ConversationParticipant, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type {
+  CanonicalSessionMessage,
+  CanonicalSessionState,
+  ConversationParticipant,
+  DesktopBridgeSessionParticipant,
+  DesktopBridgeSessionThreadMessage,
+  DesktopChatState,
+  ParticipantSpaceViewModel,
+} from '@/kordi-app/types';
 
 export function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -177,6 +188,105 @@ export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
     || metadataString(metadata, 'groupSpaceId')
     || metadataString(metadata, 'continuedFromSpaceId'),
   );
+}
+
+function nonGenericGroupInviteTitle(value?: string | null) {
+  const title = value?.trim();
+  if (!title) return null;
+  const normalized = title.toLowerCase();
+  if (normalized === 'group' || normalized === 'session' || normalized === 'new session') {
+    return null;
+  }
+  return title;
+}
+
+function groupInviteTitleFromSession(state: CanonicalSessionState | null, sessionId: string) {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) return null;
+  const metadata = canonicalMetadataRecord(session.metadata);
+  return nonGenericGroupInviteTitle(metadataString(metadata, 'customName'))
+    || nonGenericGroupInviteTitle(session.title);
+}
+
+export function canonicalGroupInviteTitleForSession(state: CanonicalSessionState | null, sessionId: string) {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) return null;
+  const metadata = canonicalMetadataRecord(session.metadata);
+  const directTitle = groupInviteTitleFromSession(state, sessionId);
+  if (directTitle) return directTitle;
+
+  const groupSpaceId = metadataGroupSpaceId(metadata);
+  if (groupSpaceId && groupSpaceId !== sessionId) {
+    const groupSpaceTitle = groupInviteTitleFromSession(state, groupSpaceId);
+    if (groupSpaceTitle) return groupSpaceTitle;
+  }
+
+  return null;
+}
+
+function canonicalInviteMessageSortKey(message: CanonicalSessionMessage) {
+  return [message.sequenceNum, message.createdAtMs, message.id] as const;
+}
+
+function compareCanonicalInviteMessages(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
+  const [leftSequence, leftCreatedAt, leftId] = canonicalInviteMessageSortKey(left);
+  const [rightSequence, rightCreatedAt, rightId] = canonicalInviteMessageSortKey(right);
+  if (leftSequence !== rightSequence) return leftSequence - rightSequence;
+  if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt - rightCreatedAt;
+  return leftId.localeCompare(rightId);
+}
+
+export function canonicalSessionMessagesForGroupInvite(
+  state: CanonicalSessionState | null,
+  sessionId: string,
+): DesktopBridgeSessionThreadMessage[] {
+  const identityById = new Map((state?.identities ?? []).map((identity) => [identity.id, identity]));
+  const snapshots: DesktopBridgeSessionThreadMessage[] = [];
+  for (const message of [...(state?.messages ?? [])]
+    .filter((candidate) => candidate.sessionId === sessionId)
+    .sort(compareCanonicalInviteMessages)) {
+    const text = message.contentText.trim();
+    if (!text) continue;
+    const content = canonicalMetadataRecord(message.content);
+    const sender = metadataString(content, 'sender')
+      || identityById.get(message.senderIdentityId)?.displayName?.trim()
+      || null;
+    const timeLabel = metadataString(content, 'timeLabel') || null;
+    snapshots.push({
+      role: message.senderRole,
+      sender,
+      text,
+      timeLabel,
+      index: snapshots.length,
+    });
+  }
+  return snapshots;
+}
+
+export type CanonicalGroupInviteContext = {
+  parentSessionTitle: string | null;
+  parentGroupSpaceId: string | null;
+  parentSessionParticipants: DesktopBridgeSessionParticipant[];
+  parentSessionMessages: DesktopBridgeSessionThreadMessage[];
+};
+
+export function canonicalGroupInviteContextForSession(
+  state: CanonicalSessionState | null,
+  sessionId: string,
+  fallbackGroupSpaceId: string,
+): CanonicalGroupInviteContext {
+  const currentMetadata = sessionMetadataRecord(state, sessionId);
+  const groupSpaceId = metadataGroupSpaceId(currentMetadata)
+    || normalizeStoredGroupSpaceId(fallbackGroupSpaceId);
+  return {
+    parentSessionTitle: canonicalGroupInviteTitleForSession(state, sessionId),
+    parentGroupSpaceId: groupSpaceId || null,
+    parentSessionParticipants: buildChatGroupBridgeUpdateParticipants({
+      participants: canonicalGroupParticipantsForSession(state, sessionId),
+      adminIdentityIds: activeGroupAdminIds(state, sessionId),
+    }),
+    parentSessionMessages: canonicalSessionMessagesForGroupInvite(state, sessionId),
+  };
 }
 
 export function uniqueStrings(values: string[]) {
