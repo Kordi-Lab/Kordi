@@ -24,6 +24,7 @@ export type SessionMoveProjectTarget = {
 type SessionContextMenuProps = {
   target: SessionContextMenuTarget;
   onClose: () => void;
+  onRename: (target: SessionActionTarget) => void;
   onMove: (target: SessionActionTarget) => void;
   onArchive: (sessionId: string) => void;
   onDelete: (target: SessionActionTarget) => void;
@@ -32,6 +33,7 @@ type SessionContextMenuProps = {
 export function SessionContextMenu({
   target,
   onClose,
+  onRename,
   onMove,
   onArchive,
   onDelete,
@@ -46,10 +48,20 @@ export function SessionContextMenu({
         }}
         onMouseDown={(event) => event.stopPropagation()}
       >
+        <button
+          type="button"
+          className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+          onClick={() => {
+            onClose();
+            onRename({ sessionId: target.sessionId, sessionName: target.sessionName });
+          }}
+        >
+          Rename…
+        </button>
         {target.canMoveToProject ? (
           <button
             type="button"
-            className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+            className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
             onClick={() => {
               onClose();
               onMove({ sessionId: target.sessionId, sessionName: target.sessionName });
@@ -60,7 +72,7 @@ export function SessionContextMenu({
         ) : null}
         <button
           type="button"
-          className={`${target.canMoveToProject ? 'mt-1 ' : ''}w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]`}
+          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
           onClick={() => {
             onArchive(target.sessionId);
             onClose();
@@ -78,6 +90,59 @@ export function SessionContextMenu({
         >
           Delete forever…
         </button>
+      </div>
+    </div>
+  );
+}
+
+type RenameSessionDialogProps = {
+  target: SessionActionTarget;
+  onCancel: () => void;
+  onConfirm: (sessionId: string, title: string) => void;
+};
+
+export function RenameSessionDialog({ target, onCancel, onConfirm }: RenameSessionDialogProps) {
+  const [draft, setDraft] = useState(target.sessionName);
+  const trimmed = draft.trim();
+  const canSubmit = trimmed.length > 0 && trimmed !== target.sessionName.trim();
+  const submit = () => {
+    if (!canSubmit) return;
+    onConfirm(target.sessionId, trimmed);
+    onCancel();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
+      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="text-[16px] font-semibold">Rename session</div>
+        <div className="mt-2 text-[13px] leading-6 text-slate-400">
+          Choose a new title for <span className="font-medium text-slate-200">{target.sessionName}</span>.
+        </div>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submit();
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              onCancel();
+            }
+          }}
+          placeholder="Session title"
+          className="mt-4 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[13px] text-white outline-none placeholder:text-slate-500"
+        />
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+          <Button
+            className="rounded-full px-4"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            Rename
+          </Button>
+        </div>
       </div>
     </div>
   );

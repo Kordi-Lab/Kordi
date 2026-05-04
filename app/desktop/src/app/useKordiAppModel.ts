@@ -714,6 +714,26 @@ export function useKordiAppModel() {
     }
   }, [activeConvId, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
 
+  const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
+    if (!isNativeShell || !sessionId.trim()) return;
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || undefined;
+    try {
+      setDesktopChatError(null);
+      const nextState = await renameCanonicalSession({
+        sessionId,
+        title: nextTitle,
+        requestedByIdentityId: actorIdentityId,
+      });
+      setCanonicalSessionState(nextState);
+    } catch (error) {
+      await refreshCanonicalState();
+      const message = error instanceof Error ? error.message : 'Unable to rename session';
+      setDesktopChatError(message);
+    }
+  }, [canonicalSessionState?.profile.humanIdentityId, isNativeShell, refreshCanonicalState, setCanonicalSessionState, setDesktopChatError]);
+
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
 
@@ -1515,6 +1535,7 @@ export function useKordiAppModel() {
     handleCreateChatGroup,
     handleCreateChatSessionInParticipantSpace,
     handleRenameChatGroup,
+    handleRenameChatSession,
     handleAddChatGroupMembers,
     handleRemoveChatGroupMember,
     handleSetChatGroupAdmin,
