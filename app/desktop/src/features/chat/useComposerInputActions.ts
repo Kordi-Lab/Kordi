@@ -312,14 +312,12 @@ export function useComposerInputActions({
   }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement) => {
-    setComposerDrafts((current: ComposerDraftState) => ({
-      ...current,
-      [scope]: value,
-    }));
+    const sessionId = scope === 'chat' ? activeConvId : activeProjectSessionId;
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, scope, sessionId ?? '', value));
 
     target.style.height = '0px';
     target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
-  }, [setComposerDrafts]);
+  }, [activeConvId, activeProjectSessionId, setComposerDrafts]);
 
   const attachmentSummaryText = useCallback((text: string) => (
     attachmentSummaryTextValue(text, chatComposerAttachments)
