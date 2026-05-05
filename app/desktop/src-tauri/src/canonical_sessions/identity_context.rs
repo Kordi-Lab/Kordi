@@ -242,14 +242,42 @@ fn format_allowed_targets(targets: &[String]) -> String {
 }
 
 fn clean_allowed_targets(targets: &[String]) -> Vec<String> {
-    targets.iter().filter_map(|target| clean(target)).collect()
+    let mut targets: Vec<String> = targets.iter().filter_map(|target| clean(target)).collect();
+    targets.sort();
+    targets.dedup();
+    targets
 }
 
 fn clean_required(value: &str) -> String {
-    clean(value).unwrap_or_else(|| "unknown".to_string())
+    clean(value).unwrap_or_else(|| "<missing required value>".to_string())
 }
 
 fn clean(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+    let cleaned = clean_prompt_scalar(value);
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
+fn clean_prompt_scalar(value: &str) -> String {
+    let mut cleaned = String::new();
+    let mut last_was_space = false;
+
+    for character in value.trim().chars() {
+        let replacement = if character.is_control() || character == '|' {
+            ' '
+        } else {
+            character
+        };
+
+        if replacement.is_whitespace() {
+            if !last_was_space {
+                cleaned.push(' ');
+                last_was_space = true;
+            }
+        } else {
+            cleaned.push(replacement);
+            last_was_space = false;
+        }
+    }
+
+    cleaned.trim().to_string()
 }
