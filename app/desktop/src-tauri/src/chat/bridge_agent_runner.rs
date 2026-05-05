@@ -175,6 +175,7 @@ async fn run_bridge_agent_prompt_once(
                             result_text: tool.result_text,
                             detail: tool.detail,
                             artifact_path: tool.artifact_path,
+                            tool_layer: tool.tool_layer,
                             is_error: tool.is_error,
                         })
                         .collect();

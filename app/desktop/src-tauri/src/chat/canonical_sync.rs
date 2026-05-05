@@ -261,6 +261,7 @@ mod tests {
                         result_text: Some("repo page".to_string()),
                         detail: None,
                         artifact_path: None,
+                        tool_layer: Some("observation".to_string()),
                         is_error: false,
                     }],
                 },

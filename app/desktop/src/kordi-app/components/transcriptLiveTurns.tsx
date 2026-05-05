@@ -26,6 +26,7 @@ import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import {
   firstMeaningfulThinkingLine,
   formatRunningElapsed,
+  toolTimelineDisplayArguments,
   toolTimelineFoldedLabel,
   toolTimelineRunningToolLabel,
   toolTimelineToolLabel,
@@ -226,7 +227,7 @@ function toolDetailsAvailable(tool: ToolSnapshot) {
 function ToolDetailBlocks({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
   return (
     <div>
-      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
+      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={toolTimelineDisplayArguments(tool)} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
       {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
       {tool.resultText ? <ToolTranscriptBlock label={display.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
     </div>
@@ -446,6 +447,7 @@ function mergeVisibleToolSnapshot(
     resultText: next.resultText || current.resultText,
     detail: next.detail || current.detail,
     artifactPath: next.artifactPath || current.artifactPath,
+    toolLayer: next.toolLayer || current.toolLayer,
   };
 }
 
@@ -750,6 +752,8 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
       tool.liveOutput,
       tool.resultText ?? '',
       tool.detail ?? '',
+      tool.artifactPath ?? '',
+      tool.toolLayer ?? '',
       tool.isError ? 'error' : 'ok',
     ].join('\u0000')),
   ].join('\u0001');

@@ -104,6 +104,17 @@ fn tool_artifact_path(details: &Option<serde_json::Value>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn tool_layer(details: &Option<serde_json::Value>) -> Option<String> {
+    let details = details.as_ref()?;
+    details
+        .get("toolLayer")
+        .or_else(|| details.get("tool_layer"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 pub(super) fn load_session_messages(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -182,6 +193,7 @@ pub(super) fn load_session_messages(
                                     result_text: None,
                                     detail: None,
                                     artifact_path: None,
+                                    tool_layer: None,
                                     is_error: false,
                                 });
                             }
@@ -212,6 +224,7 @@ pub(super) fn load_session_messages(
                             result_text: None,
                             detail: None,
                             artifact_path: tool_artifact_path(&message.details),
+                            tool_layer: tool_layer(&message.details),
                             is_error: message.is_error,
                         });
                         index
@@ -226,6 +239,7 @@ pub(super) fn load_session_messages(
                         tool.result_text = Some(text_from_blocks(&message.content));
                         tool.detail = tool_detail_label(&message.details);
                         tool.artifact_path = tool_artifact_path(&message.details);
+                        tool.tool_layer = tool_layer(&message.details);
                         tool.is_error = message.is_error;
                     }
                 }
@@ -265,6 +279,7 @@ pub(super) fn load_session_messages(
                             }),
                             detail,
                             artifact_path: message.full_output_path.clone(),
+                            tool_layer: Some("execution".to_string()),
                             is_error: message.cancelled
                                 || message.exit_code.unwrap_or_default() != 0,
                         }],
@@ -510,7 +525,7 @@ mod tests {
     use chrono::Utc;
     use kordi_core::types::{
         AgentMessage, AssistantContent, AssistantMessage, ContentBlock, EntryBase, EntryId,
-        SessionEntry, StopReason, Usage, UserMessage,
+        SessionEntry, StopReason, ToolResultMessage, Usage, UserMessage,
     };
 
     #[test]
@@ -567,6 +582,67 @@ mod tests {
                 .as_deref()
                 .unwrap_or_default()
                 .contains("error")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn load_session_messages_preserves_tool_layer_from_result_details() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-tool-layer-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+
+        let assistant_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: None,
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::Assistant(AssistantMessage {
+                content: vec![AssistantContent::ToolCall {
+                    id: "tool-1".to_string(),
+                    name: "read".to_string(),
+                    arguments: serde_json::json!({ "path": "src/main.rs" }),
+                }],
+                provider: "anthropic".to_string(),
+                model: "claude-opus-4-6".to_string(),
+                usage: Usage::default(),
+                stop_reason: StopReason::ToolUse,
+                error_message: None,
+                timestamp: 2_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &assistant_entry)?;
+
+        let tool_result_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: crate::turn_runner::get_leaf_raw(&conn, session_id),
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::ToolResult(ToolResultMessage {
+                tool_call_id: "tool-1".to_string(),
+                tool_name: "read".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "file contents".to_string(),
+                }],
+                details: Some(serde_json::json!({
+                    "toolLayer": "observation",
+                    "artifactPath": "artifacts/read-output.txt",
+                })),
+                is_error: false,
+                timestamp: 2_100,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &tool_result_entry)?;
+
+        let messages = load_session_messages(&conn, session_id)?;
+        let assistant = messages.last().expect("assistant message");
+        let tool = assistant.tools.first().expect("tool snapshot");
+        assert_eq!(tool.tool_layer.as_deref(), Some("observation"));
+        assert_eq!(
+            tool.artifact_path.as_deref(),
+            Some("artifacts/read-output.txt")
         );
         Ok(())
     }

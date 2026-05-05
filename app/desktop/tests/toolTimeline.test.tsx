@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
-import { formatRunningElapsed, toolTimelineFoldedLabel, toolTimelineSummary, toolTimelineToolLabel, toolTimelineTypeLabel } from '../src/kordi-app/components/toolTimeline';
+import { formatRunningElapsed, toolTimelineDisplayArguments, toolTimelineFoldedLabel, toolTimelineSummary, toolTimelineToolLabel, toolTimelineTypeLabel } from '../src/kordi-app/components/toolTimeline';
 
 function cssBlock(css: string, selector: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -12,16 +12,20 @@ function cssBlock(css: string, selector: string) {
   return match[0];
 }
 
-test('labels disk usage shell commands by intent', () => {
+test('labels disk usage shell commands by intent and execution layer', () => {
   assert.equal(toolTimelineToolLabel({ name: 'bash', status: 'done', arguments: '{"command":"df -h"}' }), 'Check disk usage');
-  assert.equal(toolTimelineTypeLabel({ name: 'bash', status: 'done', arguments: '{"command":"df -h"}' }), 'Script');
+  assert.equal(toolTimelineTypeLabel({ name: 'bash', status: 'done', arguments: '{"command":"df -h"}' }), 'Execution');
 });
 
-test('labels common tool kinds with concise human text', () => {
+test('labels common tool kinds with concise human text and layer badges', () => {
   assert.equal(toolTimelineToolLabel({ name: 'grep', status: 'done', arguments: '{"pattern":"ToolActivity"}' }), 'Search code');
-  assert.equal(toolTimelineTypeLabel({ name: 'grep', status: 'done', arguments: '{}' }), 'Search');
+  assert.equal(toolTimelineTypeLabel({ name: 'grep', status: 'done', arguments: '{}' }), 'Observation');
   assert.equal(toolTimelineToolLabel({ name: 'read', status: 'done', arguments: '{"path":"app/desktop/src/App.tsx"}' }), 'Read file');
-  assert.equal(toolTimelineTypeLabel({ name: 'edit', status: 'done', arguments: '{}' }), 'Edit');
+  assert.equal(toolTimelineTypeLabel({ name: 'edit', status: 'done', arguments: '{}' }), 'Execution');
+  assert.equal(toolTimelineTypeLabel({ name: 'update_plan', status: 'done', arguments: '{}' }), 'Planning');
+  assert.equal(toolTimelineTypeLabel({ name: 'task_operator', status: 'done', arguments: '{}' }), 'Operator');
+  assert.equal(toolTimelineTypeLabel({ name: 'reflection', status: 'done', arguments: '{}' }), 'Reflection');
+  assert.equal(toolTimelineTypeLabel({ name: 'read', status: 'done', arguments: '{}', toolLayer: 'reflection' }), 'Reflection');
 });
 
 test('summarizes foldable timeline state without raw tool activity wording', () => {
@@ -78,7 +82,7 @@ test('running tool progress takes preview priority over earlier attention state'
   );
   assert.equal(
     toolTimelineFoldedLabel({ tools, active: true, completed: false, runningElapsed: '12s' }),
-    'Running command: pnpm lint · 12s',
+    'Execution: running command: pnpm lint · 12s',
   );
 });
 
@@ -96,7 +100,7 @@ test('running folded preview includes live tool target and elapsed time before t
       thinkingText: 'Clarifying task requirements',
       runningElapsed: '9s',
     }),
-    'Running command: pnpm --dir app/desktop lint · 9s',
+    'Execution: running command: pnpm --dir app/desktop lint · 9s',
   );
 
   assert.equal(
@@ -106,7 +110,7 @@ test('running folded preview includes live tool target and elapsed time before t
       completed: false,
       runningElapsed: '4s',
     }),
-    'Reading file: app/desktop/src/kordi-app/components/toolTimeline.ts · 4s',
+    'Observation: reading file: app/desktop/src/kordi-app/components/toolTimeline.ts · 4s',
   );
 
   assert.equal(
@@ -116,7 +120,7 @@ test('running folded preview includes live tool target and elapsed time before t
       completed: false,
       runningElapsed: '6s',
     }),
-    'Searching: toolTimelineFoldedLabel · 6s',
+    'Observation: searching: toolTimelineFoldedLabel · 6s',
   );
 
   assert.equal(
@@ -126,8 +130,31 @@ test('running folded preview includes live tool target and elapsed time before t
       completed: false,
       runningElapsed: '7s',
     }),
-    'Fetching URL: https://example.com/docs · 7s',
+    'Observation: fetching URL: https://example.com/docs · 7s',
   );
+});
+
+test('running folded preview hides temporary clipboard paths', () => {
+  assert.equal(
+    toolTimelineFoldedLabel({
+      tools: [{ name: 'read', status: 'running', arguments: '{"path":"/var/folders/sj/4t94lr1x6nz054myq77r2b4c0000gn/T/pi-clipboard-41b8cb97-c2ff-4f38-9d5a-cbb4d040a552.png"}' }],
+      active: true,
+      completed: false,
+      runningElapsed: '4s',
+    }),
+    'Observation: reading attached image · 4s',
+  );
+});
+
+test('tool argument details hide temporary clipboard paths', () => {
+  const text = toolTimelineDisplayArguments({
+    name: 'read',
+    status: 'done',
+    arguments: '{"path":"/var/folders/sj/4t94lr1x6nz054myq77r2b4c0000gn/T/pi-clipboard-41b8cb97-c2ff-4f38-9d5a-cbb4d040a552.png"}',
+  });
+
+  assert.equal(text.includes('/var/folders'), false);
+  assert.match(text, /attached image/);
 });
 
 test('formats running tool elapsed time compactly', () => {
@@ -144,7 +171,7 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       completed: false,
       thinkingText: 'assessing current disk space usage and capacity',
     }),
-    'Running command: df -h',
+    'Execution: running command: df -h',
   );
   assert.equal(
     toolTimelineFoldedLabel({
@@ -161,7 +188,7 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       active: true,
       completed: false,
     }),
-    'Running command: echo hi',
+    'Execution: running command: echo hi',
   );
   assert.equal(
     toolTimelineFoldedLabel({
@@ -170,6 +197,6 @@ test('uses a clean one-line folded label for active and completed timelines', ()
       completed: false,
       thinkingText: '**Checking disk usage**\n\nI need to inspect the filesystem.',
     }),
-    'Running command: df -h',
+    'Execution: running command: df -h',
   );
 });

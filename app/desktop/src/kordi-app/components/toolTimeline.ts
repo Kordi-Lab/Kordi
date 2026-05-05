@@ -3,6 +3,7 @@ export type ToolTimelineInput = {
   status?: string | null;
   arguments?: string | null;
   detail?: string | null;
+  toolLayer?: string | null;
   isError?: boolean;
 };
 
@@ -46,8 +47,10 @@ function commandFromTool(tool: ToolTimelineInput) {
   return firstStringValue(safeParseToolArguments(tool.arguments), ['command', 'cmd', 'script', 'input']);
 }
 
+const TOOL_PATH_ARGUMENT_KEYS = ['path', 'file', 'file_path', 'target_file', 'relative_path'];
+
 function pathFromTool(tool: ToolTimelineInput) {
-  return firstStringValue(safeParseToolArguments(tool.arguments), ['path', 'file', 'file_path', 'target_file', 'relative_path']);
+  return firstStringValue(safeParseToolArguments(tool.arguments), TOOL_PATH_ARGUMENT_KEYS);
 }
 
 function searchQueryFromTool(tool: ToolTimelineInput) {
@@ -62,6 +65,47 @@ function inlineToolDetail(value: string, maxLength = 96) {
   const compactValue = value.replace(/\s+/g, ' ').trim();
   if (compactValue.length <= maxLength) return compactValue;
   return `${compactValue.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+}
+
+type TimelinePathTarget = {
+  label: string;
+  kind: 'path' | 'attached-image';
+};
+
+function fileNameFromPath(path: string) {
+  return path.trim().split(/[\\/]/).filter(Boolean).pop() ?? '';
+}
+
+function isTemporaryClipboardImagePath(path: string) {
+  const fileName = fileNameFromPath(path);
+  return /^pi-clipboard-[\w-]+\.(?:png|jpe?g|gif|webp|avif|heic|heif)$/i.test(fileName);
+}
+
+function timelinePathTarget(path: string): TimelinePathTarget | null {
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (isTemporaryClipboardImagePath(trimmed)) {
+    return { label: 'attached image', kind: 'attached-image' };
+  }
+  return { label: inlineToolDetail(trimmed), kind: 'path' };
+}
+
+export function toolTimelineDisplayArguments(tool: ToolTimelineInput) {
+  const rawArguments = tool.arguments ?? '';
+  const parsed = safeParseToolArguments(rawArguments);
+  if (!parsed) return rawArguments;
+
+  let changed = false;
+  const sanitized = { ...parsed };
+  for (const key of TOOL_PATH_ARGUMENT_KEYS) {
+    const value = sanitized[key];
+    if (typeof value === 'string' && timelinePathTarget(value)?.kind === 'attached-image') {
+      sanitized[key] = '[attached image]';
+      changed = true;
+    }
+  }
+
+  return changed ? JSON.stringify(sanitized, null, 2) : rawArguments;
 }
 
 function normalizedCommand(command: string) {
@@ -88,19 +132,44 @@ function labelForShellCommand(command: string) {
   return 'Run script';
 }
 
+function normalizedLayerValue(value?: string | null) {
+  return value
+    ?.trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase() ?? '';
+}
+
+function layerLabelFromValue(value?: string | null) {
+  switch (normalizedLayerValue(value)) {
+    case 'observation':
+      return 'Observation';
+    case 'planning':
+      return 'Planning';
+    case 'operator':
+      return 'Operator';
+    case 'execution':
+      return 'Execution';
+    case 'reflection':
+      return 'Reflection';
+    default:
+      return null;
+  }
+}
+
 export function toolTimelineTypeLabel(tool: ToolTimelineInput) {
+  const explicitLayer = layerLabelFromValue(tool.toolLayer);
+  if (explicitLayer) return explicitLayer;
+
   const normalized = normalizedToolName(tool.name);
 
-  if (normalized === 'reach_out') return 'Message';
-  if (normalized.includes('web_fetch') || normalized.includes('browser_fetch')) return 'Web';
-  if (normalized.includes('search') || normalized.includes('grep')) return 'Search';
-  if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) return 'Read';
-  if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) return 'Browse';
-  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) return 'Script';
-  if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) return 'Edit';
-  if (normalized.includes('image')) return 'Image';
+  if (normalized === 'reflection') return 'Reflection';
+  if (normalized === 'update_plan') return 'Planning';
+  if (normalized === 'task_operator' || normalized === 'reach_out') return 'Operator';
+  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) return 'Execution';
+  if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) return 'Execution';
 
-  return 'Tool';
+  return 'Observation';
 }
 
 export function toolTimelineToolLabel(tool: ToolTimelineInput) {
@@ -109,6 +178,9 @@ export function toolTimelineToolLabel(tool: ToolTimelineInput) {
   const path = pathFromTool(tool);
 
   if (normalized === 'reach_out') return 'Contact participant';
+  if (normalized === 'update_plan') return 'Update plan';
+  if (normalized === 'task_operator') return 'Coordinate task';
+  if (normalized === 'reflection') return 'Save lesson';
   if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
     return command ? labelForShellCommand(command) : 'Run script';
   }
@@ -185,24 +257,38 @@ function thinkingPhrase(thinkingText: string) {
 }
 
 export function toolTimelineRunningToolLabel(tool: ToolTimelineInput) {
-  const typeLabel = toolTimelineTypeLabel(tool);
+  const normalized = normalizedToolName(tool.name);
   const command = commandFromTool(tool);
   const path = pathFromTool(tool);
+  const pathTarget = timelinePathTarget(path);
   const searchQuery = searchQueryFromTool(tool);
   const url = urlFromTool(tool);
 
-  if (typeLabel === 'Script') return command ? `Running command: ${inlineToolDetail(command)}` : 'Running command';
-  if (typeLabel === 'Search') return searchQuery ? `Searching: ${inlineToolDetail(searchQuery)}` : 'Searching';
-  if (typeLabel === 'Read') return path ? `Reading file: ${inlineToolDetail(path)}` : 'Reading';
-  if (typeLabel === 'Edit') return path ? `Editing file: ${inlineToolDetail(path)}` : 'Editing';
-  if (typeLabel === 'Web') return url ? `Fetching URL: ${inlineToolDetail(url)}` : 'Fetching';
-  if (typeLabel === 'Browse') return path ? `Finding files: ${inlineToolDetail(path)}` : 'Finding files';
-  if (typeLabel === 'Image') return path ? `Inspecting image: ${inlineToolDetail(path)}` : 'Inspecting image';
-  return `Using ${typeLabel.toLowerCase()}`;
+  if (normalized === 'reach_out') return 'Contacting participant';
+  if (normalized === 'update_plan') return 'Updating plan';
+  if (normalized === 'task_operator') return 'Coordinating task';
+  if (normalized === 'reflection') return 'Saving lesson';
+  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
+    return command ? `Running command: ${inlineToolDetail(command)}` : 'Running command';
+  }
+  if (normalized.includes('search') || normalized.includes('grep')) return searchQuery ? `Searching: ${inlineToolDetail(searchQuery)}` : 'Searching';
+  if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) {
+    if (pathTarget?.kind === 'attached-image') return 'Reading attached image';
+    return pathTarget ? `Reading file: ${pathTarget.label}` : 'Reading';
+  }
+  if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) return pathTarget ? `Editing file: ${pathTarget.label}` : 'Editing';
+  if (normalized.includes('web_fetch') || normalized.includes('browser_fetch')) return url ? `Fetching URL: ${inlineToolDetail(url)}` : 'Fetching';
+  if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) return pathTarget ? `Finding files: ${pathTarget.label}` : 'Finding files';
+  if (normalized.includes('image')) {
+    if (pathTarget?.kind === 'attached-image') return 'Inspecting attached image';
+    return pathTarget ? `Inspecting image: ${pathTarget.label}` : 'Inspecting image';
+  }
+  return `Using ${toolTimelineTypeLabel(tool).toLowerCase()} tool`;
 }
 
 export function toolTimelineRunningPreviewLabel(tool: ToolTimelineInput, runningElapsed?: string | null) {
-  const label = toolTimelineRunningToolLabel(tool);
+  const actionLabel = lowerCaseFirstLetter(toolTimelineRunningToolLabel(tool));
+  const label = `${toolTimelineTypeLabel(tool)}: ${actionLabel}`;
   const elapsed = runningElapsed?.trim();
   return elapsed ? `${label} · ${elapsed}` : label;
 }

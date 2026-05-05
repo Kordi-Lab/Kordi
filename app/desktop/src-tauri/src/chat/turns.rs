@@ -65,6 +65,7 @@ pub(super) fn apply_desktop_turn_event(
                 result_text: None,
                 detail: None,
                 artifact_path: None,
+                tool_layer: None,
                 is_error: false,
             });
         }),
@@ -109,6 +110,7 @@ pub(super) fn apply_desktop_turn_event(
                 tool.result_text = Some(content_blocks_to_text(content));
                 tool.detail = tool_detail(details);
                 tool.artifact_path = artifact_path.clone();
+                tool.tool_layer = tool_layer(details);
                 tool.is_error = *is_error;
                 tool.live_output.clear();
             }
@@ -205,6 +207,17 @@ fn content_blocks_to_text(content: &[kordi_core::types::ContentBlock]) -> String
     } else {
         text
     }
+}
+
+fn tool_layer(details: &Option<serde_json::Value>) -> Option<String> {
+    let details = details.as_ref()?;
+    details
+        .get("toolLayer")
+        .or_else(|| details.get("tool_layer"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn tool_detail(details: &Option<serde_json::Value>) -> Option<String> {

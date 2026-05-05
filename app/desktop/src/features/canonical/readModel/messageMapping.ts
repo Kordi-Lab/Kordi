@@ -83,6 +83,7 @@ export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
       resultText: stringValue(record.resultText) ?? null,
       detail: stringValue(record.detail) ?? null,
       artifactPath: stringValue(record.artifactPath) ?? null,
+      toolLayer: stringValue(record.toolLayer) ?? null,
       isError: Boolean(record.isError),
     }];
   });

@@ -77,6 +77,8 @@ pub struct DesktopChatStoredTool {
     pub detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_layer: Option<String>,
     pub is_error: bool,
 }
 

@@ -123,6 +123,7 @@ export type DesktopChatToolSnapshot = {
   resultText?: string | null;
   detail?: string | null;
   artifactPath?: string | null;
+  toolLayer?: string | null;
   isError: boolean;
 };
 

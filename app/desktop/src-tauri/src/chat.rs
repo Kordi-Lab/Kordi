@@ -100,6 +100,7 @@ pub struct DesktopChatToolSnapshot {
     pub result_text: Option<String>,
     pub detail: Option<String>,
     pub artifact_path: Option<String>,
+    pub tool_layer: Option<String>,
     pub is_error: bool,
 }
 
