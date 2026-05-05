@@ -92,8 +92,6 @@ export function BridgeDetailsSection({
   onCopyBridgeText,
   onSetBridgeHostPrivacyPolicy,
   onSetBridgeAgentReachabilityPolicy,
-  onApproveBridgeContactRequest,
-  onRejectBridgeContactRequest,
   onCreateBridgeAgent,
   onActivateBridgeAgent,
   onSetDefaultBridgeAgent,
@@ -151,9 +149,7 @@ export function BridgeDetailsSection({
             >
               <Link2 className="mr-2 h-4 w-4" /> Copy invite text
             </Button>
-            <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('approvals')} disabled={!activeBridgeHost.registered}>
-              Open approvals
-            </Button>
+
           </div>
           <BridgeInlineTimeline
             activeBridgeHost={activeBridgeHost}
@@ -169,11 +165,9 @@ export function BridgeDetailsSection({
             setBridgeSettingsDraft={setBridgeSettingsDraft}
             setIdentityOwnerName={setIdentityOwnerName}
             onActivateBridgeAgent={onActivateBridgeAgent}
-            onApproveBridgeContactRequest={onApproveBridgeContactRequest}
             onCopyBridgeText={onCopyBridgeText}
             onCreateBridgeAgent={onCreateBridgeAgent}
             onOpenBridgeConversation={onOpenBridgeConversation}
-            onRejectBridgeContactRequest={onRejectBridgeContactRequest}
             onRemoveBridgeContact={onRemoveBridgeContact}
             onSaveBridgeSettings={onSaveBridgeSettings}
             onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
@@ -187,7 +181,7 @@ export function BridgeDetailsSection({
   );
 }
 
-type InlineBridgeStepId = 'identity' | 'visibility' | 'approvals' | 'agents' | 'review';
+type InlineBridgeStepId = 'identity' | 'visibility' | 'agents' | 'review';
 
 function BridgeInlineTimeline({
   activeBridgeHost,
@@ -203,11 +197,9 @@ function BridgeInlineTimeline({
   setBridgeSettingsDraft,
   setIdentityOwnerName,
   onActivateBridgeAgent,
-  onApproveBridgeContactRequest,
   onCopyBridgeText,
   onCreateBridgeAgent,
   onOpenBridgeConversation,
-  onRejectBridgeContactRequest,
   onRemoveBridgeContact,
   onSaveBridgeSettings,
   onSetBridgeAgentReachabilityPolicy,
@@ -228,11 +220,9 @@ function BridgeInlineTimeline({
   setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
   setIdentityOwnerName: BridgeDetailsSectionProps['setIdentityOwnerName'];
   onActivateBridgeAgent: BridgeDetailsSectionProps['onActivateBridgeAgent'];
-  onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
   onCopyBridgeText: BridgeDetailsSectionProps['onCopyBridgeText'];
   onCreateBridgeAgent: BridgeDetailsSectionProps['onCreateBridgeAgent'];
   onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
-  onRejectBridgeContactRequest: BridgeDetailsSectionProps['onRejectBridgeContactRequest'];
   onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
   onSaveBridgeSettings: BridgeDetailsSectionProps['onSaveBridgeSettings'];
   onSetBridgeAgentReachabilityPolicy: BridgeDetailsSectionProps['onSetBridgeAgentReachabilityPolicy'];
@@ -242,14 +232,13 @@ function BridgeInlineTimeline({
 }) {
   const normalizedActiveStep: InlineBridgeStepId = activeStep === 'setup'
     ? 'identity'
-    : activeStep === 'discover'
-      ? 'approvals'
+    : activeStep === 'discover' || activeStep === 'approvals'
+      ? 'agents'
       : activeStep;
   const needsRegistration = !activeBridgeHost.registered;
   const steps: Array<{ id: InlineBridgeStepId; title: string; detail: string; disabled?: boolean }> = [
     { id: 'identity', title: 'How you appear', detail: 'Name, host share text, and public Bridge identity.' },
     { id: 'visibility', title: 'Visibility', detail: 'Discovery, private mode, and contact approval policy.', disabled: needsRegistration },
-    { id: 'approvals', title: 'Approvals', detail: 'Incoming contact requests.', disabled: needsRegistration },
     { id: 'agents', title: 'Agent reachability', detail: 'Active/default agent plus who can call each agent.', disabled: needsRegistration },
     { id: 'review', title: 'Review', detail: 'Effective host strategy and visible peers.', disabled: needsRegistration },
   ];
@@ -280,15 +269,6 @@ function BridgeInlineTimeline({
             activeBridgeHost={activeBridgeHost}
             onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
             setActiveStep={setActiveStep}
-          />
-        );
-      case 'approvals':
-        return (
-          <BridgeDiscoverStep
-            activeBridgeHost={activeBridgeHost}
-            setActiveStep={setActiveStep}
-            onApproveBridgeContactRequest={onApproveBridgeContactRequest}
-            onRejectBridgeContactRequest={onRejectBridgeContactRequest}
           />
         );
       case 'agents':
@@ -495,7 +475,7 @@ function BridgeVisibilityStep({
   const hasPrivacyModeChanges = draftPrivacyModeId !== savedPrivacyMode.id;
   const handleContinueFromPrivacyMode = () => {
     if (!hasPrivacyModeChanges) {
-      setActiveStep('approvals');
+      setActiveStep('agents');
       return;
     }
 
@@ -503,7 +483,7 @@ function BridgeVisibilityStep({
     void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, activePrivacyMode.humanVisibilityPolicy, activePrivacyMode.contactApprovalPolicy)
       .then(() => {
         setPolicySaveState('saved');
-        setActiveStep('approvals');
+        setActiveStep('agents');
       })
       .catch(() => {
         setPolicySaveState('error');
@@ -574,7 +554,7 @@ function BridgeVisibilityStep({
         </div>
         <div className="flex justify-end border-t border-white/8 pt-3">
           <Button className="h-8 rounded-full px-3 text-[11px]" onClick={handleContinueFromPrivacyMode} disabled={!activeBridgeHost.registered || policySaveState === 'saving'}>
-            {policySaveState === 'saving' ? 'Saving…' : hasPrivacyModeChanges ? 'Save & next: approvals' : 'Next: approvals'} <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+            {policySaveState === 'saving' ? 'Saving…' : hasPrivacyModeChanges ? 'Save & next: agent reachability' : 'Next: agent reachability'} <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
           </Button>
         </div>
       </CardContent>
@@ -686,66 +666,6 @@ function BridgeAgentsStep({
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function BridgeDiscoverStep({
-  activeBridgeHost,
-  setActiveStep,
-  onApproveBridgeContactRequest,
-  onRejectBridgeContactRequest,
-}: {
-  activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
-  setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
-  onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
-  onRejectBridgeContactRequest: BridgeDetailsSectionProps['onRejectBridgeContactRequest'];
-}) {
-  if (!activeBridgeHost.registered) {
-    return <EmptyState title="Finish setup first" detail="Once this host finishes registering, contact approvals will appear here." />;
-  }
-
-  const pendingIncoming = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'incoming' && request.status === 'pending');
-  const pendingOutgoing = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'outgoing' && request.status === 'pending');
-
-  return (
-    <div className="w-full space-y-4">
-      <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">Pending approvals</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-slate-300">
-          {pendingIncoming.length === 0 && pendingOutgoing.length === 0 ? (
-            <EmptyState title="No pending approvals" detail="Contact approval requests will appear here before direct reachability is granted." />
-          ) : null}
-          {pendingIncoming.map((request) => (
-            <div key={request.requestId} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-[13px] font-medium text-white">Incoming request</div>
-                  <div className="mt-1 break-all text-[12px] text-slate-400">{request.requesterNodeId}</div>
-                  {request.message ? <div className="mt-1 text-[12px] text-slate-500">{request.message}</div> : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button className="rounded-[12px] px-3 text-[11px]" onClick={() => { void onApproveBridgeContactRequest(activeBridgeHost.id, request.requestId).catch(() => {}); }}>Approve</Button>
-                  <Button variant="secondary" className="rounded-[12px] px-3 text-[11px]" onClick={() => { void onRejectBridgeContactRequest(activeBridgeHost.id, request.requestId).catch(() => {}); }}>Reject</Button>
-                </div>
-              </div>
-            </div>
-          ))}
-          {pendingOutgoing.map((request) => (
-            <div key={request.requestId} className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-              Waiting for <span className="break-all text-slate-200">{request.targetNodeId}</span> to approve your contact request.
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end">
-        <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('agents')}>
-          Next: agent reachability <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
     </div>
   );
 }

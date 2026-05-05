@@ -88,11 +88,11 @@ test('Bridge details renders step details inline between timeline steps', () => 
   assert.match(markup, /app-bridge-step-detail-region/);
   const visibilityIndex = markup.indexOf('Visibility');
   const detailIndex = markup.indexOf('Discovery visibility and private protection');
-  const approvalsIndex = markup.indexOf('Approvals');
+  const agentsIndex = markup.indexOf('Agent reachability');
 
   assert.ok(visibilityIndex >= 0, 'visibility step renders');
   assert.ok(detailIndex > visibilityIndex, 'active detail expands after its step label');
-  assert.ok(approvalsIndex > detailIndex, 'next step stays below the expanded active detail');
+  assert.ok(agentsIndex > detailIndex, 'next step stays below the expanded active detail');
 });
 
 test('Bridge visibility step exposes one coherent privacy mode list', () => {
@@ -128,34 +128,20 @@ test('Bridge review step includes a final save action with feedback', () => {
   assert.match(markup, /aria-live="polite"/);
 });
 
-test('Bridge approvals step shows incoming requests before direct reachability is granted', () => {
-  const activeBridgeHost = host({
-    contactRequests: [{
-      requestId: 'req-1',
-      requesterNodeId: 'kd_peer',
-      targetNodeId: 'kd_self',
-      status: 'pending',
-      message: 'Please add me',
-      createdAt: '2026-05-05T00:00:00Z',
-      direction: 'incoming',
-    }],
-  });
-  const markup = renderDetails('approvals', { activeBridgeHost });
+test('Bridge onboarding omits the approvals step from this page', () => {
+  const markup = renderDetails('visibility');
 
-  assert.match(markup, /Pending approvals/);
-  assert.match(markup, /Incoming request/);
-  assert.match(markup, /kd_peer/);
-  assert.match(markup, /Approve/);
-  assert.match(markup, /Reject/);
+  assert.doesNotMatch(markup, /Approvals/);
+  assert.doesNotMatch(markup, /Open approvals/);
+  assert.doesNotMatch(markup, /Pending approvals/);
 });
 
-test('Bridge approvals step removes direct node-id add actions from setup', () => {
+test('Bridge legacy approvals active step falls through to agent reachability', () => {
   const markup = renderDetails('approvals');
 
-  assert.match(markup, /Pending approvals/);
-  assert.doesNotMatch(markup, /Add someone by node ID/);
-  assert.doesNotMatch(markup, /Add \+ chat/);
-  assert.doesNotMatch(markup, /kd_\.\.\./);
+  assert.match(markup, /Agent reachability/);
+  assert.match(markup, /Everyone on server/);
+  assert.doesNotMatch(markup, /Pending approvals/);
 });
 
 test('Bridge visible peer lists are deferred until the review step', () => {
@@ -181,9 +167,9 @@ test('Bridge visible peer lists are deferred until the review step', () => {
     isDefaultAgent: true,
   }];
 
-  const approvalsMarkup = renderDetails('approvals', { activeBridgePeople, activeBridgeAgents });
-  assert.doesNotMatch(approvalsMarkup, /Visible people/);
-  assert.doesNotMatch(approvalsMarkup, /Visible agents/);
+  const agentsMarkup = renderDetails('agents', { activeBridgePeople, activeBridgeAgents });
+  assert.doesNotMatch(agentsMarkup, /Visible people/);
+  assert.doesNotMatch(agentsMarkup, /Visible agents/);
 
   const reviewMarkup = renderDetails('review', { activeBridgePeople, activeBridgeAgents });
   assert.match(reviewMarkup, /Visible people/);

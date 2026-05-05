@@ -114,10 +114,14 @@ export function DetailNav({
   activeBridgeHost: DesktopBridgeHost | null;
 }) {
   const needsRegistration = !activeBridgeHost?.registered;
-  const steps: Array<{ id: Exclude<BridgeStepId, 'setup' | 'discover'>; title: string; detail: string; disabled?: boolean }> = [
+  const normalizedActiveStep = activeStep === 'setup'
+    ? 'identity'
+    : activeStep === 'discover' || activeStep === 'approvals'
+      ? 'agents'
+      : activeStep;
+  const steps: Array<{ id: Exclude<BridgeStepId, 'setup' | 'discover' | 'approvals'>; title: string; detail: string; disabled?: boolean }> = [
     { id: 'identity', title: 'How you appear', detail: 'Your name and share copy on this host.' },
     { id: 'visibility', title: 'Visibility', detail: 'Who can discover you and whether contact requires approval.', disabled: needsRegistration },
-    { id: 'approvals', title: 'Approvals', detail: 'Pending incoming and outgoing contact requests.', disabled: needsRegistration },
     { id: 'agents', title: 'Agent reachability', detail: 'Which agent is active, default, and reachable.', disabled: needsRegistration },
     { id: 'review', title: 'Review', detail: 'Effective strategy and visible peers after setup.', disabled: needsRegistration },
   ];
@@ -125,8 +129,8 @@ export function DetailNav({
   return (
     <div className="app-bridge-detail-nav app-bridge-timeline space-y-2">
       {steps.map((step, index) => {
-        const active = step.id === activeStep || (activeStep === 'setup' && step.id === 'identity') || (activeStep === 'discover' && step.id === 'approvals');
-        const complete = !active && steps.findIndex((candidate) => candidate.id === (activeStep === 'discover' ? 'approvals' : activeStep)) > index;
+        const active = step.id === normalizedActiveStep;
+        const complete = !active && steps.findIndex((candidate) => candidate.id === normalizedActiveStep) > index;
         return (
           <button
             key={step.id}
