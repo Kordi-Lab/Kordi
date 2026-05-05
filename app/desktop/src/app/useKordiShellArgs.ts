@@ -54,6 +54,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       displayedAgents: args.displayedAgents,
       activeBridgeHost: args.activeBridgeHost,
       localProfileAvatarSeed: args.localProfileAvatarSeed,
+      isBridgePolling: args.isBridgePolling,
       refreshDesktopBridge: args.refreshDesktopBridge,
       handleCopyBridgeText: args.handleCopyBridgeText,
       handleCreateBridgeDraft: args.handleCreateBridgeDraft,
@@ -258,6 +259,10 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
     overlay: {
       showAuthGate: args.showAuthGate,
       dismissAuthGate: args.dismissAuthGate,
+      setActiveNav: args.setActiveNav,
+      chatConversations: args.chatConversations,
+      handleSelectChatSession: args.handleSelectChatSession,
+      handleCreateChatSession: args.handleCreateChatSession,
       windowWidth: args.windowWidth,
       isNativeShell: args.isNativeShell,
       desktopAuthState: args.desktopAuthState,

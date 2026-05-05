@@ -5,6 +5,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{middleware, Extension, Json, Router};
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,8 @@ struct MailboxAckReq {
 struct DerpFrame {
     src: Option<String>,
     dst: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    durable: Option<bool>,
     #[serde(with = "base64_serde")]
     data: Vec<u8>,
 }
@@ -111,6 +114,7 @@ fn maybe_delivery_event_frame(
     let frame = DerpFrame {
         src: Some(from_node_id.to_string()),
         dst: None,
+        durable: None,
         data: serde_json::to_vec(&payload).ok()?,
     };
     Some(Message::Text(serde_json::to_string(&frame).ok()?))
@@ -333,10 +337,71 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                 let Some(dst_node_id) = frame.dst else {
                     continue;
                 };
+                let durable = frame.durable.unwrap_or(true);
                 let request_bytes = frame.data.clone();
+                let mut db = match state.open_connection() {
+                    Ok(db) => db,
+                    Err(err) => {
+                        eprintln!("DERP database open error for {}: {}", dst_node_id, err);
+                        if let Some(ack) =
+                            maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
+                        {
+                            let _ = tx.send(ack);
+                        }
+                        continue;
+                    }
+                };
+                let allowed = match nodes_share_project_or_contact(&db, &node_id, &dst_node_id) {
+                    Ok(allowed) => allowed,
+                    Err(err) => {
+                        eprintln!(
+                            "DERP authorization lookup error for {}: {}",
+                            dst_node_id, err
+                        );
+                        false
+                    }
+                };
+                if !allowed {
+                    if let Some(ack) =
+                        maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
+                    {
+                        let _ = tx.send(ack);
+                    }
+                    continue;
+                }
+                if durable {
+                    let entry = MailboxEntry {
+                        from: node_id.clone(),
+                        blob: base64::engine::general_purpose::STANDARD.encode(&request_bytes),
+                        project_id: None,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    };
+                    match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            if let Some(ack) =
+                                maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
+                            {
+                                let _ = tx.send(ack);
+                            }
+                            continue;
+                        }
+                        Err(err) => {
+                            eprintln!("DERP mailbox enqueue error for {}: {}", dst_node_id, err);
+                            if let Some(ack) =
+                                maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
+                            {
+                                let _ = tx.send(ack);
+                            }
+                            continue;
+                        }
+                    }
+                }
+
                 let outbound = DerpFrame {
                     src: Some(node_id.clone()),
                     dst: None,
+                    durable: None,
                     data: frame.data,
                 };
                 let json = match serde_json::to_string(&outbound) {
@@ -353,15 +418,6 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                 };
                 if let Some(peer_tx) = peer_tx {
                     let _ = peer_tx.send(Message::Text(json));
-                    if let Some(ack) =
-                        maybe_delivery_event_frame(&dst_node_id, &request_bytes, "delivered")
-                    {
-                        let _ = tx.send(ack);
-                    }
-                } else if let Some(ack) =
-                    maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
-                {
-                    let _ = tx.send(ack);
                 }
             }
             Message::Ping(payload) => {
@@ -563,7 +619,11 @@ fn drain_mailbox_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
     use std::path::{Path, PathBuf};
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 
     fn test_db_path() -> PathBuf {
         std::env::temp_dir().join(format!("bridges-relay-test-{}.db", Uuid::new_v4()))
@@ -612,6 +672,164 @@ mod tests {
             )
             .unwrap();
         }
+    }
+
+    fn seed_registered_node(state: &ServerState, node_id: &str, api_key: &str) {
+        let conn = state.open_connection().unwrap();
+        let mut hash = Sha256::new();
+        hash.update(api_key.as_bytes());
+        let api_key_hash = hex::encode(hash.finalize());
+        conn.execute(
+            "INSERT OR IGNORE INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, api_key_hash, created_at) VALUES (?1, 'ed25519', 'x25519', ?1, ?1, ?2, ?3)",
+            rusqlite::params![node_id, api_key_hash, chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+    }
+
+    async fn connect_test_derp_client(
+        base_url: &str,
+        api_key: &str,
+    ) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>
+    {
+        let mut request = format!("{base_url}/ws/derp").into_client_request().unwrap();
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Bearer {api_key}").parse().unwrap(),
+        );
+        let (socket, _) = connect_async(request).await.unwrap();
+        socket
+    }
+
+    #[tokio::test]
+    async fn derp_realtime_message_is_mailboxed_until_receiver_acks() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node(&state, "receiver", "receiver-key");
+        seed_contact(&state, "sender", "receiver");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_state = state.clone();
+        tokio::spawn(async move {
+            axum::serve(listener, routes(server_state)).await.unwrap();
+        });
+        let base_url = format!("ws://{addr}");
+
+        let _receiver_socket = connect_test_derp_client(&base_url, "receiver-key").await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        let mut sender_socket = connect_test_derp_client(&base_url, "sender-key").await;
+        let payload = serde_json::json!({
+            "requestId": "bridge_req_ws_durable_1",
+            "messageType": "raw",
+            "payload": { "message": "durable websocket message" },
+        });
+        let frame = DerpFrame {
+            src: None,
+            dst: Some("receiver".to_string()),
+            durable: Some(true),
+            data: serde_json::to_vec(&payload).unwrap(),
+        };
+        sender_socket
+            .send(TungsteniteMessage::Text(
+                serde_json::to_string(&frame).unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let pending = poll_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert_eq!(pending.entries.len(), 1);
+        assert_eq!(pending.entries[0].from, "sender");
+
+        let ack_ids = pending
+            .entries
+            .iter()
+            .map(|entry| entry.message_id.clone())
+            .collect::<Vec<_>>();
+        ack_mailbox_v2(
+            State(state.clone()),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxAckReq {
+                message_ids: ack_ids,
+            }),
+        )
+        .await
+        .expect("ack mailbox");
+
+        let after_ack = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll after ack")
+        .0;
+        assert!(after_ack.entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn derp_realtime_message_requires_contact_or_project_before_mailbox() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node(&state, "receiver", "receiver-key");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_state = state.clone();
+        tokio::spawn(async move {
+            axum::serve(listener, routes(server_state)).await.unwrap();
+        });
+        let base_url = format!("ws://{addr}");
+
+        let _receiver_socket = connect_test_derp_client(&base_url, "receiver-key").await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        let mut sender_socket = connect_test_derp_client(&base_url, "sender-key").await;
+        let frame = DerpFrame {
+            src: None,
+            dst: Some("receiver".to_string()),
+            durable: Some(true),
+            data: serde_json::to_vec(&serde_json::json!({
+                "requestId": "bridge_req_ws_unauthorized",
+                "messageType": "raw",
+                "payload": { "message": "should not mailbox" },
+            }))
+            .unwrap(),
+        };
+        sender_socket
+            .send(TungsteniteMessage::Text(
+                serde_json::to_string(&frame).unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert!(pending.entries.is_empty());
     }
 
     #[tokio::test]

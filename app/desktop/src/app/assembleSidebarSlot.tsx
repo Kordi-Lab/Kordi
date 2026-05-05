@@ -75,6 +75,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       displayedAgents={args.displayedAgents}
       activeBridgeHost={args.activeBridgeHost}
       localProfileAvatarSeed={args.localProfileAvatarSeed}
+      isBridgePolling={args.isBridgePolling}
       onRefreshBridge={() => {
         void args.refreshDesktopBridge();
       }}

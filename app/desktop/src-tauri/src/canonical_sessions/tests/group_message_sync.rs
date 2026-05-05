@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn inbound_group_session_message_reconstructs_group_parent_and_members() {
     let conn = test_conn();
-    for (id, display_name, human_id, node_id) in [
+    for (id, display_name, human_id, _node_id) in [
         ("human:local-alice", "Alice", "kh_alice", "kd_alice"),
         ("human:remote-bob", "Bob", "kh_bob", "kd_bob"),
         ("human:carol", "Carol", "kh_carol", "kd_carol"),
@@ -15,10 +15,10 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
                 kind: "human".to_string(),
                 display_name: display_name.to_string(),
                 owner_identity_id: None,
-                source: Some("bridge".to_string()),
-                source_host_id: Some("bridge-host".to_string()),
-                bridge_node_id: Some(node_id.to_string()),
-                human_id: Some(human_id.to_string()),
+                source: Some("local".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: None,
                 agent_id: None,
                 avatar_key: Some(human_id.to_string()),
                 profile_image_url: None,
@@ -198,6 +198,44 @@ fn inbound_group_session_message_reconstructs_group_parent_and_members() {
         .expect("message");
     assert_eq!(sender_identity_id, "human:remote-bob");
     assert_eq!(content_text, "hi group");
+
+    let enriched_identities: Vec<(String, Option<String>, Option<String>, Option<String>)> = conn
+        .prepare(
+            "SELECT id, source_host_id, bridge_node_id, human_id
+             FROM identities
+             WHERE id IN ('human:local-alice', 'human:remote-bob', 'human:carol')
+             ORDER BY id",
+        )
+        .expect("prepare enriched identities")
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("query enriched identities")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect enriched identities");
+    assert_eq!(
+        enriched_identities,
+        vec![
+            (
+                "human:carol".to_string(),
+                Some("bridge-host".to_string()),
+                Some("kd_carol".to_string()),
+                Some("kh_carol".to_string()),
+            ),
+            (
+                "human:local-alice".to_string(),
+                Some("bridge-host".to_string()),
+                Some("kd_alice".to_string()),
+                Some("kh_alice".to_string()),
+            ),
+            (
+                "human:remote-bob".to_string(),
+                Some("bridge-host".to_string()),
+                Some("kd_bob".to_string()),
+                Some("kh_bob".to_string()),
+            ),
+        ],
+    );
 }
 
 #[test]

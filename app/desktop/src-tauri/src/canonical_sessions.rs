@@ -62,8 +62,8 @@ use self::identity_helpers::{
     validate_identity_kind, validate_session_kind,
 };
 pub(crate) use self::identity_helpers::{
-    clean_optional, identity_display_name, json_from_db, json_to_db, shared_agent_display_name,
-    validate_status,
+    clean_optional, identity_display_name, json_from_db, json_to_db,
+    sanitize_remote_peer_display_name, shared_agent_display_name, validate_status,
 };
 pub(crate) use self::message_lookup::{
     existing_delegation_join_message_id, session_message_count, similar_agent_message_exists,

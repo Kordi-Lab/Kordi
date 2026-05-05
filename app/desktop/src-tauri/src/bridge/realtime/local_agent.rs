@@ -18,8 +18,9 @@ use super::super::events::{
 };
 use super::super::mailbox::apply_bridge_event_to_storage;
 use super::super::{
-    append_conversation_message_to_storage, decrypt_bridge_payload_for_host, load_bridge_store,
-    now_ms, record_bridge_inbox_event_and_agent_job, update_message_delivery_state_in_storage,
+    append_conversation_message_to_storage, append_conversation_message_to_storage_with_timestamp,
+    decrypt_bridge_payload_for_host, load_bridge_store, now_ms,
+    record_bridge_inbox_event_and_agent_job, update_message_delivery_state_in_storage,
     BridgeAgentJobInsert, BridgeInboxEventInsert, DesktopBridgeConversationStore,
     DesktopBridgeManager, DesktopBridgeMessageAttachment, LocalBridgeServerRuntime,
 };
@@ -154,14 +155,20 @@ async fn fanout_group_agent_response(
         "payload": bridge_response_payload(event, message, done),
     });
     for relay_target in relay_targets {
-        send_realtime_or_relay(
+        if let Err(error) = send_realtime_or_relay(
             manager,
             &target.host,
             &relay_target,
             event.project_id.as_deref(),
             &response,
         )
-        .await;
+        .await
+        {
+            eprintln!(
+                "Bridge group agent response fanout failed; host={}, target={}, error={}",
+                target.host.id, relay_target, error
+            );
+        }
     }
 }
 
@@ -184,7 +191,7 @@ fn append_local_agent_inbound_message(
         &event.from_node_id,
     );
 
-    append_conversation_message_to_storage(
+    append_conversation_message_to_storage_with_timestamp(
         &target.host.id,
         &event.from_node_id,
         peer_display_name,
@@ -205,6 +212,7 @@ fn append_local_agent_inbound_message(
         Some("processing".to_string()),
         attachments,
         true,
+        event.sent_at_ms,
     )
 }
 
@@ -318,14 +326,20 @@ pub(super) async fn handle_incoming_payload(
                 "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
                 "payload": { "requestId": request_id, "state": "processing" },
             });
-            send_realtime_or_relay(
+            if let Err(error) = send_realtime_or_relay(
                 manager,
                 &target.host,
                 &event.from_node_id,
                 event.project_id.as_deref(),
                 &processing,
             )
-            .await;
+            .await
+            {
+                eprintln!(
+                    "Bridge processing delivery event send failed; host={}, target={}, error={}",
+                    target.host.id, event.from_node_id, error
+                );
+            }
         }
 
         if event_targets_group_session(&event) {
@@ -341,20 +355,27 @@ pub(super) async fn handle_incoming_payload(
                 "requestId": event.request_id,
                 "payload": bridge_response_payload(&event, "processing...", false),
             });
-            send_realtime_or_relay(
+            if let Err(error) = send_realtime_or_relay(
                 manager,
                 &target.host,
                 &event.from_node_id,
                 event.project_id.as_deref(),
                 &response,
             )
-            .await;
+            .await
+            {
+                eprintln!(
+                    "Bridge group processing response send failed; host={}, target={}, error={}",
+                    target.host.id, event.from_node_id, error
+                );
+            }
         }
         fanout_group_agent_response(manager, target, &event, "processing...", false).await;
 
         let chat_manager = app.state::<DesktopChatManager>().inner().clone();
         let store = load_bridge_store();
-        let _ = super::super::mailbox::run_queued_agent_jobs_once(&chat_manager, &store).await?;
+        let _ = super::super::mailbox::run_queued_agent_jobs_once(manager, &chat_manager, &store)
+            .await?;
         return emit_bridge_state(app, local_server).await;
     }
 
@@ -364,14 +385,20 @@ pub(super) async fn handle_incoming_payload(
 
     apply_bridge_event_to_storage(&target.host, event, false).await?;
     if let Some(delivery_ack) = delivery_ack {
-        send_realtime_or_relay(
+        if let Err(error) = send_realtime_or_relay(
             manager,
             &target.host,
             &delivery_ack_target_node_id,
             delivery_ack_project_id.as_deref(),
             &delivery_ack,
         )
-        .await;
+        .await
+        {
+            eprintln!(
+                "Bridge delivery ack send failed; host={}, target={}, error={}",
+                target.host.id, delivery_ack_target_node_id, error
+            );
+        }
     }
     emit_bridge_state(app, local_server).await
 }
@@ -417,6 +444,7 @@ mod tests {
             payload: serde_json::json!({ "message": "hello" }),
             request_id: Some("bridge_req_1".to_string()),
             project_id: None,
+            sent_at_ms: None,
         }
     }
 

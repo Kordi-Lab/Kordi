@@ -49,6 +49,52 @@ mod group_agent_responses;
 mod group_message_sync;
 
 #[test]
+fn shared_agent_display_name_keeps_already_scoped_remote_agent_name() {
+    let conn = test_conn();
+    upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:remote".to_string()),
+            kind: "human".to_string(),
+            display_name: "Me".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("bridge-host".to_string()),
+            bridge_node_id: Some("kd_remote".to_string()),
+            human_id: Some("kh_remote".to_string()),
+            agent_id: None,
+            avatar_key: Some("kh_remote".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("seed remote human");
+    let agent = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("agent:remote".to_string()),
+            kind: "agent".to_string(),
+            display_name: "Testuser2's Kordi".to_string(),
+            owner_identity_id: Some("human:remote".to_string()),
+            source: Some("bridge".to_string()),
+            source_host_id: Some("bridge-host".to_string()),
+            bridge_node_id: Some("kd_remote".to_string()),
+            human_id: Some("kh_remote".to_string()),
+            agent_id: Some("ka_remote".to_string()),
+            avatar_key: Some("ka_remote".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("seed remote agent");
+
+    assert_eq!(
+        shared_agent_display_name(&conn, &agent.id).expect("shared agent label"),
+        Some("Testuser2's Kordi".to_string())
+    );
+}
+
+#[test]
 fn renaming_non_group_session_marks_title_as_manual_metadata() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");

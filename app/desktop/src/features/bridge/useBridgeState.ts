@@ -13,6 +13,10 @@ import {
   bridgeReadReceiptBatchSignature,
   canAutoMarkBridgeRead,
 } from '@/features/bridge/readReceipts';
+import {
+  shouldRefreshBridgeRealtimeForVisibility,
+  shouldRunBridgeRealtimeRecovery,
+} from '@/features/bridge/realtimeRecovery';
 import type {
   DesktopBridgeConversation,
   DesktopBridgeConversationMessage,
@@ -27,6 +31,7 @@ import {
   markDesktopBridgeConversationRead,
   openDesktopBridgeConfigFolder,
   pollDesktopBridgeMailbox,
+  refreshDesktopBridgeRealtimeConnections,
   removeDesktopBridgeHost,
   revealDesktopBridgeStorageFile,
   saveDesktopBridgeHost,
@@ -50,6 +55,20 @@ type BridgeSettingsDraft = {
   displayName: string;
   ownerName: string;
 };
+
+export type BridgeMailboxPollTrigger = 'startup' | 'focus' | 'pageshow' | 'visibilitychange' | 'routine';
+
+const BRIDGE_MAILBOX_PROGRESS_DELAY_MS = 600;
+const BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS = 15_000;
+
+export function shouldShowBridgeMailboxPollProgress(
+  trigger: BridgeMailboxPollTrigger,
+  nowMs: number,
+  lastShownAtMs: number,
+) {
+  if (trigger === 'routine') return false;
+  return lastShownAtMs <= 0 || nowMs - lastShownAtMs >= BRIDGE_MAILBOX_PROGRESS_COOLDOWN_MS;
+}
 
 type BridgeDraftHost = {
   id?: string | null;
@@ -144,7 +163,7 @@ function mergeBridgeConversation(
   };
 }
 
-function markBridgeConversationsReadInState(
+export function markBridgeConversationsReadInState(
   state: DesktopBridgeState | null,
   conversationIds: string[],
 ): DesktopBridgeState | null {
@@ -252,7 +271,11 @@ export function useBridgeState({
   });
   const lastBridgeTypingSentAtRef = useRef(0);
   const lastBridgeHeartbeatSentAtRef = useRef(0);
+  const lastBridgePollProgressShownAtRef = useRef(0);
+  const bridgePollProgressTimerRef = useRef<number | null>(null);
   const mailboxPollFlightRef = useRef(createSingleFlightState());
+  const realtimeRecoveryFlightRef = useRef(createSingleFlightState());
+  const lastBridgeRealtimeRecoveryAtRef = useRef(0);
   const activeBridgeReadRequestRef = useRef<string | null>(null);
   const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
@@ -516,7 +539,7 @@ export function useBridgeState({
 
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
-    const poll = () => {
+    const poll = (trigger: BridgeMailboxPollTrigger) => {
       const run = requestSingleFlightRun(mailboxPollFlightRef.current, async () => {
         try {
           const state = await pollDesktopBridgeMailbox();
@@ -526,19 +549,101 @@ export function useBridgeState({
           // keep polling lightweight; show errors only on explicit actions
         }
       });
-      if (!run) return;
-      setIsBridgePolling(true);
-      void run.finally(() => {
+      const shouldShowProgress = shouldShowBridgeMailboxPollProgress(
+        trigger,
+        Date.now(),
+        lastBridgePollProgressShownAtRef.current,
+      );
+      if (!shouldShowProgress) return;
+      const activeRun = run ?? mailboxPollFlightRef.current.currentPromise;
+      if (!activeRun) return;
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+      }
+      bridgePollProgressTimerRef.current = window.setTimeout(() => {
+        bridgePollProgressTimerRef.current = null;
+        lastBridgePollProgressShownAtRef.current = Date.now();
+        setIsBridgePolling(true);
+      }, BRIDGE_MAILBOX_PROGRESS_DELAY_MS);
+      void activeRun.finally(() => {
+        if (bridgePollProgressTimerRef.current !== null) {
+          window.clearTimeout(bridgePollProgressTimerRef.current);
+          bridgePollProgressTimerRef.current = null;
+        }
         setIsBridgePolling(false);
       });
     };
-    const interval = window.setInterval(poll, 4000);
-    window.addEventListener('focus', poll);
+    const pollWhenVisible = (trigger: BridgeMailboxPollTrigger) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      poll(trigger);
+    };
+    pollWhenVisible('startup');
+    const interval = window.setInterval(() => poll('routine'), 4000);
+    const pollOnFocus = () => poll('focus');
+    const pollOnPageShow = () => pollWhenVisible('pageshow');
+    const pollOnVisibilityChange = () => pollWhenVisible('visibilitychange');
+    window.addEventListener('focus', pollOnFocus);
+    window.addEventListener('pageshow', pollOnPageShow);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', pollOnVisibilityChange);
+    }
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('focus', poll);
+      if (bridgePollProgressTimerRef.current !== null) {
+        window.clearTimeout(bridgePollProgressTimerRef.current);
+        bridgePollProgressTimerRef.current = null;
+      }
+      window.removeEventListener('focus', pollOnFocus);
+      window.removeEventListener('pageshow', pollOnPageShow);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', pollOnVisibilityChange);
+      }
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
+
+  useEffect(() => {
+    if (!isNativeShell || typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const recoverRealtime = () => {
+      const now = Date.now();
+      if (!shouldRunBridgeRealtimeRecovery(now, lastBridgeRealtimeRecoveryAtRef.current)) return;
+      lastBridgeRealtimeRecoveryAtRef.current = now;
+
+      const run = requestSingleFlightRun(realtimeRecoveryFlightRef.current, async () => {
+        const state = await refreshDesktopBridgeRealtimeConnections();
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+        setLastBridgePollAt(Date.now());
+        if (state.hosts.length === 0) return;
+        try {
+          const mailboxState = await pollDesktopBridgeMailbox();
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, mailboxState));
+          setLastBridgePollAt(Date.now());
+        } catch {
+          // Recovery is best-effort; routine mailbox polling will keep trying.
+        }
+      });
+      void run?.catch(() => {
+        // Keep wake/focus recovery silent; explicit actions surface errors.
+      });
+    };
+
+    const recoverWhenVisible = () => {
+      if (shouldRefreshBridgeRealtimeForVisibility(document.visibilityState)) {
+        recoverRealtime();
+      }
+    };
+
+    window.addEventListener('focus', recoverRealtime);
+    window.addEventListener('online', recoverRealtime);
+    window.addEventListener('pageshow', recoverRealtime);
+    document.addEventListener('visibilitychange', recoverWhenVisible);
+    return () => {
+      window.removeEventListener('focus', recoverRealtime);
+      window.removeEventListener('online', recoverRealtime);
+      window.removeEventListener('pageshow', recoverRealtime);
+      document.removeEventListener('visibilitychange', recoverWhenVisible);
+    };
+  }, [isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell) return;

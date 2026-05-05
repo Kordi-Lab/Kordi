@@ -27,8 +27,10 @@ use super::mailbox_events::{
     group_session_thread_relay_targets, should_buffer_partial_agent_response,
 };
 use super::outreach::mark_outreach_status;
+use super::realtime::send_realtime_or_relay;
 use super::{
-    ack_mailbox_v2, append_conversation_message_to_storage, bridge_conversation_id,
+    ack_mailbox_v2, append_conversation_message_to_storage,
+    append_conversation_message_to_storage_with_timestamp, bridge_conversation_id,
     bridge_request_is_cancelled, fetch_mailbox, list_runnable_bridge_agent_jobs_from_storage,
     list_running_bridge_agent_jobs_from_storage, load_bridge_inbox_event_from_storage,
     load_bridge_store, load_conversation_store, mark_bridge_agent_job_retry_wait_in_storage,
@@ -48,6 +50,71 @@ struct LocalBridgeMailboxTarget {
     owner_node_id: Option<String>,
     model_routing: Option<DesktopBridgeAgentModelRouting>,
     should_process_agent_asks: bool,
+}
+
+fn group_agent_response_delivery_targets(
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+) -> Vec<String> {
+    let host_node_id = target.host.node_id.trim();
+    let owner_node_id = target.owner_node_id.as_deref().map(str::trim).unwrap_or("");
+    let requester_node_id = event.from_node_id.trim();
+    let mut targets = Vec::new();
+    if !requester_node_id.is_empty()
+        && requester_node_id != host_node_id
+        && requester_node_id != owner_node_id
+    {
+        targets.push(requester_node_id.to_string());
+    }
+    for relay_target in group_session_thread_relay_targets(
+        event,
+        target.host.node_id.as_str(),
+        target.owner_node_id.as_deref(),
+        event.from_node_id.as_str(),
+    ) {
+        if !targets.iter().any(|existing| existing == &relay_target) {
+            targets.push(relay_target);
+        }
+    }
+    targets
+}
+
+async fn send_agent_response_payload(
+    manager: Option<&DesktopBridgeManager>,
+    host: &DesktopBridgeHostConfig,
+    target_node_id: &str,
+    project_id: Option<&str>,
+    payload: &Value,
+) {
+    let result = if let Some(manager) = manager {
+        send_realtime_or_relay(manager, host, target_node_id, project_id, payload).await
+    } else {
+        relay_plaintext_message(host, target_node_id, project_id, payload).await
+    };
+    if let Err(error) = result {
+        eprintln!(
+            "Bridge agent response delivery failed; host={}, target={}, error={}",
+            host.id, target_node_id, error
+        );
+    }
+}
+
+async fn deliver_agent_response_payload(
+    manager: Option<&DesktopBridgeManager>,
+    target: &LocalBridgeMailboxTarget,
+    event: &ParsedMailboxEvent,
+    response: &Value,
+) {
+    for target_node_id in group_agent_response_delivery_targets(target, event) {
+        send_agent_response_payload(
+            manager,
+            &target.host,
+            &target_node_id,
+            event.project_id.as_deref(),
+            response,
+        )
+        .await;
+    }
 }
 
 async fn fanout_group_agent_response(
@@ -376,6 +443,7 @@ fn terminal_bridge_agent_job(
 }
 
 async fn execute_persisted_agent_job(
+    manager: DesktopBridgeManager,
     chat_manager: DesktopChatManager,
     target: LocalBridgeMailboxTarget,
     event: ParsedMailboxEvent,
@@ -480,14 +548,7 @@ async fn execute_persisted_agent_job(
                     "requestId": event.request_id,
                     "payload": bridge_response_payload(&event, &assistant_text, true),
                 });
-                let _ = relay_plaintext_message(
-                    &target.host,
-                    &event.from_node_id,
-                    event.project_id.as_deref(),
-                    &response,
-                )
-                .await;
-                fanout_group_agent_response(&target, &event, &assistant_text, true).await;
+                deliver_agent_response_payload(Some(&manager), &target, &event, &response).await;
             }
             if let Some(request_id) = event.request_id.as_deref() {
                 update_message_delivery_state_in_storage(
@@ -589,6 +650,7 @@ async fn execute_persisted_agent_job(
 }
 
 pub(in crate::bridge) async fn run_queued_agent_jobs_once(
+    manager: &DesktopBridgeManager,
     chat_manager: &DesktopChatManager,
     store: &DesktopBridgeStore,
 ) -> Result<bool, String> {
@@ -643,10 +705,12 @@ pub(in crate::bridge) async fn run_queued_agent_jobs_once(
         };
 
         mark_bridge_agent_job_running_in_storage(&job.id, now_ms())?;
+        let manager = manager.clone();
         let chat_manager = chat_manager.clone();
         let job_for_error = job.clone();
         tokio::spawn(async move {
-            if let Err(error) = execute_persisted_agent_job(chat_manager, target, event, job).await
+            if let Err(error) =
+                execute_persisted_agent_job(manager, chat_manager, target, event, job).await
             {
                 eprintln!("Bridge agent job failed: {error}");
                 let _ = terminal_bridge_agent_job(
@@ -805,7 +869,7 @@ fn append_inbound_event_message_to_storage(
         .and_then(|value| value.as_str())
         .map(ToString::to_string);
 
-    append_conversation_message_to_storage(
+    append_conversation_message_to_storage_with_timestamp(
         &host.id,
         &event.from_node_id,
         peer_display_name,
@@ -830,6 +894,7 @@ fn append_inbound_event_message_to_storage(
         },
         attachments,
         true,
+        event.sent_at_ms,
     )?;
     Ok(Some(text))
 }
@@ -970,7 +1035,7 @@ pub(super) async fn desktop_bridge_poll_mailbox_impl(
         }
     }
 
-    if run_queued_agent_jobs_once(chat_manager, &store).await? {
+    if run_queued_agent_jobs_once(manager, chat_manager, &store).await? {
         storage_changed = true;
     }
 

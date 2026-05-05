@@ -66,6 +66,29 @@ function sameAgentResponseText(left: string, right: string) {
     || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
 }
 
+function comparableToolSignature(message: Message) {
+  const tools = message.turn?.tools ?? [];
+  if (tools.length === 0) return null;
+  return tools
+    .map((tool) => [tool.id ?? '', tool.name ?? '', tool.status ?? ''].join(''))
+    .sort()
+    .join('');
+}
+
+function sameOwnedAgentTurn(canonical: Message, local: Message) {
+  if (canonical.role !== 'owned-agent' || local.role !== 'owned-agent') return false;
+  const canonicalText = messageResponseText(canonical);
+  const localText = messageResponseText(local);
+  if (canonicalText && localText && sameAgentResponseText(canonicalText, localText)) return true;
+  const canonicalTools = comparableToolSignature(canonical);
+  const localTools = comparableToolSignature(local);
+  if (canonicalTools && localTools && canonicalTools === localTools) return true;
+  const canonicalThinking = canonical.turn?.thinkingText?.trim() ?? '';
+  const localThinking = local.turn?.thinkingText?.trim() ?? '';
+  if (canonicalThinking && localThinking && sameAgentResponseText(canonicalThinking, localThinking)) return true;
+  return false;
+}
+
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
@@ -82,10 +105,7 @@ function mergeLocalOwnedAgentRuntimeStatus(
 ) {
   const merged = [...canonicalMessages];
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
-    const localText = messageResponseText(localMessage);
-    const matchingCanonicalIndex = localText
-      ? merged.findIndex((message) => message.role === 'owned-agent' && sameAgentResponseText(messageResponseText(message), localText))
-      : -1;
+    const matchingCanonicalIndex = merged.findIndex((message) => sameOwnedAgentTurn(message, localMessage));
     if (matchingCanonicalIndex >= 0) {
       merged[matchingCanonicalIndex] = localMessage;
     } else {

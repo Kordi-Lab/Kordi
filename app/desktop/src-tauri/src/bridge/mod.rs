@@ -20,7 +20,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
@@ -55,10 +55,11 @@ use self::state::{
 };
 #[allow(unused_imports)]
 use self::storage::{
-    append_conversation_message_to_storage, bridge_conversation_id, bridge_hosts_match,
-    bridge_request_is_cancelled, delete_bridge_host_secrets, delete_conversations_for_host,
-    desktop_bridge_config_path, desktop_bridge_conversations_path, format_time_label,
-    format_time_label_with_seconds, hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
+    append_conversation_message_to_storage, append_conversation_message_to_storage_with_timestamp,
+    bridge_conversation_id, bridge_hosts_match, bridge_request_is_cancelled,
+    delete_bridge_host_secrets, delete_conversations_for_host, desktop_bridge_config_path,
+    desktop_bridge_conversations_path, format_time_label, format_time_label_with_seconds,
+    hosted_bridge_dir, korde_dir, legacy_bridge_config_path,
     list_runnable_bridge_agent_jobs_from_storage, list_running_bridge_agent_jobs_from_storage,
     load_bridge_inbox_event_from_storage, load_bridge_store, load_conversation_store,
     load_legacy_bridge_config, mark_bridge_agent_job_retry_wait_in_storage,
@@ -608,6 +609,25 @@ impl Default for DesktopBridgeManager {
 
 pub(crate) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: tauri::AppHandle) {
     realtime::set_bridge_app_handle(manager, app).await;
+}
+
+pub(crate) fn schedule_bridge_realtime_refresh(app: &tauri::AppHandle, reason: &'static str) {
+    let manager = app.state::<DesktopBridgeManager>().inner().clone();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match realtime::refresh_realtime_connections(&manager).await {
+            Ok(state) => {
+                if let Err(error) = app.emit(BRIDGE_STATE_EVENT, state) {
+                    eprintln!(
+                        "Bridge realtime refresh after {reason} could not emit state: {error}"
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!("Bridge realtime refresh after {reason} failed: {error}");
+            }
+        }
+    });
 }
 
 fn default_bridge_api_style() -> String {
@@ -1183,6 +1203,13 @@ pub async fn desktop_bridge_poll_mailbox(
     chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
     mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_refresh_realtime_connections(
+    manager: State<'_, DesktopBridgeManager>,
+) -> Result<DesktopBridgeState, String> {
+    realtime::refresh_realtime_connections(&manager).await
 }
 
 #[cfg(test)]

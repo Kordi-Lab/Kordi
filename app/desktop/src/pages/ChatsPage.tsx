@@ -13,7 +13,6 @@ import {
   PanelLeftOpen,
   Send,
   Shield,
-  Square,
   X,
 } from 'lucide-react';
 
@@ -129,19 +128,17 @@ function bridgeThinkingDisplayName(value?: string | null) {
   return value[0]?.toUpperCase() + value.slice(1);
 }
 
-export function chatComposerSubmitMode({
-  isDesktopChatSending,
-  activeLiveTurnIsRunning,
-  hasDraft,
-  canSendWhileBusy = false,
-}: {
-  isDesktopChatSending: boolean;
-  activeLiveTurnIsRunning: boolean;
-  hasDraft: boolean;
+export function chatComposerSubmitMode(_input?: {
+  isDesktopChatSending?: boolean;
+  activeLiveTurnIsRunning?: boolean;
+  hasDraft?: boolean;
   canSendWhileBusy?: boolean;
 }) {
-  if (canSendWhileBusy) return 'send' as const;
-  return (isDesktopChatSending || activeLiveTurnIsRunning) && !hasDraft ? 'stop' as const : 'send' as const;
+  // The composer is always in Send mode. Stopping a running turn happens via the
+  // inline stop button on the agent message itself (see #267 / #273); keeping a
+  // separate stop variant on the composer was redundant and prevented users from
+  // queueing a follow-up message while a turn was in flight.
+  return 'send' as const;
 }
 
 function normalizeRoutingProviderId(providerId: string) {
@@ -311,14 +308,6 @@ export function ChatsPage({
   );
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
-  const composerCanSendWhileBusy = activeConversationIsBridge || Boolean(activeConv.bridgeTarget) || activeConvHasBridgeTransport;
-  const composerSubmitMode = chatComposerSubmitMode({
-    isDesktopChatSending,
-    activeLiveTurnIsRunning,
-    hasDraft: composerHasDraft,
-    canSendWhileBusy: composerCanSendWhileBusy,
-  });
-  const composerStopMode = composerSubmitMode === 'stop';
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -587,6 +576,7 @@ export function ChatsPage({
                 turn={attributedActiveTranscriptLiveTurn}
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onStopActiveTurn={onStopDesktopChatTurn}
               />
             ) : null}
             {queuedDesktopMessages.map((message) => (
@@ -882,22 +872,13 @@ export function ChatsPage({
                 </div>
               ) : null}
               <Button
-                className={cn(
-                  'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
-                  composerStopMode ? 'bg-rose-500/90 text-white hover:bg-rose-500' : '',
-                )}
-                onClick={() => {
-                  if (composerStopMode) {
-                    onStopDesktopChatTurn();
-                    return;
-                  }
-                  onSendChatMessage();
-                }}
+                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                onClick={() => onSendChatMessage()}
                 disabled={false}
-                title={composerStopMode ? 'Stop running task' : activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
-                aria-label={composerStopMode ? 'Stop running task' : 'Send message'}
+                title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
+                aria-label="Send message"
               >
-                {composerStopMode ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
+                <Send className="h-4 w-4" />
               </Button>
             </div>
           </div>

@@ -45,6 +45,26 @@ type OllamaAction =
   | `stop:${string}`
   | `delete:${string}`;
 
+type OllamaPageEndActionId = 'save-ollama' | 'save-enter-chat';
+
+export type OllamaPageEndAction = {
+  id: OllamaPageEndActionId;
+  label: string;
+};
+
+export function ollamaPageEndAction({
+  activeRunningModelId,
+  canEnterChat,
+}: {
+  activeRunningModelId?: string | null;
+  canEnterChat: boolean;
+}): OllamaPageEndAction | null {
+  if (!activeRunningModelId) return null;
+  return canEnterChat
+    ? { id: 'save-enter-chat', label: 'Save & enter chat' }
+    : { id: 'save-ollama', label: 'Save Ollama' };
+}
+
 const OLLAMA_DOCS_URL = 'https://docs.ollama.com';
 const OLLAMA_OPENAI_DOCS_URL = 'https://docs.ollama.com/openai';
 const OLLAMA_LIBRARY_URL = 'https://ollama.com/library';
@@ -209,7 +229,6 @@ export function OllamaModelControlCenter({
   const [activeAction, setActiveAction] = useState<OllamaAction | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const endpointConfigured = endpoint.trim().length > 0;
   const normalizedQuery = query.trim().toLowerCase();
 
   const installedIds = useMemo(() => new Set(installedModels.map((model) => model.id)), [installedModels]);
@@ -507,6 +526,9 @@ export function OllamaModelControlCenter({
     ? 'Confirm install/update'
     : appReady ? 'Update Ollama' : 'Install Ollama';
 
+  const canEnterChat = Boolean(onEnterChat || onSaved);
+  const pageEndAction = ollamaPageEndAction({ activeRunningModelId, canEnterChat });
+
   const primaryActionLabel = !appReady
     ? installActionLabel
     : !serverRunning
@@ -515,9 +537,7 @@ export function OllamaModelControlCenter({
         ? 'Browse library'
         : !hasRunningModel && firstInstalledModelId
           ? 'Run installed model'
-          : endpointConfigured
-            ? 'Save & enter chat'
-            : 'Save Ollama';
+          : 'Ready';
 
   const primaryActionDetail = !appReady
     ? installActionDetail
@@ -527,9 +547,7 @@ export function OllamaModelControlCenter({
         ? 'Pull a chat model from the Ollama library.'
         : !hasRunningModel && firstInstalledModelId
           ? `Load ${firstInstalledModelId} into memory.`
-          : endpointConfigured
-            ? `Use ${activeRunningModelId ?? firstInstalledModelId} in Kordi chat.`
-            : 'Persist this local provider and model.';
+          : `Ready to chat with ${activeRunningModelId ?? firstInstalledModelId}.`;
 
   const runPrimaryAction = async () => {
     if (!appReady) {
@@ -547,9 +565,7 @@ export function OllamaModelControlCenter({
     }
     if (!hasRunningModel && firstInstalledModelId) {
       await toggleModelRuntime(firstInstalledModelId);
-      return;
     }
-    await saveConnection(activeRunningModelId ?? firstInstalledModelId, endpointConfigured);
   };
 
   const readinessSteps = [
@@ -604,14 +620,20 @@ export function OllamaModelControlCenter({
             </p>
           </div>
           <div className="flex min-w-[15rem] flex-col gap-2 rounded-[18px] border border-white/8 bg-black/10 p-3">
-            <AuthActionButton
-              className={ollamaPrimaryClass}
-              onClick={() => void runPrimaryAction()}
-              disabled={activeAction === 'server-start' || activeAction === 'install'}
-            >
-              {activeAction === 'server-start' || activeAction === 'install' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-              {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : activeAction === 'server-start' ? 'Starting…' : primaryActionLabel}
-            </AuthActionButton>
+            {pageEndAction ? (
+              <div className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[10px] border border-emerald-300/18 bg-emerald-300/[0.07] px-3 text-[11px] font-medium text-emerald-50">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Ready
+              </div>
+            ) : (
+              <AuthActionButton
+                className={ollamaPrimaryClass}
+                onClick={() => void runPrimaryAction()}
+                disabled={activeAction === 'server-start' || activeAction === 'install'}
+              >
+                {activeAction === 'server-start' || activeAction === 'install' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                {activeAction === 'install' ? (appReady ? 'Updating…' : 'Installing…') : activeAction === 'server-start' ? 'Starting…' : primaryActionLabel}
+              </AuthActionButton>
+            )}
             <div className="text-[11px] leading-4 text-slate-500">{primaryActionDetail}</div>
           </div>
         </div>
@@ -905,6 +927,26 @@ export function OllamaModelControlCenter({
           </div>
         ) : null}
       </div>
+
+      {pageEndAction ? (
+        <div className="rounded-[22px] border border-emerald-300/18 bg-emerald-300/[0.065] p-3.5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-emerald-50">Ready at the end of setup</div>
+              <div className="mt-1 text-[11px] leading-5 text-emerald-50/75">
+                Save <span className="font-mono text-emerald-50">{activeRunningModelId}</span> as the Ollama chat model, then enter your local agent chat.
+              </div>
+            </div>
+            <AuthActionButton
+              className={ollamaPrimaryClass}
+              onClick={() => void saveConnection(activeRunningModelId, pageEndAction.id === 'save-enter-chat')}
+              disabled={Boolean(activeAction)}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> {pageEndAction.label}
+            </AuthActionButton>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

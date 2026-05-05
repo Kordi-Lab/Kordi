@@ -501,6 +501,10 @@ export async function pollDesktopBridgeMailbox() {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_poll_mailbox');
 }
 
+export async function refreshDesktopBridgeRealtimeConnections() {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_refresh_realtime_connections');
+}
+
 export async function fetchCanonicalSessionState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_session_state');

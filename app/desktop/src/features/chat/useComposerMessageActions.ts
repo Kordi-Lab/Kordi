@@ -9,6 +9,7 @@ import {
 
 import { resizeComposerTextarea } from './composerController.shared';
 import type { UseComposerControllerArgs } from './composerController.types';
+import { updateScopeDraft, type ComposerDraftState } from './composerDrafts';
 import {
   appendDesktopSystemMessageToState,
   insertMentionIntoDraft,
@@ -131,6 +132,7 @@ export function useComposerMessageActions({
   const pendingBridgeOutreachRef = useRef<PendingBridgeOutreach | null>(null);
   const pendingBridgeCancelRequestedRef = useRef(false);
   const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
+  const userCancelledTurnIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     pendingBridgeOutreachRef.current = pendingBridgeOutreach;
@@ -210,6 +212,7 @@ export function useComposerMessageActions({
     isNativeShell,
     pendingBridgeCancelRequestedRef,
     localChatSendInFlightRef,
+    userCancelledTurnIdsRef,
     refreshDesktopChat,
     setActiveConvId,
     setCanonicalSessionState,
@@ -256,14 +259,24 @@ export function useComposerMessageActions({
   });
 
   const acceptChatMentionTarget = useCallback((label: string) => {
-    setComposerDrafts((current) => ({ ...current, chat: insertMentionIntoDraft(current.chat, label) }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
+      current,
+      'chat',
+      activeConvId,
+      insertMentionIntoDraft(composerDrafts.chat, label),
+    ));
     resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', insertMentionIntoDraft(composerDrafts.chat, label));
-  }, [composerDrafts.chat, setComposerDrafts]);
+  }, [activeConvId, composerDrafts.chat, setComposerDrafts]);
 
   const acceptProjectMentionTarget = useCallback((label: string) => {
-    setComposerDrafts((current) => ({ ...current, project: insertMentionIntoDraft(current.project, label) }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
+      current,
+      'project',
+      activeProjectSessionId ?? '',
+      insertMentionIntoDraft(composerDrafts.project, label),
+    ));
     resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
-  }, [composerDrafts.project, setComposerDrafts]);
+  }, [activeProjectSessionId, composerDrafts.project, setComposerDrafts]);
 
   const stopBridgeOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
     setDesktopChatError(null);
@@ -306,6 +319,8 @@ export function useComposerMessageActions({
     }
 
     const stoppedSessionId = desktopLiveTurn.sessionId;
+    const stoppedTurnId = desktopLiveTurn.id;
+    userCancelledTurnIdsRef.current.add(stoppedTurnId);
     setDesktopChatError(null);
     localChatSendInFlightRef.current = null;
     setIsDesktopChatSending(false);
@@ -316,7 +331,7 @@ export function useComposerMessageActions({
     });
 
     try {
-      await cancelDesktopChatTurn(desktopLiveTurn.id);
+      await cancelDesktopChatTurn(stoppedTurnId);
       void refreshDesktopChat(stoppedSessionId).catch(() => {});
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');

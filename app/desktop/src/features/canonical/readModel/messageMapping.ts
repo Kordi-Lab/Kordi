@@ -267,10 +267,15 @@ export function cancelledBridgeAgentDelegationMessage(
   };
 }
 
+export type MapCanonicalMessageContext = {
+  senderIdentityIdByMessageId?: ReadonlyMap<string, string> | null;
+};
+
 export function mapCanonicalMessage(
   message: CanonicalSessionMessage,
   identityById: Map<string, CanonicalIdentity>,
   profileHumanIdentityId?: string | null,
+  context: MapCanonicalMessageContext = {},
 ): Message | null {
   const content = contentRecord(message.content);
   const identity = identityById.get(message.senderIdentityId);
@@ -290,12 +295,36 @@ export function mapCanonicalMessage(
     : null;
   const replyAliasIds = [parentMessageId, bridgeRequestId]
     .filter((value): value is string => Boolean(value && value !== message.id));
+  const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
+  const viewerOwnsAgent = isAgentTurn
+    && Boolean(trimmedProfileIdentityId)
+    && identity?.kind === 'agent'
+    && Boolean(identity.ownerIdentityId)
+    && identity.ownerIdentityId === trimmedProfileIdentityId;
+  const initiatorIdentityId = (() => {
+    if (!isAgentTurn) return null;
+    const candidates = [
+      replyToMessageId ?? null,
+      parentMessageId ?? null,
+    ];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const sender = context.senderIdentityIdByMessageId?.get(candidate);
+      if (sender) return sender;
+    }
+    return null;
+  })();
+  const viewerIsInitiator = isAgentTurn
+    && Boolean(trimmedProfileIdentityId)
+    && Boolean(initiatorIdentityId)
+    && initiatorIdentityId === trimmedProfileIdentityId;
   const pendingBridgeAgentRequest = isAgentTurn
     && !completed
     && deliveryState === 'processing'
     && message.sourceTransport?.startsWith('desktop-bridge')
     && bridgeConversationId
     && bridgeRequestId
+    && (viewerOwnsAgent || viewerIsInitiator)
     ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
     : undefined;
   const tools = canonicalTools(content.tools);

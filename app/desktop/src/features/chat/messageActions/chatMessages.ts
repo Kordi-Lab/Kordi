@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
+import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
+import { markBridgeConversationsReadInState, mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
   ComposerScope,
   Conversation,
@@ -18,6 +19,7 @@ import {
   createDesktopBridgeOutreach,
   createDesktopChatSession,
   fetchDesktopChatTurnState,
+  markDesktopBridgeConversationRead,
   openDesktopBridgeConversation,
   sendDesktopBridgeMessage,
   startDesktopChatMessage,
@@ -26,6 +28,7 @@ import {
 
 import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
+import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import {
@@ -133,14 +136,20 @@ export function chatSendIsBusy({
   return Boolean(isDesktopChatSending || localSendInFlight);
 }
 
-export type LocalAgentRelayTurnResult = Pick<DesktopChatTurnSnapshot, 'assistantText' | 'error' | 'succeeded'>;
-export type LocalAgentRelayTerminalDeliveryState = 'responded' | 'processing_failed';
+export type LocalAgentRelayTurnResult = Pick<DesktopChatTurnSnapshot, 'assistantText' | 'error' | 'succeeded' | 'status'>;
+export type LocalAgentRelayTerminalDeliveryState = 'responded' | 'cancelled' | 'processing_failed';
+
+function turnWasCancelled(turn: Pick<LocalAgentRelayTurnResult, 'status'>) {
+  return turn.status === 'cancelled' || turn.status === 'cancelling';
+}
 
 export function localAgentRelayTerminalDeliveryState(turn: LocalAgentRelayTurnResult): LocalAgentRelayTerminalDeliveryState {
+  if (turnWasCancelled(turn)) return 'cancelled';
   return turn.succeeded && turn.assistantText.trim() ? 'responded' : 'processing_failed';
 }
 
-export function localAgentRelayFailureText(_turn: Pick<LocalAgentRelayTurnResult, 'error'>) {
+export function localAgentRelayFailureText(turn: Pick<LocalAgentRelayTurnResult, 'error' | 'status'>) {
+  if (turnWasCancelled(turn)) return 'Stopped';
   return 'Processing failed';
 }
 
@@ -220,16 +229,30 @@ export function bridgeGroupSessionSpaceId(conversation?: {
   return cleanText(conversation?.canonicalSessionId);
 }
 
+function asSelfBridgeNodeIdSet(value?: ReadonlySet<string> | Iterable<string | null | undefined> | null) {
+  if (!value) return new Set<string>();
+  if (value instanceof Set) return value;
+  const result = new Set<string>();
+  for (const entry of value) {
+    const cleaned = cleanText(entry);
+    if (cleaned) result.add(cleaned);
+  }
+  return result;
+}
+
 export function bridgeGroupSessionSendTargets(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
   fallbackTarget?: ConversationBridgeTarget | null,
+  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
   const targets = new Map<string, ConversationBridgeTarget>();
   const fallbackHostId = cleanText(fallbackTarget?.hostId);
+  const selfNodeIdSet = asSelfBridgeNodeIdSet(selfBridgeNodeIds);
 
   for (const participant of conversation.canonicalParticipants ?? []) {
     if (participant.kind !== 'human' || participantIsSelf(participant)) continue;
     const nodeId = cleanText(participant.bridgeNodeId);
+    if (nodeId && selfNodeIdSet.has(nodeId)) continue;
     const hostId = cleanText(participant.bridgeHostId) ?? fallbackHostId;
     if (!nodeId || !hostId) continue;
     targets.set(`${hostId}:${nodeId}:${cleanText(participant.humanId) ?? ''}`, {
@@ -243,7 +266,11 @@ export function bridgeGroupSessionSendTargets(
     });
   }
 
-  if (targets.size === 0 && fallbackTarget?.hostId && fallbackTarget.nodeId) {
+  if (targets.size === 0
+    && fallbackTarget?.hostId
+    && fallbackTarget.nodeId
+    && !selfNodeIdSet.has(fallbackTarget.nodeId)
+  ) {
     targets.set(`${fallbackTarget.hostId}:${fallbackTarget.nodeId}:${fallbackTarget.humanId ?? ''}`, {
       ...fallbackTarget,
       runtime: 'person',
@@ -258,6 +285,7 @@ export function shouldUseBridgeConversationRouting({
   activeConversationIsBridge,
   activeConvBridgeTarget,
   activeGroupSessionScope,
+  selfBridgeNodeIds,
 }: {
   activeConversationIsBridge: boolean;
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
@@ -266,12 +294,13 @@ export function shouldUseBridgeConversationRouting({
     participantSpaceId?: string | null;
     directness?: string | null;
   }) | null;
+  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null;
 }) {
   return activeConversationIsBridge
     || Boolean(activeConvBridgeTarget)
     || Boolean(
       isBridgeGroupSession(activeGroupSessionScope)
-      && bridgeGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvBridgeTarget).length > 0,
+      && bridgeGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvBridgeTarget, selfBridgeNodeIds).length > 0,
     );
 }
 
@@ -293,11 +322,14 @@ export function activeLocalTurnShouldDelayChatSend({
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
+  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
   if (isBridgeGroupSession(conversation)) {
-    return bridgeGroupSessionSendTargets(conversation, fallbackTarget);
+    return bridgeGroupSessionSendTargets(conversation, fallbackTarget, selfBridgeNodeIds);
   }
   if (!fallbackTarget?.hostId || !fallbackTarget.nodeId) return [];
+  const selfNodeIdSet = asSelfBridgeNodeIdSet(selfBridgeNodeIds);
+  if (selfNodeIdSet.has(fallbackTarget.nodeId)) return [];
   return [{ ...fallbackTarget, runtime: 'person', agentId: null }];
 }
 
@@ -305,27 +337,42 @@ export function bridgeGroupMentionRelayTargets(
   conversation: Pick<Conversation, 'canonicalParticipants'> & { directness?: string | null },
   mentionedTarget?: { peer?: { nodeId?: string | null; humanId?: string | null } | null } | null,
   fallbackTarget?: ConversationBridgeTarget | null,
+  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
   if (!isBridgeGroupSession(conversation)) return [];
   const mentionedNodeId = cleanText(mentionedTarget?.peer?.nodeId);
   const mentionedHumanId = cleanText(mentionedTarget?.peer?.humanId);
-  return bridgeGroupSessionSendTargets(conversation, fallbackTarget).filter((target) => {
+  return bridgeGroupSessionSendTargets(conversation, fallbackTarget, selfBridgeNodeIds).filter((target) => {
     if (mentionedHumanId && target.humanId === mentionedHumanId) return false;
     if (mentionedNodeId && target.nodeId === mentionedNodeId) return false;
     return true;
   });
 }
 
-export function bridgeGroupSessionParticipants(conversation: Pick<Conversation, 'canonicalParticipants'>): DesktopBridgeSessionParticipant[] {
+function isSelfReferencePeerLabel(value: string | null | undefined) {
+  const trimmed = value?.trim().toLowerCase() ?? '';
+  return trimmed === 'me' || trimmed === 'you';
+}
+
+export function bridgeGroupSessionParticipants(
+  conversation: Pick<Conversation, 'canonicalParticipants'>,
+  options: { selfPublicName?: string | null } = {},
+): DesktopBridgeSessionParticipant[] {
+  const selfPublicName = cleanText(options.selfPublicName ?? undefined);
   const participants = new Map<string, DesktopBridgeSessionParticipant>();
   for (const participant of conversation.canonicalParticipants ?? []) {
     if (participant.kind !== 'human') continue;
-    const displayName = cleanText(participant.name);
-    if (!displayName) continue;
+    const rawDisplayName = cleanText(participant.name);
+    if (!rawDisplayName) continue;
     const bridgeNodeId = cleanText(participant.bridgeNodeId);
     const humanId = cleanText(participant.humanId);
     const isSelf = participantIsSelf(participant);
     if (isSelf && !bridgeNodeId && !humanId) continue;
+    // Don't broadcast self-reference labels like "Me"/"You" to other peers — those collide on
+    // the receiver side and end up rendered as "Me" for every group member.
+    const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
+      ? selfPublicName
+      : rawDisplayName;
     participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
       identityId: cleanText(participant.id),
       displayName,
@@ -375,6 +422,7 @@ type UseChatMessageActionsArgs = Pick<
   handleLocalSlashCommand: (rawText: string, scope?: ComposerScope) => Promise<boolean>;
   pendingBridgeCancelRequestedRef: MutableRefObject<boolean>;
   localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
+  userCancelledTurnIdsRef: MutableRefObject<Set<string>>;
   setPendingBridgeOutreach: Dispatch<SetStateAction<PendingBridgeOutreach | null>>;
 };
 
@@ -398,6 +446,7 @@ export function useChatMessageActions({
   queuedDesktopMessagesBySession,
   pendingBridgeCancelRequestedRef,
   localChatSendInFlightRef,
+  userCancelledTurnIdsRef,
   refreshDesktopChat,
   setActiveConvId,
   setCanonicalSessionState,
@@ -462,7 +511,7 @@ export function useChatMessageActions({
     enqueueLocalQueuedMessage(queuedMessage);
     shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
-    setComposerDrafts((current) => ({ ...current, chat: '' }));
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
     resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
   }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
@@ -552,15 +601,27 @@ export function useChatMessageActions({
       directness: activeConvMentionScope?.directness,
       canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
     };
+    const localBridgeNodeIds = new Set(
+      (desktopBridgeState?.hosts ?? [])
+        .map((host) => host.nodeId?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
     const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
     const activeConversationUsesBridgeRouting = shouldUseBridgeConversationRouting({
       activeConversationIsBridge,
       activeConvBridgeTarget,
       activeGroupSessionScope,
+      selfBridgeNodeIds: localBridgeNodeIds,
     });
     const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
+    const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
+      ?? desktopBridgeState?.hosts[0]
+      ?? null;
+    const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
+      || activeBridgeHost?.displayName?.trim()
+      || null;
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
-      ? bridgeGroupSessionParticipants(activeGroupSessionScope)
+      ? bridgeGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName })
       : [];
 
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
@@ -579,13 +640,13 @@ export function useChatMessageActions({
         pendingBridgeCancelRequestedRef.current = false;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const sentAt = formatDesktopEventTime();
         const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
         const groupMentionRelayTargets = activeGroupSessionIsGroup
-          ? bridgeGroupMentionRelayTargets(activeGroupSessionScope, mentionedTarget, activeConvBridgeTarget)
+          ? bridgeGroupMentionRelayTargets(activeGroupSessionScope, mentionedTarget, activeConvBridgeTarget, localBridgeNodeIds)
           : [];
         const mentionIsSessionMessage = Boolean(
           activeGroupSessionIsGroup
@@ -720,7 +781,7 @@ export function useChatMessageActions({
       const shouldStayInCanonicalSession = Boolean(activeConvCanonicalSessionId && (activeConvBridgeTarget || activeGroupSessionIsGroup));
       const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;
       const groupSendTargets = isGroupSessionMessage
-        ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget)
+        ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
         : [];
       const groupSessionParticipants = isGroupSessionMessage ? activeGroupSessionParticipants : [];
       const sendPlan = bridgeConversationSendPlan({
@@ -775,7 +836,19 @@ export function useChatMessageActions({
         if (targetConversationId && !isGroupSessionMessage) {
           setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
         }
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        const activeBridgeReadConversationIds = bridgeConversationIdsToMarkReadOnUserActivity(
+          desktopBridgeState?.conversations ?? [],
+          activeConvCanonicalSessionId ?? activeConvId,
+        );
+        if (activeBridgeReadConversationIds.length > 0) {
+          setDesktopBridgeState((current) => markBridgeConversationsReadInState(current, activeBridgeReadConversationIds));
+          void Promise.all(activeBridgeReadConversationIds.map((conversationId) => markDesktopBridgeConversationRead(conversationId)))
+            .then((states) => {
+              setDesktopBridgeState((current) => states.reduce((merged, state) => mergeDesktopBridgeState(merged, state), current));
+            })
+            .catch(() => {});
+        }
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const resolvedConversationId = targetConversationId;
@@ -888,7 +961,7 @@ export function useChatMessageActions({
       targetSessionId = null;
     }
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
+      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       setOpenComposerSelector(null);
       return;
@@ -922,7 +995,7 @@ export function useChatMessageActions({
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
-        setComposerDrafts((current) => ({ ...current, chat: '' }));
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const parentSessionId = await ensureLocalSessionId();
@@ -1026,7 +1099,7 @@ export function useChatMessageActions({
         willRelayToLocalAgent ? 'sent' : 'sending',
       );
       const localAgentRelayTargets = willRelayToLocalAgent && activeConvBridgeTarget
-        ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget)
+        ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
         : [];
       const localAgentRelayPlan = localAgentRelayTargets.length > 0
         ? {
@@ -1049,7 +1122,7 @@ export function useChatMessageActions({
         }
         return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
       });
-      setComposerDrafts((current) => ({ ...current, chat: '' }));
+      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', resolvedSessionId, ''));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       const relayToLocalAgentTargets = async (
@@ -1157,23 +1230,37 @@ export function useChatMessageActions({
                 completedTurn.assistantText.trim(),
                 localHumanAddressLabels(desktopBridgeState),
               );
+              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(completedTurn.id)
+                || userCancelledTurnIdsRef.current.delete(turn.id);
+              const turnStatusForRelay = userCancelledThisTurn ? 'cancelled' : completedTurn.status;
               const terminalDeliveryState = localAgentRelayTerminalDeliveryState({
                 assistantText,
                 error: completedTurn.error,
                 succeeded: completedTurn.succeeded,
+                status: turnStatusForRelay,
               });
               await relayToLocalAgentTargets(
-                terminalDeliveryState === 'responded' ? assistantText : localAgentRelayFailureText(completedTurn),
+                terminalDeliveryState === 'responded'
+                  ? assistantText
+                  : localAgentRelayFailureText({ error: completedTurn.error, status: turnStatusForRelay }),
                 completedTurn.id,
                 terminalDeliveryState,
                 localAgentBridgeRequestId,
               );
             } catch (error) {
               await processingRelayPromise;
+              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(turn.id)
+                || (completedTurn && userCancelledTurnIdsRef.current.delete(completedTurn.id));
+              const wasCancelled = userCancelledThisTurn
+                || completedTurn?.status === 'cancelled'
+                || completedTurn?.status === 'cancelling';
+              const fallbackTurn = completedTurn
+                ? { error: completedTurn.error, status: wasCancelled ? 'cancelled' as const : completedTurn.status }
+                : { error: error instanceof Error ? error.message : null, status: wasCancelled ? 'cancelled' as const : 'failed' as const };
               await relayToLocalAgentTargets(
-                localAgentRelayFailureText(completedTurn ?? { error: error instanceof Error ? error.message : null }),
+                localAgentRelayFailureText(fallbackTurn),
                 completedTurn?.id ?? turn.id,
-                'processing_failed',
+                wasCancelled ? 'cancelled' : 'processing_failed',
                 localAgentBridgeRequestId,
               );
               throw error;

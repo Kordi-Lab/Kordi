@@ -36,6 +36,34 @@ pub(crate) fn identity_display_name(
     .map_err(|err| err.to_string())
 }
 
+fn is_self_reference_name(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case("me") || value.trim().eq_ignore_ascii_case("you")
+}
+
+pub(crate) fn sanitize_remote_peer_display_name(
+    display_name: &str,
+    fallback: &str,
+) -> String {
+    let trimmed = display_name.trim();
+    if !trimmed.is_empty() && !is_self_reference_name(trimmed) {
+        return trimmed.to_string();
+    }
+    let fallback_trimmed = fallback.trim();
+    if !fallback_trimmed.is_empty() {
+        return fallback_trimmed.to_string();
+    }
+    "Bridge user".to_string()
+}
+
+fn has_third_person_possessive_scope(value: &str) -> bool {
+    let trimmed = value.trim();
+    let Some(possessive_index) = trimmed.find("'s ").or_else(|| trimmed.find("’s ")) else {
+        return false;
+    };
+    let owner = trimmed[..possessive_index].trim();
+    !owner.is_empty() && !is_self_reference_name(owner)
+}
+
 pub(crate) fn shared_agent_display_name(
     conn: &Connection,
     identity_id: &str,
@@ -52,7 +80,9 @@ pub(crate) fn shared_agent_display_name(
             Ok(owner_name
                 .map(|owner| {
                     let prefix = format!("{}'s ", owner);
-                    if agent_name.starts_with(&prefix) {
+                    if agent_name.starts_with(&prefix)
+                        || has_third_person_possessive_scope(&agent_name)
+                    {
                         agent_name.clone()
                     } else {
                         format!("{}{}", prefix, agent_name)
@@ -266,5 +296,39 @@ mod tests {
             clean_optional(Some("  Shuyang  ".to_string())),
             Some("Shuyang".to_string()),
         );
+    }
+
+    #[test]
+    fn sanitize_remote_peer_display_name_keeps_real_names() {
+        assert_eq!(
+            sanitize_remote_peer_display_name("Kordi User 2", "kh_abc"),
+            "Kordi User 2",
+        );
+        assert_eq!(
+            sanitize_remote_peer_display_name("  Alice  ", "kh_abc"),
+            "Alice",
+        );
+    }
+
+    #[test]
+    fn sanitize_remote_peer_display_name_swaps_self_references_for_fallback() {
+        assert_eq!(
+            sanitize_remote_peer_display_name("Me", "kh_c04229d839ab"),
+            "kh_c04229d839ab",
+        );
+        assert_eq!(
+            sanitize_remote_peer_display_name("you", "kh_abc"),
+            "kh_abc",
+        );
+        assert_eq!(
+            sanitize_remote_peer_display_name("ME", "kh_abc"),
+            "kh_abc",
+        );
+    }
+
+    #[test]
+    fn sanitize_remote_peer_display_name_falls_back_to_generic_when_empty() {
+        assert_eq!(sanitize_remote_peer_display_name("Me", ""), "Bridge user");
+        assert_eq!(sanitize_remote_peer_display_name("", ""), "Bridge user");
     }
 }

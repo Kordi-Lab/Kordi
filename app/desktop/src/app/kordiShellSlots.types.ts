@@ -369,6 +369,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'displayedAgents'
   | 'activeBridgeHost'
   | 'localProfileAvatarSeed'
+  | 'isBridgePolling'
   | 'refreshDesktopBridge'
   | 'handleCopyBridgeText'
   | 'handleCreateBridgeDraft'
@@ -576,6 +577,10 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showAuthGate'
   | 'dismissAuthGate'
+  | 'setActiveNav'
+  | 'chatConversations'
+  | 'handleSelectChatSession'
+  | 'handleCreateChatSession'
   | 'windowWidth'
   | 'isNativeShell'
   | 'desktopAuthState'

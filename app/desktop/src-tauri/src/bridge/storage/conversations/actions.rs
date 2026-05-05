@@ -116,24 +116,38 @@ pub(in crate::bridge) fn insert_bridge_inbox_event_if_absent(
     .map_err(sqlite_error)?;
 
     if let Some(server_message_id) = event.server_message_id.as_deref() {
-        return conn
+        if let Some(existing_id) = conn
             .query_row(
                 "SELECT id FROM bridge_inbox_events WHERE host_id = ?1 AND server_message_id = ?2",
                 params![event.host_id, server_message_id],
                 |row| row.get(0),
             )
-            .map_err(sqlite_error);
+            .optional()
+            .map_err(sqlite_error)?
+        {
+            return Ok(existing_id);
+        }
     }
 
     if let Some(request_id) = event.request_id.as_deref() {
-        return conn
+        let existing_id = conn
             .query_row(
                 "SELECT id FROM bridge_inbox_events
                  WHERE host_id = ?1 AND from_node_id = ?2 AND message_type = ?3 AND request_id = ?4",
                 params![event.host_id, event.from_node_id, event.message_type, request_id],
                 |row| row.get(0),
             )
-            .map_err(sqlite_error);
+            .map_err(sqlite_error)?;
+        if let Some(server_message_id) = event.server_message_id.as_deref() {
+            conn.execute(
+                "UPDATE bridge_inbox_events
+                 SET server_message_id = COALESCE(server_message_id, ?1)
+                 WHERE id = ?2",
+                params![server_message_id, existing_id],
+            )
+            .map_err(sqlite_error)?;
+        }
+        return Ok(existing_id);
     }
 
     conn.query_row(
@@ -453,7 +467,47 @@ pub(in crate::bridge) fn append_conversation_message_to_storage(
     attachments: Vec<DesktopBridgeMessageAttachment>,
     increment_unread: bool,
 ) -> Result<DesktopBridgeConversationStore, String> {
-    let timestamp_ms = now_ms();
+    append_conversation_message_to_storage_with_timestamp(
+        host_id,
+        peer_node_id,
+        peer_display_name,
+        peer_owner_name,
+        peer_runtime,
+        project_id,
+        project_name,
+        identity,
+        outreach,
+        direction,
+        sender,
+        text,
+        request_id,
+        delivery_state,
+        attachments,
+        increment_unread,
+        None,
+    )
+}
+
+pub(in crate::bridge) fn append_conversation_message_to_storage_with_timestamp(
+    host_id: &str,
+    peer_node_id: &str,
+    peer_display_name: Option<String>,
+    peer_owner_name: Option<String>,
+    peer_runtime: String,
+    project_id: Option<String>,
+    project_name: Option<String>,
+    identity: Option<DesktopBridgeIdentitySnapshot>,
+    outreach: Option<DesktopBridgeOutreachMetadata>,
+    direction: &str,
+    sender: Option<String>,
+    text: String,
+    request_id: Option<String>,
+    delivery_state: Option<String>,
+    attachments: Vec<DesktopBridgeMessageAttachment>,
+    increment_unread: bool,
+    timestamp_ms_override: Option<i64>,
+) -> Result<DesktopBridgeConversationStore, String> {
+    let timestamp_ms = timestamp_ms_override.unwrap_or_else(now_ms);
     let request_id_for_status = request_id.clone();
     let delivery_state_for_status = delivery_state.clone();
     let text_for_status = text.clone();
