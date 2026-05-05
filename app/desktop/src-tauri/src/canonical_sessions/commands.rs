@@ -184,6 +184,17 @@ pub(super) fn desktop_canonical_update_presence(
     load_state_from_db(&conn)
 }
 
+fn regenerate_session_identity_file_if_possible(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<(), String> {
+    match super::write_session_identity_markdown_for_prompt(conn, session_id) {
+        Ok(_) => Ok(()),
+        Err(message) if message.contains("Session not found") => Ok(()),
+        Err(message) => Err(message),
+    }
+}
+
 pub(super) fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -195,6 +206,7 @@ pub(super) fn desktop_canonical_rename_session(
         "rename this group",
     )?;
     rename_session_in_db(&conn, &request.session_id, &request.title)?;
+    regenerate_session_identity_file_if_possible(&conn, &request.session_id)?;
     load_state_from_db(&conn)
 }
 
@@ -209,6 +221,7 @@ pub(super) fn desktop_canonical_update_session_metadata(
         "change this group",
     )?;
     set_session_metadata_in_db(&conn, &request.session_id, request.metadata)?;
+    regenerate_session_identity_file_if_possible(&conn, &request.session_id)?;
     load_state_from_db(&conn)
 }
 
@@ -228,6 +241,7 @@ pub(super) fn desktop_canonical_add_session_participants(
         &request.identity_ids,
         &request.added_by_identity_id,
     )?;
+    regenerate_session_identity_file_if_possible(&conn, &request.session_id)?;
     load_state_from_db(&conn)
 }
 
@@ -242,6 +256,7 @@ pub(super) fn desktop_canonical_remove_session_participant(
         "remove people from this group",
     )?;
     remove_session_participant_in_db(&conn, &request.session_id, &request.identity_id)?;
+    regenerate_session_identity_file_if_possible(&conn, &request.session_id)?;
     load_state_from_db(&conn)
 }
 
@@ -261,6 +276,7 @@ pub(super) fn desktop_canonical_set_session_participant_role(
         &request.identity_id,
         &request.role,
     )?;
+    regenerate_session_identity_file_if_possible(&conn, &request.session_id)?;
     load_state_from_db(&conn)
 }
 

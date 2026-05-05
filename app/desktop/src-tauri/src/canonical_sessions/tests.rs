@@ -1682,6 +1682,40 @@ fn shared_agent_display_name_keeps_already_scoped_remote_agent_name() {
 }
 
 #[test]
+fn group_participant_add_regenerates_identity_markdown_file() {
+    let guard = PromptContextTestDbGuard::new("group-add-regenerates-file");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    seed_identity_with_owner_and_source(&conn, "human:charlie", "Charlie", "human", None, "bridge");
+    drop(conn);
+
+    let state = super::commands::desktop_canonical_add_session_participants(
+        AddCanonicalSessionParticipantsRequest {
+            session_id: session.id.clone(),
+            identity_ids: vec!["human:charlie".to_string()],
+            added_by_identity_id: "human:alice".to_string(),
+        },
+    )
+    .expect("add participant");
+
+    assert!(state.participants.iter().any(|participant| {
+        participant.session_id == session.id
+            && participant.identity_id == "human:charlie"
+            && participant.state == "active"
+    }));
+
+    let path = session_identity_markdown_path(&session.id);
+    let markdown = std::fs::read_to_string(path).expect("read identity markdown");
+    assert!(
+        markdown.contains("| human:charlie | Charlie | human"),
+        "{markdown}"
+    );
+}
+
+#[test]
 fn canonical_group_metadata_and_participant_role_mutations_are_stable() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");
