@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import type { DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
-import { buildTaskActivityDashboard, type TaskActivityItem, type TaskActivitySubagent, type TaskActivityTone } from '@/features/chat/taskActivityDashboard';
+import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
 
 type TaskActivityDashboardPanelProps = {
@@ -10,7 +10,7 @@ type TaskActivityDashboardPanelProps = {
   emptyMessage: string;
 };
 
-function statusBadgeClass(tone: TaskActivityTone) {
+function statusBadgeClass(tone: TaskDashboardTone) {
   switch (tone) {
     case 'running':
       return 'app-badge-attention';
@@ -20,135 +20,80 @@ function statusBadgeClass(tone: TaskActivityTone) {
       return 'border-slate-500/20 bg-slate-500/10 text-slate-300';
     case 'error':
       return 'border-rose-400/20 bg-rose-500/10 text-rose-100';
-    case 'ready':
     case 'muted':
     default:
       return 'app-badge-neutral';
   }
 }
 
-function MetricTile({ label, value, hint }: { label: string; value: string | number; hint: string }) {
-  return (
-    <div className="rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5">
-      <div className="text-[18px] font-semibold leading-none text-[color:var(--utility-foreground)]">{value}</div>
-      <div className="mt-1 text-[11px] font-medium text-[color:var(--utility-muted-text)]">{label}</div>
-      <div className="mt-1 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{hint}</div>
-    </div>
-  );
+function statusDotClass(tone: TaskDashboardTone) {
+  switch (tone) {
+    case 'running':
+      return 'bg-[color:var(--app-tool-running-fg)]';
+    case 'success':
+      return 'bg-emerald-400/80';
+    case 'closed':
+      return 'bg-slate-400/70';
+    case 'error':
+      return 'bg-rose-400/80';
+    case 'muted':
+    default:
+      return 'bg-violet-300/70';
+  }
 }
 
-function SubagentRow({ subagent }: { subagent: TaskActivitySubagent }) {
+function TaskRow({ task }: { task: TaskDashboardItem }) {
+  const secondaryText = task.summary || task.target || 'No task details yet.';
   return (
     <div className="app-inspector-source-row">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="app-inspector-heading truncate">{subagent.name}</div>
-          <div className="mt-1 break-all app-inspector-subtext">{subagent.target}</div>
-        </div>
-        <Badge variant="secondary" className={cn('shrink-0 rounded-full px-2.5 py-1', subagent.status === 'active' ? 'app-badge-attention' : statusBadgeClass(subagent.status === 'failed' ? 'error' : subagent.status === 'completed' ? 'success' : 'closed'))}>
-          {subagent.statusLabel}
-        </Badge>
-      </div>
-      {subagent.writeScope.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {subagent.writeScope.map((scope) => (
-            <span key={`${subagent.target}:${scope}`} className="rounded-full border border-[color:var(--app-divider)] px-2 py-0.5 font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">
-              {scope}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ActivityRow({ item }: { item: TaskActivityItem }) {
-  return (
-    <div className="app-inspector-source-row">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            {item.live ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--app-tool-running-fg)]" aria-label="Live" /> : null}
-            <div className="app-inspector-heading truncate">{item.title}</div>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', statusDotClass(task.tone))} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="app-inspector-heading truncate">{task.title}</div>
+              <div className="mt-1 app-inspector-text-block">{secondaryText}</div>
+            </div>
+            <Badge variant="secondary" className={cn('shrink-0 rounded-full px-2.5 py-1', statusBadgeClass(task.tone))}>
+              {task.statusLabel}
+            </Badge>
           </div>
-          <div className="mt-1 text-[11px] font-medium text-[color:var(--utility-muted-text)]">{item.toolName}</div>
+          {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
+          {task.writeScope.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {task.writeScope.map((scope) => (
+                <span key={`${task.id}:${scope}`} className="rounded-full border border-[color:var(--app-divider)] px-2 py-0.5 font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">
+                  {scope}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
-        <Badge variant="secondary" className={cn('shrink-0 rounded-full px-2.5 py-1', statusBadgeClass(item.tone))}>
-          {item.statusLabel}
-        </Badge>
       </div>
-      {item.detail ? <div className="mt-2 app-inspector-text-block">{item.detail}</div> : null}
-      {item.writeScope.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {item.writeScope.map((scope) => (
-            <span key={`${item.id}:${scope}`} className="rounded-full border border-[color:var(--app-divider)] px-2 py-0.5 font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">
-              {scope}
-            </span>
-          ))}
-        </div>
-      ) : null}
     </div>
-  );
-}
-
-function ActivityGroup({ title, items, empty }: { title: string; items: TaskActivityItem[]; empty: string }) {
-  return (
-    <section className="app-detail-section">
-      <div className="app-detail-kicker">{title}</div>
-      {items.length > 0 ? (
-        <div className="app-inspector-list">
-          {items.map((item) => <ActivityRow key={item.id} item={item} />)}
-        </div>
-      ) : (
-        <div className="app-inspector-empty">{empty}</div>
-      )}
-    </section>
   );
 }
 
 export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage }: TaskActivityDashboardPanelProps) {
   const dashboard = useMemo(() => buildTaskActivityDashboard({ messages, liveTurn }), [liveTurn, messages]);
 
-  if (!dashboard.hasActivity) {
-    return (
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <div className="app-inspector-empty">{emptyMessage}</div>
-      </section>
-    );
-  }
-
   return (
-    <>
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Task activity</div>
-        <div className="grid grid-cols-3 gap-2">
-          <MetricTile label="Active subagents" value={dashboard.activeSubagents.length} hint="Backend task agents" />
-          <MetricTile label="Running execution" value={dashboard.activeExecutionCount} hint="Commands or file edits" />
-          <MetricTile label="Tracked steps" value={dashboard.totalActivityCount} hint="Planning + execution" />
-        </div>
-        <div className="mt-3 app-inspector-subtext">Read-only status. Use chat instructions or task_operator calls to change backend work.</div>
-      </section>
-
-      {dashboard.subagents.length > 0 ? (
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Subagents</div>
-          <div className="app-inspector-list">
-            {dashboard.subagents.map((subagent) => <SubagentRow key={subagent.target} subagent={subagent} />)}
+    <section className="app-detail-section">
+      <div className="flex items-center justify-between gap-3">
+        <div className="app-detail-kicker">Tasks</div>
+        {dashboard.hasActivity ? (
+          <div className="text-[11px] text-[color:var(--utility-muted-text)]">
+            {dashboard.activeCount > 0 ? `${dashboard.activeCount} active` : `${dashboard.totalCount} total`}
           </div>
-        </section>
-      ) : null}
-
-      <ActivityGroup
-        title="Planning & coordination"
-        items={dashboard.planningCoordination}
-        empty="No planning or coordination task activity yet."
-      />
-      <ActivityGroup
-        title="Execution"
-        items={dashboard.execution}
-        empty="No command or file execution activity yet."
-      />
-    </>
+        ) : null}
+      </div>
+      {dashboard.hasActivity ? (
+        <div className="app-inspector-list">
+          {dashboard.tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+        </div>
+      ) : (
+        <div className="app-inspector-empty">{emptyMessage}</div>
+      )}
+    </section>
   );
 }

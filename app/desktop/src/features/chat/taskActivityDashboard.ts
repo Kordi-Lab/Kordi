@@ -1,42 +1,25 @@
 import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
-import { toolTimelineToolLabel, toolTimelineTypeLabel } from '@/kordi-app/components/toolTimeline';
 
-export type TaskActivityGroupId = 'planning_coordination' | 'execution';
-export type TaskActivityStatus = 'pending' | 'running' | 'done' | 'active' | 'completed' | 'closed' | 'error';
-export type TaskActivityTone = 'muted' | 'running' | 'ready' | 'success' | 'closed' | 'error';
-export type SubagentStatus = 'active' | 'completed' | 'failed' | 'closed';
+export type TaskDashboardStatus = 'planned' | 'active' | 'completed' | 'failed' | 'closed';
+export type TaskDashboardTone = 'muted' | 'running' | 'success' | 'error' | 'closed';
 
-export type TaskActivityItem = {
+export type TaskDashboardItem = {
   id: string;
-  group: TaskActivityGroupId;
-  groupLabel: string;
-  toolName: string;
   title: string;
-  detail: string;
-  status: TaskActivityStatus;
+  summary: string;
+  status: TaskDashboardStatus;
   statusLabel: string;
-  tone: TaskActivityTone;
+  tone: TaskDashboardTone;
   target?: string | null;
   writeScope: string[];
   live: boolean;
-  subagent?: {
-    target: string;
-    name: string;
-    status: SubagentStatus;
-    statusLabel: string;
-    writeScope: string[];
-  };
 };
 
-export type TaskActivitySubagent = NonNullable<TaskActivityItem['subagent']>;
-
 export type TaskActivityDashboard = {
-  planningCoordination: TaskActivityItem[];
-  execution: TaskActivityItem[];
-  subagents: TaskActivitySubagent[];
-  activeSubagents: TaskActivitySubagent[];
-  activeExecutionCount: number;
-  totalActivityCount: number;
+  tasks: TaskDashboardItem[];
+  activeCount: number;
+  completedCount: number;
+  totalCount: number;
   hasActivity: boolean;
 };
 
@@ -51,9 +34,9 @@ type ToolWithTurn = {
   sequence: number;
 };
 
-const GROUP_LABELS: Record<TaskActivityGroupId, string> = {
-  planning_coordination: 'Planning & coordination',
-  execution: 'Execution',
+type MutableTask = TaskDashboardItem & {
+  nameKey?: string | null;
+  sequence: number;
 };
 
 function safeParseToolArguments(rawArguments?: string | null) {
@@ -78,39 +61,7 @@ function stringArrayValue(value: unknown) {
     : [];
 }
 
-function normalizedStatus(tool: DesktopChatToolSnapshot) {
-  return (tool.isError ? 'error' : tool.status || 'pending').trim().toLowerCase();
-}
-
-function toolIsRunning(tool: DesktopChatToolSnapshot) {
-  const status = normalizedStatus(tool);
-  return !tool.isError && !['done', 'complete', 'completed', 'succeeded', 'success', 'error', 'failed'].includes(status);
-}
-
-function toolStatus(tool: DesktopChatToolSnapshot): Pick<TaskActivityItem, 'status' | 'statusLabel' | 'tone'> {
-  if (tool.isError || /failed|error/.test(normalizedStatus(tool))) {
-    return { status: 'error', statusLabel: 'Needs attention', tone: 'error' };
-  }
-  if (toolIsRunning(tool)) {
-    return { status: 'running', statusLabel: 'Running', tone: 'running' };
-  }
-  return { status: 'done', statusLabel: 'Done', tone: 'ready' };
-}
-
-function groupForTool(tool: DesktopChatToolSnapshot): TaskActivityGroupId | null {
-  const layer = toolTimelineTypeLabel({
-    name: tool.name,
-    status: tool.status,
-    arguments: tool.arguments,
-    toolLayer: tool.toolLayer,
-    isError: tool.isError,
-  });
-  if (layer === 'Planning' || layer === 'Operator') return 'planning_coordination';
-  if (layer === 'Execution') return 'execution';
-  return null;
-}
-
-function compact(value: string, maxLength = 140) {
+function compact(value: string, maxLength = 180) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
@@ -127,128 +78,151 @@ function targetName(target: string) {
   return target.split('/').filter(Boolean).pop() || target;
 }
 
-function taskOperatorSubagent(
-  tool: DesktopChatToolSnapshot,
-  args: Record<string, unknown> | null,
-): TaskActivitySubagent | null {
-  if (tool.name.trim().toLowerCase() !== 'task_operator') return null;
+function normalizedStatus(tool: DesktopChatToolSnapshot) {
+  return (tool.isError ? 'error' : tool.status || 'pending').trim().toLowerCase();
+}
 
-  const action = stringValue(args?.action);
-  const resultText = tool.resultText ?? '';
-  const target = stringValue(args?.target)
-    || targetFromTaskResult(resultText)
-    || (action === 'spawn' && stringValue(args?.taskName) ? `/root/${stringValue(args?.taskName)}` : null);
-  if (!target) return null;
+function toolIsStillRunning(tool: DesktopChatToolSnapshot) {
+  const status = normalizedStatus(tool);
+  return !tool.isError && !['done', 'complete', 'completed', 'succeeded', 'success', 'error', 'failed'].includes(status);
+}
 
-  const name = stringValue(args?.taskName) || targetName(target);
-  const writeScope = stringArrayValue(args?.writeScope);
-  const lowerResult = resultText.toLowerCase();
+function statusMeta(status: TaskDashboardStatus): Pick<TaskDashboardItem, 'statusLabel' | 'tone'> {
+  switch (status) {
+    case 'active':
+      return { statusLabel: 'Subagent active', tone: 'running' };
+    case 'completed':
+      return { statusLabel: 'Done', tone: 'success' };
+    case 'failed':
+      return { statusLabel: 'Failed', tone: 'error' };
+    case 'closed':
+      return { statusLabel: 'Closed', tone: 'closed' };
+    case 'planned':
+    default:
+      return { statusLabel: 'Planned', tone: 'muted' };
+  }
+}
 
-  if (tool.isError || lowerResult.includes('task failed')) {
-    return { target, name, status: 'failed', statusLabel: 'Subagent failed', writeScope };
-  }
-  if (action === 'close' || lowerResult.includes('task agent closed')) {
-    return { target, name, status: 'closed', statusLabel: 'Subagent closed', writeScope };
-  }
-  if (lowerResult.includes('task completed')) {
-    return { target, name, status: 'completed', statusLabel: 'Subagent completed', writeScope };
-  }
-  if (action === 'spawn' || lowerResult.includes('task agent running') || toolIsRunning(tool)) {
-    return { target, name, status: 'active', statusLabel: 'Subagent active', writeScope };
+function taskKey(target: string | null | undefined, nameKey: string | null | undefined, fallback: string) {
+  if (target?.trim()) return `target:${target.trim()}`;
+  if (nameKey?.trim()) return `name:${nameKey.trim()}`;
+  return fallback;
+}
+
+function matchingExistingKey(
+  tasksByKey: Map<string, MutableTask>,
+  target: string | null | undefined,
+  nameKey: string | null | undefined,
+) {
+  const targetKey = target?.trim() ? `target:${target.trim()}` : null;
+  if (targetKey && tasksByKey.has(targetKey)) return targetKey;
+
+  const name = nameKey?.trim();
+  if (!name) return null;
+  const nameLookup = `name:${name}`;
+  if (tasksByKey.has(nameLookup)) return nameLookup;
+
+  for (const [key, task] of tasksByKey) {
+    if (task.nameKey === name || task.target?.split('/').filter(Boolean).pop() === name) {
+      return key;
+    }
   }
 
   return null;
 }
 
-function taskOperatorStatus(
-  tool: DesktopChatToolSnapshot,
-  args: Record<string, unknown> | null,
-  subagent: TaskActivitySubagent | null,
-): Pick<TaskActivityItem, 'status' | 'statusLabel' | 'tone'> {
-  if (subagent) {
-    switch (subagent.status) {
-      case 'active':
-        return { status: 'active', statusLabel: 'Subagent active', tone: 'running' };
-      case 'completed':
-        return { status: 'completed', statusLabel: 'Subagent completed', tone: 'success' };
-      case 'closed':
-        return { status: 'closed', statusLabel: 'Subagent closed', tone: 'closed' };
-      case 'failed':
-        return { status: 'error', statusLabel: 'Subagent failed', tone: 'error' };
-    }
+function upsertTask(tasksByKey: Map<string, MutableTask>, next: MutableTask) {
+  const existingKey = matchingExistingKey(tasksByKey, next.target, next.nameKey);
+  const key = existingKey ?? taskKey(next.target, next.nameKey, next.id);
+  const existing = tasksByKey.get(key);
+  const merged: MutableTask = existing
+    ? {
+        ...existing,
+        ...next,
+        title: next.title || existing.title,
+        summary: next.summary || existing.summary,
+        writeScope: next.writeScope.length > 0 ? next.writeScope : existing.writeScope,
+        live: existing.live || next.live,
+        sequence: Math.min(existing.sequence, next.sequence),
+      }
+    : next;
+
+  if (existingKey && existingKey !== taskKey(next.target, next.nameKey, next.id)) {
+    tasksByKey.delete(existingKey);
   }
-
-  const action = stringValue(args?.action);
-  if (action === 'manifest') return { status: 'done', statusLabel: 'Manifest ready', tone: 'ready' };
-  if (action === 'estimate') return { status: 'done', statusLabel: 'Estimate ready', tone: 'ready' };
-  if (action === 'message') return { status: 'done', statusLabel: 'Message sent', tone: 'ready' };
-  if (action === 'wait' && toolIsRunning(tool)) return { status: 'running', statusLabel: 'Waiting', tone: 'running' };
-  return toolStatus(tool);
+  tasksByKey.set(taskKey(merged.target, merged.nameKey, merged.id), merged);
 }
 
-function taskOperatorTitle(args: Record<string, unknown> | null, subagent: TaskActivitySubagent | null) {
-  const action = stringValue(args?.action);
-  if (subagent) return subagent.name;
-  if (action === 'manifest') return 'Task manifest';
-  if (action === 'estimate') return 'Cost estimate';
-  if (action === 'wait') return 'Wait for subagent';
-  if (action === 'list') return 'List subagents';
-  return 'Coordinate task';
-}
-
-function taskOperatorDetail(
-  tool: DesktopChatToolSnapshot,
-  args: Record<string, unknown> | null,
-  subagent: TaskActivitySubagent | null,
-) {
-  const action = stringValue(args?.action);
-  const parts = [
-    action ? `task_operator/${action}` : 'task_operator',
-    subagent?.target,
-    compact(tool.resultText ?? ''),
-  ].filter((value): value is string => Boolean(value && value.trim()));
-  return parts.join(' · ');
-}
-
-function executionTitle(tool: DesktopChatToolSnapshot) {
-  return toolTimelineToolLabel({
-    name: tool.name,
-    status: tool.status,
-    arguments: tool.arguments,
-    toolLayer: tool.toolLayer,
-    isError: tool.isError,
+function manifestTasks(args: Record<string, unknown>, sequence: number, live: boolean): MutableTask[] {
+  const tasks = Array.isArray(args.tasks) ? args.tasks : [];
+  return tasks.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+    const record = candidate as Record<string, unknown>;
+    const taskId = stringValue(record.taskId) ?? `manifest_${sequence}_${index}`;
+    const title = stringValue(record.title) ?? taskId;
+    const summary = stringValue(record.summary) ?? '';
+    const writeScope = stringArrayValue(record.writeScope);
+    return [{
+      id: `manifest:${sequence}:${taskId}`,
+      nameKey: taskId,
+      title,
+      summary,
+      status: 'planned' as const,
+      ...statusMeta('planned'),
+      target: null,
+      writeScope,
+      live,
+      sequence,
+    }];
   });
 }
 
-function executionDetail(tool: DesktopChatToolSnapshot, args: Record<string, unknown> | null) {
-  const command = stringValue(args?.command) || stringValue(args?.cmd) || stringValue(args?.script);
-  const path = stringValue(args?.path) || stringValue(args?.file) || stringValue(args?.file_path) || stringValue(args?.target_file);
-  const result = compact(tool.resultText ?? tool.liveOutput ?? '');
-  return [command, path, result].filter((value): value is string => Boolean(value && value.trim())).join(' · ');
+function spawnTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableTask | null {
+  const taskName = stringValue(args.taskName);
+  const resultText = tool.resultText ?? '';
+  const target = stringValue(args.target) ?? targetFromTaskResult(resultText) ?? (taskName ? `/root/${taskName}` : null);
+  if (!taskName && !target) return null;
+
+  const failed = tool.isError || /task failed|failed|error/i.test(resultText);
+  const status: TaskDashboardStatus = failed ? 'failed' : 'active';
+  return {
+    id: `spawn:${sequence}:${target ?? taskName}`,
+    nameKey: taskName ?? (target ? targetName(target) : null),
+    title: taskName ?? (target ? targetName(target) : 'Task'),
+    summary: compact(resultText),
+    status,
+    ...statusMeta(status),
+    target,
+    writeScope: stringArrayValue(args.writeScope),
+    live,
+    sequence,
+  };
 }
 
-function taskActivityItem({ tool, live, sequence }: ToolWithTurn): TaskActivityItem | null {
-  const group = groupForTool(tool);
-  if (!group) return null;
+function resultTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableTask | null {
+  const action = stringValue(args.action);
+  const resultText = tool.resultText ?? '';
+  const target = stringValue(args.target) ?? targetFromTaskResult(resultText);
+  if (!target) return null;
 
-  const args = safeParseToolArguments(tool.arguments);
-  const isTaskOperator = tool.name.trim().toLowerCase() === 'task_operator';
-  const subagent = isTaskOperator ? taskOperatorSubagent(tool, args) : null;
-  const status = isTaskOperator ? taskOperatorStatus(tool, args, subagent) : toolStatus(tool);
-  const writeScope = subagent?.writeScope ?? stringArrayValue(args?.writeScope);
+  let status: TaskDashboardStatus | null = null;
+  if (tool.isError || /task failed/i.test(resultText)) status = 'failed';
+  if (/task completed/i.test(resultText)) status = 'completed';
+  if (action === 'close' || /task agent closed/i.test(resultText)) status = 'closed';
+  if (!status && toolIsStillRunning(tool)) status = 'active';
+  if (!status) return null;
 
   return {
-    id: `${sequence}:${tool.id}`,
-    group,
-    groupLabel: GROUP_LABELS[group],
-    toolName: tool.name,
-    title: isTaskOperator ? taskOperatorTitle(args, subagent) : executionTitle(tool),
-    detail: isTaskOperator ? taskOperatorDetail(tool, args, subagent) : executionDetail(tool, args),
-    target: subagent?.target ?? stringValue(args?.target),
-    writeScope,
+    id: `result:${sequence}:${target}`,
+    nameKey: targetName(target),
+    title: targetName(target),
+    summary: compact(resultText),
+    status,
+    ...statusMeta(status),
+    target,
+    writeScope: stringArrayValue(args.writeScope),
     live,
-    subagent: subagent ?? undefined,
-    ...status,
+    sequence,
   };
 }
 
@@ -272,37 +246,41 @@ function collectTools(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
   return tools;
 }
 
+function taskOperatorItems({ tool, live, sequence }: ToolWithTurn): MutableTask[] {
+  if (tool.name.trim().toLowerCase() !== 'task_operator') return [];
+  const args = safeParseToolArguments(tool.arguments);
+  if (!args) return [];
+
+  const action = stringValue(args.action);
+  if (action === 'manifest') return manifestTasks(args, sequence, live);
+  if (action === 'spawn') {
+    const task = spawnTask(tool, args, sequence, live);
+    return task ? [task] : [];
+  }
+
+  const task = resultTask(tool, args, sequence, live);
+  return task ? [task] : [];
+}
+
 export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInput): TaskActivityDashboard {
-  const items = collectTools(messages, liveTurn)
-    .map(taskActivityItem)
-    .filter((item): item is TaskActivityItem => Boolean(item));
-
-  const planningCoordination = items.filter((item) => item.group === 'planning_coordination');
-  const execution = items.filter((item) => item.group === 'execution');
-  const subagentByTarget = new Map<string, TaskActivitySubagent>();
-
-  for (const item of planningCoordination) {
-    if (item.subagent) {
-      const previous = subagentByTarget.get(item.subagent.target);
-      subagentByTarget.set(item.subagent.target, {
-        ...item.subagent,
-        writeScope: item.subagent.writeScope.length > 0 ? item.subagent.writeScope : previous?.writeScope ?? [],
-      });
+  const tasksByKey = new Map<string, MutableTask>();
+  for (const tool of collectTools(messages, liveTurn)) {
+    for (const item of taskOperatorItems(tool)) {
+      upsertTask(tasksByKey, item);
     }
   }
 
-  const subagents = Array.from(subagentByTarget.values());
-  const activeSubagents = subagents.filter((subagent) => subagent.status === 'active');
-  const activeExecutionCount = execution.filter((item) => item.status === 'running').length;
-  const totalActivityCount = planningCoordination.length + execution.length;
+  const tasks = Array.from(tasksByKey.values())
+    .sort((left, right) => left.sequence - right.sequence)
+    .map(({ nameKey: _nameKey, sequence: _sequence, ...task }) => task);
+  const activeCount = tasks.filter((task) => task.status === 'active').length;
+  const completedCount = tasks.filter((task) => task.status === 'completed').length;
 
   return {
-    planningCoordination,
-    execution,
-    subagents,
-    activeSubagents,
-    activeExecutionCount,
-    totalActivityCount,
-    hasActivity: totalActivityCount > 0 || subagents.length > 0,
+    tasks,
+    activeCount,
+    completedCount,
+    totalCount: tasks.length,
+    hasActivity: tasks.length > 0,
   };
 }

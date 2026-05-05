@@ -14,7 +14,7 @@ function assistantTurnMessage(turn: DesktopChatTurnSnapshot): Message {
   };
 }
 
-test('groups planning coordination and execution activity for the right-panel task dashboard', () => {
+test('right-panel task dashboard shows real tasks only, not plan or small execution tool calls', () => {
   const historicalTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
     sessionId: 'session-1',
@@ -84,23 +84,15 @@ test('groups planning coordination and execution activity for the right-panel ta
     liveTurn,
   });
 
-  assert.equal(dashboard.planningCoordination.length, 2);
-  assert.equal(dashboard.execution.length, 1);
-  assert.equal(dashboard.planningCoordination[0].groupLabel, 'Planning & coordination');
-  assert.equal(dashboard.execution[0].groupLabel, 'Execution');
-  assert.equal(dashboard.execution[0].title, 'Run tests');
-  assert.equal(dashboard.execution[0].statusLabel, 'Running');
-  assert.equal(dashboard.activeSubagents.length, 1);
-  assert.deepEqual(dashboard.activeSubagents[0], {
-    target: '/root/research_docs',
-    name: 'research_docs',
-    status: 'active',
-    statusLabel: 'Subagent active',
-    writeScope: ['docs'],
-  });
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'research_docs');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Subagent active');
+  assert.equal(dashboard.tasks[0].target, '/root/research_docs');
+  assert.deepEqual(dashboard.tasks[0].writeScope, ['docs']);
+  assert.equal(dashboard.hasActivity, true);
 });
 
-test('updates subagent activation when a later task operator result completes the task', () => {
+test('task dashboard updates subagent state when a later task operator result completes the task', () => {
   const messages: Message[] = [assistantTurnMessage({
     id: 'turn-1',
     sessionId: 'session-1',
@@ -141,8 +133,57 @@ test('updates subagent activation when a later task operator result completes th
 
   const dashboard = buildTaskActivityDashboard({ messages });
 
-  assert.equal(dashboard.activeSubagents.length, 0);
-  assert.equal(dashboard.subagents.length, 1);
-  assert.equal(dashboard.subagents[0].status, 'completed');
-  assert.equal(dashboard.subagents[0].statusLabel, 'Subagent completed');
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
+  assert.equal(dashboard.activeCount, 0);
+});
+
+test('task dashboard can show manifest tasks before a subagent is spawned', () => {
+  const messages: Message[] = [assistantTurnMessage({
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: 'plan tasks',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: '',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'manifest-1',
+        name: 'task_operator',
+        status: 'done',
+        arguments: JSON.stringify({
+          action: 'manifest',
+          tasks: [
+            {
+              taskId: 'inspect_ui',
+              title: 'Inspect task UI',
+              summary: 'Review the task panel layout and copy.',
+              dependencies: [],
+              writeScope: [],
+              risk: 'read_only',
+              estimatedInputTokens: 1000,
+              estimatedOutputTokens: 300,
+            },
+          ],
+        }),
+        liveOutput: '',
+        resultText: 'Task manifest accepted: task_manifest_123',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      },
+    ],
+  })];
+
+  const dashboard = buildTaskActivityDashboard({ messages });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Inspect task UI');
+  assert.equal(dashboard.tasks[0].summary, 'Review the task panel layout and copy.');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Planned');
 });
