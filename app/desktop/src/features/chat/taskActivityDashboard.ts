@@ -3,7 +3,7 @@ import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot, Message } from '
 export type TaskDashboardStatus = 'planned' | 'active' | 'completed' | 'failed' | 'closed';
 export type TaskDashboardTone = 'muted' | 'running' | 'success' | 'error' | 'closed';
 
-export type TaskDashboardItem = {
+type TaskDashboardBase = {
   id: string;
   title: string;
   summary: string;
@@ -13,6 +13,14 @@ export type TaskDashboardItem = {
   target?: string | null;
   writeScope: string[];
   live: boolean;
+};
+
+export type TaskDashboardSubtask = TaskDashboardBase;
+
+export type TaskDashboardItem = TaskDashboardBase & {
+  subtasks: TaskDashboardSubtask[];
+  subtaskCount: number;
+  activeSubtaskCount: number;
 };
 
 export type TaskActivityDashboard = {
@@ -28,15 +36,29 @@ type DashboardInput = {
   liveTurn?: DesktopChatTurnSnapshot | null;
 };
 
-type ToolWithTurn = {
-  tool: DesktopChatToolSnapshot;
+type TurnWithSequence = {
+  turn: DesktopChatTurnSnapshot;
   live: boolean;
   sequence: number;
 };
 
-type MutableTask = TaskDashboardItem & {
+type ToolWithTurn = TurnWithSequence & {
+  tool: DesktopChatToolSnapshot;
+  toolSequence: number;
+};
+
+type MutableSubtask = TaskDashboardSubtask & {
   nameKey?: string | null;
   sequence: number;
+};
+
+type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | 'activeSubtaskCount'> & {
+  sequence: number;
+  completed: boolean;
+  succeeded: boolean;
+  message: string;
+  assistantText: string;
+  subtasksByKey: Map<string, MutableSubtask>;
 };
 
 function safeParseToolArguments(rawArguments?: string | null) {
@@ -67,6 +89,11 @@ function compact(value: string, maxLength = 180) {
   return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
+function titleFromPrompt(prompt: string) {
+  const withoutLeadingMention = prompt.replace(/^\s*(?:@\S+\s+)+/, '').trim();
+  return compact(withoutLeadingMention || prompt || 'Current task', 96);
+}
+
 function targetFromTaskResult(text?: string | null) {
   const value = text?.trim() ?? '';
   if (!value) return null;
@@ -87,10 +114,10 @@ function toolIsStillRunning(tool: DesktopChatToolSnapshot) {
   return !tool.isError && !['done', 'complete', 'completed', 'succeeded', 'success', 'error', 'failed'].includes(status);
 }
 
-function statusMeta(status: TaskDashboardStatus): Pick<TaskDashboardItem, 'statusLabel' | 'tone'> {
+function statusMeta(status: TaskDashboardStatus, kind: 'task' | 'subtask' = 'task'): Pick<TaskDashboardBase, 'statusLabel' | 'tone'> {
   switch (status) {
     case 'active':
-      return { statusLabel: 'Subagent active', tone: 'running' };
+      return { statusLabel: kind === 'subtask' ? 'Subagent active' : 'Active', tone: 'running' };
     case 'completed':
       return { statusLabel: 'Done', tone: 'success' };
     case 'failed':
@@ -109,20 +136,20 @@ function taskKey(target: string | null | undefined, nameKey: string | null | und
   return fallback;
 }
 
-function matchingExistingKey(
-  tasksByKey: Map<string, MutableTask>,
+function matchingSubtaskKey(
+  subtasksByKey: Map<string, MutableSubtask>,
   target: string | null | undefined,
   nameKey: string | null | undefined,
 ) {
   const targetKey = target?.trim() ? `target:${target.trim()}` : null;
-  if (targetKey && tasksByKey.has(targetKey)) return targetKey;
+  if (targetKey && subtasksByKey.has(targetKey)) return targetKey;
 
   const name = nameKey?.trim();
   if (!name) return null;
   const nameLookup = `name:${name}`;
-  if (tasksByKey.has(nameLookup)) return nameLookup;
+  if (subtasksByKey.has(nameLookup)) return nameLookup;
 
-  for (const [key, task] of tasksByKey) {
+  for (const [key, task] of subtasksByKey) {
     if (task.nameKey === name || task.target?.split('/').filter(Boolean).pop() === name) {
       return key;
     }
@@ -131,11 +158,10 @@ function matchingExistingKey(
   return null;
 }
 
-function upsertTask(tasksByKey: Map<string, MutableTask>, next: MutableTask) {
-  const existingKey = matchingExistingKey(tasksByKey, next.target, next.nameKey);
-  const key = existingKey ?? taskKey(next.target, next.nameKey, next.id);
-  const existing = tasksByKey.get(key);
-  const merged: MutableTask = existing
+function upsertSubtask(parent: MutableParentTask, next: MutableSubtask) {
+  const existingKey = matchingSubtaskKey(parent.subtasksByKey, next.target, next.nameKey);
+  const existing = existingKey ? parent.subtasksByKey.get(existingKey) : null;
+  const merged: MutableSubtask = existing
     ? {
         ...existing,
         ...next,
@@ -147,13 +173,13 @@ function upsertTask(tasksByKey: Map<string, MutableTask>, next: MutableTask) {
       }
     : next;
 
-  if (existingKey && existingKey !== taskKey(next.target, next.nameKey, next.id)) {
-    tasksByKey.delete(existingKey);
+  if (existingKey) {
+    parent.subtasksByKey.delete(existingKey);
   }
-  tasksByKey.set(taskKey(merged.target, merged.nameKey, merged.id), merged);
+  parent.subtasksByKey.set(taskKey(merged.target, merged.nameKey, merged.id), merged);
 }
 
-function manifestTasks(args: Record<string, unknown>, sequence: number, live: boolean): MutableTask[] {
+function manifestSubtasks(args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask[] {
   const tasks = Array.isArray(args.tasks) ? args.tasks : [];
   return tasks.flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
@@ -168,7 +194,7 @@ function manifestTasks(args: Record<string, unknown>, sequence: number, live: bo
       title,
       summary,
       status: 'planned' as const,
-      ...statusMeta('planned'),
+      ...statusMeta('planned', 'subtask'),
       target: null,
       writeScope,
       live,
@@ -177,7 +203,7 @@ function manifestTasks(args: Record<string, unknown>, sequence: number, live: bo
   });
 }
 
-function spawnTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableTask | null {
+function spawnSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask | null {
   const taskName = stringValue(args.taskName);
   const resultText = tool.resultText ?? '';
   const target = stringValue(args.target) ?? targetFromTaskResult(resultText) ?? (taskName ? `/root/${taskName}` : null);
@@ -191,7 +217,7 @@ function spawnTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>,
     title: taskName ?? (target ? targetName(target) : 'Task'),
     summary: compact(resultText),
     status,
-    ...statusMeta(status),
+    ...statusMeta(status, 'subtask'),
     target,
     writeScope: stringArrayValue(args.writeScope),
     live,
@@ -199,7 +225,7 @@ function spawnTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>,
   };
 }
 
-function resultTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableTask | null {
+function resultSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask | null {
   const action = stringValue(args.action);
   const resultText = tool.resultText ?? '';
   const target = stringValue(args.target) ?? targetFromTaskResult(resultText);
@@ -218,7 +244,7 @@ function resultTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>
     title: targetName(target),
     summary: compact(resultText),
     status,
-    ...statusMeta(status),
+    ...statusMeta(status, 'subtask'),
     target,
     writeScope: stringArrayValue(args.writeScope),
     live,
@@ -226,53 +252,146 @@ function resultTask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>
   };
 }
 
-function collectTools(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | null) {
-  const tools: ToolWithTurn[] = [];
-  let sequence = 0;
-  for (const message of messages) {
-    const turn = message.turn;
-    if (!turn) continue;
-    for (const tool of turn.tools) {
-      tools.push({ tool, live: false, sequence: sequence++ });
-    }
-  }
-
-  if (liveTurn && !liveTurn.completed) {
-    for (const tool of liveTurn.tools) {
-      tools.push({ tool, live: true, sequence: sequence++ });
-    }
-  }
-
-  return tools;
-}
-
-function taskOperatorItems({ tool, live, sequence }: ToolWithTurn): MutableTask[] {
+function subtaskItems({ tool, live, toolSequence }: ToolWithTurn): MutableSubtask[] {
   if (tool.name.trim().toLowerCase() !== 'task_operator') return [];
   const args = safeParseToolArguments(tool.arguments);
   if (!args) return [];
 
   const action = stringValue(args.action);
-  if (action === 'manifest') return manifestTasks(args, sequence, live);
+  if (action === 'manifest') return manifestSubtasks(args, toolSequence, live);
   if (action === 'spawn') {
-    const task = spawnTask(tool, args, sequence, live);
+    const task = spawnSubtask(tool, args, toolSequence, live);
     return task ? [task] : [];
   }
 
-  const task = resultTask(tool, args, sequence, live);
+  const task = resultSubtask(tool, args, toolSequence, live);
   return task ? [task] : [];
 }
 
-export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInput): TaskActivityDashboard {
-  const tasksByKey = new Map<string, MutableTask>();
-  for (const tool of collectTools(messages, liveTurn)) {
-    for (const item of taskOperatorItems(tool)) {
-      upsertTask(tasksByKey, item);
+function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | null) {
+  const turns: TurnWithSequence[] = [];
+  let sequence = 0;
+  for (const message of messages) {
+    if (message.turn) {
+      turns.push({ turn: message.turn, live: false, sequence: sequence++ });
     }
   }
 
-  const tasks = Array.from(tasksByKey.values())
+  if (liveTurn && !liveTurn.completed) {
+    turns.push({ turn: liveTurn, live: true, sequence: sequence++ });
+  }
+
+  return turns;
+}
+
+function createParentTask({ turn, live, sequence }: TurnWithSequence): MutableParentTask {
+  const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
+  return {
+    id: `turn:${turn.id}`,
+    title: titleFromPrompt(turn.prompt),
+    summary: compact(turn.message || turn.assistantText || ''),
+    status,
+    ...statusMeta(status),
+    target: null,
+    writeScope: [],
+    live,
+    sequence,
+    completed: turn.completed,
+    succeeded: turn.succeeded,
+    message: turn.message,
+    assistantText: turn.assistantText,
+    subtasksByKey: new Map(),
+  };
+}
+
+function findExistingSubtaskParent(parents: MutableParentTask[], subtask: MutableSubtask) {
+  for (const parent of parents) {
+    if (matchingSubtaskKey(parent.subtasksByKey, subtask.target, subtask.nameKey)) return parent;
+  }
+  return null;
+}
+
+function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[]): TaskDashboardStatus {
+  if (parent.live && !parent.completed) return 'active';
+  if (subtasks.some((subtask) => subtask.status === 'failed')) return 'failed';
+  if (subtasks.some((subtask) => subtask.status === 'active')) return 'active';
+  if (subtasks.some((subtask) => subtask.status === 'planned')) return 'planned';
+  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'closed')) return 'closed';
+  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'completed' || subtask.status === 'closed')) return 'completed';
+  if (parent.completed) return parent.succeeded ? 'completed' : 'failed';
+  return 'active';
+}
+
+function parentSummary(parent: MutableParentTask, subtasks: TaskDashboardSubtask[]) {
+  if (subtasks.length === 0) return compact(parent.message || parent.assistantText || 'Task is running.');
+  const active = subtasks.filter((subtask) => subtask.status === 'active').length;
+  const planned = subtasks.filter((subtask) => subtask.status === 'planned').length;
+  const failed = subtasks.filter((subtask) => subtask.status === 'failed').length;
+  const completed = subtasks.filter((subtask) => subtask.status === 'completed' || subtask.status === 'closed').length;
+  if (active > 0) return `${active} active subtask${active === 1 ? '' : 's'}${subtasks.length > active ? ` of ${subtasks.length}` : ''}`;
+  if (failed > 0) return `${failed} failed subtask${failed === 1 ? '' : 's'}${subtasks.length > failed ? ` of ${subtasks.length}` : ''}`;
+  if (planned > 0) return `${planned} planned subtask${planned === 1 ? '' : 's'}${subtasks.length > planned ? ` of ${subtasks.length}` : ''}`;
+  if (completed > 0) return `${completed} completed subtask${completed === 1 ? '' : 's'}${subtasks.length > completed ? ` of ${subtasks.length}` : ''}`;
+  return `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}`;
+}
+
+function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
+  const subtasks = Array.from(parent.subtasksByKey.values())
     .sort((left, right) => left.sequence - right.sequence)
-    .map(({ nameKey: _nameKey, sequence: _sequence, ...task }) => task);
+    .map(({ nameKey: _nameKey, sequence: _sequence, ...subtask }) => subtask);
+  const status = deriveParentStatus(parent, subtasks);
+  const meta = statusMeta(status);
+  const activeSubtaskCount = subtasks.filter((subtask) => subtask.status === 'active').length;
+
+  return {
+    id: parent.id,
+    title: parent.title,
+    summary: parentSummary(parent, subtasks),
+    status,
+    ...meta,
+    target: parent.target,
+    writeScope: parent.writeScope,
+    live: parent.live || status === 'active',
+    subtasks,
+    subtaskCount: subtasks.length,
+    activeSubtaskCount,
+  };
+}
+
+export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInput): TaskActivityDashboard {
+  const parents: MutableParentTask[] = [];
+  const parentsByTurnId = new Map<string, MutableParentTask>();
+  let toolSequence = 0;
+
+  const ensureParent = (turnWithSequence: TurnWithSequence) => {
+    const existing = parentsByTurnId.get(turnWithSequence.turn.id);
+    if (existing) return existing;
+    const parent = createParentTask(turnWithSequence);
+    parentsByTurnId.set(turnWithSequence.turn.id, parent);
+    parents.push(parent);
+    return parent;
+  };
+
+  for (const turnWithSequence of collectTurns(messages, liveTurn)) {
+    let currentParent: MutableParentTask | null = null;
+    if (turnWithSequence.live && !turnWithSequence.turn.completed) {
+      currentParent = ensureParent(turnWithSequence);
+    }
+
+    for (const tool of turnWithSequence.turn.tools) {
+      const items = subtaskItems({ ...turnWithSequence, tool, toolSequence: toolSequence++ });
+      for (const item of items) {
+        const parent = findExistingSubtaskParent(parents, item) ?? currentParent ?? ensureParent(turnWithSequence);
+        upsertSubtask(parent, item);
+        currentParent = parent;
+      }
+    }
+  }
+
+  const tasks = parents
+    .sort((left, right) => left.sequence - right.sequence)
+    .map(finalizeParent)
+    .filter((task) => task.live || task.subtaskCount > 0);
   const activeCount = tasks.filter((task) => task.status === 'active').length;
   const completedCount = tasks.filter((task) => task.status === 'completed').length;
 
