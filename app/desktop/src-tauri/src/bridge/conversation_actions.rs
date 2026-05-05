@@ -365,9 +365,17 @@ enum DirectPersonContactGateAction {
     BlockRejected,
 }
 
+fn conversation_is_group_session_transport(conversation: &DesktopBridgeConversationRecord) -> bool {
+    conversation
+        .outreach
+        .as_ref()
+        .is_some_and(outreach_targets_group_session)
+}
+
 fn direct_person_messages_require_contact_gate(context: &ConversationContext) -> bool {
     context.host.api_style == API_STYLE_SERVE
         && context.conversation.project_id.is_none()
+        && !conversation_is_group_session_transport(&context.conversation)
         && context
             .conversation
             .peer_runtime
@@ -1287,6 +1295,25 @@ mod tests {
         assert_eq!(
             direct_person_contact_gate_action(&context, &[], &[], Some(&peer)),
             DirectPersonContactGateAction::SendRequest,
+        );
+    }
+
+    #[test]
+    fn group_session_person_messages_bypass_direct_contact_gate() {
+        let mut conversation = test_conversation(Vec::new());
+        let mut outreach = test_outreach(None);
+        outreach.parent_session_kind = Some("group".to_string());
+        outreach.context_policy = Some("session-message".to_string());
+        conversation.outreach = Some(outreach);
+        let context = ConversationContext {
+            conversation,
+            host: test_host(API_STYLE_SERVE),
+        };
+        let peer = test_peer_with_policy("peer-1", "server-approval", "approval-required");
+
+        assert_eq!(
+            direct_person_contact_gate_action(&context, &[], &[], Some(&peer)),
+            DirectPersonContactGateAction::Allow,
         );
     }
 

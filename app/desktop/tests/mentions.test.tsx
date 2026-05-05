@@ -20,6 +20,8 @@ function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'n
   return {
     endpoint: `https://${overrides.nodeId}.example`,
     sharedProjects: [],
+    isContact: true,
+    contactRequestStatus: 'approved',
     ...overrides,
   };
 }
@@ -218,7 +220,7 @@ test('bridge mention option text shows display names and pairs people with their
   assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
 });
 
-test('group mention candidates include only people in the group and their agents', () => {
+test('group mention candidates include people in the group but only approved contacts agents', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
@@ -228,6 +230,8 @@ test('group mention candidates include only people in the group and their agents
       humanId: 'human-alice',
       agentId: 'agent-alice',
       isDefaultAgent: true,
+      isContact: true,
+      contactRequestStatus: 'approved',
     }),
     peer({
       nodeId: 'node-bob-agent',
@@ -237,6 +241,8 @@ test('group mention candidates include only people in the group and their agents
       humanId: 'human-bob',
       agentId: 'agent-bob',
       isDefaultAgent: true,
+      isContact: false,
+      contactRequestStatus: null,
     }),
     peer({
       nodeId: 'node-carol-agent',
@@ -257,7 +263,7 @@ test('group mention candidates include only people in the group and their agents
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob'],
   );
 });
 

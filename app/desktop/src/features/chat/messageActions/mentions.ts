@@ -68,6 +68,11 @@ function normalizedOwnerKey(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? '';
 }
 
+function bridgePeerIsApprovedContact(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+  const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
+  return Boolean(peer.isContact || status === 'contact' || status === 'approved');
+}
+
 function isSelfConversationParticipant(participant: { kind?: string | null; role?: string | null; source?: string | null }) {
   return participant.role === 'self'
     || (participant.source === 'local' && participant.kind === 'human');
@@ -168,8 +173,15 @@ export function filterBridgeMentionCandidatesForConversation(
   conversation: MentionScopeConversation | null | undefined,
 ) {
   if (!conversationHasParticipantMentionScope(conversation)) return candidates;
+  const groupMentionScope = conversationHasGroupMentionScope(conversation);
   return dedupeBridgeMentionCandidateHandles(
-    candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)),
+    candidates.filter((candidate) => {
+      if (!bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)) return false;
+      if (groupMentionScope && candidate.targetKind === 'bridge-agent') {
+        return bridgePeerIsApprovedContact(candidate.peer);
+      }
+      return true;
+    }),
   );
 }
 
