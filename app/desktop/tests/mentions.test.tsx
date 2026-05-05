@@ -220,7 +220,7 @@ test('bridge mention option text shows display names and pairs people with their
   assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
 });
 
-test('group mention candidates include people in the group but only approved contacts agents', () => {
+test('group mention candidates include group people and their agents, not outside contacts', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
@@ -263,7 +263,7 @@ test('group mention candidates include people in the group but only approved con
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob'],
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
   );
 });
 
