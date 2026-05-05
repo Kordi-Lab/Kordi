@@ -271,6 +271,41 @@ test('task dashboard prefers model-generated task titles from tool arguments', (
   assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
 });
 
+test('task dashboard keeps completed titled tasks visible after the live turn finishes', () => {
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: '@Kordi please do a detailed review of the open claw code and give me a report when done',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Done.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: '{"taskTitle":"Review Open Claw Code","plan":[{"step":"Inspect code","status":"completed"}]}',
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(completedTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
+});
+
 test('task panel renders the whole task as an expandable row with a checkbox-style status icon', () => {
   const messages: Message[] = [assistantTurnMessage({
     id: 'turn-1',
@@ -306,6 +341,7 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
 
   assert.match(markup, /<details/);
   assert.match(markup, /data-task-status-icon="checkbox"/);
+  assert.doesNotMatch(markup, />▸</);
   assert.doesNotMatch(markup, />Done</);
   assert.match(markup, /review code/);
   assert.equal(markup.match(/1 active subtask/g)?.length, 1);
@@ -348,4 +384,28 @@ test('task panel shows running subtasks with a circle and elapsed time', () => {
   assert.match(markup, /data-subtask-status-icon="circle"/);
   assert.match(markup, /Running · 0s/);
   assert.doesNotMatch(markup, /Subagent active/);
+});
+
+test('task panel lets long task titles wrap instead of truncating them', () => {
+  const liveTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: '@Kordi review the change log and related blog of open source release notes',
+    status: 'tooling',
+    message: 'Thinking…',
+    assistantText: '',
+    thinkingText: '',
+    completed: false,
+    succeeded: false,
+    tools: [],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [],
+    liveTurn,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /review the change log and related blog/);
+  assert.doesNotMatch(markup, /app-inspector-heading truncate/);
 });

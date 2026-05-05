@@ -383,7 +383,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   for (const turnWithSequence of collectTurns(messages, liveTurn)) {
     let currentParent: MutableParentTask | null = null;
-    if (turnWithSequence.live && !turnWithSequence.turn.completed) {
+    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools)) {
       currentParent = ensureParent(turnWithSequence);
     }
 
@@ -399,8 +399,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   const tasks = parents
     .sort((left, right) => left.sequence - right.sequence)
-    .map(finalizeParent)
-    .filter((task) => task.live || task.subtaskCount > 0);
+    .map(finalizeParent);
   const activeCount = tasks.filter((task) => task.status === 'active').length;
   const completedCount = tasks.filter((task) => task.status === 'completed').length;
 

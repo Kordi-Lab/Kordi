@@ -97,11 +97,9 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
 function TaskContent({
   task,
   nested = false,
-  expandable = false,
 }: {
   task: TaskDashboardItem | TaskDashboardSubtask;
   nested?: boolean;
-  expandable?: boolean;
 }) {
   const secondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
   const runningElapsed = useRunningElapsedLabel(nested && task.status === 'active', task.id);
@@ -116,14 +114,11 @@ function TaskContent({
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
-      {expandable ? (
-        <span className="mt-0.5 text-[11px] text-[color:var(--utility-muted-text)] transition-transform group-open:rotate-90" aria-hidden="true">▸</span>
-      ) : null}
       <TaskStatusIcon task={task} nested={nested} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className={cn('app-inspector-heading truncate', nested && 'text-[12px]')}>{task.title}</div>
+            <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
             <div className="mt-1 app-inspector-text-block">{secondaryText}</div>
             {runningElapsed ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">Running · {runningElapsed}</div> : null}
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
@@ -156,7 +151,7 @@ function TaskRow({ task }: { task: TaskDashboardItem }) {
   return (
     <details className="group app-inspector-source-row">
       <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-        <TaskContent task={task} expandable />
+        <TaskContent task={task} />
       </summary>
       <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
         {task.subtasks.map((subtask) => (
