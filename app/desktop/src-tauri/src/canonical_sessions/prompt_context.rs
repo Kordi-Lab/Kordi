@@ -292,8 +292,8 @@ fn local_self_role(
 ) -> Result<IdentityContextRole, String> {
     let profile = ensure_local_profile(conn)?;
     let candidate_ids = [
-        profile.active_agent_identity_id.as_deref(),
         primary_identity_id,
+        profile.active_agent_identity_id.as_deref(),
     ];
     for candidate_id in candidate_ids.into_iter().flatten() {
         if let Some(role) = identity_role_for_id(conn, participants, Some(candidate_id))? {
@@ -519,10 +519,10 @@ pub(crate) fn bridge_agent_parent_session_prompt(
     };
     let request = request_text.trim();
     let mut lines = Vec::new();
-    lines.push(format!("You are {agent_name}."));
-    if let Some(owner_name) = owner_name.map(str::trim).filter(|value| !value.is_empty()) {
-        lines.push(format!("Your owner is {owner_name}."));
-    }
+    lines.push(
+        "You are the Bridge target agent described in Current model/self below. If no identity frame is present, answer as the Bridge target agent for this shared Kordi request."
+            .to_string(),
+    );
     lines.push(
         "You joined this shared Kordi session because someone mentioned you with @Agent. Reply directly to the request using the session context. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to."
             .to_string(),
