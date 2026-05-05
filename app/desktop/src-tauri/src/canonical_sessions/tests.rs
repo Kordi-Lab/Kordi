@@ -42,6 +42,162 @@ fn seed_identity(conn: &Connection, id: &str, display_name: &str, kind: &str) ->
     .expect("seed identity")
 }
 
+fn identity_context_role(
+    identity_id: &str,
+    display_name: &str,
+    kind: &str,
+    owner_identity_id: Option<&str>,
+    owner_display_name: Option<&str>,
+    locality: Option<&str>,
+) -> IdentityContextRole {
+    IdentityContextRole {
+        identity_id: identity_id.to_string(),
+        display_name: display_name.to_string(),
+        kind: kind.to_string(),
+        owner_identity_id: owner_identity_id.map(ToString::to_string),
+        owner_display_name: owner_display_name.map(ToString::to_string),
+        locality: locality.map(ToString::to_string),
+    }
+}
+
+fn identity_context_participant(
+    identity_id: &str,
+    display_name: &str,
+    kind: &str,
+    role: &str,
+    owner_identity_id: Option<&str>,
+    owner_display_name: Option<&str>,
+) -> IdentityContextParticipant {
+    IdentityContextParticipant {
+        identity_id: identity_id.to_string(),
+        display_name: display_name.to_string(),
+        kind: kind.to_string(),
+        role: role.to_string(),
+        owner_identity_id: owner_identity_id.map(ToString::to_string),
+        owner_display_name: owner_display_name.map(ToString::to_string),
+        bridge_node_id: None,
+        human_id: kind
+            .eq_ignore_ascii_case("human")
+            .then(|| identity_id.trim_start_matches("human:").to_string()),
+        agent_id: kind
+            .eq_ignore_ascii_case("agent")
+            .then(|| identity_id.trim_start_matches("agent:").to_string()),
+        runtime: None,
+        locality: Some("local".to_string()),
+    }
+}
+
+fn alice_bob_identity_context_request() -> IdentityContextRequest {
+    IdentityContextRequest {
+        self_identity: identity_context_role(
+            "agent:alice-kordi",
+            "Alice's Kordi",
+            "agent",
+            Some("human:alice"),
+            Some("Alice"),
+            Some("local"),
+        ),
+        requester: Some(identity_context_role(
+            "human:alice",
+            "Alice",
+            "human",
+            None,
+            None,
+            Some("local"),
+        )),
+        target: Some(identity_context_role(
+            "agent:bob-kordi",
+            "Bob's Kordi",
+            "agent",
+            Some("human:bob"),
+            Some("Bob"),
+            Some("non-local"),
+        )),
+        participants: vec![
+            identity_context_participant("human:bob", "Bob", "human", "participant", None, None),
+            identity_context_participant(
+                "agent:bob-kordi",
+                "Bob's Kordi",
+                "agent",
+                "delegate",
+                Some("human:bob"),
+                Some("Bob"),
+            ),
+            identity_context_participant("human:alice", "Alice", "human", "requester", None, None),
+            identity_context_participant(
+                "agent:alice-kordi",
+                "Alice's Kordi",
+                "agent",
+                "self",
+                Some("human:alice"),
+                Some("Alice"),
+            ),
+        ],
+        permissions: IdentityContextPermissions {
+            reply_as_identity_id: "agent:alice-kordi".to_string(),
+            allowed_targets: vec!["agent:bob-kordi".to_string(), "human:bob".to_string()],
+            reach_out_allowed: true,
+            context_policy: "recent-window".to_string(),
+            requires_approval: false,
+        },
+        session_id: Some("session:alice-bob".to_string()),
+        session_kind: Some("group".to_string()),
+        project_name: None,
+    }
+}
+
+#[test]
+fn identity_context_renders_versioned_frame_and_sorted_participants() {
+    let request = alice_bob_identity_context_request();
+
+    let rendered = render_multi_participant_identity_context(&request);
+
+    for marker in [
+        "<multi_participant_identity_context version=\"v1\">",
+        "Current model/self:",
+        "Requester / initiator:",
+        "Current target:",
+        "Session participants:",
+        "Permissions:",
+        "Rules:",
+        "identityId: agent:alice-kordi",
+        "owner: Alice (human:alice)",
+        "replyAs: agent:alice-kordi only",
+        "reachOut: allowed only for explicit non-local @Person/@Agent mentions in the current user message",
+    ] {
+        assert!(rendered.contains(marker), "missing marker {marker:?}\n{rendered}");
+    }
+
+    let alice_agent = rendered
+        .find("- agent:alice-kordi | Alice's Kordi | agent")
+        .unwrap();
+    let bob_agent = rendered
+        .find("- agent:bob-kordi | Bob's Kordi | agent")
+        .unwrap();
+    let alice_human = rendered.find("- human:alice | Alice | human").unwrap();
+    let bob_human = rendered.find("- human:bob | Bob | human").unwrap();
+    assert!(alice_agent < bob_agent);
+    assert!(bob_agent < alice_human);
+    assert!(alice_human < bob_human);
+}
+
+#[test]
+fn identity_context_renders_denied_reach_out_policy() {
+    let mut request = alice_bob_identity_context_request();
+    request.permissions.allowed_targets = Vec::new();
+    request.permissions.reach_out_allowed = false;
+
+    let rendered = render_multi_participant_identity_context(&request);
+
+    for marker in [
+        "reachOut: disabled; ask the local user when a non-local target is ambiguous or not permitted",
+        "allowedTargets: []",
+        "mayImpersonate: none",
+    ] {
+        assert!(rendered.contains(marker), "missing marker {marker:?}\n{rendered}");
+    }
+}
+
 mod desktop_sync;
 mod direct_message_sync;
 mod group_agent_requests;
