@@ -359,7 +359,7 @@ async fn add_direct_contact_for_context(context: &ConversationContext) -> Result
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DirectPersonContactGateAction {
     Allow,
-    SendRequest,
+    BlockNeedsRequest,
     BlockPendingOutgoing,
     BlockPendingIncoming,
     BlockRejected,
@@ -440,7 +440,7 @@ fn direct_person_contact_gate_action(
         return DirectPersonContactGateAction::Allow;
     }
 
-    DirectPersonContactGateAction::SendRequest
+    DirectPersonContactGateAction::BlockNeedsRequest
 }
 
 fn direct_person_contact_gate_message(
@@ -448,8 +448,8 @@ fn direct_person_contact_gate_message(
 ) -> Option<&'static str> {
     match action {
         DirectPersonContactGateAction::Allow => None,
-        DirectPersonContactGateAction::SendRequest => {
-            Some("Contact request sent. They need to approve it before messages can be delivered.")
+        DirectPersonContactGateAction::BlockNeedsRequest => {
+            Some("Send a contact request before messages can be delivered.")
         }
         DirectPersonContactGateAction::BlockPendingOutgoing => Some(
             "Contact request is pending. They need to approve it before messages can be delivered.",
@@ -486,9 +486,6 @@ async fn ensure_direct_person_contact_approved(
 
     let action =
         direct_person_contact_gate_action(context, &contacts, &contact_requests, target_peer);
-    if action == DirectPersonContactGateAction::SendRequest {
-        add_direct_contact_for_context(context).await?;
-    }
     if let Some(message) = direct_person_contact_gate_message(action) {
         return Err(message.to_string());
     }
@@ -1282,7 +1279,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_person_contact_gate_sends_request_for_approval_required_non_contact() {
+    fn direct_person_contact_gate_blocks_approval_required_non_contact_until_explicit_request() {
         let context = ConversationContext {
             conversation: test_conversation(Vec::new()),
             host: test_host(API_STYLE_SERVE),
@@ -1291,7 +1288,7 @@ mod tests {
 
         assert_eq!(
             direct_person_contact_gate_action(&context, &[], &[], Some(&peer)),
-            DirectPersonContactGateAction::SendRequest,
+            DirectPersonContactGateAction::BlockNeedsRequest,
         );
     }
 
@@ -1366,7 +1363,7 @@ mod tests {
                 &[test_contact_request("approved", "outgoing")],
                 None,
             ),
-            DirectPersonContactGateAction::SendRequest,
+            DirectPersonContactGateAction::BlockNeedsRequest,
         );
     }
 

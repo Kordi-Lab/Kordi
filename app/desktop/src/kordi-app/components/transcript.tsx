@@ -228,7 +228,12 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
 function contactRequestFailureCanBeRetried(detail?: string | null) {
   const normalized = detail?.trim().toLowerCase() ?? '';
   return normalized.includes('contact request')
-    && (normalized.includes('rejected') || normalized.includes('blocked'));
+    && (
+      normalized.includes('before messages')
+      || normalized.includes('pending')
+      || normalized.includes('rejected')
+      || normalized.includes('blocked')
+    );
 }
 
 type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';

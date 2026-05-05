@@ -91,7 +91,7 @@ test('renders contact-gated failed sends with an inline request link', () => {
     isOwnMessage: true,
     text: 'hello again',
     time: '00:45',
-    detail: 'Contact request was rejected, so messages are blocked.',
+    detail: 'Send a contact request before messages can be delivered.',
     statusChips: ['failed'],
   };
 
@@ -100,9 +100,30 @@ test('renders contact-gated failed sends with an inline request link', () => {
     onRequestBridgeContact: async () => undefined,
   }));
 
-  assert.match(markup, />Contact request was rejected, so messages are blocked\.</);
+  assert.match(markup, />Send a contact request before messages can be delivered\.</);
   assert.match(markup, />Send contact request</);
   assert.match(markup, /Messages are blocked until this person approves you/);
+});
+
+test('renders pending contact request failures with the same explicit request action', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello again',
+    time: '00:45',
+    detail: 'Contact request is pending. They need to approve it before messages can be delivered.',
+    statusChips: ['failed'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    onRequestBridgeContact: async () => undefined,
+  }));
+
+  assert.match(markup, />Contact request is pending\. They need to approve it before messages can be delivered\.</);
+  assert.match(markup, />Send contact request</);
 });
 
 test('renders transcript system notices with compact stable spacing', () => {
