@@ -178,6 +178,7 @@ mod tests {
         ToolContext {
             cwd: "/tmp".into(),
             artifacts_dir: "/tmp".into(),
+            model: None,
             execution_policy: crate::ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,

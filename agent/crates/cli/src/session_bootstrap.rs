@@ -13,7 +13,7 @@ use kordi_core::settings::{ProjectSharedSource, Settings};
 use kordi_provider::Provider;
 use kordi_provider::registry::ModelRegistry;
 use kordi_session::store;
-use kordi_tools::{ExecutionPolicy, ToolContext};
+use kordi_tools::{ExecutionPolicy, Tool, ToolContext};
 use std::sync::Arc;
 
 use crate::extensions::{
@@ -182,6 +182,15 @@ fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> 
         .collect::<Vec<_>>()
         .join("\n");
     Some(lines)
+}
+
+fn build_tool_layer_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
+    if !tools.iter().any(|tool| tool.name() == "task_operator") {
+        return String::new();
+    }
+
+    "\n\n## Tool layers\nTools are organized into five layers: Observation, Planning, Operator, Execution, and Reflection. Use Observation to gather facts, Planning to decide next steps, Operator to coordinate tasks, Execution to act, and Reflection to learn scoped lessons from corrections, failures, and outcomes. Use the lightest layer that solves the current step."
+        .to_string()
 }
 
 fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
@@ -465,13 +474,16 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let project_system_section =
         build_project_system_prompt_section(&project_settings, &effective_cwd);
-    let system_prompt = format!("{base_system_prompt}{project_system_section}{skill_section}");
+    let tool_layer_section = build_tool_layer_system_prompt_section(tool_registry.active_tools());
+    let system_prompt =
+        format!("{base_system_prompt}{project_system_section}{skill_section}{tool_layer_section}");
 
     let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
         artifacts_dir,
+        model: Some(model.clone()),
         execution_policy,
         on_output: None,
         web_search: Some(kordi_tools::WebSearchRuntime {
@@ -845,6 +857,20 @@ mod tests {
             resolve_startup_session_id(&conn, cwd.path(), &Default::default()).expect("resolve");
         assert!(!resolved.1);
         assert!(uuid::Uuid::parse_str(&resolved.0).is_ok());
+    }
+
+    #[test]
+    fn tool_layer_system_prompt_section_is_short_when_task_operator_is_active() {
+        let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+            name: "task_operator",
+            description: "task operator",
+            schema: json!({"type": "object"}),
+        })];
+
+        let section = super::build_tool_layer_system_prompt_section(&tools);
+        assert!(section.contains("Observation, Planning, Operator, Execution, and Reflection"));
+        assert!(section.contains("Use the lightest layer"));
+        assert!(section.len() < 700);
     }
 
     #[test]

@@ -431,6 +431,7 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: cwd.clone(),
             artifacts_dir: cwd.join("artifacts"),
+            model: None,
             execution_policy: ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,

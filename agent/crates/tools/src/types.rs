@@ -161,6 +161,7 @@ pub struct ReachOutRuntime {
 pub struct ToolContext {
     pub cwd: PathBuf,
     pub artifacts_dir: PathBuf,
+    pub model: Option<Model>,
     pub execution_policy: ExecutionPolicy,
     pub on_output: Option<OnOutputFn>,
     pub web_search: Option<WebSearchRuntime>,

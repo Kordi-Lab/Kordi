@@ -742,6 +742,7 @@ fn test_tool_context() -> kordi_tools::ToolContext {
     kordi_tools::ToolContext {
         cwd: "/tmp".into(),
         artifacts_dir: "/tmp".into(),
+        model: None,
         execution_policy: kordi_tools::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,

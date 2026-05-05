@@ -19,6 +19,7 @@ pub mod registry_plan;
 pub(crate) mod sandbox;
 pub mod scheduler;
 pub(crate) mod support;
+pub mod task_operator;
 pub(crate) mod text;
 mod types;
 pub(crate) mod web;

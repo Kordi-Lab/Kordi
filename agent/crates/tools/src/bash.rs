@@ -303,6 +303,7 @@ mod tests {
         ToolContext {
             cwd: dir.to_path_buf(),
             artifacts_dir: dir.to_path_buf(),
+            model: None,
             execution_policy: crate::ExecutionPolicy::Yolo,
             on_output: None,
             web_search: None,

@@ -882,6 +882,7 @@ fn build_turn_config(
         tool_ctx: kordi_tools::ToolContext {
             cwd: setup.tool_ctx.cwd.clone(),
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
+            model: None,
             execution_policy: setup.tool_ctx.execution_policy,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),

@@ -464,6 +464,7 @@ fn tool_context_with_output_forwarding(
     ToolContext {
         cwd: env.tool_ctx.cwd.clone(),
         artifacts_dir: env.tool_ctx.artifacts_dir.clone(),
+        model: None,
         execution_policy: env.tool_ctx.execution_policy,
         on_output: Some(Box::new(move |chunk| {
             let _ = event_tx.send(TurnEvent::ToolOutputDelta {

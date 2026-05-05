@@ -8,6 +8,7 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::edit::EditTool),
         Box::new(crate::write::WriteTool),
         Box::new(crate::plan_tool::UpdatePlanTool),
+        Box::new(crate::task_operator::TaskOperatorTool),
         Box::new(crate::find::FindTool),
         Box::new(crate::grep::GrepTool),
         Box::new(crate::ls::LsTool),
@@ -54,6 +55,14 @@ mod tests {
         let metadata = metadata_for("update_plan");
         assert_eq!(metadata.layer, ToolLayer::Planning);
         assert_eq!(metadata.risk, ToolRiskLevel::Low);
+        assert!(!metadata.supports_parallel);
+    }
+
+    #[test]
+    fn builtin_tools_include_task_operator_as_operator_tool() {
+        let metadata = metadata_for("task_operator");
+        assert_eq!(metadata.layer, ToolLayer::Operator);
+        assert_eq!(metadata.risk, ToolRiskLevel::Medium);
         assert!(!metadata.supports_parallel);
     }
 

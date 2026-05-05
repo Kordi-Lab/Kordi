@@ -6,6 +6,7 @@ fn make_ctx(dir: &Path, execution_policy: crate::ExecutionPolicy) -> ToolContext
     ToolContext {
         cwd: dir.to_path_buf(),
         artifacts_dir: dir.to_path_buf(),
+        model: None,
         execution_policy,
         on_output: None,
         web_search: None,

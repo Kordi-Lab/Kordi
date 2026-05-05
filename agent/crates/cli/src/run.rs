@@ -119,6 +119,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let tool_ctx = ToolContext {
         cwd: cwd.clone(),
         artifacts_dir,
+        model: Some(model.clone()),
         execution_policy,
         on_output: None,
         web_search: Some(kordi_tools::WebSearchRuntime {
