@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { BridgeDetailsSection } from '../src/pages/bridge/BridgeDetailsSection';
 import type { BridgeDetailsSectionProps, BridgeStepId } from '../src/pages/bridge/BridgeConfigPage.types';
-import type { DesktopBridgeHost } from '../src/kordi-app/types';
+import type { DesktopBridgeHost, DesktopBridgePeer } from '../src/kordi-app/types';
 
 function host(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
   return {
@@ -147,6 +147,49 @@ test('Bridge approvals step shows incoming requests before direct reachability i
   assert.match(markup, /kd_peer/);
   assert.match(markup, /Approve/);
   assert.match(markup, /Reject/);
+});
+
+test('Bridge approvals step removes direct node-id add actions from setup', () => {
+  const markup = renderDetails('approvals');
+
+  assert.match(markup, /Pending approvals/);
+  assert.doesNotMatch(markup, /Add someone by node ID/);
+  assert.doesNotMatch(markup, /Add \+ chat/);
+  assert.doesNotMatch(markup, /kd_\.\.\./);
+});
+
+test('Bridge visible peer lists are deferred until the review step', () => {
+  const activeBridgePeople: DesktopBridgePeer[] = [{
+    nodeId: 'kd_person',
+    displayName: 'Ada Bridge',
+    runtime: 'kordi-desktop',
+    endpoint: 'http://127.0.0.1:17080/kd_person',
+    ownerName: 'Ada',
+    sharedProjects: [],
+    humanId: 'kh_ada',
+    agentId: null,
+  }];
+  const activeBridgeAgents: DesktopBridgePeer[] = [{
+    nodeId: 'kd_agent_peer',
+    displayName: 'Calc Agent',
+    runtime: 'kordi-desktop',
+    endpoint: 'http://127.0.0.1:17080/kd_agent_peer',
+    ownerName: 'Ada',
+    sharedProjects: [],
+    humanId: 'kh_ada',
+    agentId: 'ka_calc',
+    isDefaultAgent: true,
+  }];
+
+  const approvalsMarkup = renderDetails('approvals', { activeBridgePeople, activeBridgeAgents });
+  assert.doesNotMatch(approvalsMarkup, /Visible people/);
+  assert.doesNotMatch(approvalsMarkup, /Visible agents/);
+
+  const reviewMarkup = renderDetails('review', { activeBridgePeople, activeBridgeAgents });
+  assert.match(reviewMarkup, /Visible people/);
+  assert.match(reviewMarkup, /Ada Bridge/);
+  assert.match(reviewMarkup, /Visible agents/);
+  assert.match(reviewMarkup, /Calc Agent/);
 });
 
 test('Bridge agents step renders per-agent reachability controls', () => {

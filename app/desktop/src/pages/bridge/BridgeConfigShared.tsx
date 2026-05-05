@@ -117,9 +117,9 @@ export function DetailNav({
   const steps: Array<{ id: Exclude<BridgeStepId, 'setup' | 'discover'>; title: string; detail: string; disabled?: boolean }> = [
     { id: 'identity', title: 'How you appear', detail: 'Your name and share copy on this host.' },
     { id: 'visibility', title: 'Visibility', detail: 'Who can discover you and whether contact requires approval.', disabled: needsRegistration },
-    { id: 'approvals', title: 'Approvals', detail: 'Pending requests, direct contacts, visible people, and visible agents.', disabled: needsRegistration },
+    { id: 'approvals', title: 'Approvals', detail: 'Pending incoming and outgoing contact requests.', disabled: needsRegistration },
     { id: 'agents', title: 'Agent reachability', detail: 'Which agent is active, default, and reachable.', disabled: needsRegistration },
-    { id: 'review', title: 'Review', detail: 'Effective strategy before you publish or keep using this host.', disabled: needsRegistration },
+    { id: 'review', title: 'Review', detail: 'Effective strategy and visible peers after setup.', disabled: needsRegistration },
   ];
 
   return (

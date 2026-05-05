@@ -97,14 +97,11 @@ export function BridgeDetailsSection({
   onCreateBridgeAgent,
   onActivateBridgeAgent,
   onSetDefaultBridgeAgent,
-  onAddBridgeContact,
   onRemoveBridgeContact,
   onOpenBridgeConversation,
   activeStep,
   setActiveStep,
   setActiveSection,
-  contactNodeId,
-  setContactNodeId,
   identityOwnerName,
   setIdentityOwnerName,
 }: BridgeDetailsSectionProps) {
@@ -165,16 +162,13 @@ export function BridgeDetailsSection({
             activeDefaultAgent={activeDefaultAgent}
             activeStep={activeStep}
             bridgeSettingsDraft={bridgeSettingsDraft}
-            contactNodeId={contactNodeId}
             identityNameChanged={identityNameChanged}
             identityOwnerName={identityOwnerName}
             isDesktopBridgeSaving={isDesktopBridgeSaving}
             setActiveStep={setActiveStep}
             setBridgeSettingsDraft={setBridgeSettingsDraft}
-            setContactNodeId={setContactNodeId}
             setIdentityOwnerName={setIdentityOwnerName}
             onActivateBridgeAgent={onActivateBridgeAgent}
-            onAddBridgeContact={onAddBridgeContact}
             onApproveBridgeContactRequest={onApproveBridgeContactRequest}
             onCopyBridgeText={onCopyBridgeText}
             onCreateBridgeAgent={onCreateBridgeAgent}
@@ -202,16 +196,13 @@ function BridgeInlineTimeline({
   activeDefaultAgent,
   activeStep,
   bridgeSettingsDraft,
-  contactNodeId,
   identityNameChanged,
   identityOwnerName,
   isDesktopBridgeSaving,
   setActiveStep,
   setBridgeSettingsDraft,
-  setContactNodeId,
   setIdentityOwnerName,
   onActivateBridgeAgent,
-  onAddBridgeContact,
   onApproveBridgeContactRequest,
   onCopyBridgeText,
   onCreateBridgeAgent,
@@ -230,16 +221,13 @@ function BridgeInlineTimeline({
   activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
   activeStep: BridgeDetailsSectionProps['activeStep'];
   bridgeSettingsDraft: BridgeDetailsSectionProps['bridgeSettingsDraft'];
-  contactNodeId: string;
   identityNameChanged: boolean;
   identityOwnerName: string;
   isDesktopBridgeSaving: boolean;
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
   setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
-  setContactNodeId: BridgeDetailsSectionProps['setContactNodeId'];
   setIdentityOwnerName: BridgeDetailsSectionProps['setIdentityOwnerName'];
   onActivateBridgeAgent: BridgeDetailsSectionProps['onActivateBridgeAgent'];
-  onAddBridgeContact: BridgeDetailsSectionProps['onAddBridgeContact'];
   onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
   onCopyBridgeText: BridgeDetailsSectionProps['onCopyBridgeText'];
   onCreateBridgeAgent: BridgeDetailsSectionProps['onCreateBridgeAgent'];
@@ -261,9 +249,9 @@ function BridgeInlineTimeline({
   const steps: Array<{ id: InlineBridgeStepId; title: string; detail: string; disabled?: boolean }> = [
     { id: 'identity', title: 'How you appear', detail: 'Name, host share text, and public Bridge identity.' },
     { id: 'visibility', title: 'Visibility', detail: 'Discovery, private mode, and contact approval policy.', disabled: needsRegistration },
-    { id: 'approvals', title: 'Approvals', detail: 'Incoming requests, direct node adds, and visible peers.', disabled: needsRegistration },
+    { id: 'approvals', title: 'Approvals', detail: 'Incoming contact requests.', disabled: needsRegistration },
     { id: 'agents', title: 'Agent reachability', detail: 'Active/default agent plus who can call each agent.', disabled: needsRegistration },
-    { id: 'review', title: 'Review', detail: 'Effective host strategy before publishing.', disabled: needsRegistration },
+    { id: 'review', title: 'Review', detail: 'Effective host strategy and visible peers.', disabled: needsRegistration },
   ];
   const activeIndex = steps.findIndex((step) => step.id === normalizedActiveStep);
 
@@ -298,16 +286,9 @@ function BridgeInlineTimeline({
         return (
           <BridgeDiscoverStep
             activeBridgeHost={activeBridgeHost}
-            activeBridgePeople={activeBridgePeople}
-            activeBridgeAgents={activeBridgeAgents}
-            contactNodeId={contactNodeId}
-            setContactNodeId={setContactNodeId}
             setActiveStep={setActiveStep}
-            onAddBridgeContact={onAddBridgeContact}
             onApproveBridgeContactRequest={onApproveBridgeContactRequest}
             onRejectBridgeContactRequest={onRejectBridgeContactRequest}
-            onRemoveBridgeContact={onRemoveBridgeContact}
-            onOpenBridgeConversation={onOpenBridgeConversation}
           />
         );
       case 'agents':
@@ -325,10 +306,14 @@ function BridgeInlineTimeline({
         return (
           <BridgeReviewStep
             activeBridgeHost={activeBridgeHost}
+            activeBridgePeople={activeBridgePeople}
+            activeBridgeAgents={activeBridgeAgents}
             activeDefaultAgent={activeDefaultAgent}
             bridgeSettingsDraft={bridgeSettingsDraft}
             identityOwnerName={identityOwnerName}
             isDesktopBridgeSaving={isDesktopBridgeSaving}
+            onRemoveBridgeContact={onRemoveBridgeContact}
+            onOpenBridgeConversation={onOpenBridgeConversation}
             onSaveBridgeSettings={onSaveBridgeSettings}
             setBridgeSettingsDraft={setBridgeSettingsDraft}
           />
@@ -707,89 +692,24 @@ function BridgeAgentsStep({
 
 function BridgeDiscoverStep({
   activeBridgeHost,
-  activeBridgePeople,
-  activeBridgeAgents,
-  contactNodeId,
-  setContactNodeId,
   setActiveStep,
-  onAddBridgeContact,
   onApproveBridgeContactRequest,
   onRejectBridgeContactRequest,
-  onRemoveBridgeContact,
-  onOpenBridgeConversation,
 }: {
   activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
-  activeBridgePeople: BridgeDetailsSectionProps['activeBridgePeople'];
-  activeBridgeAgents: BridgeDetailsSectionProps['activeBridgeAgents'];
-  contactNodeId: string;
-  setContactNodeId: BridgeDetailsSectionProps['setContactNodeId'];
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
-  onAddBridgeContact: BridgeDetailsSectionProps['onAddBridgeContact'];
   onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
   onRejectBridgeContactRequest: BridgeDetailsSectionProps['onRejectBridgeContactRequest'];
-  onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
-  onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
 }) {
   if (!activeBridgeHost.registered) {
-    return <EmptyState title="Finish setup first" detail="Once this host finishes registering, direct contacts and discovery will appear here." />;
+    return <EmptyState title="Finish setup first" detail="Once this host finishes registering, contact approvals will appear here." />;
   }
 
   const pendingIncoming = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'incoming' && request.status === 'pending');
   const pendingOutgoing = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'outgoing' && request.status === 'pending');
-  const activePrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
 
   return (
     <div className="w-full space-y-4">
-      <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">Add someone by node ID</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-slate-300">
-          <div className="text-[12px] leading-5 text-slate-400">Already have someone’s node ID? Save it here and open a chat right away.</div>
-          <div className="flex flex-col gap-2 md:flex-row">
-            <input
-              value={contactNodeId}
-              onChange={(event) => setContactNodeId(event.target.value)}
-              className="app-input-shell app-bridge-field min-w-0 flex-1 rounded-[14px] px-3 py-2 text-[13px] text-white outline-none"
-              placeholder="kd_..."
-            />
-            <Button
-              variant="secondary"
-              className="rounded-[14px] text-[12px]"
-              disabled={!contactNodeId.trim()}
-              onClick={() => {
-                const trimmedNodeId = contactNodeId.trim();
-                if (!trimmedNodeId) return;
-                void onAddBridgeContact(activeBridgeHost.id, trimmedNodeId)
-                  .then(() => setContactNodeId(''))
-                  .catch(() => {});
-              }}
-            >
-              Add contact
-            </Button>
-            <Button
-              className="rounded-[14px] text-[12px]"
-              disabled={!contactNodeId.trim()}
-              onClick={() => {
-                const trimmedNodeId = contactNodeId.trim();
-                if (!trimmedNodeId) return;
-                void onAddBridgeContact(activeBridgeHost.id, trimmedNodeId)
-                  .then(() => {
-                    setContactNodeId('');
-                    onOpenBridgeConversation(activeBridgeHost.id, trimmedNodeId);
-                  })
-                  .catch(() => {});
-              }}
-            >
-              Add + chat
-            </Button>
-          </div>
-          <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-            Current privacy mode: <span className="text-slate-200">{activePrivacyMode.label}</span>. Saved contacts and shared projects still work even when open discovery is off.
-          </div>
-        </CardContent>
-      </Card>
-
       <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
         <CardHeader>
           <CardTitle className="text-base">Pending approvals</CardTitle>
@@ -821,28 +741,6 @@ function BridgeDiscoverStep({
         </CardContent>
       </Card>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
-        <BridgePeerListCard
-          title="Visible people"
-          emptyTitle="No people visible yet"
-          emptyDetail="People appear here from contacts, shared projects, or open same-host discovery."
-          peers={activeBridgePeople}
-          kind="person"
-          activeBridgeHostId={activeBridgeHost.id}
-          onRemoveBridgeContact={onRemoveBridgeContact}
-          onOpenBridgeConversation={onOpenBridgeConversation}
-        />
-        <BridgePeerListCard
-          title="Visible agents"
-          emptyTitle="No agents visible yet"
-          emptyDetail="Agents appear here from contacts, shared projects, or open same-host discovery."
-          peers={activeBridgeAgents}
-          kind="agent"
-          activeBridgeHostId={activeBridgeHost.id}
-          onRemoveBridgeContact={onRemoveBridgeContact}
-          onOpenBridgeConversation={onOpenBridgeConversation}
-        />
-      </div>
       <div className="flex justify-end">
         <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('agents')}>
           Next: agent reachability <ChevronRight className="ml-2 h-4 w-4" />
@@ -854,18 +752,26 @@ function BridgeDiscoverStep({
 
 function BridgeReviewStep({
   activeBridgeHost,
+  activeBridgePeople,
+  activeBridgeAgents,
   activeDefaultAgent,
   bridgeSettingsDraft,
   identityOwnerName,
   isDesktopBridgeSaving,
+  onRemoveBridgeContact,
+  onOpenBridgeConversation,
   onSaveBridgeSettings,
   setBridgeSettingsDraft,
 }: {
   activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
+  activeBridgePeople: BridgeDetailsSectionProps['activeBridgePeople'];
+  activeBridgeAgents: BridgeDetailsSectionProps['activeBridgeAgents'];
   activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
   bridgeSettingsDraft: BridgeDetailsSectionProps['bridgeSettingsDraft'];
   identityOwnerName: string;
   isDesktopBridgeSaving: boolean;
+  onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
+  onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
   onSaveBridgeSettings: BridgeDetailsSectionProps['onSaveBridgeSettings'];
   setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
 }) {
@@ -895,7 +801,8 @@ function BridgeReviewStep({
         : '';
 
   return (
-    <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
+    <div className="w-full space-y-4">
+      <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
         <CardTitle className="text-base">Review current host strategy</CardTitle>
       </CardHeader>
@@ -950,6 +857,30 @@ function BridgeReviewStep({
         </div>
       </CardContent>
     </Card>
+
+      <div className="grid gap-3.5 lg:grid-cols-2">
+        <BridgePeerListCard
+          title="Visible people"
+          emptyTitle="No people visible yet"
+          emptyDetail="People appear here after your host visibility and agent reachability settings are configured."
+          peers={activeBridgePeople}
+          kind="person"
+          activeBridgeHostId={activeBridgeHost.id}
+          onRemoveBridgeContact={onRemoveBridgeContact}
+          onOpenBridgeConversation={onOpenBridgeConversation}
+        />
+        <BridgePeerListCard
+          title="Visible agents"
+          emptyTitle="No agents visible yet"
+          emptyDetail="Agents appear here after your host visibility and agent reachability settings are configured."
+          peers={activeBridgeAgents}
+          kind="agent"
+          activeBridgeHostId={activeBridgeHost.id}
+          onRemoveBridgeContact={onRemoveBridgeContact}
+          onOpenBridgeConversation={onOpenBridgeConversation}
+        />
+      </div>
+    </div>
   );
 }
 
