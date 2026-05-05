@@ -1,4 +1,88 @@
 use super::*;
+use std::collections::HashSet;
+
+const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
+    "gpt-5.5",
+    "gpt-5.4-mini",
+    "gpt-5.4",
+    "gpt-5.3-codex-spark",
+    "gpt-5.3-codex",
+    "gpt-5.2-codex",
+    "gpt-5.2",
+    "gpt-5.1-codex-mini",
+    "gpt-5.1-codex-max",
+    "gpt-5.1",
+];
+
+const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-opus-4-20260115",
+    "claude-sonnet-4-20260115",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-20250219",
+];
+
+fn active_oauth_model_ids_for_provider(
+    settings: &Settings,
+    provider: &str,
+) -> Option<&'static [&'static str]> {
+    let normalized = normalize_provider_for_model_selection(provider);
+    let auth_method = resolve_provider_auth(&normalized)
+        .map(|auth| auth.method)
+        .or_else(|| active_auth_method(&normalized));
+    if auth_method != Some(ProviderAuthMethod::OAuth) {
+        return None;
+    }
+
+    if !provider_configured_for_settings(settings, &normalized) {
+        return None;
+    }
+
+    match normalized.as_str() {
+        "openai" => Some(OPENAI_CODEX_OAUTH_MODEL_IDS),
+        "anthropic" => Some(ANTHROPIC_OAUTH_MODEL_IDS),
+        _ => None,
+    }
+}
+
+pub fn model_id_allowed_for_active_auth(
+    settings: &Settings,
+    provider: &str,
+    model_id: &str,
+) -> bool {
+    active_oauth_model_ids_for_provider(settings, provider)
+        .map(|ids| {
+            ids.iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(model_id.trim()))
+        })
+        .unwrap_or(true)
+}
+
+pub fn model_candidates_for_provider_auth_mode(
+    registry: &ModelRegistry,
+    settings: &Settings,
+    provider: &str,
+    static_models: &[Model],
+) -> Vec<Model> {
+    let normalized = normalize_provider_for_model_selection(provider);
+    if let Some(model_ids) = active_oauth_model_ids_for_provider(settings, &normalized) {
+        return model_ids
+            .iter()
+            .map(|model_id| {
+                crate::runtime_model::resolve_or_synthesize_model_with_settings(
+                    registry,
+                    settings,
+                    &normalized,
+                    model_id,
+                )
+            })
+            .collect();
+    }
+
+    static_models.to_vec()
+}
 
 pub fn authenticated_model_candidates(settings: &Settings) -> Vec<Model> {
     let available = authenticated_providers_for_settings(settings);
@@ -9,12 +93,25 @@ pub fn authenticated_model_candidates(settings: &Settings) -> Vec<Model> {
     let mut registry = ModelRegistry::new();
     registry.load_custom_models(settings);
     add_cached_github_copilot_models(&mut registry);
-    registry
-        .list()
-        .iter()
-        .filter(|model| available.iter().any(|provider| provider == &model.provider))
-        .cloned()
-        .collect()
+
+    let mut seen = HashSet::new();
+    let mut models = Vec::new();
+    for provider in available {
+        let static_models = registry
+            .list()
+            .iter()
+            .filter(|model| model.provider == provider)
+            .cloned()
+            .collect::<Vec<_>>();
+        for model in
+            model_candidates_for_provider_auth_mode(&registry, settings, &provider, &static_models)
+        {
+            if seen.insert((model.provider.clone(), model.id.clone())) {
+                models.push(model);
+            }
+        }
+    }
+    models
 }
 
 fn resolve_available_model_for_provider(
@@ -183,7 +280,90 @@ pub fn preferred_startup_provider_and_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::login::ProviderAuthMethod;
+    use crate::login::store::{AuthEntry, AuthProfile, AuthStore, save_auth};
     use kordi_core::settings::{ProviderOverride, Settings};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::login::auth_test_env_lock()
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        old: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::set_var(key, value) };
+            Self { key, old }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::remove_var(key) };
+            Self { key, old }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.old {
+                unsafe { std::env::set_var(self.key, value) };
+            } else {
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
+
+    fn save_single_auth(provider: &str, method: ProviderAuthMethod) {
+        let normalized = normalize_provider_for_model_selection(provider);
+        let entry = match method {
+            ProviderAuthMethod::OAuth => AuthEntry::OAuth {
+                access: format!("{provider}-oauth-access"),
+                refresh: String::new(),
+                expires: i64::MAX,
+                extra: serde_json::json!({"accountId": "acct_test"}),
+            },
+            ProviderAuthMethod::ApiKey => AuthEntry::ApiKey {
+                key: format!("{provider}-api-key"),
+            },
+        };
+        save_auth(&AuthStore {
+            active_auth_methods: HashMap::from([(normalized.clone(), method)]),
+            profiles: HashMap::from([(
+                normalized,
+                vec![AuthProfile {
+                    id: format!("{provider}-{:?}", method),
+                    method,
+                    created_at_ms: None,
+                    updated_at_ms: None,
+                    entry,
+                }],
+            )]),
+            ..AuthStore::default()
+        })
+        .expect("save auth");
+    }
+
+    fn model_ids_for_provider(provider: &str) -> Vec<String> {
+        authenticated_model_candidates(&Settings::default())
+            .into_iter()
+            .filter(|model| model.provider == provider)
+            .map(|model| model.id)
+            .collect()
+    }
+
+    fn isolated_auth_env() -> (tempfile::TempDir, EnvVarGuard, EnvVarGuard, EnvVarGuard) {
+        let home = tempfile::tempdir().expect("home tempdir");
+        let home_guard = EnvVarGuard::set_path("HOME", home.path());
+        let openai_env = EnvVarGuard::unset("OPENAI_API_KEY");
+        let anthropic_env = EnvVarGuard::unset("ANTHROPIC_API_KEY");
+        (home, home_guard, openai_env, anthropic_env)
+    }
 
     fn lm_studio_settings(default_model: &str) -> Settings {
         Settings {
@@ -221,6 +401,82 @@ mod tests {
                 "lm-studio".to_string(),
                 "lm-studio/google/gemma-4-e4b".to_string(),
             )),
+        );
+    }
+
+    #[test]
+    fn openai_codex_oauth_candidates_exclude_platform_only_models() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        save_single_auth("openai-codex", ProviderAuthMethod::OAuth);
+
+        let model_ids = model_ids_for_provider("openai");
+
+        assert!(model_ids.contains(&"gpt-5.5".to_string()));
+        assert!(model_ids.contains(&"gpt-5.4".to_string()));
+        assert!(!model_ids.contains(&"gpt-4o-mini".to_string()));
+        assert!(!model_ids.contains(&"gpt-5".to_string()));
+        assert!(!model_ids.contains(&"gpt-5-mini".to_string()));
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
+            Some("gpt-5.5".to_string()),
+        );
+    }
+
+    #[test]
+    fn openai_api_key_candidates_keep_platform_models() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        save_single_auth("openai", ProviderAuthMethod::ApiKey);
+
+        let model_ids = model_ids_for_provider("openai");
+
+        assert!(model_ids.contains(&"gpt-4o-mini".to_string()));
+        assert!(model_ids.contains(&"gpt-5".to_string()));
+        assert!(model_ids.contains(&"gpt-5.5".to_string()));
+    }
+
+    #[test]
+    fn anthropic_oauth_candidates_exclude_api_only_models() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        save_single_auth("anthropic", ProviderAuthMethod::OAuth);
+
+        let model_ids = model_ids_for_provider("anthropic");
+
+        assert!(model_ids.contains(&"claude-opus-4-6".to_string()));
+        assert!(model_ids.contains(&"claude-sonnet-4-6".to_string()));
+        assert!(!model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
+        assert!(!model_ids.contains(&"claude-haiku-4-20260115".to_string()));
+    }
+
+    #[test]
+    fn anthropic_api_key_candidates_keep_platform_models() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        save_single_auth("anthropic", ProviderAuthMethod::ApiKey);
+
+        let model_ids = model_ids_for_provider("anthropic");
+
+        assert!(model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
+        assert!(model_ids.contains(&"claude-haiku-4-20260115".to_string()));
+        assert!(model_ids.contains(&"claude-opus-4-6".to_string()));
+    }
+
+    #[test]
+    fn startup_fallback_uses_codex_compatible_model_when_openai_oauth_is_active() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        save_single_auth("openai-codex", ProviderAuthMethod::OAuth);
+        let settings = Settings {
+            default_provider: Some("openai".to_string()),
+            default_model: Some("gpt-5".to_string()),
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            preferred_startup_provider_and_model(&settings),
+            Some(("openai".to_string(), "gpt-5.5".to_string())),
         );
     }
 }

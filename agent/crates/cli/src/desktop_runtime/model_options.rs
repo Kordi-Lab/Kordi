@@ -345,6 +345,7 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
             .strip_prefix(&format!("{provider}/"))
             .unwrap_or_else(|| default_model.trim());
         if !model_id.is_empty()
+            && login::model_id_allowed_for_active_auth(&settings, &provider, model_id)
             && !models
                 .iter()
                 .any(|model| model.provider == provider && model.id == model_id)
@@ -434,6 +435,9 @@ pub(super) fn resolve_model_candidate(
     }
 
     if let Some((provider, model_id)) = requested.split_once('/') {
+        if !login::model_id_allowed_for_active_auth(settings, provider, model_id) {
+            bail!("Model is not available for the active {provider} auth method: {model_id}");
+        }
         return registry
             .find(provider, model_id)
             .cloned()
@@ -456,8 +460,9 @@ pub(super) fn resolve_model_candidate(
         }) {
             return Ok(model.clone());
         }
-        if let Some(model) =
-            synthesize_live_model_candidate(&registry, settings, provider, requested)
+        if login::model_id_allowed_for_active_auth(settings, provider, requested)
+            && let Some(model) =
+                synthesize_live_model_candidate(&registry, settings, provider, requested)
         {
             return Ok(model);
         }
