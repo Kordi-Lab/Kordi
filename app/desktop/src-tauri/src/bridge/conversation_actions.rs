@@ -606,6 +606,7 @@ fn outbound_payload(
                     "targetKind": outreach.target_kind.as_str(),
                     "targetDisplayName": outreach.target_display_name.as_str(),
                     "targetNodeId": outreach.target_node_id.as_str(),
+                    "targetAgentId": outreach.target_agent_id.as_deref(),
                     "requestText": outreach.request_text.as_str(),
                     "triggerText": outreach.trigger_text.as_deref(),
                     "contextPolicy": outreach.context_policy.as_deref(),
@@ -1288,6 +1289,10 @@ mod tests {
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
+        let _storage_env_guard = crate::bridge::STORAGE_ENV_TEST_LOCK
+            .lock()
+            .expect("storage env test lock");
+        std::env::set_var("APP_DATA_DIR", &storage_root);
         std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
         let canonical_db_path = storage_root.join("canonical-sessions.sqlite3");
         let store = DesktopBridgeStore {
@@ -1323,6 +1328,7 @@ mod tests {
             "changed mailbox polls should still sync canonical sessions"
         );
 
+        std::env::remove_var("APP_DATA_DIR");
         std::env::remove_var("KORDI_STORAGE_ROOT");
         let _ = std::fs::remove_dir_all(storage_root);
     }

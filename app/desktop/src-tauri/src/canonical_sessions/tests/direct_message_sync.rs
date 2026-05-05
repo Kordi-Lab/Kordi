@@ -253,6 +253,10 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
         std::process::id(),
         Uuid::new_v4()
     ));
+    let _storage_env_guard = crate::bridge::STORAGE_ENV_TEST_LOCK
+        .lock()
+        .expect("storage env test lock");
+    std::env::set_var("APP_DATA_DIR", &storage_root);
     std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
 
     let session_id = "session:bridge:humans:stable-pair";
@@ -419,6 +423,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
         Some("Shuyang".to_string()),
     );
 
+    std::env::remove_var("APP_DATA_DIR");
     std::env::remove_var("KORDI_STORAGE_ROOT");
     let _ = std::fs::remove_dir_all(storage_root);
 }

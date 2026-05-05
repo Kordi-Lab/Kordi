@@ -1,19 +1,19 @@
 use kordi_tools::{ReachOutRequest, ReachOutResponse};
 use serde::de::DeserializeOwned;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 use crate::chat::DesktopChatManager;
 
 use super::constants::{
-    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
-    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, is_agent_like_runtime,
+    is_agent_like_runtime, BRIDGE_MESSAGE_DIRECTION_INBOUND,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
 };
 use super::conversation_commands::desktop_bridge_create_outreach_impl;
 use super::mailbox::desktop_bridge_poll_mailbox_impl;
 use super::{
+    build_current_bridge_state, load_conversation_store, now_ms, save_conversation_store,
     DesktopBridgeCreateOutreachRequest, DesktopBridgeManager, DesktopBridgeSessionParticipant,
-    DesktopBridgeSessionThreadMessage, build_current_bridge_state, load_conversation_store, now_ms,
-    save_conversation_store,
+    DesktopBridgeSessionThreadMessage,
 };
 
 fn normalize_outreach_target(value: &str) -> String {
@@ -327,7 +327,202 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use base64::Engine as _;
+    use chacha20poly1305::aead::{Aead, KeyInit};
+    use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+    use serde_json::{json, Value};
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    const BOB_NODE_ID: &str = "bob-agent-node";
+    const CHARLIE_NODE_ID: &str = "charlie-agent-node";
+    const BOB_AGENT_ID: &str = "agent:bob-kordi";
+    const CHARLIE_AGENT_ID: &str = "agent:charlie-kordi";
+
+    struct MockBridgeServer {
+        base_url: String,
+        relay_bodies: Arc<Mutex<Vec<Value>>>,
+        recipient_secret: x25519_dalek::StaticSecret,
+    }
+
+    fn http_body(stream: &mut TcpStream) -> Option<(String, String, Vec<u8>)> {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let mut buffer = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        loop {
+            let read = stream.read(&mut chunk).ok()?;
+            if read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+            let header_end = buffer.windows(4).position(|window| window == b"\r\n\r\n");
+            let Some(header_end) = header_end else {
+                continue;
+            };
+            let header_text = String::from_utf8_lossy(&buffer[..header_end]);
+            let content_length = header_text
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            let body_start = header_end + 4;
+            if buffer.len() >= body_start + content_length {
+                let request_line = header_text.lines().next()?.to_string();
+                let mut parts = request_line.split_whitespace();
+                let method = parts.next()?.to_string();
+                let path = parts.next()?.to_string();
+                return Some((
+                    method,
+                    path,
+                    buffer[body_start..body_start + content_length].to_vec(),
+                ));
+            }
+        }
+        None
+    }
+
+    fn write_json_response(stream: &mut TcpStream, status: &str, body: Value) {
+        let body = body.to_string();
+        let response = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(response.as_bytes());
+    }
+
+    fn spawn_mock_bridge_server() -> MockBridgeServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock bridge server");
+        let base_url = format!("http://{}", listener.local_addr().expect("local addr"));
+        let relay_bodies = Arc::new(Mutex::new(Vec::new()));
+        let recipient_secret = x25519_dalek::StaticSecret::from([7_u8; 32]);
+        let recipient_public = x25519_dalek::PublicKey::from(&recipient_secret);
+        let recipient_public_hex = hex::encode(recipient_public.as_bytes());
+        let relay_bodies_for_thread = relay_bodies.clone();
+
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let Some((method, path, body)) = http_body(&mut stream) else {
+                    continue;
+                };
+                match (method.as_str(), path.as_str()) {
+                    ("GET", "/health") => {
+                        write_json_response(&mut stream, "200 OK", json!({"ok": true}))
+                    }
+                    ("GET", "/v1/discovery") => write_json_response(
+                        &mut stream,
+                        "200 OK",
+                        json!([
+                            {
+                                "nodeId": BOB_NODE_ID,
+                                "displayName": "Bob's Kordi",
+                                "ownerName": "Bob",
+                                "runtime": "kordi-desktop",
+                                "humanId": "human:bob",
+                                "agentId": BOB_AGENT_ID,
+                                "isDefaultAgent": true,
+                                "discoveryMode": "open"
+                            },
+                            {
+                                "nodeId": CHARLIE_NODE_ID,
+                                "displayName": "Charlie's Kordi",
+                                "ownerName": "Charlie",
+                                "runtime": "kordi-desktop",
+                                "humanId": "human:charlie",
+                                "agentId": CHARLIE_AGENT_ID,
+                                "isDefaultAgent": true,
+                                "discoveryMode": "open"
+                            }
+                        ]),
+                    ),
+                    ("GET", "/v1/contacts") | ("GET", "/v1/projects") => {
+                        write_json_response(&mut stream, "200 OK", json!([]))
+                    }
+                    ("GET", path) if path.starts_with("/v1/keys/") => {
+                        let node_id = path.trim_start_matches("/v1/keys/");
+                        write_json_response(
+                            &mut stream,
+                            "200 OK",
+                            json!({
+                                "nodeId": node_id,
+                                "x25519Pubkey": recipient_public_hex,
+                            }),
+                        );
+                    }
+                    ("POST", "/v1/relay") => {
+                        let body = serde_json::from_slice::<Value>(&body).expect("relay body json");
+                        relay_bodies_for_thread
+                            .lock()
+                            .expect("relay bodies lock")
+                            .push(body);
+                        write_json_response(&mut stream, "200 OK", json!({"ok": true}));
+                    }
+                    _ => write_json_response(
+                        &mut stream,
+                        "404 Not Found",
+                        json!({"error": "not found"}),
+                    ),
+                }
+            }
+        });
+
+        MockBridgeServer {
+            base_url,
+            relay_bodies,
+            recipient_secret,
+        }
+    }
+
+    fn bridge_e2ee_key(shared: &[u8; 32], sender_node_id: &str, target_node_id: &str) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"kordi-desktop-bridge-e2ee-v1");
+        hasher.update(shared);
+        hasher.update(sender_node_id.as_bytes());
+        hasher.update([0]);
+        hasher.update(target_node_id.as_bytes());
+        hasher.finalize().into()
+    }
+
+    fn decrypt_relay_blob(server: &MockBridgeServer, relay_body: &Value) -> Value {
+        let blob = relay_body["blob"].as_str().expect("relay blob");
+        let envelope_bytes = base64::engine::general_purpose::STANDARD
+            .decode(blob)
+            .expect("decode relay blob");
+        let envelope =
+            serde_json::from_slice::<Value>(&envelope_bytes).expect("relay envelope json");
+        let sender_node_id = envelope["from"].as_str().expect("sender node id");
+        let target_node_id = envelope["to"].as_str().expect("target node id");
+        let sender_ed25519_pubkey = envelope["senderEd25519Pubkey"]
+            .as_str()
+            .expect("sender pubkey");
+        let sender_ed25519_bytes: [u8; 32] = bs58::decode(sender_ed25519_pubkey)
+            .into_vec()
+            .expect("decode sender pubkey")
+            .try_into()
+            .expect("sender pubkey length");
+        let sender_x25519 = crate::bridge::storage::ed25519_to_x25519_public(&sender_ed25519_bytes)
+            .expect("sender x25519 pubkey");
+        let sender_public = x25519_dalek::PublicKey::from(sender_x25519);
+        let shared = server.recipient_secret.diffie_hellman(&sender_public);
+        let key_bytes = bridge_e2ee_key(shared.as_bytes(), sender_node_id, target_node_id);
+        let nonce = base64::engine::general_purpose::STANDARD
+            .decode(envelope["nonce"].as_str().expect("nonce"))
+            .expect("decode nonce");
+        let ciphertext = base64::engine::general_purpose::STANDARD
+            .decode(envelope["ciphertext"].as_str().expect("ciphertext"))
+            .expect("decode ciphertext");
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+        let plaintext = cipher
+            .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
+            .expect("decrypt relay payload");
+        serde_json::from_slice(&plaintext).expect("relay payload json")
+    }
 
     fn reach_out_request_with_runtime_context(
         participants_json: Option<serde_json::Value>,
@@ -409,5 +604,171 @@ mod tests {
 
         assert!(participants.is_empty());
         assert!(messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reach_out_scopes_session_thread_to_explicit_agent_target_when_another_agent_is_visible(
+    ) {
+        let storage_root = std::env::temp_dir().join(format!(
+            "kordi-reach-out-explicit-target-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _storage_env_guard = crate::bridge::STORAGE_ENV_TEST_LOCK
+            .lock()
+            .expect("storage env test lock");
+        std::env::set_var("APP_DATA_DIR", &storage_root);
+        std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+        let server = spawn_mock_bridge_server();
+        crate::bridge::save_bridge_store(&crate::bridge::DesktopBridgeStore {
+            active_host_id: Some("host-1".to_string()),
+            local_agent_routing: crate::bridge::DesktopBridgeAgentRouting::default(),
+            hosts: vec![crate::bridge::DesktopBridgeHostConfig {
+                id: "host-1".to_string(),
+                coordination: server.base_url.clone(),
+                node_id: "alice-node".to_string(),
+                api_key: "secret".to_string(),
+                display_name: Some("Alice's Kordi".to_string()),
+                owner: Some("Alice".to_string()),
+                human_id: Some("human:alice".to_string()),
+                discovery_mode: "open".to_string(),
+                active_agent_id: None,
+                agents: Vec::new(),
+                api_style: crate::bridge::constants::API_STYLE_SERVE.to_string(),
+            }],
+        })
+        .expect("save bridge store");
+        crate::bridge::save_conversation_store(
+            &crate::bridge::DesktopBridgeConversationStore::default(),
+        )
+        .expect("save empty conversation store");
+
+        let user_text = "@Bob's Kordi can you review this?";
+        let request = ReachOutRequest {
+            target: "Bob's Kordi".to_string(),
+            target_kind: Some("bridge-agent".to_string()),
+            message: "Can you review this?".to_string(),
+            context: Some(format!("Current user message: {user_text}")),
+            context_policy: "session-message".to_string(),
+            include_project_context: false,
+            wait_for_response: false,
+            timeout_seconds: None,
+            parent_session_id: Some("session:group:review".to_string()),
+            parent_turn_id: None,
+            parent_message_id: Some("msg-user-1".to_string()),
+            project_id: None,
+            project_name: None,
+            parent_session_participants_json: Some(json!([
+                {
+                    "identityId": "human:alice",
+                    "displayName": "Alice",
+                    "kind": "human",
+                    "role": "requester",
+                    "bridgeNodeId": "alice-node",
+                    "humanId": "human:alice",
+                    "runtime": "person"
+                },
+                {
+                    "identityId": BOB_AGENT_ID,
+                    "displayName": "Bob's Kordi",
+                    "kind": "agent",
+                    "role": "target",
+                    "ownerIdentityId": "human:bob",
+                    "ownerDisplayName": "Bob",
+                    "bridgeNodeId": BOB_NODE_ID,
+                    "humanId": "human:bob",
+                    "agentId": BOB_AGENT_ID,
+                    "runtime": "kordi-desktop"
+                },
+                {
+                    "identityId": CHARLIE_AGENT_ID,
+                    "displayName": "Charlie's Kordi",
+                    "kind": "agent",
+                    "role": "participant",
+                    "ownerIdentityId": "human:charlie",
+                    "ownerDisplayName": "Charlie",
+                    "bridgeNodeId": CHARLIE_NODE_ID,
+                    "humanId": "human:charlie",
+                    "agentId": CHARLIE_AGENT_ID,
+                    "runtime": "kordi-desktop"
+                }
+            ])),
+            parent_session_messages_json: Some(json!([
+                {
+                    "role": "person",
+                    "sender": "Alice",
+                    "text": user_text,
+                    "timeLabel": null,
+                    "index": 1
+                }
+            ])),
+        };
+
+        let response = desktop_bridge_reach_out_impl(
+            &DesktopBridgeManager::default(),
+            &DesktopChatManager::default(),
+            request,
+        )
+        .await
+        .expect("reach out to Bob's Kordi");
+
+        assert_eq!(response.target_display_name, "Bob's Kordi");
+        let store = crate::bridge::load_conversation_store();
+        let conversation = store
+            .conversations
+            .iter()
+            .find(|conversation| conversation.peer_node_id == BOB_NODE_ID)
+            .expect("Bob conversation");
+        assert!(
+            store
+                .conversations
+                .iter()
+                .all(|conversation| conversation.peer_node_id != CHARLIE_NODE_ID),
+            "unmentioned Charlie target should not get an outreach conversation"
+        );
+        let outreach = conversation
+            .outreach
+            .as_ref()
+            .expect("conversation outreach");
+        assert_eq!(outreach.target_node_id, BOB_NODE_ID);
+        assert_eq!(outreach.target_display_name, "Bob's Kordi");
+        assert_eq!(outreach.target_agent_id.as_deref(), Some(BOB_AGENT_ID));
+        assert_ne!(outreach.target_node_id, CHARLIE_NODE_ID);
+        assert_ne!(outreach.target_display_name, "Charlie's Kordi");
+        assert_ne!(outreach.target_agent_id.as_deref(), Some(CHARLIE_AGENT_ID));
+
+        let outbound = conversation
+            .messages
+            .iter()
+            .find(|message| {
+                message.direction == crate::bridge::constants::BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+            })
+            .expect("outbound outreach message");
+        let message_outreach = outbound
+            .outreach
+            .as_ref()
+            .expect("message outreach metadata");
+        assert_eq!(message_outreach.target_node_id, BOB_NODE_ID);
+        assert_eq!(message_outreach.target_display_name, "Bob's Kordi");
+        assert_eq!(
+            message_outreach.target_agent_id.as_deref(),
+            Some(BOB_AGENT_ID)
+        );
+
+        let relay_bodies = server.relay_bodies.lock().expect("relay bodies");
+        assert_eq!(relay_bodies.len(), 1);
+        assert_eq!(relay_bodies[0]["targetNodeId"], BOB_NODE_ID);
+        assert_ne!(relay_bodies[0]["targetNodeId"], CHARLIE_NODE_ID);
+        let outbound_payload = decrypt_relay_blob(&server, &relay_bodies[0]);
+        let session_thread = &outbound_payload["payload"]["sessionThread"];
+        assert_eq!(session_thread["targetNodeId"], BOB_NODE_ID);
+        assert_eq!(session_thread["targetDisplayName"], "Bob's Kordi");
+        assert_eq!(session_thread["targetAgentId"], BOB_AGENT_ID);
+        assert_ne!(session_thread["targetNodeId"], CHARLIE_NODE_ID);
+        assert_ne!(session_thread["targetDisplayName"], "Charlie's Kordi");
+
+        std::env::remove_var("APP_DATA_DIR");
+        std::env::remove_var("KORDI_STORAGE_ROOT");
+        let _ = std::fs::remove_dir_all(storage_root);
     }
 }

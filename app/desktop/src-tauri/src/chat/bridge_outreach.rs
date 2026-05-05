@@ -5,10 +5,10 @@ use kordi_core::error::KordiError;
 use kordi_tools::ReachOutRuntime;
 
 use crate::bridge::{
-    DesktopBridgeManager, desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl,
+    desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl, DesktopBridgeManager,
 };
 
-use super::{DesktopChatManager, chat_cwd};
+use super::{chat_cwd, DesktopChatManager};
 
 fn sanitize_bridge_segment(value: &str) -> String {
     let sanitized: String = value
@@ -332,6 +332,23 @@ mod tests {
         ));
         assert!(!reach_out_target_allowed_by_user_text(
             "@Bob's Kordi can you review this?",
+            "Charlie's Kordi",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn same_user_text_authorizes_bob_reach_out_but_denies_unmentioned_charlie() {
+        let labels = vec!["Kordi".to_string(), "Alice's Kordi".to_string()];
+        let user_text = "@Bob's Kordi can you review this?";
+
+        assert!(reach_out_target_allowed_by_user_text(
+            user_text,
+            "Bob's Kordi",
+            &labels
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            user_text,
             "Charlie's Kordi",
             &labels
         ));

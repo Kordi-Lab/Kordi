@@ -1,3 +1,6 @@
+#[cfg(test)]
+pub(crate) static STORAGE_ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 mod agent_jobs;
 mod constants;
 mod conversation_actions;
