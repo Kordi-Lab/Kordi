@@ -1,6 +1,9 @@
 use rusqlite::Connection;
+use std::sync::Mutex;
 
 use super::*;
+
+static PROMPT_CONTEXT_TEST_DB_LOCK: Mutex<()> = Mutex::new(());
 
 fn test_conn() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory db");
@@ -18,16 +21,29 @@ fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
 }
 
 fn seed_identity(conn: &Connection, id: &str, display_name: &str, kind: &str) -> CanonicalIdentity {
+    seed_identity_with_owner_and_source(conn, id, display_name, kind, None, "local")
+}
+
+fn seed_identity_with_owner_and_source(
+    conn: &Connection,
+    id: &str,
+    display_name: &str,
+    kind: &str,
+    owner_identity_id: Option<&str>,
+    source: &str,
+) -> CanonicalIdentity {
     upsert_identity_in_db(
         conn,
         UpsertCanonicalIdentityRequest {
             id: Some(id.to_string()),
             kind: kind.to_string(),
             display_name: display_name.to_string(),
-            owner_identity_id: None,
-            source: Some("local".to_string()),
+            owner_identity_id: owner_identity_id.map(ToString::to_string),
+            source: Some(source.to_string()),
             source_host_id: None,
-            bridge_node_id: None,
+            bridge_node_id: source
+                .eq_ignore_ascii_case("bridge")
+                .then(|| format!("node-{}", id.replace(':', "-"))),
             human_id: kind
                 .eq_ignore_ascii_case("human")
                 .then(|| id.trim_start_matches("human:").to_string()),
@@ -85,6 +101,66 @@ fn identity_context_participant(
         runtime: None,
         locality: Some("local".to_string()),
     }
+}
+
+fn prompt_context_storage_root(test_name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "kordi-prompt-context-{test_name}-{}-{}",
+        std::process::id(),
+        Uuid::new_v4()
+    ))
+}
+
+fn seed_alice_bob_prompt_context_session(
+    conn: &Connection,
+    source_for_bob: &str,
+) -> CanonicalSession {
+    seed_identity_with_owner_and_source(conn, "human:alice", "Alice", "human", None, "local");
+    seed_identity_with_owner_and_source(
+        conn,
+        "agent:alice-kordi",
+        "Alice's Kordi",
+        "agent",
+        Some("human:alice"),
+        "local",
+    );
+    seed_identity_with_owner_and_source(conn, "human:bob", "Bob", "human", None, source_for_bob);
+    seed_identity_with_owner_and_source(
+        conn,
+        "agent:bob-kordi",
+        "Bob's Kordi",
+        "agent",
+        Some("human:bob"),
+        source_for_bob,
+    );
+    update_local_profile_identities(
+        conn,
+        Some("human:alice"),
+        Some("agent:alice-kordi"),
+        Some("Alice"),
+    )
+    .expect("set local profile identities");
+    open_or_create_session_in_db(
+        conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:alice-bob-prompt-context".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice and Bob".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: Some("agent:alice-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "agent:alice-kordi".to_string(),
+                "human:bob".to_string(),
+                "agent:bob-kordi".to_string(),
+            ],
+            metadata: None,
+        },
+    )
+    .expect("create prompt context session")
 }
 
 fn alice_bob_identity_context_request() -> IdentityContextRequest {
@@ -396,6 +472,108 @@ fn identity_context_renders_present_optionals_and_omits_blank_optionals() {
             "blank optional label {omitted_label:?} rendered in line {blank_optionals_line:?}\n{rendered}"
         );
     }
+}
+
+#[test]
+fn prompt_context_local_agent_uses_identity_frame_for_multi_participant_session() {
+    let _guard = PROMPT_CONTEXT_TEST_DB_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let storage_root = prompt_context_storage_root("local-agent-frame");
+    let db_path = storage_root.join(CANONICAL_SESSIONS_DB_FILENAME);
+    prompt_context::set_prompt_context_test_db_path(Some(db_path.clone()));
+    std::fs::create_dir_all(&storage_root).expect("create prompt context storage root");
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "local");
+    drop(conn);
+
+    let prompt = local_agent_session_prompt_context(Some(&session.id))
+        .expect("local prompt context")
+        .expect("prompt context exists");
+
+    for marker in [
+        "<multi_participant_identity_context version=\"v1\">",
+        "Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Alice's Kordi",
+        "Requester / initiator:\n- identityId: human:alice",
+        "Session participants:\n- agent:alice-kordi | Alice's Kordi | agent | owner: Alice (human:alice)\n- agent:bob-kordi | Bob's Kordi | agent | owner: Bob (human:bob)\n- human:alice | Alice | human\n- human:bob | Bob | human",
+    ] {
+        assert!(prompt.contains(marker), "missing marker {marker:?}\n{prompt}");
+    }
+
+    prompt_context::set_prompt_context_test_db_path(None);
+    let _ = std::fs::remove_dir_all(storage_root);
+}
+
+#[test]
+fn prompt_context_bridge_agent_uses_identity_frame_for_parent_session() {
+    let _guard = PROMPT_CONTEXT_TEST_DB_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let storage_root = prompt_context_storage_root("bridge-agent-frame");
+    let db_path = storage_root.join(CANONICAL_SESSIONS_DB_FILENAME);
+    prompt_context::set_prompt_context_test_db_path(Some(db_path.clone()));
+    std::fs::create_dir_all(&storage_root).expect("create prompt context storage root");
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("message:alice-request".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:alice".to_string(),
+            sender_role: "person".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "@Bob's Kordi can you review this?".to_string(),
+            content: None,
+            created_at_ms: Some(1),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: None,
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append request message");
+    drop(conn);
+
+    let prompt = bridge_agent_parent_session_prompt(
+        Some(&session.id),
+        "Bob's Kordi",
+        Some("Bob"),
+        "@Bob's Kordi can you review this?",
+        None,
+    )
+    .expect("bridge agent prompt");
+
+    for marker in [
+        "<multi_participant_identity_context version=\"v1\">",
+        "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
+        "Requester / initiator:\n- identityId: human:alice\n- displayName: Alice",
+        "Current target:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
+        "owner: Bob (human:bob)",
+        "- agent:alice-kordi | Alice's Kordi | agent",
+        "- agent:bob-kordi | Bob's Kordi | agent",
+        "- human:alice | Alice | human",
+        "- human:bob | Bob | human",
+        "Request:\n@Bob's Kordi can you review this?",
+    ] {
+        assert!(
+            prompt.contains(marker),
+            "missing marker {marker:?}\n{prompt}"
+        );
+    }
+    assert_ne!(
+        prompt.trim(),
+        "You are Kordi.",
+        "prompt must not be only a bare identity instruction"
+    );
+
+    prompt_context::set_prompt_context_test_db_path(None);
+    let _ = std::fs::remove_dir_all(storage_root);
 }
 
 mod desktop_sync;
