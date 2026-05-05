@@ -35,6 +35,14 @@ test('messageDeliveryVisual maps read and responded to blue double checks', () =
 test('messageDeliveryVisual keeps transient and failure states distinct', () => {
   assert.equal(messageDeliveryVisual('sending')?.glyph, 'clock');
   assert.equal(messageDeliveryVisual('processing')?.glyph, 'spinner');
-  assert.equal(messageDeliveryVisual('processing_failed')?.glyph, 'exclamation');
-  assert.equal(messageDeliveryVisual('failed')?.glyph, 'exclamation');
+  assert.deepEqual(messageDeliveryVisual('processing_failed'), {
+    glyph: 'exclamation',
+    tone: 'red',
+    label: 'Sending failed',
+  });
+  assert.deepEqual(messageDeliveryVisual('failed'), {
+    glyph: 'exclamation',
+    tone: 'red',
+    label: 'Sending failed',
+  });
 });

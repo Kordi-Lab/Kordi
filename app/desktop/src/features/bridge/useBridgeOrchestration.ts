@@ -323,8 +323,30 @@ export function useBridgeOrchestration({
 
   const handleRemoveBridgeContact = useCallback(async (hostId: string, peerNodeId: string) => {
     if (!isNativeShell) return;
+    const trimmedNodeId = peerNodeId.trim();
+    if (!trimmedNodeId) return;
+    setDesktopBridgeState((current) => current ? {
+      ...current,
+      hosts: current.hosts.map((host) => (
+        host.id !== hostId
+          ? host
+          : {
+              ...host,
+              visiblePeers: host.visiblePeers.map((peer) => (
+                peer.nodeId === trimmedNodeId
+                  ? {
+                      ...peer,
+                      isContact: false,
+                      contactRequestStatus: 'rejected',
+                      contactRequestDirection: 'outgoing',
+                    }
+                  : peer
+              )),
+            }
+      )),
+    } : current);
     try {
-      const nextState = await removeDesktopBridgeContact(hostId, peerNodeId);
+      const nextState = await removeDesktopBridgeContact(hostId, trimmedNodeId);
       setDesktopBridgeState(nextState);
       setDesktopBridgeError(null);
     } catch (error) {

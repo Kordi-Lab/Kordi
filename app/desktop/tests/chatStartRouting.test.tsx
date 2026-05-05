@@ -252,6 +252,25 @@ test('contact Message starts a fresh person session instead of selecting an exis
   assert.deepEqual(calls, ['overlay:null', 'startPerson:host-1:node-shared:human-bob']);
 });
 
+test('contact detail delete removes the bridge contact and closes the overlay', async () => {
+  const calls: string[] = [];
+  const element = assembleMainContentSlot(baseShellArgs(calls, {
+    handleRemoveBridgeContact: async (hostId: string, peerNodeId: string) => {
+      calls.push(`remove:${hostId}:${peerNodeId}`);
+    },
+  }) as never) as never as { props: { contactsPageProps: { onRemoveContact: (contact: Record<string, unknown>) => Promise<void> } } };
+
+  await element.props.contactsPageProps.onRemoveContact({
+    id: 'contact-bob',
+    classType: 'other-users',
+    bridgePeerNodeId: 'node-shared',
+    bridgeHostId: 'host-1',
+    name: 'Bob',
+  });
+
+  assert.deepEqual(calls, ['remove:host-1:node-shared', 'overlay:null']);
+});
+
 test('agent Message starts a fresh external agent session under My chats', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {

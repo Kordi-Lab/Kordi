@@ -42,6 +42,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           }
           await args.handleAddBridgeContact(args.activeBridgeHost.id, nodeId);
         },
+        onRemoveContact: async (contact) => {
+          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
+          await args.handleRemoveBridgeContact(contact.bridgeHostId, contact.bridgePeerNodeId);
+          args.setContactOverlayMode(null);
+        },
         contactSearch: args.contactSearch,
         onContactSearchChange: args.setContactSearch,
         expandedContactGroups: args.expandedContactGroups,

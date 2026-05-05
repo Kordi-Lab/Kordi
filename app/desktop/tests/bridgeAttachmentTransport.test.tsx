@@ -5,8 +5,10 @@ import { canonicalAttachments } from '../src/features/canonical/readModel/messag
 import {
   appendOptimisticBridgeMessage,
   bridgeAttachmentTransportFields,
+  markOptimisticCanonicalMessageFailed,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
+import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const imageAttachment = {
   id: 'first',
@@ -92,4 +94,34 @@ test('attachment-only bridge optimistic messages render as attachment cards with
   assert.equal(conversation?.subtitle, 'Attached Screenshot 1.png');
   assert.equal(conversation?.messages[0]?.text, '');
   assert.equal(conversation?.messages[0]?.attachments?.[0]?.localPath, '/tmp/pi-clipboard-1.png');
+});
+
+test('canonical optimistic bridge messages can be marked failed for visible send errors', () => {
+  const state = {
+    sessions: [{ id: 'session-1', updatedAtMs: 1, lastMessageAtMs: 1 }],
+    messages: [{
+      id: 'msg-1',
+      sessionId: 'session-1',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'hello',
+      content: { sender: 'Me', timeLabel: '12:31' },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      contentHash: null,
+      sourceTransport: 'desktop-bridge-ui',
+      sourceEventId: 'desktop-bridge-ui:session-1:1',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const next = markOptimisticCanonicalMessageFailed(state, 'session-1', 'msg-1');
+  const [message] = next?.messages ?? [];
+
+  assert.equal(message?.status, 'failed');
+  assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
 });

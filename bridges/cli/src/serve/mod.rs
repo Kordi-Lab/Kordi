@@ -441,6 +441,23 @@ pub(crate) fn nodes_share_human_owner(
     )
 }
 
+pub(crate) fn nodes_have_rejected_contact_request(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM server_contact_requests
+             WHERE status = 'rejected'
+               AND ((requester_node_id = ?1 AND target_node_id = ?2) OR (requester_node_id = ?2 AND target_node_id = ?1))
+             LIMIT 1",
+            rusqlite::params![left_node_id, right_node_id],
+            |_| Ok(()),
+        )
+        .is_ok())
+}
+
 pub(crate) fn nodes_can_directly_reach(
     conn: &Connection,
     sender_node_id: &str,
@@ -479,6 +496,11 @@ pub(crate) fn nodes_can_directly_reach(
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty());
     let linked_by_contact = nodes_are_contacts(conn, sender_node_id, target_node_id)?;
+    if !linked_by_contact
+        && nodes_have_rejected_contact_request(conn, sender_node_id, target_node_id)?
+    {
+        return Ok(false);
+    }
     let linked_by_project_or_contact =
         nodes_share_project(conn, sender_node_id, target_node_id)? || linked_by_contact;
 

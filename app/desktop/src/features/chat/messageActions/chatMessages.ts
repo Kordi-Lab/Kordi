@@ -49,6 +49,7 @@ import {
   bridgeAttachmentTransportFields,
   findBridgeConversationForTarget,
   markOptimisticBridgeMessageFailed,
+  markOptimisticCanonicalMessageFailed,
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
 } from './optimistic';
@@ -791,6 +792,18 @@ export function useChatMessageActions({
         shouldStayInCanonicalSession,
       });
       let targetConversationId = sendPlan.targetConversationId;
+      let optimisticCanonicalSessionId: string | null = null;
+      let optimisticCanonicalMessageId: string | null = null;
+      const markCanonicalSendFailed = () => {
+        const failedSessionId = optimisticCanonicalSessionId;
+        const failedMessageId = optimisticCanonicalMessageId;
+        if (!failedSessionId || !failedMessageId) return;
+        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+          current,
+          failedSessionId,
+          failedMessageId,
+        ));
+      };
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -832,6 +845,8 @@ export function useChatMessageActions({
           'desktop-bridge-ui',
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
+        optimisticCanonicalSessionId = optimisticParentSessionId;
+        optimisticCanonicalMessageId = preparedCanonicalMessage?.messageId ?? null;
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         if (targetConversationId && !isGroupSessionMessage) {
           setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
@@ -938,12 +953,14 @@ export function useChatMessageActions({
             if (resolvedConversationId) {
               setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId));
             }
+            markCanonicalSendFailed();
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
           });
       } catch (error) {
         if (targetConversationId) {
           setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversationId!, optimisticMessageId));
         }
+        markCanonicalSendFailed();
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
       } finally {
         setIsDesktopChatSending(false);

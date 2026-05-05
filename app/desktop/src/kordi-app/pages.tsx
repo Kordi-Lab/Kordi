@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, Plus, Search, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Eye, Plus, Search, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -33,6 +33,7 @@ type ContactsPageProps = {
   onCloseOverlay: () => void;
   getStatusBadgeClass: (value: string) => string;
   onMessageContact?: (contact: Contact) => void;
+  onRemoveContact?: (contact: Contact) => Promise<void> | void;
 };
 
 export function ContactsPage({
@@ -58,6 +59,7 @@ export function ContactsPage({
   onCloseOverlay,
   getStatusBadgeClass,
   onMessageContact,
+  onRemoveContact,
 }: ContactsPageProps) {
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const [contactNodeId, setContactNodeId] = useState('');
@@ -65,6 +67,13 @@ export function ContactsPage({
   const [addContactError, setAddContactError] = useState('');
   const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
+  const [removeContactState, setRemoveContactState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [removeContactError, setRemoveContactError] = useState('');
+
+  useEffect(() => {
+    setRemoveContactState('idle');
+    setRemoveContactError('');
+  }, [activeContact.id, contactOverlayMode]);
 
   const submitAddContact = async (nodeIdInput = contactNodeId) => {
     const nodeId = nodeIdInput.trim();
@@ -105,6 +114,28 @@ export function ContactsPage({
       || addContactState === 'saving'
       || requestedContactNodeIds.includes(nodeId)
       || (status === 'pending' && (direction === 'outgoing' || direction === 'incoming'));
+  };
+
+  const canRemoveActiveContact = Boolean(
+    onRemoveContact
+      && activeContact.bridgeHostId
+      && activeContact.bridgePeerNodeId
+      && !activeContact.id.startsWith('bridge-self:')
+      && activeContact.classType !== 'my-agents',
+  );
+
+  const submitRemoveContact = async () => {
+    if (!canRemoveActiveContact || removeContactState === 'saving') return;
+    setRemoveContactState('saving');
+    setRemoveContactError('');
+    try {
+      const contactToRemove = activeContact;
+      onCloseOverlay();
+      await onRemoveContact?.(contactToRemove);
+    } catch (error) {
+      setRemoveContactState('error');
+      setRemoveContactError(error instanceof Error ? error.message : 'Unable to delete contact');
+    }
   };
 
   return (
@@ -354,7 +385,25 @@ export function ContactsPage({
                         <Eye className="mr-2 h-4 w-4" />
                         View full profile
                       </Button>
+                      {canRemoveActiveContact ? (
+                        <Button
+                          variant="secondary"
+                          className="rounded-xl border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/15"
+                          onClick={() => { void submitRemoveContact(); }}
+                          disabled={removeContactState === 'saving'}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {removeContactState === 'saving' ? 'Deleting…' : 'Delete contact'}
+                        </Button>
+                      ) : null}
                     </div>
+                    {canRemoveActiveContact ? (
+                      <div className={cn('mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'text-slate-400')} aria-live="polite">
+                        {removeContactState === 'error'
+                          ? removeContactError || 'Unable to delete contact.'
+                          : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
+                      </div>
+                    ) : null}
                   </div>
                 ) : activeContactRequest ? (
                   <div>

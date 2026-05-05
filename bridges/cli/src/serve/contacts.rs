@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::auth::{auth_middleware, AuthNode};
-use super::{effective_contact_approval_policy, nodes_are_contacts, ServerState};
+use super::{
+    effective_contact_approval_policy, nodes_are_contacts, nodes_have_rejected_contact_request,
+    ServerState,
+};
 
 #[derive(Debug, Serialize)]
 pub struct ContactResp {
@@ -169,6 +172,33 @@ fn create_bidirectional_contact(
     Ok(())
 }
 
+fn record_contact_removal(
+    conn: &rusqlite::Connection,
+    remover_node_id: &str,
+    removed_node_id: &str,
+    removed_at: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE server_contact_requests
+         SET status = 'rejected', decided_at = ?3
+         WHERE ((requester_node_id = ?1 AND target_node_id = ?2) OR (requester_node_id = ?2 AND target_node_id = ?1))
+           AND status != 'rejected'",
+        rusqlite::params![remover_node_id, removed_node_id, removed_at],
+    )?;
+    conn.execute(
+        "INSERT INTO server_contact_requests (request_id, requester_node_id, target_node_id, status, message, created_at, decided_at)
+         VALUES (?1, ?2, ?3, 'rejected', ?4, ?5, ?5)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            removed_node_id,
+            remover_node_id,
+            Some("Contact deleted"),
+            removed_at,
+        ],
+    )?;
+    Ok(())
+}
+
 fn create_or_request_contact(
     conn: &rusqlite::Connection,
     requester_node_id: &str,
@@ -186,8 +216,11 @@ fn create_or_request_contact(
 
     let approval_policy = target_contact_approval_policy(conn, target_node_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let has_rejected_relationship =
+        nodes_have_rejected_contact_request(conn, requester_node_id, target_node_id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let now = chrono::Utc::now().to_rfc3339();
-    if approval_policy == "auto" {
+    if approval_policy == "auto" && !has_rejected_relationship {
         create_bidirectional_contact(conn, requester_node_id, target_node_id, &now)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         return Ok(StatusCode::NO_CONTENT);
@@ -365,6 +398,9 @@ async fn remove_contact(
         rusqlite::params![&my_node_id, target],
     )
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let now = chrono::Utc::now().to_rfc3339();
+    record_contact_removal(&db, &my_node_id, target, &now)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -436,10 +472,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remove_contact_clears_both_directions() {
+    async fn remove_contact_clears_both_directions_and_blocks_new_direct_messages() {
         let state = super::super::make_test_state();
         seed_registered_node(&state, "kd_alice", None);
         seed_registered_node(&state, "kd_bob", None);
+        state
+            .open_connection()
+            .unwrap()
+            .execute(
+                "UPDATE registered_nodes SET human_visibility_policy = 'server-open', contact_approval_policy = 'auto' WHERE node_id = 'kd_alice'",
+                [],
+            )
+            .unwrap();
 
         add_contact(
             State(state.clone()),
@@ -465,13 +509,36 @@ mod tests {
         .await
         .unwrap()
         .0;
-        let bob_contacts = list_contacts(State(state), Extension(AuthNode("kd_bob".to_string())))
-            .await
-            .unwrap()
-            .0;
+        let bob_contacts = list_contacts(
+            State(state.clone()),
+            Extension(AuthNode("kd_bob".to_string())),
+        )
+        .await
+        .unwrap()
+        .0;
+        let bob_requests = list_contact_requests(
+            State(state.clone()),
+            Extension(AuthNode("kd_bob".to_string())),
+        )
+        .await
+        .unwrap()
+        .0;
+        let db = state.open_connection().unwrap();
 
         assert!(alice_contacts.is_empty());
         assert!(bob_contacts.is_empty());
+        assert!(bob_requests.iter().any(|request| {
+            request.requester_node_id == "kd_bob"
+                && request.target_node_id == "kd_alice"
+                && request.status == "rejected"
+        }));
+        assert!(!super::super::nodes_can_directly_reach(
+            &db,
+            "kd_bob",
+            "kd_alice",
+            super::super::DirectAccessKind::Person,
+        )
+        .unwrap());
     }
 
     #[tokio::test]

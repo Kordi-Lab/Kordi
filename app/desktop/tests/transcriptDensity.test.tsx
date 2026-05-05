@@ -66,7 +66,7 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
-test('renders failed own message delivery as visible red failed text', () => {
+test('renders failed own message delivery as visible red sending failed text', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -79,7 +79,7 @@ test('renders failed own message delivery as visible red failed text', () => {
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, />Failed</);
+  assert.match(markup, />Sending failed</);
   assert.match(markup, /text-rose-400/);
 });
 

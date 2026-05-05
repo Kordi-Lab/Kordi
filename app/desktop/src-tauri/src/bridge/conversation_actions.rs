@@ -425,9 +425,6 @@ fn direct_person_contact_gate_action(
         contact_request_matches_target(request, &context.host.node_id, target_node_id)
     }) {
         let status = request.status.trim().to_ascii_lowercase();
-        if status == "approved" {
-            return DirectPersonContactGateAction::Allow;
-        }
         if status == "pending" && request.direction == "outgoing" {
             return DirectPersonContactGateAction::BlockPendingOutgoing;
         }
@@ -1346,7 +1343,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_person_contact_gate_allows_approved_contact_or_open_auto_target() {
+    fn direct_person_contact_gate_allows_current_contact_or_open_auto_target() {
         let context = ConversationContext {
             conversation: test_conversation(Vec::new()),
             host: test_host(API_STYLE_SERVE),
@@ -1361,6 +1358,15 @@ mod tests {
         assert_eq!(
             direct_person_contact_gate_action(&context, &[contact_peer], &[], None),
             DirectPersonContactGateAction::Allow,
+        );
+        assert_eq!(
+            direct_person_contact_gate_action(
+                &context,
+                &[],
+                &[test_contact_request("approved", "outgoing")],
+                None,
+            ),
+            DirectPersonContactGateAction::SendRequest,
         );
     }
 

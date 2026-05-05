@@ -215,6 +215,40 @@ export function markOptimisticBridgeMessageFailed(
   };
 }
 
+function optimisticContentRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function markOptimisticCanonicalMessageFailed(
+  current: CanonicalSessionState | null,
+  sessionId: string,
+  messageId: string | null | undefined,
+): CanonicalSessionState | null {
+  if (!current || !messageId) return current;
+  const updatedAtMs = Date.now();
+
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => (
+      session.id === sessionId
+        ? { ...session, updatedAtMs: Math.max(session.updatedAtMs, updatedAtMs) }
+        : session
+    )),
+    messages: current.messages.map((message) => {
+      if (message.id !== messageId || message.sessionId !== sessionId) return message;
+      return {
+        ...message,
+        status: 'failed',
+        updatedAtMs: Math.max(message.updatedAtMs, updatedAtMs),
+        content: {
+          ...optimisticContentRecord(message.content),
+          deliveryState: 'failed',
+        },
+      };
+    }),
+  };
+}
+
 export function findBridgeConversationForTarget(
   state: DesktopBridgeState,
   target: ConversationBridgeTarget,
