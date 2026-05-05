@@ -7,6 +7,7 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::bash::BashTool),
         Box::new(crate::edit::EditTool),
         Box::new(crate::write::WriteTool),
+        Box::new(crate::plan_tool::UpdatePlanTool),
         Box::new(crate::find::FindTool),
         Box::new(crate::grep::GrepTool),
         Box::new(crate::ls::LsTool),
@@ -46,6 +47,14 @@ mod tests {
             assert_eq!(metadata.risk, ToolRiskLevel::ReadOnly, "{name}");
             assert!(metadata.supports_parallel, "{name}");
         }
+    }
+
+    #[test]
+    fn builtin_tools_include_update_plan_as_planning_tool() {
+        let metadata = metadata_for("update_plan");
+        assert_eq!(metadata.layer, ToolLayer::Planning);
+        assert_eq!(metadata.risk, ToolRiskLevel::Low);
+        assert!(!metadata.supports_parallel);
     }
 
     #[test]

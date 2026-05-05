@@ -11,6 +11,7 @@ pub mod grep;
 pub mod ls;
 pub mod metadata;
 pub(crate) mod path;
+pub mod plan_tool;
 pub mod reach_out;
 pub mod read;
 mod registry;
