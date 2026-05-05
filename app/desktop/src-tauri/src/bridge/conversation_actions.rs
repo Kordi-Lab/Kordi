@@ -1005,7 +1005,7 @@ mod tests {
     };
     use crate::bridge::{
         DesktopBridgeAgentRouting, DesktopBridgeLocalServerStatus, DesktopBridgePromptIdentity,
-        DesktopBridgeSessionParticipant,
+        DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadMessage,
     };
 
     fn test_conversation(
@@ -1185,6 +1185,13 @@ mod tests {
             agent_id: Some("bob-kordi".to_string()),
             runtime: Some(DEFAULT_BRIDGE_RUNTIME.to_string()),
         });
+        outreach.parent_session_messages = vec![DesktopBridgeSessionThreadMessage {
+            role: "person".to_string(),
+            sender: Some("Alice".to_string()),
+            text: "@Bob's Kordi can you review this?".to_string(),
+            time_label: None,
+            index: Some(1),
+        }];
         outreach.participant_graph_hash = Some("graph-hash-1".to_string());
         outreach.permission_policy_hash = Some("policy-hash-1".to_string());
 
@@ -1208,6 +1215,11 @@ mod tests {
             session_thread["participants"][1]["runtime"],
             DEFAULT_BRIDGE_RUNTIME
         );
+        assert_eq!(
+            session_thread["messages"][0]["text"],
+            "@Bob's Kordi can you review this?"
+        );
+        assert_eq!(session_thread["messages"][0]["sender"], "Alice");
     }
 
     #[test]

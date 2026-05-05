@@ -135,6 +135,8 @@ pub struct ReachOutRequest {
     pub parent_message_id: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
+    pub parent_session_participants_json: Option<serde_json::Value>,
+    pub parent_session_messages_json: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

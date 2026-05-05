@@ -991,6 +991,73 @@ fn prompt_context_recent_messages_preserve_sequence_order_when_timestamps_are_sk
 }
 
 #[test]
+fn bridge_session_thread_snapshot_queries_parent_participants_and_messages() {
+    let guard = PromptContextTestDbGuard::new("bridge-session-thread-snapshot");
+    let db_path = guard.db_path();
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("message:alice-1".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:alice".to_string(),
+            sender_role: "person".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "@Bob's Kordi can you review this?".to_string(),
+            content: None,
+            created_at_ms: Some(1_000),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: None,
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append alice message");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("message:local-agent-1".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "agent:alice-kordi".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "I'll ask Bob's Kordi.".to_string(),
+            content: None,
+            created_at_ms: Some(2_000),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: None,
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append local agent message");
+    drop(conn);
+
+    let (participants, messages) = bridge_session_thread_snapshot_for_parent(&session.id, 50, 16)
+        .expect("load bridge session thread snapshot");
+
+    assert_eq!(participants.len(), 4);
+    let bob_agent = participants
+        .iter()
+        .find(|participant| participant.identity_id.as_deref() == Some("agent:bob-kordi"))
+        .expect("bob agent participant");
+    assert_eq!(bob_agent.display_name, "Bob's Kordi");
+    assert_eq!(bob_agent.kind.as_deref(), Some("agent"));
+    assert_eq!(bob_agent.owner_identity_id.as_deref(), Some("human:bob"));
+    assert_eq!(bob_agent.owner_display_name.as_deref(), Some("Bob"));
+    assert_eq!(bob_agent.bridge_node_id.as_deref(), Some("node-agent-bob-kordi"));
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].sender.as_deref(), Some("Alice"));
+    assert_eq!(messages[0].text, "@Bob's Kordi can you review this?");
+    assert_eq!(messages[1].sender.as_deref(), Some("Alice's Kordi"));
+    assert_eq!(messages[1].text, "I'll ask Bob's Kordi.");
+}
+
+#[test]
 fn prompt_context_bridge_agent_prefers_bridge_source_when_display_name_collides_with_local_agent() {
     let guard = PromptContextTestDbGuard::new("bridge-agent-display-name-collision");
     let db_path = guard.db_path();

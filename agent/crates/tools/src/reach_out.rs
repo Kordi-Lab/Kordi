@@ -130,6 +130,8 @@ impl Tool for ReachOutTool {
             parent_message_id: None,
             project_id: None,
             project_name: None,
+            parent_session_participants_json: None,
+            parent_session_messages_json: None,
         };
 
         emit_progress_line(ctx, format!("Reaching out to {}…", request.target));
@@ -278,4 +280,80 @@ fn build_project_context(ctx: &ToolContext) -> Option<String> {
         }
     }
     (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Tool;
+    use serde_json::json;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn schema_does_not_expose_runtime_parent_context_fields() {
+        let schema = ReachOutTool.parameters_schema();
+        let properties = schema
+            .get("properties")
+            .and_then(|value| value.as_object())
+            .expect("schema properties");
+
+        assert!(properties.contains_key("target"));
+        assert!(properties.contains_key("message"));
+        assert!(!properties.contains_key("parentSessionParticipantsJson"));
+        assert!(!properties.contains_key("parentSessionMessagesJson"));
+        assert!(!properties.contains_key("parentSessionParticipants"));
+        assert!(!properties.contains_key("parentSessionMessages"));
+    }
+
+    #[tokio::test]
+    async fn model_created_request_initializes_runtime_parent_context_to_none() {
+        let captured: Arc<Mutex<Option<ReachOutRequest>>> = Arc::new(Mutex::new(None));
+        let captured_for_runtime = captured.clone();
+        let runtime = crate::ReachOutRuntime {
+            reach_out: Arc::new(move |request| {
+                *captured_for_runtime.lock().expect("captured lock") = Some(request);
+                Box::pin(async move {
+                    Ok(crate::ReachOutResponse {
+                        conversation_id: "conversation-1".to_string(),
+                        target_kind: "bridge-agent".to_string(),
+                        target_display_name: "Bob's Kordi".to_string(),
+                        target_owner_name: Some("Bob".to_string()),
+                        response_text: None,
+                        status: "awaitingReply".to_string(),
+                        timed_out: false,
+                    })
+                })
+            }),
+        };
+        let ctx = ToolContext {
+            cwd: std::env::current_dir().expect("cwd"),
+            artifacts_dir: std::env::temp_dir(),
+            execution_policy: crate::ExecutionPolicy::Safety,
+            on_output: None,
+            web_search: None,
+            reach_out: Some(runtime),
+            execution_mode: crate::ToolExecutionMode::NonInteractive,
+            request_approval: None,
+        };
+
+        let _result = ReachOutTool
+            .execute(
+                json!({
+                    "target": "Bob's Kordi",
+                    "message": "Can you review this?"
+                }),
+                &ctx,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute reach_out");
+
+        let request = captured
+            .lock()
+            .expect("captured lock")
+            .clone()
+            .expect("captured request");
+        assert_eq!(request.parent_session_participants_json, None);
+        assert_eq!(request.parent_session_messages_json, None);
+    }
 }

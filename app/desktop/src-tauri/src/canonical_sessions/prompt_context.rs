@@ -1,10 +1,12 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
+
+use crate::bridge::{DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadMessage};
 
 use super::render_multi_participant_identity_context;
 use super::schema::{ensure_local_profile, initialize_schema};
 use super::{
-    open_db, select_identity, select_session, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole, open_db, select_identity, select_session,
 };
 
 #[cfg(test)]
@@ -101,6 +103,28 @@ impl PromptParticipantRow {
     fn is_local_source(&self) -> bool {
         self.source.trim().is_empty() || self.source.trim().eq_ignore_ascii_case("local")
     }
+
+    fn to_bridge_session_participant(&self) -> DesktopBridgeSessionParticipant {
+        DesktopBridgeSessionParticipant {
+            identity_id: Some(self.identity_id.clone()),
+            display_name: self.display_name.clone(),
+            kind: Some(self.kind.clone()),
+            role: clean_optional_string(Some(&self.role)),
+            owner_identity_id: self.owner_identity_id.clone(),
+            owner_display_name: self.owner_display_name.clone(),
+            bridge_node_id: clean_optional_string(self.bridge_node_id.as_deref()),
+            human_id: clean_optional_string(self.human_id.as_deref()),
+            agent_id: clean_optional_string(self.agent_id.as_deref()),
+            runtime: runtime_from_metadata(self.metadata_json.as_deref()),
+        }
+    }
+}
+
+fn clean_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn identity_frame_role(role: &str) -> String {
@@ -208,6 +232,65 @@ fn recent_session_message_lines(
             format!("{} ({role}): {}", sender, truncate_context_line(&text, 700))
         })
         .collect())
+}
+
+fn session_thread_messages(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    limit: usize,
+) -> Result<Vec<DesktopBridgeSessionThreadMessage>, String> {
+    let mut message_stmt = conn
+        .prepare(
+            "SELECT COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.sequence_num
+             FROM session_messages m
+             LEFT JOIN identities i ON i.id = m.sender_identity_id
+             WHERE m.session_id = ?1
+               AND TRIM(m.content_text) <> ''
+             ORDER BY m.sequence_num DESC, m.created_at_ms DESC
+             LIMIT ?2",
+        )
+        .map_err(|err| err.to_string())?;
+    let mut messages = message_stmt
+        .query_map(params![session_id, limit as i64], |row| {
+            let sequence_num = row.get::<_, i64>(3)?;
+            Ok(DesktopBridgeSessionThreadMessage {
+                sender: row.get::<_, Option<String>>(0)?,
+                role: row.get::<_, String>(1)?,
+                text: row.get::<_, String>(2)?,
+                time_label: None,
+                index: usize::try_from(sequence_num).ok(),
+            })
+        })
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    messages.reverse();
+    Ok(messages)
+}
+
+pub(crate) fn bridge_session_thread_snapshot_for_parent(
+    parent_session_id: &str,
+    participant_limit: usize,
+    message_limit: usize,
+) -> Result<
+    (
+        Vec<DesktopBridgeSessionParticipant>,
+        Vec<DesktopBridgeSessionThreadMessage>,
+    ),
+    String,
+> {
+    let session_id = parent_session_id.trim();
+    if session_id.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let conn = open_prompt_context_db()?;
+    let participants = session_participant_rows(&conn, session_id)?
+        .into_iter()
+        .take(participant_limit)
+        .map(|participant| participant.to_bridge_session_participant())
+        .collect::<Vec<_>>();
+    let messages = session_thread_messages(&conn, session_id, message_limit)?;
+    Ok((participants, messages))
 }
 
 fn push_recent_session_messages(lines: &mut Vec<String>, messages: Vec<String>) {

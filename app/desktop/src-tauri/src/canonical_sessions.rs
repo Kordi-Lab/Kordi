@@ -23,7 +23,8 @@ mod tests;
 
 pub use self::models::*;
 pub(crate) use self::prompt_context::{
-    bridge_agent_parent_session_prompt, local_agent_session_prompt_context,
+    bridge_agent_parent_session_prompt, bridge_session_thread_snapshot_for_parent,
+    local_agent_session_prompt_context,
 };
 pub(crate) use self::sanitization::sanitize_shared_agent_response_text;
 pub(crate) use commands::{archive_session, delete_session, session_exists};

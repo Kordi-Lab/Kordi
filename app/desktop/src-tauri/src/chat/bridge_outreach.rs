@@ -5,10 +5,10 @@ use kordi_core::error::KordiError;
 use kordi_tools::ReachOutRuntime;
 
 use crate::bridge::{
-    desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl, DesktopBridgeManager,
+    DesktopBridgeManager, desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl,
 };
 
-use super::{chat_cwd, DesktopChatManager};
+use super::{DesktopChatManager, chat_cwd};
 
 fn sanitize_bridge_segment(value: &str) -> String {
     let sanitized: String = value
@@ -224,6 +224,26 @@ fn install_reach_out_runtime(
                 if request.parent_session_id.is_none() {
                     request.parent_session_id = Some(parent_session_id);
                 }
+                if request.parent_session_participants_json.is_none()
+                    || request.parent_session_messages_json.is_none()
+                {
+                    if let Some(session_id) = request.parent_session_id.as_deref() {
+                        if let Ok((participants, messages)) =
+                            crate::canonical_sessions::bridge_session_thread_snapshot_for_parent(
+                                session_id, 50, 16,
+                            )
+                        {
+                            if request.parent_session_participants_json.is_none() {
+                                request.parent_session_participants_json =
+                                    serde_json::to_value(participants).ok();
+                            }
+                            if request.parent_session_messages_json.is_none() {
+                                request.parent_session_messages_json =
+                                    serde_json::to_value(messages).ok();
+                            }
+                        }
+                    }
+                }
                 if request.project_name.is_none() {
                     request.project_name = kordi_core::settings::Settings::load_project(&cwd)
                         .project_name
@@ -281,6 +301,54 @@ mod tests {
         assert!(reach_out_target_allowed_by_user_text(
             "@Shenzhehere's Kordi hi",
             "Shenzhehere's Kordi",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn generic_kordi_mention_never_authorizes_remote_agent_target() {
+        let labels = vec!["Kordi".to_string(), "Alice's Kordi".to_string()];
+
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Kordi please ask Bob's Kordi",
+            "Bob's Kordi",
+            &labels
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Kordi please help",
+            "Kordi",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn hidden_or_unmentioned_targets_are_denied() {
+        let labels = vec!["Kordi".to_string(), "Alice's Kordi".to_string()];
+
+        assert!(!reach_out_target_allowed_by_user_text(
+            "Can someone review this?",
+            "Bob's Kordi",
+            &labels
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Bob's Kordi can you review this?",
+            "Charlie's Kordi",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn explicit_remote_agent_mention_authorizes_only_that_target() {
+        let labels = vec!["Kordi".to_string(), "Alice's Kordi".to_string()];
+
+        assert!(reach_out_target_allowed_by_user_text(
+            "@Bob's Kordi can you review this?",
+            "Bob's Kordi",
+            &labels
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Bob's Kordi can you review this?",
+            "Bob",
             &labels
         ));
     }

@@ -1,17 +1,19 @@
 use kordi_tools::{ReachOutRequest, ReachOutResponse};
-use tokio::time::{sleep, Duration};
+use serde::de::DeserializeOwned;
+use tokio::time::{Duration, sleep};
 
 use crate::chat::DesktopChatManager;
 
 use super::constants::{
-    is_agent_like_runtime, BRIDGE_MESSAGE_DIRECTION_INBOUND,
-    BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+    BRIDGE_MESSAGE_DIRECTION_OUTBOUND, is_agent_like_runtime,
 };
 use super::conversation_commands::desktop_bridge_create_outreach_impl;
 use super::mailbox::desktop_bridge_poll_mailbox_impl;
 use super::{
-    build_current_bridge_state, load_conversation_store, now_ms, save_conversation_store,
-    DesktopBridgeCreateOutreachRequest, DesktopBridgeManager,
+    DesktopBridgeCreateOutreachRequest, DesktopBridgeManager, DesktopBridgeSessionParticipant,
+    DesktopBridgeSessionThreadMessage, build_current_bridge_state, load_conversation_store, now_ms,
+    save_conversation_store,
 };
 
 fn normalize_outreach_target(value: &str) -> String {
@@ -38,6 +40,40 @@ pub(super) fn outreach_target_matches(peer: &super::DesktopBridgePeer, target: &
     .into_iter()
     .flatten()
     .any(|candidate| normalize_outreach_target(candidate) == normalized)
+}
+
+fn deserialize_runtime_context_vec<T>(value: &Option<serde_json::Value>, label: &str) -> Vec<T>
+where
+    T: DeserializeOwned,
+{
+    let Some(value) = value.clone() else {
+        return Vec::new();
+    };
+    match serde_json::from_value::<Vec<T>>(value) {
+        Ok(items) => items,
+        Err(error) => {
+            eprintln!("Ignoring malformed reach_out {label} runtime context: {error}");
+            Vec::new()
+        }
+    }
+}
+
+fn reach_out_parent_context_from_request(
+    request: &ReachOutRequest,
+) -> (
+    Vec<DesktopBridgeSessionParticipant>,
+    Vec<DesktopBridgeSessionThreadMessage>,
+) {
+    (
+        deserialize_runtime_context_vec(
+            &request.parent_session_participants_json,
+            "parentSessionParticipantsJson",
+        ),
+        deserialize_runtime_context_vec(
+            &request.parent_session_messages_json,
+            "parentSessionMessagesJson",
+        ),
+    )
 }
 
 fn infer_reach_out_kind(
@@ -185,6 +221,9 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
             .map(ToString::to_string)
     });
 
+    let (parent_session_participants, parent_session_messages) =
+        reach_out_parent_context_from_request(&request);
+
     let state = desktop_bridge_create_outreach_impl(
         manager,
         DesktopBridgeCreateOutreachRequest {
@@ -207,8 +246,8 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
             parent_session_title: None,
             parent_session_kind: None,
             parent_group_space_id: None,
-            parent_session_participants: Vec::new(),
-            parent_session_messages: Vec::new(),
+            parent_session_participants,
+            parent_session_messages,
             initiator_identity: None,
             self_target_identity: None,
             permission_policy_hash: None,
@@ -283,4 +322,92 @@ pub(crate) async fn desktop_bridge_reach_out_impl(
         .to_string(),
         timed_out,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn reach_out_request_with_runtime_context(
+        participants_json: Option<serde_json::Value>,
+        messages_json: Option<serde_json::Value>,
+    ) -> ReachOutRequest {
+        ReachOutRequest {
+            target: "Bob's Kordi".to_string(),
+            target_kind: Some("bridge-agent".to_string()),
+            message: "Can you review this?".to_string(),
+            context: None,
+            context_policy: "recent-window".to_string(),
+            include_project_context: true,
+            wait_for_response: false,
+            timeout_seconds: None,
+            parent_session_id: Some("session:alice-bob".to_string()),
+            parent_turn_id: None,
+            parent_message_id: None,
+            project_id: None,
+            project_name: None,
+            parent_session_participants_json: participants_json,
+            parent_session_messages_json: messages_json,
+        }
+    }
+
+    #[test]
+    fn reach_out_runtime_context_deserializes_parent_participants_and_messages() {
+        let request = reach_out_request_with_runtime_context(
+            Some(json!([
+                {
+                    "identityId": "human:alice",
+                    "displayName": "Alice",
+                    "kind": "human",
+                    "role": "requester"
+                },
+                {
+                    "identityId": "agent:bob-kordi",
+                    "displayName": "Bob's Kordi",
+                    "kind": "agent",
+                    "role": "target",
+                    "ownerIdentityId": "human:bob",
+                    "ownerDisplayName": "Bob"
+                }
+            ])),
+            Some(json!([
+                {
+                    "role": "person",
+                    "sender": "Alice",
+                    "text": "@Bob's Kordi can you review this?",
+                    "timeLabel": null,
+                    "index": 1
+                }
+            ])),
+        );
+
+        let (participants, messages) = reach_out_parent_context_from_request(&request);
+
+        assert_eq!(participants.len(), 2);
+        assert_eq!(
+            participants[1].identity_id.as_deref(),
+            Some("agent:bob-kordi")
+        );
+        assert_eq!(
+            participants[1].owner_identity_id.as_deref(),
+            Some("human:bob")
+        );
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].sender.as_deref(), Some("Alice"));
+        assert_eq!(messages[0].text, "@Bob's Kordi can you review this?");
+    }
+
+    #[test]
+    fn malformed_reach_out_runtime_context_falls_back_to_empty_vectors() {
+        let request = reach_out_request_with_runtime_context(
+            Some(json!({ "not": "an array" })),
+            Some(json!([{"role": 3, "text": []}])),
+        );
+
+        let (participants, messages) = reach_out_parent_context_from_request(&request);
+
+        assert!(participants.is_empty());
+        assert!(messages.is_empty());
+    }
 }
