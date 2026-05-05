@@ -208,6 +208,47 @@ function timelineToolDone(tool: ToolTimelineInput) {
   return !timelineToolFailed(tool) && (status === 'done' || status === 'complete' || status === 'completed');
 }
 
+export type ToolTimelineLayerGroup<T extends ToolTimelineInput = ToolTimelineInput> = {
+  id: string;
+  label: string;
+  tools: T[];
+  failed: boolean;
+  running: boolean;
+};
+
+function layerGroupId(label: string) {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tools';
+}
+
+export function toolTimelineLayerGroups<T extends ToolTimelineInput>(tools: T[]): ToolTimelineLayerGroup<T>[] {
+  const groups: ToolTimelineLayerGroup<T>[] = [];
+  const groupByLabel = new Map<string, ToolTimelineLayerGroup<T>>();
+
+  for (const tool of tools) {
+    const label = toolTimelineTypeLabel(tool);
+    let group = groupByLabel.get(label);
+    if (!group) {
+      group = {
+        id: layerGroupId(label),
+        label,
+        tools: [],
+        failed: false,
+        running: false,
+      };
+      groupByLabel.set(label, group);
+      groups.push(group);
+    }
+    group.tools.push(tool);
+  }
+
+  for (const group of groups) {
+    group.failed = group.tools.some(timelineToolFailed);
+    group.running = group.tools.some((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
+  }
+
+  return groups;
+}
+
 export function formatRunningElapsed(elapsedMs: number) {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s`;

@@ -28,9 +28,11 @@ import {
   formatRunningElapsed,
   toolTimelineDisplayArguments,
   toolTimelineFoldedLabel,
+  toolTimelineLayerGroups,
   toolTimelineRunningToolLabel,
   toolTimelineToolLabel,
   toolTimelineTypeLabel,
+  type ToolTimelineLayerGroup,
 } from './toolTimeline';
 import type { BridgeAgentRequestControl, DesktopChatTurnSnapshot } from '../types';
 
@@ -326,6 +328,67 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
   return running ? formatRunningElapsed(elapsedMs) : null;
 }
 
+function toolGroupIcon(label: string) {
+  switch (label) {
+    case 'Observation':
+      return FileText;
+    case 'Planning':
+    case 'Operator':
+      return Wrench;
+    case 'Execution':
+      return TerminalSquare;
+    case 'Reflection':
+      return CheckCircle2;
+    default:
+      return Wrench;
+  }
+}
+
+function toolGroupSummary(tools: ToolSnapshot[]) {
+  const labels: string[] = [];
+  for (const tool of tools) {
+    const label = toolTimelineToolLabel(tool);
+    if (!labels.includes(label)) labels.push(label);
+  }
+  const visibleLabels = labels.slice(0, 3).join(' · ');
+  const remaining = labels.length - 3;
+  return remaining > 0 ? `${visibleLabels} · ${remaining} more` : visibleLabels;
+}
+
+function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<ToolSnapshot> }) {
+  const [expandedGroup, setExpandedGroup] = useState(false);
+  const Icon = toolGroupIcon(group.label);
+  const title = `${group.label} × ${group.tools.length}`;
+  const summary = toolGroupSummary(group.tools);
+
+  return (
+    <div className={cn('app-transcript-timeline-row app-transcript-timeline-group-row', group.running && 'app-transcript-timeline-row-running', group.failed && 'app-transcript-timeline-row-error')}>
+      <span className="app-transcript-timeline-rail" aria-hidden="true">
+        <span className="app-transcript-timeline-node">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </span>
+      <div className="app-transcript-timeline-row-body">
+        <button
+          type="button"
+          className="app-transcript-timeline-group-summary"
+          onClick={() => setExpandedGroup((current) => !current)}
+          aria-expanded={expandedGroup}
+        >
+          <span className="app-transcript-timeline-row-title">{title}</span>
+          <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', expandedGroup && 'rotate-90')} aria-hidden="true" />
+        </button>
+        {summary ? <div className="app-transcript-timeline-row-meta truncate">{summary}</div> : null}
+        {expandedGroup ? (
+          <div className="app-transcript-timeline-group-tools">
+            {group.tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   const display = toolDisplayConfig(tool.name);
   const Icon = display.icon;
@@ -423,7 +486,7 @@ function FoldableToolTimeline({
       {expandedTimeline ? (
         <div className="app-transcript-timeline-list">
           {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
-          {tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
+          {toolTimelineLayerGroups(tools).map((group) => <ToolTimelineToolGroupRow key={group.id} group={group} />)}
           {completed || failed ? <ToolTimelineCompletionRow failed={failed} /> : null}
         </div>
       ) : null}

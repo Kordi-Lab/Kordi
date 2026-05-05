@@ -607,6 +607,41 @@
   line-height: 1.4;
 }
 
+.app-transcript-timeline-group-summary {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.app-transcript-timeline-group-summary:hover .app-transcript-timeline-row-title {
+  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+}
+
+.app-transcript-timeline-group-tools {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.app-transcript-timeline-group-tools .app-transcript-timeline-row {
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.app-transcript-timeline-group-tools .app-transcript-timeline-node {
+  width: 16px;
+  height: 16px;
+}
+
 .app-transcript-timeline-details {
   display: grid;
   gap: 6px;
@@ -634,6 +669,9 @@
 }
 
 .app-transcript-timeline-details-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border-left: 1px solid color-mix(in oklab, var(--app-divider) 44%, transparent);
   padding-left: 10px;
 }

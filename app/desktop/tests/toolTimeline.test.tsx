@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
-import { formatRunningElapsed, toolTimelineDisplayArguments, toolTimelineFoldedLabel, toolTimelineSummary, toolTimelineToolLabel, toolTimelineTypeLabel } from '../src/kordi-app/components/toolTimeline';
+import { formatRunningElapsed, toolTimelineDisplayArguments, toolTimelineFoldedLabel, toolTimelineLayerGroups, toolTimelineSummary, toolTimelineToolLabel, toolTimelineTypeLabel } from '../src/kordi-app/components/toolTimeline';
 
 function cssBlock(css: string, selector: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -26,6 +26,35 @@ test('labels common tool kinds with concise human text and layer badges', () => 
   assert.equal(toolTimelineTypeLabel({ name: 'task_operator', status: 'done', arguments: '{}' }), 'Operator');
   assert.equal(toolTimelineTypeLabel({ name: 'reflection', status: 'done', arguments: '{}' }), 'Reflection');
   assert.equal(toolTimelineTypeLabel({ name: 'read', status: 'done', arguments: '{}', toolLayer: 'reflection' }), 'Reflection');
+});
+
+test('groups expanded timeline tools by main layer', () => {
+  const groups = toolTimelineLayerGroups([
+    { id: 'read-1', name: 'read', status: 'done', arguments: '{}' },
+    { id: 'read-2', name: 'grep', status: 'done', arguments: '{}' },
+    { id: 'op-1', name: 'task_operator', status: 'done', arguments: '{}' },
+    { id: 'op-2', name: 'task_operator', status: 'done', arguments: '{}' },
+    { id: 'op-3', name: 'task_operator', status: 'running', arguments: '{}' },
+    { id: 'bash-1', name: 'bash', status: 'done', arguments: '{}' },
+  ]);
+
+  assert.deepEqual(
+    groups.map((group) => ({ label: group.label, count: group.tools.length, running: group.running })),
+    [
+      { label: 'Observation', count: 2, running: false },
+      { label: 'Operator', count: 3, running: true },
+      { label: 'Execution', count: 1, running: false },
+    ],
+  );
+});
+
+test('timeline detail bodies constrain overflowing code blocks', () => {
+  const shellCss = readDesktopShellCss();
+  const detailsBodyBlock = cssBlock(shellCss, '.app-transcript-timeline-details-body');
+
+  assert.match(detailsBodyBlock, /min-width:\s*0/);
+  assert.match(detailsBodyBlock, /max-width:\s*100%/);
+  assert.match(detailsBodyBlock, /overflow:\s*hidden/);
 });
 
 test('summarizes foldable timeline state without raw tool activity wording', () => {
