@@ -180,6 +180,8 @@ export type Contact = {
   bridgePeerRuntime?: string;
   bridgeHumanId?: string | null;
   bridgeAgentId?: string | null;
+  bridgeContactStatus?: string | null;
+  bridgeContactRequestDirection?: string | null;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
 };
@@ -191,6 +193,14 @@ export type ContactRequest = {
   detail: string;
   time: string;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
+  source?: 'demo' | 'bridge';
+  bridgeHostId?: string | null;
+  bridgeRequestId?: string | null;
+  requesterNodeId?: string | null;
+  targetNodeId?: string | null;
+  status?: string | null;
+  direction?: string | null;
 };
 
 export type Agent = {
@@ -646,6 +656,9 @@ export type DesktopBridgePeer = {
   humanVisibilityPolicy?: string | null;
   contactApprovalPolicy?: string | null;
   agentReachabilityPolicy?: string | null;
+  isContact?: boolean;
+  contactRequestStatus?: string | null;
+  contactRequestDirection?: string | null;
   profileImageUrl?: string | null;
 };
 

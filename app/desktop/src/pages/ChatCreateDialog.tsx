@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Bot, MessageSquare, Users, X } from 'lucide-react';
+import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
   buildChatCreateAgentOptions,
+  buildChatCreateGroupPersonOptions,
   buildChatCreatePersonOptions,
   canCreateGroup,
   groupDefaultName,
@@ -23,16 +24,18 @@ export type ChatCreatePopoverAnchor = {
 export type ChatCreateDialogProps = {
   isOpen: boolean;
   contacts: Contact[];
+  addableContacts?: Contact[];
   agents: Agent[];
   onClose: () => void;
   onStartPerson: (contact: Contact) => Promise<void> | void;
   onStartAgent: (agent: Agent) => Promise<void> | void;
   onCreateGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
-  initialMode?: 'menu' | 'person' | 'agent' | 'group';
+  onAddContact?: (nodeId: string) => Promise<void> | void;
+  initialMode?: CreateMode;
   anchorRect?: ChatCreatePopoverAnchor | null;
 };
 
-type CreateMode = 'menu' | 'person' | 'agent' | 'group';
+type CreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
 type PopoverPlacement = 'right' | 'left' | 'floating';
 type PopoverStyle = CSSProperties & {
   '--app-create-enter-x'?: string;
@@ -161,22 +164,32 @@ function ChoiceButton({ icon, title, detail, onClick }: { icon: ReactNode; title
 export function ChatCreateDialog({
   isOpen,
   contacts,
+  addableContacts = [],
   agents,
   onClose,
   onStartPerson,
   onStartAgent,
   onCreateGroup,
+  onAddContact,
   initialMode = 'menu',
   anchorRect = null,
 }: ChatCreateDialogProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [contactNodeId, setContactNodeId] = useState('');
+  const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'error'>('idle');
+  const [addContactError, setAddContactError] = useState('');
+  const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
+  const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
   const personOptions = useMemo(() => buildChatCreatePersonOptions(contacts), [contacts]);
+  const groupPersonOptions = useMemo(() => buildChatCreateGroupPersonOptions(contacts), [contacts]);
   const agentOptions = useMemo(() => buildChatCreateAgentOptions(agents), [agents]);
-  const selectedPeople = personOptions.filter((option) => selectedContactIds.includes(option.id));
+  const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.bridgePeerNodeId?.trim()), [addableContacts]);
+  const selectedPeople = groupPersonOptions.filter((option) => selectedContactIds.includes(option.id));
+  const selectedGroupContactIds = selectedPeople.map((option) => option.id);
   const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
-  const canSubmitGroup = canCreateGroup(selectedContactIds);
+  const canSubmitGroup = canCreateGroup(selectedGroupContactIds);
 
   if (!isOpen) return null;
 
@@ -184,7 +197,53 @@ export function ChatCreateDialog({
     setMode('menu');
     setSelectedContactIds([]);
     setGroupName('');
+    setContactNodeId('');
+    setAddContactState('idle');
+    setAddContactError('');
+    setRequestingContactNodeId(null);
+    setRequestedContactNodeIds([]);
     onClose();
+  };
+
+  const submitAddContact = async (nodeIdInput: string) => {
+    const nodeId = nodeIdInput.trim();
+    if (!nodeId || !onAddContact || addContactState === 'saving') return;
+    setAddContactState('saving');
+    setRequestingContactNodeId(nodeId);
+    setAddContactError('');
+    try {
+      await onAddContact(nodeId);
+      setAddContactState('sent');
+      setRequestedContactNodeIds((current) => (current.includes(nodeId) ? current : [...current, nodeId]));
+      if (contactNodeId.trim() === nodeId) setContactNodeId('');
+    } catch (error) {
+      setAddContactState('error');
+      setAddContactError(error instanceof Error ? error.message : 'Unable to send contact request');
+    } finally {
+      setRequestingContactNodeId(null);
+    }
+  };
+
+  const addContactButtonLabel = (contact: Contact) => {
+    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
+    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    if (requestingContactNodeId === nodeId) return 'Sending…';
+    if (requestedContactNodeIds.includes(nodeId)) return 'Requested';
+    if (status === 'pending' && direction === 'outgoing') return 'Pending';
+    if (status === 'pending' && direction === 'incoming') return 'Review';
+    return 'Request';
+  };
+
+  const addContactButtonDisabled = (contact: Contact) => {
+    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
+    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    return !onAddContact
+      || !nodeId
+      || addContactState === 'saving'
+      || requestedContactNodeIds.includes(nodeId)
+      || (status === 'pending' && (direction === 'outgoing' || direction === 'incoming'));
   };
 
   const toggleContact = (contactId: string) => {
@@ -198,16 +257,17 @@ export function ChatCreateDialog({
   return (
     <DialogCard onClose={close} anchorRect={anchorRect}>
       <CreateDialogHeader
-        title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with person' : mode === 'agent' ? 'Chat with agent' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : 'Choose who this conversation is with.'}
+        title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
+        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : mode === 'add-contact' ? 'Send an approval request by Bridge node ID.' : 'Choose who this conversation is with.'}
         onClose={close}
       />
 
       {mode === 'menu' ? (
         <div className="space-y-1">
-          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with person" detail="Direct people conversation" onClick={() => setMode('person')} />
+          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" detail="Direct contact conversation" onClick={() => setMode('person')} />
           <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" detail="Start with one Kordi agent" onClick={() => setMode('agent')} />
           <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" detail="Stable group with people only" onClick={() => setMode('group')} />
+          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" detail="Request a private Bridge node" onClick={() => setMode('add-contact')} />
         </div>
       ) : null}
 
@@ -228,7 +288,7 @@ export function ChatCreateDialog({
                 <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
               </button>
             )) : (
-              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No people contacts available.</div>
+              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No contacts available.</div>
             )}
           </div>
           <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
@@ -259,13 +319,75 @@ export function ChatCreateDialog({
         </div>
       ) : null}
 
+      {mode === 'add-contact' ? (
+        <form
+          className="space-y-2"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            await submitAddContact(contactNodeId);
+          }}
+        >
+          <div className="space-y-1.5">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--utility-muted-text)]">Visible users</div>
+            <div className="app-chat-create-option-list max-h-[min(10rem,calc(100vh-12rem))] space-y-1 overflow-auto pr-1">
+              {visibleAddableContacts.length > 0 ? visibleAddableContacts.map((contact) => {
+                const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
+                return (
+                  <div key={contact.id} className="app-chat-create-list-item flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{contact.name}</span>
+                      <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{contact.subtitle || contact.detail || nodeId}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      className="h-7 shrink-0 rounded-[10px] px-2.5 text-[11px]"
+                      disabled={addContactButtonDisabled(contact)}
+                      onClick={() => {
+                        void submitAddContact(nodeId);
+                      }}
+                    >
+                      {addContactButtonLabel(contact)}
+                    </Button>
+                  </div>
+                );
+              }) : (
+                <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No visible users to request right now.</div>
+              )}
+            </div>
+          </div>
+
+          <input
+            value={contactNodeId}
+            onChange={(event) => {
+              setContactNodeId(event.target.value);
+              if (addContactState !== 'saving') setAddContactState('idle');
+            }}
+            placeholder="Bridge node ID, e.g. kd_..."
+            className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
+          />
+          <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
+            {addContactState === 'sent'
+              ? 'Request sent. They will appear in contacts after approval.'
+              : addContactState === 'error'
+                ? addContactError || 'Unable to send contact request.'
+                : 'Paste a private/unlisted user node ID to request approval.'}
+          </div>
+          <div className="flex gap-1.5">
+            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!onAddContact || !contactNodeId.trim() || addContactState === 'saving'}>
+              {addContactState === 'saving' ? 'Sending…' : 'Send request'}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
       {mode === 'group' ? (
         <form
           className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
             if (!canSubmitGroup) return;
-            void onCreateGroup({ contactIds: selectedContactIds, name: groupName.trim() || null });
+            void onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null });
             close();
           }}
         >
@@ -276,7 +398,7 @@ export function ChatCreateDialog({
             className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
           />
           <div className="app-chat-create-option-list max-h-[min(14.5rem,calc(100vh-10rem))] space-y-1 overflow-auto pr-1">
-            {personOptions.length > 0 ? personOptions.map((option) => {
+            {groupPersonOptions.length > 0 ? groupPersonOptions.map((option) => {
               const selected = selectedContactIds.includes(option.id);
               return (
                 <button
@@ -296,7 +418,7 @@ export function ChatCreateDialog({
                 </button>
               );
             }) : (
-              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No people contacts available.</div>
+              <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No approved contacts available.</div>
             )}
           </div>
           <div className="flex gap-1.5">

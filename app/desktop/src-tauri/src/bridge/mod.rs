@@ -45,8 +45,9 @@ use self::network::{
     decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target, fetch_mailbox,
     fetch_registry_visible_nodes, fetch_serve_contact_requests, fetch_serve_contacts,
     fetch_serve_discovery, health_check, join_serve_project, poll_mailbox_v2, register_bridge_host,
-    reject_serve_contact_request, relay_plaintext_message, remove_serve_contact,
-    update_registered_registry_node, update_serve_discovery_mode, AckedMailboxEntry,
+    reject_serve_contact_request, relay_plaintext_message, relay_target_kind_for_payload,
+    remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
+    AckedMailboxEntry,
 };
 #[allow(unused_imports)]
 use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
@@ -415,6 +416,10 @@ pub struct DesktopBridgePeer {
     pub human_visibility_policy: Option<String>,
     pub contact_approval_policy: Option<String>,
     pub agent_reachability_policy: Option<String>,
+    #[serde(default)]
+    pub is_contact: bool,
+    pub contact_request_status: Option<String>,
+    pub contact_request_direction: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -720,6 +725,22 @@ fn default_display_name() -> String {
 
 fn default_owner_name() -> String {
     constants::DEFAULT_OWNER_NAME.to_string()
+}
+
+fn default_contact_request_message(host: &DesktopBridgeHostConfig) -> String {
+    let owner = host
+        .owner
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            host.display_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("a Kordi user");
+    format!("I am {owner}. I'd like to add you as a Kordi contact.")
 }
 
 fn default_bridge_agent_label(owner_name: &str) -> String {
@@ -1354,6 +1375,24 @@ pub async fn desktop_bridge_refresh_realtime_connections(
 mod tests {
     use super::*;
 
+    fn test_host_config() -> DesktopBridgeHostConfig {
+        DesktopBridgeHostConfig {
+            id: "host-1".to_string(),
+            coordination: "https://bridge.example".to_string(),
+            node_id: "kd_self".to_string(),
+            api_key: "secret".to_string(),
+            display_name: Some("My Kordi".to_string()),
+            owner: Some("Me".to_string()),
+            human_id: Some("kh_self".to_string()),
+            discovery_mode: default_discovery_mode(),
+            human_visibility_policy: default_human_visibility_policy(),
+            contact_approval_policy: default_contact_approval_policy(),
+            active_agent_id: None,
+            agents: Vec::new(),
+            api_style: default_bridge_api_style(),
+        }
+    }
+
     fn empty_agent() -> DesktopBridgeAgentConfig {
         DesktopBridgeAgentConfig {
             id: "agent-1".to_string(),
@@ -1371,6 +1410,17 @@ mod tests {
             thinking: None,
             reachability_policy: default_agent_reachability_policy(),
         }
+    }
+
+    #[test]
+    fn default_contact_request_message_introduces_the_local_owner() {
+        let mut host = test_host_config();
+        host.owner = Some("Kordi User 5".to_string());
+
+        assert_eq!(
+            default_contact_request_message(&host),
+            "I am Kordi User 5. I'd like to add you as a Kordi contact.",
+        );
     }
 
     #[test]

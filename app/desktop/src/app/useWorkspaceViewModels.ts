@@ -51,6 +51,7 @@ function sanitizeRemotePeerName(
   return 'Bridge user';
 }
 import {
+  bridgePeerIsApprovedContact,
   buildConversationPreview,
   buildOutreachInlineMessages,
   buildSessionStatusIndicator,
@@ -427,6 +428,7 @@ export function useWorkspaceViewModels({
       });
 
       for (const peer of host.visiblePeers) {
+        if (!bridgePeerIsApprovedContact(peer)) continue;
         const isAgent = isBridgeAgentRuntime(peer.runtime);
         const id = isAgent
           ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
@@ -434,6 +436,8 @@ export function useWorkspaceViewModels({
         const existing = byId.get(id);
         const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
         const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
+        const bridgeContactStatus = peer.isContact ? 'contact' : (peer.contactRequestStatus?.trim() || 'none');
+        const bridgeContactRequestDirection = peer.contactRequestDirection?.trim() || null;
         byId.set(id, {
           id,
           name: peerName,
@@ -451,6 +455,8 @@ export function useWorkspaceViewModels({
           bridgePeerRuntime: peer.runtime,
           bridgeHumanId: peer.humanId,
           bridgeAgentId: peer.agentId,
+          bridgeContactStatus,
+          bridgeContactRequestDirection,
           avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
         });
 
@@ -476,6 +482,8 @@ export function useWorkspaceViewModels({
             bridgePeerRuntime: 'person',
             bridgeHumanId: peer.humanId,
             bridgeAgentId: peer.agentId,
+            bridgeContactStatus,
+            bridgeContactRequestDirection,
             avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
           });
         }
@@ -501,6 +509,56 @@ export function useWorkspaceViewModels({
 
     return Array.from(byId.values());
   }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+
+  const addableContacts = useMemo<Contact[]>(() => {
+    if (!isNativeShell) return [];
+    const byId = new Map<string, Contact>();
+    const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
+
+    for (const host of desktopBridgeState?.hosts ?? []) {
+      const label = bridgeLabel(host.serverUrl);
+      for (const peer of visibleBridgePeople(host.visiblePeers)) {
+        if (bridgePeerIsApprovedContact(peer)) continue;
+        const id = `bridge-addable-person:${host.id}:${peer.nodeId}:${peer.humanId ?? 'person'}`;
+        const existing = byId.get(id);
+        const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
+        const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
+        const status = peer.contactRequestStatus?.trim().toLowerCase() || 'none';
+        const direction = peer.contactRequestDirection?.trim().toLowerCase() || null;
+        const needsApproval = peer.contactApprovalPolicy === 'approval-required';
+        const subtitle = status === 'pending' && direction === 'outgoing'
+          ? 'Request pending'
+          : status === 'pending' && direction === 'incoming'
+            ? 'Waiting for your approval'
+            : needsApproval
+              ? 'Needs approval'
+              : 'Can add immediately';
+        byId.set(id, {
+          id,
+          name: peerName,
+          initials: getInitials(peerName),
+          classType: 'other-users',
+          entityType: 'Person',
+          subtitle,
+          bridges: nextBridges,
+          status: subtitle,
+          discoverableOn: nextBridges,
+          detail: [peer.nodeId, peer.humanId ? `Human ID: ${peer.humanId}` : null].filter(Boolean).join(' • '),
+          owner: peer.ownerName || peerName,
+          bridgeHostId: host.id,
+          bridgePeerNodeId: peer.nodeId,
+          bridgePeerRuntime: 'person',
+          bridgeHumanId: peer.humanId,
+          bridgeAgentId: peer.agentId,
+          bridgeContactStatus: status,
+          bridgeContactRequestDirection: direction,
+          avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }, [desktopBridgeState?.hosts, isNativeShell]);
 
   const displayedAgents = useMemo<Agent[]>(() => {
     if (!isNativeShell) return [];
@@ -857,6 +915,7 @@ export function useWorkspaceViewModels({
     activeLastMessage,
     activeConvHasSubtitle,
     displayedContacts,
+    addableContacts,
     displayedAgents,
     groupedContacts,
     filteredGroupedContacts,

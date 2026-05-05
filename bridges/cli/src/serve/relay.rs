@@ -98,6 +98,12 @@ struct DerpFrame {
     dst: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     durable: Option<bool>,
+    #[serde(
+        rename = "targetKind",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    target_kind: Option<String>,
     #[serde(with = "base64_serde")]
     data: Vec<u8>,
 }
@@ -118,6 +124,7 @@ fn maybe_delivery_event_frame(
         src: Some(from_node_id.to_string()),
         dst: None,
         durable: None,
+        target_kind: None,
         data: serde_json::to_vec(&payload).ok()?,
     };
     Some(Message::Text(serde_json::to_string(&frame).ok()?))
@@ -355,7 +362,11 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                         continue;
                     }
                 };
-                let access_kind = direct_access_kind_from_payload_bytes(&request_bytes);
+                let access_kind = frame
+                    .target_kind
+                    .as_deref()
+                    .map(|target_kind| direct_access_kind_from_target_kind(Some(target_kind)))
+                    .unwrap_or_else(|| direct_access_kind_from_payload_bytes(&request_bytes));
                 let allowed =
                     match nodes_can_directly_reach(&db, &node_id, &dst_node_id, access_kind) {
                         Ok(allowed) => allowed,
@@ -408,6 +419,7 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                     src: Some(node_id.clone()),
                     dst: None,
                     durable: None,
+                    target_kind: None,
                     data: frame.data,
                 };
                 let json = match serde_json::to_string(&outbound) {
@@ -449,6 +461,9 @@ fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAcces
         .as_str()
     {
         "agent" | "bridge-agent" | "ask" => DirectAccessKind::Agent,
+        "person-invite" | "bridge-person-invite" | "human-invite" | "session-invite" => {
+            DirectAccessKind::GroupInvite
+        }
         "person" | "bridge-person" | "human" => DirectAccessKind::Person,
         _ => DirectAccessKind::Any,
     }
@@ -778,6 +793,7 @@ mod tests {
             src: None,
             dst: Some("receiver".to_string()),
             durable: Some(true),
+            target_kind: None,
             data: serde_json::to_vec(&payload).unwrap(),
         };
         sender_socket
@@ -853,10 +869,72 @@ mod tests {
             src: None,
             dst: Some("receiver".to_string()),
             durable: Some(true),
+            target_kind: None,
             data: serde_json::to_vec(&serde_json::json!({
                 "requestId": "bridge_req_ws_unauthorized",
                 "messageType": "raw",
                 "payload": { "message": "should not mailbox" },
+            }))
+            .unwrap(),
+        };
+        sender_socket
+            .send(TungsteniteMessage::Text(
+                serde_json::to_string(&frame).unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert!(pending.entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn derp_group_invite_requires_contact_even_for_server_open_target() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-open"),
+            Some("auto"),
+            Some("contacts"),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_state = state.clone();
+        tokio::spawn(async move {
+            axum::serve(listener, routes(server_state)).await.unwrap();
+        });
+        let base_url = format!("ws://{addr}");
+
+        let _receiver_socket = connect_test_derp_client(&base_url, "receiver-key").await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        let mut sender_socket = connect_test_derp_client(&base_url, "sender-key").await;
+        let frame = DerpFrame {
+            src: None,
+            dst: Some("receiver".to_string()),
+            durable: Some(true),
+            target_kind: Some("person-invite".to_string()),
+            data: serde_json::to_vec(&serde_json::json!({
+                "requestId": "bridge_req_ws_group_invite",
+                "messageType": "raw",
+                "payload": { "message": "group invite" },
             }))
             .unwrap(),
         };
@@ -1060,6 +1138,71 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_blocks_approval_required_target_when_only_shared_project() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-approval"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+        seed_project_members(&state, "project-1", &["sender", "receiver"]);
+
+        let status = relay_message(
+            State(state),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "hello".to_string(),
+                project_id: None,
+                target_kind: Some("person".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_blocks_group_invite_to_server_open_non_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-open"),
+            Some("auto"),
+            Some("contacts"),
+        );
+
+        let status = relay_message(
+            State(state),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "invite".to_string(),
+                project_id: None,
+                target_kind: Some("person-invite".to_string()),
             }),
         )
         .await

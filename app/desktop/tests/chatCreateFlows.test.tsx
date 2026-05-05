@@ -8,6 +8,7 @@ import {
   buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
+  buildChatCreateGroupPersonOptions,
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
   buildChatCreatePersonOptions,
@@ -148,6 +149,18 @@ test('buildChatCreatePersonOptions excludes agent contacts', () => {
 
   assert.deepEqual(options.map((option) => option.id), ['person:alice']);
   assert.equal(options[0]?.label, 'Alice');
+});
+
+test('buildChatCreatePersonOptions includes only approved Bridge contacts', () => {
+  const options = buildChatCreatePersonOptions([
+    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:approved-request', name: 'Approved request', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved_request', bridgeContactStatus: 'approved' }),
+    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:local-only', name: 'Local' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:approved-request', 'contact:local-only']);
 });
 
 test('participant-space continuations inherit bridge target metadata from the source session', () => {
@@ -291,16 +304,26 @@ test('groupDefaultName uses people names only and truncates long groups', () => 
   assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
 });
 
-test('group create bridge invites target every bridge-backed selected person', () => {
+test('group create options require approved bridge contacts', () => {
+  const options = buildChatCreateGroupPersonOptions([
+    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:local-only', name: 'Local' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:local-only']);
+});
+
+test('group create bridge invites target only approved bridge contacts', () => {
   const targets = buildChatCreateGroupBridgeInviteTargets([
-    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice' }),
-    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob' }),
+    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob', bridgeContactStatus: 'pending' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
   assert.deepEqual(targets, [
     { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', humanId: 'kh_alice' },
-    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bobby', humanId: 'kh_bob' },
   ]);
 });
 

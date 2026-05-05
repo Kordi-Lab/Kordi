@@ -739,6 +739,9 @@ pub(super) async fn fetch_serve_discovery(
             human_visibility_policy: peer.human_visibility_policy,
             contact_approval_policy: peer.contact_approval_policy,
             agent_reachability_policy: peer.agent_reachability_policy,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         })
         .collect())
 }
@@ -789,6 +792,9 @@ pub(super) async fn fetch_serve_contacts(
             human_visibility_policy: contact.human_visibility_policy,
             contact_approval_policy: contact.contact_approval_policy,
             agent_reachability_policy: contact.agent_reachability_policy,
+            is_contact: true,
+            contact_request_status: Some("contact".to_string()),
+            contact_request_direction: None,
         })
         .collect())
 }
@@ -973,6 +979,9 @@ pub(super) async fn fetch_registry_visible_nodes(
             human_visibility_policy: None,
             contact_approval_policy: None,
             agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         })
         .collect())
 }
@@ -1004,6 +1013,9 @@ fn ensure_peer_index(
         human_visibility_policy: None,
         contact_approval_policy: None,
         agent_reachability_policy: None,
+        is_contact: false,
+        contact_request_status: None,
+        contact_request_direction: None,
     });
     let idx = peers.len() - 1;
     index.insert(member.node_id.clone(), idx);
@@ -1162,13 +1174,29 @@ pub(super) async fn add_serve_contact(
     base_url: &str,
     api_key: &str,
     peer_node_id: &str,
+    message: Option<&str>,
 ) -> Result<(), String> {
-    let url = format!("{}/v1/contacts/{peer_node_id}", trimmed_base_url(base_url));
-    let response = send_request(
-        bridge_client().put(url).bearer_auth(api_key),
-        "Unable to add bridge contact",
-    )
-    .await?;
+    let response = if let Some(message) = message.map(str::trim).filter(|value| !value.is_empty()) {
+        let url = format!(
+            "{}/v1/contact-requests/{peer_node_id}",
+            trimmed_base_url(base_url)
+        );
+        send_request(
+            bridge_client()
+                .post(url)
+                .bearer_auth(api_key)
+                .json(&serde_json::json!({ "message": message })),
+            "Unable to add bridge contact",
+        )
+        .await?
+    } else {
+        let url = format!("{}/v1/contacts/{peer_node_id}", trimmed_base_url(base_url));
+        send_request(
+            bridge_client().put(url).bearer_auth(api_key),
+            "Unable to add bridge contact",
+        )
+        .await?
+    };
     if !response.status().is_success() {
         return Err(response_error_with_body(
             response,
@@ -1272,7 +1300,7 @@ pub(super) async fn fetch_mailbox(
     parse_json_response::<Vec<serde_json::Value>>(response, "Unable to parse bridge mailbox").await
 }
 
-fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Option<&'static str> {
+pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Option<&'static str> {
     let message_type = payload
         .get("messageType")
         .and_then(|value| value.as_str())
@@ -1280,15 +1308,25 @@ fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Option<&'static
     if message_type.eq_ignore_ascii_case("ask") {
         return Some("agent");
     }
-    let target_kind = payload
-        .get("payload")
+    let payload_body = payload.get("payload");
+    let target_kind = payload_body
         .and_then(|value| value.get("sessionThread"))
         .and_then(|value| value.get("targetKind"))
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    match target_kind {
-        "bridge-agent" => Some("agent"),
-        "bridge-person" => Some("person"),
+    let context_policy = payload_body
+        .and_then(|value| value.get("contextPolicy"))
+        .or_else(|| {
+            payload_body
+                .and_then(|value| value.get("sessionThread"))
+                .and_then(|value| value.get("contextPolicy"))
+        })
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    match (target_kind, context_policy) {
+        ("bridge-agent", _) => Some("agent"),
+        ("bridge-person", "session-invite") => Some("person-invite"),
+        ("bridge-person", _) => Some("person"),
         _ => None,
     }
 }

@@ -32,9 +32,7 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onRefreshBridge: () => {
       void args.refreshDesktopBridge();
     },
-    onSaveBridgeSettings: (draftOverride) => {
-      void args.handleSaveBridgeSettings(draftOverride);
-    },
+    onSaveBridgeSettings: (draftOverride) => args.handleSaveBridgeSettings(draftOverride),
     onRemoveBridgeHost: (hostId) => args.handleRemoveBridgeHost(hostId),
     onCopyBridgeText: (value, successMessage) => {
       void args.handleCopyBridgeText(value, successMessage ?? 'Copied to clipboard');

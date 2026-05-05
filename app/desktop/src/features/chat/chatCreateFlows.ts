@@ -87,7 +87,7 @@ function uniqueNonEmpty(values: string[]) {
 
 export function buildChatCreatePersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
   return contacts
-    .filter((contact) => !isContactAgent(contact))
+    .filter((contact) => !isContactAgent(contact) && isApprovedBridgeContact(contact))
     .map((contact) => ({
       id: contact.id,
       label: firstNonEmpty(contact.name, contact.owner, contact.id),
@@ -96,6 +96,17 @@ export function buildChatCreatePersonOptions(contacts: Contact[]): ChatCreatePer
       profileImageUrl: contact.profileImageUrl ?? null,
       contact,
     }));
+}
+
+export function isApprovedBridgeContact(contact: Contact) {
+  const peerNodeId = cleanText(contact.bridgePeerNodeId);
+  if (!peerNodeId) return true;
+  const status = cleanText(contact.bridgeContactStatus).toLowerCase();
+  return status === 'contact' || status === 'approved';
+}
+
+export function buildChatCreateGroupPersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
+  return buildChatCreatePersonOptions(contacts).filter((option) => isApprovedBridgeContact(option.contact));
 }
 
 export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOption[] {
@@ -324,6 +335,7 @@ export function buildChatCreateGroupInviteText(groupName?: string | null) {
 export function buildChatCreateGroupBridgeInviteTargets(contacts: Contact[]): ChatCreateGroupBridgeInviteTarget[] {
   const targets = new Map<string, ChatCreateGroupBridgeInviteTarget>();
   for (const contact of contacts) {
+    if (!isApprovedBridgeContact(contact)) continue;
     const hostId = cleanText(contact.bridgeHostId);
     const nodeId = cleanText(contact.bridgePeerNodeId);
     if (!hostId || !nodeId) continue;

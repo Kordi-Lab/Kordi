@@ -1,4 +1,5 @@
-import { ChevronRight, Copy, Link2, Plus, Star } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, ChevronRight, Copy, Link2, Plus, Star } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,14 +14,72 @@ import type { DesktopBridgePeer } from '@/kordi-app/types';
 import type { ContactApprovalPolicy, BridgeDetailsSectionProps, HumanVisibilityPolicy } from './BridgeConfigPage.types';
 import {
   AGENT_REACHABILITY_OPTIONS,
-  CONTACT_APPROVAL_OPTIONS,
-  DetailNav,
   EmptyState,
-  HUMAN_VISIBILITY_OPTIONS,
   agentReachabilityLabel,
-  contactApprovalLabel,
-  humanVisibilityLabel,
 } from './BridgeConfigShared';
+
+type BridgePrivacyModeId = 'private' | 'approval' | 'open';
+
+type BridgePrivacyMode = {
+  id: BridgePrivacyModeId;
+  label: string;
+  summary: string;
+  detail: string;
+  humanVisibilityPolicy: HumanVisibilityPolicy;
+  contactApprovalPolicy: ContactApprovalPolicy;
+  recommended?: boolean;
+};
+
+const PRIVATE_BRIDGE_PRIVACY_MODE: BridgePrivacyMode = {
+  id: 'private',
+  label: 'Private / invite only',
+  summary: 'Hidden from discovery.',
+  detail: 'Only saved contacts, shared projects, or invites can reach you. New direct contacts still need approval.',
+  humanVisibilityPolicy: 'private',
+  contactApprovalPolicy: 'approval-required',
+};
+
+const APPROVAL_BRIDGE_PRIVACY_MODE: BridgePrivacyMode = {
+  id: 'approval',
+  label: 'Listed, approve new people',
+  summary: 'People can find you, but direct contact waits for your approval.',
+  detail: 'Recommended privacy setting. Discovery works, but unknown people cannot reach you until you approve them.',
+  humanVisibilityPolicy: 'server-approval',
+  contactApprovalPolicy: 'approval-required',
+  recommended: true,
+};
+
+const OPEN_BRIDGE_PRIVACY_MODE: BridgePrivacyMode = {
+  id: 'open',
+  label: 'Open on this host',
+  summary: 'People can find and contact you immediately.',
+  detail: 'Least private. Anyone signed into this Bridges host can start direct contact without waiting for approval.',
+  humanVisibilityPolicy: 'server-open',
+  contactApprovalPolicy: 'auto',
+};
+
+const BRIDGE_PRIVACY_MODES: BridgePrivacyMode[] = [
+  PRIVATE_BRIDGE_PRIVACY_MODE,
+  APPROVAL_BRIDGE_PRIVACY_MODE,
+  OPEN_BRIDGE_PRIVACY_MODE,
+];
+
+function bridgePrivacyModeById(modeId: BridgePrivacyModeId) {
+  return BRIDGE_PRIVACY_MODES.find((mode) => mode.id === modeId) ?? APPROVAL_BRIDGE_PRIVACY_MODE;
+}
+
+function bridgePrivacyModeForPolicies(humanVisibilityPolicy?: string | null, contactApprovalPolicy?: string | null) {
+  const normalizedHumanVisibility = (humanVisibilityPolicy ?? '').toLowerCase();
+  const normalizedContactApproval = (contactApprovalPolicy ?? '').toLowerCase();
+
+  if (normalizedHumanVisibility === 'private') {
+    return PRIVATE_BRIDGE_PRIVACY_MODE;
+  }
+  if (normalizedHumanVisibility === 'server-open' && normalizedContactApproval === 'auto') {
+    return OPEN_BRIDGE_PRIVACY_MODE;
+  }
+  return APPROVAL_BRIDGE_PRIVACY_MODE;
+}
 
 export function BridgeDetailsSection({
   activeBridgeHost,
@@ -54,6 +113,7 @@ export function BridgeDetailsSection({
   }
 
   const activeDefaultAgent = activeBridgeHost.agents.find((agent) => agent.isDefault) ?? activeBridgeHost.agents[0] ?? null;
+  const activePrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
   const trimmedIdentityOwnerName = identityOwnerName.trim();
   const identityNameChanged = trimmedIdentityOwnerName.length > 0 && trimmedIdentityOwnerName !== activeBridgeHost.ownerName.trim();
 
@@ -81,7 +141,7 @@ export function BridgeDetailsSection({
             <OverviewStat title="Status" value={activeBridgeHost.connected ? 'Connected' : 'Offline'} detail={`${activeBridgeHost.visiblePeerCount} visible on this host`} />
             <OverviewStat title="Your name" value={activeBridgeHost.ownerName} detail={`Human ID: ${activeBridgeHost.humanId}`} breakAll />
             <OverviewStat title="Default agent" value={activeDefaultAgent?.label || activeBridgeHost.displayName} detail={`Agent ID: ${activeDefaultAgent?.id || 'pending'}`} breakAll />
-            <OverviewStat title="Visibility" value={humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)} detail={`${contactApprovalLabel(activeBridgeHost.contactApprovalPolicy)} • Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
+            <OverviewStat title="Privacy mode" value={activePrivacyMode.label} detail={`${activePrivacyMode.summary} • Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
           </div>
           <div className="app-bridge-toolbar flex flex-wrap gap-2">
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => onCopyBridgeText(activeBridgeHost.serverUrl, 'Bridge host URL copied')}>
@@ -98,61 +158,226 @@ export function BridgeDetailsSection({
               Open approvals
             </Button>
           </div>
-          <DetailNav activeStep={activeStep} setActiveStep={setActiveStep} activeBridgeHost={activeBridgeHost} />
+          <BridgeInlineTimeline
+            activeBridgeHost={activeBridgeHost}
+            activeBridgePeople={activeBridgePeople}
+            activeBridgeAgents={activeBridgeAgents}
+            activeDefaultAgent={activeDefaultAgent}
+            activeStep={activeStep}
+            bridgeSettingsDraft={bridgeSettingsDraft}
+            contactNodeId={contactNodeId}
+            identityNameChanged={identityNameChanged}
+            identityOwnerName={identityOwnerName}
+            isDesktopBridgeSaving={isDesktopBridgeSaving}
+            setActiveStep={setActiveStep}
+            setBridgeSettingsDraft={setBridgeSettingsDraft}
+            setContactNodeId={setContactNodeId}
+            setIdentityOwnerName={setIdentityOwnerName}
+            onActivateBridgeAgent={onActivateBridgeAgent}
+            onAddBridgeContact={onAddBridgeContact}
+            onApproveBridgeContactRequest={onApproveBridgeContactRequest}
+            onCopyBridgeText={onCopyBridgeText}
+            onCreateBridgeAgent={onCreateBridgeAgent}
+            onOpenBridgeConversation={onOpenBridgeConversation}
+            onRejectBridgeContactRequest={onRejectBridgeContactRequest}
+            onRemoveBridgeContact={onRemoveBridgeContact}
+            onSaveBridgeSettings={onSaveBridgeSettings}
+            onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
+            onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
+            onSetDefaultBridgeAgent={onSetDefaultBridgeAgent}
+            trimmedIdentityOwnerName={trimmedIdentityOwnerName}
+          />
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {activeStep === 'visibility' ? (
-        <BridgeVisibilityStep
-          activeBridgeHost={activeBridgeHost}
-          onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
-          setActiveStep={setActiveStep}
-        />
-      ) : null}
-      {activeStep === 'agents' ? (
-        <BridgeAgentsStep
-          activeBridgeHost={activeBridgeHost}
-          onCreateBridgeAgent={onCreateBridgeAgent}
-          onActivateBridgeAgent={onActivateBridgeAgent}
-          onSetDefaultBridgeAgent={onSetDefaultBridgeAgent}
-          onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
-          setActiveStep={setActiveStep}
-        />
-      ) : null}
-      {activeStep === 'approvals' || activeStep === 'discover' ? (
-        <BridgeDiscoverStep
-          activeBridgeHost={activeBridgeHost}
-          activeBridgePeople={activeBridgePeople}
-          activeBridgeAgents={activeBridgeAgents}
-          contactNodeId={contactNodeId}
-          setContactNodeId={setContactNodeId}
-          setActiveStep={setActiveStep}
-          onAddBridgeContact={onAddBridgeContact}
-          onApproveBridgeContactRequest={onApproveBridgeContactRequest}
-          onRejectBridgeContactRequest={onRejectBridgeContactRequest}
-          onRemoveBridgeContact={onRemoveBridgeContact}
-          onOpenBridgeConversation={onOpenBridgeConversation}
-        />
-      ) : null}
-      {activeStep === 'review' ? (
-        <BridgeReviewStep activeBridgeHost={activeBridgeHost} activeDefaultAgent={activeDefaultAgent} />
-      ) : null}
-      {activeStep === 'identity' || activeStep === 'setup' ? (
-        <BridgeIdentityStep
-          activeBridgeHost={activeBridgeHost}
-          activeDefaultAgent={activeDefaultAgent}
-          bridgeSettingsDraft={bridgeSettingsDraft}
-          setBridgeSettingsDraft={setBridgeSettingsDraft}
-          identityOwnerName={identityOwnerName}
-          setIdentityOwnerName={setIdentityOwnerName}
-          identityNameChanged={identityNameChanged}
-          isDesktopBridgeSaving={isDesktopBridgeSaving}
-          onSaveBridgeSettings={onSaveBridgeSettings}
-          onCopyBridgeText={onCopyBridgeText}
-          setActiveStep={setActiveStep}
-          trimmedIdentityOwnerName={trimmedIdentityOwnerName}
-        />
-      ) : null}
+type InlineBridgeStepId = 'identity' | 'visibility' | 'approvals' | 'agents' | 'review';
+
+function BridgeInlineTimeline({
+  activeBridgeHost,
+  activeBridgePeople,
+  activeBridgeAgents,
+  activeDefaultAgent,
+  activeStep,
+  bridgeSettingsDraft,
+  contactNodeId,
+  identityNameChanged,
+  identityOwnerName,
+  isDesktopBridgeSaving,
+  setActiveStep,
+  setBridgeSettingsDraft,
+  setContactNodeId,
+  setIdentityOwnerName,
+  onActivateBridgeAgent,
+  onAddBridgeContact,
+  onApproveBridgeContactRequest,
+  onCopyBridgeText,
+  onCreateBridgeAgent,
+  onOpenBridgeConversation,
+  onRejectBridgeContactRequest,
+  onRemoveBridgeContact,
+  onSaveBridgeSettings,
+  onSetBridgeAgentReachabilityPolicy,
+  onSetBridgeHostPrivacyPolicy,
+  onSetDefaultBridgeAgent,
+  trimmedIdentityOwnerName,
+}: {
+  activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
+  activeBridgePeople: BridgeDetailsSectionProps['activeBridgePeople'];
+  activeBridgeAgents: BridgeDetailsSectionProps['activeBridgeAgents'];
+  activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
+  activeStep: BridgeDetailsSectionProps['activeStep'];
+  bridgeSettingsDraft: BridgeDetailsSectionProps['bridgeSettingsDraft'];
+  contactNodeId: string;
+  identityNameChanged: boolean;
+  identityOwnerName: string;
+  isDesktopBridgeSaving: boolean;
+  setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
+  setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
+  setContactNodeId: BridgeDetailsSectionProps['setContactNodeId'];
+  setIdentityOwnerName: BridgeDetailsSectionProps['setIdentityOwnerName'];
+  onActivateBridgeAgent: BridgeDetailsSectionProps['onActivateBridgeAgent'];
+  onAddBridgeContact: BridgeDetailsSectionProps['onAddBridgeContact'];
+  onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
+  onCopyBridgeText: BridgeDetailsSectionProps['onCopyBridgeText'];
+  onCreateBridgeAgent: BridgeDetailsSectionProps['onCreateBridgeAgent'];
+  onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
+  onRejectBridgeContactRequest: BridgeDetailsSectionProps['onRejectBridgeContactRequest'];
+  onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
+  onSaveBridgeSettings: BridgeDetailsSectionProps['onSaveBridgeSettings'];
+  onSetBridgeAgentReachabilityPolicy: BridgeDetailsSectionProps['onSetBridgeAgentReachabilityPolicy'];
+  onSetBridgeHostPrivacyPolicy: BridgeDetailsSectionProps['onSetBridgeHostPrivacyPolicy'];
+  onSetDefaultBridgeAgent: BridgeDetailsSectionProps['onSetDefaultBridgeAgent'];
+  trimmedIdentityOwnerName: string;
+}) {
+  const normalizedActiveStep: InlineBridgeStepId = activeStep === 'setup'
+    ? 'identity'
+    : activeStep === 'discover'
+      ? 'approvals'
+      : activeStep;
+  const needsRegistration = !activeBridgeHost.registered;
+  const steps: Array<{ id: InlineBridgeStepId; title: string; detail: string; disabled?: boolean }> = [
+    { id: 'identity', title: 'How you appear', detail: 'Name, host share text, and public Bridge identity.' },
+    { id: 'visibility', title: 'Visibility', detail: 'Discovery, private mode, and contact approval policy.', disabled: needsRegistration },
+    { id: 'approvals', title: 'Approvals', detail: 'Incoming requests, direct node adds, and visible peers.', disabled: needsRegistration },
+    { id: 'agents', title: 'Agent reachability', detail: 'Active/default agent plus who can call each agent.', disabled: needsRegistration },
+    { id: 'review', title: 'Review', detail: 'Effective host strategy before publishing.', disabled: needsRegistration },
+  ];
+  const activeIndex = steps.findIndex((step) => step.id === normalizedActiveStep);
+
+  const renderStepBody = (stepId: InlineBridgeStepId) => {
+    switch (stepId) {
+      case 'identity':
+        return (
+          <BridgeIdentityStep
+            activeBridgeHost={activeBridgeHost}
+            activeDefaultAgent={activeDefaultAgent}
+            bridgeSettingsDraft={bridgeSettingsDraft}
+            setBridgeSettingsDraft={setBridgeSettingsDraft}
+            identityOwnerName={identityOwnerName}
+            setIdentityOwnerName={setIdentityOwnerName}
+            identityNameChanged={identityNameChanged}
+            isDesktopBridgeSaving={isDesktopBridgeSaving}
+            onSaveBridgeSettings={onSaveBridgeSettings}
+            onCopyBridgeText={onCopyBridgeText}
+            setActiveStep={setActiveStep}
+            trimmedIdentityOwnerName={trimmedIdentityOwnerName}
+          />
+        );
+      case 'visibility':
+        return (
+          <BridgeVisibilityStep
+            activeBridgeHost={activeBridgeHost}
+            onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
+            setActiveStep={setActiveStep}
+          />
+        );
+      case 'approvals':
+        return (
+          <BridgeDiscoverStep
+            activeBridgeHost={activeBridgeHost}
+            activeBridgePeople={activeBridgePeople}
+            activeBridgeAgents={activeBridgeAgents}
+            contactNodeId={contactNodeId}
+            setContactNodeId={setContactNodeId}
+            setActiveStep={setActiveStep}
+            onAddBridgeContact={onAddBridgeContact}
+            onApproveBridgeContactRequest={onApproveBridgeContactRequest}
+            onRejectBridgeContactRequest={onRejectBridgeContactRequest}
+            onRemoveBridgeContact={onRemoveBridgeContact}
+            onOpenBridgeConversation={onOpenBridgeConversation}
+          />
+        );
+      case 'agents':
+        return (
+          <BridgeAgentsStep
+            activeBridgeHost={activeBridgeHost}
+            onCreateBridgeAgent={onCreateBridgeAgent}
+            onActivateBridgeAgent={onActivateBridgeAgent}
+            onSetDefaultBridgeAgent={onSetDefaultBridgeAgent}
+            onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
+            setActiveStep={setActiveStep}
+          />
+        );
+      case 'review':
+        return (
+          <BridgeReviewStep
+            activeBridgeHost={activeBridgeHost}
+            activeDefaultAgent={activeDefaultAgent}
+            bridgeSettingsDraft={bridgeSettingsDraft}
+            identityOwnerName={identityOwnerName}
+            isDesktopBridgeSaving={isDesktopBridgeSaving}
+            onSaveBridgeSettings={onSaveBridgeSettings}
+            setBridgeSettingsDraft={setBridgeSettingsDraft}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="app-bridge-detail-nav app-bridge-timeline app-bridge-inline-timeline space-y-2">
+      {steps.map((step, index) => {
+        const active = step.id === normalizedActiveStep;
+        const complete = !active && activeIndex > index;
+        return (
+          <div key={step.id} className={cn('app-bridge-timeline-segment rounded-[20px]', active ? 'is-active' : '', step.disabled ? 'is-disabled' : '')}>
+            <button
+              type="button"
+              disabled={step.disabled}
+              aria-expanded={active}
+              onClick={() => setActiveStep(step.id)}
+              className={cn(
+                'app-bridge-timeline-step flex w-full items-start gap-3 rounded-[18px] border px-3 py-3 text-left transition',
+                active ? 'border-white/20 bg-white/[0.08]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
+                step.disabled ? 'cursor-not-allowed opacity-45 hover:bg-white/[0.04]' : '',
+              )}
+            >
+              <span className={cn('app-bridge-timeline-dot mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px]', active ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100' : complete ? 'border-emerald-300/30 bg-emerald-300/12 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-slate-400')}>
+                {complete ? '✓' : index + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-medium text-white">{step.title}</span>
+                <span className="mt-1 block text-[11px] leading-5 text-slate-400">{step.detail}</span>
+              </span>
+              <span className="mt-1 flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                {active ? 'Open' : complete ? 'Done' : 'Next'}
+                <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', active ? 'rotate-90 text-slate-300' : 'text-slate-500')} />
+              </span>
+            </button>
+            {active ? (
+              <div className="app-bridge-step-detail-region" role="region" aria-label={step.title}>
+                <div className="app-bridge-step-detail-inner">
+                  {renderStepBody(step.id)}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -184,6 +409,8 @@ function BridgeIdentityStep({
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
   trimmedIdentityOwnerName: string;
 }) {
+  const activePrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
+
   return (
     <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
@@ -216,12 +443,12 @@ function BridgeIdentityStep({
                   ...current,
                   ownerName: trimmedIdentityOwnerName,
                 } : current);
-                onSaveBridgeSettings({
+                void onSaveBridgeSettings({
                   hostId: bridgeSettingsDraft?.hostId ?? activeBridgeHost.id,
                   serverUrl: bridgeSettingsDraft?.serverUrl || activeBridgeHost.serverUrl,
                   displayName: bridgeSettingsDraft?.displayName || activeBridgeHost.displayName || DEFAULT_BRIDGE_DISPLAY_NAME,
                   ownerName: trimmedIdentityOwnerName,
-                });
+                }).catch(() => {});
               }}
             >
               {isDesktopBridgeSaving ? 'Saving…' : 'Save name'}
@@ -230,7 +457,7 @@ function BridgeIdentityStep({
         </div>
 
         <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-          Current strategy: <span className="text-slate-200">{humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}</span> with <span className="text-slate-200">{contactApprovalLabel(activeBridgeHost.contactApprovalPolicy).toLowerCase()}</span>. Visibility settings are reviewed next so privacy controls stay separate from naming.
+          Current privacy mode: <span className="text-slate-200">{activePrivacyMode.label}</span>. {activePrivacyMode.summary} Visibility settings are reviewed next so privacy controls stay separate from naming.
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -262,62 +489,107 @@ function BridgeVisibilityStep({
   onSetBridgeHostPrivacyPolicy: BridgeDetailsSectionProps['onSetBridgeHostPrivacyPolicy'];
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
 }) {
-  const activeHumanVisibility = (activeBridgeHost.humanVisibilityPolicy ?? 'server-approval') as HumanVisibilityPolicy;
-  const activeContactApproval = (activeBridgeHost.contactApprovalPolicy ?? 'approval-required') as ContactApprovalPolicy;
+  const savedPrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
+  const [draftPrivacyModeId, setDraftPrivacyModeId] = useState<BridgePrivacyModeId>(savedPrivacyMode.id);
+  const [policySaveState, setPolicySaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  useEffect(() => {
+    setDraftPrivacyModeId(savedPrivacyMode.id);
+  }, [savedPrivacyMode.id]);
+
+  useEffect(() => {
+    setPolicySaveState('idle');
+  }, [activeBridgeHost.id]);
+
+  const selectPrivacyMode = (nextMode: BridgePrivacyMode) => {
+    setDraftPrivacyModeId(nextMode.id);
+    setPolicySaveState('idle');
+  };
+
+  const activePrivacyMode = bridgePrivacyModeById(draftPrivacyModeId);
+  const hasPrivacyModeChanges = draftPrivacyModeId !== savedPrivacyMode.id;
+  const handleContinueFromPrivacyMode = () => {
+    if (!hasPrivacyModeChanges) {
+      setActiveStep('approvals');
+      return;
+    }
+
+    setPolicySaveState('saving');
+    void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, activePrivacyMode.humanVisibilityPolicy, activePrivacyMode.contactApprovalPolicy)
+      .then(() => {
+        setPolicySaveState('saved');
+        setActiveStep('approvals');
+      })
+      .catch(() => {
+        setPolicySaveState('error');
+      });
+  };
+  const policyStatusText = policySaveState === 'saving'
+    ? 'Saving privacy mode…'
+    : policySaveState === 'error'
+      ? 'Could not save. Try again before continuing.'
+      : hasPrivacyModeChanges
+        ? 'Not saved yet. This privacy mode will be saved when you continue.'
+        : 'Saved on this host.';
 
   return (
     <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
         <CardTitle className="text-base">Discovery visibility and private protection</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4 text-sm text-slate-300">
+      <CardContent className="space-y-3 text-sm text-slate-300">
         <div className="text-[12px] leading-5 text-slate-400">
-          Choose what people on this Bridges host can see before they contact you. These controls are saved to the host and enforced by self-hosted Bridges serve.
+          Pick one privacy mode. Each mode bundles discovery and approval behavior; your choice is saved when you continue.
         </div>
-        <div className="space-y-2">
-          <div className="text-[12px] font-medium text-white">Human / host visibility</div>
-          <div className="grid gap-2 md:grid-cols-3">
-            {HUMAN_VISIBILITY_OPTIONS.map((option) => {
-              const active = option.value === activeHumanVisibility;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => { void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, option.value, activeContactApproval).catch(() => {}); }}
-                  className={cn('rounded-[16px] border px-3 py-2.5 text-left transition', active ? 'border-white/20 bg-white/[0.08]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]')}
-                >
-                  <div className="text-[12px] font-medium text-white">{option.label}</div>
-                  <div className="mt-1 text-[11px] leading-5 text-slate-400">{option.detail}</div>
-                </button>
-              );
-            })}
+        <div className="app-bridge-privacy-mode-list overflow-hidden rounded-[18px] border border-white/10 bg-white/[0.025]" role="radiogroup" aria-label="Bridge privacy mode">
+          {BRIDGE_PRIVACY_MODES.map((mode, index) => {
+            const active = mode.id === draftPrivacyModeId;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                aria-pressed={active}
+                aria-label={`${mode.label}${active ? ' selected' : ''}. ${mode.summary} ${mode.detail}`}
+                disabled={policySaveState === 'saving'}
+                onClick={() => selectPrivacyMode(mode)}
+                className={cn(
+                  'app-bridge-privacy-mode-row flex w-full items-start gap-3 px-3 py-3 text-left transition',
+                  index > 0 ? 'border-t border-white/8' : '',
+                  active ? 'is-selected bg-cyan-300/[0.08]' : 'hover:bg-white/[0.045]',
+                  policySaveState === 'saving' ? 'cursor-wait opacity-70' : '',
+                )}
+              >
+                <span className={cn('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px]', active ? 'border-cyan-300/50 bg-cyan-300/12 text-cyan-50' : 'border-white/12 bg-white/[0.03] text-transparent')}>
+                  {active ? <Check className="h-3 w-3" /> : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-[12px] font-medium text-white">{mode.label}</span>
+                    {mode.recommended ? (
+                      <span className="rounded-full border border-emerald-300/18 bg-emerald-300/8 px-2 py-0.5 text-[10px] font-medium text-emerald-100">Recommended</span>
+                    ) : null}
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-5 text-slate-400">{mode.summary}</span>
+                  <span className="mt-0.5 block text-[11px] leading-5 text-slate-500">{mode.detail}</span>
+                </span>
+                {active ? <span className="mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-cyan-100">Selected</span> : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="app-bridge-policy-summary app-bridge-meta-block flex flex-col gap-1 rounded-[16px] px-3 py-2.5 text-[12px] leading-5 text-slate-400 sm:flex-row sm:items-center sm:justify-between" aria-live="polite">
+          <div>
+            Current privacy mode: <span className="text-slate-200">{activePrivacyMode.label}</span>
+          </div>
+          <div className={cn('text-[11px]', policySaveState === 'error' ? 'text-rose-200' : policySaveState === 'saving' ? 'text-cyan-100' : 'text-emerald-100')}>
+            {policyStatusText}
           </div>
         </div>
-        <div className="space-y-2">
-          <div className="text-[12px] font-medium text-white">Contact approval</div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {CONTACT_APPROVAL_OPTIONS.map((option) => {
-              const active = option.value === activeContactApproval;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => { void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, activeHumanVisibility, option.value).catch(() => {}); }}
-                  className={cn('rounded-[16px] border px-3 py-2.5 text-left transition', active ? 'border-white/20 bg-white/[0.08]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]')}
-                >
-                  <div className="text-[12px] font-medium text-white">{option.label}</div>
-                  <div className="mt-1 text-[11px] leading-5 text-slate-400">{option.detail}</div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-          Effective now: <span className="text-slate-200">{humanVisibilityLabel(activeHumanVisibility)}</span> • <span className="text-slate-200">{contactApprovalLabel(activeContactApproval)}</span>.
-        </div>
-        <div className="flex justify-end">
-          <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('approvals')} disabled={!activeBridgeHost.registered}>
-            Next: approvals <ChevronRight className="ml-2 h-4 w-4" />
+        <div className="flex justify-end border-t border-white/8 pt-3">
+          <Button className="h-8 rounded-full px-3 text-[11px]" onClick={handleContinueFromPrivacyMode} disabled={!activeBridgeHost.registered || policySaveState === 'saving'}>
+            {policySaveState === 'saving' ? 'Saving…' : hasPrivacyModeChanges ? 'Save & next: approvals' : 'Next: approvals'} <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
           </Button>
         </div>
       </CardContent>
@@ -464,6 +736,7 @@ function BridgeDiscoverStep({
 
   const pendingIncoming = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'incoming' && request.status === 'pending');
   const pendingOutgoing = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'outgoing' && request.status === 'pending');
+  const activePrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
 
   return (
     <div className="w-full space-y-4">
@@ -512,7 +785,7 @@ function BridgeDiscoverStep({
             </Button>
           </div>
           <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-            Current visibility: <span className="text-slate-200">{humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}</span>. Saved contacts and shared projects still work even when open discovery is off.
+            Current privacy mode: <span className="text-slate-200">{activePrivacyMode.label}</span>. Saved contacts and shared projects still work even when open discovery is off.
           </div>
         </CardContent>
       </Card>
@@ -582,10 +855,45 @@ function BridgeDiscoverStep({
 function BridgeReviewStep({
   activeBridgeHost,
   activeDefaultAgent,
+  bridgeSettingsDraft,
+  identityOwnerName,
+  isDesktopBridgeSaving,
+  onSaveBridgeSettings,
+  setBridgeSettingsDraft,
 }: {
   activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
   activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
+  bridgeSettingsDraft: BridgeDetailsSectionProps['bridgeSettingsDraft'];
+  identityOwnerName: string;
+  isDesktopBridgeSaving: boolean;
+  onSaveBridgeSettings: BridgeDetailsSectionProps['onSaveBridgeSettings'];
+  setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
 }) {
+  const ownerNameForSave = identityOwnerName.trim() || activeBridgeHost.ownerName.trim() || DEFAULT_BRIDGE_OWNER_NAME;
+  const activePrivacyMode = bridgePrivacyModeForPolicies(activeBridgeHost.humanVisibilityPolicy, activeBridgeHost.contactApprovalPolicy);
+  const contactBehavior = activePrivacyMode.contactApprovalPolicy === 'auto'
+    ? { value: 'Contact immediately', detail: 'New people can start direct contact without approval.' }
+    : { value: 'Approve first', detail: `${(activeBridgeHost.contactRequests ?? []).filter((request) => request.status === 'pending').length} pending approval request(s)` };
+  const finalDraft = {
+    hostId: bridgeSettingsDraft?.hostId ?? activeBridgeHost.id,
+    serverUrl: bridgeSettingsDraft?.serverUrl || activeBridgeHost.serverUrl,
+    displayName: bridgeSettingsDraft?.displayName || activeBridgeHost.displayName || DEFAULT_BRIDGE_DISPLAY_NAME,
+    ownerName: ownerNameForSave,
+  };
+  const [reviewSaveState, setReviewSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  useEffect(() => {
+    setReviewSaveState('idle');
+  }, [activeBridgeHost.id, finalDraft.displayName, finalDraft.ownerName, finalDraft.serverUrl]);
+
+  const reviewSaveStatusText = reviewSaveState === 'saving'
+    ? 'Saving host profile…'
+    : reviewSaveState === 'saved'
+      ? 'Saved successfully.'
+      : reviewSaveState === 'error'
+        ? 'Could not save. Try again before leaving this page.'
+        : '';
+
   return (
     <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
       <CardHeader>
@@ -593,14 +901,14 @@ function BridgeReviewStep({
       </CardHeader>
       <CardContent className="space-y-3 text-sm text-slate-300">
         <OverviewStat
-          title="People can find me"
-          value={humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}
-          detail={activeBridgeHost.humanVisibilityPolicy === 'server-open' ? 'Discovery and first reachout are open to this host.' : activeBridgeHost.humanVisibilityPolicy === 'private' ? 'Hidden unless connected by invite, project, or approved contact.' : 'Visible in discovery, but approval protects direct contact.'}
+          title="Privacy mode"
+          value={activePrivacyMode.label}
+          detail={activePrivacyMode.detail}
         />
         <OverviewStat
-          title="Contact approval"
-          value={contactApprovalLabel(activeBridgeHost.contactApprovalPolicy)}
-          detail={`${(activeBridgeHost.contactRequests ?? []).filter((request) => request.status === 'pending').length} pending approval request(s)`}
+          title="New people"
+          value={contactBehavior.value}
+          detail={contactBehavior.detail}
         />
         <OverviewStat
           title="Default agent reachability"
@@ -610,6 +918,35 @@ function BridgeReviewStep({
         />
         <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
           This is the effective strategy after save/publish. Self-hosted Bridges serve enforces discovery listing, pending contact approval, and direct relay/key access where the server supports policy fields.
+        </div>
+        <div className="app-bridge-review-save app-bridge-meta-block flex flex-col gap-3 rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="font-medium text-slate-200">Ready to finish?</div>
+            <div className="mt-1">Save the host profile and confirm the published strategy.</div>
+            <div
+              className={cn(
+                'app-bridge-review-save-status mt-2 min-h-4 text-[11px]',
+                reviewSaveState === 'saved' ? 'text-emerald-100' : reviewSaveState === 'error' ? 'text-rose-200' : 'text-cyan-100',
+              )}
+              aria-live="polite"
+            >
+              {reviewSaveStatusText}
+            </div>
+          </div>
+          <Button
+            className="shrink-0 rounded-[14px] text-[12px]"
+            disabled={isDesktopBridgeSaving || reviewSaveState === 'saving' || !finalDraft.serverUrl.trim()}
+            onClick={() => {
+              setReviewSaveState('saving');
+              setBridgeSettingsDraft((current) => current ? { ...current, ...finalDraft } : finalDraft);
+              void onSaveBridgeSettings(finalDraft)
+                .then(() => setReviewSaveState('saved'))
+                .catch(() => setReviewSaveState('error'));
+            }}
+          >
+            {reviewSaveState === 'saved' ? <Check className="mr-1.5 h-3.5 w-3.5" /> : null}
+            {isDesktopBridgeSaving || reviewSaveState === 'saving' ? 'Saving…' : reviewSaveState === 'saved' ? 'Saved' : reviewSaveState === 'error' ? 'Try saving again' : 'Save and finish'}
+          </Button>
         </div>
       </CardContent>
     </Card>

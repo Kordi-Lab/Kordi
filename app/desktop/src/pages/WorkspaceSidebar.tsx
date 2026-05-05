@@ -178,6 +178,7 @@ type WorkspaceSidebarProps = {
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
   onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
   onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
   onRenameChatSession: (sessionId: string, title: string) => void;
@@ -202,6 +203,8 @@ type WorkspaceSidebarProps = {
   onSelectProjectSession: (projectId: string, sessionId: string) => void;
   groupedContacts: Array<{ id: ContactClass; label: string; items: ContactItem[] }>;
   displayedContacts: ContactItem[];
+  addableContacts: ContactItem[];
+  contactRequestCount: number;
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
@@ -370,6 +373,7 @@ export function WorkspaceSidebar({
   onStartChatWithPerson,
   onStartChatWithAgent,
   onCreateChatGroup,
+  onAddContactByNodeId,
   onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
   onRenameChatSession,
@@ -394,6 +398,8 @@ export function WorkspaceSidebar({
   onSelectProjectSession,
   groupedContacts,
   displayedContacts,
+  addableContacts,
+  contactRequestCount,
   setActiveContactGroup,
   setActiveContactId,
   displayedAgents,
@@ -407,6 +413,7 @@ export function WorkspaceSidebar({
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
   const contactUnread = contactParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
   const agentUnread = agentParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
+  const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
   const chatStatusLabel = isBridgePolling
@@ -764,6 +771,14 @@ export function WorkspaceSidebar({
                       {item.id === 'chats' && totalUnread > 0 ? (
                         <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
                           {formatUnreadCount(totalUnread)}
+                        </span>
+                      ) : null}
+                      {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
+                        <span
+                          className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
+                          aria-label={`${formatUnreadCount(pendingContactRequestCount)} pending contact request${pendingContactRequestCount === 1 ? '' : 's'}`}
+                        >
+                          {formatUnreadCount(pendingContactRequestCount)}
                         </span>
                       ) : null}
                     </span>
@@ -1168,6 +1183,7 @@ export function WorkspaceSidebar({
       <ChatCreateDialog
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
+        addableContacts={addableContacts}
         agents={displayedAgents}
         onClose={() => {
           setIsChatCreateDialogOpen(false);
@@ -1176,6 +1192,7 @@ export function WorkspaceSidebar({
         onStartPerson={onStartChatWithPerson}
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
+        onAddContact={onAddContactByNodeId}
         anchorRect={chatCreateAnchor}
       />
 

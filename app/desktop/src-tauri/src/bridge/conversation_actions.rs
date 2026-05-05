@@ -18,12 +18,14 @@ use super::outreach::mark_outreach_status;
 use super::realtime::send_realtime_or_relay;
 use super::{
     add_serve_contact, append_conversation_message_to_storage_with_timestamp,
-    build_conversation_only_bridge_state, current_local_server_status, default_display_name,
-    load_bridge_store, load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
-    relay_plaintext_message, save_conversation_store, send_realtime_payload,
-    update_message_delivery_state_in_storage, DesktopBridgeConversationRecord,
-    DesktopBridgeConversationStore, DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus,
-    DesktopBridgeManager, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
+    build_conversation_only_bridge_state, current_local_server_status,
+    default_contact_request_message, default_display_name, fetch_serve_contact_requests,
+    fetch_serve_contacts, fetch_serve_discovery, load_bridge_store, load_conversation_store,
+    mark_bridge_conversation_read_in_storage, now_ms, relay_plaintext_message,
+    save_conversation_store, send_realtime_payload, update_message_delivery_state_in_storage,
+    DesktopBridgeContactRequest, DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
+    DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus, DesktopBridgeManager,
+    DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata, DesktopBridgePeer,
     DesktopBridgeState, DesktopBridgeStore,
 };
 
@@ -344,12 +346,148 @@ fn should_retry_direct_serve_with_contact_fallback(
 }
 
 async fn add_direct_contact_for_context(context: &ConversationContext) -> Result<(), String> {
+    let message = default_contact_request_message(&context.host);
     add_serve_contact(
         &context.host.coordination,
         &context.host.api_key,
         &context.conversation.peer_node_id,
+        Some(&message),
     )
     .await
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DirectPersonContactGateAction {
+    Allow,
+    SendRequest,
+    BlockPendingOutgoing,
+    BlockPendingIncoming,
+    BlockRejected,
+}
+
+fn direct_person_messages_require_contact_gate(context: &ConversationContext) -> bool {
+    context.host.api_style == API_STYLE_SERVE
+        && context.conversation.project_id.is_none()
+        && context
+            .conversation
+            .peer_runtime
+            .trim()
+            .eq_ignore_ascii_case("person")
+}
+
+fn target_is_approved_contact(contacts: &[DesktopBridgePeer], target_node_id: &str) -> bool {
+    contacts
+        .iter()
+        .any(|contact| contact.node_id == target_node_id)
+}
+
+fn contact_request_matches_target(
+    request: &DesktopBridgeContactRequest,
+    local_node_id: &str,
+    target_node_id: &str,
+) -> bool {
+    (request.requester_node_id == local_node_id && request.target_node_id == target_node_id)
+        || (request.requester_node_id == target_node_id && request.target_node_id == local_node_id)
+}
+
+fn target_allows_unapproved_person_messages(target_peer: Option<&DesktopBridgePeer>) -> bool {
+    let Some(peer) = target_peer else {
+        return false;
+    };
+    peer.human_visibility_policy.as_deref() == Some("server-open")
+        && peer.contact_approval_policy.as_deref() == Some("auto")
+}
+
+fn direct_person_contact_gate_action(
+    context: &ConversationContext,
+    contacts: &[DesktopBridgePeer],
+    contact_requests: &[DesktopBridgeContactRequest],
+    target_peer: Option<&DesktopBridgePeer>,
+) -> DirectPersonContactGateAction {
+    if !direct_person_messages_require_contact_gate(context) {
+        return DirectPersonContactGateAction::Allow;
+    }
+
+    let target_node_id = context.conversation.peer_node_id.as_str();
+    if target_is_approved_contact(contacts, target_node_id) {
+        return DirectPersonContactGateAction::Allow;
+    }
+
+    if let Some(request) = contact_requests.iter().find(|request| {
+        contact_request_matches_target(request, &context.host.node_id, target_node_id)
+    }) {
+        let status = request.status.trim().to_ascii_lowercase();
+        if status == "approved" {
+            return DirectPersonContactGateAction::Allow;
+        }
+        if status == "pending" && request.direction == "outgoing" {
+            return DirectPersonContactGateAction::BlockPendingOutgoing;
+        }
+        if status == "pending" && request.direction == "incoming" {
+            return DirectPersonContactGateAction::BlockPendingIncoming;
+        }
+        if status == "rejected" {
+            return DirectPersonContactGateAction::BlockRejected;
+        }
+    }
+
+    if target_allows_unapproved_person_messages(target_peer) {
+        return DirectPersonContactGateAction::Allow;
+    }
+
+    DirectPersonContactGateAction::SendRequest
+}
+
+fn direct_person_contact_gate_message(
+    action: DirectPersonContactGateAction,
+) -> Option<&'static str> {
+    match action {
+        DirectPersonContactGateAction::Allow => None,
+        DirectPersonContactGateAction::SendRequest => {
+            Some("Contact request sent. They need to approve it before messages can be delivered.")
+        }
+        DirectPersonContactGateAction::BlockPendingOutgoing => Some(
+            "Contact request is pending. They need to approve it before messages can be delivered.",
+        ),
+        DirectPersonContactGateAction::BlockPendingIncoming => {
+            Some("Approve this contact request before sending messages.")
+        }
+        DirectPersonContactGateAction::BlockRejected => {
+            Some("Contact request was rejected, so messages are blocked.")
+        }
+    }
+}
+
+async fn ensure_direct_person_contact_approved(
+    context: &ConversationContext,
+) -> Result<(), String> {
+    if !direct_person_messages_require_contact_gate(context) {
+        return Ok(());
+    }
+
+    let contacts = fetch_serve_contacts(&context.host.coordination, &context.host.api_key)
+        .await
+        .unwrap_or_default();
+    let contact_requests =
+        fetch_serve_contact_requests(&context.host.coordination, &context.host.api_key)
+            .await
+            .unwrap_or_default();
+    let discovery_peers = fetch_serve_discovery(&context.host.coordination, &context.host.api_key)
+        .await
+        .unwrap_or_default();
+    let target_peer = discovery_peers
+        .iter()
+        .find(|peer| peer.node_id == context.conversation.peer_node_id);
+
+    let action =
+        direct_person_contact_gate_action(context, &contacts, &contact_requests, target_peer);
+    if action == DirectPersonContactGateAction::SendRequest {
+        add_direct_contact_for_context(context).await?;
+    }
+    if let Some(message) = direct_person_contact_gate_message(action) {
+        return Err(message.to_string());
+    }
+    Ok(())
 }
 
 async fn relay_with_contact_fallback(
@@ -901,9 +1039,10 @@ pub(super) async fn desktop_bridge_send_message_impl(
         return Err("Bridge message cannot be empty".to_string());
     }
 
+    let (store, _conversations, context) = load_conversation_context(&conversation_id)?;
+    ensure_direct_person_contact_approved(&context).await?;
     let (attachments, attachment_payloads) =
         bridge_attachment_payloads_from_paths(&attachment_paths, &attachment_names)?;
-    let (store, _conversations, context) = load_conversation_context(&conversation_id)?;
     let fresh_outreach_for_message = context.conversation.outreach.clone().filter(|outreach| {
         outreach.request_text.trim() == message
             && now_ms().saturating_sub(outreach.created_at_ms) < 30_000
@@ -1091,6 +1230,111 @@ mod tests {
             &context,
             "Unable to fetch bridge recipient keys: HTTP 403 Forbidden",
         ));
+    }
+
+    fn test_peer_with_policy(
+        node_id: &str,
+        human_visibility_policy: &str,
+        contact_approval_policy: &str,
+    ) -> DesktopBridgePeer {
+        DesktopBridgePeer {
+            node_id: node_id.to_string(),
+            display_name: Some("Peer".to_string()),
+            runtime: "person".to_string(),
+            endpoint: String::new(),
+            owner_name: Some("Peer".to_string()),
+            created_at: None,
+            shared_projects: Vec::new(),
+            human_id: Some("human-peer".to_string()),
+            agent_id: None,
+            is_default_agent: false,
+            discovery_mode: None,
+            human_visibility_policy: Some(human_visibility_policy.to_string()),
+            contact_approval_policy: Some(contact_approval_policy.to_string()),
+            agent_reachability_policy: Some("contacts".to_string()),
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
+        }
+    }
+
+    fn test_contact_request(status: &str, direction: &str) -> DesktopBridgeContactRequest {
+        let (requester_node_id, target_node_id) = if direction == "incoming" {
+            ("peer-1".to_string(), "self-1".to_string())
+        } else {
+            ("self-1".to_string(), "peer-1".to_string())
+        };
+        DesktopBridgeContactRequest {
+            request_id: "request-1".to_string(),
+            requester_node_id,
+            target_node_id,
+            status: status.to_string(),
+            message: None,
+            created_at: "2026-05-05T00:00:00Z".to_string(),
+            decided_at: None,
+            direction: direction.to_string(),
+        }
+    }
+
+    #[test]
+    fn direct_person_contact_gate_sends_request_for_approval_required_non_contact() {
+        let context = ConversationContext {
+            conversation: test_conversation(Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+        let peer = test_peer_with_policy("peer-1", "server-approval", "approval-required");
+
+        assert_eq!(
+            direct_person_contact_gate_action(&context, &[], &[], Some(&peer)),
+            DirectPersonContactGateAction::SendRequest,
+        );
+    }
+
+    #[test]
+    fn direct_person_contact_gate_blocks_pending_or_rejected_requests() {
+        let context = ConversationContext {
+            conversation: test_conversation(Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+        let peer = test_peer_with_policy("peer-1", "server-approval", "approval-required");
+
+        assert_eq!(
+            direct_person_contact_gate_action(
+                &context,
+                &[],
+                &[test_contact_request("pending", "outgoing")],
+                Some(&peer),
+            ),
+            DirectPersonContactGateAction::BlockPendingOutgoing,
+        );
+        assert_eq!(
+            direct_person_contact_gate_action(
+                &context,
+                &[],
+                &[test_contact_request("rejected", "outgoing")],
+                Some(&peer),
+            ),
+            DirectPersonContactGateAction::BlockRejected,
+        );
+    }
+
+    #[test]
+    fn direct_person_contact_gate_allows_approved_contact_or_open_auto_target() {
+        let context = ConversationContext {
+            conversation: test_conversation(Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+        let open_peer = test_peer_with_policy("peer-1", "server-open", "auto");
+        let contact_peer = test_peer_with_policy("peer-1", "server-approval", "approval-required");
+
+        assert_eq!(
+            direct_person_contact_gate_action(&context, &[], &[], Some(&open_peer)),
+            DirectPersonContactGateAction::Allow,
+        );
+        assert_eq!(
+            direct_person_contact_gate_action(&context, &[contact_peer], &[], None),
+            DirectPersonContactGateAction::Allow,
+        );
     }
 
     #[test]

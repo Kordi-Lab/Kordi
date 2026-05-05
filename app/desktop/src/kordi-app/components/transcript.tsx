@@ -692,10 +692,14 @@ export function ContactRequestRow({
   request,
   active,
   onReview,
+  onAccept,
+  onReject,
 }: {
   request: ContactRequest;
   active: boolean;
   onReview: () => void;
+  onAccept?: () => void;
+  onReject?: () => void;
 }) {
   return (
     <div
@@ -707,7 +711,7 @@ export function ContactRequestRow({
       <div className="flex items-start gap-3">
         <IdentityAvatar
           kind={requestAvatarKind(request)}
-          seed={request.id}
+          seed={request.avatarSeed ?? request.id}
           name={request.title}
           imageUrl={request.profileImageUrl}
           className="h-10 w-10 border border-white/10"
@@ -722,8 +726,8 @@ export function ContactRequestRow({
             <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview}>
               Review details
             </Button>
-            <Button className="h-8 rounded-xl px-3 text-[11px]">Accept</Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]">
+            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept}>Accept</Button>
+            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject}>
               Reject
             </Button>
           </div>

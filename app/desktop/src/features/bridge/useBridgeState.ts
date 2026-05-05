@@ -333,6 +333,7 @@ export function useBridgeState({
         setDesktopBridgeState(restoredState);
       }
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to save bridge host');
+      throw error;
     } finally {
       setIsDesktopBridgeSaving(false);
     }
@@ -525,7 +526,7 @@ export function useBridgeState({
   }, [currentActiveHost]);
 
   useEffect(() => {
-    if (!isNativeShell || activeNav !== 'bridge') return;
+    if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
     const refresh = () => {
       void refreshDesktopBridge();
     };
@@ -535,7 +536,7 @@ export function useBridgeState({
       window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
     };
-  }, [activeNav, isNativeShell, refreshDesktopBridge]);
+  }, [desktopBridgeState?.hosts.length, isNativeShell, refreshDesktopBridge]);
 
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;

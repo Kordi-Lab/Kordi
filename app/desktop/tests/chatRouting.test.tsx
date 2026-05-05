@@ -59,6 +59,108 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(totalChannelSpaces, viewModels?.participantSpaces.length);
 });
 
+test('workspace view model exposes visible non-contact Bridge people for Add contacts only', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: null,
+      desktopBridgeState: {
+        configPath: '/tmp/bridge.json',
+        legacyConfigPath: '/tmp/legacy.json',
+        conversationsPath: '/tmp/conversations.sqlite3',
+        activeHostId: 'host-1',
+        hosts: [{
+          id: 'host-1',
+          registered: true,
+          connected: true,
+          serverUrl: 'https://bridge.test',
+          nodeId: 'kd_me',
+          displayName: 'Me',
+          ownerName: 'Me',
+          endpoint: 'https://bridge.test/kd_me',
+          tokenPresent: true,
+          humanId: 'kh_me',
+          discoveryMode: 'open',
+          humanVisibilityPolicy: 'server-approval',
+          contactApprovalPolicy: 'approval-required',
+          activeAgentId: null,
+          agents: [],
+          visiblePeers: [{
+            nodeId: 'kd_visible',
+            displayName: 'Kordi User 6',
+            runtime: 'person',
+            endpoint: '',
+            ownerName: 'Kordi User 6',
+            createdAt: null,
+            sharedProjects: [],
+            humanId: 'kh_visible',
+            agentId: null,
+            isDefaultAgent: false,
+            discoveryMode: null,
+            humanVisibilityPolicy: 'server-approval',
+            contactApprovalPolicy: 'approval-required',
+            agentReachabilityPolicy: 'contacts',
+            isContact: false,
+            contactRequestStatus: null,
+            contactRequestDirection: null,
+          }, {
+            nodeId: 'kd_contact',
+            displayName: 'Existing Contact',
+            runtime: 'person',
+            endpoint: '',
+            ownerName: 'Existing Contact',
+            createdAt: null,
+            sharedProjects: [],
+            humanId: 'kh_contact',
+            agentId: null,
+            isDefaultAgent: false,
+            discoveryMode: null,
+            humanVisibilityPolicy: 'server-open',
+            contactApprovalPolicy: 'auto',
+            agentReachabilityPolicy: 'contacts',
+            isContact: true,
+            contactRequestStatus: 'contact',
+            contactRequestDirection: null,
+          }],
+          visiblePeerCount: 2,
+          projects: [],
+          contactRequests: [],
+          lastError: null,
+        }],
+        conversations: [],
+        localServer: { running: true },
+      } as never,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'contacts',
+      activeConvId: '',
+      activeProjectId: '',
+      activeProjectSessionId: '',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.deepEqual(viewModels?.addableContacts.map((contact) => contact.name), ['Kordi User 6']);
+  assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Kordi User 6'), false);
+  assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Existing Contact'), true);
+});
+
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

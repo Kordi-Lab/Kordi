@@ -87,6 +87,7 @@ export type AssembleKordiShellSlotsArgs = {
   setExpandedProjectIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   groupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
   displayedContacts: Contact[];
+  addableContacts: Contact[];
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
@@ -126,7 +127,7 @@ export type AssembleKordiShellSlotsArgs = {
   setExpandedContactGroups: Dispatch<SetStateAction<Record<ContactClass, boolean>>>;
   activeContactId: string;
   activeContact: Contact;
-  activeContactRequest: ContactRequest;
+  activeContactRequest?: ContactRequest;
   contactOverlayMode: 'contact' | 'request' | null;
   getStatusBadgeClass: (value: string) => string;
   handleOpenBridgeConversation: (
@@ -344,6 +345,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'
   | 'handleCreateChatGroup'
+  | 'handleAddBridgeContact'
   | 'handleCreateChatSessionInParticipantSpace'
   | 'handleRenameChatGroup'
   | 'handleRenameChatSession'
@@ -368,6 +370,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectProjectSession'
   | 'groupedContacts'
   | 'displayedContacts'
+  | 'addableContacts'
+  | 'contactRequests'
   | 'setActiveContactGroup'
   | 'setActiveContactId'
   | 'displayedAgents'
@@ -387,6 +391,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectChatSession'
   | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
+  | 'addableContacts'
   | 'isContactRequestsOpen'
   | 'setIsContactRequestsOpen'
   | 'contactRequests'

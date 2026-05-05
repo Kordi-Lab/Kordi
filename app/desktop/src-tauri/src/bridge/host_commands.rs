@@ -7,16 +7,16 @@ use super::{
     add_serve_contact, apply_missing_agent_routing, approve_serve_contact_request,
     bridge_hosts_match, build_bridge_state, build_current_bridge_state,
     current_local_server_status, default_agent_reachability_policy, default_bridge_agent_label,
-    default_bridge_agent_runtime, default_bridge_api_style, default_display_name, default_endpoint,
-    default_owner_name, delete_bridge_host_secrets, delete_conversations_for_host,
-    ensure_host_bootstrap, generate_agent_id, health_check, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
-    normalize_imported_bridge_host, normalize_server_url, parse_imported_bridge_store,
-    register_bridge_host, reject_serve_contact_request, remove_serve_contact, save_bridge_store,
-    save_conversation_store, sync_host_active_agent_fields, update_registered_registry_node,
-    update_serve_discovery_mode, write_bridge_store_export, DesktopBridgeAgentConfig,
-    DesktopBridgeAgentRouting, DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState,
-    DesktopBridgeStore,
+    default_bridge_agent_runtime, default_bridge_api_style, default_contact_request_message,
+    default_display_name, default_endpoint, default_owner_name, delete_bridge_host_secrets,
+    delete_conversations_for_host, ensure_host_bootstrap, generate_agent_id, health_check,
+    legacy_bridge_config_path, load_bridge_store, load_conversation_store,
+    load_legacy_bridge_config, normalize_imported_bridge_host, normalize_server_url,
+    parse_imported_bridge_store, register_bridge_host, reject_serve_contact_request,
+    remove_serve_contact, save_bridge_store, save_conversation_store,
+    sync_host_active_agent_fields, update_registered_registry_node, update_serve_discovery_mode,
+    write_bridge_store_export, DesktopBridgeAgentConfig, DesktopBridgeAgentRouting,
+    DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
 use super::{desktop_bridge_config_path, desktop_bridge_conversations_path, korde_dir};
 
@@ -939,7 +939,14 @@ pub(super) async fn desktop_bridge_add_contact_impl(
     }
     let store = load_bridge_store();
     let host = require_serve_host(&store, &host_id, SERVE_ONLY_CONTACTS_MESSAGE)?;
-    add_serve_contact(&host.coordination, &host.api_key, peer_node_id).await?;
+    let message = default_contact_request_message(&host);
+    add_serve_contact(
+        &host.coordination,
+        &host.api_key,
+        peer_node_id,
+        Some(&message),
+    )
+    .await?;
     Ok(build_current_bridge_state(manager).await)
 }
 

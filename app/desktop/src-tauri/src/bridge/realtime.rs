@@ -24,8 +24,8 @@ use super::constants::{
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
     build_conversation_only_bridge_state, encrypt_bridge_payload_for_target,
-    load_conversation_store, now_ms, relay_plaintext_message, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    load_conversation_store, now_ms, relay_plaintext_message, relay_target_kind_for_payload,
+    DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
 
 mod local_agent;
@@ -200,6 +200,7 @@ async fn encode_outbound_frame(
     Ok(serde_json::json!({
         "dst": target_node_id,
         "durable": durable,
+        "targetKind": relay_target_kind_for_payload(payload),
         "data": data,
     })
     .to_string())

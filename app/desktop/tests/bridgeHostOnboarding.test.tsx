@@ -81,24 +81,51 @@ function renderDetails(activeStep: BridgeStepId, overrides: Partial<BridgeDetail
   return renderToStaticMarkup(createElement(BridgeDetailsSection, props));
 }
 
-test('Bridge details renders an expandable host onboarding timeline', () => {
+test('Bridge details renders step details inline between timeline steps', () => {
   const markup = renderDetails('visibility');
 
   assert.match(markup, /app-bridge-timeline/);
-  assert.match(markup, /How you appear/);
-  assert.match(markup, /Visibility/);
-  assert.match(markup, /Approvals/);
-  assert.match(markup, /Agent reachability/);
-  assert.match(markup, /Review/);
+  assert.match(markup, /app-bridge-step-detail-region/);
+  const visibilityIndex = markup.indexOf('Visibility');
+  const detailIndex = markup.indexOf('Discovery visibility and private protection');
+  const approvalsIndex = markup.indexOf('Approvals');
+
+  assert.ok(visibilityIndex >= 0, 'visibility step renders');
+  assert.ok(detailIndex > visibilityIndex, 'active detail expands after its step label');
+  assert.ok(approvalsIndex > detailIndex, 'next step stays below the expanded active detail');
 });
 
-test('Bridge visibility step exposes privacy and contact approval policies', () => {
+test('Bridge visibility step exposes one coherent privacy mode list', () => {
   const markup = renderDetails('visibility');
 
   assert.match(markup, /Discovery visibility and private protection/);
-  assert.match(markup, /Visible \+ reachable/);
-  assert.match(markup, /Require approval/);
-  assert.match(markup, /Private/);
+  assert.match(markup, /app-bridge-privacy-mode-list/);
+  assert.match(markup, /Private \/ invite only/);
+  assert.match(markup, /Listed, approve new people/);
+  assert.match(markup, /Open on this host/);
+  assert.match(markup, /saved when you continue/i);
+  assert.doesNotMatch(markup, /Human \/ host visibility/);
+  assert.doesNotMatch(markup, /Current policy:.*Require approval/);
+});
+
+test('Bridge visibility step normalizes conflicting privacy settings to the approval mode', () => {
+  const markup = renderDetails('visibility', {
+    activeBridgeHost: host({
+      humanVisibilityPolicy: 'server-open',
+      contactApprovalPolicy: 'approval-required',
+    }),
+  });
+
+  assert.match(markup, /Listed, approve new people selected/);
+  assert.match(markup, /Saved on this host/);
+});
+
+test('Bridge review step includes a final save action with feedback', () => {
+  const markup = renderDetails('review');
+
+  assert.match(markup, /Save and finish/);
+  assert.match(markup, /app-bridge-review-save-status/);
+  assert.match(markup, /aria-live="polite"/);
 });
 
 test('Bridge approvals step shows incoming requests before direct reachability is granted', () => {

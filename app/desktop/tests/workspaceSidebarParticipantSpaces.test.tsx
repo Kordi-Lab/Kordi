@@ -119,6 +119,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onStartChatWithPerson: () => {},
     onStartChatWithAgent: () => {},
     onCreateChatGroup: () => {},
+    onAddContactByNodeId: () => {},
     onCreateChatSessionInParticipantSpace: () => {},
     onRenameChatGroup: () => {},
     onAddChatGroupMembers: () => {},
@@ -142,6 +143,8 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onSelectProjectSession: () => {},
     groupedContacts: [],
     displayedContacts: [],
+    addableContacts: [],
+    contactRequestCount: 0,
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
@@ -432,9 +435,61 @@ test('ChatCreateDialog renders compact theme-aware choices beside the plus butto
   assert.doesNotMatch(markup, /bg-white\/80/);
   assert.doesNotMatch(markup, /text-slate-950/);
   assert.doesNotMatch(markup, /fixed inset-0 z-50 flex items-center justify-center/);
-  assert.match(markup, /Chat with person/);
+  assert.match(markup, /Chat with contact/);
+  assert.doesNotMatch(markup, /Chat with person/);
   assert.match(markup, /Chat with agent/);
   assert.match(markup, /Start group/);
+  assert.match(markup, /Add contacts/);
+});
+
+test('ChatCreateDialog add contact mode requests a private Bridge node id', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'add-contact',
+    contacts: [],
+    agents: [],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+    onAddContact: () => {},
+  }));
+
+  assert.match(markup, /Add contact/);
+  assert.match(markup, /Bridge node ID/);
+  assert.match(markup, /Send request/);
+  assert.match(markup, /private\/unlisted user node ID/);
+});
+
+test('ChatCreateDialog add contact mode shows visible non-contact Bridge users', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'add-contact',
+    contacts: [],
+    addableContacts: [
+      contact({
+        id: 'bridge-addable:kordi-user-6',
+        name: 'Kordi User 6',
+        entityType: 'Person',
+        subtitle: 'Needs approval',
+        detail: 'Node: kd_user6',
+        bridgeHostId: 'host-1',
+        bridgePeerNodeId: 'kd_user6',
+        bridgeContactStatus: 'none',
+      }),
+    ],
+    agents: [],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+    onAddContact: () => {},
+  }));
+
+  assert.match(markup, /Visible users/);
+  assert.match(markup, /Kordi User 6/);
+  assert.match(markup, /Needs approval/);
+  assert.match(markup, /Request/);
 });
 
 test('ChatCreateDialog group picker requires at least 2 people and excludes agents', () => {

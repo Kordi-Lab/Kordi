@@ -58,13 +58,44 @@ async fn build_bridge_host_state(
                 if let Ok(contact_nodes) =
                     fetch_serve_contacts(&config.coordination, &config.api_key).await
                 {
-                    let mut seen = std::collections::HashSet::new();
-                    for peer in &nodes {
-                        seen.insert(peer.node_id.clone());
+                    let mut seen = std::collections::HashMap::new();
+                    for (index, peer) in nodes.iter().enumerate() {
+                        seen.insert(peer.node_id.clone(), index);
                     }
                     for peer in contact_nodes {
-                        if seen.insert(peer.node_id.clone()) {
+                        if let Some(index) = seen.get(&peer.node_id).copied() {
+                            let existing = &mut nodes[index];
+                            existing.is_contact = true;
+                            existing.contact_request_status = Some("contact".to_string());
+                            existing.contact_request_direction = None;
+                            if existing.display_name.is_none() {
+                                existing.display_name = peer.display_name.clone();
+                            }
+                            if existing.owner_name.is_none() {
+                                existing.owner_name = peer.owner_name.clone();
+                            }
+                            if existing.human_id.is_none() {
+                                existing.human_id = peer.human_id.clone();
+                            }
+                            if existing.agent_id.is_none() {
+                                existing.agent_id = peer.agent_id.clone();
+                            }
+                        } else {
+                            seen.insert(peer.node_id.clone(), nodes.len());
                             nodes.push(peer);
+                        }
+                    }
+                }
+                for request in &contact_requests {
+                    let peer_node_id = if request.direction == "incoming" {
+                        request.requester_node_id.as_str()
+                    } else {
+                        request.target_node_id.as_str()
+                    };
+                    if let Some(peer) = nodes.iter_mut().find(|peer| peer.node_id == peer_node_id) {
+                        if !peer.is_contact {
+                            peer.contact_request_status = Some(request.status.clone());
+                            peer.contact_request_direction = Some(request.direction.clone());
                         }
                     }
                 }

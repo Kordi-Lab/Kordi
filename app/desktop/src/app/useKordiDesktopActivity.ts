@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
-import { contactRequests, settingsSections } from '@/kordi-app/data';
+import { settingsSections } from '@/kordi-app/data';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
+  ContactRequest,
   DesktopBridgeHost,
   DesktopChatTurnSnapshot,
   DetailTab,
@@ -71,6 +72,7 @@ export function visibleLocalSessionIdForActivity({
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
   activeSettingsSectionId: SettingsSectionId;
+  contactRequests: ContactRequest[];
   activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
   activeConvId: string;
@@ -92,6 +94,7 @@ type UseKordiDesktopActivityArgs = {
 export function useKordiDesktopActivity({
   activeContactRequestId,
   activeSettingsSectionId,
+  contactRequests,
   activeBridgeHost,
   activeNav,
   activeConvId,

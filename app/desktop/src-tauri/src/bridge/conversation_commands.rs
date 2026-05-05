@@ -103,6 +103,9 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
             human_visibility_policy: None,
             contact_approval_policy: None,
             agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         }
     } else {
         let current_state = build_current_bridge_state(manager).await;
@@ -382,6 +385,9 @@ mod tests {
             human_visibility_policy: None,
             contact_approval_policy: None,
             agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         };
 
         assert!(!outreach_target_matches(&peer, "Kordi"));

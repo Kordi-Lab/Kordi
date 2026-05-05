@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
-import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
+import { contactRequests as demoContactRequests, projects, settingsSections } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
@@ -45,6 +45,7 @@ import {
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
+  isApprovedBridgeContact,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
@@ -54,6 +55,7 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
@@ -373,6 +375,7 @@ export function useKordiAppModel() {
     activeLastMessage,
     activeConvHasSubtitle,
     displayedContacts,
+    addableContacts,
     displayedAgents,
     groupedContacts,
     filteredGroupedContacts,
@@ -450,6 +453,12 @@ export function useKordiAppModel() {
     setLocalAgentAvatarSeed(localAgentAvatarSeed);
   }, [localAgentAvatarSeed]);
 
+  const bridgeContactRequests = useMemo(
+    () => bridgeContactRequestsForContactsPage(activeBridgeHost),
+    [activeBridgeHost],
+  );
+  const contactRequests = isNativeShell ? bridgeContactRequests : demoContactRequests;
+
   const {
     activeContactRequest,
     activeSettingsSection,
@@ -461,6 +470,7 @@ export function useKordiAppModel() {
   } = useKordiDesktopActivity({
     activeContactRequestId: contactsUi.activeContactRequestId,
     activeSettingsSectionId: settingsUi.activeSettingsSectionId,
+    contactRequests,
     activeBridgeHost,
     activeNav,
     activeConvId,
@@ -1130,6 +1140,10 @@ export function useKordiAppModel() {
     if (contacts.length < 2) {
       throw new Error('Select at least 2 people to start a group.');
     }
+    const blockedBridgeContacts = contacts.filter((contact) => contact.bridgePeerNodeId && !isApprovedBridgeContact(contact));
+    if (blockedBridgeContacts.length > 0) {
+      throw new Error('Approve people as contacts before adding them to a group.');
+    }
 
     const identityIds: string[] = [];
     for (const contact of contacts) {
@@ -1429,6 +1443,10 @@ export function useKordiAppModel() {
     const contacts = uniqueStrings(contactIds)
       .map((contactId) => peopleContactById.get(contactId))
       .filter((contact): contact is Contact => Boolean(contact));
+    const blockedBridgeContacts = contacts.filter((contact) => contact.bridgePeerNodeId && !isApprovedBridgeContact(contact));
+    if (blockedBridgeContacts.length > 0) {
+      throw new Error('Approve people as contacts before adding them to a group.');
+    }
     const identityIds: string[] = [];
     let nextState = canonicalSessionState;
     for (const contact of contacts) {
@@ -1667,6 +1685,7 @@ export function useKordiAppModel() {
     setExpandedProjectIds: projectsUi.setExpandedProjectIds,
     groupedContacts,
     displayedContacts,
+    addableContacts,
     setActiveContactGroup: contactsUi.setActiveContactGroup,
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,

@@ -313,6 +313,7 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
 pub(crate) enum DirectAccessKind {
     Person,
     Agent,
+    GroupInvite,
     Any,
 }
 
@@ -477,10 +478,11 @@ pub(crate) fn nodes_can_directly_reach(
     let target_is_agent = agent_id
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty());
-    let linked_by_project_or_contact = nodes_share_project(conn, sender_node_id, target_node_id)?
-        || nodes_are_contacts(conn, sender_node_id, target_node_id)?;
+    let linked_by_contact = nodes_are_contacts(conn, sender_node_id, target_node_id)?;
+    let linked_by_project_or_contact =
+        nodes_share_project(conn, sender_node_id, target_node_id)? || linked_by_contact;
 
-    let person_access = || human_policy == "server-open" || linked_by_project_or_contact;
+    let person_access = || human_policy == "server-open" || linked_by_contact;
     let agent_access = || -> Result<bool, rusqlite::Error> {
         if !target_is_agent {
             return Ok(false);
@@ -496,6 +498,7 @@ pub(crate) fn nodes_can_directly_reach(
     match access_kind {
         DirectAccessKind::Person => Ok(person_access()),
         DirectAccessKind::Agent => agent_access(),
+        DirectAccessKind::GroupInvite => Ok(linked_by_contact),
         DirectAccessKind::Any if target_is_agent => agent_access(),
         DirectAccessKind::Any => Ok(person_access()),
     }
