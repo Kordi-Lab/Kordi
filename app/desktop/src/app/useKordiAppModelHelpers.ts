@@ -190,13 +190,14 @@ export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
   );
 }
 
-export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string) {
+export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string, updatedAtMs = Date.now()) {
   const groupId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
   return {
     ...metadata,
     customName: title,
     groupId,
     groupSpaceId: groupId,
+    groupNameUpdatedAtMs: updatedAtMs,
   };
 }
 

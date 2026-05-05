@@ -50,11 +50,12 @@ test('group rename metadata changes the group name without overwriting manual se
       titleSource: 'manual',
       sessionTitleSource: 'manual',
       extra: 'kept',
-    }, 'New group', 'session:group:root'),
+    }, 'New group', 'session:group:root', 12_345),
     {
       customName: 'New group',
       groupId: 'session:group:root',
       groupSpaceId: 'session:group:root',
+      groupNameUpdatedAtMs: 12_345,
       titleSource: 'manual',
       sessionTitleSource: 'manual',
       extra: 'kept',

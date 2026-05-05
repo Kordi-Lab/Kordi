@@ -196,6 +196,7 @@ fn renaming_group_session_preserves_group_name_as_separate_metadata() {
             metadata: Some(serde_json::json!({
                 "adminIdentityIds": [creator.id.clone()],
                 "customName": "Alice group",
+                "groupNameUpdatedAtMs": 12_345,
                 "groupId": "session:group:rename-test",
                 "groupSpaceId": "session:group:rename-test"
             })),
@@ -233,6 +234,46 @@ fn renaming_group_session_preserves_group_name_as_separate_metadata() {
             .get("groupSpaceId")
             .and_then(|value| value.as_str()),
         Some("session:group:rename-test")
+    );
+    assert_eq!(
+        metadata
+            .get("groupNameUpdatedAtMs")
+            .and_then(|value| value.as_i64()),
+        Some(12_345)
+    );
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(group.id.clone()),
+            kind: "group".to_string(),
+            title: Some("Renamed thread".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "source": "desktop-chat-detail",
+                "customName": "Alice group",
+                "groupId": "session:group:rename-test",
+                "groupSpaceId": "session:group:rename-test"
+            })),
+        },
+    )
+    .expect("upsert refreshed group shell");
+
+    let refreshed = select_session(&conn, &group.id)
+        .expect("select refreshed group")
+        .expect("refreshed group exists");
+    let refreshed_metadata = refreshed.metadata.expect("refreshed metadata preserved");
+    assert_eq!(
+        refreshed_metadata
+            .get("groupNameUpdatedAtMs")
+            .and_then(|value| value.as_i64()),
+        Some(12_345)
     );
 }
 

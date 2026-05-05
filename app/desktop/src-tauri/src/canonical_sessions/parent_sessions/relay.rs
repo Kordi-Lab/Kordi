@@ -19,7 +19,7 @@ use super::super::{
 };
 use super::participants::{
     ensure_parent_group_session_participants, ensure_parent_session_participants,
-    promote_session_message_parent_session,
+    promote_session_message_parent_session, GroupNameUpdateMode,
 };
 
 fn is_processing_placeholder_text(text: &str) -> bool {
@@ -310,6 +310,10 @@ pub(super) fn sync_parent_session_relay_join_event(
     Ok(())
 }
 
+fn outreach_group_name_event_at_ms(outreach: &crate::bridge::DesktopBridgeOutreachMetadata) -> i64 {
+    outreach.created_at_ms.max(0)
+}
+
 fn outreach_targets_group_parent(
     parent_session_id: &str,
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
@@ -337,6 +341,9 @@ pub(super) fn sync_parent_session_invite(
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            GroupNameUpdateMode::SetIfMissing {
+                updated_at_ms: outreach_group_name_event_at_ms(outreach),
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,
@@ -373,6 +380,9 @@ pub(super) fn sync_parent_session_update(
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            GroupNameUpdateMode::SetIfNewer {
+                updated_at_ms: outreach_group_name_event_at_ms(outreach),
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,
@@ -634,6 +644,9 @@ pub(super) fn sync_parent_session_relay_messages(
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            GroupNameUpdateMode::SetIfMissing {
+                updated_at_ms: outreach_group_name_event_at_ms(outreach),
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,

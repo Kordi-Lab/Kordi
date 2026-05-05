@@ -63,8 +63,72 @@ fn metadata_string_array(metadata: &Map<String, Value>, key: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+fn metadata_string(metadata: &Map<String, Value>, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn metadata_i64(metadata: &Map<String, Value>, key: &str) -> Option<i64> {
+    metadata.get(key).and_then(|value| {
+        value.as_i64().or_else(|| {
+            value
+                .as_str()
+                .map(str::trim)
+                .and_then(|text| text.parse::<i64>().ok())
+        })
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum GroupNameUpdateMode {
+    SetIfMissing { updated_at_ms: i64 },
+    SetIfNewer { updated_at_ms: i64 },
+}
+
+impl GroupNameUpdateMode {
+    fn updated_at_ms(self) -> i64 {
+        match self {
+            Self::SetIfMissing { updated_at_ms } | Self::SetIfNewer { updated_at_ms } => {
+                updated_at_ms
+            }
+        }
+    }
+}
+
+fn should_apply_group_name_update(
+    metadata: &Map<String, Value>,
+    mode: GroupNameUpdateMode,
+) -> bool {
+    match mode {
+        GroupNameUpdateMode::SetIfMissing { .. } => {
+            metadata_string(metadata, "customName").is_none()
+        }
+        GroupNameUpdateMode::SetIfNewer { updated_at_ms } => {
+            metadata_i64(metadata, "groupNameUpdatedAtMs")
+                .map(|existing| updated_at_ms >= existing)
+                .unwrap_or(true)
+        }
+    }
+}
+
 fn group_display_name(value: Option<&str>) -> Option<String> {
     let title = value?.trim();
+    if title.is_empty()
+        || title.eq_ignore_ascii_case("session")
+        || title.eq_ignore_ascii_case("new session")
+        || title.eq_ignore_ascii_case("group")
+    {
+        return None;
+    }
+    Some(title.to_string())
+}
+
+fn existing_group_session_title(value: &str) -> Option<String> {
+    let title = value.trim();
     if title.is_empty()
         || title.eq_ignore_ascii_case("session")
         || title.eq_ignore_ascii_case("new session")
@@ -131,6 +195,7 @@ pub(super) fn ensure_parent_group_session_participants(
     parent_session_id: &str,
     parent_session_title: Option<&str>,
     parent_group_space_id: Option<&str>,
+    group_name_update_mode: GroupNameUpdateMode,
     local_human_identity_id: &str,
     remote_target_identity_id: &str,
     relationship_identity_id: Option<&str>,
@@ -200,16 +265,18 @@ pub(super) fn ensure_parent_group_session_participants(
         );
     }
     if let Some(custom_name) = parent_group_name.as_deref() {
-        metadata.insert("customName".to_string(), serde_json::json!(custom_name));
+        if should_apply_group_name_update(&metadata, group_name_update_mode) {
+            metadata.insert("customName".to_string(), serde_json::json!(custom_name));
+            metadata.insert(
+                "groupNameUpdatedAtMs".to_string(),
+                serde_json::json!(group_name_update_mode.updated_at_ms()),
+            );
+        }
     }
-    let title = cleaned_parent_title
-        .map(ToString::to_string)
-        .or_else(|| {
-            existing_session
-                .as_ref()
-                .map(|session| session.title.trim().to_string())
-                .filter(|title| !title.is_empty())
-        })
+    let title = existing_session
+        .as_ref()
+        .and_then(|session| existing_group_session_title(&session.title))
+        .or_else(|| cleaned_parent_title.map(ToString::to_string))
         .unwrap_or_else(|| "Group".to_string());
     let actual_created_by_identity_id = existing_session
         .as_ref()

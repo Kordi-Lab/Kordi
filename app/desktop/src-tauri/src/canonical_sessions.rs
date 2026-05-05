@@ -212,6 +212,19 @@ fn preserve_string_metadata_key(
     }
 }
 
+fn preserve_metadata_key(
+    target: &mut Map<String, Value>,
+    existing: &Map<String, Value>,
+    key: &str,
+) {
+    if target.get(key).is_some() {
+        return;
+    }
+    if let Some(value) = existing.get(key) {
+        target.insert(key.to_string(), value.clone());
+    }
+}
+
 fn preserve_manual_session_title_metadata(
     conn: &Connection,
     session_id: &str,
@@ -243,6 +256,11 @@ fn preserve_manual_session_title_metadata(
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "customName");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupId");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupSpaceId");
+    preserve_metadata_key(
+        &mut next_metadata,
+        &existing_metadata,
+        "groupNameUpdatedAtMs",
+    );
     Ok(Some(Value::Object(next_metadata)))
 }
 
