@@ -85,15 +85,17 @@ fn metadata_i64(metadata: &Map<String, Value>, key: &str) -> Option<i64> {
 
 #[derive(Clone, Copy)]
 pub(super) enum GroupNameUpdateMode {
+    Skip,
     SetIfMissing { updated_at_ms: i64 },
     SetIfNewer { updated_at_ms: i64 },
 }
 
 impl GroupNameUpdateMode {
-    fn updated_at_ms(self) -> i64 {
+    fn updated_at_ms(self) -> Option<i64> {
         match self {
+            Self::Skip => None,
             Self::SetIfMissing { updated_at_ms } | Self::SetIfNewer { updated_at_ms } => {
-                updated_at_ms
+                Some(updated_at_ms)
             }
         }
     }
@@ -104,6 +106,7 @@ fn should_apply_group_name_update(
     mode: GroupNameUpdateMode,
 ) -> bool {
     match mode {
+        GroupNameUpdateMode::Skip => false,
         GroupNameUpdateMode::SetIfMissing { .. } => {
             metadata_string(metadata, "customName").is_none()
         }
@@ -201,7 +204,7 @@ pub(super) fn ensure_parent_group_session_participants(
     relationship_identity_id: Option<&str>,
     bridge_host_id: &str,
     participants: &[crate::bridge::DesktopBridgeSessionParticipant],
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let now = now_ms();
     let cleaned_parent_title = parent_session_title
         .map(str::trim)
@@ -264,13 +267,17 @@ pub(super) fn ensure_parent_group_session_participants(
             serde_json::json!(admin_identity_ids),
         );
     }
+    let mut group_name_applied = false;
     if let Some(custom_name) = parent_group_name.as_deref() {
         if should_apply_group_name_update(&metadata, group_name_update_mode) {
             metadata.insert("customName".to_string(), serde_json::json!(custom_name));
-            metadata.insert(
-                "groupNameUpdatedAtMs".to_string(),
-                serde_json::json!(group_name_update_mode.updated_at_ms()),
-            );
+            group_name_applied = true;
+            if let Some(updated_at_ms) = group_name_update_mode.updated_at_ms() {
+                metadata.insert(
+                    "groupNameUpdatedAtMs".to_string(),
+                    serde_json::json!(updated_at_ms),
+                );
+            }
         }
     }
     let title = existing_session
@@ -335,7 +342,7 @@ pub(super) fn ensure_parent_group_session_participants(
     )
     .map_err(|err| err.to_string())?;
 
-    Ok(())
+    Ok(group_name_applied)
 }
 
 pub(super) fn ensure_parent_session_participants(

@@ -96,6 +96,7 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
     || outreach.contextPolicy === 'session-message'
     || outreach.contextPolicy === 'session-invite'
     || outreach.contextPolicy === 'session-update'
+    || outreach.contextPolicy === 'session-title-update'
   ) return [];
 
   const isAgent = outreach.targetKind === 'bridge-agent';

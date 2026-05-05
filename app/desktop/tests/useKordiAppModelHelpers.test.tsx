@@ -9,6 +9,7 @@ import {
   filterMentionTargets,
   groupRenameMetadata,
   removeSessionFromCanonicalState,
+  sessionRenameNoticeText,
 } from '../src/app/useKordiAppModelHelpers';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -60,6 +61,17 @@ test('group rename metadata changes the group name without overwriting manual se
       sessionTitleSource: 'manual',
       extra: 'kept',
     },
+  );
+});
+
+test('session rename notice text names the actor, scope, and new title', () => {
+  assert.equal(
+    sessionRenameNoticeText('Kordi User 4', 'HIHIHI', 'session'),
+    'Kordi User 4 changed the session name to HIHIHI',
+  );
+  assert.equal(
+    sessionRenameNoticeText('Kordi User 4', 'Atestgroup', 'group'),
+    'Kordi User 4 changed the group name to Atestgroup',
   );
 });
 

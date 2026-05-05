@@ -201,6 +201,17 @@ export function groupRenameMetadata(metadata: Record<string, unknown>, title: st
   };
 }
 
+export function sessionRenameNoticeText(actorName: string | null | undefined, title: string, scope: 'group' | 'session') {
+  const actor = actorName?.trim() || 'Someone';
+  return `${actor} changed the ${scope} name to ${title.trim()}`;
+}
+
+export function canonicalIdentityDisplayName(state: CanonicalSessionState | null | undefined, identityId: string | null | undefined) {
+  const id = identityId?.trim();
+  if (!state || !id) return null;
+  return state.identities.find((identity) => identity.id === id)?.displayName?.trim() || null;
+}
+
 function nonGenericGroupInviteTitle(value?: string | null) {
   const title = value?.trim();
   if (!title) return null;

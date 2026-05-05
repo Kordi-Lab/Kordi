@@ -879,7 +879,7 @@ fn inbound_group_session_invite_imports_snapshot_messages() {
 }
 
 #[test]
-fn inbound_group_session_update_renames_group_without_visible_message() {
+fn inbound_group_session_update_renames_group_and_adds_notice() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [
         ("human:local-alice", "Alice", "kh_alice", "kd_alice"),
@@ -978,7 +978,7 @@ fn inbound_group_session_update_renames_group_without_visible_message() {
         target_display_name: "Alice".to_string(),
         target_owner_name: Some("Alice".to_string()),
         target_runtime: Some("person".to_string()),
-        request_text: "Group renamed to Renamed group".to_string(),
+        request_text: "Bob changed the group name to Renamed group".to_string(),
         trigger_text: None,
         context_text: None,
         context_policy: Some("session-update".to_string()),
@@ -1016,7 +1016,7 @@ fn inbound_group_session_update_renames_group_without_visible_message() {
         id: "bridge_msg_rename".to_string(),
         direction: "inbound".to_string(),
         sender: Some("Bob".to_string()),
-        text: "Group renamed to Renamed group".to_string(),
+        text: "Bob changed the group name to Renamed group".to_string(),
         time_label: "13:27".to_string(),
         timestamp_ms: 1_001,
         request_id: Some("bridge_req_rename".to_string()),
@@ -1067,14 +1067,225 @@ fn inbound_group_session_update_renames_group_without_visible_message() {
         )
         .expect("self participant count");
     assert_eq!(self_participant_count, 1);
-    let message_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-            rusqlite::params![parent_session_id],
-            |row| row.get(0),
+    let messages: Vec<(String, String)> = conn
+        .prepare(
+            "SELECT sender_role, content_text FROM session_messages
+             WHERE session_id = ?1
+             ORDER BY created_at_ms ASC, sequence_num ASC",
         )
-        .expect("message count");
-    assert_eq!(message_count, 0);
+        .expect("prepare message count")
+        .query_map(rusqlite::params![parent_session_id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .expect("query messages")
+        .collect::<Result<Vec<(String, String)>, _>>()
+        .expect("collect messages");
+    assert_eq!(
+        messages,
+        vec![(
+            "system".to_string(),
+            "Bob changed the group name to Renamed group".to_string(),
+        )]
+    );
+}
+
+#[test]
+fn inbound_group_session_title_update_renames_child_session_and_adds_notice() {
+    let conn = test_conn();
+    for (id, display_name, human_id, node_id) in [
+        ("human:local-alice", "Alice", "kh_alice", "kd_alice"),
+        ("human:remote-bob", "Bob", "kh_bob", "kd_bob"),
+        ("human:carol", "Carol", "kh_carol", "kd_carol"),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: "human".to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some(node_id.to_string()),
+                human_id: Some(human_id.to_string()),
+                agent_id: None,
+                avatar_key: Some(human_id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:title-update";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("HELLO GUYS".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:remote-bob".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "human:local-alice".to_string(),
+                "human:carol".to_string(),
+            ],
+            metadata: Some(serde_json::json!({
+                "customName": "Atestgroup",
+                "groupNameUpdatedAtMs": 2_000,
+                "groupId": "session:group:root",
+                "groupSpaceId": "session:group:root",
+                "adminIdentityIds": ["human:remote-bob"],
+            })),
+        },
+    )
+    .expect("open group");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("HIHIHI".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some("session:group:root".to_string()),
+        parent_session_participants: vec![
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:local-alice".to_string()),
+                display_name: "Alice".to_string(),
+                role: Some("person".to_string()),
+                bridge_node_id: Some("kd_alice".to_string()),
+                human_id: Some("kh_alice".to_string()),
+                agent_id: None,
+            },
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:remote-bob".to_string()),
+                display_name: "Bob".to_string(),
+                role: Some("admin".to_string()),
+                bridge_node_id: Some("kd_bob".to_string()),
+                human_id: Some("kh_bob".to_string()),
+                agent_id: None,
+            },
+            crate::bridge::DesktopBridgeSessionParticipant {
+                identity_id: Some("human:carol".to_string()),
+                display_name: "Carol".to_string(),
+                role: Some("person".to_string()),
+                bridge_node_id: Some("kd_carol".to_string()),
+                human_id: Some("kh_carol".to_string()),
+                agent_id: None,
+            },
+        ],
+        parent_session_messages: Vec::new(),
+        parent_turn_id: None,
+        parent_message_id: None,
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:bob:person".to_string()),
+        bridge_request_id: Some("bridge_req_session_title_update".to_string()),
+        delivery_state: None,
+        target_node_id: "kd_alice".to_string(),
+        target_human_id: Some("kh_alice".to_string()),
+        target_agent_id: None,
+        target_display_name: "Alice".to_string(),
+        target_owner_name: Some("Alice".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "Bob changed the session name to HIHIHI".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-title-update".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 3_000,
+        updated_at_ms: 3_000,
+        completed_at_ms: Some(3_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:bob:person".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_bob".to_string(),
+        peer_display_name: Some("Bob".to_string()),
+        peer_owner_name: Some("Bob".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Bob".to_string(),
+        subtitle: String::new(),
+        unread_count: 1,
+        updated_at_ms: 3_001,
+        updated_at_label: "13:27".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_session_title_update".to_string(),
+        direction: "inbound".to_string(),
+        sender: Some("Bob".to_string()),
+        text: "Bob changed the session name to HIHIHI".to_string(),
+        time_label: "13:27".to_string(),
+        timestamp_ms: 3_001,
+        request_id: Some("bridge_req_session_title_update".to_string()),
+        delivery_state: None,
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local-alice",
+        None,
+        Some("human:remote-bob"),
+        "human:remote-bob",
+        false,
+    )
+    .expect("sync inbound group session title update");
+
+    let session = select_session(&conn, parent_session_id)
+        .expect("select session")
+        .expect("session exists");
+    assert_eq!(session.title, "HIHIHI");
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("customName"))
+            .and_then(|value| value.as_str()),
+        Some("Atestgroup"),
+    );
+    assert_eq!(
+        session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sessionTitleSource"))
+            .and_then(|value| value.as_str()),
+        Some("manual"),
+    );
+
+    let status_messages: Vec<String> = conn
+        .prepare(
+            "SELECT content_text FROM session_messages
+             WHERE session_id = ?1 AND message_kind = 'status'
+             ORDER BY created_at_ms ASC, sequence_num ASC",
+        )
+        .expect("prepare status messages")
+        .query_map(rusqlite::params![parent_session_id], |row| row.get(0))
+        .expect("query status messages")
+        .collect::<Result<Vec<String>, _>>()
+        .expect("collect status messages");
+    assert_eq!(
+        status_messages,
+        vec!["Bob changed the session name to HIHIHI"]
+    );
 }
 
 #[test]
@@ -1178,7 +1389,7 @@ fn stale_group_session_update_does_not_overwrite_newer_group_name_or_session_tit
         target_display_name: "Alice".to_string(),
         target_owner_name: Some("Alice".to_string()),
         target_runtime: Some("person".to_string()),
-        request_text: "Group renamed to Old group".to_string(),
+        request_text: "Bob changed the group name to Old group".to_string(),
         trigger_text: None,
         context_text: None,
         context_policy: Some("session-update".to_string()),
@@ -1216,7 +1427,7 @@ fn stale_group_session_update_does_not_overwrite_newer_group_name_or_session_tit
         id: "bridge_msg_stale_rename".to_string(),
         direction: "inbound".to_string(),
         sender: Some("Bob".to_string()),
-        text: "Group renamed to Old group".to_string(),
+        text: "Bob changed the group name to Old group".to_string(),
         time_label: "13:27".to_string(),
         timestamp_ms: 1_001,
         request_id: Some("bridge_req_stale_rename".to_string()),
@@ -1258,4 +1469,12 @@ fn stale_group_session_update_does_not_overwrite_newer_group_name_or_session_tit
             .and_then(|value| value.as_i64()),
         Some(2_000),
     );
+    let message_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("message count");
+    assert_eq!(message_count, 0);
 }

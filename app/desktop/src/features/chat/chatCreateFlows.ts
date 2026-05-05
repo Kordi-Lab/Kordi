@@ -312,6 +312,7 @@ export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displ
 
 export const CHAT_GROUP_INVITE_CONTEXT_POLICY = 'session-invite';
 export const CHAT_GROUP_UPDATE_CONTEXT_POLICY = 'session-update';
+export const CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY = 'session-title-update';
 
 export type ChatGroupBridgeUpdateTarget = ChatCreateGroupBridgeInviteTarget;
 
