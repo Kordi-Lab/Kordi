@@ -123,7 +123,8 @@ impl PromptContextTestDbGuard {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let storage_root = prompt_context_storage_root(test_name);
         let db_path = storage_root.join(CANONICAL_SESSIONS_DB_FILENAME);
-        prompt_context::set_prompt_context_test_db_path(Some(db_path));
+        prompt_context::set_prompt_context_test_db_path(Some(db_path.clone()));
+        set_canonical_sessions_test_db_path(Some(db_path));
         std::fs::create_dir_all(&storage_root).expect("create prompt context storage root");
         Self {
             storage_root,
@@ -139,6 +140,7 @@ impl PromptContextTestDbGuard {
 impl Drop for PromptContextTestDbGuard {
     fn drop(&mut self) {
         prompt_context::set_prompt_context_test_db_path(None);
+        set_canonical_sessions_test_db_path(None);
         let _ = std::fs::remove_dir_all(&self.storage_root);
     }
 }
@@ -624,6 +626,36 @@ fn identity_context_renders_present_optionals_and_omits_blank_optionals() {
             "blank optional label {omitted_label:?} rendered in line {blank_optionals_line:?}\n{rendered}"
         );
     }
+}
+
+#[test]
+fn identity_markdown_writer_uses_canonical_session_participants() {
+    let guard = PromptContextTestDbGuard::new("identity-markdown-writer");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+
+    let path = write_session_identity_markdown_for_prompt(&conn, &session.id)
+        .expect("write identity markdown");
+    let markdown = std::fs::read_to_string(path).expect("read identity markdown file");
+
+    assert!(
+        markdown.contains("Session ID: session:alice-bob-prompt-context"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("- identityId: agent:alice-kordi"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("| agent:bob-kordi | Bob's Kordi | agent"),
+        "{markdown}"
+    );
+    assert!(markdown.contains("| human:bob | Bob | human"), "{markdown}");
+    assert!(markdown.contains("- allowedTargets:"), "{markdown}");
+    assert!(markdown.contains("  - agent:bob-kordi"), "{markdown}");
 }
 
 #[test]

@@ -5,8 +5,9 @@ use crate::bridge::{DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadM
 use super::render_multi_participant_identity_context;
 use super::schema::{ensure_local_profile, initialize_schema};
 use super::{
-    open_db, select_identity, select_session, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    open_db, select_identity, select_session, write_identity_context_markdown,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole,
 };
 
 #[cfg(test)]
@@ -647,6 +648,39 @@ fn identity_permissions(
         context_policy: context_policy.to_string(),
         requires_approval: false,
     }
+}
+
+pub(crate) fn write_session_identity_markdown_for_prompt(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<std::path::PathBuf, String> {
+    let session = select_session(conn, session_id)?
+        .ok_or_else(|| format!("Session not found: {session_id}"))?;
+    let participants = session_participant_rows(conn, session_id)?;
+    let self_identity =
+        local_self_role(conn, &participants, session.primary_identity_id.as_deref())?;
+    let requester = requester_role(conn, &participants, &session.created_by_identity_id)?;
+    write_identity_context_markdown(
+        &IdentityContextRequest {
+            permissions: identity_permissions(
+                &self_identity.identity_id,
+                &participants,
+                "recent-window",
+            ),
+            self_identity,
+            requester,
+            target: None,
+            participants: participants
+                .iter()
+                .map(PromptParticipantRow::to_identity_context_participant)
+                .collect(),
+            session_id: Some(session.id),
+            session_kind: Some(session.kind),
+            project_name: session.project_name,
+        },
+        None,
+        None,
+    )
 }
 
 pub(crate) fn local_agent_session_prompt_context(
