@@ -274,6 +274,25 @@ export type PreparedCanonicalUserMessage = {
   request: AppendCanonicalMessageRequest;
 };
 
+export function failedPreparedCanonicalUserMessage(
+  prepared: PreparedCanonicalUserMessage | null,
+  detail?: string | null,
+): PreparedCanonicalUserMessage | null {
+  if (!prepared) return prepared;
+  return {
+    ...prepared,
+    request: {
+      ...prepared.request,
+      status: 'failed',
+      content: {
+        ...optimisticContentRecord(prepared.request.content),
+        deliveryState: 'failed',
+        ...(detail?.trim() ? { detail: detail.trim() } : null),
+      },
+    },
+  };
+}
+
 export function prepareCanonicalUserMessage(
   sessionId: string,
   senderIdentityId: string | null | undefined,

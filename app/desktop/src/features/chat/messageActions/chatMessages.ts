@@ -47,6 +47,7 @@ import {
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
   bridgeAttachmentTransportFields,
+  failedPreparedCanonicalUserMessage,
   findBridgeConversationForTarget,
   markOptimisticBridgeMessageFailed,
   markOptimisticCanonicalMessageFailed,
@@ -802,6 +803,7 @@ export function useChatMessageActions({
       let targetConversationId = sendPlan.targetConversationId;
       let optimisticCanonicalSessionId: string | null = null;
       let optimisticCanonicalMessageId: string | null = null;
+      let preparedCanonicalMessage: ReturnType<typeof prepareCanonicalUserMessage> = null;
       let optimisticBridgeMessageAppended = false;
       const markCanonicalSendFailed = (detail?: string | null) => {
         const failedSessionId = optimisticCanonicalSessionId;
@@ -849,7 +851,7 @@ export function useChatMessageActions({
         if (!optimisticParentSessionId) {
           throw new Error('Unable to resolve bridge conversation');
         }
-        const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        preparedCanonicalMessage = prepareCanonicalUserMessage(
           optimisticParentSessionId,
           canonicalHumanIdentityId,
           text,
@@ -881,11 +883,9 @@ export function useChatMessageActions({
         setChatComposerAttachments([]);
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const resolvedConversationId = targetConversationId;
-        void persistCanonicalUserMessage(preparedCanonicalMessage)
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-          })
-          .then(async () => {
+        void (async () => {
+          try {
+            let nextBridgeState = null;
             if (isGroupSessionMessage && activeConvCanonicalSessionId) {
               if (groupSendTargets.length === 0) {
                 throw new Error('Unable to resolve group recipients');
@@ -918,12 +918,10 @@ export function useChatMessageActions({
                 });
                 setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
               }
-              return null;
-            }
-            if (shouldStayInCanonicalSession && activeConvBridgeTarget && activeConvCanonicalSessionId) {
+            } else if (shouldStayInCanonicalSession && activeConvBridgeTarget && activeConvCanonicalSessionId) {
               const target = bridgeSessionOutreachTarget(activeConvBridgeTarget);
               const targetIsAgent = target.targetKind === 'bridge-agent';
-              return createDesktopBridgeOutreach({
+              nextBridgeState = await createDesktopBridgeOutreach({
                 hostId: activeConvBridgeTarget.hostId,
                 targetNodeId: activeConvBridgeTarget.nodeId,
                 targetKind: target.targetKind,
@@ -952,33 +950,44 @@ export function useChatMessageActions({
                 projectName: targetIsAgent ? desktopChatState?.activeSession.project?.name : null,
                 ...bridgeAttachmentTransportFields(chatComposerAttachments),
               });
+            } else {
+              if (!resolvedConversationId) {
+                throw new Error('Unable to resolve bridge conversation');
+              }
+              nextBridgeState = await sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
             }
-            if (!resolvedConversationId) {
-              throw new Error('Unable to resolve bridge conversation');
+            void persistCanonicalUserMessage(preparedCanonicalMessage)
+              .catch((error: unknown) => {
+                setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
+              });
+            if (nextBridgeState) {
+              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextBridgeState));
             }
-            return sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
-          })
-          .then((nextState) => {
-            if (nextState) {
-              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-            }
-          })
-          .catch((error: unknown) => {
+          } catch (error) {
             const failureDetail = bridgeSendFailureDetail(error);
             if (resolvedConversationId) {
               setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId, failureDetail));
             }
             markCanonicalSendFailed(failureDetail);
+            void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+              .catch((saveError: unknown) => {
+                setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+              });
             if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
               setDesktopChatError(failureDetail);
             }
-          });
+          }
+        })();
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error);
         if (targetConversationId) {
           setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversationId!, optimisticMessageId, failureDetail));
         }
         markCanonicalSendFailed(failureDetail);
+        void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+          .catch((saveError: unknown) => {
+            setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+          });
         if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
           setDesktopChatError(failureDetail);
         }

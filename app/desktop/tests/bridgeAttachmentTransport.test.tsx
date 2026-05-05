@@ -5,8 +5,10 @@ import { canonicalAttachments } from '../src/features/canonical/readModel/messag
 import {
   appendOptimisticBridgeMessage,
   bridgeAttachmentTransportFields,
+  failedPreparedCanonicalUserMessage,
   markOptimisticBridgeMessageFailed,
   markOptimisticCanonicalMessageFailed,
+  prepareCanonicalUserMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
@@ -131,6 +133,27 @@ test('canonical optimistic bridge messages can be marked failed for visible send
   assert.equal(message?.status, 'failed');
   assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
   assert.equal((message?.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+});
+
+
+test('failed prepared canonical bridge messages preserve attachment-only sends for persistence', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session-1',
+    'human:me',
+    '',
+    [imageAttachment],
+    '12:31',
+    'desktop-bridge-ui',
+    'sending',
+  );
+
+  const failed = failedPreparedCanonicalUserMessage(prepared, 'Contact request was rejected, so messages are blocked.');
+
+  assert.equal(failed?.request.status, 'failed');
+  assert.equal(failed?.request.contentText, '');
+  assert.equal((failed?.request.content as { deliveryState?: string }).deliveryState, 'failed');
+  assert.equal((failed?.request.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+  assert.equal(((failed?.request.content as { attachments?: Array<{ localPath?: string }> }).attachments ?? [])[0]?.localPath, '/tmp/pi-clipboard-1.png');
 });
 
 
