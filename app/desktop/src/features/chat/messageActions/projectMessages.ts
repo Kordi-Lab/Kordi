@@ -7,7 +7,14 @@ import { isProjectDraftSessionId } from '../draftSessions';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
-import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
+import {
+  combineContext,
+  initiatorIdentityForOutreach,
+  parentSessionMessagesForOutreach,
+  renderProjectContext,
+  renderRecentMessageContext,
+  selfTargetIdentityForMentionedBridgeTarget,
+} from './context';
 import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMentionedBridgeTarget } from './mentions';
 import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, bridgeAttachmentTransportFields, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
@@ -173,6 +180,8 @@ export function useProjectMessageActions({
             parentSessionId: projectSessionId,
             parentSessionTitle: projectChatState?.activeSession.title,
             parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
+            initiatorIdentity: initiatorIdentityForOutreach(null, canonicalHumanIdentityId),
+            selfTargetIdentity: selfTargetIdentityForMentionedBridgeTarget(mentionedTarget, null),
             parentMessageId,
             projectId: projectChatState?.activeSession.project?.root,
             projectName: projectChatState?.activeSession.project?.name,

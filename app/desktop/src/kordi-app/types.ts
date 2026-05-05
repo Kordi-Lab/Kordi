@@ -73,6 +73,7 @@ export type ConversationParticipant = {
   bridgeNodeId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
+  runtime?: string | null;
   avatarKey?: string | null;
   profileImageUrl?: string | null;
   presenceStatus?: string | null;

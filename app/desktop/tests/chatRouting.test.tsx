@@ -7,6 +7,44 @@ import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActi
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { parentSessionParticipantsForOutreach } from '../src/features/chat/messageActions/context';
+
+test('direct bridge session outreach snapshots preserve canonical participants and agent owners', () => {
+  assert.deepEqual(parentSessionParticipantsForOutreach({
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', humanId: 'kh_me', bridgeNodeId: 'node-me' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', humanId: 'kh_bob', bridgeNodeId: 'node-bob' },
+      {
+        id: 'agent:bob-kordi',
+        name: "Bob's Kordi",
+        kind: 'agent',
+        role: 'delegate',
+        source: 'bridge',
+        ownerIdentityId: 'human:bob',
+        ownerName: 'Bob',
+        humanId: 'kh_bob',
+        agentId: 'ka_bob',
+        bridgeNodeId: 'node-bob',
+        runtime: 'kordi-local',
+      },
+    ],
+  }), [
+    { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'self', bridgeNodeId: 'node-me', humanId: 'kh_me' },
+    { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', bridgeNodeId: 'node-bob', humanId: 'kh_bob' },
+    {
+      identityId: 'agent:bob-kordi',
+      displayName: "Bob's Kordi",
+      kind: 'agent',
+      role: 'delegate',
+      ownerIdentityId: 'human:bob',
+      ownerDisplayName: 'Bob',
+      bridgeNodeId: 'node-bob',
+      humanId: 'kh_bob',
+      agentId: 'ka_bob',
+      runtime: 'kordi-local',
+    },
+  ]);
+});
 
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;

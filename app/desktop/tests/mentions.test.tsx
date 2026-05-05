@@ -14,6 +14,10 @@ import {
   publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
 } from '../src/features/chat/messageActions/mentions';
+import {
+  initiatorIdentityForOutreach,
+  selfTargetIdentityForMentionedBridgeTarget,
+} from '../src/features/chat/messageActions/context';
 import type { Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'nodeId' | 'runtime'>): DesktopBridgePeer {
@@ -701,4 +705,108 @@ test('local agent labels include sanitized aliases', () => {
     localAgentMentionLabels(chatState, bridgeStateWithPeers([])),
     ['Kordi', 'OwnersKordi', 'HostOne', 'MyKordi', 'MyOwnersKordi', 'HostOwnersKordi', 'HostOwnersOwnersKordi', 'agentlocal', 'localnode1', 'MyProject'],
   );
+});
+
+test('outreach self target metadata for @Agent prefers canonical agent identity', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-alice-1',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-local',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+    }),
+  ]);
+  const conversation = groupConversationWithHumans([{ id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-1' }]);
+  conversation.canonicalParticipants?.push({
+    id: 'agent:alice-kordi',
+    name: "Alice's Kordi",
+    kind: 'agent',
+    role: 'delegate',
+    source: 'bridge',
+    ownerIdentityId: 'human:alice',
+    ownerName: 'Alice',
+    bridgeNodeId: 'node-alice-1',
+    humanId: 'human-alice',
+    agentId: 'agent-alice',
+  });
+
+  const target = resolveMentionedBridgeTarget('@AlicesKordi summarize this', bridgeState, conversation, { targetKind: 'bridge-agent' });
+
+  assert.ok(target);
+  assert.deepEqual(selfTargetIdentityForMentionedBridgeTarget(target, conversation), {
+    identityId: 'agent:alice-kordi',
+    displayName: "Alice's Kordi",
+    kind: 'agent',
+    ownerIdentityId: 'human:alice',
+    ownerDisplayName: 'Alice',
+    bridgeNodeId: 'node-alice-1',
+    humanId: 'human-alice',
+    agentId: 'agent-alice',
+  });
+});
+
+test('project outreach self target metadata falls back to mention target when no canonical participants exist', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-carol-1',
+      displayName: "Carol's Kordi",
+      ownerName: 'Carol',
+      runtime: 'kordi-remote',
+      humanId: 'human-carol',
+      agentId: 'agent-carol',
+    }),
+  ]);
+
+  const target = resolveMentionedBridgeTarget('@CarolsKordi check the project', bridgeState, null, { targetKind: 'bridge-agent' });
+
+  assert.ok(target);
+  assert.deepEqual(selfTargetIdentityForMentionedBridgeTarget(target, null), {
+    identityId: null,
+    displayName: "Carol's Kordi",
+    kind: 'agent',
+    ownerDisplayName: 'Carol',
+    bridgeNodeId: 'node-carol-1',
+    humanId: 'human-carol',
+    agentId: 'agent-carol',
+    runtime: 'kordi-remote',
+  });
+});
+
+test('outreach metadata for @Person includes canonical initiator and human target identities', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-bob-1',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-local',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+    }),
+  ]);
+  const conversation = directPersonConversationWithHuman({
+    id: 'human:bob',
+    name: 'Bob',
+    humanId: 'human-bob',
+    bridgeNodeId: 'node-bob-1',
+  });
+
+  const target = resolveMentionedBridgeTarget('@Bob please review', bridgeState, conversation, { targetKind: 'bridge-person' });
+
+  assert.ok(target);
+  assert.deepEqual(initiatorIdentityForOutreach(conversation, 'human:host'), {
+    identityId: 'human:host',
+    displayName: 'Host Owner',
+    kind: 'human',
+    bridgeNodeId: 'host-node-1',
+    humanId: 'host-human-1',
+  });
+  assert.deepEqual(selfTargetIdentityForMentionedBridgeTarget(target, conversation), {
+    identityId: 'human:bob',
+    displayName: 'Bob',
+    kind: 'human',
+    bridgeNodeId: 'node-bob-1',
+    humanId: 'human-bob',
+  });
 });

@@ -1,7 +1,8 @@
-import type { ConversationBridgeTarget, DesktopBridgeSessionParticipant, DesktopBridgeState } from '@/kordi-app/types';
+import type { ConversationBridgeTarget, DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant, DesktopBridgeState } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
+import { selfTargetIdentityForBridgeTarget } from './context';
 import { bridgeAttachmentTransportFields } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
 
@@ -26,6 +27,8 @@ export type RelaySharedSessionMessageOptions = {
   parentSessionKind?: string | null;
   parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
+  initiatorIdentity?: DesktopBridgePromptIdentity | null;
+  selfTargetIdentity?: DesktopBridgePromptIdentity | null;
   attachments?: AttachmentItem[];
 };
 
@@ -59,6 +62,8 @@ export async function relaySharedSessionMessage(
     parentGroupSpaceId: options.parentGroupSpaceId,
     parentSessionParticipants: options.parentSessionParticipants ?? [],
     parentSessionMessages: [],
+    initiatorIdentity: options.initiatorIdentity ?? null,
+    selfTargetIdentity: options.selfTargetIdentity ?? selfTargetIdentityForBridgeTarget(target, 'bridge-person', { canonicalParticipants: [] }),
     parentTurnId,
     parentMessageId,
     bridgeRequestId,

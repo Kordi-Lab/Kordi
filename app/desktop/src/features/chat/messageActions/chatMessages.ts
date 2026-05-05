@@ -30,7 +30,16 @@ import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextar
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
-import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
+import {
+  combineContext,
+  initiatorIdentityForOutreach,
+  parentSessionMessagesForOutreach,
+  parentSessionParticipantsForOutreach,
+  renderProjectContext,
+  renderRecentMessageContext,
+  selfTargetIdentityForBridgeTarget,
+  selfTargetIdentityForMentionedBridgeTarget,
+} from './context';
 import {
   localAgentRuntimeText,
   localHumanAddressLabels,
@@ -349,39 +358,11 @@ export function bridgeGroupMentionRelayTargets(
   });
 }
 
-function isSelfReferencePeerLabel(value: string | null | undefined) {
-  const trimmed = value?.trim().toLowerCase() ?? '';
-  return trimmed === 'me' || trimmed === 'you';
-}
-
 export function bridgeGroupSessionParticipants(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
   options: { selfPublicName?: string | null } = {},
 ): DesktopBridgeSessionParticipant[] {
-  const selfPublicName = cleanText(options.selfPublicName ?? undefined);
-  const participants = new Map<string, DesktopBridgeSessionParticipant>();
-  for (const participant of conversation.canonicalParticipants ?? []) {
-    if (participant.kind !== 'human') continue;
-    const rawDisplayName = cleanText(participant.name);
-    if (!rawDisplayName) continue;
-    const bridgeNodeId = cleanText(participant.bridgeNodeId);
-    const humanId = cleanText(participant.humanId);
-    const isSelf = participantIsSelf(participant);
-    if (isSelf && !bridgeNodeId && !humanId) continue;
-    // Don't broadcast self-reference labels like "Me"/"You" to other peers — those collide on
-    // the receiver side and end up rendered as "Me" for every group member.
-    const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
-      ? selfPublicName
-      : rawDisplayName;
-    participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
-      identityId: cleanText(participant.id),
-      displayName,
-      role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
-      bridgeNodeId,
-      humanId,
-    });
-  }
-  return [...participants.values()];
+  return parentSessionParticipantsForOutreach(conversation, options);
 }
 
 type UseChatMessageActionsArgs = Pick<
@@ -620,9 +601,13 @@ export function useChatMessageActions({
     const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
       || activeBridgeHost?.displayName?.trim()
       || null;
-    const activeGroupSessionParticipants = activeGroupSessionIsGroup
-      ? bridgeGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName })
-      : [];
+    const activeParentSessionParticipants = parentSessionParticipantsForOutreach(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName });
+    const activeGroupSessionParticipants = activeGroupSessionIsGroup ? activeParentSessionParticipants : [];
+    const activeInitiatorIdentity = initiatorIdentityForOutreach(
+      activeGroupSessionScope,
+      canonicalHumanIdentityId,
+      selfPublicBridgeName,
+    );
 
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
@@ -645,6 +630,7 @@ export function useChatMessageActions({
         resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
         const sentAt = formatDesktopEventTime();
         const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
+        const mentionedSelfTargetIdentity = selfTargetIdentityForMentionedBridgeTarget(mentionedTarget, activeGroupSessionScope);
         const groupMentionRelayTargets = activeGroupSessionIsGroup
           ? bridgeGroupMentionRelayTargets(activeGroupSessionScope, mentionedTarget, activeConvBridgeTarget, localBridgeNodeIds)
           : [];
@@ -687,8 +673,10 @@ export function useChatMessageActions({
               parentSessionTitle: mentionIsSessionMessage ? null : desktopChatState?.activeSession.title,
               parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
               parentGroupSpaceId: activeGroupSessionSpaceId,
-              parentSessionParticipants: activeGroupSessionParticipants,
+              parentSessionParticipants: activeParentSessionParticipants,
               parentSessionMessages: mentionIsSessionMessage ? [] : parentSessionMessagesForOutreach(activeConvMessages),
+              initiatorIdentity: activeInitiatorIdentity,
+              selfTargetIdentity: mentionedSelfTargetIdentity,
               parentMessageId,
               projectId: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.root,
               projectName: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.name,
@@ -713,8 +701,10 @@ export function useChatMessageActions({
                 parentSessionTitle: null,
                 parentSessionKind: 'group',
                 parentGroupSpaceId: activeGroupSessionSpaceId,
-                parentSessionParticipants: activeGroupSessionParticipants,
+                parentSessionParticipants: activeParentSessionParticipants,
                 parentSessionMessages: [],
+                initiatorIdentity: activeInitiatorIdentity,
+                selfTargetIdentity: selfTargetIdentityForBridgeTarget(relayTarget, 'bridge-person', activeGroupSessionScope),
                 parentMessageId,
                 projectId: null,
                 projectName: null,
@@ -783,7 +773,7 @@ export function useChatMessageActions({
       const groupSendTargets = isGroupSessionMessage
         ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
         : [];
-      const groupSessionParticipants = isGroupSessionMessage ? activeGroupSessionParticipants : [];
+      const groupSessionParticipants = isGroupSessionMessage ? activeParentSessionParticipants : [];
       const sendPlan = bridgeConversationSendPlan({
         activeConvId,
         hasMaterializedBridgeConversation,
@@ -881,6 +871,8 @@ export function useChatMessageActions({
                   parentGroupSpaceId: activeGroupSessionSpaceId,
                   parentSessionParticipants: groupSessionParticipants,
                   parentSessionMessages: [],
+                  initiatorIdentity: activeInitiatorIdentity,
+                  selfTargetIdentity: selfTargetIdentityForBridgeTarget(target, 'bridge-person', activeGroupSessionScope),
                   parentTurnId: null,
                   parentMessageId: preparedCanonicalMessage?.messageId ?? null,
                   projectId: null,
@@ -916,7 +908,10 @@ export function useChatMessageActions({
                 parentSessionTitle: null,
                 parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
                 parentGroupSpaceId: activeGroupSessionSpaceId,
+                parentSessionParticipants: activeParentSessionParticipants,
                 parentSessionMessages: targetIsAgent ? parentSessionMessagesForOutreach(activeConvMessages) : [],
+                initiatorIdentity: activeInitiatorIdentity,
+                selfTargetIdentity: selfTargetIdentityForBridgeTarget(activeConvBridgeTarget, target.targetKind, activeGroupSessionScope),
                 parentTurnId: null,
                 parentMessageId: preparedCanonicalMessage?.messageId ?? null,
                 projectId: targetIsAgent ? desktopChatState?.activeSession.project?.root : null,
@@ -1037,7 +1032,10 @@ export function useChatMessageActions({
             contextPolicy: 'recent-window',
             parentSessionId,
             parentSessionTitle: desktopChatState?.activeSession.title,
+            parentSessionParticipants: activeParentSessionParticipants,
             parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
+            initiatorIdentity: activeInitiatorIdentity,
+            selfTargetIdentity: selfTargetIdentityForMentionedBridgeTarget(mentionedTarget, activeGroupSessionScope),
             parentMessageId,
             projectId: desktopChatState?.activeSession.project?.root,
             projectName: desktopChatState?.activeSession.project?.name,
@@ -1109,7 +1107,8 @@ export function useChatMessageActions({
             parentSessionTitle: desktopChatState?.activeSession.title ?? null,
             parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
             parentGroupSpaceId: activeGroupSessionSpaceId,
-            parentSessionParticipants: activeGroupSessionParticipants,
+            parentSessionParticipants: activeParentSessionParticipants,
+            initiatorIdentity: activeInitiatorIdentity,
           }
         : null;
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
@@ -1147,6 +1146,8 @@ export function useChatMessageActions({
               parentSessionKind: localAgentRelayPlan.parentSessionKind,
               parentGroupSpaceId: localAgentRelayPlan.parentGroupSpaceId,
               parentSessionParticipants: localAgentRelayPlan.parentSessionParticipants,
+              initiatorIdentity: localAgentRelayPlan.initiatorIdentity,
+              selfTargetIdentity: selfTargetIdentityForBridgeTarget(target, 'bridge-person', activeGroupSessionScope),
               attachments,
             },
           );
