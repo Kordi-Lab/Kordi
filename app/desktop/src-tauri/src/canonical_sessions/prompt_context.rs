@@ -285,22 +285,101 @@ fn identity_role_for_id(
     }))
 }
 
+fn participant_is_local_self_agent(
+    participant: &PromptParticipantRow,
+    profile_human_identity_id: Option<&str>,
+    active_agent_identity_id: Option<&str>,
+) -> bool {
+    if !participant.kind.eq_ignore_ascii_case("agent") || !participant.is_local_source() {
+        return false;
+    }
+    let role_is_self = participant.role.trim().eq_ignore_ascii_case("self");
+    let owned_by_profile = profile_human_identity_id
+        .is_some_and(|identity_id| participant.owner_identity_id.as_deref() == Some(identity_id));
+    let is_active_profile_agent =
+        active_agent_identity_id.is_some_and(|identity_id| participant.identity_id == identity_id);
+    role_is_self || owned_by_profile || is_active_profile_agent
+}
+
+fn local_agent_role_for_id(
+    conn: &rusqlite::Connection,
+    participants: &[PromptParticipantRow],
+    identity_id: Option<&str>,
+    profile_human_identity_id: Option<&str>,
+    active_agent_identity_id: Option<&str>,
+) -> Result<Option<IdentityContextRole>, String> {
+    let Some(identity_id) = identity_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if let Some(participant) = participants
+        .iter()
+        .find(|participant| participant.identity_id == identity_id)
+    {
+        if participant_is_local_self_agent(
+            participant,
+            profile_human_identity_id,
+            active_agent_identity_id,
+        ) {
+            return Ok(Some(participant.to_identity_context_role()));
+        }
+        return Ok(None);
+    }
+
+    let Some(identity) = select_identity(conn, identity_id)? else {
+        return Ok(None);
+    };
+    let source = identity.source.trim();
+    let is_local_source = source.is_empty() || source.eq_ignore_ascii_case("local");
+    if !identity.kind.eq_ignore_ascii_case("agent") || !is_local_source {
+        return Ok(None);
+    }
+    let owned_by_profile = profile_human_identity_id.is_some_and(|profile_human_id| {
+        identity.owner_identity_id.as_deref() == Some(profile_human_id)
+    });
+    let is_active_profile_agent =
+        active_agent_identity_id.is_some_and(|active_agent_id| identity.id == active_agent_id);
+    if !owned_by_profile && !is_active_profile_agent {
+        return Ok(None);
+    }
+
+    identity_role_for_id(conn, participants, Some(identity_id))
+}
+
 fn local_self_role(
     conn: &rusqlite::Connection,
     participants: &[PromptParticipantRow],
     primary_identity_id: Option<&str>,
 ) -> Result<IdentityContextRole, String> {
     let profile = ensure_local_profile(conn)?;
-    let candidate_ids = [
+    let profile_human_identity_id = profile.human_identity_id.as_deref();
+    let active_agent_identity_id = profile.active_agent_identity_id.as_deref();
+
+    if let Some(role) = local_agent_role_for_id(
+        conn,
+        participants,
         primary_identity_id,
-        profile.active_agent_identity_id.as_deref(),
-    ];
-    for candidate_id in candidate_ids.into_iter().flatten() {
-        if let Some(role) = identity_role_for_id(conn, participants, Some(candidate_id))? {
-            if role.kind.eq_ignore_ascii_case("agent") {
-                return Ok(role);
-            }
-        }
+        profile_human_identity_id,
+        active_agent_identity_id,
+    )? {
+        return Ok(role);
+    }
+    if let Some(role) = local_agent_role_for_id(
+        conn,
+        participants,
+        active_agent_identity_id,
+        profile_human_identity_id,
+        active_agent_identity_id,
+    )? {
+        return Ok(role);
+    }
+    if let Some(participant) = participants.iter().find(|participant| {
+        participant_is_local_self_agent(
+            participant,
+            profile_human_identity_id,
+            active_agent_identity_id,
+        )
+    }) {
+        return Ok(participant.to_identity_context_role());
     }
     if let Some(participant) = participants.iter().find(|participant| {
         participant.kind.eq_ignore_ascii_case("agent") && participant.is_local_source()
@@ -322,15 +401,11 @@ fn requester_role(
     participants: &[PromptParticipantRow],
     created_by_identity_id: &str,
 ) -> Result<Option<IdentityContextRole>, String> {
+    if let Some(role) = identity_role_for_id(conn, participants, Some(created_by_identity_id))? {
+        return Ok(Some(role));
+    }
     let profile = ensure_local_profile(conn)?;
-    identity_role_for_id(
-        conn,
-        participants,
-        profile
-            .human_identity_id
-            .as_deref()
-            .or(Some(created_by_identity_id)),
-    )
+    identity_role_for_id(conn, participants, profile.human_identity_id.as_deref())
 }
 
 fn target_role_for_bridge_agent(

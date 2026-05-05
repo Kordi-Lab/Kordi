@@ -659,6 +659,156 @@ fn prompt_context_local_self_prefers_session_primary_identity_over_active_profil
 }
 
 #[test]
+fn prompt_context_local_self_ignores_remote_bridge_primary_identity() {
+    let guard = PromptContextTestDbGuard::new("local-self-ignores-remote-primary");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    seed_identity_with_owner_and_source(&conn, "human:alice", "Alice", "human", None, "local");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:alice-kordi",
+        "Alice's Kordi",
+        "agent",
+        Some("human:alice"),
+        "local",
+    );
+    seed_identity_with_owner_and_source(&conn, "human:bob", "Bob", "human", None, "bridge");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:bob-kordi",
+        "Bob's Kordi",
+        "agent",
+        Some("human:bob"),
+        "bridge",
+    );
+    update_local_profile_identities(
+        &conn,
+        Some("human:alice"),
+        Some("agent:alice-kordi"),
+        Some("Alice"),
+    )
+    .expect("set local profile identities");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:local-self-remote-primary".to_string()),
+            kind: "direct-agent".to_string(),
+            title: Some("Alice to Bob's Kordi".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: Some("agent:bob-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "agent:alice-kordi".to_string(),
+                "human:bob".to_string(),
+                "agent:bob-kordi".to_string(),
+            ],
+            metadata: None,
+        },
+    )
+    .expect("create prompt context session");
+    drop(conn);
+
+    let prompt = local_agent_session_prompt_context(Some(&session.id))
+        .expect("local prompt context")
+        .expect("prompt context exists");
+
+    assert!(
+        prompt.contains(
+            "Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Alice's Kordi"
+        ),
+        "local prompt must keep local active agent as self\n{prompt}"
+    );
+    assert!(
+        prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
+        "local prompt must reply as local active agent\n{prompt}"
+    );
+    assert!(
+        !prompt.contains(
+            "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi"
+        ),
+        "remote bridge primary must not become local self\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Permissions:\n- replyAs: agent:bob-kordi only"),
+        "local prompt must not reply as remote bridge primary\n{prompt}"
+    );
+}
+
+#[test]
+fn prompt_context_requester_prefers_session_creator_over_local_profile_human() {
+    let guard = PromptContextTestDbGuard::new("requester-prefers-session-creator");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    seed_identity_with_owner_and_source(&conn, "human:alice", "Alice", "human", None, "local");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:alice-kordi",
+        "Alice's Kordi",
+        "agent",
+        Some("human:alice"),
+        "local",
+    );
+    seed_identity_with_owner_and_source(&conn, "human:bob", "Bob", "human", None, "bridge");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:bob-kordi",
+        "Bob's Kordi",
+        "agent",
+        Some("human:bob"),
+        "bridge",
+    );
+    update_local_profile_identities(
+        &conn,
+        Some("human:alice"),
+        Some("agent:alice-kordi"),
+        Some("Alice"),
+    )
+    .expect("set local profile identities");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:remote-requester".to_string()),
+            kind: "group".to_string(),
+            title: Some("Remote initiated group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:bob".to_string(),
+            primary_identity_id: Some("agent:alice-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "human:alice".to_string(),
+                "agent:alice-kordi".to_string(),
+                "agent:bob-kordi".to_string(),
+            ],
+            metadata: None,
+        },
+    )
+    .expect("create prompt context session");
+    drop(conn);
+
+    let prompt = local_agent_session_prompt_context(Some(&session.id))
+        .expect("local prompt context")
+        .expect("prompt context exists");
+
+    assert!(
+        prompt.contains("Requester / initiator:\n- identityId: human:bob\n- displayName: Bob"),
+        "requester/initiator must be the session creator\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Requester / initiator:\n- identityId: human:alice\n- displayName: Alice"),
+        "local profile human must not override session creator\n{prompt}"
+    );
+}
+
+#[test]
 fn prompt_context_bridge_agent_escapes_malicious_raw_display_names_before_identity_frame() {
     let guard = PromptContextTestDbGuard::new("bridge-agent-raw-display-name-sanitizer");
     let db_path = guard.db_path();
