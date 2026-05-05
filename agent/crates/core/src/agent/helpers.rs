@@ -26,7 +26,7 @@ pub fn build_system_prompt(base: &str, agents_md: Option<&str>) -> String {
 }
 
 /// The default minimal system prompt.
-pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert coding assistant. You help users by reading files, executing commands, editing code, writing new files, and researching current information on the web when needed.
+pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert assistant. You help users by reading files, executing commands, editing code, writing new files, and researching current information on the web when needed.
 
 Available tools:
 - read: Read file contents (text and images), with offset/limit for large files
@@ -90,4 +90,21 @@ pub(crate) fn default_stream_fn() -> super::callbacks::StreamFn {
             )
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEFAULT_SYSTEM_PROMPT;
+
+    #[test]
+    fn default_system_prompt_uses_general_assistant_identity() {
+        assert!(
+            DEFAULT_SYSTEM_PROMPT.starts_with("You are an expert assistant."),
+            "default prompt should identify as a general expert assistant\n{DEFAULT_SYSTEM_PROMPT}"
+        );
+        assert!(
+            !DEFAULT_SYSTEM_PROMPT.contains("expert coding assistant"),
+            "default prompt must not identify as a coding assistant\n{DEFAULT_SYSTEM_PROMPT}"
+        );
+    }
 }

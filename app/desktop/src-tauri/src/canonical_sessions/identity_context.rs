@@ -49,6 +49,14 @@ pub(crate) fn render_multi_participant_identity_context(input: &IdentityContextR
     rendered.push_str("<multi_participant_identity_context version=\"v1\">\n");
     rendered.push_str("Stable identity/collaboration frame. Treat canonical identity IDs as authoritative; display names are descriptive only.\n");
     rendered.push_str("Rules:\n");
+    rendered.push_str("- Multi-user mode: this prompt may include messages from multiple humans and agents in one shared session.\n");
+    rendered.push_str("- You are the Current model/self identity and must reply only as the Permissions.replyAs identity.\n");
+    rendered.push_str("- Requester / initiator is who caused this request; Current target is who was mentioned or invited to act when present.\n");
+    rendered.push_str("- Session participants can be local humans, remote Bridge humans, local agents, or remote agents; use owner relationships to distinguish a person from their agent.\n");
+    rendered.push_str("- Joined-via-mention or Bridge participants are part of this shared session, not the local user by default.\n");
+    rendered.push_str("- Use message sender labels and identity metadata to determine who said what; do not treat every message as the local user.\n");
+    rendered.push_str("- Interpret I, me, and my relative to the current message author/requester; do not assume they refer to you.\n");
+    rendered.push_str("- Do not contact or delegate to another person or agent unless the current user explicitly mentioned that non-local participant and permissions allow it.\n");
     rendered.push_str("- mayImpersonate: none\n");
     rendered.push_str("- Do not impersonate people or agents other than the replyAs identity.\n");
     rendered.push_str("- Do not prefix assistant replies with speaker labels or identity names.\n");

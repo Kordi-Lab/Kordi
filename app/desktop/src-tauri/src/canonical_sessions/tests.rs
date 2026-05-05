@@ -272,6 +272,9 @@ fn identity_context_renders_versioned_frame_and_sorted_participants() {
         "owner: Alice (human:alice)",
         "replyAs: agent:alice-kordi only",
         "reachOut: allowed only for explicit non-local @Person/@Agent mentions in the current user message",
+        "Multi-user mode: this prompt may include messages from multiple humans and agents in one shared session.",
+        "Use message sender labels and identity metadata to determine who said what; do not treat every message as the local user.",
+        "Do not contact or delegate to another person or agent unless the current user explicitly mentioned that non-local participant and permissions allow it.",
     ] {
         assert!(rendered.contains(marker), "missing marker {marker:?}\n{rendered}");
     }
@@ -583,6 +586,10 @@ fn prompt_context_local_simple_session_uses_concise_context_without_identity_fra
     assert!(
         !prompt.contains("<multi_participant_identity_context"),
         "simple local session should stay concise without identity frame\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Multi-user mode:"),
+        "multi-user collaboration rules should only appear with identity frame\n{prompt}"
     );
 }
 
