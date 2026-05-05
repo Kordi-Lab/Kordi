@@ -198,7 +198,8 @@ fn outreach_context_snapshot_participant(
     }
 }
 
-fn unidentified_outreach_context_snapshot_participant() -> crate::bridge::DesktopBridgeSessionParticipant {
+fn unidentified_outreach_context_snapshot_participant(
+) -> crate::bridge::DesktopBridgeSessionParticipant {
     crate::bridge::DesktopBridgeSessionParticipant {
         identity_id: None,
         display_name: "Remote Kordi".to_string(),

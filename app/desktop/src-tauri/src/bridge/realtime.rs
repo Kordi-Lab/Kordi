@@ -269,12 +269,14 @@ pub(super) async fn send_realtime_or_relay(
     match realtime_result {
         Ok(()) => Ok(()),
         Err(realtime_error) if !durable => Err(realtime_error),
-        Err(realtime_error) => match relay_plaintext_message(host, target_node_id, project_id, payload).await {
-            Ok(()) => Ok(()),
-            Err(relay_error) => Err(format!(
-                "realtime: {realtime_error}; relay: {relay_error}"
-            )),
-        },
+        Err(realtime_error) => {
+            match relay_plaintext_message(host, target_node_id, project_id, payload).await {
+                Ok(()) => Ok(()),
+                Err(relay_error) => {
+                    Err(format!("realtime: {realtime_error}; relay: {relay_error}"))
+                }
+            }
+        }
     }
 }
 
@@ -284,9 +286,15 @@ mod tests {
 
     #[test]
     fn realtime_error_should_evict_recognises_stale_signals() {
-        assert!(realtime_error_should_evict("Realtime bridge connection timed out"));
-        assert!(realtime_error_should_evict("Realtime bridge connection is unavailable"));
-        assert!(!realtime_error_should_evict("Realtime bridge connection is not ready yet"));
+        assert!(realtime_error_should_evict(
+            "Realtime bridge connection timed out"
+        ));
+        assert!(realtime_error_should_evict(
+            "Realtime bridge connection is unavailable"
+        ));
+        assert!(!realtime_error_should_evict(
+            "Realtime bridge connection is not ready yet"
+        ));
         assert!(!realtime_error_should_evict("HTTP 403 forbidden"));
     }
 

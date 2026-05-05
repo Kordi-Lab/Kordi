@@ -1,10 +1,8 @@
-#[cfg(test)]
-use super::DesktopBridgeHostConfig;
+use super::constants::{is_agent_like_runtime, DEFAULT_BRIDGE_RUNTIME};
 #[cfg(test)]
 use super::constants::{
     API_STYLE_SERVE, BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE,
 };
-use super::constants::{DEFAULT_BRIDGE_RUNTIME, is_agent_like_runtime};
 use super::conversation_actions::desktop_bridge_send_message_impl;
 #[cfg(test)]
 use super::conversation_actions::outbound_message_type;
@@ -16,11 +14,13 @@ use super::events::{
 use super::mailbox::parse_mailbox_event;
 #[cfg(test)]
 use super::outreach::outreach_target_matches;
+#[cfg(test)]
+use super::DesktopBridgeHostConfig;
 use super::{
-    DesktopBridgeCreateOutreachRequest, DesktopBridgeIdentitySnapshot, DesktopBridgeManager,
-    DesktopBridgeOutreachMetadata, DesktopBridgePeer, DesktopBridgeState,
     build_current_bridge_state, default_owner_name, generate_human_id, load_bridge_store,
     load_conversation_store, now_ms, save_conversation_store, upsert_bridge_conversation,
+    DesktopBridgeCreateOutreachRequest, DesktopBridgeIdentitySnapshot, DesktopBridgeManager,
+    DesktopBridgeOutreachMetadata, DesktopBridgePeer, DesktopBridgeState,
 };
 
 fn outreach_attachment_args(

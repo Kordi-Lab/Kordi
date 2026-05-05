@@ -35,8 +35,12 @@ pub(super) fn prompt_cache_key_for_request(model: &str, system_prompt: &str) -> 
 pub(super) fn cached_tokens_from_usage(usage: &Value) -> u64 {
     usage
         .get("prompt_tokens_details")
-        .or_else(|| usage.get("input_tokens_details"))
         .and_then(|d| d.get("cached_tokens"))
+        .or_else(|| {
+            usage
+                .get("input_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+        })
         .and_then(|v| v.as_u64())
         .unwrap_or(0)
 }
@@ -373,8 +377,8 @@ fn openai_reasoning_effort(thinking: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_bearer_auth, build_chat_completions_request_body, openai_reasoning_effort,
-        prompt_cache_key_for_request,
+        apply_bearer_auth, build_chat_completions_request_body, cached_tokens_from_usage,
+        openai_reasoning_effort, prompt_cache_key_for_request,
     };
     use crate::CompletionRequest;
     use reqwest::Client;
@@ -451,6 +455,16 @@ mod tests {
         );
         assert_eq!(body["prompt_cache_key"], "kordi:gpt-4.1:identity-v1");
         assert!(body.get("prompt_cache_retention").is_none());
+    }
+
+    #[test]
+    fn cached_tokens_fall_back_to_input_details_when_prompt_details_has_no_cached_tokens() {
+        let usage = json!({
+            "prompt_tokens_details": {},
+            "input_tokens_details": {"cached_tokens": 1920}
+        });
+
+        assert_eq!(cached_tokens_from_usage(&usage), 1920);
     }
 
     #[test]
