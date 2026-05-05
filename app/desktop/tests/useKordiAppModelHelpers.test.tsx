@@ -102,8 +102,8 @@ test('group invite context carries the child session title fallback, participant
     parentSessionTitle: 'thefirsttestgroup',
     parentGroupSpaceId: 'session:group:root',
     parentSessionParticipants: [
-      { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
-      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'person', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null },
+      { identityId: 'human:me', displayName: 'Testuser2', kind: 'human', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+      { identityId: 'human:jiaxin', displayName: 'Jiaxin', kind: 'human', role: 'person', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null },
     ],
     parentSessionMessages: [
       { role: 'user', sender: 'Testuser2', text: 'Earlier question', timeLabel: '13:04', index: 0 },
