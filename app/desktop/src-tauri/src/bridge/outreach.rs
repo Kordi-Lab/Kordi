@@ -42,20 +42,97 @@ pub(super) fn outreach_target_matches(peer: &super::DesktopBridgePeer, target: &
     .any(|candidate| normalize_outreach_target(candidate) == normalized)
 }
 
-fn deserialize_runtime_context_vec<T>(value: &Option<serde_json::Value>, label: &str) -> Vec<T>
+const RUNTIME_CONTEXT_PARTICIPANT_LIMIT: usize = 50;
+const RUNTIME_CONTEXT_MESSAGE_LIMIT: usize = 16;
+const RUNTIME_CONTEXT_MESSAGE_TEXT_LIMIT: usize = 700;
+const RUNTIME_CONTEXT_SCALAR_LIMIT: usize = 240;
+
+fn clean_runtime_scalar(value: &str, max_chars: usize) -> String {
+    let cleaned = value.trim().replace(['\r', '\n'], " ");
+    let char_count = cleaned.chars().count();
+    if char_count <= max_chars {
+        return cleaned;
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    let prefix_len = max_chars.saturating_sub(1);
+    let mut truncated = cleaned.chars().take(prefix_len).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
+fn clean_runtime_optional_scalar(value: Option<String>, max_chars: usize) -> Option<String> {
+    value
+        .map(|value| clean_runtime_scalar(&value, max_chars))
+        .filter(|value| !value.is_empty())
+}
+
+fn sanitize_runtime_participant(
+    mut participant: DesktopBridgeSessionParticipant,
+) -> DesktopBridgeSessionParticipant {
+    participant.identity_id =
+        clean_runtime_optional_scalar(participant.identity_id, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.display_name =
+        clean_runtime_scalar(&participant.display_name, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.kind =
+        clean_runtime_optional_scalar(participant.kind, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.role =
+        clean_runtime_optional_scalar(participant.role, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.owner_identity_id =
+        clean_runtime_optional_scalar(participant.owner_identity_id, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.owner_display_name =
+        clean_runtime_optional_scalar(participant.owner_display_name, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.bridge_node_id =
+        clean_runtime_optional_scalar(participant.bridge_node_id, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.human_id =
+        clean_runtime_optional_scalar(participant.human_id, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.agent_id =
+        clean_runtime_optional_scalar(participant.agent_id, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant.runtime =
+        clean_runtime_optional_scalar(participant.runtime, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    participant
+}
+
+fn sanitize_runtime_message(
+    mut message: DesktopBridgeSessionThreadMessage,
+) -> DesktopBridgeSessionThreadMessage {
+    message.role = clean_runtime_scalar(&message.role, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    message.sender = clean_runtime_optional_scalar(message.sender, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    message.text = clean_runtime_scalar(&message.text, RUNTIME_CONTEXT_MESSAGE_TEXT_LIMIT);
+    message.time_label =
+        clean_runtime_optional_scalar(message.time_label, RUNTIME_CONTEXT_SCALAR_LIMIT);
+    message
+}
+
+fn deserialize_runtime_context_array<T, F>(
+    value: &Option<serde_json::Value>,
+    label: &str,
+    limit: usize,
+    mut sanitize: F,
+) -> Vec<T>
 where
     T: DeserializeOwned,
+    F: FnMut(T) -> T,
 {
-    let Some(value) = value.clone() else {
+    let Some(value) = value.as_ref() else {
         return Vec::new();
     };
-    match serde_json::from_value::<Vec<T>>(value) {
-        Ok(items) => items,
-        Err(error) => {
-            eprintln!("Ignoring malformed reach_out {label} runtime context: {error}");
-            Vec::new()
-        }
-    }
+    let Some(items) = value.as_array() else {
+        eprintln!("Ignoring malformed reach_out {label} runtime context: expected array");
+        return Vec::new();
+    };
+    items
+        .iter()
+        .take(limit)
+        .filter_map(|item| match serde_json::from_value::<T>(item.clone()) {
+            Ok(item) => Some(sanitize(item)),
+            Err(error) => {
+                eprintln!("Ignoring malformed reach_out {label} runtime context entry: {error}");
+                None
+            }
+        })
+        .collect()
 }
 
 fn reach_out_parent_context_from_request(
@@ -65,13 +142,17 @@ fn reach_out_parent_context_from_request(
     Vec<DesktopBridgeSessionThreadMessage>,
 ) {
     (
-        deserialize_runtime_context_vec(
+        deserialize_runtime_context_array(
             &request.parent_session_participants_json,
             "parentSessionParticipantsJson",
+            RUNTIME_CONTEXT_PARTICIPANT_LIMIT,
+            sanitize_runtime_participant,
         ),
-        deserialize_runtime_context_vec(
+        deserialize_runtime_context_array(
             &request.parent_session_messages_json,
             "parentSessionMessagesJson",
+            RUNTIME_CONTEXT_MESSAGE_LIMIT,
+            sanitize_runtime_message,
         ),
     )
 }
@@ -604,6 +685,327 @@ mod tests {
 
         assert!(participants.is_empty());
         assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn reach_out_runtime_context_caps_oversized_parent_arrays() {
+        let participants_json = (0..60)
+            .map(|index| {
+                json!({
+                    "identityId": format!("human:{index}"),
+                    "displayName": format!("Participant {index}"),
+                    "kind": "human",
+                    "role": "participant"
+                })
+            })
+            .collect::<Vec<_>>();
+        let messages_json = (0..20)
+            .map(|index| {
+                json!({
+                    "role": "person",
+                    "sender": "Alice",
+                    "text": format!("message {index}"),
+                    "index": index
+                })
+            })
+            .collect::<Vec<_>>();
+        let request = reach_out_request_with_runtime_context(
+            Some(json!(participants_json)),
+            Some(json!(messages_json)),
+        );
+
+        let (participants, messages) = reach_out_parent_context_from_request(&request);
+
+        assert_eq!(participants.len(), 50);
+        assert_eq!(messages.len(), 16);
+        assert_eq!(
+            participants.last().unwrap().identity_id.as_deref(),
+            Some("human:49")
+        );
+        assert_eq!(messages.last().unwrap().index, Some(15));
+    }
+
+    #[test]
+    fn reach_out_runtime_context_truncates_oversized_scalar_fields() {
+        let long_display_name = "Alice".repeat(80);
+        let long_text = "🙂".repeat(800);
+        let request = reach_out_request_with_runtime_context(
+            Some(json!([{
+                "identityId": "human:alice",
+                "displayName": long_display_name,
+                "kind": "human",
+                "role": "participant"
+            }])),
+            Some(json!([{
+                "role": "person",
+                "sender": "Alice",
+                "text": long_text,
+                "timeLabel": "now",
+                "index": 1
+            }])),
+        );
+
+        let (participants, messages) = reach_out_parent_context_from_request(&request);
+
+        assert_eq!(participants[0].display_name.chars().count(), 240);
+        assert!(participants[0].display_name.ends_with('…'));
+        assert_eq!(messages[0].text.chars().count(), 700);
+        assert!(messages[0].text.ends_with('…'));
+    }
+
+    #[test]
+    fn malformed_reach_out_runtime_context_entries_do_not_drop_valid_neighbors() {
+        let request = reach_out_request_with_runtime_context(
+            Some(json!([
+                {
+                    "identityId": "human:alice",
+                    "displayName": "Alice",
+                    "kind": "human",
+                    "role": "requester"
+                },
+                {"displayName": 7, "kind": []},
+                {
+                    "identityId": "agent:bob-kordi",
+                    "displayName": "Bob's Kordi",
+                    "kind": "agent",
+                    "role": "target"
+                }
+            ])),
+            Some(json!([
+                {"role": "person", "sender": "Alice", "text": "valid one", "index": 1},
+                {"role": 3, "text": []},
+                {"role": "agent", "sender": "Bob's Kordi", "text": "valid two", "index": 2}
+            ])),
+        );
+
+        let (participants, messages) = reach_out_parent_context_from_request(&request);
+
+        assert_eq!(participants.len(), 2);
+        assert_eq!(participants[0].display_name, "Alice");
+        assert_eq!(participants[1].display_name, "Bob's Kordi");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "valid one");
+        assert_eq!(messages[1].text, "valid two");
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = self.previous.as_ref() {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    struct CanonicalTestDbGuard {
+        storage_root: std::path::PathBuf,
+    }
+
+    impl CanonicalTestDbGuard {
+        fn new(storage_root: std::path::PathBuf) -> Self {
+            crate::canonical_sessions::set_canonical_sessions_test_db_path(Some(
+                storage_root.join("canonical-sessions.sqlite3"),
+            ));
+            Self { storage_root }
+        }
+    }
+
+    impl Drop for CanonicalTestDbGuard {
+        fn drop(&mut self) {
+            crate::canonical_sessions::set_canonical_sessions_test_db_path(None);
+            let _ = std::fs::remove_dir_all(&self.storage_root);
+        }
+    }
+
+    fn upsert_runtime_identity(
+        id: &str,
+        display_name: &str,
+        kind: &str,
+        owner_identity_id: Option<&str>,
+        source: &str,
+    ) {
+        crate::canonical_sessions::desktop_canonical_upsert_identity(
+            crate::canonical_sessions::UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_identity_id.map(ToString::to_string),
+                source: Some(source.to_string()),
+                source_host_id: None,
+                bridge_node_id: source
+                    .eq_ignore_ascii_case("bridge")
+                    .then(|| format!("node-{}", id.replace(':', "-"))),
+                human_id: kind
+                    .eq_ignore_ascii_case("human")
+                    .then(|| id.trim_start_matches("human:").to_string()),
+                agent_id: kind
+                    .eq_ignore_ascii_case("agent")
+                    .then(|| id.trim_start_matches("agent:").to_string()),
+                avatar_key: Some(id.to_string()),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert runtime identity");
+    }
+
+    #[tokio::test]
+    async fn reach_out_runtime_populates_parent_context_from_canonical_session() {
+        let storage_root = std::env::temp_dir().join(format!(
+            "kordi-reach-out-runtime-context-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _storage_env_lock = crate::bridge::STORAGE_ENV_TEST_LOCK
+            .lock()
+            .expect("storage env test lock");
+        let _app_data_guard = EnvVarGuard::set("APP_DATA_DIR", &storage_root);
+        let _storage_root_guard = EnvVarGuard::set("KORDI_STORAGE_ROOT", &storage_root);
+        let _canonical_db_guard = CanonicalTestDbGuard::new(storage_root.clone());
+        let server = spawn_mock_bridge_server();
+        crate::bridge::save_bridge_store(&crate::bridge::DesktopBridgeStore {
+            active_host_id: Some("host-runtime".to_string()),
+            local_agent_routing: crate::bridge::DesktopBridgeAgentRouting::default(),
+            hosts: vec![crate::bridge::DesktopBridgeHostConfig {
+                id: "host-runtime".to_string(),
+                coordination: server.base_url.clone(),
+                node_id: "alice-node".to_string(),
+                api_key: "secret".to_string(),
+                display_name: Some("Alice's Kordi".to_string()),
+                owner: Some("Alice".to_string()),
+                human_id: Some("human:alice".to_string()),
+                discovery_mode: "open".to_string(),
+                active_agent_id: None,
+                agents: Vec::new(),
+                api_style: crate::bridge::constants::API_STYLE_SERVE.to_string(),
+            }],
+        })
+        .expect("save bridge store");
+        crate::bridge::save_conversation_store(
+            &crate::bridge::DesktopBridgeConversationStore::default(),
+        )
+        .expect("save empty conversation store");
+
+        upsert_runtime_identity("human:alice", "Alice", "human", None, "local");
+        upsert_runtime_identity(
+            "agent:alice-kordi",
+            "Alice's Kordi",
+            "agent",
+            Some("human:alice"),
+            "local",
+        );
+        upsert_runtime_identity("human:bob", "Bob", "human", None, "bridge");
+        upsert_runtime_identity(
+            "agent:bob-kordi",
+            "Bob's Kordi",
+            "agent",
+            Some("human:bob"),
+            "bridge",
+        );
+        let session_id = "session:runtime-parent";
+        crate::canonical_sessions::desktop_canonical_open_or_create_session(
+            crate::canonical_sessions::OpenCanonicalSessionRequest {
+                id: Some(session_id.to_string()),
+                kind: "group".to_string(),
+                title: Some("Runtime parent".to_string()),
+                status: Some("active".to_string()),
+                created_by_identity_id: "human:alice".to_string(),
+                primary_identity_id: Some("agent:alice-kordi".to_string()),
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: None,
+                participant_identity_ids: vec![
+                    "human:alice".to_string(),
+                    "agent:alice-kordi".to_string(),
+                    "human:bob".to_string(),
+                    "agent:bob-kordi".to_string(),
+                ],
+                metadata: None,
+            },
+        )
+        .expect("create runtime parent session");
+        crate::canonical_sessions::desktop_canonical_append_message_fast(
+            crate::canonical_sessions::AppendCanonicalMessageRequest {
+                id: Some("message:runtime-parent-1".to_string()),
+                session_id: session_id.to_string(),
+                sender_identity_id: "human:alice".to_string(),
+                sender_role: "person".to_string(),
+                message_kind: "text".to_string(),
+                content_text: "@Bob's Kordi can you review this?".to_string(),
+                content: None,
+                created_at_ms: Some(1_000),
+                parent_message_id: None,
+                delegated_exchange_id: None,
+                status: None,
+                source_transport: None,
+                source_event_id: None,
+            },
+        )
+        .expect("append runtime parent message");
+
+        let runtime = crate::chat::bridge_outreach::build_reach_out_runtime(
+            DesktopBridgeManager::default(),
+            DesktopChatManager::default(),
+            storage_root.clone(),
+            session_id.to_string(),
+            "@Bob's Kordi can you review this?".to_string(),
+            vec!["Kordi".to_string(), "Alice's Kordi".to_string()],
+        );
+        let response = (runtime.reach_out)(ReachOutRequest {
+            target: "Bob's Kordi".to_string(),
+            target_kind: Some("bridge-agent".to_string()),
+            message: "Can you review this?".to_string(),
+            context: None,
+            context_policy: "session-message".to_string(),
+            include_project_context: false,
+            wait_for_response: false,
+            timeout_seconds: None,
+            parent_session_id: None,
+            parent_turn_id: None,
+            parent_message_id: None,
+            project_id: None,
+            project_name: None,
+            parent_session_participants_json: None,
+            parent_session_messages_json: None,
+        })
+        .await
+        .expect("reach out through runtime closure");
+
+        assert_eq!(response.target_display_name, "Bob's Kordi");
+        assert_eq!(server.relay_bodies.lock().expect("relay bodies").len(), 1);
+        let store = crate::bridge::load_conversation_store();
+        let outreach = store.conversations[0]
+            .outreach
+            .as_ref()
+            .expect("outreach metadata");
+        assert_eq!(outreach.parent_session_id.as_deref(), Some(session_id));
+        assert_eq!(outreach.parent_session_participants.len(), 4);
+        assert!(outreach
+            .parent_session_participants
+            .iter()
+            .any(|participant| {
+                participant.identity_id.as_deref() == Some("agent:bob-kordi")
+                    && participant.display_name == "Bob's Kordi"
+            }));
+        assert_eq!(outreach.parent_session_messages.len(), 1);
+        assert_eq!(
+            outreach.parent_session_messages[0].text,
+            "@Bob's Kordi can you review this?"
+        );
     }
 
     #[tokio::test]

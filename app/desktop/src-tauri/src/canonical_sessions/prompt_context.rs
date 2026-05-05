@@ -1,12 +1,12 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use crate::bridge::{DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadMessage};
 
 use super::render_multi_participant_identity_context;
 use super::schema::{ensure_local_profile, initialize_schema};
 use super::{
-    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole, open_db, select_identity, select_session,
+    open_db, select_identity, select_session, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 
 #[cfg(test)]
@@ -36,14 +36,17 @@ fn open_prompt_context_db() -> Result<Connection, String> {
 }
 
 fn truncate_context_line(value: &str, max_chars: usize) -> String {
-    let trimmed = value.trim().replace('\n', " ");
-    let mut chars = trimmed.chars();
-    let truncated = chars.by_ref().take(max_chars).collect::<String>();
-    if chars.next().is_some() {
-        format!("{truncated}…")
-    } else {
-        truncated
+    let trimmed = value.trim().replace(['\r', '\n'], " ");
+    if trimmed.chars().count() <= max_chars {
+        return trimmed;
     }
+    if max_chars == 0 {
+        return String::new();
+    }
+    let prefix_len = max_chars.saturating_sub(1);
+    let mut truncated = trimmed.chars().take(prefix_len).collect::<String>();
+    truncated.push('…');
+    truncated
 }
 
 #[derive(Debug, Clone)]
@@ -253,10 +256,11 @@ fn session_thread_messages(
     let mut messages = message_stmt
         .query_map(params![session_id, limit as i64], |row| {
             let sequence_num = row.get::<_, i64>(3)?;
+            let text = row.get::<_, String>(2)?;
             Ok(DesktopBridgeSessionThreadMessage {
                 sender: row.get::<_, Option<String>>(0)?,
                 role: row.get::<_, String>(1)?,
-                text: row.get::<_, String>(2)?,
+                text: truncate_context_line(&text, 700),
                 time_label: None,
                 index: usize::try_from(sequence_num).ok(),
             })

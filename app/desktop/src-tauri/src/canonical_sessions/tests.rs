@@ -1049,12 +1049,51 @@ fn bridge_session_thread_snapshot_queries_parent_participants_and_messages() {
     assert_eq!(bob_agent.kind.as_deref(), Some("agent"));
     assert_eq!(bob_agent.owner_identity_id.as_deref(), Some("human:bob"));
     assert_eq!(bob_agent.owner_display_name.as_deref(), Some("Bob"));
-    assert_eq!(bob_agent.bridge_node_id.as_deref(), Some("node-agent-bob-kordi"));
+    assert_eq!(
+        bob_agent.bridge_node_id.as_deref(),
+        Some("node-agent-bob-kordi")
+    );
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].sender.as_deref(), Some("Alice"));
     assert_eq!(messages[0].text, "@Bob's Kordi can you review this?");
     assert_eq!(messages[1].sender.as_deref(), Some("Alice's Kordi"));
     assert_eq!(messages[1].text, "I'll ask Bob's Kordi.");
+}
+
+#[test]
+fn bridge_session_thread_snapshot_truncates_oversized_message_text() {
+    let guard = PromptContextTestDbGuard::new("bridge-session-thread-snapshot-truncates-text");
+    let db_path = guard.db_path();
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("message:long-text".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:alice".to_string(),
+            sender_role: "person".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "🙂".repeat(800),
+            content: None,
+            created_at_ms: Some(1_000),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: None,
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append long message");
+    drop(conn);
+
+    let (_participants, messages) = bridge_session_thread_snapshot_for_parent(&session.id, 50, 16)
+        .expect("load bridge session thread snapshot");
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].text.chars().count(), 700);
+    assert!(messages[0].text.ends_with('…'));
 }
 
 #[test]

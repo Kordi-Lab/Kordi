@@ -202,7 +202,25 @@ fn install_reach_out_runtime(
     local_agent_labels: Vec<String>,
 ) {
     let parent_session_id = runtime.session_id().to_string();
-    runtime.set_reach_out_runtime(Some(ReachOutRuntime {
+    runtime.set_reach_out_runtime(Some(build_reach_out_runtime(
+        bridge_manager,
+        chat_manager,
+        cwd,
+        parent_session_id,
+        user_text,
+        local_agent_labels,
+    )));
+}
+
+pub(crate) fn build_reach_out_runtime(
+    bridge_manager: DesktopBridgeManager,
+    chat_manager: DesktopChatManager,
+    cwd: PathBuf,
+    parent_session_id: String,
+    user_text: String,
+    local_agent_labels: Vec<String>,
+) -> ReachOutRuntime {
+    ReachOutRuntime {
         reach_out: Arc::new(move |mut request| {
             let bridge_manager = bridge_manager.clone();
             let chat_manager = chat_manager.clone();
@@ -262,7 +280,7 @@ fn install_reach_out_runtime(
                     .map_err(KordiError::Tool)
             })
         }),
-    }));
+    }
 }
 
 #[cfg(test)]
