@@ -153,6 +153,194 @@ fn direct_agent_outreach_sync_keeps_owner_out_of_private_parent_participants() {
     assert_eq!(participants, vec!["agent:remote", "human:local"]);
 }
 
+fn outreach_context_snapshot_test_session(conn: &Connection, id: &str) -> CanonicalSession {
+    open_or_create_session_in_db(
+        conn,
+        OpenCanonicalSessionRequest {
+            id: Some(id.to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Parent".to_string()),
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("agent:local".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:local".to_string(), "agent:remote".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("open context snapshot test session")
+}
+
+fn outreach_context_snapshot_participant(
+    identity_id: &str,
+    display_name: &str,
+    kind: &str,
+    role: &str,
+    owner_identity_id: Option<&str>,
+) -> crate::bridge::DesktopBridgeSessionParticipant {
+    crate::bridge::DesktopBridgeSessionParticipant {
+        identity_id: Some(identity_id.to_string()),
+        display_name: display_name.to_string(),
+        kind: Some(kind.to_string()),
+        role: Some(role.to_string()),
+        owner_identity_id: owner_identity_id.map(ToString::to_string),
+        owner_display_name: owner_identity_id.map(|_| "Owner".to_string()),
+        bridge_node_id: None,
+        human_id: kind
+            .eq_ignore_ascii_case("human")
+            .then(|| identity_id.trim_start_matches("human:").to_string()),
+        agent_id: kind
+            .eq_ignore_ascii_case("agent")
+            .then(|| identity_id.trim_start_matches("agent:").to_string()),
+        runtime: None,
+    }
+}
+
+fn outreach_context_snapshot_test_metadata(
+    session_id: &str,
+) -> crate::bridge::DesktopBridgeOutreachMetadata {
+    crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some(session_id.to_string()),
+        parent_session_title: Some("Parent".to_string()),
+        parent_session_kind: None,
+        parent_group_space_id: None,
+        parent_session_participants: vec![
+            outreach_context_snapshot_participant(
+                "human:local",
+                "Local",
+                "human",
+                "requester",
+                None,
+            ),
+            outreach_context_snapshot_participant(
+                "agent:remote",
+                "Remote Kordi",
+                "agent",
+                "delegate",
+                Some("human:remote"),
+            ),
+        ],
+        parent_session_messages: Vec::new(),
+        initiator_identity: Some(crate::bridge::DesktopBridgePromptIdentity {
+            identity_id: Some("human:local".to_string()),
+            display_name: "Local".to_string(),
+            kind: "human".to_string(),
+            owner_identity_id: None,
+            owner_display_name: None,
+            bridge_node_id: None,
+            human_id: Some("local".to_string()),
+            agent_id: None,
+            runtime: None,
+        }),
+        self_target_identity: Some(crate::bridge::DesktopBridgePromptIdentity {
+            identity_id: Some("agent:remote".to_string()),
+            display_name: "Remote Kordi".to_string(),
+            kind: "agent".to_string(),
+            owner_identity_id: Some("human:remote".to_string()),
+            owner_display_name: Some("Remote".to_string()),
+            bridge_node_id: Some("kd_remote".to_string()),
+            human_id: None,
+            agent_id: Some("ka_remote".to_string()),
+            runtime: Some("kordi".to_string()),
+        }),
+        permission_policy_hash: None,
+        participant_graph_hash: None,
+        parent_turn_id: None,
+        parent_message_id: None,
+        bridge_host_id: "host-1".to_string(),
+        bridge_conversation_id: Some("bridge:host-1:remote".to_string()),
+        bridge_request_id: Some("bridge_req_test".to_string()),
+        delivery_state: None,
+        target_node_id: "kd_remote".to_string(),
+        target_human_id: Some("kh_remote".to_string()),
+        target_agent_id: Some("ka_remote".to_string()),
+        target_display_name: "Remote Kordi".to_string(),
+        target_owner_name: Some("Remote".to_string()),
+        target_runtime: Some("kordi".to_string()),
+        request_text: "Can you check this?".to_string(),
+        trigger_text: Some("@Remote Kordi Can you check this?".to_string()),
+        context_text: Some("Recent parent context".to_string()),
+        context_policy: Some("recent-window".to_string()),
+        project_id: Some("project-1".to_string()),
+        project_name: Some("Project".to_string()),
+        status: "awaitingReply".to_string(),
+        created_at_ms: 1000,
+        updated_at_ms: 1000,
+        completed_at_ms: None,
+        error: None,
+    }
+}
+
+fn stored_context_snapshots(conn: &Connection) -> Vec<CanonicalContextSnapshot> {
+    let mut snapshots = commands::load_state_from_db(conn)
+        .expect("load state")
+        .context_snapshots;
+    snapshots.sort_by(|left, right| left.id.cmp(&right.id));
+    snapshots
+}
+
+fn assert_outreach_context_snapshot_variant_changes<F, G>(label: &str, mutate: F, changed_value: G)
+where
+    F: FnOnce(&mut crate::bridge::DesktopBridgeOutreachMetadata, &mut String, &mut String),
+    G: Fn(&CanonicalContextSnapshot) -> String,
+{
+    let conn = test_conn();
+    let session = outreach_context_snapshot_test_session(
+        &conn,
+        &format!("session:parent:{}", label.replace(' ', "-")),
+    );
+    let base_outreach = outreach_context_snapshot_test_metadata(&session.id);
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "human:local",
+        "agent:remote",
+        "delegation:test",
+        &base_outreach,
+        "recent-window",
+    )
+    .expect("store base snapshot");
+
+    let mut variant_outreach = base_outreach.clone();
+    let mut target_identity_id = "agent:remote".to_string();
+    let mut context_policy = "recent-window".to_string();
+    mutate(
+        &mut variant_outreach,
+        &mut target_identity_id,
+        &mut context_policy,
+    );
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "human:local",
+        &target_identity_id,
+        "delegation:test",
+        &variant_outreach,
+        &context_policy,
+    )
+    .expect("store variant snapshot");
+
+    let snapshots = stored_context_snapshots(&conn);
+    assert_eq!(
+        snapshots.len(),
+        2,
+        "{label}: variant should create a distinct cache snapshot, got {snapshots:#?}"
+    );
+    let ids: std::collections::BTreeSet<_> =
+        snapshots.iter().map(|snapshot| &snapshot.id).collect();
+    assert_eq!(ids.len(), 2, "{label}: snapshot ids should differ");
+    let changed_values: std::collections::BTreeSet<_> =
+        snapshots.iter().map(changed_value).collect();
+    assert_eq!(
+        changed_values.len(),
+        2,
+        "{label}: expected changed cache field to differ, got {snapshots:#?}"
+    );
+}
+
 #[test]
 fn outreach_context_snapshot_is_session_scoped() {
     let conn = test_conn();
@@ -230,6 +418,117 @@ fn outreach_context_snapshot_is_session_scoped() {
     assert_eq!(
         snapshot.summary_text.as_deref(),
         Some("Recent parent context")
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_prefers_carried_identity_and_permission_hashes() {
+    let conn = test_conn();
+    let session = outreach_context_snapshot_test_session(&conn, "session:parent:carried-hashes");
+    let mut outreach = outreach_context_snapshot_test_metadata(&session.id);
+    outreach.participant_graph_hash = Some(" carried-graph-hash ".to_string());
+    outreach.permission_policy_hash = Some(" carried-policy-hash ".to_string());
+
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "human:local",
+        "agent:remote",
+        "delegation:test",
+        &outreach,
+        "recent-window",
+    )
+    .expect("store snapshot");
+
+    let snapshots = stored_context_snapshots(&conn);
+    assert_eq!(snapshots.len(), 1);
+    let snapshot = &snapshots[0];
+    assert_eq!(snapshot.participant_hash, "carried-graph-hash");
+    assert_ne!(
+        snapshot.message_range_hash,
+        hash_hex("recent-window|Recent parent context", 16),
+        "permission policy hash must participate in the message-range cache key"
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_participant_set_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "participant set changes",
+        |outreach, _target_identity_id, _context_policy| {
+            outreach
+                .parent_session_participants
+                .push(outreach_context_snapshot_participant(
+                    "human:observer",
+                    "Observer",
+                    "human",
+                    "participant",
+                    None,
+                ));
+        },
+        |snapshot| snapshot.participant_hash.clone(),
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_owner_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "owner changes",
+        |outreach, _target_identity_id, _context_policy| {
+            let remote = outreach
+                .parent_session_participants
+                .iter_mut()
+                .find(|participant| participant.identity_id.as_deref() == Some("agent:remote"))
+                .expect("remote participant");
+            remote.owner_identity_id = Some("human:replacement-owner".to_string());
+            remote.owner_display_name = Some("Replacement Owner".to_string());
+        },
+        |snapshot| snapshot.participant_hash.clone(),
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_target_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "target changes",
+        |_outreach, target_identity_id, _context_policy| {
+            *target_identity_id = "agent:second-remote".to_string();
+        },
+        |snapshot| snapshot.participant_hash.clone(),
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_target_model_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "target model changes",
+        |outreach, _target_identity_id, _context_policy| {
+            outreach.target_runtime = Some("kordi-desktop-gpt-5".to_string());
+        },
+        |snapshot| snapshot.model.clone(),
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_context_policy_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "context policy changes",
+        |outreach, _target_identity_id, context_policy| {
+            outreach.context_policy = Some("full-thread".to_string());
+            *context_policy = "full-thread".to_string();
+        },
+        |snapshot| snapshot.message_range_hash.clone(),
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_cache_key_changes_when_permission_policy_changes() {
+    assert_outreach_context_snapshot_variant_changes(
+        "permission policy changes",
+        |outreach, _target_identity_id, _context_policy| {
+            outreach.permission_policy_hash = Some("permission-policy-strict".to_string());
+        },
+        |snapshot| snapshot.message_range_hash.clone(),
     );
 }
 

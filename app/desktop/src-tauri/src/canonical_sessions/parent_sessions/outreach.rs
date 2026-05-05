@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection};
+use std::collections::BTreeSet;
 
 use super::super::bridge_routing::{
     canonical_bridge_message_status, outreach_is_session_invite, outreach_is_session_message,
@@ -505,6 +506,109 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
     Ok(true)
 }
 
+fn normalized_hash_value(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn carried_hash(value: Option<&String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn prompt_identity_id(
+    identity: Option<&crate::bridge::DesktopBridgePromptIdentity>,
+) -> Option<String> {
+    identity
+        .and_then(|identity| identity.identity_id.as_deref())
+        .map(normalized_hash_value)
+        .filter(|value| !value.is_empty())
+}
+
+fn participant_graph_hash(
+    participants: &[crate::bridge::DesktopBridgeSessionParticipant],
+    target_identity_id: &str,
+    initiator_identity_id: &str,
+) -> String {
+    let mut participant_entries = participants
+        .iter()
+        .map(|participant| {
+            (
+                participant
+                    .identity_id
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .kind
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .role
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .owner_identity_id
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    participant_entries.sort();
+
+    let mut hash_input = vec![
+        "participant-graph-v1".to_string(),
+        format!("initiator:{}", normalized_hash_value(initiator_identity_id)),
+        format!("target:{}", normalized_hash_value(target_identity_id)),
+    ];
+    hash_input.extend(participant_entries.into_iter().map(
+        |(identity_id, kind, role, owner_identity_id)| {
+            format!("participant:{identity_id}\t{kind}\t{role}\t{owner_identity_id}")
+        },
+    ));
+
+    hash_hex(&hash_input.join("\n"), 16)
+}
+
+fn permission_policy_hash(
+    reply_as_identity_id: &str,
+    allowed_target_ids: &[&str],
+    reach_out_allowed: bool,
+    context_policy: &str,
+    requires_approval: bool,
+) -> String {
+    let allowed_target_ids = allowed_target_ids
+        .iter()
+        .map(|value| normalized_hash_value(value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>();
+
+    let mut hash_input = vec![
+        "permission-policy-v1".to_string(),
+        format!("reply_as:{}", normalized_hash_value(reply_as_identity_id)),
+        format!(
+            "reach_out:{}",
+            if reach_out_allowed {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        ),
+        format!("context_policy:{}", normalized_hash_value(context_policy)),
+        format!("requires_approval:{requires_approval}"),
+    ];
+    hash_input.extend(
+        allowed_target_ids
+            .into_iter()
+            .map(|target_id| format!("allowed_target:{target_id}")),
+    );
+
+    hash_hex(&hash_input.join("\n"), 16)
+}
+
 pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
     conn: &Connection,
     session_id: &str,
@@ -524,6 +628,11 @@ pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
     };
 
     let profile = ensure_local_profile(conn)?;
+    let provider = "desktop-bridge";
+    let model = outreach
+        .target_runtime
+        .as_deref()
+        .unwrap_or(outreach.target_kind.as_str());
     let prompt_hash = hash_hex(&outreach.request_text, 16);
     let project_context_hash = outreach.project_id.as_ref().map(|project_id| {
         hash_hex(
@@ -535,14 +644,55 @@ pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
             16,
         )
     });
-    let participant_hash = hash_hex(target_identity_id, 16);
-    let message_range_hash = hash_hex(&format!("{context_policy}|{context_text}"), 16);
+    let participant_graph_initiator_id = prompt_identity_id(outreach.initiator_identity.as_ref())
+        .unwrap_or_else(|| agent_identity_id.to_string());
+    let participant_hash =
+        carried_hash(outreach.participant_graph_hash.as_ref()).unwrap_or_else(|| {
+            if outreach.parent_session_participants.is_empty() {
+                hash_hex(target_identity_id, 16)
+            } else {
+                participant_graph_hash(
+                    &outreach.parent_session_participants,
+                    target_identity_id,
+                    &participant_graph_initiator_id,
+                )
+            }
+        });
+    let reply_as_identity_id = prompt_identity_id(outreach.self_target_identity.as_ref())
+        .unwrap_or_else(|| agent_identity_id.to_string());
+    let permission_hash =
+        carried_hash(outreach.permission_policy_hash.as_ref()).unwrap_or_else(|| {
+            permission_policy_hash(
+                &reply_as_identity_id,
+                &[target_identity_id],
+                true,
+                context_policy,
+                false,
+            )
+        });
+    let message_range_hash = hash_hex(
+        &format!(
+            "message-range-v1|{}|{}|{}",
+            normalized_hash_value(context_policy),
+            permission_hash,
+            context_text
+        ),
+        16,
+    );
     let id = format!(
         "context:{}",
         hash_hex(
             &format!(
-                "{}|{}|{}|{}",
-                profile.id, session_id, delegation_id, message_range_hash
+                "context-snapshot-v1|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                profile.id,
+                session_id,
+                delegation_id,
+                provider,
+                model,
+                prompt_hash,
+                project_context_hash.as_deref().unwrap_or_default(),
+                participant_hash,
+                message_range_hash
             ),
             16,
         )
@@ -562,11 +712,8 @@ pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
             profile.id,
             session_id,
             agent_identity_id,
-            "desktop-bridge",
-            outreach
-                .target_runtime
-                .as_deref()
-                .unwrap_or(outreach.target_kind.as_str()),
+            provider,
+            model,
             prompt_hash,
             project_context_hash,
             participant_hash,
