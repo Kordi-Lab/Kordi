@@ -67,6 +67,7 @@ fn should_fallback_direct_realtime_to_relay(
                 || policy.eq_ignore_ascii_case("session-message")
                 || policy.eq_ignore_ascii_case("session-invite")
                 || policy.eq_ignore_ascii_case("session-update")
+                || policy.eq_ignore_ascii_case("session-title-update")
         })
 }
 
@@ -1332,6 +1333,8 @@ mod tests {
         session_message.context_policy = Some("session-message".to_string());
         let mut session_invite = test_outreach(None);
         session_invite.context_policy = Some("session-invite".to_string());
+        let mut session_title_update = test_outreach(None);
+        session_title_update.context_policy = Some("session-title-update".to_string());
         let mut ordinary_outreach = test_outreach(None);
         ordinary_outreach.context_policy = Some("recent-window".to_string());
 
@@ -1340,6 +1343,9 @@ mod tests {
         )));
         assert!(should_fallback_direct_realtime_to_relay(Some(
             &session_invite
+        )));
+        assert!(should_fallback_direct_realtime_to_relay(Some(
+            &session_title_update
         )));
         assert!(!should_fallback_direct_realtime_to_relay(Some(
             &ordinary_outreach

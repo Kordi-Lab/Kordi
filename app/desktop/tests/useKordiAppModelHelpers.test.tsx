@@ -7,7 +7,9 @@ import {
   canonicalSessionMessagesForGroupInvite,
   currentMentionQuery,
   filterMentionTargets,
+  groupRenameMetadata,
   removeSessionFromCanonicalState,
+  sessionRenameNoticeText,
 } from '../src/app/useKordiAppModelHelpers';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -39,6 +41,38 @@ test('canonical session removal prunes session-scoped records', () => {
   assert.deepEqual(next.sessions.map((session) => session.id), ['keep']);
   assert.deepEqual(next.messages.map((message) => message.sessionId), ['keep']);
   assert.deepEqual(next.participants.map((participant) => participant.sessionId), ['keep']);
+});
+
+test('group rename metadata changes the group name without overwriting manual session-title metadata', () => {
+  assert.deepEqual(
+    groupRenameMetadata({
+      customName: 'Old group',
+      groupSpaceId: 'session:group:root',
+      titleSource: 'manual',
+      sessionTitleSource: 'manual',
+      extra: 'kept',
+    }, 'New group', 'session:group:root', 12_345),
+    {
+      customName: 'New group',
+      groupId: 'session:group:root',
+      groupSpaceId: 'session:group:root',
+      groupNameUpdatedAtMs: 12_345,
+      titleSource: 'manual',
+      sessionTitleSource: 'manual',
+      extra: 'kept',
+    },
+  );
+});
+
+test('session rename notice text names the actor, scope, and new title', () => {
+  assert.equal(
+    sessionRenameNoticeText('Kordi User 4', 'HIHIHI', 'session'),
+    'Kordi User 4 changed the session name to HIHIHI',
+  );
+  assert.equal(
+    sessionRenameNoticeText('Kordi User 4', 'Atestgroup', 'group'),
+    'Kordi User 4 changed the group name to Atestgroup',
+  );
 });
 
 test('group invite title falls back to the group space custom name for child sessions', () => {

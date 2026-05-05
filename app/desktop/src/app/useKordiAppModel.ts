@@ -35,6 +35,7 @@ import {
   buildChatGroupBridgeUpdateTargets,
   CHAT_GROUP_INVITE_CONTEXT_POLICY,
   CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+  CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
   buildParticipantSpaceContinuationMetadata,
   chatSessionIdForAgentStart,
@@ -57,6 +58,7 @@ import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatS
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
+  appendCanonicalMessage,
   archiveDesktopChatSession,
   createDesktopBridgeOutreach,
   createDesktopProject,
@@ -67,6 +69,7 @@ import {
   openOrCreateCanonicalSession,
   removeCanonicalSessionParticipant,
   renameCanonicalSession,
+  renameDesktopChatSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -77,9 +80,11 @@ import {
   canonicalAvatarSeed,
   canonicalGroupInviteContextForSession,
   canonicalGroupParticipantsForSession,
+  canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   currentMentionQuery,
   filterMentionTargets,
+  groupRenameMetadata,
   isNativeDesktopShell,
   metadataGroupSpaceId,
   metadataString,
@@ -91,6 +96,7 @@ import {
   removeSessionFromCanonicalState,
   removeSessionFromDesktopState,
   sessionMetadataRecord,
+  sessionRenameNoticeText,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 
@@ -727,6 +733,118 @@ export function useKordiAppModel() {
     }
   }, [activeConvId, composerUi.setComposerDrafts, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
 
+  const appendRenameNotice = useCallback(async (
+    state: CanonicalSessionState,
+    sessionId: string,
+    title: string,
+    scope: 'group' | 'session',
+    actorIdentityId: string,
+  ) => {
+    const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
+    const now = Date.now();
+    return appendCanonicalMessage({
+      sessionId,
+      senderIdentityId: actorIdentityId,
+      senderRole: 'system',
+      messageKind: 'status',
+      contentText: sessionRenameNoticeText(actorName, title, scope),
+      content: {
+        kind: 'session-title-update',
+        scope,
+        title,
+        actorDisplayName: actorName,
+      },
+      createdAtMs: now,
+      status: 'complete',
+      sourceTransport: 'desktop-local-session-update',
+      sourceEventId: `desktop-local-session-update:${sessionId}:${scope}:${now}`,
+    });
+  }, []);
+
+  const syncGroupSessionTitleRename = useCallback(async (
+    state: CanonicalSessionState,
+    sessionId: string,
+    title: string,
+    actorIdentityId: string,
+  ) => {
+    const participants = canonicalGroupParticipantsForSession(state, sessionId);
+    const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
+    if (targets.length === 0) return;
+    const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
+    const noticeText = sessionRenameNoticeText(actorName, title, 'session');
+    const updateParticipants = buildChatGroupBridgeUpdateParticipants({
+      participants,
+      adminIdentityIds: activeGroupAdminIds(state, sessionId),
+    });
+    const currentMetadata = sessionMetadataRecord(state, sessionId);
+    const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
+    for (const target of targets) {
+      const bridgeState = await createDesktopBridgeOutreach({
+        hostId: target.hostId,
+        targetNodeId: target.nodeId,
+        targetKind: 'bridge-person',
+        requestText: noticeText,
+        targetDisplayName: target.displayName,
+        targetOwnerName: target.ownerName,
+        targetRuntime: 'person',
+        targetHumanId: target.humanId,
+        targetAgentId: null,
+        triggerText: null,
+        contextText: null,
+        contextPolicy: CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY,
+        parentSessionId: sessionId,
+        parentSessionTitle: title,
+        parentSessionKind: 'group',
+        parentGroupSpaceId,
+        parentSessionParticipants: updateParticipants,
+        parentSessionMessages: [],
+        parentTurnId: null,
+        parentMessageId: null,
+        projectId: null,
+        projectName: null,
+      });
+      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
+    }
+  }, [setDesktopBridgeState]);
+
+  const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
+    if (!isNativeShell || !sessionId.trim()) return;
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || undefined;
+    const isDesktopRuntimeSession = (desktopChatState?.sessions ?? []).some((session) => session.id === sessionId);
+    try {
+      setDesktopChatError(null);
+      let nextCanonical = await renameCanonicalSession({
+        sessionId,
+        title: nextTitle,
+        requestedByIdentityId: actorIdentityId,
+      });
+      const renamedSession = nextCanonical.sessions.find((session) => session.id === sessionId);
+      if (actorIdentityId && renamedSession?.kind === 'group') {
+        nextCanonical = await appendRenameNotice(nextCanonical, sessionId, nextTitle, 'session', actorIdentityId);
+      }
+      setCanonicalSessionState(nextCanonical);
+      if (isDesktopRuntimeSession) {
+        const nextDesktop = await renameDesktopChatSession(sessionId, nextTitle);
+        setDesktopChatState(nextDesktop);
+      } else {
+        await refreshDesktopChat();
+      }
+      if (actorIdentityId && renamedSession?.kind === 'group') {
+        try {
+          await syncGroupSessionTitleRename(nextCanonical, sessionId, nextTitle, actorIdentityId);
+        } catch (error) {
+          setDesktopChatError(`Session renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    } catch (error) {
+      await refreshCanonicalState();
+      const message = error instanceof Error ? error.message : 'Unable to rename session';
+      setDesktopChatError(message);
+    }
+  }, [appendRenameNotice, canonicalSessionState?.profile.humanIdentityId, desktopChatState?.sessions, isNativeShell, refreshCanonicalState, refreshDesktopChat, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, syncGroupSessionTitleRename]);
+
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
 
@@ -1231,31 +1349,25 @@ export function useKordiAppModel() {
     if (!title) throw new Error('Group name is required.');
     setDesktopChatError(null);
 
-    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!canonicalSessionState) throw new Error('Local profile identity is not ready yet.');
+    const actorIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
     if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
 
     const fallbackGroupSpaceId = groupSessionIds[0];
     let nextState = canonicalSessionState;
     const renamedGroupIds = new Map<string, string>();
     for (const sessionId of groupSessionIds) {
-      nextState = await renameCanonicalSession({
-        sessionId,
-        title,
-        requestedByIdentityId: actorIdentityId,
-      });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       const groupId = metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId;
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
         requestedByIdentityId: actorIdentityId,
-        metadata: {
-          ...currentMetadata,
-          customName: title,
-          groupId,
-          groupSpaceId: groupId,
-        },
+        metadata: groupRenameMetadata(currentMetadata, title, groupId),
       });
       renamedGroupIds.set(groupId, sessionId);
+    }
+    for (const sessionId of groupSessionIds) {
+      nextState = await appendRenameNotice(nextState, sessionId, title, 'group', actorIdentityId);
     }
     setCanonicalSessionState(nextState);
 
@@ -1268,12 +1380,13 @@ export function useKordiAppModel() {
           participants,
           adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
         });
+        const noticeText = sessionRenameNoticeText(canonicalIdentityDisplayName(nextState, actorIdentityId), title, 'group');
         for (const target of targets) {
           const bridgeState = await createDesktopBridgeOutreach({
             hostId: target.hostId,
             targetNodeId: target.nodeId,
             targetKind: 'bridge-person',
-            requestText: `Group renamed to ${title}`,
+            requestText: noticeText,
             targetDisplayName: target.displayName,
             targetOwnerName: target.ownerName,
             targetRuntime: 'person',
@@ -1298,7 +1411,7 @@ export function useKordiAppModel() {
     } catch (error) {
       setDesktopChatError(`Group renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [canonicalSessionState, isNativeShell, setDesktopBridgeState, setDesktopChatError]);
+  }, [appendRenameNotice, canonicalSessionState, isNativeShell, setDesktopBridgeState, setDesktopChatError]);
 
   const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;
@@ -1528,6 +1641,7 @@ export function useKordiAppModel() {
     handleCreateChatGroup,
     handleCreateChatSessionInParticipantSpace,
     handleRenameChatGroup,
+    handleRenameChatSession,
     handleAddChatGroupMembers,
     handleRemoveChatGroupMember,
     handleSetChatGroupAdmin,

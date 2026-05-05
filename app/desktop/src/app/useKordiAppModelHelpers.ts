@@ -190,6 +190,28 @@ export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
   );
 }
 
+export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string, updatedAtMs = Date.now()) {
+  const groupId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
+  return {
+    ...metadata,
+    customName: title,
+    groupId,
+    groupSpaceId: groupId,
+    groupNameUpdatedAtMs: updatedAtMs,
+  };
+}
+
+export function sessionRenameNoticeText(actorName: string | null | undefined, title: string, scope: 'group' | 'session') {
+  const actor = actorName?.trim() || 'Someone';
+  return `${actor} changed the ${scope} name to ${title.trim()}`;
+}
+
+export function canonicalIdentityDisplayName(state: CanonicalSessionState | null | undefined, identityId: string | null | undefined) {
+  const id = identityId?.trim();
+  if (!state || !id) return null;
+  return state.identities.find((identity) => identity.id === id)?.displayName?.trim() || null;
+}
+
 function nonGenericGroupInviteTitle(value?: string | null) {
   const title = value?.trim();
   if (!title) return null;

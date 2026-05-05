@@ -251,10 +251,17 @@ pub(super) fn outreach_is_session_invite(
     outreach_context_policy_is(outreach, "session-invite")
 }
 
+pub(super) fn outreach_is_session_title_update(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> bool {
+    outreach_context_policy_is(outreach, "session-title-update")
+}
+
 pub(super) fn outreach_is_session_update(
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
 ) -> bool {
     outreach_context_policy_is(outreach, "session-update")
+        || outreach_is_session_title_update(outreach)
 }
 
 pub(super) fn outreach_presence_status(status: &str, peer_is_agent: bool) -> String {

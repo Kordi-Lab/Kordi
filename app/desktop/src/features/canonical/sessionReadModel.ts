@@ -14,6 +14,7 @@ import {
   sessionChatActivityAtMs,
   sessionDisplayTitle,
   sessionHasActiveProcessing,
+  sessionHasManualTitle,
   sessionMetadata,
   sessionViewMetadata,
   shouldUseCanonicalMessages,
@@ -272,7 +273,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const participants = canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
+      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(sessionChatActivityAtMs(session));

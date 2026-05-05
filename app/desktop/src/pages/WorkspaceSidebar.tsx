@@ -25,6 +25,7 @@ import {
   DeleteSessionDialog,
   MoveSessionDialog,
   ProjectCreateDialog,
+  RenameSessionDialog,
   SessionContextMenu,
   type SessionActionTarget,
   type SessionContextMenuTarget,
@@ -179,6 +180,7 @@ type WorkspaceSidebarProps = {
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
   onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
+  onRenameChatSession: (sessionId: string, title: string) => void;
   onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
@@ -370,6 +372,7 @@ export function WorkspaceSidebar({
   onCreateChatGroup,
   onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
+  onRenameChatSession,
   onAddChatGroupMembers,
   onRemoveChatGroupMember,
   onSetChatGroupAdmin,
@@ -402,6 +405,8 @@ export function WorkspaceSidebar({
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
+  const contactUnread = contactParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
+  const agentUnread = agentParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
   const chatStatusLabel = isBridgePolling
@@ -416,6 +421,7 @@ export function WorkspaceSidebar({
       : 'Bridge sync idle, all caught up';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
+  const [renameSessionTarget, setRenameSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
@@ -462,6 +468,7 @@ export function WorkspaceSidebar({
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
     setMoveSessionTarget(null);
+    setRenameSessionTarget(null);
   };
 
   const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
@@ -835,16 +842,21 @@ export function WorkspaceSidebar({
                   <div className="mb-2 space-y-1.5">
                     <div className="app-filter-tabs w-full">
                       {([
-                        { id: 'contact', label: 'Contact' },
-                        { id: 'agent', label: 'Agent' },
-                      ] as Array<{ id: ChatChannel; label: string }>).map((tab) => (
+                        { id: 'contact', label: 'Contact', unread: contactUnread },
+                        { id: 'agent', label: 'Agent', unread: agentUnread },
+                      ] as Array<{ id: ChatChannel; label: string; unread: number }>).map((tab) => (
                         <button
                           key={tab.id}
                           type="button"
                           onClick={() => setChatChannel(tab.id)}
                           className={chatChannel === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
                         >
-                          {tab.label}
+                          <span>{tab.label}</span>
+                          {tab.unread > 0 ? (
+                            <span className="ml-1.5 inline-flex">
+                              <SidebarUnreadBadge count={tab.unread} scope="channel-tab" />
+                            </span>
+                          ) : null}
                         </button>
                       ))}
                     </div>
@@ -1121,9 +1133,18 @@ export function WorkspaceSidebar({
         <SessionContextMenu
           target={sessionContextMenu}
           onClose={() => setSessionContextMenu(null)}
+          onRename={setRenameSessionTarget}
           onMove={setMoveSessionTarget}
           onArchive={onArchiveChatSession}
           onDelete={setRemoveSessionTarget}
+        />
+      ) : null}
+
+      {renameSessionTarget ? (
+        <RenameSessionDialog
+          target={renameSessionTarget}
+          onCancel={closeSessionDialogs}
+          onConfirm={onRenameChatSession}
         />
       ) : null}
 

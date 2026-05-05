@@ -249,6 +249,158 @@ test('canonical read model names chat-created direct and group sessions from the
   assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
 });
 
+test('canonical read model prefers a manually renamed session title over the first user message', () => {
+  const sessionId = 'session:direct-person:alice-renamed';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'direct-person',
+      title: 'Renamed lunch thread',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'human:alice',
+      relationshipIdentityId: 'human:alice',
+      metadata: { createdFrom: 'chat-create-flow', titleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:direct:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Plan lunch tomorrow with the launch notes before standup', content: { sender: 'Me', timeLabel: '10:01' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'direct:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const conversation = conversations.find((item) => item.id === sessionId);
+  const space = buildParticipantSpaces(conversations).find((item) => item.sessions.some((session) => session.id === sessionId));
+
+  assert.equal(conversation?.name, 'Renamed lunch thread');
+  assert.equal(space?.sessions[0]?.title, 'Renamed lunch thread');
+});
+
+test('canonical read model keeps group space names separate from first-message session titles after group rename', () => {
+  const sessionId = 'session:group:renamed-space';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Atestgroup',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { customName: 'Atestgroup', groupId: sessionId, groupSpaceId: sessionId, titleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello guys', content: { sender: 'Me', timeLabel: '10:13' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((item) => item.id === `group:${sessionId}`);
+
+  assert.equal(space?.title, 'Atestgroup');
+  assert.equal(space?.sessions[0]?.title, 'hello guys');
+});
+
+test('canonical read model can show a manually renamed group session without changing the group space name', () => {
+  const sessionId = 'session:group:manual-session-title';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Sprint retro notes',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { customName: 'Design crew', groupId: sessionId, groupSpaceId: sessionId, sessionTitleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello guys', content: { sender: 'Me', timeLabel: '10:13' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((item) => item.id === `group:${sessionId}`);
+
+  assert.equal(space?.title, 'Design crew');
+  assert.equal(space?.sessions[0]?.title, 'Sprint retro notes');
+});
+
 test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
