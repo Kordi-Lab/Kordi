@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
+import { shouldShowBridgeSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
 
 test('messageDeliveryVisual maps sent to a single gray check', () => {
   assert.deepEqual(messageDeliveryVisual('sent'), {
@@ -30,6 +31,11 @@ test('messageDeliveryVisual maps read and responded to blue double checks', () =
     tone: 'blue',
     label: 'Read',
   });
+});
+
+test('inline bridge send failures do not also show a sidebar failure notice', () => {
+  assert.equal(shouldShowBridgeSendFailureNotice(true), false);
+  assert.equal(shouldShowBridgeSendFailureNotice(false), true);
 });
 
 test('messageDeliveryVisual keeps transient and failure states distinct', () => {

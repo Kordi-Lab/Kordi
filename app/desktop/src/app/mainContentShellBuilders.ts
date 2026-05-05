@@ -144,6 +144,11 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
 }
 
 export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<typeof ChatsPage> {
+  const activeBridgeContactTarget = args.activeConv?.bridgeTarget
+    && (args.activeConv.bridgeTarget.runtime?.trim().toLowerCase() === 'person' || args.activeConv.type === 'person')
+    ? args.activeConv.bridgeTarget
+    : null;
+
   return {
     isNativeShell: args.isNativeShell,
     showChatDetailRail: args.showChatDetailRail,
@@ -202,6 +207,9 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onStopBridgeAgentRequest: args.handleStopBridgeAgentRequest,
+    onRequestBridgeContact: activeBridgeContactTarget
+      ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
+      : undefined,
     onSendChatMessage: args.handleSendChatMessage,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,

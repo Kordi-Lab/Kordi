@@ -225,6 +225,61 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
   return null;
 }
 
+function contactRequestFailureCanBeRetried(detail?: string | null) {
+  const normalized = detail?.trim().toLowerCase() ?? '';
+  return normalized.includes('contact request')
+    && (normalized.includes('rejected') || normalized.includes('blocked'));
+}
+
+type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
+
+function ContactRequestFailureHint({
+  detail,
+  onRequestBridgeContact,
+}: {
+  detail?: string | null;
+  onRequestBridgeContact: () => Promise<void> | void;
+}) {
+  const [state, setState] = useState<ContactRequestActionState>('idle');
+
+  const handleRequestContact = async () => {
+    if (state === 'sending' || state === 'sent') return;
+    setState('sending');
+    try {
+      await onRequestBridgeContact();
+      setState('sent');
+    } catch {
+      setState('error');
+    }
+  };
+
+  const buttonLabel = state === 'sending'
+    ? 'Sending…'
+    : state === 'sent'
+      ? 'Request sent'
+      : 'Send contact request';
+
+  return (
+    <div className="mt-2 rounded-[12px] border border-black/10 bg-black/[0.06] px-2.5 py-2 text-[11px] leading-4 text-black/65">
+      {detail?.trim() ? <div>{detail.trim()}</div> : null}
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <span>Messages are blocked until this person approves you.</span>
+        <button
+          type="button"
+          onClick={handleRequestContact}
+          disabled={state === 'sending' || state === 'sent'}
+          className="rounded-full bg-black/10 px-2.5 py-1 text-[11px] font-semibold text-black/75 transition hover:bg-black/15 disabled:cursor-default disabled:opacity-60"
+        >
+          {buttonLabel}
+        </button>
+      </div>
+      {state === 'error' ? (
+        <div className="mt-1 text-[10.5px] font-medium text-rose-700">Could not send the request. Try again from Contacts.</div>
+      ) : null}
+    </div>
+  );
+}
+
 function MessageFooter({
   time,
   status,
@@ -313,6 +368,7 @@ function MessageBubbleView({
   onOpenSource,
   onStopBridgeAgentRequest,
   onNavigateToMessage,
+  onRequestBridgeContact,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -320,6 +376,7 @@ function MessageBubbleView({
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  onRequestBridgeContact?: () => Promise<void> | void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
@@ -498,6 +555,13 @@ function MessageBubbleView({
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
   const showInlineHumanSender = Boolean(!isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showContactRequestAction = Boolean(
+    isOwnHumanMessage
+      && deliveryVisual?.tone === 'red'
+      && onRequestBridgeContact
+      && contactRequestFailureCanBeRetried(msg.detail),
+  );
+  const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
@@ -559,8 +623,8 @@ function MessageBubbleView({
                 'app-message-footer app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
                 isOwnHumanMessage ? 'text-black/45' : 'text-slate-500/80',
               )}>
-                {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
-                  <span>{msg.detail}</span>
+                {footerDetail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
+                  <span>{footerDetail}</span>
                 ) : null}
                 {isOwnHumanMessage && deliveryVisual?.tone === 'red' ? (
                   <span className="font-semibold text-rose-400">{deliveryVisual.label}</span>
@@ -578,7 +642,7 @@ function MessageBubbleView({
               <MessageFooter
                 time={msg.time}
                 status={isOwnHumanMessage ? deliveryStatus : undefined}
-                detail={msg.detail}
+                detail={footerDetail}
                 isUser={isOwnHumanMessage}
               />
             </>
@@ -589,18 +653,21 @@ function MessageBubbleView({
               {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
               {hasText ? <MarkdownContent text={msg.text} /> : null}
             </div>
-            {(msg.statusChips?.length || msg.detail) ? (
+            {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
                 {msg.statusChips?.map((chip) => (
                   <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
                     {chip}
                   </span>
                 ))}
-                {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
+                {footerDetail ? <span className="text-slate-400">{footerDetail}</span> : null}
               </div>
             ) : null}
           </>
         )}
+        {showContactRequestAction && onRequestBridgeContact ? (
+          <ContactRequestFailureHint detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
+        ) : null}
         </div>
       </div>
       {showCompactFooter ? (
@@ -643,6 +710,7 @@ export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),

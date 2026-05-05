@@ -364,7 +364,7 @@ export function mapBridgeConversationToViewModel(
           : [],
       mentions,
       attachments,
-      detail: undefined,
+      detail: message.detail ?? undefined,
     };
 
     if (isAgent && isOutboundHuman && isCancelledBridgeState(message.deliveryState)) {

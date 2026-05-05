@@ -195,6 +195,7 @@ export function markOptimisticBridgeMessageFailed(
   current: DesktopBridgeState | null,
   conversationId: string,
   optimisticMessageId: string,
+  detail?: string | null,
 ): DesktopBridgeState | null {
   if (!current) return current;
 
@@ -207,7 +208,11 @@ export function markOptimisticBridgeMessageFailed(
         awaitingReply: false,
         messages: conversation.messages.map((message) => (
           message.id === optimisticMessageId
-            ? { ...message, deliveryState: 'failed' }
+            ? {
+                ...message,
+                deliveryState: 'failed',
+                detail: detail?.trim() || message.detail,
+              }
             : message
         )),
       };
@@ -223,6 +228,7 @@ export function markOptimisticCanonicalMessageFailed(
   current: CanonicalSessionState | null,
   sessionId: string,
   messageId: string | null | undefined,
+  detail?: string | null,
 ): CanonicalSessionState | null {
   if (!current || !messageId) return current;
   const updatedAtMs = Date.now();
@@ -243,6 +249,7 @@ export function markOptimisticCanonicalMessageFailed(
         content: {
           ...optimisticContentRecord(message.content),
           deliveryState: 'failed',
+          ...(detail?.trim() ? { detail: detail.trim() } : null),
         },
       };
     }),

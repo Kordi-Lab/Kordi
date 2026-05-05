@@ -60,6 +60,14 @@ export type LocalChatSendInFlight = {
   sessionId: string | null;
 };
 
+export function bridgeSendFailureDetail(error: unknown, fallback = 'Unable to send bridge message') {
+  return error instanceof Error ? error.message : fallback;
+}
+
+export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolean) {
+  return !hasInlineFailureTarget;
+}
+
 export function localChatSendIsInFlightForTarget(
   inFlight: LocalChatSendInFlight | null,
   targetSessionId: string | null,
@@ -794,7 +802,8 @@ export function useChatMessageActions({
       let targetConversationId = sendPlan.targetConversationId;
       let optimisticCanonicalSessionId: string | null = null;
       let optimisticCanonicalMessageId: string | null = null;
-      const markCanonicalSendFailed = () => {
+      let optimisticBridgeMessageAppended = false;
+      const markCanonicalSendFailed = (detail?: string | null) => {
         const failedSessionId = optimisticCanonicalSessionId;
         const failedMessageId = optimisticCanonicalMessageId;
         if (!failedSessionId || !failedMessageId) return;
@@ -802,8 +811,12 @@ export function useChatMessageActions({
           current,
           failedSessionId,
           failedMessageId,
+          detail,
         ));
       };
+      const hasInlineSendFailureTarget = () => Boolean(
+        optimisticCanonicalMessageId || optimisticBridgeMessageAppended,
+      );
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -850,6 +863,7 @@ export function useChatMessageActions({
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         if (targetConversationId && !isGroupSessionMessage) {
           setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
+          optimisticBridgeMessageAppended = true;
         }
         const activeBridgeReadConversationIds = bridgeConversationIdsToMarkReadOnUserActivity(
           desktopBridgeState?.conversations ?? [],
@@ -950,18 +964,24 @@ export function useChatMessageActions({
             }
           })
           .catch((error: unknown) => {
+            const failureDetail = bridgeSendFailureDetail(error);
             if (resolvedConversationId) {
-              setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId));
+              setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId, failureDetail));
             }
-            markCanonicalSendFailed();
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
+            markCanonicalSendFailed(failureDetail);
+            if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
+              setDesktopChatError(failureDetail);
+            }
           });
       } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error);
         if (targetConversationId) {
-          setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversationId!, optimisticMessageId));
+          setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversationId!, optimisticMessageId, failureDetail));
         }
-        markCanonicalSendFailed();
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to send bridge message');
+        markCanonicalSendFailed(failureDetail);
+        if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
+          setDesktopChatError(failureDetail);
+        }
       } finally {
         setIsDesktopChatSending(false);
       }

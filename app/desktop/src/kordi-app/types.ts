@@ -730,6 +730,7 @@ export type DesktopBridgeConversationMessage = {
   timestampMs: number;
   requestId?: string | null;
   deliveryState?: string | null;
+  detail?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   attachments?: MessageAttachment[];
 };

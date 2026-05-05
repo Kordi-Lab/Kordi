@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
 import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
-import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
+import { buildBridgePageProps, buildChatsPageProps } from '../src/app/mainContentShellBuilders';
 
 function directPersonConversation() {
   return {
@@ -351,6 +351,29 @@ test('bridge Add + chat without a peer runtime defaults to a person session', ()
   props.onOpenBridgeConversation('host-1', 'node-new');
 
   assert.deepEqual(calls, ['startPerson:host-1:node-new:undefined']);
+});
+
+test('chat transcript contact-request hint calls Add contact for the active bridge person', async () => {
+  const calls: string[] = [];
+  const props = buildChatsPageProps(baseShellArgs(calls, {
+    activeConv: {
+      ...directPersonConversation(),
+      bridgeTarget: {
+        hostId: 'host-1',
+        nodeId: 'node-shared',
+        displayName: 'Bob',
+        ownerName: 'Bob',
+        runtime: 'person',
+      },
+    },
+    handleAddBridgeContact: async (hostId: string, peerNodeId: string) => {
+      calls.push(`add:${hostId}:${peerNodeId}`);
+    },
+  }) as never) as never as { onRequestBridgeContact?: () => Promise<void> | void };
+
+  await props.onRequestBridgeContact?.();
+
+  assert.deepEqual(calls, ['add:host-1:node-shared']);
 });
 
 test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {

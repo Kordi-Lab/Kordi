@@ -5,6 +5,7 @@ import { canonicalAttachments } from '../src/features/canonical/readModel/messag
 import {
   appendOptimisticBridgeMessage,
   bridgeAttachmentTransportFields,
+  markOptimisticBridgeMessageFailed,
   markOptimisticCanonicalMessageFailed,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
@@ -119,9 +120,54 @@ test('canonical optimistic bridge messages can be marked failed for visible send
     }],
   } as unknown as CanonicalSessionState;
 
-  const next = markOptimisticCanonicalMessageFailed(state, 'session-1', 'msg-1');
+  const next = markOptimisticCanonicalMessageFailed(
+    state,
+    'session-1',
+    'msg-1',
+    'Contact request was rejected, so messages are blocked.',
+  );
   const [message] = next?.messages ?? [];
 
   assert.equal(message?.status, 'failed');
   assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
+  assert.equal((message?.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+});
+
+
+test('bridge optimistic messages keep the send failure detail inline', () => {
+  const next = markOptimisticBridgeMessageFailed({
+    configPath: '/tmp/config.json',
+    legacyConfigPath: '/tmp/legacy.json',
+    conversationsPath: '/tmp/conversations.sqlite3',
+    activeHostId: 'host-1',
+    hosts: [],
+    localServer: { running: false },
+    conversations: [{
+      id: 'bridge:host-1:peer-1:person',
+      hostId: 'host-1',
+      peerNodeId: 'peer-1',
+      peerRuntime: 'person',
+      title: 'Peer',
+      subtitle: 'Peer',
+      unreadCount: 0,
+      updatedAtMs: 1,
+      updatedAtLabel: '12:00',
+      awaitingReply: true,
+      peerTyping: false,
+      messages: [{
+        id: 'pending-1',
+        direction: 'outbound',
+        sender: 'Me',
+        text: 'hello',
+        timeLabel: '12:31',
+        timestampMs: 1,
+        deliveryState: 'sending',
+      }],
+    }],
+  }, 'bridge:host-1:peer-1:person', 'pending-1', 'Contact request was rejected, so messages are blocked.');
+
+  const message = next?.conversations[0]?.messages[0];
+
+  assert.equal(message?.deliveryState, 'failed');
+  assert.equal(message?.detail, 'Contact request was rejected, so messages are blocked.');
 });

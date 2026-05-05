@@ -239,6 +239,7 @@ type ChatsPageProps = {
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
+  onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -297,6 +298,7 @@ export function ChatsPage({
   isDesktopChatSending,
   onStopDesktopChatTurn,
   onStopBridgeAgentRequest,
+  onRequestBridgeContact,
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
@@ -567,6 +569,7 @@ export function ChatsPage({
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onRequestBridgeContact={onRequestBridgeContact}
                 isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                 isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />

@@ -83,6 +83,28 @@ test('renders failed own message delivery as visible red sending failed text', (
   assert.match(markup, /text-rose-400/);
 });
 
+test('renders contact-gated failed sends with an inline request link', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello again',
+    time: '00:45',
+    detail: 'Contact request was rejected, so messages are blocked.',
+    statusChips: ['failed'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    onRequestBridgeContact: async () => undefined,
+  }));
+
+  assert.match(markup, />Contact request was rejected, so messages are blocked\.</);
+  assert.match(markup, />Send contact request</);
+  assert.match(markup, /Messages are blocked until this person approves you/);
+});
+
 test('renders transcript system notices with compact stable spacing', () => {
   const message: Message = {
     role: 'system',
