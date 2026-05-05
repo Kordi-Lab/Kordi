@@ -25,6 +25,7 @@ import {
   rejectDesktopBridgeContactRequest,
   removeDesktopBridgeContact,
   renameDesktopBridgeAgent,
+  sendDesktopBridgeMessage,
   setDesktopBridgeAgentReachabilityPolicy,
   setDesktopBridgeDefaultAgent,
   setDesktopBridgeHostPrivacyPolicy,
@@ -46,6 +47,38 @@ function buildBridgeConversationId(hostId: string, peerNodeId: string, peerRunti
 
 function buildCanonicalBridgeSessionId(conversationId: string) {
   return `session:bridge:${conversationId}`;
+}
+
+export const ACCEPTED_CONTACT_AUTO_MESSAGE = "i accept your request, let's chat";
+
+export type BridgeContactApprovalGreetingTarget = {
+  hostId: string;
+  peerNodeId: string;
+  peerDisplayName?: string | null;
+  peerOwnerName?: string | null;
+  peerRuntime: string;
+};
+
+export function bridgeContactApprovalGreetingTarget(
+  host: DesktopBridgeState['hosts'][number] | null | undefined,
+  requestId: string,
+): BridgeContactApprovalGreetingTarget | null {
+  const trimmedRequestId = requestId.trim();
+  if (!host || !trimmedRequestId) return null;
+  const request = (host.contactRequests ?? []).find((candidate) => candidate.requestId === trimmedRequestId);
+  if (!request || request.direction !== 'incoming' || request.status !== 'pending') return null;
+  const requesterNodeId = request.requesterNodeId.trim();
+  const targetNodeId = request.targetNodeId.trim();
+  const selfNodeId = host.nodeId?.trim() ?? '';
+  if (!requesterNodeId || !targetNodeId || (selfNodeId && targetNodeId !== selfNodeId)) return null;
+  const peer = host.visiblePeers.find((candidate) => candidate.nodeId === requesterNodeId);
+  return {
+    hostId: host.id,
+    peerNodeId: requesterNodeId,
+    peerDisplayName: peer?.displayName ?? null,
+    peerOwnerName: peer?.ownerName ?? null,
+    peerRuntime: 'person',
+  };
 }
 
 function newBridgePersonSessionId() {
@@ -427,15 +460,41 @@ export function useBridgeOrchestration({
 
   const handleApproveBridgeContactRequest = useCallback(async (hostId: string, requestId: string) => {
     if (!isNativeShell) return;
+    const greetingTarget = activeBridgeHost?.id === hostId
+      ? bridgeContactApprovalGreetingTarget(activeBridgeHost, requestId)
+      : null;
     try {
       const nextState = await approveDesktopBridgeContactRequest(hostId, requestId);
       setDesktopBridgeState(nextState);
       setDesktopBridgeError(null);
+
+      if (greetingTarget) {
+        try {
+          const openedState = await openDesktopBridgeConversation(
+            greetingTarget.hostId,
+            greetingTarget.peerNodeId,
+            greetingTarget.peerDisplayName ?? undefined,
+            greetingTarget.peerOwnerName ?? undefined,
+            greetingTarget.peerRuntime,
+          );
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, openedState));
+          const conversationId = buildBridgeConversationId(
+            greetingTarget.hostId,
+            greetingTarget.peerNodeId,
+            greetingTarget.peerRuntime,
+          );
+          const sentState = await sendDesktopBridgeMessage(conversationId, ACCEPTED_CONTACT_AUTO_MESSAGE);
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, sentState));
+        } catch (greetingError) {
+          const detail = greetingError instanceof Error ? greetingError.message : 'Unable to send greeting';
+          setDesktopBridgeError(`Contact approved, but unable to send greeting: ${detail}`);
+        }
+      }
     } catch (error) {
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to approve bridge contact request');
       throw error;
     }
-  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+  }, [activeBridgeHost, isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
 
   const handleRejectBridgeContactRequest = useCallback(async (hostId: string, requestId: string) => {
     if (!isNativeShell) return;
