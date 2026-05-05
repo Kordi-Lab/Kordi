@@ -525,7 +525,7 @@ fn prompt_identity_id(
         .filter(|value| !value.is_empty())
 }
 
-fn participant_graph_hash(
+pub(in crate::canonical_sessions) fn participant_graph_hash(
     participants: &[crate::bridge::DesktopBridgeSessionParticipant],
     target_identity_id: &str,
     initiator_identity_id: &str,
@@ -573,7 +573,7 @@ fn participant_graph_hash(
     hash_hex(&hash_input.join("\n"), 16)
 }
 
-fn permission_policy_hash(
+pub(in crate::canonical_sessions) fn permission_policy_hash(
     reply_as_identity_id: &str,
     allowed_target_ids: &[&str],
     reach_out_allowed: bool,
@@ -662,6 +662,11 @@ pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
         .unwrap_or_else(|| agent_identity_id.to_string());
     let permission_hash =
         carried_hash(outreach.permission_policy_hash.as_ref()).unwrap_or_else(|| {
+            // Legacy fallback policy for Bridge metadata that predates structured policy fields:
+            // reply as the explicit self/agent identity, allow only the explicit outreach target,
+            // permit reach-out, and do not require approval. Stricter/custom policies must be
+            // carried via `outreach.permission_policy_hash` until Bridge metadata has structured
+            // permission-policy fields.
             permission_policy_hash(
                 &reply_as_identity_id,
                 &[target_identity_id],

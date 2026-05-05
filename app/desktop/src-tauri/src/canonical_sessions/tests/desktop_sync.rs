@@ -342,6 +342,128 @@ where
 }
 
 #[test]
+fn outreach_context_snapshot_permission_policy_hash_changes_when_policy_inputs_change() {
+    let base = permission_policy_hash(
+        "agent:remote",
+        &["agent:remote", "human:local"],
+        true,
+        "recent-window",
+        false,
+    );
+
+    assert_ne!(
+        base,
+        permission_policy_hash(
+            "agent:alternate",
+            &["agent:remote", "human:local"],
+            true,
+            "recent-window",
+            false,
+        ),
+        "reply-as identity must participate in the permission policy hash"
+    );
+    assert_ne!(
+        base,
+        permission_policy_hash(
+            "agent:remote",
+            &["agent:remote", "agent:observer"],
+            true,
+            "recent-window",
+            false,
+        ),
+        "allowed target IDs must participate in the permission policy hash"
+    );
+    assert_ne!(
+        base,
+        permission_policy_hash(
+            "agent:remote",
+            &["agent:remote", "human:local"],
+            false,
+            "recent-window",
+            false,
+        ),
+        "reach-out enablement must participate in the permission policy hash"
+    );
+    assert_ne!(
+        base,
+        permission_policy_hash(
+            "agent:remote",
+            &["agent:remote", "human:local"],
+            true,
+            "full-thread",
+            false,
+        ),
+        "context policy must participate in the permission policy hash"
+    );
+    assert_ne!(
+        base,
+        permission_policy_hash(
+            "agent:remote",
+            &["agent:remote", "human:local"],
+            true,
+            "recent-window",
+            true,
+        ),
+        "approval requirement must participate in the permission policy hash"
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_participant_graph_hash_tracks_graph_inputs() {
+    let local =
+        outreach_context_snapshot_participant("human:local", "Local", "human", "requester", None);
+    let remote = outreach_context_snapshot_participant(
+        "agent:remote",
+        "Remote Kordi",
+        "agent",
+        "delegate",
+        Some("human:remote"),
+    );
+    let base_participants = vec![local.clone(), remote.clone()];
+    let reversed_participants = vec![remote.clone(), local.clone()];
+    let base = participant_graph_hash(&base_participants, "agent:remote", "human:local");
+
+    assert_eq!(
+        base,
+        participant_graph_hash(&reversed_participants, "agent:remote", "human:local"),
+        "participant order must not affect the graph hash"
+    );
+
+    let mut participant_changed = base_participants.clone();
+    participant_changed.push(outreach_context_snapshot_participant(
+        "human:observer",
+        "Observer",
+        "human",
+        "participant",
+        None,
+    ));
+    assert_ne!(
+        base,
+        participant_graph_hash(&participant_changed, "agent:remote", "human:local"),
+        "participant set changes must affect the graph hash"
+    );
+
+    let mut owner_changed = base_participants.clone();
+    owner_changed[1].owner_identity_id = Some("human:replacement-owner".to_string());
+    assert_ne!(
+        base,
+        participant_graph_hash(&owner_changed, "agent:remote", "human:local"),
+        "owner identity changes must affect the graph hash"
+    );
+
+    assert_ne!(
+        base,
+        participant_graph_hash(&base_participants, "agent:second-remote", "human:local"),
+        "target identity changes must affect the graph hash"
+    );
+    assert_ne!(
+        base,
+        participant_graph_hash(&base_participants, "agent:remote", "human:alternate"),
+        "initiator identity changes must affect the graph hash"
+    );
+}
+
+#[test]
 fn outreach_context_snapshot_is_session_scoped() {
     let conn = test_conn();
     let session = open_or_create_session_in_db(
@@ -507,6 +629,46 @@ fn outreach_context_snapshot_cache_key_changes_when_target_model_changes() {
         },
         |snapshot| snapshot.model.clone(),
     );
+}
+
+#[test]
+fn outreach_context_snapshot_provider_stays_desktop_bridge_when_target_runtime_changes_model() {
+    let conn = test_conn();
+    let session = outreach_context_snapshot_test_session(&conn, "session:parent:provider-fixed");
+    let mut base_outreach = outreach_context_snapshot_test_metadata(&session.id);
+    base_outreach.target_runtime = Some("kordi-desktop".to_string());
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "human:local",
+        "agent:remote",
+        "delegation:test",
+        &base_outreach,
+        "recent-window",
+    )
+    .expect("store base snapshot");
+
+    let mut runtime_variant = base_outreach.clone();
+    runtime_variant.target_runtime = Some("kordi-desktop-gpt-5".to_string());
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "human:local",
+        "agent:remote",
+        "delegation:test",
+        &runtime_variant,
+        "recent-window",
+    )
+    .expect("store runtime variant snapshot");
+
+    let mut snapshots = stored_context_snapshots(&conn);
+    snapshots.sort_by(|left, right| left.model.cmp(&right.model));
+    assert_eq!(snapshots.len(), 2);
+    assert!(snapshots
+        .iter()
+        .all(|snapshot| snapshot.provider == "desktop-bridge"));
+    assert_eq!(snapshots[0].model, "kordi-desktop");
+    assert_eq!(snapshots[1].model, "kordi-desktop-gpt-5");
 }
 
 #[test]
