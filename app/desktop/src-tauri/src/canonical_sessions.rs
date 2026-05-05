@@ -10,6 +10,7 @@ mod desktop_sync;
 mod group_participants;
 mod identity_context;
 mod identity_helpers;
+mod identity_markdown;
 mod message_lookup;
 mod message_reconcile;
 mod models;
@@ -69,6 +70,10 @@ use self::identity_helpers::{
 pub(crate) use self::identity_helpers::{
     clean_optional, identity_display_name, json_from_db, json_to_db,
     sanitize_remote_peer_display_name, shared_agent_display_name, validate_status,
+};
+pub(crate) use self::identity_markdown::{
+    render_identity_context_markdown, session_identity_markdown_path,
+    session_identity_model_visible_notice, write_identity_context_markdown,
 };
 pub(crate) use self::message_lookup::{
     existing_delegation_join_message_id, session_message_count, similar_agent_message_exists,
