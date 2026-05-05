@@ -1038,6 +1038,8 @@ mod tests {
             owner: Some("Self".to_string()),
             human_id: Some("human-self".to_string()),
             discovery_mode: "open".to_string(),
+            human_visibility_policy: "server-approval".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: None,
             agents: Vec::new(),
             api_style: api_style.to_string(),

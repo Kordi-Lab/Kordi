@@ -12,7 +12,8 @@ use super::super::constants::{
     KORDE_DIR_NAME, LEGACY_BRIDGE_CONFIG_FILE_NAME, LEGACY_DESKTOP_BRIDGE_CONVERSATIONS_FILE_NAME,
 };
 use super::super::{
-    default_bridge_api_style, default_discovery_mode, default_display_name, default_owner_name,
+    default_bridge_api_style, default_contact_approval_policy, default_discovery_mode,
+    default_display_name, default_human_visibility_policy, default_owner_name,
     ensure_host_bootstrap, stable_host_id, DesktopBridgeHostConfig, DesktopBridgeStore,
     LegacyBridgeClientConfig,
 };
@@ -461,6 +462,8 @@ pub(in crate::bridge) fn imported_legacy_host(
         owner: legacy.owner,
         human_id: None,
         discovery_mode: default_discovery_mode(),
+        human_visibility_policy: default_human_visibility_policy(),
+        contact_approval_policy: default_contact_approval_policy(),
         active_agent_id: None,
         agents: Vec::new(),
         api_style: default_bridge_api_style(),

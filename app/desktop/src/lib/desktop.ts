@@ -372,6 +372,22 @@ export async function setDesktopBridgeDiscoveryMode(hostId: string, discoveryMod
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_discovery_mode', { hostId, discoveryMode });
 }
 
+export async function setDesktopBridgeHostPrivacyPolicy(
+  hostId: string,
+  humanVisibilityPolicy: 'server-open' | 'server-approval' | 'private',
+  contactApprovalPolicy: 'auto' | 'approval-required',
+) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_host_privacy_policy', { hostId, humanVisibilityPolicy, contactApprovalPolicy });
+}
+
+export async function setDesktopBridgeAgentReachabilityPolicy(
+  hostId: string,
+  agentId: string,
+  reachabilityPolicy: 'server' | 'contacts' | 'owner',
+) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_set_agent_reachability_policy', { hostId, agentId, reachabilityPolicy });
+}
+
 export async function createDesktopBridgeAgent(hostId: string, label?: string, runtime?: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_create_agent', { hostId, label, runtime });
 }
@@ -458,6 +474,14 @@ export async function addDesktopBridgeContact(hostId: string, peerNodeId: string
 
 export async function removeDesktopBridgeContact(hostId: string, peerNodeId: string) {
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_remove_contact', { hostId, peerNodeId });
+}
+
+export async function approveDesktopBridgeContactRequest(hostId: string, requestId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_approve_contact_request', { hostId, requestId });
+}
+
+export async function rejectDesktopBridgeContactRequest(hostId: string, requestId: string) {
+  return invokeDesktop<DesktopBridgeState>('desktop_bridge_reject_contact_request', { hostId, requestId });
 }
 
 export async function openDesktopBridgeConversation(

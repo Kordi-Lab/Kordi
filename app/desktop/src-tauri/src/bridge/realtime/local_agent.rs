@@ -421,6 +421,8 @@ mod tests {
                 owner: Some("Me".to_string()),
                 human_id: Some("human-me".to_string()),
                 discovery_mode: "ask".to_string(),
+                human_visibility_policy: "server-approval".to_string(),
+                contact_approval_policy: "approval-required".to_string(),
                 active_agent_id: None,
                 agents: vec![],
                 api_style: "serve".to_string(),

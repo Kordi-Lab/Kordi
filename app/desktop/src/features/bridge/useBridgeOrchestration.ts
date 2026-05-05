@@ -16,14 +16,18 @@ import type {
 import {
   activateDesktopBridgeAgent,
   addDesktopBridgeContact,
+  approveDesktopBridgeContactRequest,
   createDesktopBridgeAgent,
   createDesktopBridgeInvite,
   createDesktopBridgeProject,
   openDesktopBridgeConversation,
   openOrCreateCanonicalSession,
+  rejectDesktopBridgeContactRequest,
   removeDesktopBridgeContact,
   renameDesktopBridgeAgent,
+  setDesktopBridgeAgentReachabilityPolicy,
   setDesktopBridgeDefaultAgent,
+  setDesktopBridgeHostPrivacyPolicy,
   updateDesktopBridgeAgentModelRouting,
   updateDesktopLocalAgentModelRouting,
   setDesktopBridgeDiscoveryMode,
@@ -367,6 +371,62 @@ export function useBridgeOrchestration({
     }
   }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
 
+  const handleSetBridgeHostPrivacyPolicy = useCallback(async (
+    hostId: string,
+    humanVisibilityPolicy: 'server-open' | 'server-approval' | 'private',
+    contactApprovalPolicy: 'auto' | 'approval-required',
+  ) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await setDesktopBridgeHostPrivacyPolicy(hostId, humanVisibilityPolicy, contactApprovalPolicy);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to update bridge privacy policy');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleSetBridgeAgentReachabilityPolicy = useCallback(async (
+    hostId: string,
+    agentId: string,
+    reachabilityPolicy: 'server' | 'contacts' | 'owner',
+  ) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await setDesktopBridgeAgentReachabilityPolicy(hostId, agentId, reachabilityPolicy);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to update bridge agent reachability');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleApproveBridgeContactRequest = useCallback(async (hostId: string, requestId: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await approveDesktopBridgeContactRequest(hostId, requestId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to approve bridge contact request');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
+  const handleRejectBridgeContactRequest = useCallback(async (hostId: string, requestId: string) => {
+    if (!isNativeShell) return;
+    try {
+      const nextState = await rejectDesktopBridgeContactRequest(hostId, requestId);
+      setDesktopBridgeState(nextState);
+      setDesktopBridgeError(null);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to reject bridge contact request');
+      throw error;
+    }
+  }, [isNativeShell, setDesktopBridgeError, setDesktopBridgeState]);
+
   const handleCreateBridgeAgent = useCallback(async (hostId: string, label?: string) => {
     if (!isNativeShell) return;
     try {
@@ -485,6 +545,10 @@ export function useBridgeOrchestration({
     handleStartBridgePersonSession,
     handleRenameBridgeAgent,
     handleSetBridgeDiscoveryMode,
+    handleSetBridgeHostPrivacyPolicy,
+    handleSetBridgeAgentReachabilityPolicy,
+    handleApproveBridgeContactRequest,
+    handleRejectBridgeContactRequest,
     handleSetDefaultBridgeAgent,
     handleUpdateBridgeAgentModelRouting,
     handleUpdateLocalAgentModelRouting,

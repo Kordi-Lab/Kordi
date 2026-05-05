@@ -813,6 +813,8 @@ fn bridge_store_export_redacts_api_keys() {
             owner: Some("User".to_string()),
             human_id: Some("kh_123".to_string()),
             discovery_mode: "contacts".to_string(),
+            human_visibility_policy: "private".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: Some("agent-1".to_string()),
             agents: vec![super::DesktopBridgeAgentConfig {
                 id: "agent-1".to_string(),
@@ -828,6 +830,7 @@ fn bridge_store_export_redacts_api_keys() {
                 fallback_auth_provider: Some("anthropic".to_string()),
                 fallback_auth_choice: Some("profile:claude".to_string()),
                 thinking: Some("high".to_string()),
+                reachability_policy: "contacts".to_string(),
             }],
             api_style: "serve".to_string(),
         }],
@@ -872,6 +875,8 @@ fn hydrate_bridge_store_secrets_restores_redacted_config() {
             owner: Some("User".to_string()),
             human_id: Some("kh_123".to_string()),
             discovery_mode: "contacts".to_string(),
+            human_visibility_policy: "private".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: Some("agent-1".to_string()),
             agents: vec![super::DesktopBridgeAgentConfig {
                 id: "agent-1".to_string(),
@@ -887,6 +892,7 @@ fn hydrate_bridge_store_secrets_restores_redacted_config() {
                 fallback_auth_provider: None,
                 fallback_auth_choice: None,
                 thinking: None,
+                reachability_policy: "contacts".to_string(),
             }],
             api_style: "serve".to_string(),
         }],

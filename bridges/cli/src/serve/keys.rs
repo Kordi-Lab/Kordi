@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::auth::{auth_middleware, AuthNode};
-use super::{nodes_share_project_or_contact, ServerState};
+use super::{nodes_can_directly_reach, DirectAccessKind, ServerState};
 
 #[derive(Debug, Serialize)]
 pub struct KeysResp {
@@ -55,6 +55,16 @@ async fn get_keys(
     let db = state
         .open_connection()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let target_exists = db
+        .query_row(
+            "SELECT 1 FROM registered_nodes WHERE node_id = ?1 AND revoked_at IS NULL",
+            rusqlite::params![node_id.as_str()],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if !target_exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
     let allowed = if let Some(project_id) = q.project {
         db.query_row(
             "SELECT 1 FROM server_members m1 \
@@ -65,7 +75,7 @@ async fn get_keys(
         )
         .is_ok()
     } else {
-        nodes_share_project_or_contact(&db, &auth.0, &node_id)
+        nodes_can_directly_reach(&db, &auth.0, &node_id, DirectAccessKind::Any)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     if !allowed {
@@ -166,15 +176,29 @@ mod tests {
     }
 
     fn seed_registered_node(state: &Arc<ServerState>, node_id: &str, ed25519_pubkey: &str) {
+        seed_registered_node_with_policy(state, node_id, ed25519_pubkey, None, None, None);
+    }
+
+    fn seed_registered_node_with_policy(
+        state: &Arc<ServerState>,
+        node_id: &str,
+        ed25519_pubkey: &str,
+        human_id: Option<&str>,
+        human_visibility_policy: Option<&str>,
+        agent_reachability_policy: Option<&str>,
+    ) {
         let db = state.open_connection().unwrap();
         db.execute(
-            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, human_id, human_visibility_policy, agent_reachability_policy, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 node_id,
                 ed25519_pubkey,
                 "x25519_pub",
                 Option::<String>::None,
                 Option::<String>::None,
+                human_id,
+                human_visibility_policy,
+                agent_reachability_policy,
                 "hash",
                 chrono::Utc::now().to_rfc3339(),
             ],
@@ -196,6 +220,33 @@ mod tests {
         .await;
 
         assert_eq!(result.unwrap_err(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_server_open_target_without_contact() {
+        let state = super::super::make_test_state();
+        seed_registered_node(&state, "kd_viewer", "ed_viewer");
+        seed_registered_node_with_policy(
+            &state,
+            "kd_target",
+            "ed_target",
+            Some("human-target"),
+            Some("server-open"),
+            None,
+        );
+
+        let keys = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery { project: None }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
     }
 
     #[tokio::test]

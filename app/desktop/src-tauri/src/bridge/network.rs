@@ -15,7 +15,8 @@ use super::storage::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
 };
 use super::{
-    generate_registry_node_id, DesktopBridgeHostConfig, DesktopBridgePeer, DesktopBridgeProject,
+    generate_registry_node_id, DesktopBridgeContactRequest, DesktopBridgeHostConfig,
+    DesktopBridgePeer, DesktopBridgeProject,
 };
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +56,9 @@ struct ServeDiscoveryItem {
     agent_id: Option<String>,
     is_default_agent: Option<bool>,
     discovery_mode: Option<String>,
+    human_visibility_policy: Option<String>,
+    contact_approval_policy: Option<String>,
+    agent_reachability_policy: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +73,22 @@ struct ServeContactItem {
     agent_id: Option<String>,
     is_default_agent: Option<bool>,
     discovery_mode: Option<String>,
+    human_visibility_policy: Option<String>,
+    contact_approval_policy: Option<String>,
+    agent_reachability_policy: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServeContactRequestItem {
+    request_id: String,
+    requester_node_id: String,
+    target_node_id: String,
+    status: String,
+    message: Option<String>,
+    created_at: String,
+    decided_at: Option<String>,
+    direction: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -466,6 +486,9 @@ async fn register_node_serve(
     human_id: Option<&str>,
     agent_id: Option<&str>,
     discovery_mode: Option<&str>,
+    human_visibility_policy: Option<&str>,
+    contact_approval_policy: Option<&str>,
+    agent_reachability_policy: Option<&str>,
     is_default_agent: bool,
 ) -> Result<(String, String, String), String> {
     let url = format!("{}/v1/auth/register", trimmed_base_url(base_url));
@@ -483,6 +506,9 @@ async fn register_node_serve(
         "humanId": human_id,
         "agentId": agent_id,
         "discoveryMode": discovery_mode,
+        "humanVisibilityPolicy": human_visibility_policy,
+        "contactApprovalPolicy": contact_approval_policy,
+        "agentReachabilityPolicy": agent_reachability_policy,
         "isDefaultAgent": is_default_agent,
     });
     let response = send_request(
@@ -520,6 +546,9 @@ pub(super) async fn register_bridge_host(
     human_id: Option<&str>,
     agent_id: Option<&str>,
     discovery_mode: Option<&str>,
+    human_visibility_policy: Option<&str>,
+    contact_approval_policy: Option<&str>,
+    agent_reachability_policy: Option<&str>,
     is_default_agent: bool,
     existing_api_style: Option<&str>,
     existing_node_id: Option<&str>,
@@ -533,6 +562,9 @@ pub(super) async fn register_bridge_host(
             human_id,
             agent_id,
             discovery_mode,
+            human_visibility_policy,
+            contact_approval_policy,
+            agent_reachability_policy,
             is_default_agent,
         )
         .await
@@ -615,6 +647,9 @@ pub(super) async fn update_serve_discovery_mode(
     base_url: &str,
     api_key: &str,
     discovery_mode: &str,
+    human_visibility_policy: Option<&str>,
+    contact_approval_policy: Option<&str>,
+    agent_reachability_policy: Option<&str>,
 ) -> Result<(), String> {
     let url = format!("{}/v1/discovery", trimmed_base_url(base_url));
     let response = send_request(
@@ -623,6 +658,9 @@ pub(super) async fn update_serve_discovery_mode(
             .bearer_auth(api_key)
             .json(&serde_json::json!({
                 "discoveryMode": discovery_mode,
+                "humanVisibilityPolicy": human_visibility_policy,
+                "contactApprovalPolicy": contact_approval_policy,
+                "agentReachabilityPolicy": agent_reachability_policy,
             })),
         "Unable to update bridge discovery mode",
     )
@@ -698,6 +736,9 @@ pub(super) async fn fetch_serve_discovery(
             agent_id: peer.agent_id,
             is_default_agent: peer.is_default_agent.unwrap_or(false),
             discovery_mode: peer.discovery_mode,
+            human_visibility_policy: peer.human_visibility_policy,
+            contact_approval_policy: peer.contact_approval_policy,
+            agent_reachability_policy: peer.agent_reachability_policy,
         })
         .collect())
 }
@@ -745,8 +786,100 @@ pub(super) async fn fetch_serve_contacts(
             agent_id: contact.agent_id,
             is_default_agent: contact.is_default_agent.unwrap_or(false),
             discovery_mode: contact.discovery_mode,
+            human_visibility_policy: contact.human_visibility_policy,
+            contact_approval_policy: contact.contact_approval_policy,
+            agent_reachability_policy: contact.agent_reachability_policy,
         })
         .collect())
+}
+
+pub(super) async fn fetch_serve_contact_requests(
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<DesktopBridgeContactRequest>, String> {
+    let url = format!("{}/v1/contact-requests", trimmed_base_url(base_url));
+    let response = send_request(
+        bridge_client().get(url).bearer_auth(api_key),
+        "Unable to list bridge contact requests",
+    )
+    .await?;
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            "Unable to list bridge contact requests",
+            response.status(),
+        ));
+    }
+
+    let requests = parse_json_response::<Vec<ServeContactRequestItem>>(
+        response,
+        "Unable to parse bridge contact requests",
+    )
+    .await?;
+    Ok(requests
+        .into_iter()
+        .map(|request| DesktopBridgeContactRequest {
+            request_id: request.request_id,
+            requester_node_id: request.requester_node_id,
+            target_node_id: request.target_node_id,
+            status: request.status,
+            message: request.message,
+            created_at: request.created_at,
+            decided_at: request.decided_at,
+            direction: request.direction,
+        })
+        .collect())
+}
+
+pub(super) async fn approve_serve_contact_request(
+    base_url: &str,
+    api_key: &str,
+    request_id: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/v1/contact-requests/{request_id}/approve",
+        trimmed_base_url(base_url)
+    );
+    let response = send_request(
+        bridge_client().post(url).bearer_auth(api_key),
+        "Unable to approve bridge contact request",
+    )
+    .await?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(response_error_with_body(
+            response,
+            "Bridge contact request approval",
+            "Unable to approve bridge contact request",
+        )
+        .await)
+    }
+}
+
+pub(super) async fn reject_serve_contact_request(
+    base_url: &str,
+    api_key: &str,
+    request_id: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/v1/contact-requests/{request_id}/reject",
+        trimmed_base_url(base_url)
+    );
+    let response = send_request(
+        bridge_client().post(url).bearer_auth(api_key),
+        "Unable to reject bridge contact request",
+    )
+    .await?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(response_error_with_body(
+            response,
+            "Bridge contact request rejection",
+            "Unable to reject bridge contact request",
+        )
+        .await)
+    }
 }
 
 async fn fetch_serve_projects(
@@ -837,6 +970,9 @@ pub(super) async fn fetch_registry_visible_nodes(
             agent_id: None,
             is_default_agent: false,
             discovery_mode: None,
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
         })
         .collect())
 }
@@ -865,6 +1001,9 @@ fn ensure_peer_index(
         agent_id: None,
         is_default_agent: false,
         discovery_mode: None,
+        human_visibility_policy: None,
+        contact_approval_policy: None,
+        agent_reachability_policy: None,
     });
     let idx = peers.len() - 1;
     index.insert(member.node_id.clone(), idx);
@@ -1133,6 +1272,27 @@ pub(super) async fn fetch_mailbox(
     parse_json_response::<Vec<serde_json::Value>>(response, "Unable to parse bridge mailbox").await
 }
 
+fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Option<&'static str> {
+    let message_type = payload
+        .get("messageType")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    if message_type.eq_ignore_ascii_case("ask") {
+        return Some("agent");
+    }
+    let target_kind = payload
+        .get("payload")
+        .and_then(|value| value.get("sessionThread"))
+        .and_then(|value| value.get("targetKind"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    match target_kind {
+        "bridge-agent" => Some("agent"),
+        "bridge-person" => Some("person"),
+        _ => None,
+    }
+}
+
 pub(super) async fn relay_plaintext_message(
     host: &DesktopBridgeHostConfig,
     target_node_id: &str,
@@ -1148,6 +1308,7 @@ pub(super) async fn relay_plaintext_message(
         "targetNodeId": target_node_id,
         "blob": blob,
         "projectId": project_id,
+        "targetKind": relay_target_kind_for_payload(payload),
     });
     let response = send_request(
         bridge_client()

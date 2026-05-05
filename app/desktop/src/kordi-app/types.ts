@@ -643,6 +643,9 @@ export type DesktopBridgePeer = {
   agentId?: string | null;
   isDefaultAgent?: boolean;
   discoveryMode?: string | null;
+  humanVisibilityPolicy?: string | null;
+  contactApprovalPolicy?: string | null;
+  agentReachabilityPolicy?: string | null;
   profileImageUrl?: string | null;
 };
 
@@ -667,7 +670,19 @@ export type DesktopBridgeAgent = {
   fallbackAuthProvider?: string | null;
   fallbackAuthChoice?: string | null;
   thinking?: string | null;
+  reachabilityPolicy?: string | null;
   profileImageUrl?: string | null;
+};
+
+export type DesktopBridgeContactRequest = {
+  requestId: string;
+  requesterNodeId: string;
+  targetNodeId: string;
+  status: string;
+  message?: string | null;
+  createdAt: string;
+  decidedAt?: string | null;
+  direction: string;
 };
 
 export type DesktopBridgeHost = {
@@ -682,11 +697,14 @@ export type DesktopBridgeHost = {
   tokenPresent: boolean;
   humanId: string;
   discoveryMode: string;
+  humanVisibilityPolicy?: string | null;
+  contactApprovalPolicy?: string | null;
   activeAgentId?: string | null;
   agents: DesktopBridgeAgent[];
   visiblePeers: DesktopBridgePeer[];
   visiblePeerCount: number;
   projects: DesktopBridgeProject[];
+  contactRequests?: DesktopBridgeContactRequest[];
   lastError?: string | null;
 };
 

@@ -37,6 +37,10 @@ export function BridgeConfigPage({
   onImportBridgeHostsConfig,
   onAddBridgeContact,
   onSetBridgeDiscoveryMode,
+  onSetBridgeHostPrivacyPolicy,
+  onSetBridgeAgentReachabilityPolicy,
+  onApproveBridgeContactRequest,
+  onRejectBridgeContactRequest,
   onCreateBridgeAgent,
   onActivateBridgeAgent,
   onSetDefaultBridgeAgent,
@@ -63,7 +67,7 @@ export function BridgeConfigPage({
     if (!activeBridgeHost && activeSection === 'details') {
       setActiveSection('servers');
     }
-    if (activeStep === 'discover' && !activeBridgeHost?.registered) {
+    if (activeStep !== 'identity' && activeStep !== 'setup' && !activeBridgeHost?.registered) {
       setActiveStep('identity');
     }
   }, [activeBridgeHost, activeSection, activeStep]);
@@ -142,6 +146,10 @@ export function BridgeConfigPage({
                 onActivateBridgeAgent={onActivateBridgeAgent}
                 onSetDefaultBridgeAgent={onSetDefaultBridgeAgent}
                 onAddBridgeContact={onAddBridgeContact}
+                onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
+                onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
+                onApproveBridgeContactRequest={onApproveBridgeContactRequest}
+                onRejectBridgeContactRequest={onRejectBridgeContactRequest}
                 onRemoveBridgeContact={onRemoveBridgeContact}
                 onOpenBridgeConversation={onOpenBridgeConversation}
                 activeStep={activeStep}

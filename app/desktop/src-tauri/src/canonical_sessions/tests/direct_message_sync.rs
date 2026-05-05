@@ -301,6 +301,8 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
             token_present: true,
             human_id: "kh_shenzhe".to_string(),
             discovery_mode: "open".to_string(),
+            human_visibility_policy: "server-approval".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: None,
             agents: Vec::new(),
             visible_peers: vec![crate::bridge::DesktopBridgePeer {
@@ -315,9 +317,13 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
                 agent_id: None,
                 is_default_agent: false,
                 discovery_mode: Some("open".to_string()),
+                human_visibility_policy: Some("server-approval".to_string()),
+                contact_approval_policy: Some("approval-required".to_string()),
+                agent_reachability_policy: Some("contacts".to_string()),
             }],
             visible_peer_count: 1,
             projects: Vec::new(),
+            contact_requests: Vec::new(),
             last_error: None,
         }],
         conversations: vec![crate::bridge::DesktopBridgeConversation {

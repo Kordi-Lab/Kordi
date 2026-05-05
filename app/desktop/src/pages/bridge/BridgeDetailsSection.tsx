@@ -10,8 +10,17 @@ import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import type { DesktopBridgePeer } from '@/kordi-app/types';
 
-import type { BridgeDetailsSectionProps } from './BridgeConfigPage.types';
-import { DetailNav, DiscoveryModeSelector, EmptyState, discoveryLabel } from './BridgeConfigShared';
+import type { ContactApprovalPolicy, BridgeDetailsSectionProps, HumanVisibilityPolicy } from './BridgeConfigPage.types';
+import {
+  AGENT_REACHABILITY_OPTIONS,
+  CONTACT_APPROVAL_OPTIONS,
+  DetailNav,
+  EmptyState,
+  HUMAN_VISIBILITY_OPTIONS,
+  agentReachabilityLabel,
+  contactApprovalLabel,
+  humanVisibilityLabel,
+} from './BridgeConfigShared';
 
 export function BridgeDetailsSection({
   activeBridgeHost,
@@ -22,7 +31,10 @@ export function BridgeDetailsSection({
   isDesktopBridgeSaving,
   onSaveBridgeSettings,
   onCopyBridgeText,
-  onSetBridgeDiscoveryMode,
+  onSetBridgeHostPrivacyPolicy,
+  onSetBridgeAgentReachabilityPolicy,
+  onApproveBridgeContactRequest,
+  onRejectBridgeContactRequest,
   onCreateBridgeAgent,
   onActivateBridgeAgent,
   onSetDefaultBridgeAgent,
@@ -69,7 +81,7 @@ export function BridgeDetailsSection({
             <OverviewStat title="Status" value={activeBridgeHost.connected ? 'Connected' : 'Offline'} detail={`${activeBridgeHost.visiblePeerCount} visible on this host`} />
             <OverviewStat title="Your name" value={activeBridgeHost.ownerName} detail={`Human ID: ${activeBridgeHost.humanId}`} breakAll />
             <OverviewStat title="Default agent" value={activeDefaultAgent?.label || activeBridgeHost.displayName} detail={`Agent ID: ${activeDefaultAgent?.id || 'pending'}`} breakAll />
-            <OverviewStat title="Visibility" value={discoveryLabel(activeBridgeHost.discoveryMode)} detail={`Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
+            <OverviewStat title="Visibility" value={humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)} detail={`${contactApprovalLabel(activeBridgeHost.contactApprovalPolicy)} • Node ID: ${activeBridgeHost.nodeId || 'pending registration'}`} breakAll />
           </div>
           <div className="app-bridge-toolbar flex flex-wrap gap-2">
             <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => onCopyBridgeText(activeBridgeHost.serverUrl, 'Bridge host URL copied')}>
@@ -82,34 +94,48 @@ export function BridgeDetailsSection({
             >
               <Link2 className="mr-2 h-4 w-4" /> Copy invite text
             </Button>
-            <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('discover')} disabled={!activeBridgeHost.registered}>
-              Open people & agents
+            <Button variant="secondary" className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('approvals')} disabled={!activeBridgeHost.registered}>
+              Open approvals
             </Button>
           </div>
           <DetailNav activeStep={activeStep} setActiveStep={setActiveStep} activeBridgeHost={activeBridgeHost} />
         </CardContent>
       </Card>
 
+      {activeStep === 'visibility' ? (
+        <BridgeVisibilityStep
+          activeBridgeHost={activeBridgeHost}
+          onSetBridgeHostPrivacyPolicy={onSetBridgeHostPrivacyPolicy}
+          setActiveStep={setActiveStep}
+        />
+      ) : null}
       {activeStep === 'agents' ? (
         <BridgeAgentsStep
           activeBridgeHost={activeBridgeHost}
           onCreateBridgeAgent={onCreateBridgeAgent}
           onActivateBridgeAgent={onActivateBridgeAgent}
           onSetDefaultBridgeAgent={onSetDefaultBridgeAgent}
+          onSetBridgeAgentReachabilityPolicy={onSetBridgeAgentReachabilityPolicy}
           setActiveStep={setActiveStep}
         />
       ) : null}
-      {activeStep === 'discover' ? (
+      {activeStep === 'approvals' || activeStep === 'discover' ? (
         <BridgeDiscoverStep
           activeBridgeHost={activeBridgeHost}
           activeBridgePeople={activeBridgePeople}
           activeBridgeAgents={activeBridgeAgents}
           contactNodeId={contactNodeId}
           setContactNodeId={setContactNodeId}
+          setActiveStep={setActiveStep}
           onAddBridgeContact={onAddBridgeContact}
+          onApproveBridgeContactRequest={onApproveBridgeContactRequest}
+          onRejectBridgeContactRequest={onRejectBridgeContactRequest}
           onRemoveBridgeContact={onRemoveBridgeContact}
           onOpenBridgeConversation={onOpenBridgeConversation}
         />
+      ) : null}
+      {activeStep === 'review' ? (
+        <BridgeReviewStep activeBridgeHost={activeBridgeHost} activeDefaultAgent={activeDefaultAgent} />
       ) : null}
       {activeStep === 'identity' || activeStep === 'setup' ? (
         <BridgeIdentityStep
@@ -123,7 +149,6 @@ export function BridgeDetailsSection({
           isDesktopBridgeSaving={isDesktopBridgeSaving}
           onSaveBridgeSettings={onSaveBridgeSettings}
           onCopyBridgeText={onCopyBridgeText}
-          onSetBridgeDiscoveryMode={onSetBridgeDiscoveryMode}
           setActiveStep={setActiveStep}
           trimmedIdentityOwnerName={trimmedIdentityOwnerName}
         />
@@ -143,12 +168,11 @@ function BridgeIdentityStep({
   isDesktopBridgeSaving,
   onSaveBridgeSettings,
   onCopyBridgeText,
-  onSetBridgeDiscoveryMode,
   setActiveStep,
   trimmedIdentityOwnerName,
 }: {
   activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
-  activeDefaultAgent: NonNullable<ReturnType<typeof findDefaultAgent>>;
+  activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
   bridgeSettingsDraft: BridgeDetailsSectionProps['bridgeSettingsDraft'];
   setBridgeSettingsDraft: BridgeDetailsSectionProps['setBridgeSettingsDraft'];
   identityOwnerName: string;
@@ -157,7 +181,6 @@ function BridgeIdentityStep({
   isDesktopBridgeSaving: boolean;
   onSaveBridgeSettings: BridgeDetailsSectionProps['onSaveBridgeSettings'];
   onCopyBridgeText: BridgeDetailsSectionProps['onCopyBridgeText'];
-  onSetBridgeDiscoveryMode: BridgeDetailsSectionProps['onSetBridgeDiscoveryMode'];
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
   trimmedIdentityOwnerName: string;
 }) {
@@ -206,9 +229,8 @@ function BridgeIdentityStep({
           </div>
         </div>
 
-        <div className="app-bridge-meta-block rounded-[18px] px-3 py-3">
-          <div className="mb-2 text-[12px] font-medium text-white">Who should be able to find me?</div>
-          <DiscoveryModeSelector activeBridgeHost={activeBridgeHost} onSetBridgeDiscoveryMode={onSetBridgeDiscoveryMode} />
+        <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
+          Current strategy: <span className="text-slate-200">{humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}</span> with <span className="text-slate-200">{contactApprovalLabel(activeBridgeHost.contactApprovalPolicy).toLowerCase()}</span>. Visibility settings are reviewed next so privacy controls stay separate from naming.
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -222,8 +244,80 @@ function BridgeIdentityStep({
           >
             <Link2 className="mr-2 h-4 w-4" /> Copy invite text
           </Button>
-          <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('agents')}>
-            Next: choose an agent <ChevronRight className="ml-2 h-4 w-4" />
+          <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('visibility')} disabled={!activeBridgeHost.registered}>
+            Next: set visibility <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BridgeVisibilityStep({
+  activeBridgeHost,
+  onSetBridgeHostPrivacyPolicy,
+  setActiveStep,
+}: {
+  activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
+  onSetBridgeHostPrivacyPolicy: BridgeDetailsSectionProps['onSetBridgeHostPrivacyPolicy'];
+  setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
+}) {
+  const activeHumanVisibility = (activeBridgeHost.humanVisibilityPolicy ?? 'server-approval') as HumanVisibilityPolicy;
+  const activeContactApproval = (activeBridgeHost.contactApprovalPolicy ?? 'approval-required') as ContactApprovalPolicy;
+
+  return (
+    <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
+      <CardHeader>
+        <CardTitle className="text-base">Discovery visibility and private protection</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm text-slate-300">
+        <div className="text-[12px] leading-5 text-slate-400">
+          Choose what people on this Bridges host can see before they contact you. These controls are saved to the host and enforced by self-hosted Bridges serve.
+        </div>
+        <div className="space-y-2">
+          <div className="text-[12px] font-medium text-white">Human / host visibility</div>
+          <div className="grid gap-2 md:grid-cols-3">
+            {HUMAN_VISIBILITY_OPTIONS.map((option) => {
+              const active = option.value === activeHumanVisibility;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => { void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, option.value, activeContactApproval).catch(() => {}); }}
+                  className={cn('rounded-[16px] border px-3 py-2.5 text-left transition', active ? 'border-white/20 bg-white/[0.08]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]')}
+                >
+                  <div className="text-[12px] font-medium text-white">{option.label}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-slate-400">{option.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-[12px] font-medium text-white">Contact approval</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {CONTACT_APPROVAL_OPTIONS.map((option) => {
+              const active = option.value === activeContactApproval;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => { void onSetBridgeHostPrivacyPolicy(activeBridgeHost.id, activeHumanVisibility, option.value).catch(() => {}); }}
+                  className={cn('rounded-[16px] border px-3 py-2.5 text-left transition', active ? 'border-white/20 bg-white/[0.08]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]')}
+                >
+                  <div className="text-[12px] font-medium text-white">{option.label}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-slate-400">{option.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
+          Effective now: <span className="text-slate-200">{humanVisibilityLabel(activeHumanVisibility)}</span> • <span className="text-slate-200">{contactApprovalLabel(activeContactApproval)}</span>.
+        </div>
+        <div className="flex justify-end">
+          <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('approvals')} disabled={!activeBridgeHost.registered}>
+            Next: approvals <ChevronRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
       </CardContent>
@@ -236,12 +330,14 @@ function BridgeAgentsStep({
   onCreateBridgeAgent,
   onActivateBridgeAgent,
   onSetDefaultBridgeAgent,
+  onSetBridgeAgentReachabilityPolicy,
   setActiveStep,
 }: {
   activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
   onCreateBridgeAgent: BridgeDetailsSectionProps['onCreateBridgeAgent'];
   onActivateBridgeAgent: BridgeDetailsSectionProps['onActivateBridgeAgent'];
   onSetDefaultBridgeAgent: BridgeDetailsSectionProps['onSetDefaultBridgeAgent'];
+  onSetBridgeAgentReachabilityPolicy: BridgeDetailsSectionProps['onSetBridgeAgentReachabilityPolicy'];
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
 }) {
   return (
@@ -274,9 +370,25 @@ function BridgeAgentsStep({
                         {agent.registered ? 'Registered' : 'Local only'}
                       </span>
                     </div>
-                    <div className="mt-1 text-[12px] text-slate-400">{agent.runtime}</div>
+                    <div className="mt-1 text-[12px] text-slate-400">{agent.runtime} • {agentReachabilityLabel(agent.reachabilityPolicy)}</div>
                     <div className="mt-1 break-all text-[12px] text-slate-500">Agent ID: {agent.id}</div>
                     <div className="mt-1 break-all text-[12px] text-slate-500">Node ID: {agent.nodeId || 'pending registration'}</div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-3">
+                      {AGENT_REACHABILITY_OPTIONS.map((option) => {
+                        const active = (agent.reachabilityPolicy ?? 'contacts') === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => { void onSetBridgeAgentReachabilityPolicy(activeBridgeHost.id, agent.id, option.value).catch(() => {}); }}
+                            className={cn('rounded-[14px] border px-3 py-2 text-left text-[11px] transition', active ? 'border-white/20 bg-white/[0.08] text-white' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.06]')}
+                          >
+                            <div className="font-medium">{option.label}</div>
+                            <div className="mt-1 leading-4 text-slate-500">{option.detail}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {!agent.isActive ? (
                         <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onActivateBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
@@ -311,8 +423,8 @@ function BridgeAgentsStep({
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('discover')} disabled={!activeBridgeHost.registered}>
-              Next: people & agents <ChevronRight className="ml-2 h-4 w-4" />
+            <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('review')} disabled={!activeBridgeHost.registered}>
+              Next: review <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </CardContent>
@@ -327,7 +439,10 @@ function BridgeDiscoverStep({
   activeBridgeAgents,
   contactNodeId,
   setContactNodeId,
+  setActiveStep,
   onAddBridgeContact,
+  onApproveBridgeContactRequest,
+  onRejectBridgeContactRequest,
   onRemoveBridgeContact,
   onOpenBridgeConversation,
 }: {
@@ -336,13 +451,19 @@ function BridgeDiscoverStep({
   activeBridgeAgents: BridgeDetailsSectionProps['activeBridgeAgents'];
   contactNodeId: string;
   setContactNodeId: BridgeDetailsSectionProps['setContactNodeId'];
+  setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
   onAddBridgeContact: BridgeDetailsSectionProps['onAddBridgeContact'];
+  onApproveBridgeContactRequest: BridgeDetailsSectionProps['onApproveBridgeContactRequest'];
+  onRejectBridgeContactRequest: BridgeDetailsSectionProps['onRejectBridgeContactRequest'];
   onRemoveBridgeContact: BridgeDetailsSectionProps['onRemoveBridgeContact'];
   onOpenBridgeConversation: BridgeDetailsSectionProps['onOpenBridgeConversation'];
 }) {
   if (!activeBridgeHost.registered) {
     return <EmptyState title="Finish setup first" detail="Once this host finishes registering, direct contacts and discovery will appear here." />;
   }
+
+  const pendingIncoming = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'incoming' && request.status === 'pending');
+  const pendingOutgoing = (activeBridgeHost.contactRequests ?? []).filter((request) => request.direction === 'outgoing' && request.status === 'pending');
 
   return (
     <div className="w-full space-y-4">
@@ -391,8 +512,39 @@ function BridgeDiscoverStep({
             </Button>
           </div>
           <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
-            Current visibility: <span className="text-slate-200">{discoveryLabel(activeBridgeHost.discoveryMode)}</span>. Saved contacts and shared projects still work even when open discovery is off.
+            Current visibility: <span className="text-slate-200">{humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}</span>. Saved contacts and shared projects still work even when open discovery is off.
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">Pending approvals</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-300">
+          {pendingIncoming.length === 0 && pendingOutgoing.length === 0 ? (
+            <EmptyState title="No pending approvals" detail="Contact approval requests will appear here before direct reachability is granted." />
+          ) : null}
+          {pendingIncoming.map((request) => (
+            <div key={request.requestId} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[13px] font-medium text-white">Incoming request</div>
+                  <div className="mt-1 break-all text-[12px] text-slate-400">{request.requesterNodeId}</div>
+                  {request.message ? <div className="mt-1 text-[12px] text-slate-500">{request.message}</div> : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button className="rounded-[12px] px-3 text-[11px]" onClick={() => { void onApproveBridgeContactRequest(activeBridgeHost.id, request.requestId).catch(() => {}); }}>Approve</Button>
+                  <Button variant="secondary" className="rounded-[12px] px-3 text-[11px]" onClick={() => { void onRejectBridgeContactRequest(activeBridgeHost.id, request.requestId).catch(() => {}); }}>Reject</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {pendingOutgoing.map((request) => (
+            <div key={request.requestId} className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
+              Waiting for <span className="break-all text-slate-200">{request.targetNodeId}</span> to approve your contact request.
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -418,7 +570,49 @@ function BridgeDiscoverStep({
           onOpenBridgeConversation={onOpenBridgeConversation}
         />
       </div>
+      <div className="flex justify-end">
+        <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('agents')}>
+          Next: agent reachability <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
     </div>
+  );
+}
+
+function BridgeReviewStep({
+  activeBridgeHost,
+  activeDefaultAgent,
+}: {
+  activeBridgeHost: NonNullable<BridgeDetailsSectionProps['activeBridgeHost']>;
+  activeDefaultAgent: ReturnType<typeof findDefaultAgent>;
+}) {
+  return (
+    <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
+      <CardHeader>
+        <CardTitle className="text-base">Review current host strategy</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-slate-300">
+        <OverviewStat
+          title="People can find me"
+          value={humanVisibilityLabel(activeBridgeHost.humanVisibilityPolicy)}
+          detail={activeBridgeHost.humanVisibilityPolicy === 'server-open' ? 'Discovery and first reachout are open to this host.' : activeBridgeHost.humanVisibilityPolicy === 'private' ? 'Hidden unless connected by invite, project, or approved contact.' : 'Visible in discovery, but approval protects direct contact.'}
+        />
+        <OverviewStat
+          title="Contact approval"
+          value={contactApprovalLabel(activeBridgeHost.contactApprovalPolicy)}
+          detail={`${(activeBridgeHost.contactRequests ?? []).filter((request) => request.status === 'pending').length} pending approval request(s)`}
+        />
+        <OverviewStat
+          title="Default agent reachability"
+          value={agentReachabilityLabel(activeDefaultAgent?.reachabilityPolicy)}
+          detail={activeDefaultAgent ? `${activeDefaultAgent.label} • ${activeDefaultAgent.nodeId || 'pending registration'}` : 'No default agent yet'}
+          breakAll
+        />
+        <div className="app-bridge-meta-block rounded-[18px] px-3 py-3 text-[12px] leading-5 text-slate-400">
+          This is the effective strategy after save/publish. Self-hosted Bridges serve enforces discovery listing, pending contact approval, and direct relay/key access where the server supports policy fields.
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

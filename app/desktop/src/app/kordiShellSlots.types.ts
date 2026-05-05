@@ -176,6 +176,10 @@ export type AssembleKordiShellSlotsArgs = {
   handleImportBridgeHostsConfig: (raw: string) => Promise<void>;
   handleAddBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   handleSetBridgeDiscoveryMode: (hostId: string, discoveryMode: 'off' | 'contacts' | 'open') => Promise<void>;
+  handleSetBridgeHostPrivacyPolicy: (hostId: string, humanVisibilityPolicy: 'server-open' | 'server-approval' | 'private', contactApprovalPolicy: 'auto' | 'approval-required') => Promise<void>;
+  handleSetBridgeAgentReachabilityPolicy: (hostId: string, agentId: string, reachabilityPolicy: 'server' | 'contacts' | 'owner') => Promise<void>;
+  handleApproveBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
+  handleRejectBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
   handleCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
   handleActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
   handleSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
@@ -435,6 +439,10 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleImportBridgeHostsConfig'
   | 'handleAddBridgeContact'
   | 'handleSetBridgeDiscoveryMode'
+  | 'handleSetBridgeHostPrivacyPolicy'
+  | 'handleSetBridgeAgentReachabilityPolicy'
+  | 'handleApproveBridgeContactRequest'
+  | 'handleRejectBridgeContactRequest'
   | 'handleCreateBridgeAgent'
   | 'handleActivateBridgeAgent'
   | 'handleSetDefaultBridgeAgent'

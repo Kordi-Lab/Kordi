@@ -13,6 +13,8 @@ fn test_mailbox_target() -> LocalBridgeMailboxTarget {
             owner: Some("Local".to_string()),
             human_id: Some("human-local".to_string()),
             discovery_mode: "open".to_string(),
+            human_visibility_policy: "server-approval".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: Some("agent-local".to_string()),
             agents: vec![],
             api_style: "serve".to_string(),
@@ -173,6 +175,8 @@ fn response_outreach_metadata_uses_session_thread_context_policy() {
         owner: Some("Local".to_string()),
         human_id: Some("human-local".to_string()),
         discovery_mode: "open".to_string(),
+        human_visibility_policy: "server-approval".to_string(),
+        contact_approval_policy: "approval-required".to_string(),
         active_agent_id: Some("agent-local".to_string()),
         agents: vec![DesktopBridgeAgentConfig {
             id: "agent-local".to_string(),
@@ -188,6 +192,7 @@ fn response_outreach_metadata_uses_session_thread_context_policy() {
             fallback_auth_provider: None,
             fallback_auth_choice: None,
             thinking: None,
+            reachability_policy: "contacts".to_string(),
         }],
         api_style: "serve".to_string(),
     };
