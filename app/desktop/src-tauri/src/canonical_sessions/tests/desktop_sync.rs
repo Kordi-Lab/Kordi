@@ -198,6 +198,38 @@ fn outreach_context_snapshot_participant(
     }
 }
 
+fn unidentified_outreach_context_snapshot_participant() -> crate::bridge::DesktopBridgeSessionParticipant {
+    crate::bridge::DesktopBridgeSessionParticipant {
+        identity_id: None,
+        display_name: "Remote Kordi".to_string(),
+        kind: Some("agent".to_string()),
+        role: Some("delegate".to_string()),
+        owner_identity_id: Some("human:remote-owner".to_string()),
+        owner_display_name: Some("Remote Owner".to_string()),
+        bridge_node_id: Some("node-remote".to_string()),
+        human_id: Some("human-remote".to_string()),
+        agent_id: Some("agent-remote".to_string()),
+        runtime: Some("kordi".to_string()),
+    }
+}
+
+fn assert_unidentified_participant_graph_hash_changes<F>(label: &str, mutate: F)
+where
+    F: FnOnce(&mut crate::bridge::DesktopBridgeSessionParticipant),
+{
+    let base_participants = vec![unidentified_outreach_context_snapshot_participant()];
+    let base = participant_graph_hash(&base_participants, "agent:remote", "human:local");
+
+    let mut changed_participants = base_participants.clone();
+    mutate(&mut changed_participants[0]);
+
+    assert_ne!(
+        base,
+        participant_graph_hash(&changed_participants, "agent:remote", "human:local"),
+        "{label} must affect participant graph hash when identity_id is missing"
+    );
+}
+
 fn outreach_context_snapshot_test_metadata(
     session_id: &str,
 ) -> crate::bridge::DesktopBridgeOutreachMetadata {
@@ -460,6 +492,77 @@ fn outreach_context_snapshot_participant_graph_hash_tracks_graph_inputs() {
         base,
         participant_graph_hash(&base_participants, "agent:remote", "human:alternate"),
         "initiator identity changes must affect the graph hash"
+    );
+}
+
+#[test]
+fn outreach_context_snapshot_participant_graph_hash_tracks_unidentified_bridge_fields() {
+    assert_unidentified_participant_graph_hash_changes("display name changes", |participant| {
+        participant.display_name = "Renamed Remote Kordi".to_string();
+    });
+    assert_unidentified_participant_graph_hash_changes(
+        "owner display name changes",
+        |participant| {
+            participant.owner_display_name = Some("Renamed Owner".to_string());
+        },
+    );
+    assert_unidentified_participant_graph_hash_changes("bridge node changes", |participant| {
+        participant.bridge_node_id = Some("node-renamed".to_string());
+    });
+    assert_unidentified_participant_graph_hash_changes("human id changes", |participant| {
+        participant.human_id = Some("human-renamed".to_string());
+    });
+    assert_unidentified_participant_graph_hash_changes("agent id changes", |participant| {
+        participant.agent_id = Some("agent-renamed".to_string());
+    });
+    assert_unidentified_participant_graph_hash_changes("runtime changes", |participant| {
+        participant.runtime = Some("kordi-beta".to_string());
+    });
+}
+
+#[test]
+fn outreach_context_snapshot_is_agent_identity_scoped() {
+    let conn = test_conn();
+    let session = outreach_context_snapshot_test_session(&conn, "session:parent:agent-scoped");
+    let outreach = outreach_context_snapshot_test_metadata(&session.id);
+
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "agent:local",
+        "agent:remote",
+        "delegation:test",
+        &outreach,
+        "recent-window",
+    )
+    .expect("store local agent snapshot");
+    store_outreach_context_snapshot(
+        &conn,
+        &session.id,
+        "agent:alternate",
+        "agent:remote",
+        "delegation:test",
+        &outreach,
+        "recent-window",
+    )
+    .expect("store alternate agent snapshot");
+
+    let snapshots = stored_context_snapshots(&conn);
+    assert_eq!(
+        snapshots.len(),
+        2,
+        "same outreach context for different agents should create separate snapshots"
+    );
+    let ids: std::collections::BTreeSet<_> =
+        snapshots.iter().map(|snapshot| &snapshot.id).collect();
+    assert_eq!(ids.len(), 2, "snapshot ids should differ by agent identity");
+    let agent_ids: std::collections::BTreeSet<_> = snapshots
+        .iter()
+        .map(|snapshot| snapshot.agent_identity_id.as_str())
+        .collect();
+    assert_eq!(
+        agent_ids,
+        std::collections::BTreeSet::from(["agent:alternate", "agent:local"])
     );
 }
 

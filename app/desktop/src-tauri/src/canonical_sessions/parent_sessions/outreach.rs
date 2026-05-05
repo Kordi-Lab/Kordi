@@ -539,6 +539,7 @@ pub(in crate::canonical_sessions) fn participant_graph_hash(
                     .as_deref()
                     .map(normalized_hash_value)
                     .unwrap_or_default(),
+                normalized_hash_value(&participant.display_name),
                 participant
                     .kind
                     .as_deref()
@@ -554,19 +555,57 @@ pub(in crate::canonical_sessions) fn participant_graph_hash(
                     .as_deref()
                     .map(normalized_hash_value)
                     .unwrap_or_default(),
+                participant
+                    .owner_display_name
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .bridge_node_id
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .human_id
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .agent_id
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
+                participant
+                    .runtime
+                    .as_deref()
+                    .map(normalized_hash_value)
+                    .unwrap_or_default(),
             )
         })
         .collect::<Vec<_>>();
     participant_entries.sort();
 
     let mut hash_input = vec![
-        "participant-graph-v1".to_string(),
+        "participant-graph-v2".to_string(),
         format!("initiator:{}", normalized_hash_value(initiator_identity_id)),
         format!("target:{}", normalized_hash_value(target_identity_id)),
     ];
     hash_input.extend(participant_entries.into_iter().map(
-        |(identity_id, kind, role, owner_identity_id)| {
-            format!("participant:{identity_id}\t{kind}\t{role}\t{owner_identity_id}")
+        |(
+            identity_id,
+            display_name,
+            kind,
+            role,
+            owner_identity_id,
+            owner_display_name,
+            bridge_node_id,
+            human_id,
+            agent_id,
+            runtime,
+        )| {
+            format!(
+                "participant:{identity_id}\t{display_name}\t{kind}\t{role}\t{owner_identity_id}\t{owner_display_name}\t{bridge_node_id}\t{human_id}\t{agent_id}\t{runtime}"
+            )
         },
     ));
 
@@ -688,9 +727,10 @@ pub(in crate::canonical_sessions) fn store_outreach_context_snapshot(
         "context:{}",
         hash_hex(
             &format!(
-                "context-snapshot-v1|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                "context-snapshot-v1|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
                 profile.id,
                 session_id,
+                agent_identity_id,
                 delegation_id,
                 provider,
                 model,
