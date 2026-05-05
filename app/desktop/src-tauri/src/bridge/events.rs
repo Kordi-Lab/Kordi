@@ -1,19 +1,22 @@
 use base64::Engine;
 use serde_json::Value;
 
-use super::constants::{is_agent_like_runtime, BRIDGE_MESSAGE_TYPE_RAW};
+use super::constants::{BRIDGE_MESSAGE_TYPE_RAW, is_agent_like_runtime};
 use crate::canonical_sessions::{
-    render_multi_participant_identity_context, session_exists, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole, render_multi_participant_identity_context, session_exists,
 };
 
 use super::{
-    default_display_name, default_owner_name, now_ms, DesktopBridgeHostConfig,
-    DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
-    DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant,
+    DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment,
+    DesktopBridgeOutreachMetadata, DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant,
+    default_display_name, default_owner_name, now_ms,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
+const MAX_PAYLOAD_IDENTITY_PARTICIPANTS: usize = 50;
+const MAX_PAYLOAD_IDENTITY_FIELD_CHARS: usize = 240;
+const PAYLOAD_FALLBACK_SELF_IDENTITY_ID: &str = "unknown:bridge-agent-target";
 
 #[derive(Clone)]
 pub(super) struct ParsedMailboxEvent {
@@ -167,6 +170,23 @@ fn clean_payload_string(value: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn truncate_payload_identity_field(value: String) -> String {
+    let mut chars = value.chars();
+    let truncated = chars
+        .by_ref()
+        .take(MAX_PAYLOAD_IDENTITY_FIELD_CHARS)
+        .collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}…")
+    } else {
+        truncated
+    }
+}
+
+fn clean_payload_identity_string(value: Option<&str>) -> Option<String> {
+    clean_payload_string(value).map(truncate_payload_identity_field)
+}
+
 fn synthetic_identity_id(kind: &str, display_name: &str) -> String {
     let kind = clean_payload_string(Some(kind)).unwrap_or_else(|| "identity".to_string());
     let slug = display_name
@@ -179,25 +199,37 @@ fn synthetic_identity_id(kind: &str, display_name: &str) -> String {
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("-");
-    format!(
+    truncate_payload_identity_field(format!(
         "unknown:{kind}:{}",
         if slug.is_empty() { "unnamed" } else { &slug }
-    )
+    ))
 }
 
-fn prompt_identity_to_role(identity: DesktopBridgePromptIdentity) -> Option<IdentityContextRole> {
-    let display_name = clean_payload_string(Some(&identity.display_name))?;
-    let kind = clean_payload_string(Some(&identity.kind)).unwrap_or_else(|| "identity".to_string());
-    let identity_id = identity
-        .identity_id
-        .and_then(|value| clean_payload_string(Some(&value)))
+fn prompt_identity_to_role(
+    identity: DesktopBridgePromptIdentity,
+    identity_id_override: Option<&str>,
+) -> Option<IdentityContextRole> {
+    let display_name = clean_payload_identity_string(Some(&identity.display_name))?;
+    let kind = clean_payload_identity_string(Some(&identity.kind))
+        .unwrap_or_else(|| "identity".to_string());
+    let identity_id = identity_id_override
+        .map(ToString::to_string)
+        .or_else(|| {
+            identity
+                .identity_id
+                .and_then(|value| clean_payload_identity_string(Some(&value)))
+        })
         .unwrap_or_else(|| synthetic_identity_id(&kind, &display_name));
     Some(IdentityContextRole {
         identity_id,
         display_name,
         kind,
-        owner_identity_id: identity.owner_identity_id,
-        owner_display_name: identity.owner_display_name,
+        owner_identity_id: identity
+            .owner_identity_id
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        owner_display_name: identity
+            .owner_display_name
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
         locality: None,
     })
 }
@@ -205,40 +237,55 @@ fn prompt_identity_to_role(identity: DesktopBridgePromptIdentity) -> Option<Iden
 fn participant_to_identity_context(
     participant: DesktopBridgeSessionParticipant,
 ) -> Option<IdentityContextParticipant> {
-    let display_name = clean_payload_string(Some(&participant.display_name))?;
+    let display_name = clean_payload_identity_string(Some(&participant.display_name))?;
     let kind = participant
         .kind
-        .and_then(|value| clean_payload_string(Some(&value)))
+        .and_then(|value| clean_payload_identity_string(Some(&value)))
         .or_else(|| participant.agent_id.as_ref().map(|_| "agent".to_string()))
         .or_else(|| participant.human_id.as_ref().map(|_| "human".to_string()))
         .unwrap_or_else(|| "participant".to_string());
     let identity_id = participant
         .identity_id
-        .and_then(|value| clean_payload_string(Some(&value)))
+        .and_then(|value| clean_payload_identity_string(Some(&value)))
         .or_else(|| {
-            participant
-                .agent_id
-                .as_ref()
-                .map(|id| format!("agent:{id}"))
+            participant.agent_id.as_ref().and_then(|id| {
+                clean_payload_identity_string(Some(id))
+                    .map(|id| truncate_payload_identity_field(format!("agent:{id}")))
+            })
         })
         .or_else(|| {
-            participant
-                .human_id
-                .as_ref()
-                .map(|id| format!("human:{id}"))
+            participant.human_id.as_ref().and_then(|id| {
+                clean_payload_identity_string(Some(id))
+                    .map(|id| truncate_payload_identity_field(format!("human:{id}")))
+            })
         })
         .unwrap_or_else(|| synthetic_identity_id(&kind, &display_name));
     Some(IdentityContextParticipant {
         identity_id,
         display_name,
         kind,
-        role: participant.role.unwrap_or_default(),
-        owner_identity_id: participant.owner_identity_id,
-        owner_display_name: participant.owner_display_name,
-        bridge_node_id: participant.bridge_node_id,
-        human_id: participant.human_id,
-        agent_id: participant.agent_id,
-        runtime: participant.runtime,
+        role: participant
+            .role
+            .and_then(|value| clean_payload_identity_string(Some(&value)))
+            .unwrap_or_default(),
+        owner_identity_id: participant
+            .owner_identity_id
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        owner_display_name: participant
+            .owner_display_name
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        bridge_node_id: participant
+            .bridge_node_id
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        human_id: participant
+            .human_id
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        agent_id: participant
+            .agent_id
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
+        runtime: participant
+            .runtime
+            .and_then(|value| clean_payload_identity_string(Some(&value))),
         locality: None,
     })
 }
@@ -251,12 +298,14 @@ fn payload_identity_context_request(
         .get("selfTarget")
         .cloned()
         .and_then(|value| serde_json::from_value::<DesktopBridgePromptIdentity>(value).ok())
-        .and_then(prompt_identity_to_role)?;
+        .and_then(|identity| {
+            prompt_identity_to_role(identity, Some(PAYLOAD_FALLBACK_SELF_IDENTITY_ID))
+        })?;
     let requester = thread
         .get("initiator")
         .cloned()
         .and_then(|value| serde_json::from_value::<DesktopBridgePromptIdentity>(value).ok())
-        .and_then(prompt_identity_to_role);
+        .and_then(|identity| prompt_identity_to_role(identity, None));
     let participants = thread
         .get("participants")
         .cloned()
@@ -265,13 +314,14 @@ fn payload_identity_context_request(
         })
         .unwrap_or_default()
         .into_iter()
+        .take(MAX_PAYLOAD_IDENTITY_PARTICIPANTS)
         .filter_map(participant_to_identity_context)
         .collect::<Vec<_>>();
     let context_policy = payload
         .get("contextPolicy")
         .or_else(|| thread.get("contextPolicy"))
         .and_then(|value| value.as_str())
-        .and_then(|value| clean_payload_string(Some(value)))
+        .and_then(|value| clean_payload_identity_string(Some(value)))
         .unwrap_or_else(|| "request-window".to_string());
 
     Some(IdentityContextRequest {
@@ -289,15 +339,15 @@ fn payload_identity_context_request(
         session_id: thread
             .get("parentSessionId")
             .and_then(|value| value.as_str())
-            .and_then(|value| clean_payload_string(Some(value))),
+            .and_then(|value| clean_payload_identity_string(Some(value))),
         session_kind: thread
             .get("parentSessionKind")
             .and_then(|value| value.as_str())
-            .and_then(|value| clean_payload_string(Some(value))),
+            .and_then(|value| clean_payload_identity_string(Some(value))),
         project_name: thread
             .get("projectName")
             .and_then(|value| value.as_str())
-            .and_then(|value| clean_payload_string(Some(value))),
+            .and_then(|value| clean_payload_identity_string(Some(value))),
     })
 }
 
@@ -465,6 +515,80 @@ pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailbox
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn payload_identity_prompt_does_not_trust_remote_self_target_identity_id() {
+        let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
+            "message": "Help with this issue",
+            "sessionThread": {
+                "parentSessionId": "session:payload-only-malicious-self",
+                "parentSessionKind": "group",
+                "selfTarget": {
+                    "identityId": "human:mallory",
+                    "displayName": "Local Kordi",
+                    "kind": "agent",
+                    "ownerIdentityId": "human:alice",
+                    "ownerDisplayName": "Alice"
+                }
+            }
+        }));
+
+        assert!(prompt.contains("- replyAs: unknown:bridge-agent-target only"));
+        assert!(prompt.contains("- identityId: unknown:bridge-agent-target"));
+        assert!(!prompt.contains("- replyAs: human:mallory only"));
+    }
+
+    #[test]
+    fn payload_identity_prompt_caps_remote_participants() {
+        let participants = (0..60)
+            .map(|index| {
+                serde_json::json!({
+                    "identityId": format!("agent:p{index:02}"),
+                    "displayName": format!("Remote Participant {index:02}"),
+                    "kind": "agent",
+                    "role": "member"
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
+            "message": "Help with this issue",
+            "sessionThread": {
+                "parentSessionId": "session:payload-only-many-participants",
+                "selfTarget": {
+                    "identityId": "agent:remote-claimed-self",
+                    "displayName": "Local Kordi",
+                    "kind": "agent"
+                },
+                "participants": participants
+            }
+        }));
+
+        assert!(prompt.contains("Remote Participant 49"));
+        assert!(!prompt.contains("Remote Participant 50"));
+        assert!(!prompt.contains("Remote Participant 59"));
+    }
+
+    #[test]
+    fn payload_identity_prompt_truncates_remote_scalar_fields() {
+        let huge_display_name = "A".repeat(300);
+        let expected_truncated_display_name = format!("{}…", "A".repeat(240));
+
+        let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
+            "message": "Help with this issue",
+            "sessionThread": {
+                "parentSessionId": "session:payload-only-huge-fields",
+                "selfTarget": {
+                    "identityId": "agent:remote-claimed-self",
+                    "displayName": huge_display_name,
+                    "kind": "agent"
+                }
+            }
+        }));
+
+        assert!(prompt.contains(&format!("- displayName: {expected_truncated_display_name}")));
+        assert!(!prompt.contains(&"A".repeat(241)));
+    }
 
     #[test]
     fn parse_bridge_event_payload_reads_sender_timestamp() {

@@ -1,8 +1,10 @@
-use super::constants::{is_agent_like_runtime, DEFAULT_BRIDGE_RUNTIME};
+#[cfg(test)]
+use super::DesktopBridgeHostConfig;
 #[cfg(test)]
 use super::constants::{
     API_STYLE_SERVE, BRIDGE_MESSAGE_TYPE_ASK, BRIDGE_MESSAGE_TYPE_RAW, BRIDGE_MESSAGE_TYPE_RESPONSE,
 };
+use super::constants::{DEFAULT_BRIDGE_RUNTIME, is_agent_like_runtime};
 use super::conversation_actions::desktop_bridge_send_message_impl;
 #[cfg(test)]
 use super::conversation_actions::outbound_message_type;
@@ -14,13 +16,11 @@ use super::events::{
 use super::mailbox::parse_mailbox_event;
 #[cfg(test)]
 use super::outreach::outreach_target_matches;
-#[cfg(test)]
-use super::DesktopBridgeHostConfig;
 use super::{
-    build_current_bridge_state, default_owner_name, generate_human_id, load_bridge_store,
-    load_conversation_store, now_ms, save_conversation_store, upsert_bridge_conversation,
     DesktopBridgeCreateOutreachRequest, DesktopBridgeIdentitySnapshot, DesktopBridgeManager,
     DesktopBridgeOutreachMetadata, DesktopBridgePeer, DesktopBridgeState,
+    build_current_bridge_state, default_owner_name, generate_human_id, load_bridge_store,
+    load_conversation_store, now_ms, save_conversation_store, upsert_bridge_conversation,
 };
 
 fn outreach_attachment_args(
@@ -403,12 +403,12 @@ mod tests {
         let prompt = mailbox_payload_agent_prompt_text(&payload);
 
         assert!(prompt.contains("<multi_participant_identity_context version=\"v1\">"));
-        assert!(prompt.contains("Current model/self:\n- identityId: agent:bob-kordi"));
+        assert!(prompt.contains("Current model/self:\n- identityId: unknown:bridge-agent-target"));
         assert!(prompt.contains("Requester / initiator:\n- identityId: human:alice"));
         assert!(prompt.contains(
             "- agent:bob-kordi | Bob's Kordi | agent | role: target | owner: Bob (human:bob) | bridgeNodeId: bob-agent-node | humanId: bob | agentId: bob-kordi | runtime: kordi-desktop"
         ));
-        assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
+        assert!(prompt.contains("- replyAs: unknown:bridge-agent-target only"));
         assert!(prompt.contains("Request:\nCan you review this?"));
     }
 
