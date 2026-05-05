@@ -8,6 +8,8 @@ import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
 import type { DetailTab } from '@/kordi-app/types';
 
 export function assembleRightDetailSlot(args: RightDetailShellArgs) {
+  const activeChatSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
+  const activeProjectSessionId = args.activeProjectSession.id;
   const detailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
     ? [
         { id: 'info', label: 'Info', icon: Info },
@@ -39,6 +41,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           activeProject={args.activeProject}
           activeProjectSession={args.activeProjectSession}
           activeProjectLastMessage={args.activeProjectLastMessage}
+          activeLiveTurn={args.desktopLiveTurn?.sessionId === activeProjectSessionId ? args.desktopLiveTurn : null}
           activeProjectBridgeHost={args.activeProjectBridgeHost}
           activeProjectBridgeProject={args.activeProjectBridgeProject}
           isProjectBridgeBusy={args.isProjectBridgeBusy}
@@ -60,6 +63,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           activeConv={args.activeConv}
           activeConvHasSubtitle={args.activeConvHasSubtitle}
           activeLastMessage={args.activeLastMessage}
+          activeLiveTurn={args.desktopLiveTurn?.sessionId === activeChatSessionId ? args.desktopLiveTurn : null}
           activeConversationIsBridge={args.activeConversationIsBridge}
           activeBridgeConversationHostNodeId={args.activeBridgeConversationHost?.nodeId}
           activeBridgeConversationHostUrl={args.activeBridgeConversationHost?.serverUrl}

@@ -561,6 +561,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveNav'
   | 'setActiveConvId'
   | 'getStatusBadgeClass'
+  | 'desktopLiveTurn'
   | 'activeConv'
   | 'activeConvHasSubtitle'
   | 'activeLastMessage'

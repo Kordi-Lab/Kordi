@@ -236,6 +236,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeProject: args.activeProject,
       activeProjectSession: args.activeProjectSession,
       activeProjectLastMessage: args.activeProjectLastMessage,
+      desktopLiveTurn: args.desktopLiveTurn,
       activeProjectBridgeHost: args.activeProjectBridgeHost,
       activeProjectBridgeProject: args.activeProjectBridgeProject,
       isProjectBridgeBusy: args.isProjectBridgeBusy,

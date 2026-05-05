@@ -4,9 +4,10 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 
 type ProjectSession = {
   id: string;
@@ -17,7 +18,7 @@ type ProjectSession = {
   participants: string[];
   artifacts: number;
   tasks: number;
-  messages: Array<{ sender?: string; text: string; time: string }>;
+  messages: Message[];
 };
 
 type ProjectWorkspace = {
@@ -45,6 +46,7 @@ type ProjectDetailPanelProps = {
   activeProject: ProjectWorkspace;
   activeProjectSession: ProjectSession;
   activeProjectLastMessage?: { sender?: string; text?: string; time: string };
+  activeLiveTurn?: DesktopChatTurnSnapshot | null;
   activeProjectBridgeHost: DesktopBridgeHost | null;
   activeProjectBridgeProject: DesktopBridgeProject | null;
   isProjectBridgeBusy: boolean;
@@ -135,6 +137,7 @@ export function ProjectDetailPanel({
   activeProject,
   activeProjectSession,
   activeProjectLastMessage,
+  activeLiveTurn,
   activeProjectBridgeHost,
   activeProjectBridgeProject,
   isProjectBridgeBusy,
@@ -343,25 +346,24 @@ export function ProjectDetailPanel({
 
   return (
     <div className="app-detail-sheet">
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <div className="space-y-3">
-          <EmphasisBlock title="Project tasks">
-            <div className="mb-2">
-              <Badge className="app-badge-neutral px-2.5 py-1">{activeProject.tasks}</Badge>
-            </div>
-            Open tasks tracked across all project sessions.
-          </EmphasisBlock>
-          <EmphasisBlock title="Pending invites">
+      <TaskActivityDashboardPanel
+        messages={activeProjectSession.messages}
+        liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
+        emptyMessage="No planning or execution task activity in this project session yet."
+      />
+      {activeProject.pendingInvites.length > 0 ? (
+        <section className="app-detail-section">
+          <div className="app-detail-kicker">Pending invites</div>
+          <div className="app-inspector-emphasis">
             <div className="mb-2">
               <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
                 {activeProject.pendingInvites.length}
               </Badge>
             </div>
-            Membership approvals still waiting at the project level.
-          </EmphasisBlock>
-        </div>
-      </section>
+            <div className="app-inspector-text-block">Membership approvals still waiting at the project level.</div>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

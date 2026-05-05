@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -42,6 +43,7 @@ type ActiveConversation = {
   trust: string;
   directness: string;
   participants: string[];
+  messages: Message[];
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
@@ -149,6 +151,7 @@ type ChatDetailPanelProps = {
   activeConv: ActiveConversation;
   activeConvHasSubtitle: boolean;
   activeLastMessage?: { time?: string; text?: string };
+  activeLiveTurn?: DesktopChatTurnSnapshot | null;
   activeConversationIsBridge: boolean;
   activeBridgeConversationHostNodeId?: string | null;
   activeBridgeConversationHostUrl?: string | null;
@@ -193,6 +196,7 @@ function ChatDetailPanelView({
   activeConv,
   activeConvHasSubtitle,
   activeLastMessage,
+  activeLiveTurn,
   activeConversationIsBridge,
   activeBridgeConversationHostNodeId,
   activeBridgeConversationHostUrl,
@@ -208,6 +212,7 @@ function ChatDetailPanelView({
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
 
   if (activeDetailTab === 'info') {
     return (
@@ -406,25 +411,11 @@ function ChatDetailPanelView({
 
   return (
     <div className="app-detail-sheet">
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <div className="space-y-3">
-          <EmphasisBlock title="Research Agent relay">
-            <div className="mb-2">
-              <Badge className="app-badge-neutral px-2.5 py-1">Running</Badge>
-            </div>
-            Waiting for external follow-up notes.
-          </EmphasisBlock>
-          <EmphasisBlock title="Code Agent outbound share">
-            <div className="mb-2">
-              <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
-                Needs approval
-              </Badge>
-            </div>
-            Agent wants to send a patch summary to Bob.
-          </EmphasisBlock>
-        </div>
-      </section>
+      <TaskActivityDashboardPanel
+        messages={activeConv.messages}
+        liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
+        emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
+      />
     </div>
   );
 }
@@ -436,6 +427,7 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.activeConvHasSubtitle === next.activeConvHasSubtitle
     && previous.activeLastMessage?.time === next.activeLastMessage?.time
     && previous.activeLastMessage?.text === next.activeLastMessage?.text
+    && previous.activeLiveTurn === next.activeLiveTurn
     && previous.activeConversationIsBridge === next.activeConversationIsBridge
     && previous.activeBridgeConversationHostNodeId === next.activeBridgeConversationHostNodeId
     && previous.activeBridgeConversationHostUrl === next.activeBridgeConversationHostUrl
