@@ -27,6 +27,7 @@ import {
   firstMeaningfulThinkingLine,
   formatRunningElapsed,
   toolTimelineDisplayArguments,
+  toolTimelineFailureLabel,
   toolTimelineFoldedLabel,
   toolTimelineLayerGroups,
   toolTimelineRunningToolLabel,
@@ -424,7 +425,8 @@ function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   );
 }
 
-function ToolTimelineCompletionRow({ failed }: { failed: boolean }) {
+function ToolTimelineCompletionRow({ failedCount }: { failedCount: number }) {
+  const failed = failedCount > 0;
   return (
     <div className={cn('app-transcript-timeline-row app-transcript-timeline-row-complete', failed && 'app-transcript-timeline-row-error')}>
       <span className="app-transcript-timeline-rail" aria-hidden="true">
@@ -434,8 +436,8 @@ function ToolTimelineCompletionRow({ failed }: { failed: boolean }) {
       </span>
       <div className="app-transcript-timeline-row-body">
         <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{failed ? 'Needs attention' : 'Done'}</span>
-          <span className="app-transcript-timeline-pill">{failed ? 'Issue' : 'Complete'}</span>
+          <span className="app-transcript-timeline-row-title">{failed ? toolTimelineFailureLabel(failedCount) : 'Done'}</span>
+          {failed ? null : <span className="app-transcript-timeline-pill">Complete</span>}
         </div>
       </div>
     </div>
@@ -457,7 +459,8 @@ function FoldableToolTimeline({
 }) {
   const [expandedTimeline, setExpandedTimeline] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
-  const failed = tools.some(isFailedTool);
+  const failedCount = tools.filter(isFailedTool).length;
+  const failed = failedCount > 0;
   const runningTool = tools.find(isRunningTool);
   const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
   const summary = toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
@@ -487,7 +490,7 @@ function FoldableToolTimeline({
         <div className="app-transcript-timeline-list">
           {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
           {toolTimelineLayerGroups(tools).map((group) => <ToolTimelineToolGroupRow key={group.id} group={group} />)}
-          {completed || failed ? <ToolTimelineCompletionRow failed={failed} /> : null}
+          {completed || failed ? <ToolTimelineCompletionRow failedCount={failedCount} /> : null}
         </div>
       ) : null}
     </section>

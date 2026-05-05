@@ -257,12 +257,16 @@ export function formatRunningElapsed(elapsedMs: number) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
+export function toolTimelineFailureLabel(failedCount: number) {
+  return `${failedCount} ${failedCount === 1 ? 'tool' : 'tools'} failed`;
+}
+
 export function toolTimelineSummary({ tools, active, completed, thinkingText }: ToolTimelineSummaryInput) {
   const failedCount = tools.filter(timelineToolFailed).length;
   const runningCount = tools.filter((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool)).length;
 
   if (runningCount > 0 || (failedCount === 0 && (active || !completed))) return 'Thinking and tool use · running…';
-  if (failedCount > 0) return 'Tool use needs attention';
+  if (failedCount > 0) return toolTimelineFailureLabel(failedCount);
   if (tools.length > 0) return `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'} · completed`;
   if (thinkingText?.trim()) return 'Reasoning trace';
   return 'Assistant activity';
@@ -341,7 +345,7 @@ export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText
 
   if (runningTool) return toolTimelineRunningPreviewLabel(runningTool, runningElapsed);
 
-  if (failedCount > 0) return 'Tool use needs attention';
+  if (failedCount > 0) return toolTimelineFailureLabel(failedCount);
 
   if (active) {
     if (phrase) return `Thinking about ${lowerCaseFirstLetter(phrase)}`;
