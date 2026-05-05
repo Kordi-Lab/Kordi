@@ -5,6 +5,7 @@ import type {
   Contact,
   Conversation,
   ConversationParticipant,
+  DesktopBridgePromptIdentity,
   DesktopBridgeSessionParticipant,
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
@@ -305,15 +306,63 @@ export type ChatCreateGroupBridgeInviteTarget = {
   nodeId: string;
   displayName: string;
   ownerName: string;
+  identityId?: string | null;
   humanId: string | null;
+  runtime?: string | null;
 };
 
-export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'bridgeNodeId' | 'humanId'>;
+export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'bridgeNodeId' | 'humanId'> & {
+  kind?: string | null;
+  ownerIdentityId?: string | null;
+  ownerDisplayName?: string | null;
+  agentId?: string | null;
+  runtime?: string | null;
+};
 
 export const CHAT_GROUP_INVITE_CONTEXT_POLICY = 'session-invite';
 export const CHAT_GROUP_UPDATE_CONTEXT_POLICY = 'session-update';
 
 export type ChatGroupBridgeUpdateTarget = ChatCreateGroupBridgeInviteTarget;
+
+function addSnapshotField<T extends object>(target: T, key: string, value?: string | null): T {
+  const text = cleanText(value);
+  if (text) (target as Record<string, unknown>)[key] = text;
+  return target;
+}
+
+export function buildChatGroupOutreachInitiatorIdentity(
+  creator: ChatCreateGroupInviteCreator | null | undefined,
+): DesktopBridgePromptIdentity | null {
+  if (!creator) return null;
+  const displayName = firstNonEmpty(creator.displayName, creator.id);
+  if (!displayName) return null;
+  let snapshot: DesktopBridgePromptIdentity = {
+    identityId: cleanText(creator.id) || null,
+    displayName,
+    kind: cleanText(creator.kind) || 'human',
+  };
+  snapshot = addSnapshotField(snapshot, 'ownerIdentityId', creator.ownerIdentityId);
+  snapshot = addSnapshotField(snapshot, 'ownerDisplayName', creator.ownerDisplayName);
+  snapshot = addSnapshotField(snapshot, 'bridgeNodeId', creator.bridgeNodeId);
+  snapshot = addSnapshotField(snapshot, 'humanId', creator.humanId);
+  snapshot = addSnapshotField(snapshot, 'agentId', creator.agentId);
+  snapshot = addSnapshotField(snapshot, 'runtime', creator.runtime);
+  return snapshot;
+}
+
+export function buildChatGroupOutreachSelfTargetIdentity(
+  target: ChatCreateGroupBridgeInviteTarget | ChatGroupBridgeUpdateTarget,
+): DesktopBridgePromptIdentity {
+  let snapshot: DesktopBridgePromptIdentity = {
+    identityId: cleanText(target.identityId) || null,
+    displayName: firstNonEmpty(target.displayName, target.ownerName, target.nodeId),
+    kind: 'human',
+  };
+  snapshot = addSnapshotField(snapshot, 'bridgeNodeId', target.nodeId);
+  snapshot = addSnapshotField(snapshot, 'humanId', target.humanId);
+  snapshot = addSnapshotField(snapshot, 'runtime', target.runtime);
+  return snapshot;
+}
 
 export function buildChatCreateGroupInviteText(groupName?: string | null) {
   const name = cleanText(groupName);
@@ -329,7 +378,9 @@ export function buildChatCreateGroupBridgeInviteTargets(contacts: Contact[]): Ch
     const displayName = firstNonEmpty(contact.name, contact.owner, contact.id);
     const ownerName = firstNonEmpty(contact.owner, contact.name, contact.id);
     const humanId = cleanText(contact.bridgeHumanId) || null;
-    targets.set(`${hostId}:${nodeId}:${humanId ?? ''}`, { hostId, nodeId, displayName, ownerName, humanId });
+    const identityId = cleanText(contactCanonicalIdentityRequest(contact).id) || null;
+    const runtime = cleanText(contact.bridgePeerRuntime) || null;
+    targets.set(`${hostId}:${nodeId}:${humanId ?? ''}`, { hostId, nodeId, displayName, ownerName, identityId, humanId, runtime });
   }
   return [...targets.values()];
 }
@@ -346,13 +397,18 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
   };
 
   if (input.creator) {
-    append({
-      identityId: cleanText(input.creator.id) || null,
-      displayName: firstNonEmpty(input.creator.displayName, input.creator.id),
+    const initiator = buildChatGroupOutreachInitiatorIdentity(input.creator);
+    if (initiator) append({
+      identityId: initiator.identityId ?? null,
+      displayName: initiator.displayName,
+      kind: initiator.kind,
       role: 'admin',
-      bridgeNodeId: cleanText(input.creator.bridgeNodeId) || null,
-      humanId: cleanText(input.creator.humanId) || null,
-      agentId: null,
+      ...(initiator.ownerIdentityId ? { ownerIdentityId: initiator.ownerIdentityId } : {}),
+      ...(initiator.ownerDisplayName ? { ownerDisplayName: initiator.ownerDisplayName } : {}),
+      bridgeNodeId: initiator.bridgeNodeId ?? null,
+      humanId: initiator.humanId ?? null,
+      agentId: initiator.agentId ?? null,
+      ...(initiator.runtime ? { runtime: initiator.runtime } : {}),
     });
   }
 
@@ -361,10 +417,12 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
     append({
       identityId: cleanText(identity.id) || null,
       displayName: firstNonEmpty(contact.name, contact.owner, contact.id),
+      kind: 'human',
       role: 'person',
       bridgeNodeId: cleanText(contact.bridgePeerNodeId) || null,
       humanId: cleanText(contact.bridgeHumanId) || null,
       agentId: null,
+      ...(cleanText(contact.bridgePeerRuntime) ? { runtime: cleanText(contact.bridgePeerRuntime) } : {}),
     });
   }
 
@@ -389,7 +447,9 @@ export function buildChatGroupBridgeUpdateTargets(input: {
       nodeId,
       displayName,
       ownerName: displayName,
+      identityId: cleanText(participant.id) || null,
       humanId,
+      runtime: cleanText(participant.runtime) || null,
     });
   }
   return [...targets.values()];
@@ -402,20 +462,26 @@ export function buildChatGroupBridgeUpdateParticipants(input: {
   const adminIds = new Set(uniqueNonEmpty(input.adminIdentityIds));
   const participants = new Map<string, DesktopBridgeSessionParticipant>();
   for (const participant of input.participants) {
-    if (participant.kind !== 'human') continue;
+    const kind = cleanText(participant.kind) || 'human';
     const displayName = firstNonEmpty(participant.name, participant.id);
     const humanId = cleanText(participant.humanId) || null;
+    const agentId = cleanText(participant.agentId) || null;
     const bridgeNodeId = cleanText(participant.bridgeNodeId) || null;
-    const key = participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`;
+    const key = participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${agentId ?? ''}:${displayName}`;
     if (!displayName || participants.has(key)) continue;
-    participants.set(key, {
+    let snapshot: DesktopBridgeSessionParticipant = {
       identityId: cleanText(participant.id) || null,
       displayName,
-      role: adminIds.has(participant.id) ? 'admin' : 'person',
+      kind,
+      role: adminIds.has(participant.id) ? 'admin' : (cleanText(participant.role) || (kind === 'agent' ? 'delegate' : 'person')),
       bridgeNodeId,
       humanId,
-      agentId: null,
-    });
+      agentId,
+    };
+    snapshot = addSnapshotField(snapshot, 'ownerIdentityId', participant.ownerIdentityId);
+    snapshot = addSnapshotField(snapshot, 'ownerDisplayName', participant.ownerName);
+    snapshot = addSnapshotField(snapshot, 'runtime', participant.runtime);
+    participants.set(key, snapshot);
   }
   return [...participants.values()];
 }

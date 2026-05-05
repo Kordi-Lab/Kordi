@@ -18,7 +18,8 @@ import {
   initiatorIdentityForOutreach,
   selfTargetIdentityForMentionedBridgeTarget,
 } from '../src/features/chat/messageActions/context';
-import type { Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
+import { projectSessionConversationForOutreach } from '../src/features/chat/messageActions/projectMessages';
+import type { CanonicalSessionState, Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'nodeId' | 'runtime'>): DesktopBridgePeer {
   return {
@@ -771,6 +772,46 @@ test('project outreach self target metadata falls back to mention target when no
     humanId: 'human-carol',
     agentId: 'agent-carol',
     runtime: 'kordi-remote',
+  });
+});
+
+test('project mention outreach builds initiator metadata from the active canonical project session', () => {
+  const canonicalState: CanonicalSessionState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:host',
+      displayName: 'Host Owner',
+      humanIdentityId: 'human:host',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:host', kind: 'human', displayName: 'Host Owner', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'host-node-1', humanId: 'host-human-1', avatarKey: 'host', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:carol', kind: 'agent', displayName: "Carol's Kordi", ownerIdentityId: 'human:host', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-carol-1', humanId: 'human-carol', agentId: 'agent-carol', avatarKey: 'carol', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'project-session-1', kind: 'project', title: 'Project topic', status: 'active', createdByIdentityId: 'human:host', projectId: '/repo', projectName: 'Repo', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [
+      { sessionId: 'project-session-1', identityId: 'human:host', role: 'self', state: 'active', addedAtMs: 1 },
+      { sessionId: 'project-session-1', identityId: 'agent:carol', role: 'delegate', state: 'active', addedAtMs: 1 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const conversation = projectSessionConversationForOutreach(canonicalState, 'project-session-1');
+
+  assert.deepEqual(initiatorIdentityForOutreach(conversation, 'human:host'), {
+    identityId: 'human:host',
+    displayName: 'Host Owner',
+    kind: 'human',
+    bridgeNodeId: 'host-node-1',
+    humanId: 'host-human-1',
   });
 });
 

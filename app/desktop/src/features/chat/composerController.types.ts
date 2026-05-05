@@ -49,6 +49,7 @@ export type UseComposerControllerArgs = {
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
   canonicalHumanIdentityId?: string | null;
+  canonicalSessionState: CanonicalSessionState | null;
   setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   composerSelections: ComposerSelectionState;

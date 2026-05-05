@@ -33,6 +33,8 @@ import {
   buildChatCreateGroupMetadata,
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
+  buildChatGroupOutreachInitiatorIdentity,
+  buildChatGroupOutreachSelfTargetIdentity,
   CHAT_GROUP_INVITE_CONTEXT_POLICY,
   CHAT_GROUP_UPDATE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
@@ -611,6 +613,7 @@ export function useKordiAppModel() {
     desktopChatState,
     desktopBridgeState,
     canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
+    canonicalSessionState,
     setCanonicalSessionState,
     desktopLiveTurn: activeDesktopLiveTurn,
     composerSelections: composerUi.composerSelections,
@@ -1076,6 +1079,8 @@ export function useKordiAppModel() {
             parentSessionKind: 'group',
             parentSessionParticipants: inviteParticipants,
             parentSessionMessages: [],
+            initiatorIdentity: buildChatGroupOutreachInitiatorIdentity(creatorInviteIdentity),
+            selfTargetIdentity: buildChatGroupOutreachSelfTargetIdentity(target),
             parentTurnId: null,
             parentMessageId: null,
             projectId: null,
@@ -1281,6 +1286,15 @@ export function useKordiAppModel() {
             parentSessionKind: 'group',
             parentSessionParticipants: updateParticipants,
             parentSessionMessages: [],
+            initiatorIdentity: buildChatGroupOutreachInitiatorIdentity({
+              id: actorIdentityId,
+              displayName: nextState?.identities.find((identity) => identity.id === actorIdentityId)?.displayName
+                || nextState?.profile.displayName
+                || actorIdentityId,
+              bridgeNodeId: nextState?.identities.find((identity) => identity.id === actorIdentityId)?.bridgeNodeId ?? null,
+              humanId: nextState?.identities.find((identity) => identity.id === actorIdentityId)?.humanId ?? null,
+            }),
+            selfTargetIdentity: buildChatGroupOutreachSelfTargetIdentity(target),
             parentTurnId: null,
             parentMessageId: null,
             projectId: null,
@@ -1375,6 +1389,15 @@ export function useKordiAppModel() {
               parentGroupSpaceId: inviteContext.parentGroupSpaceId,
               parentSessionParticipants: inviteContext.parentSessionParticipants,
               parentSessionMessages: inviteContext.parentSessionMessages,
+              initiatorIdentity: buildChatGroupOutreachInitiatorIdentity({
+                id: creatorIdentityId,
+                displayName: nextState?.identities.find((identity) => identity.id === creatorIdentityId)?.displayName
+                  || nextState?.profile.displayName
+                  || creatorIdentityId,
+                bridgeNodeId: nextState?.identities.find((identity) => identity.id === creatorIdentityId)?.bridgeNodeId ?? null,
+                humanId: nextState?.identities.find((identity) => identity.id === creatorIdentityId)?.humanId ?? null,
+              }),
+              selfTargetIdentity: buildChatGroupOutreachSelfTargetIdentity(target),
               parentTurnId: null,
               parentMessageId: null,
               projectId: null,

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { Project } from '@/kordi-app/types';
+import type { CanonicalSessionState, Conversation, Project } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach, createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
 import { isProjectDraftSessionId } from '../draftSessions';
 
@@ -18,6 +18,47 @@ import {
 import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMentionedBridgeTarget } from './mentions';
 import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, bridgeAttachmentTransportFields, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
+type ProjectOutreachConversation = Pick<Conversation, 'canonicalParticipants'>;
+
+export function projectSessionConversationForOutreach(
+  canonicalSessionState: CanonicalSessionState | null | undefined,
+  sessionId: string | null | undefined,
+): ProjectOutreachConversation | null {
+  const cleanSessionId = sessionId?.trim();
+  if (!canonicalSessionState || !cleanSessionId) return null;
+
+  const identityById = new Map(canonicalSessionState.identities.map((identity) => [identity.id, identity]));
+  const canonicalParticipants = canonicalSessionState.participants
+    .filter((participant) => participant.sessionId === cleanSessionId && participant.state === 'active')
+    .flatMap((participant) => {
+      const identity = identityById.get(participant.identityId);
+      if (!identity) return [];
+      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+      const role = identity.id === canonicalSessionState.profile.humanIdentityId
+        ? 'self'
+        : participant.role === 'self'
+          ? 'person'
+          : participant.role;
+      return [{
+        id: identity.id,
+        name: identity.displayName,
+        kind: identity.kind,
+        role,
+        source: identity.source,
+        ownerIdentityId: identity.ownerIdentityId,
+        ownerName: owner?.displayName ?? null,
+        bridgeHostId: identity.sourceHostId,
+        bridgeNodeId: identity.bridgeNodeId,
+        humanId: identity.humanId,
+        agentId: identity.agentId,
+        avatarKey: identity.avatarKey,
+        profileImageUrl: identity.profileImageUrl,
+      }];
+    });
+
+  return { canonicalParticipants };
+}
+
 type UseProjectMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'activeConvMessages'
@@ -26,6 +67,7 @@ type UseProjectMessageActionsArgs = Pick<
   | 'activeProjectRoot'
   | 'selectProjectSession'
   | 'canonicalHumanIdentityId'
+  | 'canonicalSessionState'
   | 'chatComposerAttachments'
   | 'composerDrafts'
   | 'desktopBridgeState'
@@ -55,6 +97,7 @@ export function useProjectMessageActions({
   appendProjectDraft,
   attachmentSummaryText,
   canonicalHumanIdentityId,
+  canonicalSessionState,
   chatComposerAttachments,
   composerDrafts,
   desktopBridgeState,
@@ -160,6 +203,7 @@ export function useProjectMessageActions({
           if (!current || current.activeSessionId !== projectSessionId) return current;
           return appendOptimisticOutboundMessage(current, projectSessionId, text, text, chatComposerAttachments, sentAt, mentionForBridgeTarget(mentionedTarget));
         });
+        const outreachConversation = projectSessionConversationForOutreach(canonicalSessionState, projectSessionId);
         void persistCanonicalUserMessage(preparedCanonicalMessage)
           .catch((error: unknown) => {
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
@@ -180,8 +224,8 @@ export function useProjectMessageActions({
             parentSessionId: projectSessionId,
             parentSessionTitle: projectChatState?.activeSession.title,
             parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
-            initiatorIdentity: initiatorIdentityForOutreach(null, canonicalHumanIdentityId),
-            selfTargetIdentity: selfTargetIdentityForMentionedBridgeTarget(mentionedTarget, null),
+            initiatorIdentity: initiatorIdentityForOutreach(outreachConversation, canonicalHumanIdentityId),
+            selfTargetIdentity: selfTargetIdentityForMentionedBridgeTarget(mentionedTarget, outreachConversation),
             parentMessageId,
             projectId: projectChatState?.activeSession.project?.root,
             projectName: projectChatState?.activeSession.project?.name,
@@ -244,6 +288,7 @@ export function useProjectMessageActions({
     activeProjectRoot,
     activeProjectSessionId,
     canonicalHumanIdentityId,
+    canonicalSessionState,
     appendProjectDraft,
     attachmentSummaryText,
     chatComposerAttachments,

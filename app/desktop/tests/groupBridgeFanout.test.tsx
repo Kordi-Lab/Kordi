@@ -10,7 +10,11 @@ import {
   isBridgeGroupSession,
   shouldUseBridgeConversationRouting,
 } from '../src/features/chat/messageActions/chatMessages';
-import type { Conversation, ConversationBridgeTarget } from '../src/kordi-app/types';
+import {
+  buildChatCreateGroupBridgeInviteParticipants,
+  buildChatGroupBridgeUpdateParticipants,
+} from '../src/features/chat/chatCreateFlows';
+import type { Contact, Conversation, ConversationBridgeTarget } from '../src/kordi-app/types';
 
 function groupConversation(): Conversation {
   return {
@@ -44,6 +48,25 @@ const activeTarget: ConversationBridgeTarget = {
   humanId: 'kh_alice',
 };
 
+function contact(overrides: Partial<Contact> = {}): Contact {
+  return {
+    id: 'contact:alice',
+    name: 'Alice',
+    initials: 'A',
+    classType: 'other-users',
+    entityType: 'Person',
+    subtitle: 'Human contact',
+    bridges: ['Bridge'],
+    status: 'Online',
+    discoverableOn: ['Bridge'],
+    detail: 'Works on product',
+    owner: 'Alice',
+    avatarSeed: 'alice',
+    profileImageUrl: null,
+    ...overrides,
+  };
+}
+
 test('detects bridge-backed group sessions even when active header type is person', () => {
   assert.equal(isBridgeGroupSession(groupConversation()), true);
   assert.equal(isBridgeGroupSession({
@@ -53,6 +76,50 @@ test('detects bridge-backed group sessions even when active header type is perso
     directness: 'Direct person chat',
     canonicalParticipants: groupConversation().canonicalParticipants?.filter((participant) => participant.name !== 'Bob'),
   }), false);
+});
+
+test('group create bridge invite metadata carries rich canonical snapshots', () => {
+  assert.deepEqual(buildChatCreateGroupBridgeInviteParticipants({
+    creator: {
+      id: 'human:kh_me',
+      displayName: 'Host Owner',
+      bridgeNodeId: 'kd_me',
+      humanId: 'kh_me',
+    },
+    contacts: [
+      contact({ id: 'contact:alice', name: 'Alice', owner: 'Alice', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice', bridgePeerRuntime: 'person' }),
+    ],
+  }), [
+    { identityId: 'human:kh_me', displayName: 'Host Owner', kind: 'human', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:kh_alice', displayName: 'Alice', kind: 'human', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice', agentId: null, runtime: 'person' },
+  ]);
+});
+
+test('group update bridge metadata includes agent participants while send targets remain human-only', () => {
+  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({
+    participants: groupConversation().canonicalParticipants ?? [],
+    adminIdentityIds: ['human:me'],
+  }), [
+    { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice', agentId: null },
+    { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob', agentId: null },
+    {
+      identityId: 'agent:alice',
+      displayName: "Alice's Kordi",
+      kind: 'agent',
+      role: 'delegate',
+      ownerIdentityId: 'human:alice',
+      ownerDisplayName: 'Alice',
+      bridgeNodeId: 'kd_alice',
+      humanId: 'kh_alice',
+      agentId: 'ka_alice',
+    },
+  ]);
+
+  assert.deepEqual(bridgeGroupSessionSendTargets(groupConversation(), activeTarget), [
+    { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', runtime: 'person', humanId: 'kh_alice', agentId: null },
+    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bob', runtime: 'person', humanId: 'kh_bob', agentId: null },
+  ]);
 });
 
 test('group bridge send targets include every non-self human participant and exclude agents', () => {

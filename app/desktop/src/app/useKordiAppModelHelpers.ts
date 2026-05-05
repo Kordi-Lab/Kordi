@@ -132,6 +132,7 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
     .flatMap((participant) => {
       const identity = identityById.get(participant.identityId);
       if (!identity) return [];
+      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const role = identity.id === state.profile.humanIdentityId
         ? 'self'
         : participant.role === 'self'
@@ -144,6 +145,7 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
         role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
+        ownerName: owner?.displayName ?? null,
         bridgeHostId: identity.sourceHostId,
         bridgeNodeId: identity.bridgeNodeId,
         humanId: identity.humanId,
