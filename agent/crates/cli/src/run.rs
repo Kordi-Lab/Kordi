@@ -109,13 +109,20 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings, &provider_name);
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
     let skill_section = build_skill_system_prompt_section(&session_resources);
-    let system_prompt = format!("{system_prompt}{skill_section}");
+    let reflection_lesson_section =
+        crate::session_bootstrap::build_reflection_lesson_artifacts_system_prompt_section(
+            tool_registry.active_tools(),
+            &artifacts_dir,
+            &session_id,
+            &cwd,
+        );
+    let system_prompt = format!("{system_prompt}{skill_section}{reflection_lesson_section}");
 
     let provider: Arc<dyn kordi_provider::Provider> = runtime.provider.clone();
 
     let tool_ctx = ToolContext {
         cwd: cwd.clone(),
-        artifacts_dir,
+        artifacts_dir: artifacts_dir.clone(),
         model: Some(model.clone()),
         execution_policy,
         on_output: None,
@@ -130,6 +137,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         reach_out: None,
         reflection: Some(crate::reflection_runtime::build_reflection_runtime(
             sibling_conn.clone(),
+            artifacts_dir.clone(),
         )),
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,

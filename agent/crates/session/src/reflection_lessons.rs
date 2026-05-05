@@ -62,7 +62,7 @@ impl ReflectionSource {
 pub struct NewReflectionLesson {
     pub scope: ReflectionScope,
     pub scope_id: String,
-    pub lesson: String,
+    pub artifact_path: String,
     pub source: ReflectionSource,
 }
 
@@ -71,7 +71,7 @@ pub struct ReflectionLesson {
     pub lesson_id: String,
     pub scope: ReflectionScope,
     pub scope_id: String,
-    pub lesson: String,
+    pub artifact_path: String,
     pub source: ReflectionSource,
     pub created_at: String,
     pub updated_at: String,
@@ -80,25 +80,25 @@ pub struct ReflectionLesson {
 
 pub fn save_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> Result<String> {
     let scope_id = lesson.scope_id.trim();
-    let lesson_text = lesson.lesson.trim();
+    let artifact_path = lesson.artifact_path.trim();
     if scope_id.is_empty() {
         return Err(anyhow!("reflection scope_id cannot be empty"));
     }
-    if lesson_text.is_empty() {
-        return Err(anyhow!("reflection lesson cannot be empty"));
+    if artifact_path.is_empty() {
+        return Err(anyhow!("reflection artifact_path cannot be empty"));
     }
 
     let lesson_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO reflection_lessons (
-             lesson_id, scope, scope_id, lesson, source, created_at, updated_at, archived_at
+             lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
         params![
             lesson_id,
             lesson.scope.as_str(),
             scope_id,
-            lesson_text,
+            artifact_path,
             lesson.source.as_str(),
             now,
             now,
@@ -113,7 +113,7 @@ pub fn list_reflection_lessons(
     scope_id: &str,
 ) -> Result<Vec<ReflectionLesson>> {
     let mut stmt = conn.prepare(
-        "SELECT lesson_id, scope, scope_id, lesson, source, created_at, updated_at, archived_at
+        "SELECT lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at
          FROM reflection_lessons
          WHERE scope = ?1 AND scope_id = ?2 AND archived_at IS NULL
          ORDER BY updated_at ASC, lesson_id ASC",
@@ -135,13 +135,21 @@ pub fn list_reflection_lessons(
 
     let mut lessons = Vec::new();
     for row in rows {
-        let (lesson_id, scope, scope_id, lesson, source, created_at, updated_at, archived_at) =
-            row?;
+        let (
+            lesson_id,
+            scope,
+            scope_id,
+            artifact_path,
+            source,
+            created_at,
+            updated_at,
+            archived_at,
+        ) = row?;
         lessons.push(ReflectionLesson {
             lesson_id,
             scope: ReflectionScope::from_str(&scope)?,
             scope_id,
-            lesson,
+            artifact_path,
             source: ReflectionSource::from_str(&source)?,
             created_at,
             updated_at,
@@ -166,14 +174,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saves_lists_and_archives_scoped_lessons() {
+    fn saves_lists_and_archives_scoped_lesson_artifact_metadata() {
         let conn = crate::store::open_memory().expect("memory db");
+        let artifact_path = "/tmp/kordi-lessons/project-repo.md";
         let lesson_id = save_reflection_lesson(
             &conn,
             NewReflectionLesson {
                 scope: ReflectionScope::Project,
                 scope_id: "/repo".to_string(),
-                lesson: "Inspect exact failing assertions before editing again.".to_string(),
+                artifact_path: artifact_path.to_string(),
                 source: ReflectionSource::RepeatedFailure,
             },
         )
@@ -185,6 +194,17 @@ mod tests {
         assert_eq!(lessons[0].lesson_id, lesson_id);
         assert_eq!(lessons[0].scope, ReflectionScope::Project);
         assert_eq!(lessons[0].source, ReflectionSource::RepeatedFailure);
+        assert_eq!(lessons[0].artifact_path, artifact_path);
+
+        let columns = conn
+            .prepare("PRAGMA table_info(reflection_lessons)")
+            .expect("prepare table info")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query table info")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect columns");
+        assert!(columns.contains(&"artifact_path".to_string()));
+        assert!(!columns.contains(&"lesson".to_string()));
 
         archive_reflection_lesson(&conn, &lesson_id).expect("archive lesson");
         let lessons = list_reflection_lessons(&conn, ReflectionScope::Project, "/repo")

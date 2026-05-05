@@ -19,6 +19,7 @@ export type SessionArtifact = {
   summary: string;
   timeLabel?: string;
   live?: boolean;
+  pinned?: boolean;
 };
 
 export type DesktopArtifactPreview = {
@@ -121,6 +122,7 @@ export type DesktopChatToolSnapshot = {
   liveOutput: string;
   resultText?: string | null;
   detail?: string | null;
+  artifactPath?: string | null;
   isError: boolean;
 };
 

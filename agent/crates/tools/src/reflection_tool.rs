@@ -3,7 +3,7 @@ use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-use crate::support::text_result;
+use crate::support::text_result_with;
 use crate::{ReflectionLessonRequest, Tool, ToolContext, ToolMetadata, ToolResult};
 
 pub struct ReflectionTool;
@@ -15,7 +15,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Save a concise scoped lesson from feedback, repeated failure, or outcome."
+        "Append a concise scoped lesson to its lesson artifact file."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -25,7 +25,7 @@ impl Tool for ReflectionTool {
                 "scope": { "type": "string", "enum": ["conversation", "group", "project"] },
                 "scopeId": { "type": "string" },
                 "source": { "type": "string", "enum": ["user_correction", "repeated_failure", "outcome", "manual"] },
-                "lesson": { "type": "string", "description": "Concise lesson, max 500 characters." }
+                "lesson": { "type": "string", "description": "Concise lesson to append to the scoped lesson artifact file, max 500 characters." }
             },
             "required": ["scope", "scopeId", "source", "lesson"],
             "additionalProperties": false
@@ -54,14 +54,18 @@ impl Tool for ReflectionTool {
         };
 
         let response = (runtime.save_lesson)(request).await?;
-        Ok(text_result(
-            "Reflection lesson saved".to_string(),
+        let artifact_path = response.artifact_path.clone();
+        Ok(text_result_with(
+            format!("Reflection lesson saved to {artifact_path}"),
             Some(json!({
                 "status": "saved",
                 "lessonId": response.lesson_id,
                 "scope": response.scope,
                 "scopeId": response.scope_id,
+                "artifactPath": artifact_path,
             })),
+            false,
+            Some(std::path::PathBuf::from(response.artifact_path)),
         ))
     }
 }

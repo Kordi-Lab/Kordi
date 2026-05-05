@@ -93,6 +93,17 @@ fn tool_detail_label(details: &Option<serde_json::Value>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" • "))
 }
 
+fn tool_artifact_path(details: &Option<serde_json::Value>) -> Option<String> {
+    let details = details.as_ref()?;
+    details
+        .get("artifactPath")
+        .or_else(|| details.get("artifact_path"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 pub(super) fn load_session_messages(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -170,6 +181,7 @@ pub(super) fn load_session_messages(
                                     live_output: String::new(),
                                     result_text: None,
                                     detail: None,
+                                    artifact_path: None,
                                     is_error: false,
                                 });
                             }
@@ -199,6 +211,7 @@ pub(super) fn load_session_messages(
                             live_output: String::new(),
                             result_text: None,
                             detail: None,
+                            artifact_path: tool_artifact_path(&message.details),
                             is_error: message.is_error,
                         });
                         index
@@ -212,6 +225,7 @@ pub(super) fn load_session_messages(
                         };
                         tool.result_text = Some(text_from_blocks(&message.content));
                         tool.detail = tool_detail_label(&message.details);
+                        tool.artifact_path = tool_artifact_path(&message.details);
                         tool.is_error = message.is_error;
                     }
                 }
@@ -250,6 +264,7 @@ pub(super) fn load_session_messages(
                                 message.output
                             }),
                             detail,
+                            artifact_path: message.full_output_path.clone(),
                             is_error: message.cancelled
                                 || message.exit_code.unwrap_or_default() != 0,
                         }],

@@ -193,6 +193,36 @@ fn build_tool_layer_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
         .to_string()
 }
 
+pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
+    tools: &[Box<dyn Tool>],
+    artifacts_dir: &std::path::Path,
+    session_id: &str,
+    cwd: &std::path::Path,
+) -> String {
+    if !tools.iter().any(|tool| tool.name() == "reflection") {
+        return String::new();
+    }
+
+    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let project_scope_id = project_root.display().to_string();
+    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir,
+        "conversation",
+        session_id,
+    );
+    let project_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir,
+        "project",
+        &project_scope_id,
+    );
+
+    format!(
+        "\n\n## Scoped lesson artifacts\nLesson content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior lessons; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise lesson.\n- Conversation scope `{session_id}`: {}\n- Project scope `{project_scope_id}`: {}",
+        conversation_path.display(),
+        project_path.display(),
+    )
+}
+
 fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
     let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
     let project_name = settings
@@ -475,14 +505,20 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let project_system_section =
         build_project_system_prompt_section(&project_settings, &effective_cwd);
     let tool_layer_section = build_tool_layer_system_prompt_section(tool_registry.active_tools());
-    let system_prompt =
-        format!("{base_system_prompt}{project_system_section}{skill_section}{tool_layer_section}");
-
     let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
+    let reflection_lesson_section = build_reflection_lesson_artifacts_system_prompt_section(
+        tool_registry.active_tools(),
+        &artifacts_dir,
+        &session_id,
+        &effective_cwd,
+    );
+    let system_prompt = format!(
+        "{base_system_prompt}{project_system_section}{skill_section}{tool_layer_section}{reflection_lesson_section}"
+    );
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
-        artifacts_dir,
+        artifacts_dir: artifacts_dir.clone(),
         model: Some(model.clone()),
         execution_policy,
         on_output: None,
@@ -497,6 +533,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         reach_out: None,
         reflection: Some(crate::reflection_runtime::build_reflection_runtime(
             sibling_conn.clone(),
+            artifacts_dir.clone(),
         )),
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
@@ -874,6 +911,32 @@ mod tests {
         assert!(section.contains("Observation, Planning, Operator, Execution, and Reflection"));
         assert!(section.contains("Use the lightest layer"));
         assert!(section.len() < 700);
+    }
+
+    #[test]
+    fn scoped_lesson_artifact_prompt_lists_paths_without_lesson_content() {
+        let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+            name: "reflection",
+            description: "reflection",
+            schema: json!({"type": "object"}),
+        })];
+        let artifacts_dir = tempdir().expect("artifacts dir");
+        let cwd = tempdir().expect("cwd");
+
+        let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+            &tools,
+            artifacts_dir.path(),
+            "session-123",
+            cwd.path(),
+        );
+
+        assert!(section.contains("Scoped lesson artifacts"));
+        assert!(section.contains("read"));
+        assert!(section.contains("reflection"));
+        assert!(section.contains("session-123"));
+        assert!(section.contains(artifacts_dir.path().to_str().expect("artifact path")));
+        assert!(!section.contains("Do not inject lessons"));
+        assert!(section.len() < 900);
     }
 
     #[test]

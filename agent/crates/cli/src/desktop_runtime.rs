@@ -75,6 +75,8 @@ pub struct DesktopChatStoredTool {
     pub live_output: String,
     pub result_text: Option<String>,
     pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
     pub is_error: bool,
 }
 
@@ -100,6 +102,18 @@ pub struct DesktopChatAttachment {
     pub local_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopSessionArtifact {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+    pub summary: String,
+    pub time_label: Option<String>,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -207,6 +221,7 @@ pub struct DesktopChatSessionDetail {
     pub context_window_text: String,
     pub context_window_status: DesktopChatContextWindowStatus,
     pub project: Option<DesktopChatProjectInfo>,
+    pub reflection_lesson_artifacts: Vec<DesktopSessionArtifact>,
     pub messages: Vec<DesktopChatMessage>,
 }
 
@@ -887,7 +902,7 @@ fn build_turn_config(
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),
-            reflection: None,
+            reflection: setup.tool_ctx.reflection.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

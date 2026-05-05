@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 5;
+const CURRENT_VERSION: i32 = 6;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -74,14 +74,14 @@ CREATE INDEX IF NOT EXISTS idx_projects_archived_at
 
 const MIGRATION_V5: &str = r#"
 CREATE TABLE IF NOT EXISTS reflection_lessons (
-    lesson_id   TEXT PRIMARY KEY,
-    scope       TEXT NOT NULL,
-    scope_id    TEXT NOT NULL,
-    lesson      TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    archived_at TEXT
+    lesson_id     TEXT PRIMARY KEY,
+    scope         TEXT NOT NULL,
+    scope_id      TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    archived_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_reflection_lessons_scope
@@ -119,6 +119,60 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         set_version(conn, 5)?;
     }
 
+    if current < 6 {
+        migrate_reflection_lessons_to_artifact_paths(conn)?;
+        set_version(conn, 6)?;
+    }
+
+    Ok(())
+}
+
+fn table_exists(conn: &Connection, table_name: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table_name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+fn table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table_name})"))?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row?);
+    }
+    Ok(columns)
+}
+
+fn migrate_reflection_lessons_to_artifact_paths(conn: &Connection) -> Result<()> {
+    if !table_exists(conn, "reflection_lessons")? {
+        conn.execute_batch(MIGRATION_V5)?;
+        return Ok(());
+    }
+
+    let columns = table_columns(conn, "reflection_lessons")?;
+    if !columns.iter().any(|column| column == "lesson") {
+        return Ok(());
+    }
+
+    let old_has_artifact_path = columns.iter().any(|column| column == "artifact_path");
+    conn.execute_batch(
+        "ALTER TABLE reflection_lessons RENAME TO reflection_lessons_prompt_lessons_v5;",
+    )?;
+    conn.execute_batch(MIGRATION_V5)?;
+    if old_has_artifact_path {
+        conn.execute_batch(
+            "INSERT INTO reflection_lessons (
+                 lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at
+             )
+             SELECT lesson_id, scope, scope_id, COALESCE(artifact_path, ''), source, created_at, updated_at, archived_at
+             FROM reflection_lessons_prompt_lessons_v5
+             WHERE COALESCE(artifact_path, '') <> '';",
+        )?;
+    }
+    conn.execute_batch("DROP TABLE reflection_lessons_prompt_lessons_v5;")?;
     Ok(())
 }
 

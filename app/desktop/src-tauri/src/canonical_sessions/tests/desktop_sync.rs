@@ -269,6 +269,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 background_system: None,
                 shared_sources: Vec::new(),
             }),
+            reflection_lesson_artifacts: Vec::new(),
             messages: vec![kordi_cli::desktop_runtime::DesktopChatMessage {
                 role: "user".to_string(),
                 sender: Some("You".to_string()),
@@ -338,6 +339,7 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
             compaction_threshold_percent: 90,
         },
         project: None,
+        reflection_lesson_artifacts: Vec::new(),
         messages: Vec::new(),
     };
 
@@ -423,6 +425,7 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
             live_output: String::new(),
             result_text: Some("file contents".to_string()),
             detail: None,
+            artifact_path: None,
             is_error: false,
         }],
         attachments: Vec::new(),
@@ -498,6 +501,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
             live_output: String::new(),
             result_text: Some("weather".to_string()),
             detail: None,
+            artifact_path: None,
             is_error: false,
         }],
         attachments: Vec::new(),
@@ -575,6 +579,7 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
             live_output: String::new(),
             result_text: Some("repo page".to_string()),
             detail: None,
+            artifact_path: None,
             is_error: false,
         }],
         attachments: Vec::new(),

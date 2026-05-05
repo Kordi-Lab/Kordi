@@ -172,6 +172,7 @@ pub struct ReflectionLessonResponse {
     pub lesson_id: String,
     pub scope: String,
     pub scope_id: String,
+    pub artifact_path: String,
 }
 
 pub type ReflectionLessonFuture =

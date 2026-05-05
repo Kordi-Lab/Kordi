@@ -445,6 +445,7 @@ function mergeVisibleToolSnapshot(
     liveOutput: longerText(current.liveOutput ?? '', next.liveOutput ?? ''),
     resultText: next.resultText || current.resultText,
     detail: next.detail || current.detail,
+    artifactPath: next.artifactPath || current.artifactPath,
   };
 }
 

@@ -64,6 +64,7 @@ pub(super) fn apply_desktop_turn_event(
                 live_output: String::new(),
                 result_text: None,
                 detail: None,
+                artifact_path: None,
                 is_error: false,
             });
         }),
@@ -89,6 +90,7 @@ pub(super) fn apply_desktop_turn_event(
             id,
             content,
             details,
+            artifact_path,
             is_error,
             ..
         } => update_turn(snapshot, |state| {
@@ -106,6 +108,7 @@ pub(super) fn apply_desktop_turn_event(
                 };
                 tool.result_text = Some(content_blocks_to_text(content));
                 tool.detail = tool_detail(details);
+                tool.artifact_path = artifact_path.clone();
                 tool.is_error = *is_error;
                 tool.live_output.clear();
             }

@@ -26,6 +26,7 @@ function liveTurnToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
     tool.liveOutput,
     tool.resultText ?? '',
     tool.detail ?? '',
+    tool.artifactPath ?? '',
     String(tool.isError),
   ].join('\u0000');
 }
@@ -38,6 +39,7 @@ function mergeDesktopTurnToolSnapshot(
   current: DesktopChatTurnSnapshot['tools'][number],
   next: DesktopChatTurnSnapshot['tools'][number],
 ): DesktopChatTurnSnapshot['tools'][number] {
+  const artifactPath = next.artifactPath || current.artifactPath;
   return {
     ...current,
     ...next,
@@ -45,6 +47,7 @@ function mergeDesktopTurnToolSnapshot(
     liveOutput: longerLiveText(current.liveOutput ?? '', next.liveOutput ?? ''),
     resultText: next.resultText || current.resultText,
     detail: next.detail || current.detail,
+    ...(artifactPath ? { artifactPath } : {}),
   };
 }
 

@@ -64,6 +64,9 @@ function collectToolArtifactPaths(toolName: string, argumentsJson: string) {
 
 function buildArtifactSummary(toolName: string, live: boolean) {
   const normalized = toolName.trim().toLowerCase();
+  if (normalized === 'reflection') {
+    return live ? 'Scoped reflection lesson artifact • in progress' : 'Scoped reflection lesson artifact';
+  }
   if (!isGeneratedArtifactTool(normalized)) {
     return live ? `Referenced by ${toolName} • in progress` : `Referenced by ${toolName}`;
   }
@@ -78,9 +81,13 @@ function upsertArtifact(
   summary: string,
   timeLabel?: string,
   live = false,
+  pinned = false,
 ) {
   const normalizedId = normalizeArtifactId(path);
   if (!normalizedId) return;
+
+  const existing = byId.get(normalizedId);
+  if (existing?.pinned && existing.order > order) return;
 
   const name = normalizedId.split('/').pop() || normalizedId;
   byId.set(normalizedId, {
@@ -91,6 +98,7 @@ function upsertArtifact(
     summary,
     timeLabel,
     live,
+    pinned,
     order,
   });
 }
@@ -105,7 +113,12 @@ function collectTurnArtifacts(
   turn.tools.forEach((tool, index) => {
     const artifactLive = live && tool.status !== 'done' && tool.status !== 'error';
 
-    collectToolArtifactPaths(tool.name, tool.arguments).forEach((path) => {
+    const paths = [
+      ...collectToolArtifactPaths(tool.name, tool.arguments),
+      ...(tool.artifactPath?.trim() ? [tool.artifactPath.trim()] : []),
+    ];
+
+    Array.from(new Set(paths)).forEach((path) => {
       upsertArtifact(
         byId,
         path,
@@ -118,8 +131,26 @@ function collectTurnArtifacts(
   });
 }
 
-export function extractSessionArtifacts(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | null): SessionArtifact[] {
+function collectPinnedArtifacts(byId: Map<string, StoredArtifact>, pinnedArtifacts: SessionArtifact[]) {
+  pinnedArtifacts.forEach((artifact, index) => {
+    const normalizedId = normalizeArtifactId(artifact.path);
+    if (!normalizedId) return;
+    byId.set(normalizedId, {
+      ...artifact,
+      pinned: true,
+      timeLabel: artifact.timeLabel ?? 'Pinned',
+      order: 1_000_000 - index,
+    });
+  });
+}
+
+export function extractSessionArtifacts(
+  messages: Message[],
+  liveTurn?: DesktopChatTurnSnapshot | null,
+  pinnedArtifacts: SessionArtifact[] = [],
+): SessionArtifact[] {
   const byId = new Map<string, StoredArtifact>();
+  collectPinnedArtifacts(byId, pinnedArtifacts);
 
   messages.forEach((message, index) => {
     const baseOrder = index * 10;

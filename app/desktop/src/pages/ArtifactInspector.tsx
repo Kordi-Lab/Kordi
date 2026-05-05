@@ -118,8 +118,9 @@ export function ArtifactInspector({
     [activeArtifactId, artifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
+  const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
   const activePreviewKey = previewArtifact
-    ? `${previewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
+    ? `${effectivePreviewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
     : null;
   const cachedPreview = activePreviewKey ? previewCache[activePreviewKey] ?? null : null;
   const previewErrorDetails = previewError ? previewErrorCopy(previewError, previewArtifact) : null;
@@ -187,7 +188,7 @@ export function ArtifactInspector({
     let cancelled = false;
     setIsPreviewLoading(true);
 
-    fetchDesktopChatArtifactPreview(previewArtifact.path, previewBaseRoot)
+    fetchDesktopChatArtifactPreview(previewArtifact.path, effectivePreviewBaseRoot)
       .then((preview) => {
         if (cancelled) return;
         setPreviewCache((current) => ({
@@ -208,7 +209,7 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activePreviewKey, cachedPreview, isNativeShell, previewArtifact?.id, previewArtifact?.path, previewBaseRoot]);
+  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, previewArtifact?.id, previewArtifact?.path]);
 
   return (
     <>
@@ -313,6 +314,11 @@ export function ArtifactInspector({
                       <div className="flex min-w-0 items-center gap-2">
                         <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
                         <div className="min-w-0 truncate app-inspector-heading">{artifact.name}</div>
+                        {artifact.pinned ? (
+                          <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-amber-100">
+                            pinned
+                          </span>
+                        ) : null}
                         <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-400">
                           {artifact.kind}
                         </span>
