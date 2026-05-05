@@ -1284,17 +1284,23 @@ mod tests {
 
     #[test]
     fn mailbox_poll_rebuild_skips_canonical_sync_when_no_storage_changed() {
+        struct CanonicalDbOverrideGuard;
+        impl Drop for CanonicalDbOverrideGuard {
+            fn drop(&mut self) {
+                crate::canonical_sessions::set_canonical_sessions_test_db_path(None);
+            }
+        }
+
         let storage_root = std::env::temp_dir().join(format!(
             "kordi-mailbox-no-change-test-{}-{}",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
-        let _storage_env_guard = crate::bridge::STORAGE_ENV_TEST_LOCK
-            .lock()
-            .expect("storage env test lock");
-        std::env::set_var("APP_DATA_DIR", &storage_root);
-        std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
         let canonical_db_path = storage_root.join("canonical-sessions.sqlite3");
+        let _canonical_db_guard = CanonicalDbOverrideGuard;
+        crate::canonical_sessions::set_canonical_sessions_test_db_path(Some(
+            canonical_db_path.clone(),
+        ));
         let store = DesktopBridgeStore {
             active_host_id: Some("host-1".to_string()),
             local_agent_routing: DesktopBridgeAgentRouting::default(),
@@ -1328,8 +1334,6 @@ mod tests {
             "changed mailbox polls should still sync canonical sessions"
         );
 
-        std::env::remove_var("APP_DATA_DIR");
-        std::env::remove_var("KORDI_STORAGE_ROOT");
         let _ = std::fs::remove_dir_all(storage_root);
     }
 
