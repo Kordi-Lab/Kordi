@@ -13,7 +13,7 @@ use kordi_core::settings::{ProjectSharedSource, Settings};
 use kordi_provider::Provider;
 use kordi_provider::registry::ModelRegistry;
 use kordi_session::store;
-use kordi_tools::{ExecutionPolicy, Tool, ToolContext};
+use kordi_tools::{ExecutionPolicy, Tool, ToolContext, ToolLayer};
 use std::sync::Arc;
 
 use crate::extensions::{
@@ -184,13 +184,96 @@ fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> 
     Some(lines)
 }
 
-fn build_tool_layer_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
-    if !tools.iter().any(|tool| tool.name() == "task_operator") {
+fn build_available_tools_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
+    if tools.is_empty() {
         return String::new();
     }
 
-    "\n\n## Tool use policy\nThe active tool catalog is supplied by the runtime. Treat tool descriptions and schemas as the source of truth for when to use each tool, required inputs, side effects, retry safety, and common error modes. Prefer hosted/provider tools when they fit; use Kordi custom function tools for local workspace operations, bridge workflows, task orchestration, and scoped reflection. Layer labels are metadata for UI/scheduling/policy, not extra callable tools."
-        .to_string()
+    let mut observation = Vec::new();
+    let mut planning_coordination = Vec::new();
+    let mut execution = Vec::new();
+    let mut reflection = Vec::new();
+
+    for tool in tools {
+        let entry = format_tool_subtool(tool.as_ref());
+        match big_tool_group_for(tool.as_ref()) {
+            BigToolGroup::Observation => observation.push(entry),
+            BigToolGroup::PlanningCoordination => planning_coordination.push(entry),
+            BigToolGroup::Execution => execution.push(entry),
+            BigToolGroup::Reflection => reflection.push(entry),
+        }
+    }
+
+    format!(
+        "\n\n## Available tools\nUse these four big tool groups for selection: choose a big tool group first, then call an active subtool listed under it. The callable subtools are the tool names from the runtime catalog; tool descriptions and schemas remain the source of truth for arguments, side effects, retry safety, and errors.\n{}\n{}\n{}\n{}",
+        format_big_tool_group("Observation", &observation),
+        format_big_tool_group("Planning & coordination", &planning_coordination),
+        format_big_tool_group("Execution", &execution),
+        format_big_tool_group("Reflection", &reflection),
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BigToolGroup {
+    Observation,
+    PlanningCoordination,
+    Execution,
+    Reflection,
+}
+
+fn big_tool_group_for(tool: &dyn Tool) -> BigToolGroup {
+    match tool.name() {
+        "update_plan" | "task_operator" | "reach_out" => BigToolGroup::PlanningCoordination,
+        "bash" | "edit" | "write" => BigToolGroup::Execution,
+        "reflection" => BigToolGroup::Reflection,
+        _ => match tool.metadata().layer {
+            ToolLayer::Planning | ToolLayer::Operator => BigToolGroup::PlanningCoordination,
+            ToolLayer::Execution => BigToolGroup::Execution,
+            ToolLayer::Reflection => BigToolGroup::Reflection,
+            ToolLayer::Observation => BigToolGroup::Observation,
+        },
+    }
+}
+
+fn format_big_tool_group(label: &str, entries: &[String]) -> String {
+    let mut lines = vec![format!("- {label}:")];
+    if entries.is_empty() {
+        lines.push("  - No active subtools.".to_string());
+    } else {
+        lines.extend(entries.iter().cloned());
+    }
+    lines.join("\n")
+}
+
+fn format_tool_subtool(tool: &dyn Tool) -> String {
+    let mut description = compact_tool_description(tool.description());
+    if tool.name() == "task_operator" {
+        description.push_str(" (manifest/estimate/spawn/message/wait/list/close)");
+    }
+    format!("  - `{}`: {}", tool.name(), description)
+}
+
+fn compact_tool_description(description: &str) -> String {
+    let normalized = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    let first_sentence = normalized
+        .split_once(". ")
+        .map(|(sentence, _)| sentence)
+        .unwrap_or(normalized.as_str())
+        .trim();
+    truncate_chars(first_sentence, 160)
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let mut truncated = value
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    truncated.push('…');
+    truncated
 }
 
 pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
@@ -504,7 +587,8 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let project_system_section =
         build_project_system_prompt_section(&project_settings, &effective_cwd);
-    let tool_layer_section = build_tool_layer_system_prompt_section(tool_registry.active_tools());
+    let available_tools_section =
+        build_available_tools_system_prompt_section(tool_registry.active_tools());
     let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
     let reflection_lesson_section = build_reflection_lesson_artifacts_system_prompt_section(
@@ -514,7 +598,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         &effective_cwd,
     );
     let system_prompt = format!(
-        "{base_system_prompt}{project_system_section}{skill_section}{tool_layer_section}{reflection_lesson_section}"
+        "{base_system_prompt}{project_system_section}{skill_section}{available_tools_section}{reflection_lesson_section}"
     );
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
@@ -903,20 +987,44 @@ mod tests {
     }
 
     #[test]
-    fn tool_use_policy_system_prompt_section_is_short_when_task_operator_is_active() {
-        let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
-            name: "task_operator",
-            description: "task operator",
-            schema: json!({"type": "object"}),
-        })];
+    fn active_tool_section_groups_subtools_under_four_big_tools() {
+        let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(NamedTool {
+                name: "read",
+                description: "Read files",
+                schema: json!({"type": "object"}),
+            }),
+            Box::new(NamedTool {
+                name: "task_operator",
+                description: "Coordinate child tasks",
+                schema: json!({"type": "object"}),
+            }),
+            Box::new(NamedTool {
+                name: "bash",
+                description: "Run shell commands",
+                schema: json!({"type": "object"}),
+            }),
+            Box::new(NamedTool {
+                name: "reflection",
+                description: "Save scoped lessons",
+                schema: json!({"type": "object"}),
+            }),
+        ];
 
-        let section = super::build_tool_layer_system_prompt_section(&tools);
-        assert!(section.contains("Tool use policy"));
-        assert!(section.contains("tool descriptions and schemas"));
-        assert!(section.contains("hosted/provider tools"));
-        assert!(section.contains("not extra callable tools"));
+        let section = super::build_available_tools_system_prompt_section(&tools);
+        assert!(section.contains("Available tools"));
+        assert!(section.contains("- Observation:"));
+        assert!(section.contains("  - `read`: Read files"));
+        assert!(section.contains("- Planning & coordination:"));
+        assert!(section.contains("  - `task_operator`: Coordinate child tasks"));
+        assert!(section.contains("manifest/estimate/spawn/message/wait/list/close"));
+        assert!(section.contains("- Execution:"));
+        assert!(section.contains("  - `bash`: Run shell commands"));
+        assert!(section.contains("- Reflection:"));
+        assert!(section.contains("  - `reflection`: Save scoped lessons"));
+        assert!(section.contains("choose a big tool group first"));
         assert!(!section.contains("Use Observation to gather facts"));
-        assert!(section.len() < 700);
+        assert!(section.len() < 1200);
     }
 
     #[test]

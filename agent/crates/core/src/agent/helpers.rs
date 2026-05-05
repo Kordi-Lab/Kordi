@@ -28,12 +28,15 @@ pub fn build_system_prompt(base: &str, agents_md: Option<&str>) -> String {
 /// The default minimal system prompt.
 pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert coding assistant. You help users by reading files, executing commands, editing code, writing new files, coordinating scoped side tasks, and researching current information when tools are available.
 
-## Tool use policy
-The current runtime supplies the active tool catalog. Treat each tool name, description, schema, side-effect note, retry-safety note, and error guidance as the source of truth; do not assume a tool exists unless it is listed.
+## Available tools
+Use four big tool groups to decide what kind of tool help you need, then select a callable subtool from the active runtime catalog. The names below are common subtools; the runtime decides which ones are callable. When selecting tools, choose the big tool group first, then pick the smallest subtool that solves the current step.
 
-Prefer hosted/provider tools when they fit the workflow, such as web search, file search, code execution, image generation, or computer use. Use Kordi custom function tools for local workspace operations, domain-specific side effects, bridge workflows, task orchestration, and scoped reflection. For large tool catalogs, prefer tool search or loading only the relevant subset when available.
+- Observation: gather facts before acting. Subtools: read, web_search, web_fetch, browser_fetch, and other read-only inspectors.
+- Planning & coordination: maintain task state or delegate independent work. Subtools: update_plan, task_operator (manifest/estimate/spawn/message/wait/list/close), and other operator tools.
+- Execution: run commands or change workspace files. Subtools: bash, edit, write, and other mutating tools.
+- Reflection: save or consult scoped lessons. Subtools: reflection for saving lessons; read for inspecting lesson artifacts when paths are provided.
 
-Layer labels such as Observation, Planning, Operator, Execution, and Reflection are metadata for UI, scheduling, and workflow policy, not extra callable tools. Put tool-specific decisions in the tool descriptions; keep system-level reasoning focused on the user goal.
+Tool descriptions and schemas are the source of truth for required inputs, side effects, retry safety, and error modes. Prefer hosted/provider subtools when they fit the workflow, such as web search, file search, code execution, image generation, or computer use. Use Kordi custom function subtools for local workspace operations, domain-specific side effects, bridge workflows, task orchestration, and scoped reflection. For large catalogs, prefer tool search or loading only the relevant subset when available.
 
 Guidelines:
 - Inspect relevant context before changing code.
@@ -56,13 +59,17 @@ mod tests {
     use super::DEFAULT_SYSTEM_PROMPT;
 
     #[test]
-    fn default_prompt_uses_dynamic_tool_policy_not_stale_tool_list() {
-        assert!(DEFAULT_SYSTEM_PROMPT.contains("Tool use policy"));
-        assert!(DEFAULT_SYSTEM_PROMPT.contains("tool name, description, schema"));
-        assert!(DEFAULT_SYSTEM_PROMPT.contains("hosted/provider tools"));
-        assert!(DEFAULT_SYSTEM_PROMPT.contains("not extra callable tools"));
-        assert!(!DEFAULT_SYSTEM_PROMPT.contains("Available tools:"));
-        assert!(!DEFAULT_SYSTEM_PROMPT.contains("- web_search:"));
+    fn default_prompt_describes_four_big_tool_groups_with_subtools() {
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Available tools"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Observation"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Planning & coordination"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Execution"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Reflection"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("read, web_search, web_fetch, browser_fetch"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("update_plan, task_operator"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("bash, edit, write"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("reflection"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("choose the big tool group first"));
         assert!(!DEFAULT_SYSTEM_PROMPT.contains("Use Observation to gather facts"));
     }
 }
