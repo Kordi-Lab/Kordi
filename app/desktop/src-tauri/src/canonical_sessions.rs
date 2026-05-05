@@ -181,12 +181,17 @@ fn select_identity(conn: &Connection, id: &str) -> Result<Option<CanonicalIdenti
 }
 
 fn metadata_has_manual_title(metadata: &Option<Value>) -> bool {
+    let Some(metadata) = metadata.as_ref().and_then(|value| value.as_object()) else {
+        return false;
+    };
     metadata
-        .as_ref()
-        .and_then(|value| value.as_object())
-        .and_then(|metadata| metadata.get("titleSource"))
+        .get("sessionTitleSource")
         .and_then(Value::as_str)
         .is_some_and(|value| value == "manual")
+        || metadata
+            .get("titleSource")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "manual")
 }
 
 fn preserve_string_metadata_key(
@@ -234,6 +239,7 @@ fn preserve_manual_session_title_metadata(
         "titleSource".to_string(),
         Value::String("manual".to_string()),
     );
+    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "sessionTitleSource");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "customName");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupId");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupSpaceId");

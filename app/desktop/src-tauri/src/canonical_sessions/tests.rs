@@ -87,6 +87,12 @@ fn renaming_non_group_session_marks_title_as_manual_metadata() {
         Some("manual")
     );
     assert_eq!(
+        metadata
+            .get("sessionTitleSource")
+            .and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
         metadata.get("createdFrom").and_then(|value| value.as_str()),
         Some("chat-create-flow")
     );
@@ -152,6 +158,12 @@ fn manual_title_metadata_survives_session_shell_upsert() {
         Some("manual")
     );
     assert_eq!(
+        metadata
+            .get("sessionTitleSource")
+            .and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
         metadata.get("source").and_then(|value| value.as_str()),
         Some("desktop-chat-detail")
     );
@@ -164,7 +176,7 @@ fn manual_title_metadata_survives_session_shell_upsert() {
 }
 
 #[test]
-fn renaming_group_session_records_custom_manual_title_metadata() {
+fn renaming_group_session_preserves_group_name_as_separate_metadata() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");
     let alice = seed_identity(&conn, "human:alice", "Alice", "human");
@@ -173,7 +185,7 @@ fn renaming_group_session_records_custom_manual_title_metadata() {
         OpenCanonicalSessionRequest {
             id: Some("session:group:rename-test".to_string()),
             kind: "group".to_string(),
-            title: Some("Alice group".to_string()),
+            title: Some("First group thread".to_string()),
             status: Some("active".to_string()),
             created_by_identity_id: creator.id.clone(),
             primary_identity_id: None,
@@ -183,6 +195,7 @@ fn renaming_group_session_records_custom_manual_title_metadata() {
             participant_identity_ids: vec![alice.id.clone()],
             metadata: Some(serde_json::json!({
                 "adminIdentityIds": [creator.id.clone()],
+                "customName": "Alice group",
                 "groupId": "session:group:rename-test",
                 "groupSpaceId": "session:group:rename-test"
             })),
@@ -190,20 +203,26 @@ fn renaming_group_session_records_custom_manual_title_metadata() {
     )
     .expect("create group");
 
-    rename_session_in_db(&conn, &group.id, "Renamed crew").expect("rename group");
+    rename_session_in_db(&conn, &group.id, "Renamed thread").expect("rename group session");
 
     let renamed = select_session(&conn, &group.id)
         .expect("select renamed group")
         .expect("renamed group exists");
-    assert_eq!(renamed.title, "Renamed crew");
+    assert_eq!(renamed.title, "Renamed thread");
     let metadata = renamed.metadata.expect("metadata preserved");
     assert_eq!(
         metadata.get("titleSource").and_then(|value| value.as_str()),
         Some("manual")
     );
     assert_eq!(
+        metadata
+            .get("sessionTitleSource")
+            .and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
         metadata.get("customName").and_then(|value| value.as_str()),
-        Some("Renamed crew")
+        Some("Alice group")
     );
     assert_eq!(
         metadata.get("groupId").and_then(|value| value.as_str()),

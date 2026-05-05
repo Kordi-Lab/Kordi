@@ -167,7 +167,10 @@ function firstMessageTitle(messages: Message[]) {
 }
 
 export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {
-  return stringValue(sessionMetadata(session).titleSource) === 'manual';
+  const metadata = sessionMetadata(session);
+  if (stringValue(metadata.sessionTitleSource) === 'manual') return true;
+  if (session.kind === 'group') return false;
+  return stringValue(metadata.titleSource) === 'manual';
 }
 
 export function sessionDisplayTitle(messages: Message[], fallback: string, options: { preferFallback?: boolean } = {}) {

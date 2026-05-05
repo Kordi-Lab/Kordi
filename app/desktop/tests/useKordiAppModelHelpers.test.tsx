@@ -7,6 +7,7 @@ import {
   canonicalSessionMessagesForGroupInvite,
   currentMentionQuery,
   filterMentionTargets,
+  groupRenameMetadata,
   removeSessionFromCanonicalState,
 } from '../src/app/useKordiAppModelHelpers';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
@@ -39,6 +40,26 @@ test('canonical session removal prunes session-scoped records', () => {
   assert.deepEqual(next.sessions.map((session) => session.id), ['keep']);
   assert.deepEqual(next.messages.map((message) => message.sessionId), ['keep']);
   assert.deepEqual(next.participants.map((participant) => participant.sessionId), ['keep']);
+});
+
+test('group rename metadata changes the group name without overwriting manual session-title metadata', () => {
+  assert.deepEqual(
+    groupRenameMetadata({
+      customName: 'Old group',
+      groupSpaceId: 'session:group:root',
+      titleSource: 'manual',
+      sessionTitleSource: 'manual',
+      extra: 'kept',
+    }, 'New group', 'session:group:root'),
+    {
+      customName: 'New group',
+      groupId: 'session:group:root',
+      groupSpaceId: 'session:group:root',
+      titleSource: 'manual',
+      sessionTitleSource: 'manual',
+      extra: 'kept',
+    },
+  );
 });
 
 test('group invite title falls back to the group space custom name for child sessions', () => {

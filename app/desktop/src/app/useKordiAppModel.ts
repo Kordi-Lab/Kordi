@@ -80,6 +80,7 @@ import {
   canonicalLocalAgentAvatarSeed,
   currentMentionQuery,
   filterMentionTargets,
+  groupRenameMetadata,
   isNativeDesktopShell,
   metadataGroupSpaceId,
   metadataString,
@@ -1262,22 +1263,12 @@ export function useKordiAppModel() {
     let nextState = canonicalSessionState;
     const renamedGroupIds = new Map<string, string>();
     for (const sessionId of groupSessionIds) {
-      nextState = await renameCanonicalSession({
-        sessionId,
-        title,
-        requestedByIdentityId: actorIdentityId,
-      });
       const currentMetadata = sessionMetadataRecord(nextState, sessionId);
       const groupId = metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId;
       nextState = await updateCanonicalSessionMetadata({
         sessionId,
         requestedByIdentityId: actorIdentityId,
-        metadata: {
-          ...currentMetadata,
-          customName: title,
-          groupId,
-          groupSpaceId: groupId,
-        },
+        metadata: groupRenameMetadata(currentMetadata, title, groupId),
       });
       renamedGroupIds.set(groupId, sessionId);
     }

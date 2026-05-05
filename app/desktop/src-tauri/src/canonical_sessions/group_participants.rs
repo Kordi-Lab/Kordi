@@ -3,11 +3,7 @@ use serde_json::Value;
 
 use super::{now_ms, select_session, upsert_participant, CanonicalSession};
 
-fn manual_title_metadata(
-    session: &CanonicalSession,
-    title: &str,
-    is_group: bool,
-) -> Result<String, String> {
+fn manual_title_metadata(session: &CanonicalSession) -> Result<String, String> {
     let mut metadata = match session.metadata.clone() {
         Some(Value::Object(map)) => map,
         _ => serde_json::Map::new(),
@@ -16,26 +12,10 @@ fn manual_title_metadata(
         "titleSource".to_string(),
         Value::String("manual".to_string()),
     );
-    if is_group {
-        metadata.insert("customName".to_string(), Value::String(title.to_string()));
-        let group_id = metadata
-            .get("groupId")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .or_else(|| {
-                metadata
-                    .get("groupSpaceId")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(ToString::to_string)
-            })
-            .unwrap_or_else(|| session.id.clone());
-        metadata.insert("groupId".to_string(), Value::String(group_id.clone()));
-        metadata.insert("groupSpaceId".to_string(), Value::String(group_id));
-    }
+    metadata.insert(
+        "sessionTitleSource".to_string(),
+        Value::String("manual".to_string()),
+    );
     serde_json::to_string(&Value::Object(metadata)).map_err(|err| err.to_string())
 }
 
@@ -61,7 +41,7 @@ pub(crate) fn rename_session_in_db(
         return Err("Group name is required".to_string());
     }
     let session = ensure_group_session(conn, session_id)?;
-    let metadata = manual_title_metadata(&session, title, true)?;
+    let metadata = manual_title_metadata(&session)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, now_ms()],
@@ -81,7 +61,7 @@ pub(crate) fn rename_any_session_title_in_db(
     }
     let session =
         select_session(conn, session_id)?.ok_or_else(|| "Session not found".to_string())?;
-    let metadata = manual_title_metadata(&session, title, session.kind == "group")?;
+    let metadata = manual_title_metadata(&session)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, now_ms()],

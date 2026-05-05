@@ -190,6 +190,16 @@ export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
   );
 }
 
+export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string) {
+  const groupId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
+  return {
+    ...metadata,
+    customName: title,
+    groupId,
+    groupSpaceId: groupId,
+  };
+}
+
 function nonGenericGroupInviteTitle(value?: string | null) {
   const title = value?.trim();
   if (!title) return null;
