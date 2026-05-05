@@ -683,6 +683,15 @@ pub(crate) fn write_session_identity_markdown_for_prompt(
     )
 }
 
+fn push_session_identity_file_notice(lines: &mut Vec<String>, path: &std::path::Path) {
+    lines.push(String::new());
+    lines.push(format!("Session identity file: {}", path.display()));
+    lines.push(
+        "If this is your first turn in this shared session, read this file before answering. Do not read it again until a visible participant/identity event says the identity file changed."
+            .to_string(),
+    );
+}
+
 pub(crate) fn local_agent_session_prompt_context(
     parent_session_id: Option<&str>,
 ) -> Result<Option<String>, String> {
@@ -727,8 +736,7 @@ pub(crate) fn local_agent_session_prompt_context(
         "You are Kordi, the user's local agent participating inside this shared Kordi session. When the user mentions @Kordi, answer directly in this same session using the session context below. Do not create or switch sessions. Do not involve bridge participants unless the current user message explicitly mentions a non-local person or agent. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to."
             .to_string(),
     );
-    lines.push(String::new());
-    lines.push(render_multi_participant_identity_context(
+    let identity_path = write_identity_context_markdown(
         &IdentityContextRequest {
             permissions: identity_permissions(
                 &self_identity.identity_id,
@@ -746,7 +754,10 @@ pub(crate) fn local_agent_session_prompt_context(
             session_kind: Some(session.kind.clone()),
             project_name: session.project_name.clone(),
         },
-    ));
+        None,
+        None,
+    )?;
+    push_session_identity_file_notice(&mut lines, &identity_path);
     push_recent_session_messages(
         &mut lines,
         recent_session_message_lines(&conn, session_id, 16)?,
@@ -800,8 +811,7 @@ pub(crate) fn bridge_agent_parent_session_prompt(
                 let target = target.unwrap_or_else(|| {
                     unresolved_bridge_agent_target_role(&participants, agent_name, owner_name)
                 });
-                lines.push(String::new());
-                lines.push(render_multi_participant_identity_context(
+                let identity_path = write_identity_context_markdown(
                     &IdentityContextRequest {
                         permissions: identity_permissions(
                             &target.identity_id,
@@ -819,7 +829,10 @@ pub(crate) fn bridge_agent_parent_session_prompt(
                         session_kind: Some(session.kind.clone()),
                         project_name: session.project_name.clone(),
                     },
-                ));
+                    None,
+                    None,
+                )?;
+                push_session_identity_file_notice(&mut lines, &identity_path);
             } else if !participants.is_empty() {
                 lines.push(String::new());
                 lines.push("Session participants:".to_string());

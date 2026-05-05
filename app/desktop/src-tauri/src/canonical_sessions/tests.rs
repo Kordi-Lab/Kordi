@@ -658,6 +658,19 @@ fn identity_markdown_writer_uses_canonical_session_participants() {
     assert!(markdown.contains("  - agent:bob-kordi"), "{markdown}");
 }
 
+fn identity_markdown_from_prompt(prompt: &str) -> String {
+    let path_line = prompt
+        .lines()
+        .find(|line| line.starts_with("Session identity file:"))
+        .unwrap_or_else(|| panic!("missing identity file path line\n{prompt}"));
+    let path = path_line
+        .trim_start_matches("Session identity file:")
+        .trim();
+    std::fs::read_to_string(path).unwrap_or_else(|err| {
+        panic!("failed to read identity Markdown file {path}: {err}\n{prompt}")
+    })
+}
+
 #[test]
 fn prompt_context_local_agent_uses_identity_frame_for_multi_participant_session() {
     let guard = PromptContextTestDbGuard::new("local-agent-frame");
@@ -672,14 +685,28 @@ fn prompt_context_local_agent_uses_identity_frame_for_multi_participant_session(
         .expect("local prompt context")
         .expect("prompt context exists");
 
-    for marker in [
-        "<multi_participant_identity_context version=\"v1\">",
-        "Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Alice's Kordi",
-        "Requester / initiator:\n- identityId: human:alice",
-        "Session participants:\n- agent:alice-kordi | Alice's Kordi | agent | owner: Alice (human:alice)\n- agent:bob-kordi | Bob's Kordi | agent | owner: Bob (human:bob)\n- human:alice | Alice | human\n- human:bob | Bob | human",
-    ] {
-        assert!(prompt.contains(marker), "missing marker {marker:?}\n{prompt}");
-    }
+    assert!(
+        prompt.contains("Session identity file:"),
+        "shared session prompt should point to the identity file\n{prompt}"
+    );
+    assert!(
+        prompt.contains(
+            "If this is your first turn in this shared session, read this file before answering."
+        ),
+        "shared session prompt should include first-turn read rule\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("<multi_participant_identity_context"),
+        "shared session prompt should not embed volatile participant frame\n{prompt}"
+    );
+    let path_line = prompt
+        .lines()
+        .find(|line| line.starts_with("Session identity file:"))
+        .expect("identity file path line");
+    let path = path_line
+        .trim_start_matches("Session identity file:")
+        .trim();
+    assert!(std::path::Path::new(path).exists(), "{path}");
 }
 
 #[test]
@@ -800,17 +827,18 @@ fn prompt_context_local_self_prefers_session_primary_identity_over_active_profil
         .expect("local prompt context")
         .expect("prompt context exists");
 
+    let markdown = identity_markdown_from_prompt(&prompt);
     assert!(
-        prompt.contains(
-            "Current model/self:\n- identityId: agent:session-primary-kordi\n- displayName: Session Primary Kordi"
+        markdown.contains(
+            "## Current model / self\n\n- identityId: agent:session-primary-kordi\n- displayName: Session Primary Kordi"
         ),
-        "session primary identity must be the frame self\n{prompt}"
+        "session primary identity must be the Markdown self\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains(
-            "Current model/self:\n- identityId: agent:global-active-kordi\n- displayName: Global Active Kordi"
+        !markdown.contains(
+            "## Current model / self\n\n- identityId: agent:global-active-kordi\n- displayName: Global Active Kordi"
         ),
-        "global active profile agent must not override session primary self\n{prompt}"
+        "global active profile agent must not override session primary self\n{markdown}\n{prompt}"
     );
 }
 
@@ -873,25 +901,26 @@ fn prompt_context_local_self_ignores_remote_bridge_primary_identity() {
         .expect("local prompt context")
         .expect("prompt context exists");
 
+    let markdown = identity_markdown_from_prompt(&prompt);
     assert!(
-        prompt.contains(
-            "Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Alice's Kordi"
+        markdown.contains(
+            "## Current model / self\n\n- identityId: agent:alice-kordi\n- displayName: Alice's Kordi"
         ),
-        "local prompt must keep local active agent as self\n{prompt}"
+        "local prompt must keep local active agent as self\n{markdown}\n{prompt}"
     );
     assert!(
-        prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
-        "local prompt must reply as local active agent\n{prompt}"
+        markdown.contains("- replyAs: agent:alice-kordi only"),
+        "local prompt must reply as local active agent\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains(
-            "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi"
+        !markdown.contains(
+            "## Current model / self\n\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi"
         ),
-        "remote bridge primary must not become local self\n{prompt}"
+        "remote bridge primary must not become local self\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains("Permissions:\n- replyAs: agent:bob-kordi only"),
-        "local prompt must not reply as remote bridge primary\n{prompt}"
+        !markdown.contains("- replyAs: agent:bob-kordi only"),
+        "local prompt must not reply as remote bridge primary\n{markdown}\n{prompt}"
     );
 }
 
@@ -954,13 +983,17 @@ fn prompt_context_requester_prefers_session_creator_over_local_profile_human() {
         .expect("local prompt context")
         .expect("prompt context exists");
 
+    let markdown = identity_markdown_from_prompt(&prompt);
     assert!(
-        prompt.contains("Requester / initiator:\n- identityId: human:bob\n- displayName: Bob"),
-        "requester/initiator must be the session creator\n{prompt}"
+        markdown
+            .contains("## Requester / initiator\n\n- identityId: human:bob\n- displayName: Bob"),
+        "requester/initiator must be the session creator\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains("Requester / initiator:\n- identityId: human:alice\n- displayName: Alice"),
-        "local profile human must not override session creator\n{prompt}"
+        !markdown.contains(
+            "## Requester / initiator\n\n- identityId: human:alice\n- displayName: Alice"
+        ),
+        "local profile human must not override session creator\n{markdown}\n{prompt}"
     );
 }
 
@@ -985,24 +1018,29 @@ fn prompt_context_bridge_agent_escapes_malicious_raw_display_names_before_identi
     )
     .expect("bridge agent prompt");
 
+    assert!(
+        !prompt.contains("<multi_participant_identity_context"),
+        "shared parent prompt should use identity Markdown instead of inline frame\n{prompt}"
+    );
+    let markdown = identity_markdown_from_prompt(&prompt);
     assert_eq!(
-        prompt
+        markdown
             .matches("<multi_participant_identity_context version=\"v1\">")
             .count(),
-        1,
-        "malicious display names introduced extra opening frame tags\n{prompt}"
+        0,
+        "malicious display names introduced raw opening frame tags\n{markdown}\n{prompt}"
     );
     assert_eq!(
-        prompt
+        markdown
             .matches("</multi_participant_identity_context>")
             .count(),
-        1,
-        "malicious display names introduced extra closing frame tags\n{prompt}"
+        0,
+        "malicious display names introduced raw closing frame tags\n{markdown}\n{prompt}"
     );
     for forbidden_line in ["FAKE AGENT SECTION", "FAKE OWNER SECTION"] {
         assert!(
-            !prompt.lines().any(|line| line == forbidden_line),
-            "malicious display names introduced fake standalone section {forbidden_line:?}\n{prompt}"
+            !markdown.lines().any(|line| line == forbidden_line),
+            "malicious display names introduced fake standalone section {forbidden_line:?}\n{markdown}\n{prompt}"
         );
     }
 }
@@ -1316,26 +1354,28 @@ fn prompt_context_bridge_agent_prefers_bridge_source_when_display_name_collides_
     )
     .expect("bridge agent prompt");
 
+    let markdown = identity_markdown_from_prompt(&prompt);
     for marker in [
-        "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Kordi",
-        "Current target:\n- identityId: agent:bob-kordi\n- displayName: Kordi",
-        "Permissions:\n- replyAs: agent:bob-kordi only",
+        "## Current model / self\n\n- identityId: agent:bob-kordi\n- displayName: Kordi",
+        "## Current target\n\n- identityId: agent:bob-kordi\n- displayName: Kordi",
+        "- replyAs: agent:bob-kordi only",
         "- owner: Bob (human:bob)",
         "- locality: non-local",
     ] {
         assert!(
-            prompt.contains(marker),
-            "bridge prompt must prefer the bridge-sourced Kordi target; missing {marker:?}\n{prompt}"
+            markdown.contains(marker),
+            "bridge prompt must prefer the bridge-sourced Kordi target; missing {marker:?}\n{markdown}\n{prompt}"
         );
     }
     assert!(
-        !prompt
-            .contains("Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Kordi"),
-        "bridge prompt must not select the local Kordi identity as self\n{prompt}"
+        !markdown.contains(
+            "## Current model / self\n\n- identityId: agent:alice-kordi\n- displayName: Kordi"
+        ),
+        "bridge prompt must not select the local Kordi identity as self\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
-        "bridge prompt must not reply as the local Kordi identity\n{prompt}"
+        !markdown.contains("- replyAs: agent:alice-kordi only"),
+        "bridge prompt must not reply as the local Kordi identity\n{markdown}\n{prompt}"
     );
 }
 
@@ -1390,24 +1430,26 @@ fn prompt_context_bridge_agent_uses_unresolved_target_instead_of_matching_local_
     )
     .expect("bridge agent prompt");
 
+    let markdown = identity_markdown_from_prompt(&prompt);
     for marker in [
-        "Current model/self:\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
-        "Current target:\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
-        "Permissions:\n- replyAs: unknown:bridge-agent-target only",
+        "## Current model / self\n\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
+        "## Current target\n\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
+        "- replyAs: unknown:bridge-agent-target only",
     ] {
         assert!(
-            prompt.contains(marker),
-            "bridge prompt must use an unresolved target instead of a local identity; missing {marker:?}\n{prompt}"
+            markdown.contains(marker),
+            "bridge prompt must use an unresolved target instead of a local identity; missing {marker:?}\n{markdown}\n{prompt}"
         );
     }
     assert!(
-        !prompt
-            .contains("Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Kordi"),
-        "bridge prompt must not select the local Kordi identity as self\n{prompt}"
+        !markdown.contains(
+            "## Current model / self\n\n- identityId: agent:alice-kordi\n- displayName: Kordi"
+        ),
+        "bridge prompt must not select the local Kordi identity as self\n{markdown}\n{prompt}"
     );
     assert!(
-        !prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
-        "bridge prompt must not reply as the local Kordi identity\n{prompt}"
+        !markdown.contains("- replyAs: agent:alice-kordi only"),
+        "bridge prompt must not reply as the local Kordi identity\n{markdown}\n{prompt}"
     );
 }
 
@@ -1431,15 +1473,12 @@ fn prompt_context_bridge_agent_renders_identity_frame_when_target_does_not_match
     )
     .expect("bridge agent prompt");
 
+    assert!(prompt.contains("Session identity file:"), "{prompt}");
+    assert!(
+        !prompt.contains("<multi_participant_identity_context"),
+        "{prompt}"
+    );
     for marker in [
-        "<multi_participant_identity_context version=\"v1\">",
-        "Current model/self:\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
-        "Current target:\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
-        "- owner: Carla (unknown:bridge-agent-target-owner)",
-        "Session participants:\n- agent:alice-kordi | Alice's Kordi | agent",
-        "- agent:bob-kordi | Bob's Kordi | agent",
-        "- human:alice | Alice | human",
-        "- human:bob | Bob | human",
         "Context supplied by requester:\nPlease use the attached context.",
         "Request:\n@Carla's Kordi can you review this?",
     ] {
@@ -1448,9 +1487,24 @@ fn prompt_context_bridge_agent_renders_identity_frame_when_target_does_not_match
             "missing marker {marker:?}\n{prompt}"
         );
     }
+    let markdown = identity_markdown_from_prompt(&prompt);
+    for marker in [
+        "## Current model / self\n\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
+        "## Current target\n\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
+        "- owner: Carla (unknown:bridge-agent-target-owner)",
+        "| agent:alice-kordi | Alice's Kordi | agent",
+        "| agent:bob-kordi | Bob's Kordi | agent",
+        "| human:alice | Alice | human",
+        "| human:bob | Bob | human",
+    ] {
+        assert!(
+            markdown.contains(marker),
+            "missing marker {marker:?}\n{markdown}\n{prompt}"
+        );
+    }
     assert!(
         !prompt.contains("\nSession participants:\n- Alice's Kordi (agent, self"),
-        "required full-frame prompt must not fall back to the bare participant list\n{prompt}"
+        "required Markdown prompt must not fall back to the bare participant list\n{prompt}"
     );
 }
 
@@ -1492,21 +1546,29 @@ fn prompt_context_bridge_agent_uses_identity_frame_for_parent_session() {
     )
     .expect("bridge agent prompt");
 
+    assert!(prompt.contains("Session identity file:"), "{prompt}");
+    assert!(
+        !prompt.contains("<multi_participant_identity_context"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("Request:\n@Bob's Kordi can you review this?"),
+        "{prompt}"
+    );
+    let markdown = identity_markdown_from_prompt(&prompt);
     for marker in [
-        "<multi_participant_identity_context version=\"v1\">",
-        "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
-        "Requester / initiator:\n- identityId: human:alice\n- displayName: Alice",
-        "Current target:\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
+        "## Current model / self\n\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
+        "## Requester / initiator\n\n- identityId: human:alice\n- displayName: Alice",
+        "## Current target\n\n- identityId: agent:bob-kordi\n- displayName: Bob's Kordi",
         "owner: Bob (human:bob)",
-        "- agent:alice-kordi | Alice's Kordi | agent",
-        "- agent:bob-kordi | Bob's Kordi | agent",
-        "- human:alice | Alice | human",
-        "- human:bob | Bob | human",
-        "Request:\n@Bob's Kordi can you review this?",
+        "| agent:alice-kordi | Alice's Kordi | agent",
+        "| agent:bob-kordi | Bob's Kordi | agent",
+        "| human:alice | Alice | human",
+        "| human:bob | Bob | human",
     ] {
         assert!(
-            prompt.contains(marker),
-            "missing marker {marker:?}\n{prompt}"
+            markdown.contains(marker),
+            "missing marker {marker:?}\n{markdown}\n{prompt}"
         );
     }
     assert_ne!(
