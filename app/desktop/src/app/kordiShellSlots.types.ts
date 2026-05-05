@@ -575,6 +575,10 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showAuthGate'
   | 'dismissAuthGate'
+  | 'setActiveNav'
+  | 'chatConversations'
+  | 'handleSelectChatSession'
+  | 'handleCreateChatSession'
   | 'windowWidth'
   | 'isNativeShell'
   | 'desktopAuthState'

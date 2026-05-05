@@ -126,6 +126,25 @@ pub(super) fn local_provider_base_url(
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn lm_studio_send_readiness_problem(
+    server_running: bool,
+    model_running: bool,
+    model: &str,
+) -> Option<String> {
+    if !server_running {
+        return Some("LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio.".to_string());
+    }
+
+    if !model_running {
+        return Some(format!(
+            "LM Studio selected, but `{}` is not running. Open Authentication → LM Studio and click Run for that model before sending.",
+            model.trim()
+        ));
+    }
+
+    None
+}
+
 pub(super) async fn ensure_provider_ready_for_send(
     provider: &str,
     model: &str,
@@ -154,17 +173,35 @@ pub(super) async fn ensure_provider_ready_for_send(
         return Ok(());
     }
 
-    crate::auth::lm_studio::ensure_server_running(local_provider_port(&settings, "lm-studio"))
+    let server_status = crate::auth::lm_studio::desktop_lm_studio_server_status()
         .await
         .map_err(|err| format!(
-            "LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio. {err}"
+            "LM Studio selected, but Kordi could not check the local server status. Open Authentication → LM Studio and start the local server manually. {err}"
         ))?;
 
-    crate::auth::lm_studio::ensure_model_loaded_with_best_context(model)
+    if !server_status.running {
+        if let Some(problem) = lm_studio_send_readiness_problem(false, false, model) {
+            return Err(problem);
+        }
+    }
+
+    let base_url = lm_studio_base_url(&settings);
+    let loaded_model_ids = crate::auth::lm_studio::loaded_model_ids_for_base_url(&base_url)
         .await
         .map_err(|err| format!(
-            "LM Studio selected, but Kordi could not load `{model}` with a larger supported context length. {err}"
-        ))
+            "LM Studio selected, but Kordi could not confirm `{model}` is running at {base_url}. Open Authentication → LM Studio and click Run for that model before sending. {err}"
+        ))?;
+    let model_running = loaded_model_ids
+        .iter()
+        .any(|loaded| crate::auth::lm_studio::lm_studio_model_ids_match(loaded, model));
+
+    if let Some(problem) =
+        lm_studio_send_readiness_problem(server_status.running, model_running, model)
+    {
+        return Err(problem);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -195,5 +232,21 @@ mod tests {
             .await
             .expect_err("empty local model should be rejected before server checks");
         assert!(error.contains("no local model is selected"));
+    }
+
+    #[test]
+    fn lm_studio_send_readiness_problem_requires_manual_restart_or_model_run() {
+        assert_eq!(
+            lm_studio_send_readiness_problem(false, false, "google/gemma-4-e4b"),
+            Some("LM Studio selected, but its local server is not running. Open Authentication → LM Studio and start the local server, or start it from LM Studio.".to_string())
+        );
+        assert_eq!(
+            lm_studio_send_readiness_problem(true, false, "google/gemma-4-e4b"),
+            Some("LM Studio selected, but `google/gemma-4-e4b` is not running. Open Authentication → LM Studio and click Run for that model before sending.".to_string())
+        );
+        assert_eq!(
+            lm_studio_send_readiness_problem(true, true, "google/gemma-4-e4b"),
+            None
+        );
     }
 }

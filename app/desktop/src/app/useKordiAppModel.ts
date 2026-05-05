@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
+import { authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -185,6 +185,11 @@ export function useKordiAppModel() {
     isNativeShell,
   });
 
+  const startupGateSatisfied = useMemo(
+    () => authStateSatisfiesStartupGate(desktopAuthState),
+    [desktopAuthState],
+  );
+
   const {
     inlineAuthDialog,
     openAuthSettings,
@@ -198,6 +203,7 @@ export function useKordiAppModel() {
     activeSettingsSectionId: settingsUi.activeSettingsSectionId,
     desktopAuthState,
     isDesktopAuthLoading,
+    startupGateSatisfied,
     setActiveNav,
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
     setActiveLoginProviderId,

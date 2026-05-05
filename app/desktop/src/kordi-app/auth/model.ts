@@ -43,6 +43,32 @@ export function isLocalProvider(providerId: string) {
   return localProviderBaseUrl(providerId) !== null;
 }
 
+function localProviderHasSavedModel(providerId: string, preferredModel?: string | null) {
+  return isLocalProvider(providerId) && !!preferredModel?.trim();
+}
+
+function displayProviderConfigured(provider: DesktopAuthProvider) {
+  return provider.configured || localProviderHasSavedModel(provider.id, provider.preferredModel);
+}
+
+export function authStateSatisfiesStartupGate(authState: DesktopAuthState | null) {
+  if (authState?.hasAnyAuth) return true;
+  return buildAuthDisplayProviders(authState).some((provider) => provider.configured);
+}
+
+export function authStateHasChatReadyProvider(
+  authState: DesktopAuthState | null,
+  modelOptions: Array<{ provider?: string | null }> = [],
+) {
+  if (authStateSatisfiesStartupGate(authState)) return true;
+
+  return modelOptions.some((option) => {
+    const provider = option.provider?.trim();
+    if (!provider) return false;
+    return isLocalProvider(normalizeSelectedProviderId(provider) ?? provider);
+  });
+}
+
 function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthProvider {
   const label = providerId === 'lm-studio' ? 'LM Studio' : 'Ollama';
   const baseUrl = localProviderBaseUrl(providerId);
@@ -165,7 +191,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     providers.push({
       id,
       label: provider.label,
-      configured: provider.configured,
+      configured: displayProviderConfigured(provider),
       statusSummary: provider.statusSummary,
       loginHint: provider.loginHint,
       authority: provider.authority,
@@ -212,9 +238,23 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
   ));
 }
 
+function preferredModelDisplayName(provider: AuthDisplayProvider) {
+  const preferredModel = provider.preferredModel?.trim();
+  if (!preferredModel) return null;
+
+  const [modelProvider, ...modelParts] = preferredModel.split('/');
+  const normalizedModelProvider = normalizeSelectedProviderId(modelProvider) ?? modelProvider;
+  const providerId = normalizeSelectedProviderId(provider.id) ?? provider.id;
+  return normalizedModelProvider === providerId && modelParts.length > 0
+    ? modelParts.join('/')
+    : preferredModel;
+}
+
 export function providerListSubtitle(provider: AuthDisplayProvider) {
   const totalOptions = provider.methods.reduce((sum, method) => sum + method.options.length, 0);
+  const preferredModel = preferredModelDisplayName(provider);
 
+  if (provider.localBaseUrl && preferredModel) return `Saved local model • ${preferredModel}`;
   if (provider.localBaseUrl && totalOptions === 0) return `Local endpoint • ${provider.localBaseUrl}`;
   if (!provider.configured) return 'No saved accounts or keys yet';
   if (provider.id === 'github-copilot' && provider.authority) return `Saved access • ${provider.authority}`;

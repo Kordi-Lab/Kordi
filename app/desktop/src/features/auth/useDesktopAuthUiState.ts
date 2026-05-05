@@ -9,6 +9,7 @@ type UseDesktopAuthUiStateArgs = {
   activeSettingsSectionId: SettingsSectionId;
   desktopAuthState: DesktopAuthState | null;
   isDesktopAuthLoading: boolean;
+  startupGateSatisfied: boolean;
   setActiveNav: (nav: NavId) => void;
   setActiveSettingsSectionId: (sectionId: SettingsSectionId) => void;
   setActiveLoginProviderId: (providerId: string) => void;
@@ -21,6 +22,7 @@ export function useDesktopAuthUiState({
   activeSettingsSectionId,
   desktopAuthState,
   isDesktopAuthLoading,
+  startupGateSatisfied,
   setActiveNav,
   setActiveSettingsSectionId,
   setActiveLoginProviderId,
@@ -65,20 +67,20 @@ export function useDesktopAuthUiState({
   }, []);
 
   useEffect(() => {
-    if (desktopAuthState?.hasAnyAuth) {
+    if (startupGateSatisfied) {
       setIsAuthGateDismissed(false);
     }
-  }, [desktopAuthState?.hasAnyAuth]);
+  }, [startupGateSatisfied]);
 
   const showAuthGate = useMemo(() => (
     isNativeShell
       && !isDesktopAuthLoading
       && desktopAuthState !== null
-      && !desktopAuthState.hasAnyAuth
+      && !startupGateSatisfied
       && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
       && !inlineAuthDialog
       && !isAuthGateDismissed
-  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell]);
+  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
 
   return {
     inlineAuthDialog,

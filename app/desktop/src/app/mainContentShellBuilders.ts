@@ -4,6 +4,7 @@ import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { authStateHasChatReadyProvider } from '@/kordi-app/auth/model';
 import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
@@ -135,7 +136,7 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onSendProjectMessage: args.handleSendProjectMessage,
-    hasAnyAuth: args.desktopAuthState?.hasAnyAuth ?? false,
+    hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
   };
 }
@@ -200,7 +201,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onStopBridgeAgentRequest: args.handleStopBridgeAgentRequest,
     onSendChatMessage: args.handleSendChatMessage,
-    hasAnyAuth: args.desktopAuthState?.hasAnyAuth ?? false,
+    hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
   };
 }
