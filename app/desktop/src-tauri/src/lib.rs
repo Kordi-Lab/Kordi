@@ -57,7 +57,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
@@ -114,6 +114,7 @@ pub fn run() {
             bridge::desktop_bridge_cancel_outreach,
             bridge::desktop_bridge_send_presence,
             bridge::desktop_bridge_poll_mailbox,
+            bridge::desktop_bridge_refresh_realtime_connections,
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_upsert_identity,
             canonical_sessions::desktop_canonical_open_or_create_session,
@@ -183,6 +184,19 @@ pub fn run() {
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Kordi desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building Kordi desktop");
+
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::Resumed => {
+            bridge::schedule_bridge_realtime_refresh(app_handle, "app-resumed");
+        }
+        tauri::RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Focused(true),
+            ..
+        } => {
+            bridge::schedule_bridge_realtime_refresh(app_handle, "window-focused");
+        }
+        _ => {}
+    });
 }
