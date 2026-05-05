@@ -157,6 +157,33 @@ pub struct ReachOutRuntime {
     pub reach_out: ReachOutFn,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflectionLessonRequest {
+    pub scope: String,
+    pub scope_id: String,
+    pub source: String,
+    pub lesson: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflectionLessonResponse {
+    pub lesson_id: String,
+    pub scope: String,
+    pub scope_id: String,
+}
+
+pub type ReflectionLessonFuture =
+    Pin<Box<dyn Future<Output = KordiResult<ReflectionLessonResponse>> + Send>>;
+pub type SaveReflectionLessonFn =
+    Arc<dyn Fn(ReflectionLessonRequest) -> ReflectionLessonFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ReflectionRuntime {
+    pub save_lesson: SaveReflectionLessonFn,
+}
+
 /// Context available to tools during execution.
 pub struct ToolContext {
     pub cwd: PathBuf,
@@ -166,6 +193,7 @@ pub struct ToolContext {
     pub on_output: Option<OnOutputFn>,
     pub web_search: Option<WebSearchRuntime>,
     pub reach_out: Option<ReachOutRuntime>,
+    pub reflection: Option<ReflectionRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }

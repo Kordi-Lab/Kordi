@@ -887,6 +887,7 @@ fn build_turn_config(
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),
+            reflection: None,
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

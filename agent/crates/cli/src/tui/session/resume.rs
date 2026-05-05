@@ -275,6 +275,7 @@ mod tests {
             on_output: None,
             web_search: None,
             reach_out: None,
+            reflection: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
         };

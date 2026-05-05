@@ -12,6 +12,7 @@ mod live_models;
 mod login;
 mod models;
 mod oauth;
+mod reflection_runtime;
 mod run;
 mod runtime_model;
 mod session_bootstrap;

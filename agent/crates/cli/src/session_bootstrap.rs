@@ -495,6 +495,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             enabled: true,
         }),
         reach_out: None,
+        reflection: Some(crate::reflection_runtime::build_reflection_runtime(
+            sibling_conn.clone(),
+        )),
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };

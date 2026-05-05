@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 4;
+const CURRENT_VERSION: i32 = 5;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -72,6 +72,24 @@ CREATE INDEX IF NOT EXISTS idx_projects_archived_at
     ON projects(archived_at);
 "#;
 
+const MIGRATION_V5: &str = r#"
+CREATE TABLE IF NOT EXISTS reflection_lessons (
+    lesson_id   TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    scope_id    TEXT NOT NULL,
+    lesson      TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    archived_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_reflection_lessons_scope
+    ON reflection_lessons(scope, scope_id, archived_at);
+CREATE INDEX IF NOT EXISTS idx_reflection_lessons_updated_at
+    ON reflection_lessons(updated_at);
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -94,6 +112,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 4 {
         conn.execute_batch(MIGRATION_V4)?;
         set_version(conn, 4)?;
+    }
+
+    if current < 5 {
+        conn.execute_batch(MIGRATION_V5)?;
+        set_version(conn, 5)?;
     }
 
     Ok(())
@@ -149,5 +172,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(project_count, 1);
+
+        let reflection_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'reflection_lessons'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(reflection_count, 1);
     }
 }

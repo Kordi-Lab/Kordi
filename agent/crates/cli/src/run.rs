@@ -103,11 +103,8 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         tools,
         mut commands,
     } = load_runtime_extension_support(&cwd, &settings, &extension_bootstrap).await?;
-    commands.bind_session_context(
-        turn_runner::open_sibling_conn(&conn)?,
-        session_id.clone(),
-        None,
-    );
+    let sibling_conn = turn_runner::open_sibling_conn(&conn)?;
+    commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings, &provider_name);
     let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
@@ -131,6 +128,9 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             enabled: true,
         }),
         reach_out: None,
+        reflection: Some(crate::reflection_runtime::build_reflection_runtime(
+            sibling_conn.clone(),
+        )),
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
     };

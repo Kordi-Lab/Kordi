@@ -14,6 +14,7 @@ pub(crate) mod path;
 pub mod plan_tool;
 pub mod reach_out;
 pub mod read;
+pub mod reflection_tool;
 mod registry;
 pub mod registry_plan;
 pub(crate) mod sandbox;
@@ -36,7 +37,8 @@ pub use scheduler::{
 };
 pub use types::{
     ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,
-    ReachOutRuntime, RequestToolApprovalFn, Tool, ToolApprovalDecision, ToolApprovalOutcome,
-    ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult, ToolScheduling,
-    WebSearchRuntime,
+    ReachOutRuntime, ReflectionLessonFuture, ReflectionLessonRequest, ReflectionLessonResponse,
+    ReflectionRuntime, RequestToolApprovalFn, SaveReflectionLessonFn, Tool, ToolApprovalDecision,
+    ToolApprovalOutcome, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult,
+    ToolScheduling, WebSearchRuntime,
 };

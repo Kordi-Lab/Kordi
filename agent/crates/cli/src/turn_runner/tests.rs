@@ -747,6 +747,7 @@ fn test_tool_context() -> kordi_tools::ToolContext {
         on_output: None,
         web_search: None,
         reach_out: None,
+        reflection: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }
