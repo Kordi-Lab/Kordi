@@ -507,6 +507,56 @@ fn prompt_context_local_agent_uses_identity_frame_for_multi_participant_session(
 }
 
 #[test]
+fn prompt_context_bridge_agent_renders_identity_frame_when_target_does_not_match_parent_participant() {
+    let _guard = PROMPT_CONTEXT_TEST_DB_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let storage_root = prompt_context_storage_root("bridge-agent-unmatched-target-frame");
+    let db_path = storage_root.join(CANONICAL_SESSIONS_DB_FILENAME);
+    prompt_context::set_prompt_context_test_db_path(Some(db_path.clone()));
+    std::fs::create_dir_all(&storage_root).expect("create prompt context storage root");
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    drop(conn);
+
+    let prompt = bridge_agent_parent_session_prompt(
+        Some(&session.id),
+        "Carla's Kordi",
+        Some("Carla"),
+        "@Carla's Kordi can you review this?",
+        Some("Please use the attached context."),
+    )
+    .expect("bridge agent prompt");
+
+    for marker in [
+        "<multi_participant_identity_context version=\"v1\">",
+        "Current model/self:\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
+        "Current target:\n- identityId: unknown:bridge-agent-target\n- displayName: Carla's Kordi",
+        "- owner: Carla (unknown:bridge-agent-target-owner)",
+        "Session participants:\n- agent:alice-kordi | Alice's Kordi | agent",
+        "- agent:bob-kordi | Bob's Kordi | agent",
+        "- human:alice | Alice | human",
+        "- human:bob | Bob | human",
+        "Context supplied by requester:\nPlease use the attached context.",
+        "Request:\n@Carla's Kordi can you review this?",
+    ] {
+        assert!(
+            prompt.contains(marker),
+            "missing marker {marker:?}\n{prompt}"
+        );
+    }
+    assert!(
+        !prompt.contains("\nSession participants:\n- Alice's Kordi (agent, self"),
+        "required full-frame prompt must not fall back to the bare participant list\n{prompt}"
+    );
+
+    prompt_context::set_prompt_context_test_db_path(None);
+    let _ = std::fs::remove_dir_all(storage_root);
+}
+
+#[test]
 fn prompt_context_bridge_agent_uses_identity_frame_for_parent_session() {
     let _guard = PROMPT_CONTEXT_TEST_DB_LOCK
         .lock()

@@ -362,6 +362,56 @@ fn target_role_for_bridge_agent(
         .map(PromptParticipantRow::to_identity_context_role)
 }
 
+fn unresolved_bridge_agent_target_role(
+    participants: &[PromptParticipantRow],
+    agent_display_name: &str,
+    owner_name: Option<&str>,
+) -> IdentityContextRole {
+    let owner_name = owner_name.map(str::trim).filter(|value| !value.is_empty());
+    let owner_participant = owner_name.and_then(|owner| {
+        participants
+            .iter()
+            .filter(|participant| participant.kind.eq_ignore_ascii_case("human"))
+            .find(|participant| participant.display_name.trim() == owner)
+    });
+    IdentityContextRole {
+        identity_id: "unknown:bridge-agent-target".to_string(),
+        display_name: agent_display_name.trim().to_string(),
+        kind: "agent".to_string(),
+        owner_identity_id: owner_participant
+            .map(|participant| participant.identity_id.clone())
+            .or_else(|| owner_name.map(|_| "unknown:bridge-agent-target-owner".to_string())),
+        owner_display_name: owner_name
+            .map(ToString::to_string)
+            .or_else(|| owner_participant.map(|participant| participant.display_name.clone())),
+        locality: if participants.iter().any(PromptParticipantRow::is_bridge_source) {
+            Some("non-local".to_string())
+        } else {
+            None
+        },
+    }
+}
+
+fn should_render_remote_identity_frame(
+    participants: &[PromptParticipantRow],
+    session_kind: &str,
+    project_id: Option<&str>,
+    project_name: Option<&str>,
+    has_target: bool,
+    has_requester: bool,
+) -> bool {
+    participants.len() > 2
+        || participants
+            .iter()
+            .any(PromptParticipantRow::is_bridge_source)
+        || session_kind.eq_ignore_ascii_case("group")
+        || session_kind.eq_ignore_ascii_case("project")
+        || project_id.is_some_and(|value| !value.trim().is_empty())
+        || project_name.is_some_and(|value| !value.trim().is_empty())
+        || has_target
+        || has_requester
+}
+
 fn identity_permissions(
     reply_as_identity_id: &str,
     participants: &[PromptParticipantRow],
@@ -485,14 +535,23 @@ pub(crate) fn bridge_agent_parent_session_prompt(
         let conn = open_prompt_context_db()?;
         if let Some(session) = select_session(&conn, session_id)? {
             let participants = session_participant_rows(&conn, session_id)?;
-            if let Some(target) =
-                target_role_for_bridge_agent(&participants, agent_name, owner_name)
-            {
-                let requester = identity_role_for_id(
-                    &conn,
-                    &participants,
-                    Some(&session.created_by_identity_id),
-                )?;
+            let target = target_role_for_bridge_agent(&participants, agent_name, owner_name);
+            let requester = identity_role_for_id(
+                &conn,
+                &participants,
+                Some(&session.created_by_identity_id),
+            )?;
+            if should_render_remote_identity_frame(
+                &participants,
+                &session.kind,
+                session.project_id.as_deref(),
+                session.project_name.as_deref(),
+                target.is_some() || !agent_name.trim().is_empty(),
+                requester.is_some(),
+            ) {
+                let target = target.unwrap_or_else(|| {
+                    unresolved_bridge_agent_target_role(&participants, agent_name, owner_name)
+                });
                 lines.push(String::new());
                 lines.push(render_multi_participant_identity_context(
                     &IdentityContextRequest {
