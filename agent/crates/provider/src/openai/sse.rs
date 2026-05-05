@@ -67,11 +67,7 @@ pub(super) fn process_openai_sse(
     }
 
     if let Some(usage) = event.get("usage") {
-        let cached = usage
-            .get("prompt_tokens_details")
-            .and_then(|d| d.get("cached_tokens"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let cached = cached_tokens_from_usage(usage);
         let prompt = usage["prompt_tokens"].as_u64().unwrap_or(0);
         let _ = tx.send(StreamEvent::Usage(UsageInfo {
             input_tokens: prompt.saturating_sub(cached),
@@ -98,6 +94,58 @@ mod tests {
         }));
 
         assert_eq!(message.as_deref(), Some("context is too large"));
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_chat_prompt_tokens_details() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut tool_calls = Vec::new();
+        process_openai_sse(
+            &json!({
+                "usage": {
+                    "prompt_tokens": 2048,
+                    "completion_tokens": 10,
+                    "prompt_tokens_details": {"cached_tokens": 1920}
+                }
+            }),
+            &tx,
+            &mut tool_calls,
+        );
+        drop(tx);
+
+        match rx.blocking_recv().expect("usage event") {
+            StreamEvent::Usage(usage) => {
+                assert_eq!(usage.input_tokens, 128);
+                assert_eq!(usage.cache_read_tokens, 1920);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_chat_input_tokens_details() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut tool_calls = Vec::new();
+        process_openai_sse(
+            &json!({
+                "usage": {
+                    "prompt_tokens": 2048,
+                    "completion_tokens": 10,
+                    "input_tokens_details": {"cached_tokens": 1920}
+                }
+            }),
+            &tx,
+            &mut tool_calls,
+        );
+        drop(tx);
+
+        match rx.blocking_recv().expect("usage event") {
+            StreamEvent::Usage(usage) => {
+                assert_eq!(usage.input_tokens, 128);
+                assert_eq!(usage.cache_read_tokens, 1920);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 
     #[test]

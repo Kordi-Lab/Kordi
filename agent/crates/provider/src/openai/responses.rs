@@ -1,4 +1,4 @@
-use super::{OpenAiProvider, default_prompt_cache_key};
+use super::{OpenAiProvider, cached_tokens_from_usage, prompt_cache_key_for_request};
 use futures::StreamExt;
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_core::types::CacheMetricsSource;
@@ -128,7 +128,7 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
         "stream": true,
         "store": false,
         "text": { "verbosity": "medium" },
-        "prompt_cache_key": default_prompt_cache_key(&request.model),
+        "prompt_cache_key": prompt_cache_key_for_request(&request.model, &request.system_prompt),
     });
 
     if let Some(max_tokens) = request.max_tokens {
@@ -514,11 +514,7 @@ fn send_responses_usage(event: &Value, tx: &mpsc::UnboundedSender<StreamEvent>) 
         return;
     };
 
-    let cached = usage
-        .get("input_tokens_details")
-        .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let cached = cached_tokens_from_usage(usage);
     let input = usage
         .get("input_tokens")
         .and_then(|v| v.as_u64())
@@ -539,7 +535,9 @@ fn send_responses_usage(event: &Value, tx: &mpsc::UnboundedSender<StreamEvent>) 
 
 #[cfg(test)]
 mod tests {
-    use super::{build_responses_request_body, should_use_responses_api};
+    use super::{build_responses_request_body, send_responses_usage, should_use_responses_api};
+    use crate::StreamEvent;
+    use crate::openai::prompt_cache_key_for_request;
     use crate::{CompletionRequest, ProviderAuthMode, RequestOptions};
     use serde_json::json;
     use std::collections::HashMap;
@@ -585,6 +583,90 @@ mod tests {
         let request = completion_request("gpt-5.4");
         let options = request_options("https://openrouter.ai/api/v1");
         assert!(!should_use_responses_api(&request, &options));
+    }
+
+    fn identity_prompt_with_dynamic_ids() -> String {
+        concat!(
+            "stable instructions\n",
+            "<multi_participant_identity_context version=\"v1\">\n",
+            "session_id: session-high-cardinality-123\n",
+            "participant_graph_hash: graph-hash-abcdef\n",
+            "permission_policy_hash: policy-hash-987654\n",
+            "humanId: human-secret-id\n",
+            "agentId: agent-secret-id\n",
+            "bridgeNodeId: bridge-node-secret\n",
+            "identityId: human:alice\n",
+            "identityId: agent:alice-kordi\n",
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn prompt_cache_responses_body_uses_identity_key_without_retention_by_default() {
+        let mut request = completion_request("gpt-5.4");
+        request.system_prompt = identity_prompt_with_dynamic_ids();
+        let messages = vec![json!({"role": "system", "content": &request.system_prompt})];
+
+        let body = build_responses_request_body(&request, messages);
+
+        assert_eq!(
+            body["prompt_cache_key"],
+            prompt_cache_key_for_request("gpt-5.4", request.system_prompt.as_str())
+        );
+        assert_eq!(body["prompt_cache_key"], "kordi:gpt-5.4:identity-v1");
+        assert!(body.get("prompt_cache_retention").is_none());
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_responses_input_tokens_details() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        send_responses_usage(
+            &json!({
+                "response": {
+                    "usage": {
+                        "input_tokens": 2048,
+                        "output_tokens": 10,
+                        "input_tokens_details": {"cached_tokens": 1920}
+                    }
+                }
+            }),
+            &tx,
+        );
+        drop(tx);
+
+        match rx.blocking_recv().expect("usage event") {
+            StreamEvent::Usage(usage) => {
+                assert_eq!(usage.input_tokens, 128);
+                assert_eq!(usage.cache_read_tokens, 1920);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_responses_prompt_tokens_details() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        send_responses_usage(
+            &json!({
+                "response": {
+                    "usage": {
+                        "input_tokens": 2048,
+                        "output_tokens": 10,
+                        "prompt_tokens_details": {"cached_tokens": 1920}
+                    }
+                }
+            }),
+            &tx,
+        );
+        drop(tx);
+
+        match rx.blocking_recv().expect("usage event") {
+            StreamEvent::Usage(usage) => {
+                assert_eq!(usage.input_tokens, 128);
+                assert_eq!(usage.cache_read_tokens, 1920);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 
     #[test]

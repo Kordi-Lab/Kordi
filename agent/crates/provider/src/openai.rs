@@ -24,6 +24,23 @@ pub(super) fn default_prompt_cache_key(model: &str) -> String {
     format!("kordi:{model}")
 }
 
+pub(super) fn prompt_cache_key_for_request(model: &str, system_prompt: &str) -> String {
+    if system_prompt.contains("<multi_participant_identity_context version=\"v1\">") {
+        format!("kordi:{model}:identity-v1")
+    } else {
+        default_prompt_cache_key(model)
+    }
+}
+
+pub(super) fn cached_tokens_from_usage(usage: &Value) -> u64 {
+    usage
+        .get("prompt_tokens_details")
+        .or_else(|| usage.get("input_tokens_details"))
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+}
+
 impl Default for OpenAiProvider {
     fn default() -> Self {
         Self::new()
@@ -161,36 +178,7 @@ impl Provider for OpenAiProvider {
                 .await;
         }
 
-        let mut body = json!({
-            "model": request.model,
-            "messages": messages,
-            "stream": true,
-        });
-
-        let is_groq = options.base_url.contains("groq.com");
-        let is_ollama =
-            options.base_url.contains("localhost") || options.base_url.contains("127.0.0.1");
-
-        if let Some(max_tokens) = request.max_tokens {
-            if is_groq || is_ollama {
-                body["max_tokens"] = json!(max_tokens);
-            } else {
-                body["max_completion_tokens"] = json!(max_tokens);
-            }
-        }
-        if !request.tools.is_empty() {
-            body["tools"] = json!(request.tools);
-        }
-
-        if let Some(ref thinking) = request.thinking
-            && let Some(effort) = openai_reasoning_effort(thinking.as_str())
-        {
-            body["reasoning_effort"] = json!(effort);
-        }
-
-        if is_standard_openai_api_base(&options.base_url) {
-            body["prompt_cache_key"] = json!(default_prompt_cache_key(&request.model));
-        }
+        let body = build_chat_completions_request_body(&request, messages, &options.base_url);
 
         let is_copilot = is_github_copilot_request(&options);
         let model_name = request.model.clone();
@@ -330,6 +318,47 @@ impl Provider for OpenAiProvider {
     }
 }
 
+fn build_chat_completions_request_body(
+    request: &CompletionRequest,
+    messages: Vec<Value>,
+    base_url: &str,
+) -> Value {
+    let mut body = json!({
+        "model": &request.model,
+        "messages": messages,
+        "stream": true,
+    });
+
+    let is_groq = base_url.contains("groq.com");
+    let is_ollama = base_url.contains("localhost") || base_url.contains("127.0.0.1");
+
+    if let Some(max_tokens) = request.max_tokens {
+        if is_groq || is_ollama {
+            body["max_tokens"] = json!(max_tokens);
+        } else {
+            body["max_completion_tokens"] = json!(max_tokens);
+        }
+    }
+    if !request.tools.is_empty() {
+        body["tools"] = json!(&request.tools);
+    }
+
+    if let Some(ref thinking) = request.thinking
+        && let Some(effort) = openai_reasoning_effort(thinking.as_str())
+    {
+        body["reasoning_effort"] = json!(effort);
+    }
+
+    if is_standard_openai_api_base(base_url) {
+        body["prompt_cache_key"] = json!(prompt_cache_key_for_request(
+            &request.model,
+            &request.system_prompt,
+        ));
+    }
+
+    body
+}
+
 fn openai_reasoning_effort(thinking: &str) -> Option<&'static str> {
     match thinking {
         "default" => None,
@@ -343,8 +372,86 @@ fn openai_reasoning_effort(thinking: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_bearer_auth, openai_reasoning_effort};
+    use super::{
+        apply_bearer_auth, build_chat_completions_request_body, openai_reasoning_effort,
+        prompt_cache_key_for_request,
+    };
+    use crate::CompletionRequest;
     use reqwest::Client;
+    use serde_json::json;
+
+    fn completion_request(model: &str, system_prompt: &str) -> CompletionRequest {
+        CompletionRequest {
+            system_prompt: system_prompt.to_string(),
+            messages: vec![],
+            tools: vec![],
+            extra_tool_schemas: vec![],
+            model: model.to_string(),
+            max_tokens: None,
+            stream: true,
+            thinking: None,
+        }
+    }
+
+    fn identity_prompt_with_dynamic_ids() -> String {
+        concat!(
+            "stable instructions\n",
+            "<multi_participant_identity_context version=\"v1\">\n",
+            "session_id: session-high-cardinality-123\n",
+            "participant_graph_hash: graph-hash-abcdef\n",
+            "permission_policy_hash: policy-hash-987654\n",
+            "humanId: human-secret-id\n",
+            "agentId: agent-secret-id\n",
+            "bridgeNodeId: bridge-node-secret\n",
+            "identityId: human:alice\n",
+            "identityId: agent:alice-kordi\n",
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn prompt_cache_key_for_ordinary_prompt_uses_model_key() {
+        assert_eq!(
+            prompt_cache_key_for_request("gpt-4.1", "ordinary system prompt"),
+            "kordi:gpt-4.1"
+        );
+    }
+
+    #[test]
+    fn prompt_cache_key_for_identity_prompt_is_low_cardinality() {
+        let key = prompt_cache_key_for_request("gpt-4.1", &identity_prompt_with_dynamic_ids());
+
+        assert_eq!(key, "kordi:gpt-4.1:identity-v1");
+        for forbidden in [
+            "session-high-cardinality-123",
+            "graph-hash-abcdef",
+            "policy-hash-987654",
+            "human-secret-id",
+            "agent-secret-id",
+            "bridge-node-secret",
+            "human:alice",
+            "agent:alice-kordi",
+        ] {
+            assert!(!key.contains(forbidden), "cache key leaked {forbidden}");
+        }
+    }
+
+    #[test]
+    fn chat_completions_body_uses_identity_prompt_cache_key_without_retention_by_default() {
+        let request = completion_request("gpt-4.1", &identity_prompt_with_dynamic_ids());
+        let body = build_chat_completions_request_body(
+            &request,
+            vec![json!({"role": "system", "content": &request.system_prompt})],
+            "https://api.openai.com/v1",
+        );
+
+        assert_eq!(
+            body["prompt_cache_key"],
+            prompt_cache_key_for_request("gpt-4.1", request.system_prompt.as_str())
+        );
+        assert_eq!(body["prompt_cache_key"], "kordi:gpt-4.1:identity-v1");
+        assert!(body.get("prompt_cache_retention").is_none());
+    }
 
     #[test]
     fn default_thinking_omits_reasoning_effort() {

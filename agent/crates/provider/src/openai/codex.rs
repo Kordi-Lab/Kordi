@@ -13,11 +13,7 @@ use request::{
 };
 
 fn oauth_usage_info(usage: &Value) -> UsageInfo {
-    let cached = usage
-        .get("input_tokens_details")
-        .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let cached = super::cached_tokens_from_usage(usage);
     let input = usage
         .get("input_tokens")
         .and_then(|v| v.as_u64())
@@ -64,6 +60,38 @@ fn codex_error_message(event: &Value, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn build_codex_oauth_request_body(request: &CompletionRequest) -> Value {
+    let mut body = json!({
+        "model": &request.model,
+        "store": false,
+        "stream": true,
+        "instructions": &request.system_prompt,
+        "input": convert_messages_for_codex(&request.messages),
+        "text": { "verbosity": "medium" },
+        "include": ["reasoning.encrypted_content"],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "prompt_cache_key": super::prompt_cache_key_for_request(
+            &request.model,
+            &request.system_prompt,
+        ),
+    });
+
+    if !request.tools.is_empty() {
+        body["tools"] = json!(convert_tools_for_codex(&request.tools));
+    }
+    if let Some(ref thinking) = request.thinking
+        && let Some(effort) = codex_reasoning_effort(thinking.as_str())
+    {
+        body["reasoning"] = json!({
+            "effort": effort,
+            "summary": "auto"
+        });
+    }
+
+    body
+}
+
 impl OpenAiProvider {
     pub(super) async fn stream_codex_oauth(
         &self,
@@ -73,31 +101,7 @@ impl OpenAiProvider {
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
         let url = resolve_codex_url(&options.base_url);
-        let mut body = json!({
-            "model": request.model,
-            "store": false,
-            "stream": true,
-            "instructions": request.system_prompt,
-            "input": convert_messages_for_codex(&request.messages),
-            "text": { "verbosity": "medium" },
-            "include": ["reasoning.encrypted_content"],
-            "tool_choice": "auto",
-            "parallel_tool_calls": false,
-        });
-
-        if !request.tools.is_empty() {
-            body["tools"] = json!(convert_tools_for_codex(&request.tools));
-        }
-        if let Some(ref thinking) = request.thinking
-            && let Some(effort) = codex_reasoning_effort(thinking.as_str())
-        {
-            body["reasoning"] = json!({
-                "effort": effort,
-                "summary": "auto"
-            });
-        }
-
-        body["prompt_cache_key"] = json!(super::default_prompt_cache_key(&request.model));
+        let body = build_codex_oauth_request_body(&request);
 
         let response = with_retry(
             options.max_retries,
@@ -282,9 +286,82 @@ impl OpenAiProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::oauth_usage_info;
+    use super::{build_codex_oauth_request_body, oauth_usage_info};
+    use crate::CompletionRequest;
+    use crate::openai::prompt_cache_key_for_request;
     use kordi_core::types::CacheMetricsSource;
     use serde_json::json;
+
+    fn completion_request(model: &str, system_prompt: &str) -> CompletionRequest {
+        CompletionRequest {
+            system_prompt: system_prompt.to_string(),
+            messages: vec![],
+            tools: vec![],
+            extra_tool_schemas: vec![],
+            model: model.to_string(),
+            max_tokens: None,
+            stream: true,
+            thinking: None,
+        }
+    }
+
+    fn identity_prompt_with_dynamic_ids() -> String {
+        concat!(
+            "stable instructions\n",
+            "<multi_participant_identity_context version=\"v1\">\n",
+            "session_id: session-high-cardinality-123\n",
+            "participant_graph_hash: graph-hash-abcdef\n",
+            "permission_policy_hash: policy-hash-987654\n",
+            "humanId: human-secret-id\n",
+            "agentId: agent-secret-id\n",
+            "bridgeNodeId: bridge-node-secret\n",
+            "identityId: human:alice\n",
+            "identityId: agent:alice-kordi\n",
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn prompt_cache_codex_body_uses_identity_key_without_retention_by_default() {
+        let request = completion_request("gpt-5.4", &identity_prompt_with_dynamic_ids());
+
+        let body = build_codex_oauth_request_body(&request);
+
+        assert_eq!(
+            body["prompt_cache_key"],
+            prompt_cache_key_for_request("gpt-5.4", request.system_prompt.as_str())
+        );
+        assert_eq!(body["prompt_cache_key"], "kordi:gpt-5.4:identity-v1");
+        assert!(body.get("prompt_cache_retention").is_none());
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_codex_input_tokens_details() {
+        let usage = oauth_usage_info(&json!({
+            "input_tokens": 2048,
+            "output_tokens": 10,
+            "input_tokens_details": {"cached_tokens": 1920}
+        }));
+
+        assert_eq!(usage.input_tokens, 128);
+        assert_eq!(usage.output_tokens, 10);
+        assert_eq!(usage.cache_read_tokens, 1920);
+        assert_eq!(usage.cache_metrics_source, CacheMetricsSource::Estimated);
+    }
+
+    #[test]
+    fn cached_tokens_are_parsed_from_codex_prompt_tokens_details() {
+        let usage = oauth_usage_info(&json!({
+            "input_tokens": 2048,
+            "output_tokens": 10,
+            "prompt_tokens_details": {"cached_tokens": 1920}
+        }));
+
+        assert_eq!(usage.input_tokens, 128);
+        assert_eq!(usage.output_tokens, 10);
+        assert_eq!(usage.cache_read_tokens, 1920);
+        assert_eq!(usage.cache_metrics_source, CacheMetricsSource::Estimated);
+    }
 
     #[test]
     fn oauth_usage_is_marked_as_estimated() {
