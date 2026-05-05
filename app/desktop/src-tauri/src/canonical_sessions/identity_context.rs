@@ -237,7 +237,7 @@ fn format_allowed_targets(targets: &[String]) -> String {
     if targets.is_empty() {
         "[]".to_string()
     } else {
-        format!("[{}]", targets.join(", "))
+        serde_json::to_string(&targets).expect("serialize allowed targets")
     }
 }
 
@@ -262,21 +262,20 @@ fn clean_prompt_scalar(value: &str) -> String {
     let mut last_was_space = false;
 
     for character in value.trim().chars() {
-        let replacement = if character.is_control() || character == '|' {
-            ' '
-        } else {
-            character
-        };
-
-        if replacement.is_whitespace() {
+        if character.is_control() || character == '|' || character.is_whitespace() {
             if !last_was_space {
                 cleaned.push(' ');
                 last_was_space = true;
             }
-        } else {
-            cleaned.push(replacement);
-            last_was_space = false;
+            continue;
         }
+
+        match character {
+            '<' => cleaned.push_str("&lt;"),
+            '>' => cleaned.push_str("&gt;"),
+            _ => cleaned.push(character),
+        }
+        last_was_space = false;
     }
 
     cleaned.trim().to_string()
