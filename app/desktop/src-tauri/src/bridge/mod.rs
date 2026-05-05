@@ -20,7 +20,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
@@ -611,6 +611,25 @@ pub(crate) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: t
     realtime::set_bridge_app_handle(manager, app).await;
 }
 
+pub(crate) fn schedule_bridge_realtime_refresh(app: &tauri::AppHandle, reason: &'static str) {
+    let manager = app.state::<DesktopBridgeManager>().inner().clone();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match realtime::refresh_realtime_connections(&manager).await {
+            Ok(state) => {
+                if let Err(error) = app.emit(BRIDGE_STATE_EVENT, state) {
+                    eprintln!(
+                        "Bridge realtime refresh after {reason} could not emit state: {error}"
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!("Bridge realtime refresh after {reason} failed: {error}");
+            }
+        }
+    });
+}
+
 fn default_bridge_api_style() -> String {
     constants::API_STYLE_REGISTRY.to_string()
 }
@@ -1184,6 +1203,13 @@ pub async fn desktop_bridge_poll_mailbox(
     chat_manager: State<'_, crate::chat::DesktopChatManager>,
 ) -> Result<DesktopBridgeState, String> {
     mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_refresh_realtime_connections(
+    manager: State<'_, DesktopBridgeManager>,
+) -> Result<DesktopBridgeState, String> {
+    realtime::refresh_realtime_connections(&manager).await
 }
 
 #[cfg(test)]
