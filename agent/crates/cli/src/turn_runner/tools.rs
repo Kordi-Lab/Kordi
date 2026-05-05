@@ -474,7 +474,7 @@ fn tool_context_with_output_forwarding(
         })),
         web_search: env.tool_ctx.web_search.clone(),
         reach_out: env.tool_ctx.reach_out.clone(),
-        reflection: None,
+        reflection: env.tool_ctx.reflection.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
     }
