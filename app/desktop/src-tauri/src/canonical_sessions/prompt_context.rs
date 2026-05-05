@@ -417,7 +417,9 @@ fn target_role_for_bridge_agent(
     let owner_name = owner_name.map(str::trim).filter(|value| !value.is_empty());
     participants
         .iter()
-        .filter(|participant| participant.kind.eq_ignore_ascii_case("agent"))
+        .filter(|participant| {
+            participant.kind.eq_ignore_ascii_case("agent") && participant.is_bridge_source()
+        })
         .find(|participant| {
             participant.display_name.trim() == agent_name
                 && owner_name.map_or(true, |owner| {
@@ -431,6 +433,7 @@ fn target_role_for_bridge_agent(
         .or_else(|| {
             participants.iter().find(|participant| {
                 participant.kind.eq_ignore_ascii_case("agent")
+                    && participant.is_bridge_source()
                     && participant.display_name.trim() == agent_name
             })
         })

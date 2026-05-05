@@ -991,6 +991,165 @@ fn prompt_context_recent_messages_preserve_sequence_order_when_timestamps_are_sk
 }
 
 #[test]
+fn prompt_context_bridge_agent_prefers_bridge_source_when_display_name_collides_with_local_agent() {
+    let guard = PromptContextTestDbGuard::new("bridge-agent-display-name-collision");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    seed_identity_with_owner_and_source(&conn, "human:alice", "Alice", "human", None, "local");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:alice-kordi",
+        "Kordi",
+        "agent",
+        Some("human:alice"),
+        "local",
+    );
+    seed_identity_with_owner_and_source(&conn, "human:bob", "Bob", "human", None, "bridge");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:bob-kordi",
+        "Kordi",
+        "agent",
+        Some("human:bob"),
+        "bridge",
+    );
+    update_local_profile_identities(
+        &conn,
+        Some("human:alice"),
+        Some("agent:alice-kordi"),
+        Some("Alice"),
+    )
+    .expect("set local profile identities");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:bridge-agent-display-name-collision".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice and Bob both have Kordi".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: Some("agent:alice-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "agent:alice-kordi".to_string(),
+                "human:bob".to_string(),
+                "agent:bob-kordi".to_string(),
+            ],
+            metadata: None,
+        },
+    )
+    .expect("create prompt context session");
+    drop(conn);
+
+    let prompt = bridge_agent_parent_session_prompt(
+        Some(&session.id),
+        "Kordi",
+        None,
+        "@Kordi can you review this?",
+        None,
+    )
+    .expect("bridge agent prompt");
+
+    for marker in [
+        "Current model/self:\n- identityId: agent:bob-kordi\n- displayName: Kordi",
+        "Current target:\n- identityId: agent:bob-kordi\n- displayName: Kordi",
+        "Permissions:\n- replyAs: agent:bob-kordi only",
+        "- owner: Bob (human:bob)",
+        "- locality: non-local",
+    ] {
+        assert!(
+            prompt.contains(marker),
+            "bridge prompt must prefer the bridge-sourced Kordi target; missing {marker:?}\n{prompt}"
+        );
+    }
+    assert!(
+        !prompt
+            .contains("Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Kordi"),
+        "bridge prompt must not select the local Kordi identity as self\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
+        "bridge prompt must not reply as the local Kordi identity\n{prompt}"
+    );
+}
+
+#[test]
+fn prompt_context_bridge_agent_uses_unresolved_target_instead_of_matching_local_agent() {
+    let guard = PromptContextTestDbGuard::new("bridge-agent-local-only-display-name-match");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    seed_identity_with_owner_and_source(&conn, "human:alice", "Alice", "human", None, "local");
+    seed_identity_with_owner_and_source(
+        &conn,
+        "agent:alice-kordi",
+        "Kordi",
+        "agent",
+        Some("human:alice"),
+        "local",
+    );
+    update_local_profile_identities(
+        &conn,
+        Some("human:alice"),
+        Some("agent:alice-kordi"),
+        Some("Alice"),
+    )
+    .expect("set local profile identities");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:bridge-agent-local-only-display-name-match".to_string()),
+            kind: "direct-agent".to_string(),
+            title: Some("Alice and local Kordi".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: Some("agent:alice-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:alice-kordi".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("create prompt context session");
+    drop(conn);
+
+    let prompt = bridge_agent_parent_session_prompt(
+        Some(&session.id),
+        "Kordi",
+        None,
+        "@Kordi can you review this?",
+        None,
+    )
+    .expect("bridge agent prompt");
+
+    for marker in [
+        "Current model/self:\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
+        "Current target:\n- identityId: unknown:bridge-agent-target\n- displayName: Kordi",
+        "Permissions:\n- replyAs: unknown:bridge-agent-target only",
+    ] {
+        assert!(
+            prompt.contains(marker),
+            "bridge prompt must use an unresolved target instead of a local identity; missing {marker:?}\n{prompt}"
+        );
+    }
+    assert!(
+        !prompt
+            .contains("Current model/self:\n- identityId: agent:alice-kordi\n- displayName: Kordi"),
+        "bridge prompt must not select the local Kordi identity as self\n{prompt}"
+    );
+    assert!(
+        !prompt.contains("Permissions:\n- replyAs: agent:alice-kordi only"),
+        "bridge prompt must not reply as the local Kordi identity\n{prompt}"
+    );
+}
+
+#[test]
 fn prompt_context_bridge_agent_renders_identity_frame_when_target_does_not_match_parent_participant(
 ) {
     let guard = PromptContextTestDbGuard::new("bridge-agent-unmatched-target-frame");
