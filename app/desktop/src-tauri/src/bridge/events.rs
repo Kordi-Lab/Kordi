@@ -783,10 +783,11 @@ mod tests {
             }
         }));
 
-        assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
-        assert!(prompt.contains("- identityId: agent:bob-kordi"));
-        assert!(!prompt.contains("Payload Intruder"));
-        assert!(!prompt.contains("Payload Kordi"));
+        let markdown = identity_markdown_from_prompt(&prompt);
+        assert!(markdown.contains("- replyAs: agent:bob-kordi only"));
+        assert!(markdown.contains("- identityId: agent:bob-kordi"));
+        assert!(!markdown.contains("Payload Intruder"));
+        assert!(!markdown.contains("Payload Kordi"));
     }
 
     #[test]
