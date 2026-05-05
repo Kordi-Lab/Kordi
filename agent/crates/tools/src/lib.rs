@@ -9,10 +9,12 @@ pub mod edit;
 pub mod find;
 pub mod grep;
 pub mod ls;
+pub mod metadata;
 pub(crate) mod path;
 pub mod reach_out;
 pub mod read;
 mod registry;
+pub mod registry_plan;
 pub(crate) mod sandbox;
 pub mod scheduler;
 pub(crate) mod support;
@@ -23,7 +25,9 @@ pub mod web_fetch;
 pub mod web_search;
 pub mod write;
 
+pub use metadata::{ToolDefinition, ToolLayer, ToolMetadata, ToolRiskLevel};
 pub use registry::builtin_tools;
+pub use registry_plan::{ToolRegistryPlan, ToolRegistryPlanEntry};
 pub use scheduler::{
     FileQueue, FileQueueReservation, execute_reserved_tool_call, execute_tool_call,
     execute_tool_calls,

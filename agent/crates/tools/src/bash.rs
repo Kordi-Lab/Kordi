@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::bash_policy::{BashSafetyDisposition, classify_bash_command};
 use crate::sandbox;
 use crate::support::text_result_with;
-use crate::{Tool, ToolContext, ToolResult, ToolScheduling};
+use crate::{Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel, ToolScheduling};
 
 #[cfg(test)]
 use crate::ToolExecutionMode;
@@ -49,6 +49,10 @@ impl Tool for BashTool {
             },
             "required": ["command"]
         })
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::execution(ToolRiskLevel::High)
     }
 
     fn scheduling(&self, params: &Value, _ctx: &ToolContext) -> ToolScheduling {

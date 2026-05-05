@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{emit_progress_line, text_result};
-use crate::{ReachOutRequest, Tool, ToolContext, ToolResult};
+use crate::{ReachOutRequest, Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel};
 
 fn default_true() -> bool {
     true
@@ -93,6 +93,10 @@ impl Tool for ReachOutTool {
             },
             "required": ["target", "message"]
         })
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::operator(ToolRiskLevel::Medium)
     }
 
     async fn execute(

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Tool, ToolContext, ToolResult, ToolScheduling, diff,
+    Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel, ToolScheduling, diff,
     path::{ensure_write_allowed, resolve_path},
 };
 
@@ -53,6 +53,10 @@ impl Tool for EditTool {
             },
             "required": ["path", "edits"]
         })
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::execution(ToolRiskLevel::Medium)
     }
 
     fn scheduling(&self, params: &Value, ctx: &ToolContext) -> ToolScheduling {

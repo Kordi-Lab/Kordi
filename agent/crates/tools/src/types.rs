@@ -176,6 +176,19 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
 
+    fn metadata(&self) -> crate::metadata::ToolMetadata {
+        crate::metadata::ToolMetadata::default()
+    }
+
+    fn definition(&self) -> crate::metadata::ToolDefinition {
+        crate::metadata::ToolDefinition {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            parameters_schema: self.parameters_schema(),
+            metadata: self.metadata(),
+        }
+    }
+
     /// Classify whether this call is read-only or may mutate files.
     ///
     /// Mutating tools should override this to return either concrete file paths
