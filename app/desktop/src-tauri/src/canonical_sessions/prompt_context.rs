@@ -2,13 +2,13 @@ use rusqlite::{params, Connection};
 
 use crate::bridge::{DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadMessage};
 
-use super::render_multi_participant_identity_context;
 use super::schema::{ensure_local_profile, initialize_schema};
 use super::{
     open_db, select_identity, select_session, write_identity_context_markdown,
     IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
     IdentityContextRole,
 };
+use super::{render_multi_participant_identity_context, session_identity_model_visible_notice};
 
 #[cfg(test)]
 thread_local! {
@@ -209,7 +209,7 @@ fn recent_session_message_lines(
 ) -> Result<Vec<String>, String> {
     let mut message_stmt = conn
         .prepare(
-            "SELECT COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text
+            "SELECT COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.content_json
              FROM session_messages m
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1
@@ -224,6 +224,7 @@ fn recent_session_message_lines(
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
             ))
         })
         .map_err(|err| err.to_string())?
@@ -232,10 +233,49 @@ fn recent_session_message_lines(
     messages.reverse();
     Ok(messages
         .into_iter()
-        .map(|(sender, role, text)| {
-            format!("{} ({role}): {}", sender, truncate_context_line(&text, 700))
+        .map(|(sender, role, text, content_json)| {
+            let mut line = format!("{} ({role}): {}", sender, truncate_context_line(&text, 700));
+            if let Some(notice) =
+                identity_event_notice_from_content_json(&text, content_json.as_deref())
+            {
+                line.push('\n');
+                line.push_str(&notice);
+            }
+            line
         })
         .collect())
+}
+
+fn identity_event_notice_from_content_json(
+    visible_text: &str,
+    content_json: Option<&str>,
+) -> Option<String> {
+    let value = content_json
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty())
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())?;
+    if value
+        .get("identityFileChanged")
+        .and_then(|value| value.as_bool())
+        != Some(true)
+    {
+        return None;
+    }
+    let session_id = value
+        .get("identityFileSessionId")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let path = value
+        .get("identityFilePath")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    Some(session_identity_model_visible_notice(
+        visible_text,
+        session_id,
+        std::path::Path::new(path),
+    ))
 }
 
 fn session_thread_messages(

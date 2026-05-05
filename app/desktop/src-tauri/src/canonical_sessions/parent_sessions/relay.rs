@@ -14,8 +14,9 @@ use super::super::models::AppendCanonicalMessageRequest;
 use super::super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::super::schema::ensure_local_profile;
 use super::super::{
-    existing_delegation_join_message_id, hash_hex, identity_display_name, now_ms,
-    shared_agent_display_name, similar_agent_message_exists, upsert_participant,
+    existing_delegation_join_message_id, hash_hex, identity_display_name,
+    identity_file_changed_content_fields, now_ms, shared_agent_display_name,
+    similar_agent_message_exists, upsert_participant, write_session_identity_markdown_for_prompt,
 };
 use super::participants::{
     ensure_parent_group_session_participants, ensure_parent_session_participants,
@@ -274,6 +275,27 @@ pub(super) fn sync_parent_session_relay_join_event(
         return Ok(());
     }
 
+    let identity_file_path = write_session_identity_markdown_for_prompt(conn, parent_session_id)?;
+    let mut content = serde_json::json!({
+        "kind": "delegation-join-event",
+        "bridgeConversationId": conversation.id,
+        "targetKind": target_kind,
+        "targetIdentityId": target_identity_id,
+        "targetDisplayName": target_display_name,
+        "targetNodeId": if peer_is_agent || is_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else if is_local_bridge_agent_request { Some(outreach.target_node_id.as_str()) } else { None },
+        "initiatorIdentityId": initiator_identity_id,
+        "requestText": outreach.trigger_text.as_deref().unwrap_or(outreach.request_text.as_str()),
+        "contextPolicy": "session-relay",
+    });
+    if let (Some(object), Some(fields)) = (
+        content.as_object_mut(),
+        identity_file_changed_content_fields(parent_session_id, &identity_file_path).as_object(),
+    ) {
+        for (key, value) in fields {
+            object.insert(key.clone(), value.clone());
+        }
+    }
+
     message_reconcile::append_or_reconcile_message_from_sync(
         conn,
         AppendCanonicalMessageRequest {
@@ -283,16 +305,7 @@ pub(super) fn sync_parent_session_relay_join_event(
             sender_role: "system".to_string(),
             message_kind: "status".to_string(),
             content_text: format!("{} joined via @mention", target_display_name),
-            content: Some(serde_json::json!({
-                "kind": "delegation-join-event",
-                "bridgeConversationId": conversation.id,
-                "targetKind": target_kind,
-                "targetDisplayName": target_display_name,
-                "targetNodeId": if peer_is_agent || is_remote_agent_relay { Some(conversation.peer_node_id.as_str()) } else if is_local_bridge_agent_request { Some(outreach.target_node_id.as_str()) } else { None },
-                "initiatorIdentityId": initiator_identity_id,
-                "requestText": outreach.trigger_text.as_deref().unwrap_or(outreach.request_text.as_str()),
-                "contextPolicy": "session-relay",
-            })),
+            content: Some(content),
             created_at_ms: Some(outreach.created_at_ms.saturating_sub(1)),
             parent_message_id: outreach.parent_message_id.clone(),
             delegated_exchange_id: None,

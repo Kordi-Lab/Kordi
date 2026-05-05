@@ -1114,6 +1114,57 @@ fn prompt_context_bridge_agent_renders_identity_frame_without_parent_session() {
 }
 
 #[test]
+fn prompt_context_participant_event_adds_model_visible_identity_file_notice() {
+    let guard = PromptContextTestDbGuard::new("participant-event-notice");
+    let db_path = guard.db_path();
+
+    let conn = Connection::open(&db_path).expect("open prompt context db");
+    schema::initialize_schema(&conn).expect("initialize prompt context db");
+    let session = seed_alice_bob_prompt_context_session(&conn, "bridge");
+    let path = write_session_identity_markdown_for_prompt(&conn, &session.id)
+        .expect("write identity file");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:join-event".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "agent:bob-kordi".to_string(),
+            sender_role: "system".to_string(),
+            message_kind: "system".to_string(),
+            content_text: "Kordi User 1's Kordi joined via @mention".to_string(),
+            content: Some(serde_json::json!({
+                "kind": "delegation-join-event",
+                "identityFileChanged": true,
+                "identityFileSessionId": session.id.clone(),
+                "identityFilePath": path.display().to_string()
+            })),
+            created_at_ms: None,
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append join event");
+    drop(conn);
+
+    let prompt = local_agent_session_prompt_context(Some(&session.id))
+        .expect("prompt")
+        .expect("prompt exists");
+
+    assert!(
+        prompt.contains("Kordi User 1's Kordi joined via @mention"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("Identity file changed for session session:alice-bob-prompt-context."),
+        "{prompt}"
+    );
+    assert!(prompt.contains("before answering."), "{prompt}");
+}
+
+#[test]
 fn prompt_context_recent_messages_preserve_sequence_order_when_timestamps_are_skewed() {
     let guard = PromptContextTestDbGuard::new("recent-message-sequence-order");
     let db_path = guard.db_path();

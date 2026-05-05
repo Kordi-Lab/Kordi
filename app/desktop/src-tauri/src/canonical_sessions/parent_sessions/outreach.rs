@@ -16,7 +16,8 @@ use super::super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::super::schema::ensure_local_profile;
 use super::super::{
     create_delegated_exchange_in_db, existing_delegation_join_message_id, hash_hex,
-    identity_display_name, now_ms, select_session, session_has_participant, session_message_count,
+    identity_display_name, identity_file_changed_content_fields, now_ms, select_session,
+    session_has_participant, session_message_count, write_session_identity_markdown_for_prompt,
 };
 use super::messages::{sync_parent_session_bridge_messages, sync_parent_session_snapshot_messages};
 use super::participants::{
@@ -328,6 +329,28 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
         )? {
             Some(existing_join_message_id)
         } else {
+            let identity_file_path =
+                write_session_identity_markdown_for_prompt(conn, parent_session_id)?;
+            let mut content = serde_json::json!({
+                "kind": "delegation-join-event",
+                "bridgeConversationId": conversation.id,
+                "targetKind": outreach.target_kind,
+                "targetIdentityId": target_identity_id,
+                "targetDisplayName": outreach.target_display_name,
+                "targetNodeId": outreach.target_node_id,
+                "initiatorIdentityId": initiator_identity_id,
+                "requestText": outreach.request_text,
+                "contextPolicy": context_policy.clone(),
+            });
+            if let (Some(object), Some(fields)) = (
+                content.as_object_mut(),
+                identity_file_changed_content_fields(parent_session_id, &identity_file_path)
+                    .as_object(),
+            ) {
+                for (key, value) in fields {
+                    object.insert(key.clone(), value.clone());
+                }
+            }
             Some(
                 message_reconcile::append_or_reconcile_message_from_sync(
                     conn,
@@ -338,17 +361,7 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
                         sender_role: "system".to_string(),
                         message_kind: "status".to_string(),
                         content_text: join_text,
-                        content: Some(serde_json::json!({
-                            "kind": "delegation-join-event",
-                            "bridgeConversationId": conversation.id,
-                            "targetKind": outreach.target_kind,
-                            "targetIdentityId": target_identity_id,
-                            "targetDisplayName": outreach.target_display_name,
-                            "targetNodeId": outreach.target_node_id,
-                            "initiatorIdentityId": initiator_identity_id,
-                            "requestText": outreach.request_text,
-                            "contextPolicy": context_policy.clone(),
-                        })),
+                        content: Some(content),
                         created_at_ms: Some(outreach.created_at_ms),
                         parent_message_id: request_message_id.clone(),
                         delegated_exchange_id: Some(delegation_id.clone()),

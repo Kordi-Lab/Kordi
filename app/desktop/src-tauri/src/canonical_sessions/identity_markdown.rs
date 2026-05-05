@@ -29,6 +29,17 @@ pub(crate) fn session_identity_model_visible_notice(
     )
 }
 
+pub(crate) fn identity_file_changed_content_fields(
+    session_id: &str,
+    path: &Path,
+) -> serde_json::Value {
+    serde_json::json!({
+        "identityFileChanged": true,
+        "identityFileSessionId": session_id.trim(),
+        "identityFilePath": path.display().to_string()
+    })
+}
+
 pub(crate) fn render_identity_context_markdown(
     input: &IdentityContextRequest,
     updated_at: &str,

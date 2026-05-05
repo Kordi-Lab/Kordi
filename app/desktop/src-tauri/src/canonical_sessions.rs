@@ -72,8 +72,9 @@ pub(crate) use self::identity_helpers::{
     sanitize_remote_peer_display_name, shared_agent_display_name, validate_status,
 };
 pub(crate) use self::identity_markdown::{
-    render_identity_context_markdown, session_identity_markdown_path,
-    session_identity_model_visible_notice, write_identity_context_markdown,
+    identity_file_changed_content_fields, render_identity_context_markdown,
+    session_identity_markdown_path, session_identity_model_visible_notice,
+    write_identity_context_markdown,
 };
 pub(crate) use self::message_lookup::{
     existing_delegation_join_message_id, session_message_count, similar_agent_message_exists,
