@@ -166,7 +166,13 @@ function firstMessageTitle(messages: Message[]) {
   return text || null;
 }
 
-export function sessionDisplayTitle(messages: Message[], fallback: string) {
+export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {
+  return stringValue(sessionMetadata(session).titleSource) === 'manual';
+}
+
+export function sessionDisplayTitle(messages: Message[], fallback: string, options: { preferFallback?: boolean } = {}) {
+  const fallbackTitle = fallback.trim();
+  if (options.preferFallback && fallbackTitle) return fallbackTitle;
   return firstMessageTitle(messages) ?? fallback;
 }
 
@@ -197,7 +203,7 @@ export function syntheticConversation(
   const updatedAtLabel = messages[messages.length - 1]?.time
     ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
 
-  const displayTitle = sessionDisplayTitle(messages, session.title);
+  const displayTitle = sessionDisplayTitle(messages, session.title, { preferFallback: sessionHasManualTitle(session) });
 
   return {
     id: session.id,

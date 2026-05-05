@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 mod bridge_identities;
@@ -179,6 +180,66 @@ fn select_identity(conn: &Connection, id: &str) -> Result<Option<CanonicalIdenti
     .map_err(|err| err.to_string())
 }
 
+fn metadata_has_manual_title(metadata: &Option<Value>) -> bool {
+    metadata
+        .as_ref()
+        .and_then(|value| value.as_object())
+        .and_then(|metadata| metadata.get("titleSource"))
+        .and_then(Value::as_str)
+        .is_some_and(|value| value == "manual")
+}
+
+fn preserve_string_metadata_key(
+    target: &mut Map<String, Value>,
+    existing: &Map<String, Value>,
+    key: &str,
+) {
+    if target.get(key).is_some() {
+        return;
+    }
+    if let Some(value) = existing
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        target.insert(key.to_string(), Value::String(value.to_string()));
+    }
+}
+
+fn preserve_manual_session_title_metadata(
+    conn: &Connection,
+    session_id: &str,
+    metadata: Option<Value>,
+) -> Result<Option<Value>, String> {
+    let Some(existing_session) = select_session(conn, session_id)? else {
+        return Ok(metadata);
+    };
+    if !metadata_has_manual_title(&existing_session.metadata) {
+        return Ok(metadata);
+    }
+
+    let existing_metadata = existing_session
+        .metadata
+        .as_ref()
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut next_metadata = match metadata {
+        Some(Value::Object(map)) => map,
+        Some(other) => return Ok(Some(other)),
+        None => Map::new(),
+    };
+    next_metadata.insert(
+        "titleSource".to_string(),
+        Value::String("manual".to_string()),
+    );
+    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "customName");
+    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupId");
+    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupSpaceId");
+    Ok(Some(Value::Object(next_metadata)))
+}
+
 fn open_or_create_session_in_db(
     conn: &Connection,
     request: OpenCanonicalSessionRequest,
@@ -193,7 +254,8 @@ fn open_or_create_session_in_db(
         .unwrap_or_else(|| stable_session_id(&request));
     let title = default_session_title(conn, &request)?;
     let status = validate_status(request.status, "active");
-    let metadata = json_to_db(&request.metadata)?;
+    let metadata_value = preserve_manual_session_title_metadata(conn, &id, request.metadata)?;
+    let metadata = json_to_db(&metadata_value)?;
     let participant_role = if kind == "group" {
         "person"
     } else {

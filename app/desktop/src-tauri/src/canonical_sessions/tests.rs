@@ -49,6 +49,175 @@ mod group_agent_responses;
 mod group_message_sync;
 
 #[test]
+fn renaming_non_group_session_marks_title_as_manual_metadata() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:direct-person:rename-test".to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("Alice".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: Some(alice.id.clone()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some(alice.id.clone()),
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "createdFrom": "chat-create-flow",
+                "subtitle": "old preview",
+            })),
+        },
+    )
+    .expect("create direct session");
+
+    rename_any_session_title_in_db(&conn, &session.id, "Renamed lunch thread")
+        .expect("rename session");
+
+    let renamed = select_session(&conn, &session.id)
+        .expect("select renamed session")
+        .expect("renamed session exists");
+    assert_eq!(renamed.title, "Renamed lunch thread");
+    let metadata = renamed.metadata.expect("metadata preserved");
+    assert_eq!(
+        metadata.get("titleSource").and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
+        metadata.get("createdFrom").and_then(|value| value.as_str()),
+        Some("chat-create-flow")
+    );
+    assert_eq!(
+        metadata.get("subtitle").and_then(|value| value.as_str()),
+        Some("old preview")
+    );
+}
+
+#[test]
+fn manual_title_metadata_survives_session_shell_upsert() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let agent = seed_identity(&conn, "agent:local", "Kordi", "agent");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:self-agent:rename-test".to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Initial prompt title".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: Some(agent.id.clone()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![agent.id.clone()],
+            metadata: Some(serde_json::json!({ "source": "desktop-chat-summary" })),
+        },
+    )
+    .expect("create self-agent session");
+    rename_any_session_title_in_db(&conn, &session.id, "Renamed runtime thread")
+        .expect("rename session");
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(session.id.clone()),
+            kind: "self-agent".to_string(),
+            title: Some("Renamed runtime thread".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: Some(agent.id.clone()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![agent.id.clone()],
+            metadata: Some(serde_json::json!({
+                "source": "desktop-chat-detail",
+                "messageCount": 2,
+            })),
+        },
+    )
+    .expect("upsert refreshed shell");
+
+    let refreshed = select_session(&conn, &session.id)
+        .expect("select refreshed session")
+        .expect("refreshed session exists");
+    assert_eq!(refreshed.title, "Renamed runtime thread");
+    let metadata = refreshed.metadata.expect("metadata preserved");
+    assert_eq!(
+        metadata.get("titleSource").and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
+        metadata.get("source").and_then(|value| value.as_str()),
+        Some("desktop-chat-detail")
+    );
+    assert_eq!(
+        metadata
+            .get("messageCount")
+            .and_then(|value| value.as_i64()),
+        Some(2)
+    );
+}
+
+#[test]
+fn renaming_group_session_records_custom_manual_title_metadata() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:rename-test".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "adminIdentityIds": [creator.id.clone()],
+                "groupId": "session:group:rename-test",
+                "groupSpaceId": "session:group:rename-test"
+            })),
+        },
+    )
+    .expect("create group");
+
+    rename_session_in_db(&conn, &group.id, "Renamed crew").expect("rename group");
+
+    let renamed = select_session(&conn, &group.id)
+        .expect("select renamed group")
+        .expect("renamed group exists");
+    assert_eq!(renamed.title, "Renamed crew");
+    let metadata = renamed.metadata.expect("metadata preserved");
+    assert_eq!(
+        metadata.get("titleSource").and_then(|value| value.as_str()),
+        Some("manual")
+    );
+    assert_eq!(
+        metadata.get("customName").and_then(|value| value.as_str()),
+        Some("Renamed crew")
+    );
+    assert_eq!(
+        metadata.get("groupId").and_then(|value| value.as_str()),
+        Some("session:group:rename-test")
+    );
+    assert_eq!(
+        metadata
+            .get("groupSpaceId")
+            .and_then(|value| value.as_str()),
+        Some("session:group:rename-test")
+    );
+}
+
+#[test]
 fn canonical_group_metadata_and_participant_role_mutations_are_stable() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");

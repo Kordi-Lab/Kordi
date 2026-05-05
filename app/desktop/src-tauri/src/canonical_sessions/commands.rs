@@ -4,15 +4,14 @@ use super::{
     add_session_participants_in_db, append_message_in_db, create_delegated_exchange_in_db,
     json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
     rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity,
-    select_message, select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
-    update_presence_in_db, upsert_identity_in_db, AddCanonicalSessionParticipantsRequest,
-    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
-    CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
-    OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
-    RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
-    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest,
+    select_delegated_exchange, select_identity, select_message, select_session,
+    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
+    upsert_identity_in_db, AddCanonicalSessionParticipantsRequest, AppendCanonicalMessageRequest,
+    CanonicalContextSnapshot, CanonicalPresence, CanonicalSessionParticipant,
+    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, OpenCanonicalSessionRequest,
+    RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
+    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
+    UpdateCanonicalSessionMetadataRequest, UpsertCanonicalIdentityRequest,
 };
 
 fn query_all<T>(
