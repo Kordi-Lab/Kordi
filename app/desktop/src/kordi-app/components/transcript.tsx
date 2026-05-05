@@ -238,7 +238,7 @@ function contactRequestFailureCanBeRetried(detail?: string | null) {
 
 type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
 
-function ContactRequestFailureHint({
+function ContactRequestFailureNotice({
   detail,
   onRequestBridgeContact,
 }: {
@@ -265,7 +265,7 @@ function ContactRequestFailureHint({
       : 'Send contact request';
 
   return (
-    <div className="mt-2 rounded-[12px] border border-black/10 bg-black/[0.06] px-2.5 py-2 text-[11px] leading-4 text-black/65">
+    <div className="app-contact-request-failure-notice mt-1.5 max-w-[min(100%,34rem)] rounded-[12px] border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] leading-4 text-slate-300 shadow-sm">
       {detail?.trim() ? <div>{detail.trim()}</div> : null}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <span>Messages are blocked until this person approves you.</span>
@@ -273,13 +273,13 @@ function ContactRequestFailureHint({
           type="button"
           onClick={handleRequestContact}
           disabled={state === 'sending' || state === 'sent'}
-          className="rounded-full bg-black/10 px-2.5 py-1 text-[11px] font-semibold text-black/75 transition hover:bg-black/15 disabled:cursor-default disabled:opacity-60"
+          className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-white/15 hover:text-sky-100 disabled:cursor-default disabled:opacity-60"
         >
           {buttonLabel}
         </button>
       </div>
       {state === 'error' ? (
-        <div className="mt-1 text-[10.5px] font-medium text-rose-700">Could not send the request. Try again from Contacts.</div>
+        <div className="mt-1 text-[10.5px] font-medium text-rose-300">Could not send the request. Try again from Contacts.</div>
       ) : null}
     </div>
   );
@@ -579,6 +579,7 @@ function MessageBubbleView({
         isGroupedWithNext ? 'pb-0' : 'pb-1',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
+        showContactRequestAction ? 'w-full' : '',
       )}
     >
       {showHeaderMeta ? (
@@ -670,11 +671,13 @@ function MessageBubbleView({
             ) : null}
           </>
         )}
-        {showContactRequestAction && onRequestBridgeContact ? (
-          <ContactRequestFailureHint detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
-        ) : null}
         </div>
       </div>
+      {showContactRequestAction && onRequestBridgeContact ? (
+        <div className="self-start">
+          <ContactRequestFailureNotice detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
+        </div>
+      ) : null}
       {showCompactFooter ? (
         <RequestReplyLine
           summary={msg.replySummary}

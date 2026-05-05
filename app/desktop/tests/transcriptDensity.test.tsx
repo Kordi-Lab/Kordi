@@ -83,7 +83,7 @@ test('renders failed own message delivery as visible red sending failed text', (
   assert.match(markup, /text-rose-400/);
 });
 
-test('renders contact-gated failed sends with an inline request link', () => {
+test('renders contact-gated failed sends as a left-side notice instead of changing the message bubble', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -100,9 +100,16 @@ test('renders contact-gated failed sends with an inline request link', () => {
     onRequestBridgeContact: async () => undefined,
   }));
 
+  assert.match(markup, /app-contact-request-failure-notice/);
   assert.match(markup, />Send a contact request before messages can be delivered\.</);
   assert.match(markup, />Send contact request</);
   assert.match(markup, /Messages are blocked until this person approves you/);
+
+  const bubbleStart = markup.indexOf('app-chat-bubble-user');
+  const noticeStart = markup.indexOf('app-contact-request-failure-notice');
+  assert.ok(bubbleStart >= 0);
+  assert.ok(noticeStart > bubbleStart);
+  assert.doesNotMatch(markup.slice(bubbleStart, noticeStart), /Send a contact request before messages can be delivered/);
 });
 
 test('renders pending contact request failures with the same explicit request action', () => {
