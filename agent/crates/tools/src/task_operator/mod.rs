@@ -26,7 +26,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Operator tool for Kordi task manifests, estimates, and local child task agents. Use for multi-step or parallelizable work with independent write scopes; keep immediate critical-path blockers local. Actions: manifest/estimate are planning-only; spawn starts a local child agent, message sends follow-up, wait observes completion, list reports task status, close aborts/closes a task. Side effects: spawn/message/close affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
+        "Operator tool for Kordi task manifests, estimates, and local child task agents. Use for multi-step or parallelizable work with independent write scopes; keep immediate critical-path blockers local. Include taskTitle as a concise 5-10 word, user-facing name for the overall task when manifesting or spawning subtasks. Actions: manifest/estimate are planning-only; spawn starts a local child agent, message sends follow-up, wait observes completion, list reports task status, close aborts/closes a task. Side effects: spawn/message/close affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -37,6 +37,10 @@ impl Tool for TaskOperatorTool {
                     "type": "string",
                     "enum": ["manifest", "estimate", "spawn", "message", "wait", "list", "close"],
                     "description": "Task operator action."
+                },
+                "taskTitle": {
+                    "type": "string",
+                    "description": "Optional concise 5-10 words user-facing title for the overall task shown in task panels; generate one when manifesting or spawning subtasks."
                 },
                 "tasks": {
                     "type": "array",
@@ -76,7 +80,7 @@ impl Tool for TaskOperatorTool {
                 },
                 "taskName": {
                     "type": "string",
-                    "description": "Lowercase task name for action=spawn."
+                    "description": "Machine-safe lowercase snake_case subagent name for action=spawn, derived from the subtask title; do not use the overall taskTitle here."
                 },
                 "message": {
                     "type": "string",
@@ -260,10 +264,23 @@ mod tests {
         assert!(tool.description().contains("Actions:"));
         assert!(tool.description().contains("Side effects:"));
         assert!(tool.description().contains("retry spawn"));
+        assert!(tool.description().contains("taskTitle"));
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Operator);
         assert_eq!(metadata.risk, ToolRiskLevel::Medium);
         assert!(!metadata.supports_parallel);
+    }
+
+    #[test]
+    fn task_operator_schema_prompts_for_parent_task_title() {
+        let tool = super::TaskOperatorTool;
+        let schema = tool.parameters_schema();
+        let description = schema["properties"]["taskTitle"]["description"]
+            .as_str()
+            .expect("taskTitle should have a description");
+
+        assert!(description.contains("overall task"));
+        assert!(description.contains("5-10 words"));
     }
 
     #[tokio::test]

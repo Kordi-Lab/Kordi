@@ -238,7 +238,40 @@ test('task dashboard nests manifest tasks under the whole request before subagen
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Planned');
 });
 
-test('task panel renders the whole task as an expandable row for subtasks', () => {
+test('task dashboard prefers model-generated task titles from tool arguments', () => {
+  const liveTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: '@Kordi please do a detailed review of the open claw code and give me a report when done',
+    status: 'tooling',
+    message: 'Running tool…',
+    assistantText: '',
+    thinkingText: '',
+    completed: false,
+    succeeded: false,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: '{"taskTitle":"Review Open Claw Code","plan":[{"step":"Inspect code","status":"in_progress"}]}',
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [], liveTurn });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
+});
+
+test('task panel renders the whole task as an expandable row with a checkbox-style status icon', () => {
   const messages: Message[] = [assistantTurnMessage({
     id: 'turn-1',
     sessionId: 'session-1',
@@ -272,7 +305,8 @@ test('task panel renders the whole task as an expandable row for subtasks', () =
   }));
 
   assert.match(markup, /<details/);
+  assert.match(markup, /data-task-status-icon="checkbox"/);
   assert.match(markup, /review code/);
-  assert.match(markup, /1 active subtask/);
+  assert.equal(markup.match(/1 active subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
 });

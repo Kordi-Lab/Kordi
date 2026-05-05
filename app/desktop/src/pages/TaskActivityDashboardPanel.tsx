@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CheckCircle2, Circle, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
@@ -42,6 +43,37 @@ function statusDotClass(tone: TaskDashboardTone) {
   }
 }
 
+function statusCheckboxClass(tone: TaskDashboardTone) {
+  switch (tone) {
+    case 'running':
+      return 'text-[color:var(--app-tool-running-fg)]';
+    case 'success':
+      return 'text-emerald-400/90';
+    case 'closed':
+      return 'text-slate-400/80';
+    case 'error':
+      return 'text-rose-400/90';
+    case 'muted':
+    default:
+      return 'text-violet-300/85';
+  }
+}
+
+function TaskStatusIcon({ task, nested }: { task: TaskDashboardItem | TaskDashboardSubtask; nested: boolean }) {
+  if (nested) {
+    return <span className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', statusDotClass(task.tone))} />;
+  }
+
+  const iconClassName = cn('mt-0.5 h-4 w-4 shrink-0', statusCheckboxClass(task.tone));
+  if (task.status === 'completed' || task.status === 'closed') {
+    return <CheckCircle2 data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+  }
+  if (task.status === 'failed') {
+    return <XCircle data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+  }
+  return <Circle data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+}
+
 function TaskContent({
   task,
   nested = false,
@@ -54,18 +86,19 @@ function TaskContent({
   const secondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
-  const subtaskLabel = subtaskCount > 0
+  const rawSubtaskLabel = subtaskCount > 0
     ? activeSubtaskCount > 0
       ? `${activeSubtaskCount} active subtask${activeSubtaskCount === 1 ? '' : 's'}`
       : `${subtaskCount} subtask${subtaskCount === 1 ? '' : 's'}`
     : null;
+  const subtaskLabel = rawSubtaskLabel && rawSubtaskLabel !== secondaryText ? rawSubtaskLabel : null;
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
       {expandable ? (
         <span className="mt-0.5 text-[11px] text-[color:var(--utility-muted-text)] transition-transform group-open:rotate-90" aria-hidden="true">▸</span>
       ) : null}
-      <span className={cn('mt-1.5 shrink-0 rounded-full', nested ? 'h-1.5 w-1.5' : 'h-2 w-2', statusDotClass(task.tone))} />
+      <TaskStatusIcon task={task} nested={nested} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">

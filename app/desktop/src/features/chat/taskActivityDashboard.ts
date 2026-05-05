@@ -94,6 +94,15 @@ function titleFromPrompt(prompt: string) {
   return compact(withoutLeadingMention || prompt || 'Current task', 96);
 }
 
+function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  for (const tool of tools) {
+    const args = safeParseToolArguments(tool.arguments);
+    const title = stringValue(args?.taskTitle);
+    if (title) return compact(title, 96);
+  }
+  return null;
+}
+
 function targetFromTaskResult(text?: string | null) {
   const value = text?.trim() ?? '';
   if (!value) return null;
@@ -288,7 +297,7 @@ function createParentTask({ turn, live, sequence }: TurnWithSequence): MutablePa
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   return {
     id: `turn:${turn.id}`,
-    title: titleFromPrompt(turn.prompt),
+    title: titleFromToolArguments(turn.tools) ?? titleFromPrompt(turn.prompt),
     summary: compact(turn.message || turn.assistantText || ''),
     status,
     ...statusMeta(status),

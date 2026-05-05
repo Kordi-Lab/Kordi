@@ -12,6 +12,8 @@ use crate::{Tool, ToolContext, ToolMetadata, ToolResult};
 struct UpdatePlanInput {
     #[serde(default)]
     explanation: Option<String>,
+    #[serde(default)]
+    task_title: Option<String>,
     plan: Vec<PlanItem>,
 }
 
@@ -31,7 +33,7 @@ impl Tool for UpdatePlanTool {
     }
 
     fn description(&self) -> &str {
-        "Planning tool for the visible task plan. Use when work has multiple steps or status changes. Input is the complete current plan with one optional in_progress step. Side effect: updates the plan event only; safe to retry by resending the full current plan."
+        "Planning tool for the visible task plan. Use when work has multiple steps or status changes. Include taskTitle as a concise 5-10 word, user-facing name for the overall task when the work is long-running or multi-step. Input is the complete current plan with one optional in_progress step. Side effect: updates the plan event only; safe to retry by resending the full current plan."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -41,6 +43,10 @@ impl Tool for UpdatePlanTool {
                 "explanation": {
                     "type": "string",
                     "description": "Optional short note explaining the plan update."
+                },
+                "taskTitle": {
+                    "type": "string",
+                    "description": "Optional concise 5-10 words user-facing title for the overall task shown in task panels; generate one for long-running or multi-step work."
                 },
                 "plan": {
                     "type": "array",
@@ -83,6 +89,7 @@ impl Tool for UpdatePlanTool {
             "Plan updated".to_string(),
             Some(json!({
                 "explanation": input.explanation,
+                "taskTitle": input.task_title,
                 "plan": input.plan,
             })),
         ))
@@ -131,11 +138,17 @@ mod tests {
         assert_eq!(tool.name(), "update_plan");
         assert!(tool.description().contains("Side effect"));
         assert!(tool.description().contains("safe to retry"));
+        assert!(tool.description().contains("taskTitle"));
 
         let schema = tool.parameters_schema();
         assert_eq!(schema["type"], "object");
         assert_eq!(schema["required"], serde_json::json!(["plan"]));
         assert!(schema["properties"]["plan"].is_object());
+        let task_title_description = schema["properties"]["taskTitle"]["description"]
+            .as_str()
+            .expect("taskTitle description");
+        assert!(task_title_description.contains("overall task"));
+        assert!(task_title_description.contains("5-10 words"));
 
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Planning);
