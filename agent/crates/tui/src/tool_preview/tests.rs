@@ -379,6 +379,26 @@ fn task_operator_policy_warning_is_visible() {
 }
 
 #[test]
+fn reflection_advisory_is_visible_on_tool_results() {
+    let rendered = format_tool_result_content(
+        "bash",
+        &[ContentBlock::Text {
+            text: "Error: command failed".to_string(),
+        }],
+        Some(serde_json::json!({
+            "exitCode": 1,
+            "reflectionAdvisory": "Consider using reflection to save a concise scoped lesson."
+        })),
+        None,
+        true,
+        false,
+    );
+
+    assert!(rendered.contains("reflection advisory:"));
+    assert!(rendered.contains("concise scoped lesson"));
+}
+
+#[test]
 fn reflection_preview_renders_saved_scope_and_artifact() {
     let call = serde_json::json!({
         "scope": "project",

@@ -110,11 +110,15 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
     result.expect("turn should continue after errored tool result");
 
     let mut saw_timeout_tool_error = false;
+    let mut saw_reflection_advisory = false;
     let mut saw_done = false;
     while let Ok(event) = event_rx.try_recv() {
         match event {
             TurnEvent::ToolResult {
-                is_error, content, ..
+                is_error,
+                content,
+                details,
+                ..
             } => {
                 if is_error {
                     let text = content
@@ -127,6 +131,14 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
                         .join("\n");
                     if text.contains("timed out") {
                         saw_timeout_tool_error = true;
+                    }
+                    if details
+                        .as_ref()
+                        .and_then(|value| value.get("reflectionAdvisory"))
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|message| message.contains("reflection"))
+                    {
+                        saw_reflection_advisory = true;
                     }
                 }
             }
@@ -141,6 +153,10 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
     assert!(
         saw_timeout_tool_error,
         "should persist the errored tool result"
+    );
+    assert!(
+        saw_reflection_advisory,
+        "errored tools should include a scoped reflection advisory"
     );
     assert!(
         saw_done,

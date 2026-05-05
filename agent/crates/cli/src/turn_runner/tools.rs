@@ -20,7 +20,9 @@ use super::TurnEvent;
 use super::hooks::send_extension_event_safe;
 use super::panic::catch_contained_panics;
 use super::persistence::get_leaf_raw;
-use super::tool_policy::{ToolPolicyDecision, ToolPolicyState, evaluate_tool_policy};
+use super::tool_policy::{
+    ToolPolicyDecision, ToolPolicyState, evaluate_reflection_advisory, evaluate_tool_policy,
+};
 use crate::extensions::ExtensionCommandRegistry;
 
 pub(super) struct ToolExecutionEnv<'a> {
@@ -319,6 +321,18 @@ async fn finish_tool_call(executed: ExecutedToolCall, env: &ToolExecutionEnv<'_>
                 serde_json::Value::from(policy_warning.clone()),
             );
         }
+    }
+    if let Some(reflection_advisory) = evaluate_reflection_advisory(
+        prepared.metadata.as_ref(),
+        &prepared.name,
+        is_error,
+        &details_json,
+    ) && let Some(map) = details_json.as_object_mut()
+    {
+        map.insert(
+            "reflectionAdvisory".to_string(),
+            serde_json::Value::from(reflection_advisory),
+        );
     }
     details = Some(details_json);
 

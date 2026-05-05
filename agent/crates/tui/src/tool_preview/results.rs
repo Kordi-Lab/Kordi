@@ -95,6 +95,17 @@ pub fn format_tool_result_content(
         }
     }
 
+    if let Some(advisory) = details
+        .as_ref()
+        .and_then(|details| details.get("reflectionAdvisory"))
+        .and_then(|value| value.as_str())
+    {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(format!("reflection advisory: {advisory}"));
+    }
+
     if let Some(details) = details {
         let rendered =
             serde_json::to_string_pretty(&details).unwrap_or_else(|_| details.to_string());
