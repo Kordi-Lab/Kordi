@@ -81,6 +81,10 @@ pub fn format_tool_result_content(
         "web_fetch" | "browser_fetch" => {
             render_web_fetch_result(content, details.as_ref(), expanded)
         }
+        "task_operator" => super::task_operator::render_result_body(details.as_ref(), expanded)
+            .unwrap_or_else(|| render_default_result(content, expanded)),
+        "reflection" => super::reflection::render_result_body(details.as_ref())
+            .unwrap_or_else(|| render_default_result(content, expanded)),
         _ => render_default_result(content, expanded),
     };
 
@@ -126,6 +130,8 @@ pub fn collapsed_tool_summary_with_count(name: &str, count: usize) -> Option<Str
         "bash" => ("Ran", "command", "commands"),
         "write" => ("Wrote", "file", "files"),
         "edit" => ("Edited", "file", "files"),
+        "task_operator" => ("Coordinated", "task", "tasks"),
+        "reflection" => ("Saved", "lesson", "lessons"),
         _ => return None,
     };
     let noun = if count == 1 { singular } else { plural };

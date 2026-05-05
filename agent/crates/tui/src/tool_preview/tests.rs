@@ -1,6 +1,7 @@
 use super::{
     extract_tool_arg_string_relaxed, format_tool_call_content, format_tool_result_content,
 };
+use crate::tui::format_tool_call_title;
 use kordi_core::types::ContentBlock;
 
 #[test]
@@ -225,6 +226,197 @@ fn web_search_results_render_with_structured_summary_and_links() {
     assert!(rendered.contains("links:"));
     assert!(rendered.contains("- AP News — https://apnews.com/story"));
     assert!(rendered.contains("- Reuters — https://reuters.com/world"));
+}
+
+#[test]
+fn task_operator_manifest_preview_renders_summary() {
+    let rendered = format_tool_result_content(
+        "task_operator",
+        &[ContentBlock::Text {
+            text: "Task manifest accepted".to_string(),
+        }],
+        Some(serde_json::json!({
+            "manifestId": "task_manifest_123",
+            "status": "accepted",
+            "tasks": [
+                {
+                    "taskId": "inspect_tools",
+                    "title": "Inspect current tool previews",
+                    "summary": "Map TUI preview paths",
+                    "dependencies": [],
+                    "writeScope": [],
+                    "risk": "read_only",
+                    "estimatedInputTokens": 1000,
+                    "estimatedOutputTokens": 250
+                }
+            ],
+            "estimate": {
+                "inputTokens": 1000,
+                "outputTokens": 250,
+                "costMicrounits": 42
+            }
+        })),
+        None,
+        false,
+        false,
+    );
+
+    assert!(rendered.contains("manifest accepted: task_manifest_123"));
+    assert!(rendered.contains("1 task(s)"));
+    assert!(rendered.contains("- inspect_tools: Inspect current tool previews [read_only]"));
+    assert!(rendered.contains("estimate: 1000 input + 250 output tokens, 42 microunits"));
+}
+
+#[test]
+fn task_operator_estimate_result_renders_tokens() {
+    let rendered = format_tool_result_content(
+        "task_operator",
+        &[],
+        Some(serde_json::json!({
+            "status": "estimated",
+            "estimate": {
+                "inputTokens": 3000,
+                "outputTokens": 1200,
+                "costMicrounits": 99
+            }
+        })),
+        None,
+        false,
+        false,
+    );
+
+    assert!(rendered.contains("status: estimated"));
+    assert!(rendered.contains("estimate: 3000 input + 1200 output tokens, 99 microunits"));
+}
+
+#[test]
+fn task_operator_runtime_previews_spawn_wait_timeout_and_completion() {
+    let spawn_call = serde_json::json!({
+        "action": "spawn",
+        "taskName": "research_docs",
+        "message": "Inspect the docs and summarize the relevant files.",
+        "writeScope": ["docs"]
+    })
+    .to_string();
+    let title = format_tool_call_title("task_operator", &spawn_call);
+    let call_body = format_tool_call_content("task_operator", &spawn_call, false);
+    assert_eq!(title, "TaskOperator(spawn research_docs)");
+    assert!(call_body.contains("spawn: research_docs"));
+    assert!(call_body.contains("write scope: docs"));
+
+    let spawn_result = format_tool_result_content(
+        "task_operator",
+        &[],
+        Some(serde_json::json!({
+            "status": "running",
+            "target": "/root/research_docs",
+            "message": "Task agent running: /root/research_docs",
+            "tasks": []
+        })),
+        None,
+        false,
+        false,
+    );
+    assert!(spawn_result.contains("status: running"));
+    assert!(spawn_result.contains("target: /root/research_docs"));
+
+    let wait_timeout = format_tool_result_content(
+        "task_operator",
+        &[],
+        Some(serde_json::json!({
+            "status": "timed_out",
+            "message": "No task completed before timeout",
+            "tasks": []
+        })),
+        None,
+        false,
+        false,
+    );
+    assert!(wait_timeout.contains("status: timed_out"));
+    assert!(wait_timeout.contains("No task completed before timeout"));
+
+    let completed = format_tool_result_content(
+        "task_operator",
+        &[],
+        Some(serde_json::json!({
+            "status": "listed",
+            "tasks": [
+                {
+                    "path": "/root/research_docs",
+                    "title": "research_docs",
+                    "status": "completed",
+                    "summary": "Found the relevant docs.",
+                    "writeScope": []
+                }
+            ]
+        })),
+        None,
+        false,
+        false,
+    );
+    assert!(completed.contains("/root/research_docs [completed]"));
+    assert!(completed.contains("Found the relevant docs."));
+}
+
+#[test]
+fn task_operator_policy_warning_is_visible() {
+    let rendered = format_tool_result_content(
+        "task_operator",
+        &[],
+        Some(serde_json::json!({
+            "workflowPolicy": "advisory",
+            "warning": "operator tool used before planning",
+            "status": "timed_out",
+            "message": "No task completed before timeout"
+        })),
+        None,
+        false,
+        false,
+    );
+
+    assert!(rendered.contains("workflow warning: operator tool used before planning"));
+    assert!(rendered.contains("status: timed_out"));
+}
+
+#[test]
+fn reflection_preview_renders_saved_scope_and_artifact() {
+    let call = serde_json::json!({
+        "scope": "project",
+        "scopeId": "/Users/example/kordi",
+        "source": "repeated_failure",
+        "lesson": "Inspect exact assertion output before editing after repeated Rust failures."
+    })
+    .to_string();
+    let title = format_tool_call_title("reflection", &call);
+    let call_body = format_tool_call_content("reflection", &call, false);
+    assert!(title.starts_with("Reflection(project/repeated_failure:"));
+    assert!(call_body.contains("scope: project"));
+    assert!(call_body.contains("lesson:"));
+
+    let rendered = format_tool_result_content(
+        "reflection",
+        &[ContentBlock::Text {
+            text: "Reflection lesson saved".to_string(),
+        }],
+        Some(serde_json::json!({
+            "status": "saved",
+            "lessonId": "lesson_123",
+            "scope": "project",
+            "scopeId": "/Users/example/kordi",
+            "artifactPath": "/Users/example/kordi/.kordi/reflection-lessons/project/kordi.md"
+        })),
+        Some("/Users/example/kordi/.kordi/reflection-lessons/project/kordi.md".to_string()),
+        false,
+        false,
+    );
+
+    assert!(rendered.contains("lesson saved"));
+    assert!(rendered.contains("scope: project"));
+    assert!(rendered.contains("lesson id: lesson_123"));
+    assert!(
+        rendered
+            .contains("artifact: /Users/example/kordi/.kordi/reflection-lessons/project/kordi.md")
+    );
 }
 
 #[test]
