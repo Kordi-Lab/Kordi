@@ -95,7 +95,7 @@ function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
   const status = message.status?.trim().toLowerCase() ?? '';
   return message.sourceTransport === 'desktop-bridge-ui'
     && message.senderRole === 'user'
-    && (status === 'sending' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'failed');
+    && (status === 'sending' || status === 'sent' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'sent' || deliveryState === 'failed');
 }
 
 export function mergeCanonicalStatePreservingBridgeUiMessages(

@@ -84,7 +84,7 @@ test('renders failed own message delivery as a compact red exclamation', () => {
   assert.match(markup, /text-rose-400/);
 });
 
-test('renders contact-gated failed sends as a left-side notice instead of changing the message bubble', () => {
+test('renders contact-gated failed sends as a centered notice instead of changing the message bubble', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -102,6 +102,8 @@ test('renders contact-gated failed sends as a left-side notice instead of changi
   }));
 
   assert.match(markup, /app-contact-request-failure-notice/);
+  assert.match(markup, /self-center/);
+  assert.doesNotMatch(markup, /self-start/);
   assert.match(markup, />Message not delivered\.</);
   assert.match(markup, />Send contact request</);
   assert.doesNotMatch(markup, />Send a contact request before messages can be delivered\.</);

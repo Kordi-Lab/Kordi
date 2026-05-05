@@ -669,7 +669,7 @@ function MessageBubbleView({
         </div>
       </div>
       {showContactRequestAction && onRequestBridgeContact ? (
-        <div className="self-start">
+        <div className="self-center">
           <ContactRequestFailureNotice detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
         </div>
       ) : null}

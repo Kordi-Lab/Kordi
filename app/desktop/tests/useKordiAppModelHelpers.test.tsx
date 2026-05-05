@@ -50,9 +50,37 @@ test('canonical refresh preserves in-flight bridge UI sends until they are persi
     }],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current);
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:pending']);
+});
+
+test('canonical refresh preserves optimistic sent bridge session messages until they are persisted', () => {
+  const fetched = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [],
+  } as unknown as CanonicalSessionState;
+  const current = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [{
+      id: 'msg:ui:sent-before-append',
+      sessionId: 'session:bridge:person',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'hello',
+      content: { sender: 'Me', timeLabel: '22:20' },
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      sourceTransport: 'desktop-bridge-ui',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+
+  assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:sent-before-append']);
 });
 
 test('canonical session removal prunes session-scoped records', () => {
