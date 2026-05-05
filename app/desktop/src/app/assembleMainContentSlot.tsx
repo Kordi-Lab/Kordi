@@ -4,30 +4,13 @@ import {
   buildChatsPageProps,
   buildProjectsPageProps,
 } from '@/app/mainContentShellBuilders';
-import { findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
+import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
-import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
-  const openLocalAgentChat = async (preferredModelValue?: string) => {
-    args.setActiveNav('chats');
-    const existingLocalConversation = findOwnedAgentConversation(args.chatConversations);
-
-    if (!preferredModelValue) {
-      if (existingLocalConversation) {
-        await args.handleSelectChatSession(existingLocalConversation.id);
-      } else {
-        await args.handleCreateChatSession();
-      }
-      return;
-    }
-
-    const sessionId = existingLocalConversation?.id ?? (await createDesktopChatSession()).activeSessionId;
-    await updateDesktopChatSessionConfig(sessionId, preferredModelValue);
-    await args.handleSelectChatSession(sessionId);
-  };
+  const openLocalAgentChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
 
   return (
     <MainContentSwitch

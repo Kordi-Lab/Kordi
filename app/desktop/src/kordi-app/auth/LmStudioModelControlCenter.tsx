@@ -47,6 +47,48 @@ type LmStudioAction =
   | `load:${string}`
   | `stop:${string}`;
 
+type LmStudioRuntimeActionId = 'refresh' | 'stop-model' | 'start-server' | 'stop-server';
+type LmStudioPageEndActionId = 'save-model' | 'save-enter-chat';
+
+export type LmStudioRuntimeAction = {
+  id: LmStudioRuntimeActionId;
+  label: string;
+};
+
+export type LmStudioPageEndAction = {
+  id: LmStudioPageEndActionId;
+  label: string;
+};
+
+export function lmStudioRuntimeActions({
+  activeRunningModelId,
+  serverRunning,
+}: {
+  activeRunningModelId?: string | null;
+  serverRunning: boolean;
+  isSavingConnection: boolean;
+  activeAction: LmStudioAction | null;
+  canEnterChat: boolean;
+}): LmStudioRuntimeAction[] {
+  const actions: LmStudioRuntimeAction[] = [{ id: 'refresh', label: 'Refresh status' }];
+  if (activeRunningModelId) actions.push({ id: 'stop-model', label: 'Stop model' });
+  actions.push({ id: serverRunning ? 'stop-server' : 'start-server', label: serverRunning ? 'Stop server' : 'Start local server' });
+  return actions;
+}
+
+export function lmStudioPageEndAction({
+  activeRunningModelId,
+  canEnterChat,
+}: {
+  activeRunningModelId?: string | null;
+  canEnterChat: boolean;
+}): LmStudioPageEndAction | null {
+  if (!activeRunningModelId) return null;
+  return canEnterChat
+    ? { id: 'save-enter-chat', label: 'Save & enter chat' }
+    : { id: 'save-model', label: 'Save model' };
+}
+
 const LM_STUDIO_CATALOG_URL = 'https://lmstudio.ai/models';
 
 const flatButtonShapeClass = '!h-8 !rounded-[10px] !px-3 shadow-none';
@@ -451,14 +493,16 @@ export function LmStudioModelControlCenter({
     return selectedModelId;
   };
 
-  const saveConnection = async (preferredModelId?: string | null) => {
+  const saveConnection = async (preferredModelId?: string | null, enterChat = false) => {
     try {
       setIsSavingConnection(true);
       setActionError(null);
       const selectedModelId = await saveLmStudioModelPreference(preferredModelId);
-      setActionMessage(onEnterChat || onSaved ? 'LM Studio saved. Opening chat…' : 'LM Studio connection saved.');
-      if (onEnterChat) await onEnterChat(selectedModelId ? `lm-studio/${selectedModelId}` : undefined);
-      else onSaved?.();
+      setActionMessage(enterChat && (onEnterChat || onSaved) ? 'LM Studio saved. Opening chat…' : 'LM Studio connection saved.');
+      if (enterChat) {
+        if (onEnterChat) await onEnterChat(selectedModelId ? `lm-studio/${selectedModelId}` : undefined);
+        else onSaved?.();
+      }
     } catch (error) {
       setActionMessage(null);
       setActionError(error instanceof Error ? error.message : 'Unable to save LM Studio connection.');
@@ -531,6 +575,16 @@ export function LmStudioModelControlCenter({
   const hasInstalledModels = installedModels.length > 0;
   const hasRunningModel = Boolean(activeRunningModelId);
   const firstInstalledModelId = installedModels[0]?.id ?? null;
+  const canEnterChat = Boolean(onEnterChat || onSaved);
+  const runtimeActions = lmStudioRuntimeActions({
+    activeRunningModelId,
+    serverRunning,
+    isSavingConnection,
+    activeAction,
+    canEnterChat,
+  });
+  const pageEndAction = lmStudioPageEndAction({ activeRunningModelId, canEnterChat });
+  const hasRuntimeAction = (id: LmStudioRuntimeActionId) => runtimeActions.some((action) => action.id === id);
   const readinessSteps = [
     {
       label: 'App + CLI',
@@ -569,7 +623,7 @@ export function LmStudioModelControlCenter({
             ? 'Browse catalog'
             : !hasRunningModel
               ? 'Run installed model'
-              : onEnterChat || onSaved ? 'Save & enter chat' : 'Save LM Studio';
+              : 'Ready';
   const primaryActionDetail = !environment
     ? 'Verify app, CLI, and local paths.'
     : !appReady
@@ -615,9 +669,7 @@ export function LmStudioModelControlCenter({
     }
     if (!hasRunningModel && firstInstalledModelId) {
       void toggleInstalledModelRuntime(firstInstalledModelId);
-      return;
     }
-    void saveConnection(activeRunningModelId);
   };
 
   return (
@@ -635,9 +687,15 @@ export function LmStudioModelControlCenter({
               Kordi treats LM Studio like a local chat provider: resolve <span className="font-mono text-slate-100">lms</span>, start the server, install an exact variant, then run it with the best supported context instead of the 4k default.
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <AuthActionButton className={modelControlPrimaryClass} onClick={runPrimaryAction} disabled={primaryActionDisabled}>
-                <CheckCircle2 className="h-3.5 w-3.5" /> {primaryActionLabel}
-              </AuthActionButton>
+              {pageEndAction ? (
+                <div className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-emerald-300/18 bg-emerald-300/[0.07] px-3 text-[11px] font-medium text-emerald-50">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Ready
+                </div>
+              ) : (
+                <AuthActionButton className={modelControlPrimaryClass} onClick={runPrimaryAction} disabled={primaryActionDisabled}>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {primaryActionLabel}
+                </AuthActionButton>
+              )}
             </div>
             <div className="mt-3 rounded-[16px] border border-white/8 bg-white/[0.04] px-3 py-2 text-[11px] leading-5 text-slate-300">
               <span className="font-medium text-slate-100">Next:</span> {primaryActionDetail}
@@ -683,40 +741,45 @@ export function LmStudioModelControlCenter({
               </div>
             </div>
             <div className="mt-3 flex flex-wrap justify-end gap-1.5">
-              {activeRunningModelId ? (
+              {hasRuntimeAction('refresh') ? (
                 <AuthActionButton
-                  className={modelControlPrimaryClass}
-                  onClick={() => void saveConnection(activeRunningModelId)}
-                  disabled={isSavingConnection || Boolean(activeAction)}
+                  className={modelControlNeutralClass}
+                  onClick={() => {
+                    onRefreshAuth();
+                    void refreshRunningModels();
+                    void refreshServerStatus();
+                  }}
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> {isSavingConnection ? 'Saving…' : onEnterChat || onSaved ? 'Save & enter chat' : 'Save model'}
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh status
                 </AuthActionButton>
               ) : null}
-              <AuthActionButton
-                className={modelControlNeutralClass}
-                onClick={() => {
-                  onRefreshAuth();
-                  void refreshRunningModels();
-                  void refreshServerStatus();
-                }}
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Refresh status
-              </AuthActionButton>
-              <AuthActionButton
-                className={serverStatus?.running ? modelControlStopClass : modelControlPrimaryClass}
-                onClick={() => {
-                  if (serverStatus?.running) void stopLocalServer();
-                  else void startLocalServer();
-                }}
-                disabled={activeAction === 'server-start' || activeAction === 'server-stop'}
-              >
-                {serverStatus?.running ? <Square className="h-3.5 w-3.5" /> : <Server className="h-3.5 w-3.5" />}
-                {activeAction === 'server-start'
-                  ? 'Starting server…'
-                  : activeAction === 'server-stop'
-                    ? 'Stopping server…'
-                    : serverStatus?.running ? 'Stop server' : 'Start local server'}
-              </AuthActionButton>
+              {hasRuntimeAction('stop-model') && activeRunningModelId ? (
+                <AuthActionButton
+                  className={modelControlStopClass}
+                  onClick={() => void toggleInstalledModelRuntime(activeRunningModelId)}
+                  disabled={activeAction === `stop:${activeRunningModelId}` || activeAction === `load:${activeRunningModelId}`}
+                  title="Stop this running LM Studio model without stopping the local server"
+                >
+                  <Square className="h-3.5 w-3.5" /> {activeAction === `stop:${activeRunningModelId}` ? 'Stopping model…' : 'Stop model'}
+                </AuthActionButton>
+              ) : null}
+              {hasRuntimeAction(serverStatus?.running ? 'stop-server' : 'start-server') ? (
+                <AuthActionButton
+                  className={serverStatus?.running ? modelControlStopClass : modelControlPrimaryClass}
+                  onClick={() => {
+                    if (serverStatus?.running) void stopLocalServer();
+                    else void startLocalServer();
+                  }}
+                  disabled={activeAction === 'server-start' || activeAction === 'server-stop'}
+                >
+                  {serverStatus?.running ? <Square className="h-3.5 w-3.5" /> : <Server className="h-3.5 w-3.5" />}
+                  {activeAction === 'server-start'
+                    ? 'Starting server…'
+                    : activeAction === 'server-stop'
+                      ? 'Stopping server…'
+                      : serverStatus?.running ? 'Stop server' : 'Start local server'}
+                </AuthActionButton>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1015,6 +1078,25 @@ export function LmStudioModelControlCenter({
         ) : null}
       </div>
 
+      {pageEndAction ? (
+        <div className="rounded-[22px] border border-emerald-300/18 bg-emerald-300/[0.065] p-3.5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-emerald-50">Ready at the end of setup</div>
+              <div className="mt-1 text-[11px] leading-5 text-emerald-50/75">
+                Save <span className="font-mono text-emerald-50">{activeRunningModelId}</span> as the LM Studio chat model, then enter your local agent chat.
+              </div>
+            </div>
+            <AuthActionButton
+              className={modelControlPrimaryClass}
+              onClick={() => void saveConnection(activeRunningModelId, pageEndAction.id === 'save-enter-chat')}
+              disabled={isSavingConnection || Boolean(activeAction)}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> {isSavingConnection ? 'Saving…' : pageEndAction.label}
+            </AuthActionButton>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

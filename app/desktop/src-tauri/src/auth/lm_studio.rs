@@ -13,11 +13,15 @@ use environment::{
 };
 use parsing::{
     canonical_lm_studio_model_id, collect_rest_loaded_llm_model_ids,
-    is_lm_studio_embedding_model_id, is_safe_model_id, lm_studio_model_ids_match,
-    lm_studio_model_match_key, model_max_context_length_from_value, parse_catalog_models,
+    is_lm_studio_embedding_model_id, is_safe_model_id, lm_studio_model_match_key,
+    model_max_context_length_from_value, parse_catalog_models,
     parse_catalog_variants, parse_installed_models, parse_loaded_model_instances, parse_model_ids,
     sanitize_model_arg, LmStudioLoadedModelInstance,
 };
+
+pub(crate) fn lm_studio_model_ids_match(left: &str, right: &str) -> bool {
+    parsing::lm_studio_model_ids_match(left, right)
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,24 +208,6 @@ pub async fn desktop_lm_studio_stop_server() -> Result<DesktopLmStudioCommandRes
     run_command(command, "lms server stop".to_string()).await
 }
 
-pub async fn ensure_server_running(port: Option<u32>) -> Result<(), String> {
-    let status = lm_studio_server_status().await?;
-    if status.running {
-        return Ok(());
-    }
-
-    start_lm_studio_server(port).await?;
-    let status = lm_studio_server_status().await?;
-    if status.running {
-        Ok(())
-    } else {
-        Err(format!(
-            "LM Studio local server did not report as running after start. {}",
-            status.detail
-        ))
-    }
-}
-
 pub async fn loaded_model_ids_for_base_url(base_url: &str) -> Result<Vec<String>, String> {
     let mut ids = Vec::new();
     let mut errors = Vec::new();
@@ -308,12 +294,6 @@ pub async fn desktop_lm_studio_stop_model(
     model: String,
 ) -> Result<DesktopLmStudioCommandResult, String> {
     unload_lm_studio_model_instances(&model).await
-}
-
-pub async fn ensure_model_loaded_with_best_context(model: &str) -> Result<(), String> {
-    load_lm_studio_model_with_best_context(model)
-        .await
-        .map(|_| ())
 }
 
 async fn fetch_lm_studio_rest_loaded_llm_ids(base_url: &str) -> Result<Vec<String>, String> {

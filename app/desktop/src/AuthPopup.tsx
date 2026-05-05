@@ -20,7 +20,8 @@ type AuthPopupProps = {
   embedded?: boolean;
   authState?: DesktopAuthState | null;
   onRequestClose?: () => void;
-  onAuthUpdated?: () => void;
+  onAuthUpdated?: () => void | Promise<void>;
+  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
 function isNativeDesktopShell() {
@@ -91,6 +92,10 @@ function authPopupPrimaryActionLabel(providerId: string, mode: 'oauth' | 'api-ke
   if ((providerId === 'lm-studio' || providerId === 'ollama') && mode === 'api-key') return 'Save optional key';
   if (mode === 'oauth') return 'Open sign-in';
   return 'Save key';
+}
+
+function isLocalAuthProvider(providerId: string) {
+  return providerId === 'lm-studio' || providerId === 'ollama';
 }
 
 function buildPopupSteps(authAttempt: DesktopAuthAttemptSnapshot | null): AuthFlowStep[] {
@@ -172,6 +177,7 @@ export default function AuthPopup({
   authState: authStateProp = null,
   onRequestClose,
   onAuthUpdated,
+  onEnterChat,
 }: AuthPopupProps = {}) {
   const search = useMemo(() => new URLSearchParams(window.location.search), []);
   const providerId = providerIdProp ?? search.get('provider') ?? '';
@@ -280,17 +286,36 @@ export default function AuthPopup({
   const steps = useMemo(() => buildPopupSteps(authAttempt), [authAttempt]);
   const visibleError = error ?? authAttempt?.error ?? null;
   const showInteractiveOAuthDetails = !!authAttempt && !authAttempt.completed;
+  const canSaveAndEnterChat = !!onEnterChat && mode === 'api-key' && !!provider && !isLocalAuthProvider(provider.id);
 
-  const handleSaveApiKey = async () => {
+  const handleEnterChat = async () => {
+    if (!onEnterChat) return;
+
+    try {
+      setIsSubmitting(true);
+      await Promise.resolve(onEnterChat());
+      await closePopupWindow(embedded, onRequestClose);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to enter chat');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveApiKey = async (enterChat = false) => {
     if (!provider || !apiKeyDraft.trim()) return;
 
     try {
       setIsSubmitting(true);
-      await saveDesktopApiKey(provider.id, apiKeyDraft.trim());
+      const nextState = await saveDesktopApiKey(provider.id, apiKeyDraft.trim());
+      setAuthState(nextState);
       if (!embedded) {
         notifyAuthUpdated();
       }
-      onAuthUpdated?.();
+      await Promise.resolve(onAuthUpdated?.());
+      if (enterChat && onEnterChat) {
+        await Promise.resolve(onEnterChat());
+      }
       await closePopupWindow(embedded, onRequestClose);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to save API key');
@@ -441,6 +466,12 @@ export default function AuthPopup({
                     {isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
                     {authPopupPrimaryActionLabel(providerId, mode)}
                   </Button>
+                  {canSaveAndEnterChat ? (
+                    <Button type="button" className="rounded-xl" disabled={isSubmitting || !apiKeyDraft.trim()} onClick={() => void handleSaveApiKey(true)}>
+                      {isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                      Save &amp; enter chat
+                    </Button>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -538,6 +569,13 @@ export default function AuthPopup({
                       Save pasted callback
                     </Button>
                   )}
+
+                  {authAttempt?.succeeded && onEnterChat ? (
+                    <Button type="button" className="rounded-xl" disabled={isSubmitting} onClick={() => void handleEnterChat()}>
+                      {isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                      Enter chat
+                    </Button>
+                  ) : null}
 
                   {!embedded && (
                     <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void handleClose()}>

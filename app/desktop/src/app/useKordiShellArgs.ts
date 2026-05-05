@@ -258,6 +258,10 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
     overlay: {
       showAuthGate: args.showAuthGate,
       dismissAuthGate: args.dismissAuthGate,
+      setActiveNav: args.setActiveNav,
+      chatConversations: args.chatConversations,
+      handleSelectChatSession: args.handleSelectChatSession,
+      handleCreateChatSession: args.handleCreateChatSession,
       windowWidth: args.windowWidth,
       isNativeShell: args.isNativeShell,
       desktopAuthState: args.desktopAuthState,

@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 
 import AuthPopup from '@/AuthPopup';
+import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 
 import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {
+  const onEnterChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
+
   const authGate = args.showAuthGate ? (
     <div
       className="app-overlay absolute inset-0 z-50 overflow-hidden p-3 backdrop-blur-[12px] sm:p-4"
@@ -34,6 +37,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
           void args.handleLogoutProvider(providerId);
         }}
         onDismissGate={args.dismissAuthGate}
+        onEnterChat={onEnterChat}
       />
     </div>
   ) : null;
@@ -48,6 +52,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
       authState={args.desktopAuthState}
       onRequestClose={args.handleCloseInlineAuthDialog}
       onAuthUpdated={args.refreshDesktopAuth}
+      onEnterChat={onEnterChat}
     />
   ) : null;
 
