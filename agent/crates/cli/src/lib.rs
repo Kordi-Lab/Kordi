@@ -11,6 +11,7 @@ mod session_bootstrap;
 mod session_info;
 #[allow(dead_code)]
 mod slash;
+pub mod task_operator;
 mod tool_registry;
 pub mod turn_runner;
 

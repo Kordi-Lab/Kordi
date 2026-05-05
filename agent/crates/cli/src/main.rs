@@ -18,6 +18,7 @@ mod session_bootstrap;
 mod session_info;
 mod session_navigation;
 mod slash;
+mod task_operator;
 mod tool_registry;
 mod tui;
 mod turn_runner;
