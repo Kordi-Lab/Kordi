@@ -15,7 +15,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Append a concise scoped lesson to its lesson artifact file."
+        "Reflection tool for saving concise scoped lessons from user corrections, repeated failures, or outcomes. Use conversation, group, or project scope only; never global memory by default. Side effect: appends a markdown lesson artifact and stores metadata. Lessons are max 500 characters; retrying may create a duplicate lesson."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -107,7 +107,9 @@ mod tests {
     fn reflection_tool_has_short_description_and_reflection_metadata() {
         let tool = super::ReflectionTool;
         assert_eq!(tool.name(), "reflection");
-        assert!(tool.description().len() < 240);
+        assert!(tool.description().contains("Side effect"));
+        assert!(tool.description().contains("retrying"));
+        assert!(tool.description().len() < 420);
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Reflection);
         assert_eq!(metadata.risk, ToolRiskLevel::Low);

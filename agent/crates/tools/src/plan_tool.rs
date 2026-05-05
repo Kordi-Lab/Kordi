@@ -31,7 +31,7 @@ impl Tool for UpdatePlanTool {
     }
 
     fn description(&self) -> &str {
-        "Update the current task plan with concise steps and statuses."
+        "Planning tool for the visible task plan. Use when work has multiple steps or status changes. Input is the complete current plan with one optional in_progress step. Side effect: updates the plan event only; safe to retry by resending the full current plan."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -129,6 +129,8 @@ mod tests {
     fn update_plan_schema_requires_plan_and_uses_planning_metadata() {
         let tool = super::UpdatePlanTool;
         assert_eq!(tool.name(), "update_plan");
+        assert!(tool.description().contains("Side effect"));
+        assert!(tool.description().contains("safe to retry"));
 
         let schema = tool.parameters_schema();
         assert_eq!(schema["type"], "object");

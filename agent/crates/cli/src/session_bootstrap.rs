@@ -189,7 +189,7 @@ fn build_tool_layer_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
         return String::new();
     }
 
-    "\n\n## Tool layers\nTools are organized into five layers: Observation, Planning, Operator, Execution, and Reflection. Use Observation to gather facts, Planning to decide next steps, Operator to coordinate tasks, Execution to act, and Reflection to learn scoped lessons from corrections, failures, and outcomes. Use the lightest layer that solves the current step. Use task_operator spawn/message/wait/list/close only for well-scoped sidecar work or independent write scopes; keep immediate critical-path blockers local and close task agents when finished."
+    "\n\n## Tool use policy\nThe active tool catalog is supplied by the runtime. Treat tool descriptions and schemas as the source of truth for when to use each tool, required inputs, side effects, retry safety, and common error modes. Prefer hosted/provider tools when they fit; use Kordi custom function tools for local workspace operations, bridge workflows, task orchestration, and scoped reflection. Layer labels are metadata for UI/scheduling/policy, not extra callable tools."
         .to_string()
 }
 
@@ -903,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_layer_system_prompt_section_is_short_when_task_operator_is_active() {
+    fn tool_use_policy_system_prompt_section_is_short_when_task_operator_is_active() {
         let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
             name: "task_operator",
             description: "task operator",
@@ -911,8 +911,11 @@ mod tests {
         })];
 
         let section = super::build_tool_layer_system_prompt_section(&tools);
-        assert!(section.contains("Observation, Planning, Operator, Execution, and Reflection"));
-        assert!(section.contains("Use the lightest layer"));
+        assert!(section.contains("Tool use policy"));
+        assert!(section.contains("tool descriptions and schemas"));
+        assert!(section.contains("hosted/provider tools"));
+        assert!(section.contains("not extra callable tools"));
+        assert!(!section.contains("Use Observation to gather facts"));
         assert!(section.len() < 700);
     }
 

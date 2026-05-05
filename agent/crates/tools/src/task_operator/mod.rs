@@ -26,7 +26,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Create task manifests and cost estimates for multi-step work."
+        "Operator tool for Kordi task manifests, estimates, and local child task agents. Use for multi-step or parallelizable work with independent write scopes; keep immediate critical-path blockers local. Actions: manifest/estimate are planning-only; spawn starts a local child agent, message sends follow-up, wait observes completion, list reports task status, close aborts/closes a task. Side effects: spawn/message/close affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -257,6 +257,9 @@ mod tests {
     fn task_operator_uses_operator_metadata() {
         let tool = super::TaskOperatorTool;
         assert_eq!(tool.name(), "task_operator");
+        assert!(tool.description().contains("Actions:"));
+        assert!(tool.description().contains("Side effects:"));
+        assert!(tool.description().contains("retry spawn"));
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Operator);
         assert_eq!(metadata.risk, ToolRiskLevel::Medium);
