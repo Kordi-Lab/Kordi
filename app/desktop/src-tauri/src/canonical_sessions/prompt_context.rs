@@ -186,7 +186,7 @@ fn recent_session_message_lines(
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1
                AND TRIM(m.content_text) <> ''
-             ORDER BY m.created_at_ms DESC, m.sequence_num DESC
+             ORDER BY m.sequence_num DESC, m.created_at_ms DESC
              LIMIT ?2",
         )
         .map_err(|err| err.to_string())?;
@@ -384,12 +384,64 @@ fn unresolved_bridge_agent_target_role(
         owner_display_name: owner_name
             .map(ToString::to_string)
             .or_else(|| owner_participant.map(|participant| participant.display_name.clone())),
-        locality: if participants.iter().any(PromptParticipantRow::is_bridge_source) {
+        locality: if participants
+            .iter()
+            .any(PromptParticipantRow::is_bridge_source)
+        {
             Some("non-local".to_string())
         } else {
             None
         },
     }
+}
+
+fn fallback_bridge_agent_identity_frame(
+    agent_display_name: &str,
+    owner_name: Option<&str>,
+) -> String {
+    let agent_name = agent_display_name.trim();
+    let agent_name = if agent_name.is_empty() {
+        "Kordi"
+    } else {
+        agent_name
+    };
+    let owner_name = owner_name.map(str::trim).filter(|value| !value.is_empty());
+    let self_identity = IdentityContextRole {
+        identity_id: "unknown:bridge-agent-target".to_string(),
+        display_name: agent_name.to_string(),
+        kind: "agent".to_string(),
+        owner_identity_id: owner_name.map(|_| "unknown:bridge-agent-target-owner".to_string()),
+        owner_display_name: owner_name.map(ToString::to_string),
+        locality: None,
+    };
+    render_multi_participant_identity_context(&IdentityContextRequest {
+        permissions: IdentityContextPermissions {
+            reply_as_identity_id: self_identity.identity_id.clone(),
+            reach_out_allowed: false,
+            allowed_targets: Vec::new(),
+            context_policy: "request-window".to_string(),
+            requires_approval: false,
+        },
+        self_identity: self_identity.clone(),
+        requester: None,
+        target: Some(self_identity),
+        participants: Vec::new(),
+        session_id: None,
+        session_kind: None,
+        project_name: None,
+    })
+}
+
+fn push_fallback_bridge_agent_identity_frame(
+    lines: &mut Vec<String>,
+    agent_display_name: &str,
+    owner_name: Option<&str>,
+) {
+    lines.push(String::new());
+    lines.push(fallback_bridge_agent_identity_frame(
+        agent_display_name,
+        owner_name,
+    ));
 }
 
 fn should_render_remote_identity_frame(
@@ -536,11 +588,8 @@ pub(crate) fn bridge_agent_parent_session_prompt(
         if let Some(session) = select_session(&conn, session_id)? {
             let participants = session_participant_rows(&conn, session_id)?;
             let target = target_role_for_bridge_agent(&participants, agent_name, owner_name);
-            let requester = identity_role_for_id(
-                &conn,
-                &participants,
-                Some(&session.created_by_identity_id),
-            )?;
+            let requester =
+                identity_role_for_id(&conn, &participants, Some(&session.created_by_identity_id))?;
             if should_render_remote_identity_frame(
                 &participants,
                 &session.kind,
@@ -602,7 +651,20 @@ pub(crate) fn bridge_agent_parent_session_prompt(
                 lines.push("Context supplied by requester:".to_string());
                 lines.push(context.to_string());
             }
-        } else if let Some(context) = fallback_context
+        } else {
+            push_fallback_bridge_agent_identity_frame(&mut lines, agent_name, owner_name);
+            if let Some(context) = fallback_context
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                lines.push(String::new());
+                lines.push("Context:".to_string());
+                lines.push(context.to_string());
+            }
+        }
+    } else {
+        push_fallback_bridge_agent_identity_frame(&mut lines, agent_name, owner_name);
+        if let Some(context) = fallback_context
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
@@ -610,13 +672,6 @@ pub(crate) fn bridge_agent_parent_session_prompt(
             lines.push("Context:".to_string());
             lines.push(context.to_string());
         }
-    } else if let Some(context) = fallback_context
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        lines.push(String::new());
-        lines.push("Context:".to_string());
-        lines.push(context.to_string());
     }
 
     lines.push(String::new());
