@@ -84,7 +84,29 @@ use self::schema::{ensure_local_profile, initialize_schema};
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 1;
 
+#[cfg(test)]
+thread_local! {
+    static CANONICAL_SESSIONS_TEST_DB_PATH: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn set_canonical_sessions_test_db_path(path: Option<std::path::PathBuf>) {
+    CANONICAL_SESSIONS_TEST_DB_PATH.with(|current| {
+        *current.borrow_mut() = path;
+    });
+}
+
 fn open_db() -> Result<Connection, String> {
+    #[cfg(test)]
+    if let Some(path) = CANONICAL_SESSIONS_TEST_DB_PATH.with(|current| current.borrow().clone()) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        }
+        let conn = Connection::open(path).map_err(|err| err.to_string())?;
+        initialize_schema(&conn)?;
+        return Ok(conn);
+    }
+
     let path = canonical_sessions_db_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;

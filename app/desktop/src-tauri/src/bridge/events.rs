@@ -1,16 +1,16 @@
 use base64::Engine;
 use serde_json::Value;
 
-use super::constants::{BRIDGE_MESSAGE_TYPE_RAW, is_agent_like_runtime};
+use super::constants::{is_agent_like_runtime, BRIDGE_MESSAGE_TYPE_RAW};
 use crate::canonical_sessions::{
-    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole, render_multi_participant_identity_context, session_exists,
+    render_multi_participant_identity_context, session_exists, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 
 use super::{
-    DesktopBridgeHostConfig, DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment,
-    DesktopBridgeOutreachMetadata, DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant,
-    default_display_name, default_owner_name, now_ms,
+    default_display_name, default_owner_name, now_ms, DesktopBridgeHostConfig,
+    DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
+    DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
@@ -308,15 +308,18 @@ fn payload_identity_context_request(
         .and_then(|identity| prompt_identity_to_role(identity, None));
     let participants = thread
         .get("participants")
-        .cloned()
-        .and_then(|value| {
-            serde_json::from_value::<Vec<DesktopBridgeSessionParticipant>>(value).ok()
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(MAX_PAYLOAD_IDENTITY_PARTICIPANTS)
+                .filter_map(|item| {
+                    serde_json::from_value::<DesktopBridgeSessionParticipant>(item.clone()).ok()
+                })
+                .filter_map(participant_to_identity_context)
+                .collect::<Vec<_>>()
         })
-        .unwrap_or_default()
-        .into_iter()
-        .take(MAX_PAYLOAD_IDENTITY_PARTICIPANTS)
-        .filter_map(participant_to_identity_context)
-        .collect::<Vec<_>>();
+        .unwrap_or_default();
     let context_policy = payload
         .get("contextPolicy")
         .or_else(|| thread.get("contextPolicy"))
@@ -394,7 +397,6 @@ pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("Kordi");
-        let payload_identity_request = payload_identity_context_request(thread, payload);
         let parent_session_exists = parent_session_id
             .map(|session_id| session_exists(session_id).unwrap_or(false))
             .unwrap_or(false);
@@ -409,8 +411,8 @@ pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {
                 return prompt;
             }
         }
-        if let Some(identity_request) = payload_identity_request.as_ref() {
-            return payload_identity_agent_prompt(identity_request, request.trim(), context);
+        if let Some(identity_request) = payload_identity_context_request(thread, payload) {
+            return payload_identity_agent_prompt(&identity_request, request.trim(), context);
         }
         if let Ok(prompt) = crate::canonical_sessions::bridge_agent_parent_session_prompt(
             parent_session_id,
@@ -515,6 +517,30 @@ pub(super) fn parse_bridge_event_payload(parsed: &Value) -> Option<ParsedMailbox
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct BridgeEventsStorageGuard {
+        storage_root: std::path::PathBuf,
+    }
+
+    impl BridgeEventsStorageGuard {
+        fn new(test_name: &str) -> Self {
+            let storage_root = std::env::temp_dir().join(format!(
+                "kordi-bridge-events-{test_name}-{}-{}",
+                std::process::id(),
+                uuid::Uuid::new_v4()
+            ));
+            crate::canonical_sessions::set_canonical_sessions_test_db_path(Some(
+                storage_root.join("canonical-sessions.sqlite3"),
+            ));
+            Self { storage_root }
+        }
+    }
+
+    impl Drop for BridgeEventsStorageGuard {
+        fn drop(&mut self) {
+            crate::canonical_sessions::set_canonical_sessions_test_db_path(None);
+            let _ = std::fs::remove_dir_all(&self.storage_root);
+        }
+    }
 
     #[test]
     fn payload_identity_prompt_does_not_trust_remote_self_target_identity_id() {
@@ -536,6 +562,44 @@ mod tests {
         assert!(prompt.contains("- replyAs: unknown:bridge-agent-target only"));
         assert!(prompt.contains("- identityId: unknown:bridge-agent-target"));
         assert!(!prompt.contains("- replyAs: human:mallory only"));
+    }
+
+    #[test]
+    fn payload_identity_prompt_keeps_valid_participants_after_malformed_entries() {
+        let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
+            "message": "Help with this issue",
+            "sessionThread": {
+                "parentSessionId": "session:payload-only-malformed-participants",
+                "selfTarget": {
+                    "identityId": "agent:remote-claimed-self",
+                    "displayName": "Local Kordi",
+                    "kind": "agent"
+                },
+                "participants": [
+                    {
+                        "identityId": "agent:malformed",
+                        "kind": "agent",
+                        "role": "member"
+                    },
+                    {
+                        "identityId": "agent:valid-one",
+                        "displayName": "Valid Participant One",
+                        "kind": "agent",
+                        "role": "member"
+                    },
+                    {
+                        "identityId": "human:valid-two",
+                        "displayName": "Valid Participant Two",
+                        "kind": "human",
+                        "role": "requester"
+                    }
+                ]
+            }
+        }));
+
+        assert!(prompt.contains("Valid Participant One"));
+        assert!(prompt.contains("Valid Participant Two"));
+        assert!(!prompt.contains("agent:malformed"));
     }
 
     #[test]
@@ -567,6 +631,133 @@ mod tests {
         assert!(prompt.contains("Remote Participant 49"));
         assert!(!prompt.contains("Remote Participant 50"));
         assert!(!prompt.contains("Remote Participant 59"));
+    }
+
+    #[test]
+    fn canonical_parent_prompt_ignores_malformed_payload_participants() {
+        let _guard = BridgeEventsStorageGuard::new("canonical-parent-malformed-payload");
+        let session_id = format!("session:bridge-parent-{}", uuid::Uuid::new_v4());
+
+        crate::canonical_sessions::desktop_canonical_upsert_identity(
+            crate::canonical_sessions::UpsertCanonicalIdentityRequest {
+                id: Some("human:alice".to_string()),
+                kind: "human".to_string(),
+                display_name: "Alice".to_string(),
+                owner_identity_id: None,
+                source: Some("local".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: Some("alice".to_string()),
+                agent_id: None,
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("seed Alice");
+        crate::canonical_sessions::desktop_canonical_upsert_identity(
+            crate::canonical_sessions::UpsertCanonicalIdentityRequest {
+                id: Some("agent:alice-kordi".to_string()),
+                kind: "agent".to_string(),
+                display_name: "Alice's Kordi".to_string(),
+                owner_identity_id: Some("human:alice".to_string()),
+                source: Some("local".to_string()),
+                source_host_id: None,
+                bridge_node_id: None,
+                human_id: None,
+                agent_id: Some("alice-kordi".to_string()),
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("seed Alice's Kordi");
+        crate::canonical_sessions::desktop_canonical_upsert_identity(
+            crate::canonical_sessions::UpsertCanonicalIdentityRequest {
+                id: Some("human:bob".to_string()),
+                kind: "human".to_string(),
+                display_name: "Bob".to_string(),
+                owner_identity_id: None,
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some("bob-node".to_string()),
+                human_id: Some("bob".to_string()),
+                agent_id: None,
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("seed Bob");
+        crate::canonical_sessions::desktop_canonical_upsert_identity(
+            crate::canonical_sessions::UpsertCanonicalIdentityRequest {
+                id: Some("agent:bob-kordi".to_string()),
+                kind: "agent".to_string(),
+                display_name: "Bob's Kordi".to_string(),
+                owner_identity_id: Some("human:bob".to_string()),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: Some("bob-agent-node".to_string()),
+                human_id: None,
+                agent_id: Some("bob-kordi".to_string()),
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("seed Bob's Kordi");
+        crate::canonical_sessions::desktop_canonical_open_or_create_session(
+            crate::canonical_sessions::OpenCanonicalSessionRequest {
+                id: Some(session_id.clone()),
+                kind: "group".to_string(),
+                title: Some("Alice and Bob".to_string()),
+                status: Some("active".to_string()),
+                created_by_identity_id: "human:alice".to_string(),
+                primary_identity_id: Some("agent:alice-kordi".to_string()),
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: None,
+                participant_identity_ids: vec![
+                    "human:alice".to_string(),
+                    "agent:alice-kordi".to_string(),
+                    "human:bob".to_string(),
+                    "agent:bob-kordi".to_string(),
+                ],
+                metadata: None,
+            },
+        )
+        .expect("seed parent session");
+
+        let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
+            "message": "Help with this canonical session",
+            "sessionThread": {
+                "parentSessionId": session_id,
+                "targetDisplayName": "Bob's Kordi",
+                "selfTarget": {
+                    "identityId": "agent:payload-claimed-self",
+                    "displayName": "Payload Kordi",
+                    "kind": "agent"
+                },
+                "participants": [
+                    {
+                        "identityId": "agent:malformed-payload",
+                        "kind": "agent",
+                        "role": "member"
+                    },
+                    {
+                        "identityId": "agent:payload-intruder",
+                        "displayName": "Payload Intruder",
+                        "kind": "agent",
+                        "role": "member"
+                    }
+                ]
+            }
+        }));
+
+        assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
+        assert!(prompt.contains("- identityId: agent:bob-kordi"));
+        assert!(!prompt.contains("Payload Intruder"));
+        assert!(!prompt.contains("Payload Kordi"));
     }
 
     #[test]
