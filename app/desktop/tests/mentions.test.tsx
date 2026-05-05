@@ -815,6 +815,67 @@ test('project mention outreach builds initiator metadata from the active canonic
   });
 });
 
+test('new project mention outreach builds initiator metadata from canonical profile identity before session participants exist', () => {
+  const canonicalState: CanonicalSessionState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:host',
+      displayName: 'Host Owner',
+      humanIdentityId: 'human:host',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:host', kind: 'human', displayName: 'Host Owner', source: 'local', sourceHostId: 'host-1', bridgeNodeId: 'host-node-1', humanId: 'host-human-1', avatarKey: 'host', profileImageUrl: 'https://example.test/host.png', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'project-session-1', kind: 'project', title: 'Project topic', status: 'active', createdByIdentityId: 'human:host', projectId: '/repo', projectName: 'Repo', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const conversation = projectSessionConversationForOutreach(canonicalState, 'project-session-1');
+
+  assert.equal(conversation?.canonicalParticipants?.length, 1);
+  const profileParticipant = conversation?.canonicalParticipants?.[0];
+  assert.deepEqual({
+    id: profileParticipant?.id,
+    name: profileParticipant?.name,
+    kind: profileParticipant?.kind,
+    role: profileParticipant?.role,
+    source: profileParticipant?.source,
+    bridgeHostId: profileParticipant?.bridgeHostId,
+    bridgeNodeId: profileParticipant?.bridgeNodeId,
+    humanId: profileParticipant?.humanId,
+    avatarKey: profileParticipant?.avatarKey,
+    profileImageUrl: profileParticipant?.profileImageUrl,
+  }, {
+    id: 'human:host',
+    name: 'Host Owner',
+    kind: 'human',
+    role: 'self',
+    source: 'local',
+    bridgeHostId: 'host-1',
+    bridgeNodeId: 'host-node-1',
+    humanId: 'host-human-1',
+    avatarKey: 'host',
+    profileImageUrl: 'https://example.test/host.png',
+  });
+  assert.deepEqual(initiatorIdentityForOutreach(conversation, 'human:host'), {
+    identityId: 'human:host',
+    displayName: 'Host Owner',
+    kind: 'human',
+    bridgeNodeId: 'host-node-1',
+    humanId: 'host-human-1',
+  });
+});
+
 test('outreach metadata for @Person includes canonical initiator and human target identities', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({

@@ -174,7 +174,20 @@ export function initiatorIdentityForOutreach(
   const participant = (canonicalId ? participants.find((candidate) => cleanText(candidate.id) === canonicalId) : null)
     ?? participants.find((candidate) => candidate.kind === 'human' && participantIsSelf(candidate))
     ?? null;
-  if (participant) return promptIdentityForParticipant(participant);
+  if (participant) {
+    const snapshot = promptIdentityForParticipant(participant);
+    if (!snapshot) return null;
+    const fallbackName = cleanText(fallbackDisplayName);
+    if (
+      participantIsSelf(participant)
+      && cleanText(participant.kind) === 'human'
+      && isSelfReferencePeerLabel(snapshot.displayName)
+      && fallbackName
+    ) {
+      return { ...snapshot, displayName: fallbackName };
+    }
+    return snapshot;
+  }
   if (!canonicalId) return null;
   return {
     identityId: canonicalId,

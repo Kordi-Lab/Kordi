@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import type { CanonicalSessionState, Conversation, Project } from '@/kordi-app/types';
+import type { CanonicalIdentity, CanonicalSessionState, Conversation, Project } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach, createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
 import { isProjectDraftSessionId } from '../draftSessions';
 
@@ -19,6 +19,29 @@ import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMention
 import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, bridgeAttachmentTransportFields, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type ProjectOutreachConversation = Pick<Conversation, 'canonicalParticipants'>;
+type ProjectOutreachParticipant = NonNullable<ProjectOutreachConversation['canonicalParticipants']>[number];
+
+function projectOutreachParticipantForIdentity(
+  identity: CanonicalIdentity,
+  role: string,
+  owner?: CanonicalIdentity,
+): ProjectOutreachParticipant {
+  return {
+    id: identity.id,
+    name: identity.displayName,
+    kind: identity.kind,
+    role,
+    source: identity.source,
+    ownerIdentityId: identity.ownerIdentityId,
+    ownerName: owner?.displayName ?? null,
+    bridgeHostId: identity.sourceHostId,
+    bridgeNodeId: identity.bridgeNodeId,
+    humanId: identity.humanId,
+    agentId: identity.agentId,
+    avatarKey: identity.avatarKey,
+    profileImageUrl: identity.profileImageUrl,
+  };
+}
 
 export function projectSessionConversationForOutreach(
   canonicalSessionState: CanonicalSessionState | null | undefined,
@@ -28,33 +51,29 @@ export function projectSessionConversationForOutreach(
   if (!canonicalSessionState || !cleanSessionId) return null;
 
   const identityById = new Map(canonicalSessionState.identities.map((identity) => [identity.id, identity]));
-  const canonicalParticipants = canonicalSessionState.participants
-    .filter((participant) => participant.sessionId === cleanSessionId && participant.state === 'active')
+  const activeSessionParticipants = canonicalSessionState.participants
+    .filter((participant) => participant.sessionId === cleanSessionId && participant.state === 'active');
+  const canonicalParticipants = activeSessionParticipants
     .flatMap((participant) => {
       const identity = identityById.get(participant.identityId);
       if (!identity) return [];
-      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const role = identity.id === canonicalSessionState.profile.humanIdentityId
         ? 'self'
         : participant.role === 'self'
           ? 'person'
           : participant.role;
-      return [{
-        id: identity.id,
-        name: identity.displayName,
-        kind: identity.kind,
-        role,
-        source: identity.source,
-        ownerIdentityId: identity.ownerIdentityId,
-        ownerName: owner?.displayName ?? null,
-        bridgeHostId: identity.sourceHostId,
-        bridgeNodeId: identity.bridgeNodeId,
-        humanId: identity.humanId,
-        agentId: identity.agentId,
-        avatarKey: identity.avatarKey,
-        profileImageUrl: identity.profileImageUrl,
-      }];
+      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+      return [projectOutreachParticipantForIdentity(identity, role, owner)];
     });
+
+  if (activeSessionParticipants.length === 0) {
+    const profileHumanIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
+    const profileHumanIdentity = profileHumanIdentityId ? identityById.get(profileHumanIdentityId) : undefined;
+    if (profileHumanIdentity?.kind === 'human') {
+      const owner = profileHumanIdentity.ownerIdentityId ? identityById.get(profileHumanIdentity.ownerIdentityId) : undefined;
+      canonicalParticipants.push(projectOutreachParticipantForIdentity(profileHumanIdentity, 'self', owner));
+    }
+  }
 
   return { canonicalParticipants };
 }

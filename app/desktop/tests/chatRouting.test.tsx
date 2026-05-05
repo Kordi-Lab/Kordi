@@ -7,7 +7,7 @@ import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActi
 import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { parentSessionParticipantsForOutreach } from '../src/features/chat/messageActions/context';
+import { initiatorIdentityForOutreach, parentSessionParticipantsForOutreach } from '../src/features/chat/messageActions/context';
 
 test('direct bridge session outreach snapshots preserve canonical participants and agent owners', () => {
   assert.deepEqual(parentSessionParticipantsForOutreach({
@@ -44,6 +44,26 @@ test('direct bridge session outreach snapshots preserve canonical participants a
       runtime: 'kordi-local',
     },
   ]);
+});
+
+test('outreach initiator replaces ambiguous local self labels with public fallback name', () => {
+  assert.deepEqual(initiatorIdentityForOutreach({
+    canonicalParticipants: [{
+      id: 'human:me',
+      name: 'Me',
+      kind: 'human',
+      role: 'self',
+      source: 'local',
+      humanId: 'kh_me',
+      bridgeNodeId: 'node-me',
+    }],
+  }, 'human:me', 'Host Owner'), {
+    identityId: 'human:me',
+    displayName: 'Host Owner',
+    kind: 'human',
+    bridgeNodeId: 'node-me',
+    humanId: 'kh_me',
+  });
 });
 
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
