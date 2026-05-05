@@ -265,21 +265,21 @@ function ContactRequestFailureNotice({
       : 'Send contact request';
 
   return (
-    <div className="app-contact-request-failure-notice mt-1.5 max-w-[min(100%,34rem)] rounded-[12px] border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] leading-4 text-slate-300 shadow-sm">
-      {detail?.trim() ? <div>{detail.trim()}</div> : null}
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <span>Messages are blocked until this person approves you.</span>
-        <button
-          type="button"
-          onClick={handleRequestContact}
-          disabled={state === 'sending' || state === 'sent'}
-          className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-white/15 hover:text-sky-100 disabled:cursor-default disabled:opacity-60"
-        >
-          {buttonLabel}
-        </button>
-      </div>
+    <div
+      className="app-contact-request-failure-notice mt-1.5 inline-flex max-w-[min(100%,34rem)] items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] leading-none text-slate-300 shadow-sm"
+      title={detail?.trim() || undefined}
+    >
+      <span>Message not delivered.</span>
+      <button
+        type="button"
+        onClick={handleRequestContact}
+        disabled={state === 'sending' || state === 'sent'}
+        className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200 transition hover:bg-white/15 hover:text-sky-100 disabled:cursor-default disabled:opacity-60"
+      >
+        {buttonLabel}
+      </button>
       {state === 'error' ? (
-        <div className="mt-1 text-[10.5px] font-medium text-rose-300">Could not send the request. Try again from Contacts.</div>
+        <span className="font-medium text-rose-300">Try again from Contacts.</span>
       ) : null}
     </div>
   );
@@ -300,7 +300,6 @@ function MessageFooter({
 }) {
   const visual = messageDeliveryVisual(status);
   const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
-  const showFailedLabel = visual?.tone === 'red';
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
   return (
@@ -310,7 +309,6 @@ function MessageFooter({
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
-      {showFailedLabel ? <span className="font-semibold text-rose-400">{visual.label}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
       <span className="inline-flex w-4 justify-center" title={visual?.label ?? status ?? undefined}>
         {glyph}
@@ -631,9 +629,6 @@ function MessageBubbleView({
               )}>
                 {footerDetail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
                   <span>{footerDetail}</span>
-                ) : null}
-                {isOwnHumanMessage && deliveryVisual?.tone === 'red' ? (
-                  <span className="font-semibold text-rose-400">{deliveryVisual.label}</span>
                 ) : null}
                 <span>{msg.time}</span>
                 {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}

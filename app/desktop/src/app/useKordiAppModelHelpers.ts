@@ -87,6 +87,36 @@ export function removeSessionFromDesktopState(state: DesktopChatState | null, se
   };
 }
 
+function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
+  const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
+    ? message.content as Record<string, unknown>
+    : {};
+  const deliveryState = typeof content.deliveryState === 'string' ? content.deliveryState.trim().toLowerCase() : '';
+  const status = message.status?.trim().toLowerCase() ?? '';
+  return message.sourceTransport === 'desktop-bridge-ui'
+    && message.senderRole === 'user'
+    && (status === 'sending' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'failed');
+}
+
+export function mergeCanonicalStatePreservingBridgeUiMessages(
+  fetched: CanonicalSessionState | null,
+  current: CanonicalSessionState | null,
+): CanonicalSessionState | null {
+  if (!fetched || !current) return fetched;
+  const fetchedMessageIds = new Set(fetched.messages.map((message) => message.id));
+  const fetchedSessionIds = new Set(fetched.sessions.map((session) => session.id));
+  const preservedMessages = current.messages.filter((message) => (
+    isBridgeUiMessageToPreserve(message)
+    && !fetchedMessageIds.has(message.id)
+    && fetchedSessionIds.has(message.sessionId)
+  ));
+  if (preservedMessages.length === 0) return fetched;
+  return {
+    ...fetched,
+    messages: [...fetched.messages, ...preservedMessages],
+  };
+}
+
 export function removeSessionFromCanonicalState(state: CanonicalSessionState | null, sessionId: string) {
   if (!state) return state;
   return {

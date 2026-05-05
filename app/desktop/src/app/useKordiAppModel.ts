@@ -88,6 +88,7 @@ import {
   filterMentionTargets,
   groupRenameMetadata,
   isNativeDesktopShell,
+  mergeCanonicalStatePreservingBridgeUiMessages,
   metadataGroupSpaceId,
   metadataString,
   metadataStringArray,
@@ -352,7 +353,8 @@ export function useKordiAppModel() {
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
-        setCanonicalSessionState(await fetchCanonicalSessionState());
+        const fetchedCanonicalState = await fetchCanonicalSessionState();
+        setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
       } catch {
         // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
       }

@@ -8,6 +8,7 @@ import {
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
+  mergeCanonicalStatePreservingBridgeUiMessages,
   removeSessionFromCanonicalState,
   sessionRenameNoticeText,
 } from '../src/app/useKordiAppModelHelpers';
@@ -24,6 +25,34 @@ test('mention helper hides suggestions after an exact mention followed by whites
   }];
 
   assert.deepEqual(filterMentionTargets(options, query), []);
+});
+
+test('canonical refresh preserves in-flight bridge UI sends until they are persisted', () => {
+  const fetched = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [],
+  } as unknown as CanonicalSessionState;
+  const current = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [{
+      id: 'msg:ui:pending',
+      sessionId: 'session:bridge:person',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'hello',
+      content: { sender: 'Me', timeLabel: '22:20', deliveryState: 'sending' },
+      status: 'sending',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      sourceTransport: 'desktop-bridge-ui',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current);
+
+  assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:pending']);
 });
 
 test('canonical session removal prunes session-scoped records', () => {

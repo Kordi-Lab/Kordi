@@ -66,7 +66,7 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
-test('renders failed own message delivery as visible red sending failed text', () => {
+test('renders failed own message delivery as a compact red exclamation', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -79,7 +79,8 @@ test('renders failed own message delivery as visible red sending failed text', (
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, />Sending failed</);
+  assert.doesNotMatch(markup, />Sending failed</);
+  assert.match(markup, />!<\/span>/);
   assert.match(markup, /text-rose-400/);
 });
 
@@ -101,9 +102,10 @@ test('renders contact-gated failed sends as a left-side notice instead of changi
   }));
 
   assert.match(markup, /app-contact-request-failure-notice/);
-  assert.match(markup, />Send a contact request before messages can be delivered\.</);
+  assert.match(markup, />Message not delivered\.</);
   assert.match(markup, />Send contact request</);
-  assert.match(markup, /Messages are blocked until this person approves you/);
+  assert.doesNotMatch(markup, />Send a contact request before messages can be delivered\.</);
+  assert.doesNotMatch(markup, /Messages are blocked until this person approves you/);
 
   const bubbleStart = markup.indexOf('app-chat-bubble-user');
   const noticeStart = markup.indexOf('app-contact-request-failure-notice');
@@ -129,8 +131,9 @@ test('renders pending contact request failures with the same explicit request ac
     onRequestBridgeContact: async () => undefined,
   }));
 
-  assert.match(markup, />Contact request is pending\. They need to approve it before messages can be delivered\.</);
+  assert.match(markup, />Message not delivered\.</);
   assert.match(markup, />Send contact request</);
+  assert.doesNotMatch(markup, />Contact request is pending\. They need to approve it before messages can be delivered\.</);
 });
 
 test('renders transcript system notices with compact stable spacing', () => {
