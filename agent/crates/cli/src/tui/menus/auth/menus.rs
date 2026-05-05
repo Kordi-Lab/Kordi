@@ -437,6 +437,7 @@ mod tests {
             web_search: None,
             reach_out: None,
             reflection: None,
+            task_operator: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
         };

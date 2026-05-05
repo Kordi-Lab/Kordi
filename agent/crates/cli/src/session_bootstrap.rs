@@ -189,7 +189,7 @@ fn build_tool_layer_system_prompt_section(tools: &[Box<dyn Tool>]) -> String {
         return String::new();
     }
 
-    "\n\n## Tool layers\nTools are organized into five layers: Observation, Planning, Operator, Execution, and Reflection. Use Observation to gather facts, Planning to decide next steps, Operator to coordinate tasks, Execution to act, and Reflection to learn scoped lessons from corrections, failures, and outcomes. Use the lightest layer that solves the current step."
+    "\n\n## Tool layers\nTools are organized into five layers: Observation, Planning, Operator, Execution, and Reflection. Use Observation to gather facts, Planning to decide next steps, Operator to coordinate tasks, Execution to act, and Reflection to learn scoped lessons from corrections, failures, and outcomes. Use the lightest layer that solves the current step. Use task_operator spawn/message/wait/list/close only for well-scoped sidecar work or independent write scopes; keep immediate critical-path blockers local and close task agents when finished."
         .to_string()
 }
 
@@ -534,6 +534,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         reflection: Some(crate::reflection_runtime::build_reflection_runtime(
             sibling_conn.clone(),
             artifacts_dir.clone(),
+        )),
+        task_operator: Some(crate::task_operator::build_task_operator_runtime(
+            effective_cwd.clone(),
         )),
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,

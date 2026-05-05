@@ -905,6 +905,7 @@ fn build_turn_config(
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),
             reflection: setup.tool_ctx.reflection.clone(),
+            task_operator: setup.tool_ctx.task_operator.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

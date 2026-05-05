@@ -1,3 +1,4 @@
+use crate::task_operator::models::{TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse};
 use async_trait::async_trait;
 use kordi_core::error::KordiResult;
 use kordi_provider::{Provider, registry::Model};
@@ -185,6 +186,16 @@ pub struct ReflectionRuntime {
     pub save_lesson: SaveReflectionLessonFn,
 }
 
+pub type TaskOperatorFuture =
+    Pin<Box<dyn Future<Output = KordiResult<TaskOperatorRuntimeResponse>> + Send>>;
+pub type TaskOperatorFn =
+    Arc<dyn Fn(TaskOperatorRuntimeRequest) -> TaskOperatorFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct TaskOperatorRuntime {
+    pub run: TaskOperatorFn,
+}
+
 /// Context available to tools during execution.
 pub struct ToolContext {
     pub cwd: PathBuf,
@@ -195,6 +206,7 @@ pub struct ToolContext {
     pub web_search: Option<WebSearchRuntime>,
     pub reach_out: Option<ReachOutRuntime>,
     pub reflection: Option<ReflectionRuntime>,
+    pub task_operator: Option<TaskOperatorRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }

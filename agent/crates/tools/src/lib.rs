@@ -38,7 +38,8 @@ pub use scheduler::{
 pub use types::{
     ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,
     ReachOutRuntime, ReflectionLessonFuture, ReflectionLessonRequest, ReflectionLessonResponse,
-    ReflectionRuntime, RequestToolApprovalFn, SaveReflectionLessonFn, Tool, ToolApprovalDecision,
-    ToolApprovalOutcome, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult,
-    ToolScheduling, WebSearchRuntime,
+    ReflectionRuntime, RequestToolApprovalFn, SaveReflectionLessonFn, TaskOperatorFn,
+    TaskOperatorFuture, TaskOperatorRuntime, Tool, ToolApprovalDecision, ToolApprovalOutcome,
+    ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult, ToolScheduling,
+    WebSearchRuntime,
 };
