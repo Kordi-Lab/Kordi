@@ -178,11 +178,15 @@ test('Bridge visible peer lists are deferred until the review step', () => {
   assert.match(reviewMarkup, /Calc Agent/);
 });
 
-test('Bridge agents step renders per-agent reachability controls', () => {
+test('Bridge agents step renders selectable reachability radio controls', () => {
   const markup = renderDetails('agents');
 
   assert.match(markup, /Agent reachability/);
   assert.match(markup, /Everyone on server/);
   assert.match(markup, /Contacts only/);
   assert.match(markup, /Only me/);
+  assert.match(markup, /role="radiogroup"/);
+  assert.match(markup, /aria-label="Agent reachability for Shuyang&#x27;s Kordi"/);
+  assert.match(markup, /aria-label="Contacts only selected/);
+  assert.match(markup, /aria-checked="true"/);
 });

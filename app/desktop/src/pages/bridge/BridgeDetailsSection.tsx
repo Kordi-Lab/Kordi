@@ -11,7 +11,12 @@ import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import type { DesktopBridgePeer } from '@/kordi-app/types';
 
-import type { ContactApprovalPolicy, BridgeDetailsSectionProps, HumanVisibilityPolicy } from './BridgeConfigPage.types';
+import type {
+  AgentReachabilityPolicy,
+  BridgeDetailsSectionProps,
+  ContactApprovalPolicy,
+  HumanVisibilityPolicy,
+} from './BridgeConfigPage.types';
 import {
   AGENT_REACHABILITY_OPTIONS,
   EmptyState,
@@ -19,6 +24,7 @@ import {
 } from './BridgeConfigShared';
 
 type BridgePrivacyModeId = 'private' | 'approval' | 'open';
+type ReachabilitySaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 type BridgePrivacyMode = {
   id: BridgePrivacyModeId;
@@ -79,6 +85,14 @@ function bridgePrivacyModeForPolicies(humanVisibilityPolicy?: string | null, con
     return OPEN_BRIDGE_PRIVACY_MODE;
   }
   return APPROVAL_BRIDGE_PRIVACY_MODE;
+}
+
+function normalizeAgentReachabilityPolicy(value?: string | null): AgentReachabilityPolicy {
+  const normalized = (value ?? '').toLowerCase();
+  if (normalized === 'server' || normalized === 'owner' || normalized === 'contacts') {
+    return normalized;
+  }
+  return 'contacts';
 }
 
 export function BridgeDetailsSection({
@@ -577,6 +591,23 @@ function BridgeAgentsStep({
   onSetBridgeAgentReachabilityPolicy: BridgeDetailsSectionProps['onSetBridgeAgentReachabilityPolicy'];
   setActiveStep: BridgeDetailsSectionProps['setActiveStep'];
 }) {
+  const [reachabilityDraftByAgent, setReachabilityDraftByAgent] = useState<Record<string, AgentReachabilityPolicy>>({});
+  const [reachabilitySaveStateByAgent, setReachabilitySaveStateByAgent] = useState<Record<string, ReachabilitySaveState>>({});
+  const reachabilityPolicySignature = activeBridgeHost.agents
+    .map((agent) => `${agent.id}:${normalizeAgentReachabilityPolicy(agent.reachabilityPolicy)}`)
+    .join('|');
+
+  useEffect(() => {
+    const nextDraftByAgent = Object.fromEntries(
+      activeBridgeHost.agents.map((agent) => [
+        agent.id,
+        normalizeAgentReachabilityPolicy(agent.reachabilityPolicy),
+      ]),
+    );
+    setReachabilityDraftByAgent(nextDraftByAgent);
+    setReachabilitySaveStateByAgent({});
+  }, [activeBridgeHost.id, reachabilityPolicySignature]);
+
   return (
     <div className="w-full space-y-4">
       <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
@@ -588,60 +619,119 @@ function BridgeAgentsStep({
             Pick which agent is active right now and which one should be the default identity for this host. Rename agents later from the <span className="text-slate-200">Agents</span> page.
           </div>
           <div className="space-y-2">
-            {activeBridgeHost.agents.map((agent) => (
-              <div key={agent.id} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <IdentityAvatar
-                    kind="agent"
-                    seed={agent.id}
-                    name={agent.label}
-                    imageUrl={agent.profileImageUrl}
-                    className="mt-0.5 h-10 w-10 border border-white/10"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-[13px] font-medium text-white">{agent.label}</div>
-                      {agent.isActive ? <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[11px] leading-none text-cyan-100">Active</span> : null}
-                      {agent.isDefault ? <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-1 text-[11px] leading-none text-slate-200">Default</span> : null}
-                      <span className={cn('rounded-full border px-2 py-1 text-[11px] leading-none', agent.registered ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/20 bg-amber-400/10 text-amber-100')}>
-                        {agent.registered ? 'Registered' : 'Local only'}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[12px] text-slate-400">{agent.runtime} • {agentReachabilityLabel(agent.reachabilityPolicy)}</div>
-                    <div className="mt-1 break-all text-[12px] text-slate-500">Agent ID: {agent.id}</div>
-                    <div className="mt-1 break-all text-[12px] text-slate-500">Node ID: {agent.nodeId || 'pending registration'}</div>
-                    <div className="mt-2 grid gap-2 md:grid-cols-3">
-                      {AGENT_REACHABILITY_OPTIONS.map((option) => {
-                        const active = (agent.reachabilityPolicy ?? 'contacts') === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => { void onSetBridgeAgentReachabilityPolicy(activeBridgeHost.id, agent.id, option.value).catch(() => {}); }}
-                            className={cn('rounded-[14px] border px-3 py-2 text-left text-[11px] transition', active ? 'border-white/20 bg-white/[0.08] text-white' : 'border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.06]')}
-                          >
-                            <div className="font-medium">{option.label}</div>
-                            <div className="mt-1 leading-4 text-slate-500">{option.detail}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {!agent.isActive ? (
-                        <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onActivateBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
-                          Make active
-                        </Button>
-                      ) : null}
-                      {!agent.isDefault ? (
-                        <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onSetDefaultBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
-                          <Star className="mr-1.5 h-3.5 w-3.5" /> Set default
-                        </Button>
-                      ) : null}
+            {activeBridgeHost.agents.map((agent) => {
+              const savedReachabilityPolicy = normalizeAgentReachabilityPolicy(agent.reachabilityPolicy);
+              const selectedReachabilityPolicy = reachabilityDraftByAgent[agent.id] ?? savedReachabilityPolicy;
+              const reachabilitySaveState = reachabilitySaveStateByAgent[agent.id] ?? 'idle';
+              const selectedReachabilityLabel = agentReachabilityLabel(selectedReachabilityPolicy);
+              const reachabilityStatusText = reachabilitySaveState === 'saving'
+                ? `Saving ${selectedReachabilityLabel.toLowerCase()}…`
+                : reachabilitySaveState === 'error'
+                  ? 'Could not update. Try another option again.'
+                  : reachabilitySaveState === 'saved'
+                    ? `${selectedReachabilityLabel} • Saved`
+                    : selectedReachabilityLabel;
+
+              return (
+                <div key={agent.id} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <IdentityAvatar
+                      kind="agent"
+                      seed={agent.id}
+                      name={agent.label}
+                      imageUrl={agent.profileImageUrl}
+                      className="mt-0.5 h-10 w-10 border border-white/10"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-[13px] font-medium text-white">{agent.label}</div>
+                        {agent.isActive ? <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[11px] leading-none text-cyan-100">Active</span> : null}
+                        {agent.isDefault ? <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-1 text-[11px] leading-none text-slate-200">Default</span> : null}
+                        <span className={cn('rounded-full border px-2 py-1 text-[11px] leading-none', agent.registered ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/20 bg-amber-400/10 text-amber-100')}>
+                          {agent.registered ? 'Registered' : 'Local only'}
+                        </span>
+                      </div>
+                      <div
+                        className={cn(
+                          'mt-1 text-[12px]',
+                          reachabilitySaveState === 'error' ? 'text-rose-200' : reachabilitySaveState === 'saving' ? 'text-cyan-100' : 'text-slate-400',
+                        )}
+                        aria-live="polite"
+                      >
+                        {agent.runtime} • {reachabilityStatusText}
+                      </div>
+                      <div className="mt-1 break-all text-[12px] text-slate-500">Agent ID: {agent.id}</div>
+                      <div className="mt-1 break-all text-[12px] text-slate-500">Node ID: {agent.nodeId || 'pending registration'}</div>
+                      <div
+                        className="mt-2 grid gap-2 md:grid-cols-3"
+                        role="radiogroup"
+                        aria-label={`Agent reachability for ${agent.label}`}
+                      >
+                        {AGENT_REACHABILITY_OPTIONS.map((option) => {
+                          const active = selectedReachabilityPolicy === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              aria-label={`${option.label}${active ? ' selected' : ''}: ${option.detail}`}
+                              onClick={() => {
+                                if (active && reachabilitySaveState !== 'error') return;
+                                setReachabilityDraftByAgent((current) => ({ ...current, [agent.id]: option.value }));
+                                setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'saving' }));
+                                void onSetBridgeAgentReachabilityPolicy(activeBridgeHost.id, agent.id, option.value)
+                                  .then(() => {
+                                    setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'saved' }));
+                                  })
+                                  .catch(() => {
+                                    setReachabilityDraftByAgent((current) => ({ ...current, [agent.id]: savedReachabilityPolicy }));
+                                    setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'error' }));
+                                  });
+                              }}
+                              className={cn(
+                                'group rounded-[14px] border px-3 py-2 text-left text-[11px] transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60',
+                                active
+                                  ? 'border-cyan-200/35 bg-cyan-300/[0.10] text-white shadow-[0_0_0_1px_rgba(103,232,249,0.12)]'
+                                  : 'border-white/10 bg-white/[0.04] text-slate-400 hover:border-white/18 hover:bg-white/[0.07] hover:text-slate-200',
+                              )}
+                            >
+                              <div className="flex items-start gap-2">
+                                <span
+                                  className={cn(
+                                    'mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border transition',
+                                    active ? 'border-cyan-200 bg-cyan-300/20' : 'border-white/18 bg-white/[0.03] group-hover:border-white/30',
+                                  )}
+                                  aria-hidden="true"
+                                >
+                                  <span className={cn('h-1.5 w-1.5 rounded-full bg-cyan-100 transition', active ? 'opacity-100' : 'opacity-0')} />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block font-medium">{option.label}</span>
+                                  <span className={cn('mt-1 block leading-4', active ? 'text-cyan-50/70' : 'text-slate-500')}>{option.detail}</span>
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {!agent.isActive ? (
+                          <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onActivateBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
+                            Make active
+                          </Button>
+                        ) : null}
+                        {!agent.isDefault ? (
+                          <Button variant="secondary" className="h-7.5 rounded-xl px-3 text-[11px]" onClick={() => { void onSetDefaultBridgeAgent(activeBridgeHost.id, agent.id).catch(() => {}); }}>
+                            <Star className="mr-1.5 h-3.5 w-3.5" /> Set default
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
