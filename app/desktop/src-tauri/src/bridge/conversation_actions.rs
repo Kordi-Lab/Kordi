@@ -597,6 +597,10 @@ fn outbound_payload(
                     "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
                     "participants": &outreach.parent_session_participants,
                     "messages": &outreach.parent_session_messages,
+                    "initiator": &outreach.initiator_identity,
+                    "selfTarget": &outreach.self_target_identity,
+                    "participantGraphHash": outreach.participant_graph_hash.as_deref(),
+                    "permissionPolicyHash": outreach.permission_policy_hash.as_deref(),
                     "parentTurnId": outreach.parent_turn_id.as_deref(),
                     "parentMessageId": outreach.parent_message_id.as_deref(),
                     "targetKind": outreach.target_kind.as_str(),
@@ -771,6 +775,10 @@ async fn fanout_remote_agent_cancellation_status(
         "parentSessionKind": outreach.parent_session_kind.as_deref(),
         "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
         "participants": &outreach.parent_session_participants,
+        "initiator": &outreach.initiator_identity,
+        "selfTarget": &outreach.self_target_identity,
+        "participantGraphHash": outreach.participant_graph_hash.as_deref(),
+        "permissionPolicyHash": outreach.permission_policy_hash.as_deref(),
         "parentTurnId": request_id,
         "parentMessageId": outreach.parent_message_id.as_deref(),
         "targetKind": outreach.target_kind.as_str(),
@@ -995,7 +1003,10 @@ mod tests {
     use crate::bridge::constants::{
         BRIDGE_MESSAGE_DIRECTION_INBOUND, BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
     };
-    use crate::bridge::{DesktopBridgeAgentRouting, DesktopBridgeLocalServerStatus};
+    use crate::bridge::{
+        DesktopBridgeAgentRouting, DesktopBridgeLocalServerStatus, DesktopBridgePromptIdentity,
+        DesktopBridgeSessionParticipant,
+    };
 
     fn test_conversation(
         messages: Vec<crate::bridge::DesktopBridgeConversationMessageRecord>,
@@ -1119,6 +1130,87 @@ mod tests {
     }
 
     #[test]
+    fn outbound_agent_ask_payload_preserves_identity_session_thread_metadata() {
+        let context = ConversationContext {
+            conversation: test_conversation_with_runtime(DEFAULT_BRIDGE_RUNTIME, None, Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+        let mut outreach = test_outreach(Some("turn-1"));
+        outreach.parent_session_kind = Some("group".to_string());
+        outreach.parent_session_participants = vec![
+            DesktopBridgeSessionParticipant {
+                identity_id: Some("human:alice".to_string()),
+                display_name: "Alice".to_string(),
+                kind: Some("human".to_string()),
+                role: Some("requester".to_string()),
+                owner_identity_id: None,
+                owner_display_name: None,
+                bridge_node_id: Some("alice-node".to_string()),
+                human_id: Some("alice".to_string()),
+                agent_id: None,
+                runtime: Some("person".to_string()),
+            },
+            DesktopBridgeSessionParticipant {
+                identity_id: Some("agent:bob-kordi".to_string()),
+                display_name: "Bob's Kordi".to_string(),
+                kind: Some("agent".to_string()),
+                role: Some("target".to_string()),
+                owner_identity_id: Some("human:bob".to_string()),
+                owner_display_name: Some("Bob".to_string()),
+                bridge_node_id: Some("bob-agent-node".to_string()),
+                human_id: Some("bob".to_string()),
+                agent_id: Some("bob-kordi".to_string()),
+                runtime: Some(DEFAULT_BRIDGE_RUNTIME.to_string()),
+            },
+        ];
+        outreach.initiator_identity = Some(DesktopBridgePromptIdentity {
+            identity_id: Some("human:alice".to_string()),
+            display_name: "Alice".to_string(),
+            kind: "human".to_string(),
+            owner_identity_id: None,
+            owner_display_name: None,
+            bridge_node_id: Some("alice-node".to_string()),
+            human_id: Some("alice".to_string()),
+            agent_id: None,
+            runtime: Some("person".to_string()),
+        });
+        outreach.self_target_identity = Some(DesktopBridgePromptIdentity {
+            identity_id: Some("agent:bob-kordi".to_string()),
+            display_name: "Bob's Kordi".to_string(),
+            kind: "agent".to_string(),
+            owner_identity_id: Some("human:bob".to_string()),
+            owner_display_name: Some("Bob".to_string()),
+            bridge_node_id: Some("bob-agent-node".to_string()),
+            human_id: Some("bob".to_string()),
+            agent_id: Some("bob-kordi".to_string()),
+            runtime: Some(DEFAULT_BRIDGE_RUNTIME.to_string()),
+        });
+        outreach.participant_graph_hash = Some("graph-hash-1".to_string());
+        outreach.permission_policy_hash = Some("policy-hash-1".to_string());
+
+        let payload = outbound_payload(&context, "bridge_req_1", "hello", &[], Some(&outreach), 42);
+        let session_thread = &payload["payload"]["sessionThread"];
+
+        assert_eq!(session_thread["initiator"]["identityId"], "human:alice");
+        assert_eq!(
+            session_thread["selfTarget"]["identityId"],
+            "agent:bob-kordi"
+        );
+        assert_eq!(session_thread["participantGraphHash"], "graph-hash-1");
+        assert_eq!(session_thread["permissionPolicyHash"], "policy-hash-1");
+        assert_eq!(
+            session_thread["participants"][1]["ownerIdentityId"],
+            "human:bob"
+        );
+        assert_eq!(session_thread["participants"][1]["ownerDisplayName"], "Bob");
+        assert_eq!(session_thread["participants"][1]["kind"], "agent");
+        assert_eq!(
+            session_thread["participants"][1]["runtime"],
+            DEFAULT_BRIDGE_RUNTIME
+        );
+    }
+
+    #[test]
     fn cancel_fanout_recognises_group_session_outreach() {
         let mut outreach = test_outreach(None);
         assert!(!outreach_targets_group_session(&outreach));
@@ -1147,6 +1239,10 @@ mod tests {
             parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
+            permission_policy_hash: None,
+            participant_graph_hash: None,
             parent_turn_id: parent_turn_id.map(ToString::to_string),
             parent_message_id: Some("msg-user".to_string()),
             bridge_host_id: "host-1".to_string(),

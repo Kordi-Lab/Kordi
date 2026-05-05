@@ -297,13 +297,47 @@ pub struct DesktopBridgeSessionThreadMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct DesktopBridgeSessionParticipant {
+pub struct DesktopBridgePromptIdentity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity_id: Option<String>,
     pub display_name: String,
-    pub role: Option<String>,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_identity_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub human_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeSessionParticipant {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_id: Option<String>,
+    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_identity_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +353,14 @@ pub struct DesktopBridgeOutreachMetadata {
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiator_identity: Option<DesktopBridgePromptIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_target_identity: Option<DesktopBridgePromptIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_policy_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub participant_graph_hash: Option<String>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub bridge_host_id: String,
@@ -529,6 +571,14 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default)]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    #[serde(default)]
+    pub initiator_identity: Option<DesktopBridgePromptIdentity>,
+    #[serde(default)]
+    pub self_target_identity: Option<DesktopBridgePromptIdentity>,
+    #[serde(default)]
+    pub permission_policy_hash: Option<String>,
+    #[serde(default)]
+    pub participant_graph_hash: Option<String>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub bridge_request_id: Option<String>,

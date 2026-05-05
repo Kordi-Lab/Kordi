@@ -190,6 +190,10 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
         parent_group_space_id: request.parent_group_space_id.clone(),
         parent_session_participants: request.parent_session_participants.clone(),
         parent_session_messages: request.parent_session_messages.clone(),
+        initiator_identity: request.initiator_identity.clone(),
+        self_target_identity: request.self_target_identity.clone(),
+        permission_policy_hash: request.permission_policy_hash.clone(),
+        participant_graph_hash: request.participant_graph_hash.clone(),
         parent_turn_id: request.parent_turn_id.clone(),
         parent_message_id: request.parent_message_id.clone(),
         bridge_host_id: request.host_id.clone(),
@@ -274,6 +278,10 @@ mod tests {
             parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
+            permission_policy_hash: None,
+            participant_graph_hash: None,
             parent_turn_id: None,
             parent_message_id: None,
             bridge_request_id: None,
@@ -334,6 +342,74 @@ mod tests {
             mailbox_payload_agent_prompt_text(&payload),
             "Context:\nRecent session messages:\nAlice: hello\n\nRequest:\nhiu"
         );
+    }
+
+    #[test]
+    fn mailbox_agent_prompt_renders_identity_frame_from_session_thread_payload() {
+        let payload = serde_json::json!({
+            "question": "Can you review this?",
+            "contextText": "Recent session messages:\nAlice: @Bob's Kordi can you review this?",
+            "sessionThread": {
+                "parentSessionId": "session-missing-locally",
+                "parentSessionKind": "group",
+                "initiator": {
+                    "identityId": "human:alice",
+                    "displayName": "Alice",
+                    "kind": "human",
+                    "bridgeNodeId": "alice-node",
+                    "humanId": "alice"
+                },
+                "selfTarget": {
+                    "identityId": "agent:bob-kordi",
+                    "displayName": "Bob's Kordi",
+                    "kind": "agent",
+                    "ownerIdentityId": "human:bob",
+                    "ownerDisplayName": "Bob",
+                    "bridgeNodeId": "bob-agent-node",
+                    "humanId": "bob",
+                    "agentId": "bob-kordi",
+                    "runtime": "kordi-desktop"
+                },
+                "participants": [
+                    {
+                        "identityId": "human:alice",
+                        "displayName": "Alice",
+                        "kind": "human",
+                        "role": "requester",
+                        "bridgeNodeId": "alice-node",
+                        "humanId": "alice",
+                        "runtime": "person"
+                    },
+                    {
+                        "identityId": "agent:bob-kordi",
+                        "displayName": "Bob's Kordi",
+                        "kind": "agent",
+                        "role": "target",
+                        "ownerIdentityId": "human:bob",
+                        "ownerDisplayName": "Bob",
+                        "bridgeNodeId": "bob-agent-node",
+                        "humanId": "bob",
+                        "agentId": "bob-kordi",
+                        "runtime": "kordi-desktop"
+                    }
+                ],
+                "permissionPolicyHash": "policy-hash-1",
+                "participantGraphHash": "graph-hash-1",
+                "targetDisplayName": "Bob's Kordi",
+                "contextPolicy": "request-window"
+            }
+        });
+
+        let prompt = mailbox_payload_agent_prompt_text(&payload);
+
+        assert!(prompt.contains("<multi_participant_identity_context version=\"v1\">"));
+        assert!(prompt.contains("Current model/self:\n- identityId: agent:bob-kordi"));
+        assert!(prompt.contains("Requester / initiator:\n- identityId: human:alice"));
+        assert!(prompt.contains(
+            "- agent:bob-kordi | Bob's Kordi | agent | role: target | owner: Bob (human:bob) | bridgeNodeId: bob-agent-node | humanId: bob | agentId: bob-kordi | runtime: kordi-desktop"
+        ));
+        assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
+        assert!(prompt.contains("Request:\nCan you review this?"));
     }
 
     #[test]
