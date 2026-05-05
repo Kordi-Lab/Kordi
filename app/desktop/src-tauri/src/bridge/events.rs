@@ -3,8 +3,9 @@ use serde_json::Value;
 
 use super::constants::{is_agent_like_runtime, BRIDGE_MESSAGE_TYPE_RAW};
 use crate::canonical_sessions::{
-    render_multi_participant_identity_context, session_exists, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    render_multi_participant_identity_context, session_exists, write_identity_context_markdown,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole,
 };
 
 use super::{
@@ -360,11 +361,20 @@ fn payload_identity_agent_prompt(
     context: Option<&str>,
 ) -> String {
     let mut lines = vec![
-        "You are the Bridge target agent described in Current model/self below. Reply directly to the request using the session context.".to_string(),
+        "You are the Bridge target agent for this shared Kordi request.".to_string(),
         "Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to.".to_string(),
-        String::new(),
-        render_multi_participant_identity_context(identity_request),
     ];
+    match write_identity_context_markdown(identity_request, None, None) {
+        Ok(path) => {
+            lines.push(String::new());
+            lines.push(format!("Session identity file: {}", path.display()));
+            lines.push("If this is your first turn in this shared session, read this file before answering. Do not read it again until a visible participant/identity event says the identity file changed.".to_string());
+        }
+        Err(_) => {
+            lines.push(String::new());
+            lines.push(render_multi_participant_identity_context(identity_request));
+        }
+    }
     if let Some(context) = context {
         lines.push(String::new());
         lines.push("Context supplied by requester:".to_string());
@@ -542,8 +552,22 @@ mod tests {
         }
     }
 
+    fn identity_markdown_from_prompt(prompt: &str) -> String {
+        let path_line = prompt
+            .lines()
+            .find(|line| line.starts_with("Session identity file:"))
+            .unwrap_or_else(|| panic!("missing identity file path line\n{prompt}"));
+        let path = path_line
+            .trim_start_matches("Session identity file:")
+            .trim();
+        std::fs::read_to_string(path).unwrap_or_else(|err| {
+            panic!("failed to read identity Markdown file {path}: {err}\n{prompt}")
+        })
+    }
+
     #[test]
     fn payload_identity_prompt_does_not_trust_remote_self_target_identity_id() {
+        let _guard = BridgeEventsStorageGuard::new("payload-only-malicious-self");
         let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
             "message": "Help with this issue",
             "sessionThread": {
@@ -559,13 +583,15 @@ mod tests {
             }
         }));
 
-        assert!(prompt.contains("- replyAs: unknown:bridge-agent-target only"));
-        assert!(prompt.contains("- identityId: unknown:bridge-agent-target"));
-        assert!(!prompt.contains("- replyAs: human:mallory only"));
+        let markdown = identity_markdown_from_prompt(&prompt);
+        assert!(markdown.contains("- replyAs: unknown:bridge-agent-target only"));
+        assert!(markdown.contains("- identityId: unknown:bridge-agent-target"));
+        assert!(!markdown.contains("- replyAs: human:mallory only"));
     }
 
     #[test]
     fn payload_identity_prompt_keeps_valid_participants_after_malformed_entries() {
+        let _guard = BridgeEventsStorageGuard::new("payload-only-malformed-participants");
         let prompt = mailbox_payload_agent_prompt_text(&serde_json::json!({
             "message": "Help with this issue",
             "sessionThread": {
@@ -597,13 +623,15 @@ mod tests {
             }
         }));
 
-        assert!(prompt.contains("Valid Participant One"));
-        assert!(prompt.contains("Valid Participant Two"));
-        assert!(!prompt.contains("agent:malformed"));
+        let markdown = identity_markdown_from_prompt(&prompt);
+        assert!(markdown.contains("Valid Participant One"));
+        assert!(markdown.contains("Valid Participant Two"));
+        assert!(!markdown.contains("agent:malformed"));
     }
 
     #[test]
     fn payload_identity_prompt_caps_remote_participants() {
+        let _guard = BridgeEventsStorageGuard::new("payload-only-many-participants");
         let participants = (0..60)
             .map(|index| {
                 serde_json::json!({
@@ -628,9 +656,10 @@ mod tests {
             }
         }));
 
-        assert!(prompt.contains("Remote Participant 49"));
-        assert!(!prompt.contains("Remote Participant 50"));
-        assert!(!prompt.contains("Remote Participant 59"));
+        let markdown = identity_markdown_from_prompt(&prompt);
+        assert!(markdown.contains("Remote Participant 49"));
+        assert!(!markdown.contains("Remote Participant 50"));
+        assert!(!markdown.contains("Remote Participant 59"));
     }
 
     #[test]
@@ -762,6 +791,7 @@ mod tests {
 
     #[test]
     fn payload_identity_prompt_truncates_remote_scalar_fields() {
+        let _guard = BridgeEventsStorageGuard::new("payload-only-huge-fields");
         let huge_display_name = "A".repeat(300);
         let expected_truncated_display_name = format!("{}…", "A".repeat(240));
 
@@ -777,8 +807,9 @@ mod tests {
             }
         }));
 
-        assert!(prompt.contains(&format!("- displayName: {expected_truncated_display_name}")));
-        assert!(!prompt.contains(&"A".repeat(241)));
+        let markdown = identity_markdown_from_prompt(&prompt);
+        assert!(markdown.contains(&format!("- displayName: {expected_truncated_display_name}")));
+        assert!(!markdown.contains(&"A".repeat(241)));
     }
 
     #[test]

@@ -346,6 +346,23 @@ mod tests {
 
     #[test]
     fn mailbox_agent_prompt_renders_identity_frame_from_session_thread_payload() {
+        struct CanonicalDbOverrideGuard;
+        impl Drop for CanonicalDbOverrideGuard {
+            fn drop(&mut self) {
+                crate::canonical_sessions::set_canonical_sessions_test_db_path(None);
+            }
+        }
+
+        let storage_root = std::env::temp_dir().join(format!(
+            "kordi-mailbox-payload-identity-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _canonical_db_guard = CanonicalDbOverrideGuard;
+        crate::canonical_sessions::set_canonical_sessions_test_db_path(Some(
+            storage_root.join("canonical-sessions.sqlite3"),
+        ));
+
         let payload = serde_json::json!({
             "question": "Can you review this?",
             "contextText": "Recent session messages:\nAlice: @Bob's Kordi can you review this?",
@@ -402,14 +419,38 @@ mod tests {
 
         let prompt = mailbox_payload_agent_prompt_text(&payload);
 
-        assert!(prompt.contains("<multi_participant_identity_context version=\"v1\">"));
-        assert!(prompt.contains("Current model/self:\n- identityId: unknown:bridge-agent-target"));
-        assert!(prompt.contains("Requester / initiator:\n- identityId: human:alice"));
-        assert!(prompt.contains(
-            "- agent:bob-kordi | Bob's Kordi | agent | role: target | owner: Bob (human:bob) | bridgeNodeId: bob-agent-node | humanId: bob | agentId: bob-kordi | runtime: kordi-desktop"
-        ));
-        assert!(prompt.contains("- replyAs: unknown:bridge-agent-target only"));
-        assert!(prompt.contains("Request:\nCan you review this?"));
+        assert!(prompt.contains("Session identity file:"), "{prompt}");
+        assert!(
+            prompt.contains(
+                "If this is your first turn in this shared session, read this file before answering."
+            ),
+            "{prompt}"
+        );
+        assert!(
+            !prompt.contains("<multi_participant_identity_context"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("Request:\nCan you review this?"),
+            "{prompt}"
+        );
+        let path_line = prompt
+            .lines()
+            .find(|line| line.starts_with("Session identity file:"))
+            .expect("identity file path line");
+        let path = path_line
+            .trim_start_matches("Session identity file:")
+            .trim();
+        let markdown = std::fs::read_to_string(path).expect("read payload identity markdown");
+        assert!(
+            markdown.contains("- identityId: unknown:bridge-agent-target"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("| agent:bob-kordi | Bob's Kordi | agent | target | Bob (human:bob)"),
+            "{markdown}"
+        );
+        let _ = std::fs::remove_dir_all(storage_root);
     }
 
     #[test]
