@@ -1,6 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Circle, XCircle } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import type { DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
@@ -10,22 +9,6 @@ type TaskActivityDashboardPanelProps = {
   liveTurn?: DesktopChatTurnSnapshot | null;
   emptyMessage: string;
 };
-
-function statusBadgeClass(tone: TaskDashboardTone) {
-  switch (tone) {
-    case 'running':
-      return 'app-badge-attention';
-    case 'success':
-      return 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100';
-    case 'closed':
-      return 'border-slate-500/20 bg-slate-500/10 text-slate-300';
-    case 'error':
-      return 'border-rose-400/20 bg-rose-500/10 text-rose-100';
-    case 'muted':
-    default:
-      return 'app-badge-neutral';
-  }
-}
 
 function statusDotClass(tone: TaskDashboardTone) {
   switch (tone) {
@@ -61,7 +44,7 @@ function statusCheckboxClass(tone: TaskDashboardTone) {
 
 function TaskStatusIcon({ task, nested }: { task: TaskDashboardItem | TaskDashboardSubtask; nested: boolean }) {
   if (nested) {
-    return <span className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', statusDotClass(task.tone))} />;
+    return <span data-subtask-status-icon="circle" className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', statusDotClass(task.tone))} />;
   }
 
   const iconClassName = cn('mt-0.5 h-4 w-4 shrink-0', statusCheckboxClass(task.tone));
@@ -74,6 +57,43 @@ function TaskStatusIcon({ task, nested }: { task: TaskDashboardItem | TaskDashbo
   return <Circle data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
 }
 
+function formatTaskElapsed(elapsedMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
+  const key = resetKey ?? '';
+  const startedAtRef = useRef<number | null>(running ? Date.now() : null);
+  const runningKeyRef = useRef(key);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (!running) {
+      startedAtRef.current = null;
+      runningKeyRef.current = key;
+      setElapsedMs(0);
+      return undefined;
+    }
+
+    if (startedAtRef.current === null || runningKeyRef.current !== key) {
+      startedAtRef.current = Date.now();
+      runningKeyRef.current = key;
+      setElapsedMs(0);
+    }
+
+    const updateElapsed = () => setElapsedMs(Date.now() - (startedAtRef.current ?? Date.now()));
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(interval);
+  }, [key, running]);
+
+  return running ? formatTaskElapsed(elapsedMs) : null;
+}
+
 function TaskContent({
   task,
   nested = false,
@@ -84,6 +104,7 @@ function TaskContent({
   expandable?: boolean;
 }) {
   const secondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
+  const runningElapsed = useRunningElapsedLabel(nested && task.status === 'active', task.id);
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
   const rawSubtaskLabel = subtaskCount > 0
@@ -104,11 +125,9 @@ function TaskContent({
           <div className="min-w-0">
             <div className={cn('app-inspector-heading truncate', nested && 'text-[12px]')}>{task.title}</div>
             <div className="mt-1 app-inspector-text-block">{secondaryText}</div>
+            {runningElapsed ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">Running · {runningElapsed}</div> : null}
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
           </div>
-          <Badge variant="secondary" className={cn('shrink-0 rounded-full px-2.5 py-1', statusBadgeClass(task.tone))}>
-            {task.statusLabel}
-          </Badge>
         </div>
         {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
         {task.writeScope.length > 0 ? (

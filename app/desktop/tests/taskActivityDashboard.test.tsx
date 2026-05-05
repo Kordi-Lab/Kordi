@@ -306,7 +306,46 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
 
   assert.match(markup, /<details/);
   assert.match(markup, /data-task-status-icon="checkbox"/);
+  assert.doesNotMatch(markup, />Done</);
   assert.match(markup, /review code/);
   assert.equal(markup.match(/1 active subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
+});
+
+test('task panel shows running subtasks with a circle and elapsed time', () => {
+  const messages: Message[] = [assistantTurnMessage({
+    id: 'turn-1',
+    sessionId: 'session-1',
+    prompt: '@Kordi review code',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: '',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'spawn-1',
+        name: 'task_operator',
+        status: 'done',
+        arguments: '{"action":"spawn","taskName":"research_docs","message":"Inspect docs"}',
+        liveOutput: '',
+        resultText: 'Task agent running: /root/research_docs',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      },
+    ],
+  })];
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages,
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /data-subtask-status-icon="circle"/);
+  assert.match(markup, /Running · 0s/);
+  assert.doesNotMatch(markup, /Subagent active/);
 });
