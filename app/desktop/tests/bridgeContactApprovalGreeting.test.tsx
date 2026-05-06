@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   ACCEPTED_CONTACT_AUTO_MESSAGE,
   bridgeContactApprovalGreetingTarget,
+  stableBridgePersonSessionId,
 } from '../src/features/bridge/useBridgeOrchestration';
 import type { DesktopBridgeHost } from '../src/kordi-app/types';
 
@@ -45,6 +46,18 @@ function host(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
     ...overrides,
   };
 }
+
+test('stableBridgePersonSessionId matches backend human-pair session ids', async () => {
+  assert.equal(
+    await stableBridgePersonSessionId('kh_6f2b323b4d8a', 'kh_33cffc5a1f06'),
+    'session:bridge:humans:dbf1681d61d5b745117d83d4',
+  );
+  assert.equal(
+    await stableBridgePersonSessionId('kh_33cffc5a1f06', 'kh_6f2b323b4d8a'),
+    'session:bridge:humans:dbf1681d61d5b745117d83d4',
+  );
+  assert.equal(await stableBridgePersonSessionId('kh_local', null), null);
+});
 
 test('bridgeContactApprovalGreetingTarget resolves requester for pending incoming approvals', () => {
   assert.equal(ACCEPTED_CONTACT_AUTO_MESSAGE, "i accept your request, let's chat");

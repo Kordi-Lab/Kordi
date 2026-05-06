@@ -45,6 +45,14 @@ pub(super) fn outbound_message_type(peer_runtime: &str) -> &'static str {
     }
 }
 
+fn outbound_target_kind(peer_runtime: &str) -> &'static str {
+    if is_agent_like_runtime(peer_runtime) {
+        "bridge-agent"
+    } else {
+        "bridge-person"
+    }
+}
+
 fn is_realtime_direct_chat(
     conversation: &DesktopBridgeConversationRecord,
     host: &DesktopBridgeHostConfig,
@@ -718,6 +726,7 @@ fn outbound_payload(
         None
     };
     let message_type = outbound_message_type(&context.conversation.peer_runtime);
+    let target_kind = outbound_target_kind(&context.conversation.peer_runtime);
     let context_text = outreach
         .and_then(|outreach| outreach.context_text.as_deref())
         .map(str::trim)
@@ -780,6 +789,7 @@ fn outbound_payload(
             "fromAgentId": sender_agent_id,
             "projectId": context.conversation.project_id,
             "messageType": BRIDGE_MESSAGE_TYPE_ASK,
+            "targetKind": target_kind,
             "requestId": request_id,
             "sentAtMs": sent_at_ms,
             "payload": payload,
@@ -811,6 +821,7 @@ fn outbound_payload(
             "fromAgentId": sender_agent_id,
             "projectId": context.conversation.project_id,
             "messageType": BRIDGE_MESSAGE_TYPE_RAW,
+            "targetKind": target_kind,
             "requestId": request_id,
             "sentAtMs": sent_at_ms,
             "payload": payload,
@@ -1202,6 +1213,25 @@ mod tests {
             outreach: None,
             attachments: Vec::new(),
         }
+    }
+
+    #[test]
+    fn direct_person_outbound_payload_marks_target_kind_for_key_authorization() {
+        let context = ConversationContext {
+            conversation: test_conversation(Vec::new()),
+            host: test_host(API_STYLE_SERVE),
+        };
+
+        let payload = outbound_payload(&context, "req-1", "hello", &[], None, 1);
+
+        assert_eq!(
+            payload.get("targetKind").and_then(|value| value.as_str()),
+            Some("bridge-person"),
+        );
+        assert_eq!(
+            crate::bridge::relay_target_kind_for_payload(&payload),
+            Some("person"),
+        );
     }
 
     #[test]

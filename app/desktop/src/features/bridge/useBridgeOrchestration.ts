@@ -88,6 +88,25 @@ function newBridgePersonSessionId() {
   return `session:bridge:humans:${randomId}`;
 }
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function stableBridgePersonSessionId(localHumanId?: string | null, remoteHumanId?: string | null) {
+  const local = localHumanId?.trim();
+  const remote = remoteHumanId?.trim();
+  const subtle = globalThis.crypto?.subtle;
+  if (!local || !remote || !subtle) return null;
+  const participants = [local, remote].sort().join('|');
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(participants));
+  return `session:bridge:humans:${bytesToHex(new Uint8Array(digest).slice(0, 12))}`;
+}
+
+async function bridgePersonSessionId(localHumanId?: string | null, remoteHumanId?: string | null) {
+  const stableSessionId = await stableBridgePersonSessionId(localHumanId, remoteHumanId);
+  return stableSessionId ?? newBridgePersonSessionId();
+}
+
 function bridgePersonIdentityId(target: { nodeId: string; humanId?: string | null }) {
   const humanId = target.humanId?.trim();
   return humanId ? `human:${humanId}` : `human:bridge-node:${target.nodeId}`;
@@ -250,7 +269,10 @@ export function useBridgeOrchestration({
       return;
     }
 
-    const sessionId = newBridgePersonSessionId();
+    const sessionId = await bridgePersonSessionId(
+      activeBridgeHost?.id === target.hostId ? activeBridgeHost.humanId : null,
+      target.humanId,
+    );
     const remoteIdentityId = bridgePersonIdentityId(target);
     setActiveNav('chats');
     setActiveConvId(sessionId);
@@ -287,7 +309,7 @@ export function useBridgeOrchestration({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to start bridge session');
     }
-  }, [canonicalHumanIdentityId, isNativeShell, setActiveConvId, setActiveNav, setCanonicalSessionState, setDesktopBridgeState, setDesktopChatError]);
+  }, [activeBridgeHost?.humanId, activeBridgeHost?.id, canonicalHumanIdentityId, isNativeShell, setActiveConvId, setActiveNav, setCanonicalSessionState, setDesktopBridgeState, setDesktopChatError]);
 
   const handleOpenBridgeConversation = useCallback(async (
     hostId: string,

@@ -1328,6 +1328,7 @@ pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Opti
         .and_then(|value| value.get("sessionThread"))
         .and_then(|value| value.get("targetKind"))
         .and_then(|value| value.as_str())
+        .or_else(|| payload.get("targetKind").and_then(|value| value.as_str()))
         .unwrap_or_default();
     let context_policy = payload_body
         .and_then(|value| value.get("contextPolicy"))
@@ -1354,7 +1355,8 @@ pub(super) async fn relay_plaintext_message(
 ) -> Result<(), String> {
     let target_kind = relay_target_kind_for_payload(payload);
     let encrypted_payload =
-        encrypt_bridge_payload_for_target(host, target_node_id, project_id, target_kind, payload).await?;
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, target_kind, payload)
+            .await?;
     let blob = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     let url = format!("{}/v1/relay", trimmed_base_url(&host.coordination));
