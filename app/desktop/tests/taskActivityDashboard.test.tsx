@@ -361,6 +361,90 @@ test('task dashboard does not fail the whole task when a completed response cont
   assert.doesNotMatch(markup, /Failed 22:33/);
 });
 
+test('task dashboard merges duplicate top-level rows for the same generated task title', () => {
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-audit-complete',
+    sessionId: 'session-1',
+    prompt: '@Kordi run a full project audit',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'I started the audit and will continue checking files.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'plan-audit-complete',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Kordi full project audit', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+  const liveTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-audit-live',
+    sessionId: 'session-1',
+    prompt: '@Kordi run a full project audit',
+    status: 'tooling',
+    message: 'Running tool…',
+    assistantText: '',
+    thinkingText: '',
+    completed: false,
+    succeeded: false,
+    startedAtMs: 1_000,
+    tools: [
+      {
+        id: 'plan-audit-live',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Kordi full project audit', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+      {
+        id: 'bash-audit-live',
+        name: 'bash',
+        status: 'running',
+        arguments: JSON.stringify({ command: 'pnpm test' }),
+        liveOutput: 'running tests',
+        resultText: null,
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({
+    messages: [assistantTurnMessage(completedTurn)],
+    liveTurn,
+  });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Kordi full project audit');
+  assert.equal(dashboard.tasks[0].status, 'active');
+  assert.equal(dashboard.activeCount, 1);
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(completedTurn)],
+    liveTurn,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.equal(markup.match(/Kordi full project audit/g)?.length, 1);
+});
+
 test('task panel renders completed task time without status or duration clutter', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-duration',

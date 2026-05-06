@@ -63,6 +63,7 @@ type MutableSubtask = TaskDashboardSubtask & {
 
 type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | 'activeSubtaskCount'> & {
   sequence: number;
+  mergeKey?: string | null;
   completed: boolean;
   succeeded: boolean;
   message: string;
@@ -160,8 +161,17 @@ function titleFromTurnText(turn: DesktopChatTurnSnapshot) {
   return message && !/^response complete$/i.test(message) ? compact(message, 96) : null;
 }
 
-function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[]) {
-  return titleFromToolArguments(turn.tools)
+function normalizedTaskTitleKey(title: string) {
+  return title.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+}
+
+function taskMergeKeyFromTitle(title?: string | null) {
+  const normalized = title ? normalizedTaskTitleKey(title) : '';
+  return normalized ? `task-title:${normalized}` : null;
+}
+
+function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[], explicitTitle = titleFromToolArguments(turn.tools)) {
+  return explicitTitle
     ?? titleFromPrompt(turn.prompt)
     ?? titleFromPrompt(turn.sourceMessage?.text)
     ?? titleFromGeneratedArtifacts(artifactIds)
@@ -371,9 +381,11 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
 function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }: TurnWithSequence): MutableParentTask {
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   const artifactIds = generatedArtifactIdsFromTurn(turn);
+  const explicitTitle = titleFromToolArguments(turn.tools);
   return {
     id: `turn:${turn.id}`,
-    title: titleFromTurn(turn, artifactIds),
+    title: titleFromTurn(turn, artifactIds, explicitTitle),
+    mergeKey: taskMergeKeyFromTitle(explicitTitle),
     summary: compact(turn.message || turn.assistantText || ''),
     status,
     ...statusMeta(status),
@@ -392,6 +404,30 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
     artifactIds,
     subtasksByKey: new Map(),
   };
+}
+
+function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTask) {
+  const incomingIsLater = incoming.sequence >= existing.sequence;
+  const bothCompleted = existing.completed && incoming.completed;
+
+  existing.sequence = Math.min(existing.sequence, incoming.sequence);
+  existing.completed = bothCompleted;
+  existing.succeeded = bothCompleted
+    ? (incomingIsLater ? incoming.succeeded : existing.succeeded)
+    : existing.succeeded || incoming.succeeded;
+  existing.live = existing.live || incoming.live || !existing.completed;
+  existing.artifactIds = Array.from(new Set([...existing.artifactIds, ...incoming.artifactIds]));
+  existing.writeScope = Array.from(new Set([...existing.writeScope, ...incoming.writeScope]));
+  existing.responseMessageId = existing.responseMessageId ?? incoming.responseMessageId;
+
+  if (incomingIsLater || incoming.live) {
+    existing.summary = incoming.summary || existing.summary;
+    existing.message = incoming.message || existing.message;
+    existing.assistantText = incoming.assistantText || existing.assistantText;
+    existing.timeLabel = incoming.timeLabel ?? existing.timeLabel;
+    existing.durationLabel = incoming.durationLabel ?? existing.durationLabel;
+    existing.startedAtMs = incoming.startedAtMs ?? existing.startedAtMs;
+  }
 }
 
 function findExistingSubtaskParent(parents: MutableParentTask[], subtask: MutableSubtask) {
@@ -456,12 +492,24 @@ function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
 export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInput): TaskActivityDashboard {
   const parents: MutableParentTask[] = [];
   const parentsByTurnId = new Map<string, MutableParentTask>();
+  const parentsByMergeKey = new Map<string, MutableParentTask>();
   let toolSequence = 0;
 
   const ensureParent = (turnWithSequence: TurnWithSequence) => {
     const existing = parentsByTurnId.get(turnWithSequence.turn.id);
     if (existing) return existing;
+
     const parent = createParentTask(turnWithSequence);
+    if (parent.mergeKey) {
+      const existingByMergeKey = parentsByMergeKey.get(parent.mergeKey);
+      if (existingByMergeKey) {
+        mergeParentTask(existingByMergeKey, parent);
+        parentsByTurnId.set(turnWithSequence.turn.id, existingByMergeKey);
+        return existingByMergeKey;
+      }
+      parentsByMergeKey.set(parent.mergeKey, parent);
+    }
+
     parentsByTurnId.set(turnWithSequence.turn.id, parent);
     parents.push(parent);
     return parent;
