@@ -5,9 +5,11 @@ import {
   activeLocalTurnShouldDelayChatSend,
   bridgeConversationSendPlan,
   bridgeSessionOutreachTarget,
+  chatDraftSessionIdsToClearForSend,
   chatSendIsBusy,
   localAgentRelayFailureText,
   localAgentRelayTerminalDeliveryState,
+  localChatTargetSessionIdForActiveConversation,
   localChatSendDelayReason,
   localChatSendIsInFlightForTarget,
   localChatTargetHasRunningTurn,
@@ -39,6 +41,32 @@ test('raw Bridge conversations still materialize before bridge-message optimisti
   assert.equal(plan.targetConversationId, null);
   assert.equal(plan.shouldOpenBeforeOptimisticSend, true);
   assert.equal(plan.canAppendBridgeOptimisticMessage, false);
+});
+
+test('local draft chats do not fall back to the previously loaded desktop session', () => {
+  assert.equal(localChatTargetSessionIdForActiveConversation({
+    activeConvId: 'draft:local-chat',
+    activeConvCanonicalSessionId: null,
+    desktopActiveSessionId: 'previous-real-session',
+  }), null);
+});
+
+test('local sends from raw Bridge contacts clear both active and canonical composer drafts', () => {
+  assert.deepEqual(chatDraftSessionIdsToClearForSend(
+    'bridge:host-1:peer-1:person',
+    'session:bridge:humans:stable-contact',
+  ), [
+    'bridge:host-1:peer-1:person',
+    'session:bridge:humans:stable-contact',
+  ]);
+});
+
+test('local agent mentions in raw Bridge contact conversations stay in the canonical contact session', () => {
+  assert.equal(localChatTargetSessionIdForActiveConversation({
+    activeConvId: 'bridge:host-1:peer-1:person',
+    activeConvCanonicalSessionId: 'session:bridge:humans:stable-contact',
+    desktopActiveSessionId: 'local-session-should-not-be-used',
+  }), 'session:bridge:humans:stable-contact');
 });
 
 test('chat send guard only blocks transient sends and same-session local turns', () => {

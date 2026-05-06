@@ -329,6 +329,41 @@ export function activeLocalTurnShouldDelayChatSend({
     && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
 }
 
+export function localChatTargetSessionIdForActiveConversation({
+  activeConvId,
+  activeConvCanonicalSessionId,
+  desktopActiveSessionId,
+}: {
+  activeConvId: string;
+  activeConvCanonicalSessionId?: string | null;
+  desktopActiveSessionId?: string | null;
+}) {
+  const activeSessionId = activeConvId.trim();
+  if (isLocalDraftChatConversationId(activeSessionId)) return null;
+
+  const canonicalSessionId = activeConvCanonicalSessionId?.trim() ?? '';
+  if (canonicalSessionId && !isLocalDraftChatConversationId(canonicalSessionId)) {
+    return canonicalSessionId;
+  }
+
+  if (activeSessionId && !activeSessionId.startsWith('bridge:')) {
+    return activeSessionId;
+  }
+
+  const desktopSessionId = desktopActiveSessionId?.trim() ?? '';
+  if (desktopSessionId && !isLocalDraftChatConversationId(desktopSessionId)) {
+    return desktopSessionId;
+  }
+
+  return null;
+}
+
+export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resolvedSessionId: string) {
+  return [activeSessionId, resolvedSessionId]
+    .map((sessionId) => sessionId.trim())
+    .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
+}
+
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -998,14 +1033,11 @@ export function useChatMessageActions({
     }
 
     const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
-    let targetSessionId = isTransientDraftConversation
-      ? null
-      : activeConvId && !activeConvId.startsWith('bridge:') && !isLocalDraftChatConversationId(activeConvId)
-        ? activeConvId
-        : desktopChatState?.activeSessionId;
-    if (isLocalDraftChatConversationId(targetSessionId)) {
-      targetSessionId = null;
-    }
+    let targetSessionId = localChatTargetSessionIdForActiveConversation({
+      activeConvId,
+      activeConvCanonicalSessionId,
+      desktopActiveSessionId: desktopChatState?.activeSessionId,
+    });
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
@@ -1168,7 +1200,12 @@ export function useChatMessageActions({
         }
         return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
       });
-      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', resolvedSessionId, ''));
+      setComposerDrafts((current: ComposerDraftState) => (
+        chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId).reduce(
+          (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
+          current,
+        )
+      ));
       setChatComposerAttachments([]);
       resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
       const relayToLocalAgentTargets = async (

@@ -69,6 +69,19 @@ export function visibleLocalSessionIdForActivity({
   return visibleSessionId;
 }
 
+export function activeChatLiveTurnForConversation({
+  activeConv,
+  desktopLiveTurnsBySession,
+}: {
+  activeConv: { id: string; canonicalSessionId?: string | null };
+  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
+}) {
+  const directTurn = desktopLiveTurnsBySession[activeConv.id];
+  if (directTurn) return directTurn;
+  const canonicalSessionId = activeConv.canonicalSessionId?.trim();
+  return canonicalSessionId ? desktopLiveTurnsBySession[canonicalSessionId] ?? null : null;
+}
+
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
   activeSettingsSectionId: SettingsSectionId;
@@ -115,7 +128,7 @@ export function useKordiDesktopActivity({
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = desktopLiveTurnsBySession[activeConv.id] ?? null;
+  const activeChatLiveTurn = activeChatLiveTurnForConversation({ activeConv, desktopLiveTurnsBySession });
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
   const activeChatArtifactLiveTurn = useArtifactLiveTurn(activeChatLiveTurn);
