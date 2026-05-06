@@ -124,6 +124,35 @@ test('buildReplyAttribution resolves canonical bridge parent aliases as the sour
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Jiaxin');
 });
 
+test('buildReplyAttribution falls back to visible request when explicit reply target was hidden as duplicate', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:visible-ui-request',
+      text: '@MyKordi how are yo',
+    }),
+    {
+      id: 'msg:my-agent-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '00:14',
+      replyToMessageId: 'msg:hidden-runtime-duplicate',
+      turn: turn({
+        id: 'turn-my-agent',
+        assistantText: 'I’m doing well — here and ready to help.',
+        replyToMessageId: 'msg:hidden-runtime-duplicate',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[1]?.replyToMessageId, 'msg:visible-ui-request');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:visible-ui-request');
+});
+
 test('buildReplyAttribution can infer other peoples requests as source when explicit reply ids are missing', () => {
   const messages: Message[] = [
     humanRequest({

@@ -190,9 +190,11 @@ function replyTargetForMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
+  sourceByMessageId: ReadonlyMap<string, MessageSourceReference>,
 ) {
-  return explicitReplyTargetForMessage(message)
-    ?? inferredReplyTargetForAgentMessage(message, requestCandidates, inferLatestHumanRequest);
+  const explicitTarget = explicitReplyTargetForMessage(message);
+  if (explicitTarget && sourceByMessageId.has(explicitTarget)) return explicitTarget;
+  return inferredReplyTargetForAgentMessage(message, requestCandidates, inferLatestHumanRequest);
 }
 
 function completedReplyCountable(message: Message) {
@@ -277,7 +279,7 @@ export function buildReplyAttribution(
     }
     if (!isAgentResponse(message)) return message;
 
-    const replyTargetId = replyTargetForMessage(message, requestCandidates, inferLatestHumanRequest);
+    const replyTargetId = replyTargetForMessage(message, requestCandidates, inferLatestHumanRequest, sourceByMessageId);
     if (!replyTargetId) return message;
     const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return message;

@@ -96,12 +96,38 @@ fn pending_read_receipt_request_ids(conversation: &DesktopBridgeConversationReco
     request_ids
 }
 
-fn read_receipt_payload(host_node_id: &str, request_id: &str) -> Value {
-    serde_json::json!({
+fn session_thread_for_outreach(outreach: &DesktopBridgeOutreachMetadata) -> Option<Value> {
+    outreach.parent_session_id.as_ref().map(|parent_session_id| {
+        serde_json::json!({
+            "parentSessionId": parent_session_id,
+            "parentSessionTitle": outreach.parent_session_title.as_deref(),
+            "parentSessionKind": outreach.parent_session_kind.as_deref(),
+            "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
+            "participants": &outreach.parent_session_participants,
+            "messages": &outreach.parent_session_messages,
+            "parentTurnId": outreach.parent_turn_id.as_deref(),
+            "parentMessageId": outreach.parent_message_id.as_deref(),
+            "targetKind": outreach.target_kind.as_str(),
+            "targetDisplayName": outreach.target_display_name.as_str(),
+            "targetNodeId": outreach.target_node_id.as_str(),
+            "requestText": outreach.request_text.as_str(),
+            "triggerText": outreach.trigger_text.as_deref(),
+            "contextPolicy": outreach.context_policy.as_deref(),
+            "projectName": outreach.project_name.as_deref(),
+        })
+    })
+}
+
+fn read_receipt_payload(host_node_id: &str, request_id: &str, session_thread: Option<Value>) -> Value {
+    let mut payload = serde_json::json!({
         "from": host_node_id,
         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
         "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_READ },
-    })
+    });
+    if let Some(session_thread) = session_thread {
+        payload["payload"]["sessionThread"] = session_thread;
+    }
+    payload
 }
 
 fn load_conversation_context(
@@ -565,7 +591,14 @@ async fn send_read_receipt(
     context: &ConversationContext,
     request_id: &str,
 ) -> Result<(), String> {
-    let payload = read_receipt_payload(&context.host.node_id, request_id);
+    let session_thread = context
+        .conversation
+        .messages
+        .iter()
+        .find(|message| message.request_id.as_deref().map(str::trim) == Some(request_id))
+        .and_then(|message| message.outreach.as_ref())
+        .and_then(session_thread_for_outreach);
+    let payload = read_receipt_payload(&context.host.node_id, request_id, session_thread);
 
     if is_realtime_direct_chat(&context.conversation, &context.host) {
         if let Err(realtime_error) =
@@ -735,30 +768,7 @@ fn outbound_payload(
         .and_then(|outreach| outreach.context_policy.as_deref())
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let session_thread = outreach.and_then(|outreach| {
-        outreach
-            .parent_session_id
-            .as_ref()
-            .map(|parent_session_id| {
-                serde_json::json!({
-                    "parentSessionId": parent_session_id,
-                    "parentSessionTitle": outreach.parent_session_title.as_deref(),
-                    "parentSessionKind": outreach.parent_session_kind.as_deref(),
-                    "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
-                    "participants": &outreach.parent_session_participants,
-                    "messages": &outreach.parent_session_messages,
-                    "parentTurnId": outreach.parent_turn_id.as_deref(),
-                    "parentMessageId": outreach.parent_message_id.as_deref(),
-                    "targetKind": outreach.target_kind.as_str(),
-                    "targetDisplayName": outreach.target_display_name.as_str(),
-                    "targetNodeId": outreach.target_node_id.as_str(),
-                    "requestText": outreach.request_text.as_str(),
-                    "triggerText": outreach.trigger_text.as_deref(),
-                    "contextPolicy": outreach.context_policy.as_deref(),
-                    "projectName": outreach.project_name.as_deref(),
-                })
-            })
-    });
+    let session_thread = outreach.and_then(session_thread_for_outreach);
 
     let delivery_state = outreach.and_then(|outreach| outreach.delivery_state.as_deref());
 
@@ -1655,8 +1665,26 @@ mod tests {
     }
 
     #[test]
+    fn read_receipt_payload_preserves_group_session_thread_for_authorization() {
+        let payload = read_receipt_payload(
+            "node-me",
+            "req-1",
+            Some(serde_json::json!({
+                "parentSessionKind": "group",
+                "parentGroupSpaceId": "session:group:root",
+                "targetKind": "bridge-person",
+            })),
+        );
+
+        assert_eq!(
+            payload["payload"]["sessionThread"]["parentGroupSpaceId"],
+            serde_json::json!("session:group:root")
+        );
+    }
+
+    #[test]
     fn read_receipt_payload_uses_delivery_event_read_state() {
-        let payload = read_receipt_payload("node-me", "req-1");
+        let payload = read_receipt_payload("node-me", "req-1", None);
 
         assert_eq!(payload["from"], serde_json::json!("node-me"));
         assert_eq!(
