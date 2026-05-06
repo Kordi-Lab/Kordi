@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Circle, XCircle } from 'lucide-react';
-import type { DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-react';
+import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
+import type { DesktopChatTurnSnapshot, Message, SessionArtifact } from '@/kordi-app/types';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +9,9 @@ type TaskActivityDashboardPanelProps = {
   messages: Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   emptyMessage: string;
+  artifacts?: SessionArtifact[];
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
 };
 
 function statusDotClass(tone: TaskDashboardTone) {
@@ -94,12 +98,78 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
   return running ? formatTaskElapsed(elapsedMs) : null;
 }
 
+function TaskActions({
+  responseMessageId,
+  artifactId,
+  onOpenArtifact,
+  onNavigateToResponse,
+}: {
+  responseMessageId?: string | null;
+  artifactId?: string | null;
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
+}) {
+  const jumpToResponse = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!responseMessageId) return;
+    if (onNavigateToResponse) {
+      onNavigateToResponse(responseMessageId);
+      return;
+    }
+    navigateToTranscriptMessage(responseMessageId);
+  };
+  const openArtifact = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!artifactId) return;
+    onOpenArtifact?.(artifactId);
+  };
+
+  if (!responseMessageId && !artifactId) return null;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {responseMessageId ? (
+        <button
+          type="button"
+          data-task-action="jump-response"
+          onClick={jumpToResponse}
+          className="grid h-7 w-7 place-items-center rounded-lg border border-[color:var(--app-divider)] bg-white/[0.03] text-[color:var(--utility-muted-text)] transition hover:border-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]"
+          aria-label="Jump to related response"
+          title="Jump to related response"
+        >
+          <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      ) : null}
+      {artifactId ? (
+        <button
+          type="button"
+          data-task-action="open-artifact"
+          onClick={openArtifact}
+          className="grid h-7 w-7 place-items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10 text-emerald-100 transition hover:border-emerald-200/40 hover:bg-emerald-300/15"
+          aria-label="Open related artifact"
+          title="Open related artifact"
+        >
+          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function TaskContent({
   task,
   nested = false,
+  artifactId,
+  onOpenArtifact,
+  onNavigateToResponse,
 }: {
   task: TaskDashboardItem | TaskDashboardSubtask;
   nested?: boolean;
+  artifactId?: string | null;
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
 }) {
   const secondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
   const runningElapsed = useRunningElapsedLabel(nested && task.status === 'active', task.id);
@@ -123,6 +193,14 @@ function TaskContent({
             {runningElapsed ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">Running · {runningElapsed}</div> : null}
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
           </div>
+          {!nested && 'responseMessageId' in task ? (
+            <TaskActions
+              responseMessageId={task.responseMessageId}
+              artifactId={artifactId}
+              onOpenArtifact={onOpenArtifact}
+              onNavigateToResponse={onNavigateToResponse}
+            />
+          ) : null}
         </div>
         {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
         {task.writeScope.length > 0 ? (
@@ -139,11 +217,36 @@ function TaskContent({
   );
 }
 
-function TaskRow({ task }: { task: TaskDashboardItem }) {
+function artifactCategory(artifact: SessionArtifact): NonNullable<SessionArtifact['category']> {
+  return artifact.category ?? 'artifact';
+}
+
+function firstLinkedArtifactId(task: TaskDashboardItem, artifacts: SessionArtifact[]) {
+  const generatedArtifactIds = new Set(
+    artifacts
+      .filter((artifact) => artifactCategory(artifact) === 'artifact')
+      .map((artifact) => artifact.id),
+  );
+  return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? null;
+}
+
+function TaskRow({
+  task,
+  artifacts,
+  onOpenArtifact,
+  onNavigateToResponse,
+}: {
+  task: TaskDashboardItem;
+  artifacts: SessionArtifact[];
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
+}) {
+  const artifactId = firstLinkedArtifactId(task, artifacts);
+
   if (task.subtasks.length === 0) {
     return (
       <div className="app-inspector-source-row">
-        <TaskContent task={task} />
+        <TaskContent task={task} artifactId={artifactId} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </div>
     );
   }
@@ -151,7 +254,7 @@ function TaskRow({ task }: { task: TaskDashboardItem }) {
   return (
     <details className="group app-inspector-source-row">
       <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-        <TaskContent task={task} />
+        <TaskContent task={task} artifactId={artifactId} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </summary>
       <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
         {task.subtasks.map((subtask) => (
@@ -164,7 +267,7 @@ function TaskRow({ task }: { task: TaskDashboardItem }) {
   );
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
   const dashboard = useMemo(() => buildTaskActivityDashboard({ messages, liveTurn }), [liveTurn, messages]);
 
   return (
@@ -179,7 +282,15 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage }:
       </div>
       {dashboard.hasActivity ? (
         <div className="app-inspector-list">
-          {dashboard.tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+          {dashboard.tasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              artifacts={artifacts}
+              onOpenArtifact={onOpenArtifact}
+              onNavigateToResponse={onNavigateToResponse}
+            />
+          ))}
         </div>
       ) : (
         <div className="app-inspector-empty">{emptyMessage}</div>

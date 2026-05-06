@@ -1,10 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { Message, SessionArtifact } from '../src/kordi-app/types';
+import type { DesktopChatToolSnapshot, Message, SessionArtifact } from '../src/kordi-app/types';
 import { extractSessionArtifacts } from '../src/features/chat/artifacts';
+import { ArtifactInspector } from '../src/pages/ArtifactInspector';
 
-test('session lesson artifacts stay pinned before generated artifacts', () => {
+function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatToolSnapshot {
+  return {
+    id: overrides.id ?? 'tool-1',
+    name: overrides.name ?? 'write',
+    status: overrides.status ?? 'done',
+    arguments: overrides.arguments ?? '{}',
+    liveOutput: overrides.liveOutput ?? '',
+    resultText: overrides.resultText ?? null,
+    detail: overrides.detail ?? null,
+    artifactPath: overrides.artifactPath ?? null,
+    toolLayer: overrides.toolLayer ?? null,
+    isError: overrides.isError ?? false,
+  };
+}
+
+test('session lesson files are categorized as memory while source writes are related files', () => {
   const messages: Message[] = [{
     role: 'owned-agent',
     sender: 'My Kordi',
@@ -44,7 +62,106 @@ test('session lesson artifacts stay pinned before generated artifacts', () => {
 
   const artifacts = extractSessionArtifacts(messages, null, [lessonArtifact]);
 
-  assert.equal(artifacts[0].id, lessonArtifact.id);
-  assert.equal(artifacts[0].pinned, true);
-  assert.equal(artifacts[1].path, 'src/generated.ts');
+  const lesson = artifacts.find((artifact) => artifact.id === lessonArtifact.id);
+  const generatedSource = artifacts.find((artifact) => artifact.path === 'src/generated.ts');
+
+  assert.equal(lesson?.pinned, true);
+  assert.equal(lesson?.category, 'memory');
+  assert.equal(generatedSource?.category, 'related');
+});
+
+test('extractSessionArtifacts separates generated artifacts from related package and skill files', () => {
+  const messages: Message[] = [{
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    text: 'Created a project report and touched implementation files.',
+    time: '12:30',
+    turn: {
+      id: 'turn-report',
+      sessionId: 'session-123',
+      prompt: 'Create a Kordi project structure report',
+      status: 'complete',
+      message: '',
+      assistantText: '',
+      thinkingText: '',
+      completed: true,
+      succeeded: true,
+      tools: [
+        toolSnapshot({
+          id: 'report',
+          name: 'write',
+          arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+          resultText: 'wrote report',
+        }),
+        toolSnapshot({
+          id: 'package',
+          name: 'edit',
+          arguments: JSON.stringify({ path: 'package.json' }),
+          resultText: 'updated package metadata',
+        }),
+        toolSnapshot({
+          id: 'skill',
+          name: 'write',
+          arguments: JSON.stringify({ path: 'app/desktop/docs/superpowers/skills/reviewer/SKILL.md' }),
+          resultText: 'wrote skill notes',
+        }),
+        toolSnapshot({
+          id: 'read-source',
+          name: 'read',
+          arguments: JSON.stringify({ path: 'app/desktop/src/pages/TaskActivityDashboardPanel.tsx' }),
+          resultText: 'read source',
+        }),
+      ],
+    },
+  }];
+
+  const artifacts = extractSessionArtifacts(messages);
+  const byPath = new Map(artifacts.map((artifact) => [artifact.path, artifact]));
+
+  assert.equal(byPath.get('docs/reports/kordi-project-structure-report.md')?.category, 'artifact');
+  assert.equal(byPath.get('package.json')?.category, 'related');
+  assert.equal(byPath.get('app/desktop/docs/superpowers/skills/reviewer/SKILL.md')?.category, 'related');
+  assert.equal(byPath.get('app/desktop/src/pages/TaskActivityDashboardPanel.tsx')?.category, 'related');
+});
+
+test('artifact inspector groups generated artifacts separately from related files and memory', () => {
+  const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
+    isNativeShell: false,
+    activeArtifactId: null,
+    onSelectArtifact: () => undefined,
+    emptyMessage: 'No artifacts',
+    artifacts: [
+      {
+        id: 'docs/reports/kordi-project-structure-report.md',
+        path: 'docs/reports/kordi-project-structure-report.md',
+        name: 'kordi-project-structure-report.md',
+        kind: 'document',
+        summary: 'Generated report',
+        category: 'artifact',
+      },
+      {
+        id: 'package.json',
+        path: 'package.json',
+        name: 'package.json',
+        kind: 'code',
+        summary: 'Related package metadata',
+        category: 'related',
+      },
+      {
+        id: 'lesson:conversation:session-123',
+        path: '/tmp/kordi/artifacts/reflection-lessons/conversation/session-123.md',
+        name: 'Session lessons',
+        kind: 'document',
+        summary: 'Scoped memory',
+        category: 'memory',
+        pinned: true,
+      },
+    ],
+  }));
+
+  assert.match(markup, /data-artifact-section="generated"/);
+  assert.match(markup, /data-artifact-section="related"/);
+  assert.match(markup, /data-artifact-section="memory"/);
+  assert.ok(markup.indexOf('kordi-project-structure-report.md') < markup.indexOf('package.json'));
+  assert.ok(markup.indexOf('package.json') < markup.indexOf('Session lessons'));
 });

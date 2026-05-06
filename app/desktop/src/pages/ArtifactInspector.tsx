@@ -81,9 +81,74 @@ function artifactFromDirectoryEntry(entry: DesktopArtifactDirectoryEntry): Sessi
     path: entry.path,
     name: entry.name,
     kind: entry.kind === 'directory' ? 'file' : entry.kind,
+    category: 'related',
     summary: `Project folder file • ${formatFileSize(entry.sizeBytes)}`,
     timeLabel: 'Folder',
   };
+}
+
+function artifactCategory(artifact: SessionArtifact): NonNullable<SessionArtifact['category']> {
+  return artifact.category ?? 'artifact';
+}
+
+type ArtifactListSectionProps = {
+  title: string;
+  section: 'generated' | 'related' | 'memory';
+  description?: string;
+  artifacts: SessionArtifact[];
+  activeArtifact: SessionArtifact | null;
+  onSelect: (artifactId: string) => void;
+};
+
+function ArtifactListSection({ title, section, description, artifacts, activeArtifact, onSelect }: ArtifactListSectionProps) {
+  if (artifacts.length === 0) return null;
+
+  return (
+    <section className="app-detail-section" data-artifact-section={section}>
+      <div className="app-detail-kicker">{title}</div>
+      {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
+      <div className="app-inspector-list">
+        {artifacts.map((artifact) => {
+          const Icon = artifactIcon(artifact.kind);
+          const isActive = activeArtifact?.id === artifact.id;
+
+          return (
+            <button
+              key={artifact.id}
+              type="button"
+              onClick={() => onSelect(artifact.id)}
+              className={cn(
+                'app-inspector-source-row w-full text-left transition',
+                isActive ? 'bg-white/[0.04] ring-1 ring-white/10' : 'hover:bg-white/[0.02]',
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                    <div className="min-w-0 truncate app-inspector-heading">{artifact.name}</div>
+                    {artifact.pinned ? (
+                      <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-amber-100">
+                        pinned
+                      </span>
+                    ) : null}
+                    <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-400">
+                      {artifact.kind}
+                    </span>
+                  </div>
+                  <div className="mt-1 break-all app-inspector-subtext">{artifact.path}</div>
+                  <div className="mt-1 app-inspector-text-block">{artifact.summary}</div>
+                </div>
+                <div className="shrink-0 text-[10px] text-slate-500">
+                  {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 export function ArtifactInspector({
@@ -113,9 +178,16 @@ export function ArtifactInspector({
       : null;
   }, [browserPath, folderBrowserRootPath]);
 
+  const generatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'artifact'), [artifacts]);
+  const relatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'related'), [artifacts]);
+  const memoryArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'memory'), [artifacts]);
   const activeArtifact = useMemo(
-    () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null,
-    [activeArtifactId, artifacts],
+    () => artifacts.find((artifact) => artifact.id === activeArtifactId)
+      ?? generatedArtifacts[0]
+      ?? relatedArtifacts[0]
+      ?? memoryArtifacts[0]
+      ?? null,
+    [activeArtifactId, artifacts, generatedArtifacts, memoryArtifacts, relatedArtifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
   const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
@@ -137,8 +209,8 @@ export function ArtifactInspector({
       return;
     }
 
-    onSelectArtifact(artifacts[0].id);
-  }, [activeArtifactId, artifacts, onSelectArtifact]);
+    onSelectArtifact(activeArtifact?.id ?? null);
+  }, [activeArtifact?.id, activeArtifactId, artifacts, onSelectArtifact]);
 
   useEffect(() => {
     setBrowserPath(null);
@@ -288,56 +360,48 @@ export function ArtifactInspector({
         </section>
       ) : null}
 
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Artifacts and related files</div>
-        {artifacts.length > 0 ? (
-          <div className="app-inspector-list">
-            {artifacts.map((artifact) => {
-              const Icon = artifactIcon(artifact.kind);
-              const isActive = activeArtifact?.id === artifact.id;
-
-              return (
-                <button
-                  key={artifact.id}
-                  type="button"
-                  onClick={() => {
-                    setBrowserSelectedArtifact(null);
-                    onSelectArtifact(artifact.id);
-                  }}
-                  className={cn(
-                    'app-inspector-source-row w-full text-left transition',
-                    isActive ? 'bg-white/[0.04] ring-1 ring-white/10' : 'hover:bg-white/[0.02]',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                        <div className="min-w-0 truncate app-inspector-heading">{artifact.name}</div>
-                        {artifact.pinned ? (
-                          <span className="shrink-0 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-amber-100">
-                            pinned
-                          </span>
-                        ) : null}
-                        <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-400">
-                          {artifact.kind}
-                        </span>
-                      </div>
-                      <div className="mt-1 break-all app-inspector-subtext">{artifact.path}</div>
-                      <div className="mt-1 app-inspector-text-block">{artifact.summary}</div>
-                    </div>
-                    <div className="shrink-0 text-[10px] text-slate-500">
-                      {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
+      {artifacts.length > 0 ? (
+        <>
+          <ArtifactListSection
+            title="Artifacts"
+            section="generated"
+            description="Generated work products worth reopening, refining, or sharing."
+            artifacts={generatedArtifacts}
+            activeArtifact={activeArtifact}
+            onSelect={(artifactId) => {
+              setBrowserSelectedArtifact(null);
+              onSelectArtifact(artifactId);
+            }}
+          />
+          <ArtifactListSection
+            title="Related files"
+            section="related"
+            description="Source, config, package, and referenced files touched while producing the work."
+            artifacts={relatedArtifacts}
+            activeArtifact={activeArtifact}
+            onSelect={(artifactId) => {
+              setBrowserSelectedArtifact(null);
+              onSelectArtifact(artifactId);
+            }}
+          />
+          <ArtifactListSection
+            title="Memory"
+            section="memory"
+            description="Scoped Kordi memory related to this session."
+            artifacts={memoryArtifacts}
+            activeArtifact={activeArtifact}
+            onSelect={(artifactId) => {
+              setBrowserSelectedArtifact(null);
+              onSelectArtifact(artifactId);
+            }}
+          />
+        </>
+      ) : (
+        <section className="app-detail-section">
+          <div className="app-detail-kicker">Artifacts</div>
           <div className="app-inspector-empty">{emptyMessage}</div>
-        )}
-      </section>
+        </section>
+      )}
 
       {previewArtifact ? (
         <section className="app-detail-section">

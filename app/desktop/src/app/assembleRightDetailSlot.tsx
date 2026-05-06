@@ -55,6 +55,10 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           artifacts={args.activeProjectArtifacts}
           activeArtifactId={args.activeArtifactId}
           onSelectArtifact={args.setActiveArtifactId}
+          onOpenArtifact={(artifactId) => {
+            args.setActiveArtifactId(artifactId);
+            args.setActiveDetailTab('artifacts');
+          }}
         />
       ) : (
         <ChatDetailPanel
@@ -75,6 +79,10 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           artifacts={args.activeChatArtifacts}
           activeArtifactId={args.activeArtifactId}
           onSelectArtifact={args.setActiveArtifactId}
+          onOpenArtifact={(artifactId) => {
+            args.setActiveArtifactId(artifactId);
+            args.setActiveDetailTab('artifacts');
+          }}
           onOpenOutreachThread={(conversationId) => {
             args.setActiveNav('chats');
             args.setActiveConvId(conversationId);

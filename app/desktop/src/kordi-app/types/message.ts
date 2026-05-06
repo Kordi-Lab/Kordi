@@ -16,6 +16,7 @@ export type SessionArtifact = {
   path: string;
   name: string;
   kind: 'code' | 'document' | 'file';
+  category?: 'artifact' | 'related' | 'memory';
   summary: string;
   timeLabel?: string;
   live?: boolean;

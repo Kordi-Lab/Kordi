@@ -58,6 +58,7 @@ type ProjectDetailPanelProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
+  onOpenArtifact?: (artifactId: string) => void;
 };
 
 type MetaRowProps = {
@@ -104,6 +105,7 @@ function relatedProjectArtifacts(project: ProjectWorkspace): SessionArtifact[] {
       path: normalizedPath,
       name,
       kind: projectFileKind(normalizedPath),
+      category: 'related',
       summary,
       timeLabel: 'Related',
     });
@@ -149,6 +151,7 @@ export function ProjectDetailPanel({
   artifacts,
   activeArtifactId,
   onSelectArtifact,
+  onOpenArtifact,
 }: ProjectDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
@@ -350,6 +353,8 @@ export function ProjectDetailPanel({
         messages={activeProjectSession.messages}
         liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
         emptyMessage="No planning or execution task activity in this project session yet."
+        artifacts={projectArtifacts}
+        onOpenArtifact={onOpenArtifact}
       />
       {activeProject.pendingInvites.length > 0 ? (
         <section className="app-detail-section">

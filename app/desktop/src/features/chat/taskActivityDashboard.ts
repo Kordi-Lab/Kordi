@@ -1,3 +1,4 @@
+import { generatedArtifactIdsFromTurn } from '@/features/chat/artifacts';
 import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 
 export type TaskDashboardStatus = 'planned' | 'active' | 'completed' | 'failed' | 'closed';
@@ -18,6 +19,8 @@ type TaskDashboardBase = {
 export type TaskDashboardSubtask = TaskDashboardBase;
 
 export type TaskDashboardItem = TaskDashboardBase & {
+  responseMessageId?: string | null;
+  artifactIds: string[];
   subtasks: TaskDashboardSubtask[];
   subtaskCount: number;
   activeSubtaskCount: number;
@@ -40,6 +43,7 @@ type TurnWithSequence = {
   turn: DesktopChatTurnSnapshot;
   live: boolean;
   sequence: number;
+  responseMessageId?: string | null;
 };
 
 type ToolWithTurn = TurnWithSequence & {
@@ -58,6 +62,8 @@ type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | '
   succeeded: boolean;
   message: string;
   assistantText: string;
+  responseMessageId?: string | null;
+  artifactIds: string[];
   subtasksByKey: Map<string, MutableSubtask>;
 };
 
@@ -282,18 +288,18 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
   let sequence = 0;
   for (const message of messages) {
     if (message.turn) {
-      turns.push({ turn: message.turn, live: false, sequence: sequence++ });
+      turns.push({ turn: message.turn, live: false, sequence: sequence++, responseMessageId: message.id ?? message.turn.id });
     }
   }
 
   if (liveTurn && !liveTurn.completed) {
-    turns.push({ turn: liveTurn, live: true, sequence: sequence++ });
+    turns.push({ turn: liveTurn, live: true, sequence: sequence++, responseMessageId: liveTurn.id });
   }
 
   return turns;
 }
 
-function createParentTask({ turn, live, sequence }: TurnWithSequence): MutableParentTask {
+function createParentTask({ turn, live, sequence, responseMessageId }: TurnWithSequence): MutableParentTask {
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   return {
     id: `turn:${turn.id}`,
@@ -309,6 +315,8 @@ function createParentTask({ turn, live, sequence }: TurnWithSequence): MutablePa
     succeeded: turn.succeeded,
     message: turn.message,
     assistantText: turn.assistantText,
+    responseMessageId,
+    artifactIds: generatedArtifactIdsFromTurn(turn),
     subtasksByKey: new Map(),
   };
 }
@@ -361,6 +369,8 @@ function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
     target: parent.target,
     writeScope: parent.writeScope,
     live: parent.live || status === 'active',
+    responseMessageId: parent.responseMessageId,
+    artifactIds: parent.artifactIds,
     subtasks,
     subtaskCount: subtasks.length,
     activeSubtaskCount,
@@ -383,7 +393,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   for (const turnWithSequence of collectTurns(messages, liveTurn)) {
     let currentParent: MutableParentTask | null = null;
-    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools)) {
+    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0) {
       currentParent = ensureParent(turnWithSequence);
     }
 

@@ -9,6 +9,7 @@ import { TaskActivityDashboardPanel } from '../src/pages/TaskActivityDashboardPa
 
 function assistantTurnMessage(turn: DesktopChatTurnSnapshot): Message {
   return {
+    id: `message:${turn.id}`,
     role: 'owned-agent',
     sender: 'My Kordi',
     text: turn.assistantText,
@@ -384,6 +385,100 @@ test('task panel shows running subtasks with a circle and elapsed time', () => {
   assert.match(markup, /data-subtask-status-icon="circle"/);
   assert.match(markup, /Running · 0s/);
   assert.doesNotMatch(markup, /Subagent active/);
+});
+
+test('task dashboard exposes response and generated artifact links for task rows', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-report',
+    sessionId: 'session-1',
+    prompt: '@Kordi create a project structure report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'report-artifact',
+        name: 'write',
+        status: 'done',
+        arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+        liveOutput: '',
+        resultText: 'wrote report',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+      {
+        id: 'package-related',
+        name: 'edit',
+        status: 'done',
+        arguments: JSON.stringify({ path: 'package.json' }),
+        liveOutput: '',
+        resultText: 'updated package metadata',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(turn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].responseMessageId, 'message:turn-report');
+  assert.deepEqual(dashboard.tasks[0].artifactIds, ['docs/reports/kordi-project-structure-report.md']);
+});
+
+test('task panel renders response and artifact navigation buttons for linked tasks', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-report',
+    sessionId: 'session-1',
+    prompt: '@Kordi create a project structure report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'report-artifact',
+        name: 'write',
+        status: 'done',
+        arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+        liveOutput: '',
+        resultText: 'wrote report',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+    artifacts: [{
+      id: 'docs/reports/kordi-project-structure-report.md',
+      path: 'docs/reports/kordi-project-structure-report.md',
+      name: 'kordi-project-structure-report.md',
+      kind: 'document',
+      summary: 'Generated report',
+      category: 'artifact',
+    }],
+    onOpenArtifact: () => undefined,
+  }));
+
+  assert.match(markup, /data-task-action="jump-response"/);
+  assert.match(markup, /aria-label="Jump to related response"/);
+  assert.match(markup, /data-task-action="open-artifact"/);
+  assert.match(markup, /aria-label="Open related artifact"/);
 });
 
 test('task panel lets long task titles wrap instead of truncating them', () => {

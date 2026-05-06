@@ -462,7 +462,7 @@ function MessageBubbleView({
   if (msg.turn) {
     return (
       <div
-        id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+        id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
         <div className="app-message-meta">
