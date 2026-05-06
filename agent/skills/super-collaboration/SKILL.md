@@ -7,7 +7,9 @@ description: Use when facilitating multi-user or multi-agent conversations, espe
 
 ## Overview
 
-Facilitate shared conversations without taking over. Track the topic, each participant's stated position, points of agreement, disagreements, constraints, and the next decision move.
+Facilitate shared conversations without taking over. Use this skill to understand what the group is discussing, map participant positions, identify agreement/disagreement, and move the group toward a clear next step.
+
+**Announce at start:** "I'm using the super-collaboration skill to facilitate this shared discussion."
 
 ## When to Use
 
@@ -19,76 +21,55 @@ Use when:
 
 Do not use for ordinary one-person Q&A unless the user explicitly asks for facilitation.
 
-## Core Pattern
+## The Process
 
-1. **Topic:** Name the active question or decision in one sentence.
-2. **Participants:** List only participants with evidence in the conversation or identity file.
-3. **Positions:** For each participant, separate facts, preferences, concerns, constraints, and asks.
-4. **Deliberation map:** Identify agreement, disagreement, unknowns, and decision criteria.
-5. **Move the group forward:** Ask one targeted question, propose options with tradeoffs, or summarize a decision and next actions.
+### Step 1: Apply Guardrails
+- **REQUIRED SUB-SKILL:** Use facilitation-guardrails
+- Follow identity, neutrality, and attribution rules throughout the response.
 
-## Output Shapes
+### Step 2: Scan the Situation
+- **REQUIRED SUB-SKILL:** Use situation-scan
+- Identify the active topic, discussion stage, and what kind of facilitation is needed.
 
-### Quick alignment check
+### Step 3: Choose Focused Follow-Up Subskills
+Use only the subskills needed for the current turn:
+
+- **REQUIRED SUB-SKILL:** Use participant-map when the user asks what people/agents think, or when positions must be compared.
+- **REQUIRED SUB-SKILL:** Use disagreement-map when opinions conflict, consensus is unclear, ambiguity remains, or discussion is stalled.
+- **REQUIRED SUB-SKILL:** Use decision-process when the group needs to choose between options or agree on how to decide.
+- **REQUIRED SUB-SKILL:** Use summary-actions after convergence, when the user asks for a recap, or when action items/owners are needed.
+
+## Default Response Shape
+
+Prefer concise facilitation over meeting boilerplate:
 
 ```text
-Topic: <decision/question>
+Topic: <active question or decision>
 Positions:
-- <name>: <evidence-backed position>
-- <name>: <evidence-backed position>
+- <participant>: <evidence-backed position or “not stated yet”>
 Agreement: <shared ground>
-Open disagreement: <specific unresolved point>
-Next move: <one question or decision step>
+Open disagreement: <smallest concrete unresolved point>
+Next move: <one targeted question, process step, or action>
 ```
 
-### Decision summary
+If the conversation has already converged, use the decision summary shape from summary-actions instead.
 
-```text
-Decision: <what the group chose>
-Rationale: <main reason>
-Open risks: <remaining concerns>
-Owners / next actions:
-- <owner>: <action>
-```
+## When to Stop and Ask
 
-## Facilitation Rules
+Ask one targeted clarifying question when:
+- the topic is unclear,
+- participant positions are not stated yet,
+- deciding would require authority the group has not assigned,
+- or the requested summary would require inventing someone’s view.
 
-- Be neutral. Do not frame one participant as obviously correct unless the evidence is decisive.
-- Do not invent opinions. If a participant has not stated a view, write “not stated yet.”
-- Do not impersonate another person or agent.
-- Respect Kordi identity context, `replyAs`, and allowed-target rules.
-- Prefer concise summaries over meeting-facilitator boilerplate.
-- Ask at most one clarifying question unless the user requests a full workshop.
-- When disagreement appears, name the smallest concrete disagreement rather than saying “there is conflict.”
+## Integration
 
-## Examples
+**Required workflow skills:**
+- **facilitation-guardrails** - Applies identity and neutrality boundaries.
+- **situation-scan** - Identifies topic, stage, and needed facilitation path.
 
-### Summarizing positions
-
-User: “What does everyone think?”
-
-Response:
-```text
-Topic: Whether to ship the prototype today.
-Positions:
-- Alice: wants to ship today if login is stable.
-- Bob: wants one more test pass before shipping.
-- Bob's Kordi: reports the known failing test is unrelated to login.
-Agreement: everyone is okay shipping if login risk is low.
-Open disagreement: whether the current test evidence is enough.
-Next move: decide whether Bob's requested test pass is a blocker or a nice-to-have.
-```
-
-### Handling disagreement
-
-User: “Help us decide.”
-
-Response:
-```text
-The disagreement is not about the goal; everyone wants a safe release. The disagreement is about evidence threshold.
-
-Option A: Ship now with a rollback note. Faster, but accepts test uncertainty.
-Option B: Wait for one clean test pass. Slower, but addresses Bob's concern.
-
-Recommended next step: ask Bob whether a single clean login test is enough to remove the blocker.
-```
+**Optional follow-up skills:**
+- **participant-map** - Summarizes participant positions.
+- **disagreement-map** - Maps agreement, disagreement, and resolution needs.
+- **decision-process** - Suggests consensus checks, pros/cons, DRI decisions, votes, or escalation.
+- **summary-actions** - Produces decision records and action items.

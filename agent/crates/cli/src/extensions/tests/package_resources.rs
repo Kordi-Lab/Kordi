@@ -137,37 +137,68 @@ async fn bundled_super_collaboration_skill_is_loaded_by_default() {
             .await
             .unwrap();
 
-    let skill = support
+    for skill_name in super_collaboration_skill_names() {
+        let skill = support
+            .session_resources
+            .skills
+            .iter()
+            .find(|skill| skill.info.name == skill_name)
+            .unwrap_or_else(|| panic!("{skill_name} bundled skill should load by default"));
+        let skill_path = std::path::Path::new(&skill.info.source_info.path);
+        assert!(
+            skill_path.exists(),
+            "model-readable bundled skill path should exist: {}",
+            skill.info.source_info.path
+        );
+        assert_eq!(
+            skill_path.file_name().and_then(|name| name.to_str()),
+            Some("SKILL.md")
+        );
+    }
+
+    let main_skill = support
         .session_resources
         .skills
         .iter()
         .find(|skill| skill.info.name == "super-collaboration")
         .expect("super-collaboration bundled skill should load by default");
-
     assert!(
-        skill.info.description.contains("multi-user")
-            || skill.info.description.contains("multi-agent"),
+        main_skill.info.description.contains("multi-user")
+            || main_skill.info.description.contains("multi-agent"),
         "description should trigger on collaborative sessions: {:?}",
-        skill.info.description
-    );
-    assert!(
-        std::path::Path::new(&skill.info.source_info.path).exists(),
-        "model-readable bundled skill path should exist: {}",
-        skill.info.source_info.path
+        main_skill.info.description
     );
 
     let section = build_skill_system_prompt_section(&support.session_resources);
     assert!(section.contains("<name>super-collaboration</name>"));
     assert!(section.contains("super-collaboration/SKILL.md</location>"));
+    assert!(section.contains("<name>situation-scan</name>"));
 }
 
 #[test]
 fn super_collaboration_skill_covers_deliberation_requirements() {
-    let skill = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../skills/super-collaboration/SKILL.md"),
-    )
-    .expect("super collaboration skill file");
+    let skills_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+    let main_skill = std::fs::read_to_string(skills_root.join("super-collaboration/SKILL.md"))
+        .expect("super collaboration skill file");
+
+    for subskill_name in super_collaboration_subskill_names() {
+        assert!(
+            main_skill.contains(&format!("**REQUIRED SUB-SKILL:** Use {subskill_name}")),
+            "main skill should route to subskill {subskill_name:?}\n{main_skill}"
+        );
+        assert!(
+            skills_root.join(subskill_name).join("SKILL.md").exists(),
+            "source subskill should use Superpowers-style <skill>/SKILL.md format: {subskill_name}"
+        );
+    }
+
+    let combined = super_collaboration_skill_names()
+        .map(|skill_name| {
+            std::fs::read_to_string(skills_root.join(skill_name).join("SKILL.md"))
+                .expect("skill markdown file")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     for required in [
         "Topic",
@@ -180,9 +211,29 @@ fn super_collaboration_skill_covers_deliberation_requirements() {
         "Do not impersonate",
         "replyAs",
         "Decision summary",
+        "REQUIRED SUB-SKILL",
     ] {
-        assert!(skill.contains(required), "missing {required:?}\n{skill}");
+        assert!(
+            combined.contains(required),
+            "missing {required:?}\n{combined}"
+        );
     }
+}
+
+fn super_collaboration_skill_names() -> impl Iterator<Item = &'static str> {
+    std::iter::once("super-collaboration").chain(super_collaboration_subskill_names())
+}
+
+fn super_collaboration_subskill_names() -> impl Iterator<Item = &'static str> {
+    [
+        "facilitation-guardrails",
+        "situation-scan",
+        "participant-map",
+        "disagreement-map",
+        "decision-process",
+        "summary-actions",
+    ]
+    .into_iter()
 }
 
 #[tokio::test]
