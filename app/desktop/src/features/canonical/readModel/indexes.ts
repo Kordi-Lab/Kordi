@@ -369,6 +369,28 @@ function bridgeRequestIdsDiffer(left: CanonicalSessionMessage, right: CanonicalS
   return Boolean(leftRequestId && rightRequestId && leftRequestId !== rightRequestId);
 }
 
+function pendingBridgeDelegationRequestKey(sessionId: string, requestId: string) {
+  return `${sessionId}\u0000${requestId}`;
+}
+
+function pendingBridgeDelegationRequestKeys(exchanges: CanonicalSessionState['delegatedExchanges']) {
+  return new Set(exchanges.flatMap((exchange) => {
+    const status = exchange.status.trim().toLowerCase();
+    const requestId = exchange.bridgeRequestId?.trim();
+    if (!['pending', 'sending', 'processing'].includes(status) || !requestId) return [];
+    return [pendingBridgeDelegationRequestKey(exchange.sessionId, requestId)];
+  }));
+}
+
+function rawBridgeProcessingPlaceholderCoveredByPendingDelegation(
+  message: CanonicalSessionMessage,
+  pendingDelegationRequestKeys: Set<string>,
+) {
+  if (!isBridgeAgentProcessingPlaceholder(message) || !isActiveProcessingStatus(message)) return false;
+  const requestId = bridgeRequestIdForMessage(message);
+  return Boolean(requestId && pendingDelegationRequestKeys.has(pendingBridgeDelegationRequestKey(message.sessionId, requestId)));
+}
+
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
   const completedAgentResponses = messages.filter((message) => (
@@ -485,6 +507,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return requestMessageId ? [requestMessageId] : [];
     }),
   );
+  const pendingDelegationRequestKeys = pendingBridgeDelegationRequestKeys(canonicalState.delegatedExchanges);
   const processingDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
   const cancelledDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
@@ -559,6 +582,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
       sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
     );
+    const suppressedPendingDelegationRawProcessingPlaceholderIds = new Set(
+      sortedMessages
+        .filter((message) => rawBridgeProcessingPlaceholderCoveredByPendingDelegation(message, pendingDelegationRequestKeys))
+        .map((message) => message.id),
+    );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     const senderIdentityIdByMessageId = new Map<string, string>(
       sortedMessages.map((message) => [message.id, message.senderIdentityId]),
@@ -571,6 +599,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
         || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
+        || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)
       ) return [];
       const content = contentRecord(message.content);
       if (stringValue(content.kind) === 'delegation-join-event') {

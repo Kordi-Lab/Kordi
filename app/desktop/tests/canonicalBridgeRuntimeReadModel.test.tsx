@@ -645,6 +645,54 @@ test('canonical read model hides stale bridge processing placeholders after late
   ]);
 });
 
+test('canonical read model does not duplicate raw bridge processing when a delegated exchange is already pending', () => {
+  const sessionId = 'session:bridge:humans:pending-delegation-processing';
+  const now = Date.now();
+  const requestId = 'bridge_req_active_pending';
+  const exchangeId = `delegation:bridge:${requestId}`;
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi how are you', content: { sender: 'Peer', timeLabel: '15:05', direction: 'inbound', requestId }, status: 'sent', sequenceNum: 1, createdAtMs: now - 2_000, updatedAtMs: now - 2_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
+      { id: 'msg:raw-processing', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Peer's Kordi", timeLabel: '15:05', kind: 'mention-request', direction: 'outbound-response', deliveryState: 'processing', requestId }, status: 'processing', sequenceNum: 2, createdAtMs: now - 1_000, updatedAtMs: now - 1_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'processing' },
+    ],
+    delegatedExchanges: [
+      { id: exchangeId, sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: requestId, contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: now - 2_000, updatedAtMs: now - 1_000 },
+    ],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+  const processingTurns = messages.filter((message) => message.turn?.status === 'processing');
+
+  assert.equal(processingTurns.length, 1);
+  assert.equal(processingTurns[0]?.id, `canonical-delegation-processing:${exchangeId}`);
+});
+
 test('canonical read model shows fresh bridge-parent processing placeholders for active group agent asks', () => {
   const sessionId = 'session:group:fresh-bridge-parent-processing';
   const now = Date.now();
