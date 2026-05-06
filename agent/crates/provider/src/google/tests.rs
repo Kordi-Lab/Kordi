@@ -121,6 +121,36 @@ fn test_convert_user_message_with_image() {
 }
 
 #[test]
+fn test_convert_tools_prefers_hosted_google_search_over_custom_function() {
+    let tools = vec![
+        json!({
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": { "type": "object", "properties": { "query": { "type": "string" } } }
+            }
+        }),
+        json!({
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": { "type": "object", "properties": { "path": { "type": "string" } } }
+            }
+        }),
+    ];
+
+    let result = convert_tools_google_with_hosted_search(&tools);
+
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0], json!({ "google_search": {} }));
+    assert_eq!(
+        result[1]["functionDeclarations"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(result[1]["functionDeclarations"][0]["name"], "read");
+}
+
+#[test]
 fn test_convert_tools() {
     let tools = vec![json!({
         "function": {

@@ -94,7 +94,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the public web using DuckDuckGo HTML results. Supports optional allowed_domains or blocked_domains filters, but not both at once. For research tasks, use this first to discover relevant pages, then use web_fetch on the most promising URLs before answering. Returns explicit source links."
+        "Search the public web. Providers with native hosted web search may use their hosted search tool by default; other providers fall back to DuckDuckGo HTML results. Supports optional allowed_domains or blocked_domains filters for the fallback path, but not both at once. For research tasks, use this first to discover relevant pages, then use web_fetch on the most promising URLs before answering. Returns explicit source links when available."
     }
 
     fn parameters_schema(&self) -> Value {
