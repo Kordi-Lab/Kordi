@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { DesktopChatToolSnapshot, Message, SessionArtifact } from '../src/kordi-app/types';
 import { extractSessionArtifacts } from '../src/features/chat/artifacts';
-import { ArtifactInspector } from '../src/pages/ArtifactInspector';
+import { ArtifactInspector, renderArtifactPreview } from '../src/pages/ArtifactInspector';
 
 function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatToolSnapshot {
   return {
@@ -140,6 +140,54 @@ test('extractSessionArtifacts keeps generated artifacts but hides package and sk
   assert.equal(byPath.has('app/desktop/src/reports/report.ts'), false);
   assert.equal(byPath.has('tests/generated-report.spec.ts'), false);
   assert.equal(byPath.has('artifacts/read-output.txt'), false);
+});
+
+test('artifact inspector renders generated artifacts like files without full paths', () => {
+  const absolutePath = '/Users/shuyang/.config/superpowers/worktrees/kordi/issue-282-tui-tool-previews/.superpowers/brainstorm/53234-1778054524/content/website-directions.html';
+  const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
+    isNativeShell: false,
+    activeArtifactId: null,
+    onSelectArtifact: () => undefined,
+    emptyMessage: 'No artifacts',
+    artifacts: [
+      {
+        id: absolutePath,
+        path: absolutePath,
+        name: 'website-directions.html',
+        kind: 'code',
+        summary: 'Created artifact with write',
+        category: 'artifact',
+        timeLabel: '11:02',
+      },
+    ],
+  }));
+
+  assert.match(markup, /data-artifact-file-row="true"/);
+  assert.match(markup, /website-directions\.html/);
+  assert.match(markup, /content/);
+  assert.doesNotMatch(markup, /\/Users\/shuyang/);
+  assert.doesNotMatch(markup, /worktrees\/kordi/);
+  assert.doesNotMatch(markup, /\.superpowers\/brainstorm\/53234-1778054524\/content\/website-directions\.html/);
+});
+
+test('artifact preview renders html and markdown as previewable documents', () => {
+  const htmlMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'content/website-directions.html',
+    lines: [{ number: 1, text: '<h1>Kordi Website</h1>' }, { number: 2, text: '<p>Choose a direction.</p>' }],
+    truncated: false,
+  })));
+  const markdownMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'docs/reports/kordi-project-structure-report.md',
+    lines: [{ number: 1, text: '# Kordi Project Structure Report' }, { number: 2, text: 'Generated summary.' }],
+    truncated: false,
+  })));
+
+  assert.match(htmlMarkup, /<iframe/);
+  assert.match(htmlMarkup, /sandbox=/);
+  assert.doesNotMatch(htmlMarkup, />Copy</);
+  assert.match(markdownMarkup, /Kordi Project Structure Report/);
+  assert.doesNotMatch(markdownMarkup, /# Kordi Project Structure Report/);
+  assert.doesNotMatch(markdownMarkup, />Copy</);
 });
 
 test('artifact inspector only renders generated artifacts in the artifact list', () => {
