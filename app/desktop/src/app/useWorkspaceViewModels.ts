@@ -61,6 +61,7 @@ import {
   preferLatestMessages,
   hideRawConversationIds,
   visibleBridgePeople,
+  bridgePeerIsReachableAgent,
 } from './viewModels/helpers';
 
 function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
@@ -430,37 +431,39 @@ export function useWorkspaceViewModels({
       for (const peer of host.visiblePeers) {
         if (!bridgePeerIsApprovedContact(peer)) continue;
         const isAgent = isBridgeAgentRuntime(peer.runtime);
-        const id = isAgent
-          ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
-          : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
-        const existing = byId.get(id);
-        const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
-        const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
         const bridgeContactStatus = peer.isContact ? 'contact' : (peer.contactRequestStatus?.trim() || 'none');
         const bridgeContactRequestDirection = peer.contactRequestDirection?.trim() || null;
-        byId.set(id, {
-          id,
-          name: peerName,
-          initials: getInitials(peerName),
-          classType: isAgent ? 'other-users-agents' : 'other-users',
-          entityType: isAgent ? 'External agent' : 'Person',
-          subtitle: peer.sharedProjects.length > 0 ? `${peer.runtime} • ${peer.sharedProjects.length} shared project${peer.sharedProjects.length === 1 ? '' : 's'}` : peer.runtime,
-          bridges: nextBridges,
-          status: host.connected ? 'Reachable' : 'Offline',
-          discoverableOn: nextBridges,
-          detail: [peer.nodeId, peer.endpoint, peer.sharedProjects.length > 0 ? `Shared projects: ${peer.sharedProjects.join(' • ')}` : null].filter(Boolean).join(' • '),
-          owner: peer.ownerName || 'Unknown',
-          bridgeHostId: host.id,
-          bridgePeerNodeId: peer.nodeId,
-          bridgePeerRuntime: peer.runtime,
-          bridgeHumanId: peer.humanId,
-          bridgeAgentId: peer.agentId,
-          bridgeContactStatus,
-          bridgeContactRequestDirection,
-          avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
-        });
+        if (!isAgent || bridgePeerIsReachableAgent(peer)) {
+          const id = isAgent
+            ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
+            : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
+          const existing = byId.get(id);
+          const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
+          const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
+          byId.set(id, {
+            id,
+            name: peerName,
+            initials: getInitials(peerName),
+            classType: isAgent ? 'other-users-agents' : 'other-users',
+            entityType: isAgent ? 'External agent' : 'Person',
+            subtitle: peer.sharedProjects.length > 0 ? `${peer.runtime} • ${peer.sharedProjects.length} shared project${peer.sharedProjects.length === 1 ? '' : 's'}` : peer.runtime,
+            bridges: nextBridges,
+            status: host.connected ? 'Reachable' : 'Offline',
+            discoverableOn: nextBridges,
+            detail: [peer.nodeId, peer.endpoint, peer.sharedProjects.length > 0 ? `Shared projects: ${peer.sharedProjects.join(' • ')}` : null].filter(Boolean).join(' • '),
+            owner: peer.ownerName || 'Unknown',
+            bridgeHostId: host.id,
+            bridgePeerNodeId: peer.nodeId,
+            bridgePeerRuntime: peer.runtime,
+            bridgeHumanId: peer.humanId,
+            bridgeAgentId: peer.agentId,
+            bridgeContactStatus,
+            bridgeContactRequestDirection,
+            avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
+          });
+        }
 
-        if (isAgent && peer.ownerName) {
+        if (isAgent && peer.ownerName && (bridgePeerIsReachableAgent(peer) || peer.isDefaultAgent)) {
           const personId = `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? peer.ownerName}`;
           const existingPerson = byId.get(personId);
           const personBridges = Array.from(new Set([...(existingPerson?.bridges ?? []), label])).sort();
@@ -899,7 +902,7 @@ export function useWorkspaceViewModels({
     [activeBridgeHost],
   );
   const activeBridgeAgents = useMemo(
-    () => (activeBridgeHost?.visiblePeers ?? []).filter((peer) => isBridgeAgentRuntime(peer.runtime)),
+    () => (activeBridgeHost?.visiblePeers ?? []).filter(bridgePeerIsReachableAgent),
     [activeBridgeHost],
   );
   const activeBridgeAwaitingReply = activeBridgeConversation?.awaitingReply ?? false;

@@ -220,6 +220,36 @@ test('bridge mention option text shows display names and pairs people with their
   assert.equal(options.some((option) => option.label === 'AlicesKordi'), false);
 });
 
+test('owner-only bridge agents are hidden from mention candidates while their default owner person stays mentionable', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'kd_owner_only',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-alice',
+      isDefaultAgent: true,
+      agentReachabilityPolicy: 'owner',
+    }),
+    peer({
+      nodeId: 'kd_private_helper',
+      displayName: 'Private Helper',
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'human-alice',
+      agentId: 'agent-private',
+      isDefaultAgent: false,
+      agentReachabilityPolicy: 'owner',
+    }),
+  ]);
+
+  assert.deepEqual(
+    buildBridgeMentionCandidates(bridgeState).map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice'],
+  );
+});
+
 test('group mention candidates include group people and their agents, not outside contacts', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({

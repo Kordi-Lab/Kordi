@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use super::auth::{auth_middleware, AuthNode};
 use super::{
-    effective_contact_approval_policy, nodes_are_contacts, nodes_have_rejected_contact_request,
-    ServerState,
+    effective_agent_reachability_policy, effective_contact_approval_policy, nodes_are_contacts,
+    nodes_have_rejected_contact_request, nodes_share_human_owner, ServerState,
 };
 
 #[derive(Debug, Serialize)]
@@ -84,6 +84,16 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
+fn mask_owner_only_agent_contact_for_viewer(contact: &mut ContactResp) {
+    contact.display_name = contact
+        .owner_name
+        .clone()
+        .or_else(|| contact.display_name.clone());
+    contact.runtime = Some("person".to_string());
+    contact.agent_id = None;
+    contact.is_default_agent = false;
+}
+
 async fn list_contacts(
     State(state): State<Arc<ServerState>>,
     Extension(auth): Extension<AuthNode>,
@@ -91,36 +101,58 @@ async fn list_contacts(
     let db = state
         .open_connection()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let mut stmt = db
-        .prepare(
-            "SELECT r.node_id, r.display_name, r.owner_name, r.runtime, r.human_id, r.agent_id, r.is_default_agent, r.discovery_mode, r.human_visibility_policy, r.contact_approval_policy, r.agent_reachability_policy, c.created_at \
+    let contacts: Vec<ContactResp> = {
+        let mut stmt = db
+            .prepare(
+                "SELECT r.node_id, r.display_name, r.owner_name, r.runtime, r.human_id, r.agent_id, r.is_default_agent, r.discovery_mode, r.human_visibility_policy, r.contact_approval_policy, r.agent_reachability_policy, c.created_at \
              FROM server_contacts c \
              JOIN registered_nodes r ON r.node_id = c.contact_node_id \
              WHERE c.node_id = ?1 AND r.revoked_at IS NULL \
              ORDER BY COALESCE(r.display_name, r.owner_name, r.node_id) ASC, c.created_at ASC",
-        )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let contacts = stmt
-        .query_map(rusqlite::params![auth.0], |row| {
-            Ok(ContactResp {
-                node_id: row.get(0)?,
-                display_name: row.get(1)?,
-                owner_name: row.get(2)?,
-                runtime: row.get(3)?,
-                human_id: row.get(4)?,
-                agent_id: row.get(5)?,
-                is_default_agent: row.get::<_, Option<i64>>(6)?.unwrap_or(0) != 0,
-                discovery_mode: row.get(7)?,
-                human_visibility_policy: row.get(8)?,
-                contact_approval_policy: row.get(9)?,
-                agent_reachability_policy: row.get(10)?,
-                created_at: row.get(11)?,
+            )
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let rows = stmt
+            .query_map(rusqlite::params![auth.0.as_str()], |row| {
+                Ok(ContactResp {
+                    node_id: row.get(0)?,
+                    display_name: row.get(1)?,
+                    owner_name: row.get(2)?,
+                    runtime: row.get(3)?,
+                    human_id: row.get(4)?,
+                    agent_id: row.get(5)?,
+                    is_default_agent: row.get::<_, Option<i64>>(6)?.unwrap_or(0) != 0,
+                    discovery_mode: row.get(7)?,
+                    human_visibility_policy: row.get(8)?,
+                    contact_approval_policy: row.get(9)?,
+                    agent_reachability_policy: row.get(10)?,
+                    created_at: row.get(11)?,
+                })
             })
-        })
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .filter_map(|row| row.ok())
-        .collect();
-    Ok(Json(contacts))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        rows.filter_map(|row| row.ok()).collect()
+    };
+    let mut visible_contacts = Vec::with_capacity(contacts.len());
+    for mut contact in contacts {
+        let target_is_agent = contact
+            .agent_id
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        let agent_policy =
+            effective_agent_reachability_policy(contact.agent_reachability_policy.as_deref());
+        let owner_only_for_viewer = target_is_agent
+            && agent_policy == "owner"
+            && !nodes_share_human_owner(&db, &auth.0, &contact.node_id)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if owner_only_for_viewer {
+            if contact.is_default_agent {
+                mask_owner_only_agent_contact_for_viewer(&mut contact);
+                visible_contacts.push(contact);
+            }
+            continue;
+        }
+        visible_contacts.push(contact);
+    }
+    Ok(Json(visible_contacts))
 }
 
 fn normalize_request_message(message: Option<&str>) -> Option<String> {
@@ -435,6 +467,51 @@ mod tests {
             ],
         )
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_contacts_masks_owner_only_agents_for_other_humans() {
+        let state = super::super::make_test_state();
+        seed_registered_node(&state, "kd_viewer", Some("person"));
+        seed_registered_node(&state, "kd_owner_agent", Some("kordi-desktop"));
+        seed_registered_node(&state, "kd_secondary_owner_agent", Some("kordi-desktop"));
+        let db = state.open_connection().unwrap();
+        db.execute(
+            "UPDATE registered_nodes
+             SET display_name = 'Owner Kordi', owner_name = 'Owner', human_id = 'kh_owner', agent_id = 'ka_owner', is_default_agent = 1, agent_reachability_policy = 'owner'
+             WHERE node_id = 'kd_owner_agent'",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE registered_nodes
+             SET display_name = 'Private Helper', owner_name = 'Owner', human_id = 'kh_owner', agent_id = 'ka_private', is_default_agent = 0, agent_reachability_policy = 'owner'
+             WHERE node_id = 'kd_secondary_owner_agent'",
+            [],
+        )
+        .unwrap();
+        for contact_node_id in ["kd_owner_agent", "kd_secondary_owner_agent"] {
+            db.execute(
+                "INSERT INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params!["kd_viewer", contact_node_id, chrono::Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        }
+
+        let contacts = list_contacts(State(state), Extension(AuthNode("kd_viewer".to_string())))
+            .await
+            .unwrap()
+            .0;
+
+        assert_eq!(contacts.len(), 1);
+        assert_eq!(contacts[0].node_id, "kd_owner_agent");
+        assert_eq!(contacts[0].runtime.as_deref(), Some("person"));
+        assert_eq!(contacts[0].display_name.as_deref(), Some("Owner"));
+        assert_eq!(contacts[0].agent_id.as_deref(), None);
+        assert!(!contacts[0].is_default_agent);
+        assert!(!contacts
+            .iter()
+            .any(|contact| contact.node_id == "kd_secondary_owner_agent"));
     }
 
     #[tokio::test]

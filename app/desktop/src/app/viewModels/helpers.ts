@@ -37,6 +37,12 @@ export function bridgePeerIsApprovedContact(peer: DesktopBridgePeer) {
   return Boolean(peer.isContact || status === 'contact' || status === 'approved');
 }
 
+export function bridgePeerIsReachableAgent(peer: DesktopBridgePeer) {
+  if (!isBridgeAgentRuntime(peer.runtime)) return false;
+  const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
+  return agentReachabilityPolicy !== 'owner';
+}
+
 function firstNonEmptyViewModelText(...values: Array<string | null | undefined>) {
   return values.map((value) => value?.trim()).find(Boolean) ?? '';
 }

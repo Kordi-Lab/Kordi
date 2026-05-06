@@ -8,8 +8,9 @@ use std::sync::Arc;
 use super::auth::{auth_middleware, AuthNode};
 use super::{
     effective_agent_reachability_policy, effective_contact_approval_policy,
-    effective_human_visibility_policy, normalize_agent_reachability_policy,
-    normalize_contact_approval_policy, normalize_human_visibility_policy, ServerState,
+    effective_human_visibility_policy, nodes_share_human_owner,
+    normalize_agent_reachability_policy, normalize_contact_approval_policy,
+    normalize_human_visibility_policy, ServerState,
 };
 
 #[derive(Debug, Serialize)]
@@ -64,6 +65,16 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
+fn mask_owner_only_agent_for_viewer(peer: &mut DiscoveryResp) {
+    peer.display_name = peer
+        .owner_name
+        .clone()
+        .or_else(|| peer.display_name.clone());
+    peer.runtime = Some("person".to_string());
+    peer.agent_id = None;
+    peer.is_default_agent = false;
+}
+
 async fn list_discoverable_peers(
     State(state): State<Arc<ServerState>>,
     Extension(auth): Extension<AuthNode>,
@@ -71,53 +82,74 @@ async fn list_discoverable_peers(
     let db = state
         .open_connection()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let mut stmt = db
-        .prepare(
-            "SELECT node_id, display_name, owner_name, runtime, human_id, agent_id, is_default_agent, discovery_mode, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at \
+    let peers: Vec<DiscoveryResp> = {
+        let mut stmt = db
+            .prepare(
+                "SELECT node_id, display_name, owner_name, runtime, human_id, agent_id, is_default_agent, discovery_mode, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at \
              FROM registered_nodes \
              WHERE revoked_at IS NULL AND node_id != ?1 \
              ORDER BY COALESCE(display_name, owner_name, node_id) ASC, created_at ASC",
-        )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let peers = stmt
-        .query_map(rusqlite::params![auth.0], |row| {
-            let discovery_mode = row.get::<_, Option<String>>(7)?;
-            let raw_human_visibility_policy = row.get::<_, Option<String>>(8)?;
-            let raw_contact_approval_policy = row.get::<_, Option<String>>(9)?;
-            let raw_agent_reachability_policy = row.get::<_, Option<String>>(10)?;
-            let human_visibility_policy = effective_human_visibility_policy(
-                discovery_mode.as_deref(),
-                raw_human_visibility_policy.as_deref(),
-            );
-            let contact_approval_policy =
-                effective_contact_approval_policy(raw_contact_approval_policy.as_deref());
-            let agent_reachability_policy =
-                effective_agent_reachability_policy(raw_agent_reachability_policy.as_deref());
-            Ok(DiscoveryResp {
-                node_id: row.get(0)?,
-                display_name: row.get(1)?,
-                owner_name: row.get(2)?,
-                runtime: row.get(3)?,
-                human_id: row.get(4)?,
-                agent_id: row.get(5)?,
-                is_default_agent: row.get::<_, Option<i64>>(6)?.unwrap_or(0) != 0,
-                discovery_mode,
-                human_visibility_policy,
-                contact_approval_policy,
-                agent_reachability_policy,
-                created_at: row.get(11)?,
-            })
-        })
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .filter_map(|row| row.ok())
-        .filter(|peer| {
-            matches!(
-                peer.human_visibility_policy.as_str(),
-                "server-open" | "server-approval"
             )
-        })
-        .collect();
-    Ok(Json(peers))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let rows = stmt
+            .query_map(rusqlite::params![auth.0.as_str()], |row| {
+                let discovery_mode = row.get::<_, Option<String>>(7)?;
+                let raw_human_visibility_policy = row.get::<_, Option<String>>(8)?;
+                let raw_contact_approval_policy = row.get::<_, Option<String>>(9)?;
+                let raw_agent_reachability_policy = row.get::<_, Option<String>>(10)?;
+                let human_visibility_policy = effective_human_visibility_policy(
+                    discovery_mode.as_deref(),
+                    raw_human_visibility_policy.as_deref(),
+                );
+                let contact_approval_policy =
+                    effective_contact_approval_policy(raw_contact_approval_policy.as_deref());
+                let agent_reachability_policy =
+                    effective_agent_reachability_policy(raw_agent_reachability_policy.as_deref());
+                Ok(DiscoveryResp {
+                    node_id: row.get(0)?,
+                    display_name: row.get(1)?,
+                    owner_name: row.get(2)?,
+                    runtime: row.get(3)?,
+                    human_id: row.get(4)?,
+                    agent_id: row.get(5)?,
+                    is_default_agent: row.get::<_, Option<i64>>(6)?.unwrap_or(0) != 0,
+                    discovery_mode,
+                    human_visibility_policy,
+                    contact_approval_policy,
+                    agent_reachability_policy,
+                    created_at: row.get(11)?,
+                })
+            })
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        rows.filter_map(|row| row.ok())
+            .filter(|peer| {
+                matches!(
+                    peer.human_visibility_policy.as_str(),
+                    "server-open" | "server-approval"
+                )
+            })
+            .collect()
+    };
+    let mut visible_peers = Vec::with_capacity(peers.len());
+    for mut peer in peers {
+        let target_is_agent = peer
+            .agent_id
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        let owner_only_for_viewer = target_is_agent
+            && peer.agent_reachability_policy == "owner"
+            && !nodes_share_human_owner(&db, &auth.0, &peer.node_id)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if owner_only_for_viewer {
+            if peer.is_default_agent {
+                mask_owner_only_agent_for_viewer(&mut peer);
+                visible_peers.push(peer);
+            }
+            continue;
+        }
+        visible_peers.push(peer);
+    }
+    Ok(Json(visible_peers))
 }
 
 async fn update_my_discovery(
@@ -196,6 +228,58 @@ mod tests {
             ],
         )
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_discovery_masks_owner_only_agents_for_other_humans() {
+        let state = super::super::make_test_state();
+        seed_node(&state, "kd_viewer", "open");
+        seed_node_with_policy(&state, "kd_owner_agent", "open", Some("server-approval"));
+        seed_node_with_policy(
+            &state,
+            "kd_secondary_owner_agent",
+            "open",
+            Some("server-approval"),
+        );
+        state
+            .open_connection()
+            .unwrap()
+            .execute(
+                "UPDATE registered_nodes
+                 SET display_name = 'Owner Kordi', owner_name = 'Owner', runtime = 'kordi-desktop', human_id = 'kh_owner', agent_id = 'ka_owner', is_default_agent = 1, agent_reachability_policy = 'owner'
+                 WHERE node_id = 'kd_owner_agent'",
+                [],
+            )
+            .unwrap();
+        state
+            .open_connection()
+            .unwrap()
+            .execute(
+                "UPDATE registered_nodes
+                 SET display_name = 'Private Helper', owner_name = 'Owner', runtime = 'kordi-desktop', human_id = 'kh_owner', agent_id = 'ka_private', is_default_agent = 0, agent_reachability_policy = 'owner'
+                 WHERE node_id = 'kd_secondary_owner_agent'",
+                [],
+            )
+            .unwrap();
+
+        let peers =
+            list_discoverable_peers(State(state), Extension(AuthNode("kd_viewer".to_string())))
+                .await
+                .unwrap()
+                .0;
+        let peer = peers
+            .iter()
+            .find(|peer| peer.node_id == "kd_owner_agent")
+            .expect("owner-only default agent remains discoverable as a person");
+
+        assert_eq!(peer.runtime.as_deref(), Some("person"));
+        assert_eq!(peer.display_name.as_deref(), Some("Owner"));
+        assert_eq!(peer.owner_name.as_deref(), Some("Owner"));
+        assert_eq!(peer.agent_id.as_deref(), None);
+        assert!(!peer.is_default_agent);
+        assert!(!peers
+            .iter()
+            .any(|peer| peer.node_id == "kd_secondary_owner_agent"));
     }
 
     #[tokio::test]

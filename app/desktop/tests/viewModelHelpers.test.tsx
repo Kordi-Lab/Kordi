@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
 import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
@@ -55,6 +55,32 @@ test('bridgePeerIsApprovedContact treats only approved bridge peers as Contacts-
   assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'pending' }), false);
   assert.equal(bridgePeerIsApprovedContact({ ...basePeer, isContact: true }), true);
   assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'approved' }), true);
+});
+
+test('bridgePeerIsReachableAgent hides owner-only agents from other people', () => {
+  const basePeer = {
+    nodeId: 'kd_agent',
+    displayName: 'Owner Kordi',
+    runtime: 'kordi-desktop',
+    endpoint: '',
+    ownerName: 'Owner',
+    createdAt: null,
+    sharedProjects: [],
+    humanId: 'kh_owner',
+    agentId: 'ka_owner',
+    isDefaultAgent: true,
+    discoveryMode: null,
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    isContact: true,
+    contactRequestStatus: 'contact',
+    contactRequestDirection: null,
+  };
+
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'owner' }), false);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'contacts' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'server' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, runtime: 'person', agentReachabilityPolicy: 'owner' }), false);
 });
 
 test('bridgeContactRequestsForContactsPage exposes pending incoming approvals only', () => {
