@@ -446,6 +446,43 @@ test('task dashboard merges duplicate top-level rows for the same generated task
   assert.equal(markup.match(/Kordi full project audit/g)?.length, 1);
 });
 
+test('task panel omits the repeated Tasks heading inside the Tasks tab', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-no-heading',
+    sessionId: 'session-1',
+    prompt: '@Kordi write a website options report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the requested report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'plan-no-heading',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Website Options Report', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.doesNotMatch(markup, /app-detail-kicker[^>]*>Tasks</);
+  assert.match(markup, /Website Options Report/);
+});
+
 test('task panel renders completed task time without status or duration clutter', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-duration',

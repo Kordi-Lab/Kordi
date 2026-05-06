@@ -278,14 +278,6 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
 
   return (
     <section className="app-detail-section">
-      <div className="flex items-center justify-between gap-3">
-        <div className="app-detail-kicker">Tasks</div>
-        {dashboard.hasActivity ? (
-          <div className="text-[11px] text-[color:var(--utility-muted-text)]">
-            {dashboard.activeCount > 0 ? `${dashboard.activeCount} active` : `${dashboard.totalCount} total`}
-          </div>
-        ) : null}
-      </div>
       {dashboard.hasActivity ? (
         <div className="app-inspector-list">
           {dashboard.tasks.map((task) => (
