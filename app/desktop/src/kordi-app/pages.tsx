@@ -118,6 +118,11 @@ export function ContactsPage({
       || (status === 'pending' && (direction === 'outgoing' || direction === 'incoming'));
   };
 
+  const pendingRequestCount = contactRequests.length;
+  const requestInboxSummary = pendingRequestCount > 0
+    ? `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`
+    : 'No pending requests right now.';
+
   const canRemoveActiveContact = Boolean(
     onRemoveContact
       && activeContact.bridgeHostId
@@ -183,10 +188,14 @@ export function ContactsPage({
               >
                 <div className="min-w-0">
                   <div className="text-[13px] font-medium leading-5 text-white">New requests</div>
-                  <div className="text-[11px] text-slate-400">Open the request inbox and review it on the right.</div>
+                  <div className="text-[11px] text-slate-400">{requestInboxSummary}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="app-badge-attention px-2 py-0.5 text-[10px] font-medium">{contactRequests.length}</div>
+                  {pendingRequestCount > 0 ? (
+                    <div className="app-badge-attention px-2 py-0.5 text-[10px] font-medium">{pendingRequestCount}</div>
+                  ) : (
+                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-400">No pending</div>
+                  )}
                   <ChevronDown className={cn('h-4 w-4 text-slate-400 transition', isContactRequestsOpen ? 'rotate-180' : '')} />
                 </div>
               </button>
