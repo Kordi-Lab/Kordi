@@ -4,7 +4,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { buildTaskActivityDashboard } from '../src/features/chat/taskActivityDashboard';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { mapDesktopMessagesForTranscript } from '../src/features/chat/useDesktopTranscriptAdapter';
+import type { DesktopChatMessage, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { TaskActivityDashboardPanel } from '../src/pages/TaskActivityDashboardPanel';
 
 function assistantTurnMessage(turn: DesktopChatTurnSnapshot): Message {
@@ -305,6 +306,59 @@ test('task dashboard records task time and duration metadata', () => {
 
   assert.equal(dashboard.tasks[0].timeLabel, '10:00');
   assert.equal(dashboard.tasks[0].durationLabel, '1m 15s');
+});
+
+test('task dashboard does not fail the whole task when a completed response contains one failed tool', () => {
+  const transcriptMessages = mapDesktopMessagesForTranscript('session-1', [{
+    role: 'assistant',
+    sender: 'Kordi',
+    text: 'I recovered and completed the requested review.',
+    timeLabel: '22:33',
+    timestampMs: 88_800_000,
+    failed: false,
+    thinkingText: 'I will retry after the read failed.',
+    tools: [
+      {
+        id: 'read-1',
+        name: 'read',
+        status: 'error',
+        arguments: JSON.stringify({ path: 'missing.md' }),
+        liveOutput: '',
+        resultText: 'File not found',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'observation',
+        isError: true,
+      },
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Review Project Files', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  } satisfies DesktopChatMessage]);
+
+  const dashboard = buildTaskActivityDashboard({ messages: transcriptMessages });
+
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].timeLabel, '22:33');
+  assert.equal(dashboard.completedCount, 1);
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: transcriptMessages,
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /22:33/);
+  assert.doesNotMatch(markup, /Failed 22:33/);
 });
 
 test('task panel renders completed task time without status or duration clutter', () => {
