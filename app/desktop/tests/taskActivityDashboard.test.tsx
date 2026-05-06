@@ -434,6 +434,7 @@ test('task dashboard merges duplicate top-level rows for the same generated task
   assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, 'Kordi full project audit');
   assert.equal(dashboard.tasks[0].status, 'active');
+  assert.equal(dashboard.tasks[0].responseMessageId, 'turn-audit-live');
   assert.equal(dashboard.activeCount, 1);
 
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {

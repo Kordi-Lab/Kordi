@@ -418,9 +418,12 @@ function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTas
   existing.live = existing.live || incoming.live || !existing.completed;
   existing.artifactIds = Array.from(new Set([...existing.artifactIds, ...incoming.artifactIds]));
   existing.writeScope = Array.from(new Set([...existing.writeScope, ...incoming.writeScope]));
-  existing.responseMessageId = existing.responseMessageId ?? incoming.responseMessageId;
+  if (!existing.responseMessageId) {
+    existing.responseMessageId = incoming.responseMessageId;
+  }
 
   if (incomingIsLater || incoming.live) {
+    existing.responseMessageId = incoming.responseMessageId ?? existing.responseMessageId;
     existing.summary = incoming.summary || existing.summary;
     existing.message = incoming.message || existing.message;
     existing.assistantText = incoming.assistantText || existing.assistantText;
