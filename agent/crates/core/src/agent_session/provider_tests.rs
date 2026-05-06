@@ -38,6 +38,50 @@ fn errored_assistant_tool_calls_are_skipped_and_do_not_accept_following_tool_res
 }
 
 #[test]
+fn failed_assistant_error_closes_previous_user_before_latest_request() {
+    let messages = vec![
+        AgentMessage::User(crate::types::UserMessage {
+            content: vec![ContentBlock::Text {
+                text: "@Kordi why can I not send the second message?".to_string(),
+            }],
+            timestamp: 0,
+        }),
+        AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Provider error: overloaded".to_string(),
+            }],
+            provider: "openai".to_string(),
+            model: "gpt".to_string(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Error,
+            error_message: Some("Provider error: overloaded".to_string()),
+            timestamp: 1,
+        }),
+        AgentMessage::User(crate::types::UserMessage {
+            content: vec![ContentBlock::Text {
+                text: "Create a markdown for me to preview".to_string(),
+            }],
+            timestamp: 2,
+        }),
+    ];
+
+    let provider_messages = messages_to_provider(&messages);
+
+    assert_eq!(provider_messages.len(), 3);
+    assert_eq!(provider_messages[0]["role"], "user");
+    assert_eq!(provider_messages[1]["role"], "assistant");
+    assert_eq!(
+        provider_messages[1]["content"],
+        "Previous request failed before an answer was produced: Provider error: overloaded\n\nDo not retry or continue that failed request unless the user explicitly asks for it."
+    );
+    assert_eq!(provider_messages[2]["role"], "user");
+    assert_eq!(
+        provider_messages[2]["content"],
+        "Create a markdown for me to preview"
+    );
+}
+
+#[test]
 fn interrupted_tool_call_is_flushed_as_synthetic_tool_result_before_next_user_message() {
     let messages = vec![
         AgentMessage::Assistant(AssistantMessage {
