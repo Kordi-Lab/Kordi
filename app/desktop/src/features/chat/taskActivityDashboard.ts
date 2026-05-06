@@ -340,11 +340,15 @@ function planSubtasks(args: Record<string, unknown>, sequence: number, live: boo
   });
 }
 
+function toolFailureNameKey(toolName: string) {
+  return `failed-tool:${toolName.trim().toLowerCase() || 'tool'}`;
+}
+
 function failedToolSubtask(tool: DesktopChatToolSnapshot, sequence: number, live: boolean): MutableSubtask {
   const toolName = tool.name.trim() || 'Tool';
   return {
     id: `tool:${sequence}:${tool.id || toolName}`,
-    nameKey: `tool:${tool.id || toolName}`,
+    nameKey: toolFailureNameKey(toolName),
     title: `${toolName} failed`,
     summary: compact(tool.resultText || tool.detail || tool.liveOutput || 'Tool failed'),
     status: 'failed',
@@ -550,6 +554,15 @@ function findExistingSubtaskParent(parents: MutableParentTask[], subtask: Mutabl
   return null;
 }
 
+function clearRecoveredToolFailure(parents: MutableParentTask[], tool: DesktopChatToolSnapshot) {
+  if (tool.isError || toolIsStillRunning(tool)) return;
+  const nameKey = toolFailureNameKey(tool.name);
+  const key = taskKey(null, nameKey, nameKey);
+  for (const parent of parents) {
+    parent.subtasksByKey.delete(key);
+  }
+}
+
 function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[], humanConfirmed: boolean): TaskDashboardStatus {
   if (parent.live && !parent.completed) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'active')) return 'active';
@@ -637,6 +650,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
     }
 
     for (const tool of turnWithSequence.turn.tools) {
+      clearRecoveredToolFailure(parents, tool);
       const items = subtaskItems({ ...turnWithSequence, tool, toolSequence: toolSequence++ });
       for (const item of items) {
         const parent = findExistingSubtaskParent(parents, item) ?? currentParent ?? ensureParent(turnWithSequence);

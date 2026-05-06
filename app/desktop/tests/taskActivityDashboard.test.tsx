@@ -768,6 +768,53 @@ test('task dashboard shows failed tools as subtasks without failing the parent t
   assert.match(dashboard.tasks[0].subtasks[0].title, /read/i);
 });
 
+test('task dashboard clears a failed tool issue after a later same-tool retry succeeds', () => {
+  const retriedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-retried-tool-subtask',
+    sessionId: 'session-1',
+    prompt: '@Kordi run the project tests',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'The correct test command passed after the first command failed.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'bash-failed',
+        name: 'bash',
+        status: 'error',
+        arguments: JSON.stringify({ command: 'npm test' }),
+        liveOutput: '',
+        resultText: 'npm error Missing script: "test"',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: true,
+      },
+      {
+        id: 'bash-retry',
+        name: 'bash',
+        status: 'done',
+        arguments: JSON.stringify({ command: 'pnpm --dir app/desktop test:unit' }),
+        liveOutput: '',
+        resultText: '407 tests passed',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(retriedTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].status, 'waiting');
+  assert.equal(dashboard.tasks[0].subtasks.some((subtask) => subtask.status === 'failed'), false);
+  assert.doesNotMatch(dashboard.tasks[0].summary, /failed/i);
+});
+
 test('task dashboard keeps completed titled tasks visible after the live turn finishes', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
