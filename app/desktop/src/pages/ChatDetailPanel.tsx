@@ -235,9 +235,6 @@ function ChatDetailPanelView({
               {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}
               {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />
-              <MetaRow label="Trust" value={activeConv.trust} />
-              <MetaRow label="Mode" value={activeConv.directness} />
-              {activeConv.outreach ? <MetaRow label="Outreach status" value={activeConv.outreach.status} /> : null}
             </div>
           </div>
         </section>
@@ -296,27 +293,6 @@ function ChatDetailPanelView({
             })}
           </div>
         </section>
-
-        {activeConv.outreach ? (
-          <section className="app-detail-section">
-            <div className="app-detail-kicker">Outreach</div>
-            <div className="space-y-3">
-              <EmphasisBlock title={activeConv.outreach.targetKind === 'bridge-person' ? 'Person outreach' : 'Agent outreach'}>
-                <div>{activeConv.outreach.requestText}</div>
-                {activeConv.outreach.contextText ? <div className="mt-2 app-inspector-subtext">Context included by default</div> : null}
-              </EmphasisBlock>
-              <div className="app-inspector-meta-list">
-                <MetaRow label="Target" value={activeConv.outreach.targetDisplayName} />
-                <MetaRow label="Owner" value={activeConv.outreach.targetOwnerName} />
-                <MetaRow label="Source chat ID" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
-                <MetaRow label="Local human" value={activeConv.identity?.localHumanName} />
-                <MetaRow label="Local agent" value={activeConv.identity?.localAgentName} />
-                <MetaRow label="Remote human" value={activeConv.identity?.remoteHumanName} />
-                <MetaRow label="Remote agent" value={activeConv.identity?.remoteAgentName} />
-              </div>
-            </div>
-          </section>
-        ) : null}
 
         {activeConversationIsBridge && activeBridgeConversation ? (
           <section className="app-detail-section">

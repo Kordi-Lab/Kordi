@@ -17,6 +17,18 @@ impl EnvVarGuard {
         unsafe { std::env::set_var(key, value) };
         Self { key, old }
     }
+
+    fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+        let old = std::env::var_os(key);
+        unsafe { std::env::set_var(key, value) };
+        Self { key, old }
+    }
+
+    fn unset(key: &'static str) -> Self {
+        let old = std::env::var_os(key);
+        unsafe { std::env::remove_var(key) };
+        Self { key, old }
+    }
 }
 
 impl Drop for EnvVarGuard {
@@ -89,6 +101,45 @@ fn ollama_model_selection_resolves_to_ollama_provider() -> Result<()> {
 
     assert_eq!(model.provider, "ollama");
     assert_eq!(model.id, "llama3.2:latest");
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd_default()
+-> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai_env = EnvVarGuard::unset("OPENAI_API_KEY");
+    let _anthropic_env = EnvVarGuard::unset("ANTHROPIC_API_KEY");
+    crate::login::save_oauth_credentials(
+        "openai-codex",
+        &crate::oauth::OAuthCredentials {
+            access: "codex-access".to_string(),
+            refresh: String::new(),
+            expires: i64::MAX,
+            extra: serde_json::json!({"accountId": "acct_test"}),
+        },
+    )?;
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-5".to_string()),
+        ..Settings::default()
+    }
+    .save_project(cwd.path())?;
+    clear_desktop_model_options_cache();
+
+    let options = authenticated_model_options(cwd.path()).await;
+    let values = options
+        .iter()
+        .map(|option| option.value.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(values.contains(&"openai/gpt-5.5"));
+    assert!(!values.contains(&"openai/gpt-5"));
+    assert!(!values.contains(&"openai/gpt-4o-mini"));
     Ok(())
 }
 

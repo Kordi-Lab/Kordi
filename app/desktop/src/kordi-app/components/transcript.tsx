@@ -482,7 +482,11 @@ function MessageBubbleView({
   const isPeerHumanMessage = !isOwnHumanMessage && ((msg.senderType === 'human') || msg.role === 'person');
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
-  const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
+  const bubble = isOwnHumanMessage
+    ? 'app-chat-bubble-user'
+    : isPeerHumanMessage
+      ? 'app-chat-bubble-peer'
+      : 'app-chat-bubble-agent';
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
