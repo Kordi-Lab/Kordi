@@ -1,5 +1,41 @@
-use super::request::{convert_messages_for_codex, sanitize_messages_for_codex};
+use super::request::{
+    convert_messages_for_codex, convert_tools_for_codex, sanitize_messages_for_codex,
+};
 use serde_json::json;
+
+#[test]
+fn convert_tools_for_codex_prefers_hosted_web_search_over_custom_function() {
+    let tools = vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search with custom DuckDuckGo fallback",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "web_fetch",
+                "description": "Fetch a URL",
+                "parameters": {"type": "object", "properties": {"url": {"type": "string"}}}
+            }
+        }),
+    ];
+
+    let converted = convert_tools_for_codex(&tools);
+
+    assert_eq!(converted.len(), 2);
+    assert_eq!(converted[0], json!({"type": "web_search"}));
+    assert_eq!(converted[1]["type"], "function");
+    assert_eq!(converted[1]["name"], "web_fetch");
+    assert!(
+        converted
+            .iter()
+            .all(|tool| tool.get("name") != Some(&json!("web_search")))
+    );
+}
 
 #[test]
 fn sanitize_messages_for_codex_drops_orphan_tool_results() {
