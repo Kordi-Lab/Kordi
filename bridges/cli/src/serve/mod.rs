@@ -314,6 +314,7 @@ pub(crate) enum DirectAccessKind {
     Person,
     Agent,
     GroupInvite,
+    SessionParticipant,
     Any,
 }
 
@@ -521,6 +522,7 @@ pub(crate) fn nodes_can_directly_reach(
         DirectAccessKind::Person => Ok(person_access()),
         DirectAccessKind::Agent => agent_access(),
         DirectAccessKind::GroupInvite => Ok(linked_by_contact),
+        DirectAccessKind::SessionParticipant => Ok(true),
         DirectAccessKind::Any if target_is_agent => agent_access(),
         DirectAccessKind::Any => Ok(person_access()),
     }

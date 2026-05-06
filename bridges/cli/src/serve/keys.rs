@@ -57,6 +57,9 @@ fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAcces
         "person-invite" | "bridge-person-invite" | "session-invite" | "group-invite" => {
             DirectAccessKind::GroupInvite
         }
+        "session-participant" | "group-session" | "session-message" | "session-relay" => {
+            DirectAccessKind::SessionParticipant
+        }
         "person" | "bridge-person" | "human" => DirectAccessKind::Person,
         _ => DirectAccessKind::Any,
     }
@@ -341,6 +344,43 @@ mod tests {
         )
         .await;
         assert_eq!(agent_result.unwrap_err(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_session_participant_without_contact() {
+        let state = super::super::make_test_state();
+        seed_registered_node_with_policy(
+            &state,
+            "kd_viewer",
+            "ed_viewer",
+            Some("human-viewer"),
+            Some("server-approval"),
+            None,
+        );
+        seed_registered_node_with_policy(
+            &state,
+            "kd_target",
+            "ed_target",
+            Some("human-target"),
+            Some("server-approval"),
+            None,
+        );
+
+        let keys = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("session-participant".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
     }
 
     #[tokio::test]

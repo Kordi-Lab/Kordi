@@ -464,6 +464,9 @@ fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAcces
         "person-invite" | "bridge-person-invite" | "human-invite" | "session-invite" => {
             DirectAccessKind::GroupInvite
         }
+        "session-participant" | "group-session" | "session-message" | "session-relay" => {
+            DirectAccessKind::SessionParticipant
+        }
         "person" | "bridge-person" | "human" => DirectAccessKind::Person,
         _ => DirectAccessKind::Any,
     }
@@ -1177,6 +1180,52 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_allows_session_participant_without_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-approval"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+
+        let response = relay_message(
+            State(state.clone()),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "group session message".to_string(),
+                project_id: None,
+                target_kind: Some("session-participant".to_string()),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert!(response.delivered);
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert_eq!(pending.entries.len(), 1);
+        assert_eq!(pending.entries[0].blob, "group session message");
     }
 
     #[tokio::test]

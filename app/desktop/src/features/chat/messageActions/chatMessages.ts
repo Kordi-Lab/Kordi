@@ -388,6 +388,18 @@ export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resol
     .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
 }
 
+export function bridgeLocalAgentMentionCanRelayToBridge({
+  activeGroupSessionIsGroup,
+  activeConvBridgeTarget,
+  hasLocalAgentMention,
+}: {
+  activeGroupSessionIsGroup: boolean;
+  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  hasLocalAgentMention: boolean;
+}) {
+  return Boolean(hasLocalAgentMention && (activeGroupSessionIsGroup || activeConvBridgeTarget));
+}
+
 export function bridgeLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
   fallbackTarget?: ConversationBridgeTarget | null,
@@ -1187,10 +1199,11 @@ export function useChatMessageActions({
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
-      const willRelayToLocalAgent = Boolean(
-        activeConvBridgeTarget
-        && mentionsLocalAgent(text, desktopChatState, desktopBridgeState),
-      );
+      const willRelayToLocalAgent = bridgeLocalAgentMentionCanRelayToBridge({
+        activeGroupSessionIsGroup,
+        activeConvBridgeTarget,
+        hasLocalAgentMention: mentionsLocalAgent(text, desktopChatState, desktopBridgeState),
+      });
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -1200,7 +1213,7 @@ export function useChatMessageActions({
         'desktop-chat-ui',
         willRelayToLocalAgent ? 'sent' : 'sending',
       );
-      const localAgentRelayTargets = willRelayToLocalAgent && activeConvBridgeTarget
+      const localAgentRelayTargets = willRelayToLocalAgent
         ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
         : [];
       const localAgentRelayPlan = localAgentRelayTargets.length > 0

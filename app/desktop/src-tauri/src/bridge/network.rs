@@ -1320,32 +1320,43 @@ pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Opti
         .get("messageType")
         .and_then(|value| value.as_str())
         .unwrap_or_default();
+    let payload_body = payload.get("payload");
+    let session_thread = payload_body.and_then(|value| value.get("sessionThread"));
+    let group_scoped_session_thread = session_thread.is_some_and(|thread| {
+        thread
+            .get("parentSessionKind")
+            .and_then(|value| value.as_str())
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("group"))
+            || thread
+                .get("parentGroupSpaceId")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| !value.trim().is_empty())
+    });
     if message_type.eq_ignore_ascii_case("ask") {
         return Some("agent");
     }
     if message_type.eq_ignore_ascii_case("response") {
-        return Some("person");
+        return Some(if group_scoped_session_thread {
+            "session-participant"
+        } else {
+            "person"
+        });
     }
-    let payload_body = payload.get("payload");
-    let target_kind = payload_body
-        .and_then(|value| value.get("sessionThread"))
+    let target_kind = session_thread
         .and_then(|value| value.get("targetKind"))
         .and_then(|value| value.as_str())
         .or_else(|| payload.get("targetKind").and_then(|value| value.as_str()))
         .unwrap_or_default();
     let context_policy = payload_body
         .and_then(|value| value.get("contextPolicy"))
-        .or_else(|| {
-            payload_body
-                .and_then(|value| value.get("sessionThread"))
-                .and_then(|value| value.get("contextPolicy"))
-        })
+        .or_else(|| session_thread.and_then(|value| value.get("contextPolicy")))
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    match (target_kind, context_policy) {
-        ("bridge-agent", _) => Some("agent"),
-        ("bridge-person", "session-invite") => Some("person-invite"),
-        ("bridge-person", _) => Some("person"),
+    match (target_kind, context_policy, group_scoped_session_thread) {
+        ("bridge-agent", _, _) => Some("agent"),
+        ("bridge-person", "session-invite", _) => Some("person-invite"),
+        ("bridge-person", _, true) => Some("session-participant"),
+        ("bridge-person", _, _) => Some("person"),
         _ => None,
     }
 }
@@ -1353,6 +1364,24 @@ pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn group_session_message_payload_uses_session_participant_key_access() {
+        let payload = serde_json::json!({
+            "messageType": "raw",
+            "payload": {
+                "message": "hello group",
+                "sessionThread": {
+                    "targetKind": "bridge-person",
+                    "contextPolicy": "session-message",
+                    "parentSessionKind": "group",
+                    "parentGroupSpaceId": "session:group:root"
+                }
+            }
+        });
+
+        assert_eq!(relay_target_kind_for_payload(&payload), Some("session-participant"));
+    }
 
     #[test]
     fn response_payload_uses_person_key_access_even_when_original_target_was_agent() {
