@@ -369,22 +369,45 @@ export type CanonicalGroupInviteContext = {
   parentSessionMessages: DesktopBridgeSessionThreadMessage[];
 };
 
+function groupSpaceIdForSession(state: CanonicalSessionState | null, sessionId: string, fallbackGroupSpaceId: string) {
+  const currentMetadata = sessionMetadataRecord(state, sessionId);
+  return metadataGroupSpaceId(currentMetadata)
+    || normalizeStoredGroupSpaceId(fallbackGroupSpaceId);
+}
+
+function groupSessionParticipantsForSync(state: CanonicalSessionState | null, sessionId: string) {
+  return buildChatGroupBridgeUpdateParticipants({
+    participants: canonicalGroupParticipantsForSession(state, sessionId),
+    adminIdentityIds: activeGroupAdminIds(state, sessionId),
+  });
+}
+
 export function canonicalGroupInviteContextForSession(
   state: CanonicalSessionState | null,
   sessionId: string,
   fallbackGroupSpaceId: string,
 ): CanonicalGroupInviteContext {
-  const currentMetadata = sessionMetadataRecord(state, sessionId);
-  const groupSpaceId = metadataGroupSpaceId(currentMetadata)
-    || normalizeStoredGroupSpaceId(fallbackGroupSpaceId);
+  const groupSpaceId = groupSpaceIdForSession(state, sessionId, fallbackGroupSpaceId);
   return {
     parentSessionTitle: canonicalGroupInviteTitleForSession(state, sessionId),
     parentGroupSpaceId: groupSpaceId || null,
-    parentSessionParticipants: buildChatGroupBridgeUpdateParticipants({
-      participants: canonicalGroupParticipantsForSession(state, sessionId),
-      adminIdentityIds: activeGroupAdminIds(state, sessionId),
-    }),
+    parentSessionParticipants: groupSessionParticipantsForSync(state, sessionId),
     parentSessionMessages: canonicalSessionMessagesForGroupInvite(state, sessionId),
+  };
+}
+
+export function canonicalGroupSessionSyncContextForSession(
+  state: CanonicalSessionState | null,
+  sessionId: string,
+  fallbackGroupSpaceId: string,
+): CanonicalGroupInviteContext {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  const groupSpaceId = groupSpaceIdForSession(state, sessionId, fallbackGroupSpaceId);
+  return {
+    parentSessionTitle: session?.title?.trim() || 'New session',
+    parentGroupSpaceId: groupSpaceId || null,
+    parentSessionParticipants: groupSessionParticipantsForSync(state, sessionId),
+    parentSessionMessages: [],
   };
 }
 

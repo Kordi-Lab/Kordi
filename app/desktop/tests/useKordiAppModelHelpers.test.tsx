@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   canonicalGroupInviteContextForSession,
   canonicalGroupInviteTitleForSession,
+  canonicalGroupSessionSyncContextForSession,
   canonicalSessionMessagesForGroupInvite,
   currentMentionQuery,
   filterMentionTargets,
@@ -269,6 +270,55 @@ test('group invite title falls back to the group space custom name for child ses
   } as CanonicalSessionState;
 
   assert.equal(canonicalGroupInviteTitleForSession(state, 'session:group:child'), 'thefirsttestgroup');
+});
+
+test('group session sync context carries the exact child session and group space without message history', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:me' },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
+      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
+    ],
+    sessions: [
+      {
+        id: 'session:group:root',
+        title: 'thefirsttestgroup',
+        metadata: { customName: 'thefirsttestgroup', groupSpaceId: 'session:group:root' },
+      },
+      {
+        id: 'session:group:child',
+        title: 'New session',
+        metadata: { groupSpaceId: 'session:group:root', adminIdentityIds: ['human:me'] },
+      },
+    ],
+    participants: [
+      { sessionId: 'session:group:child', identityId: 'human:me', role: 'admin', state: 'active' },
+      { sessionId: 'session:group:child', identityId: 'human:jiaxin', role: 'person', state: 'active' },
+    ],
+    messages: [
+      {
+        id: 'msg:1',
+        sessionId: 'session:group:child',
+        senderIdentityId: 'human:me',
+        senderRole: 'user',
+        messageKind: 'text',
+        contentText: 'Should not be attached to a pure session-created update',
+        content: { sender: 'Testuser2', timeLabel: '13:04' },
+        sequenceNum: 1,
+        createdAtMs: 1_000,
+      },
+    ],
+  } as CanonicalSessionState;
+
+  assert.deepEqual(canonicalGroupSessionSyncContextForSession(state, 'session:group:child', 'session:group:fallback'), {
+    parentSessionTitle: 'New session',
+    parentGroupSpaceId: 'session:group:root',
+    parentSessionParticipants: [
+      { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
+      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'person', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null },
+    ],
+    parentSessionMessages: [],
+  });
 });
 
 test('group invite context carries the child session title fallback, participants, and history', () => {

@@ -83,6 +83,7 @@ import {
   canonicalAvatarSeed,
   canonicalGroupInviteContextForSession,
   canonicalGroupParticipantsForSession,
+  canonicalGroupSessionSyncContextForSession,
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   currentMentionQuery,
@@ -1327,6 +1328,45 @@ export function useKordiAppModel() {
         });
         setCanonicalSessionState(nextState);
         selectNewChatSession(sessionId);
+
+        try {
+          const participants = canonicalGroupParticipantsForSession(nextState, sessionId);
+          const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId: creatorIdentityId, participants });
+          if (targets.length > 0) {
+            const syncContext = canonicalGroupSessionSyncContextForSession(nextState, sessionId, groupSpaceId ?? sessionId);
+            const actorName = canonicalIdentityDisplayName(nextState, creatorIdentityId) ?? 'Someone';
+            const requestText = `${actorName} created a new group session`;
+            for (const target of targets) {
+              const bridgeState = await createDesktopBridgeOutreach({
+                hostId: target.hostId,
+                targetNodeId: target.nodeId,
+                targetKind: 'bridge-person',
+                requestText,
+                targetDisplayName: target.displayName,
+                targetOwnerName: target.ownerName,
+                targetRuntime: 'person',
+                targetHumanId: target.humanId,
+                targetAgentId: null,
+                triggerText: null,
+                contextText: null,
+                contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+                parentSessionId: sessionId,
+                parentSessionTitle: syncContext.parentSessionTitle,
+                parentSessionKind: 'group',
+                parentGroupSpaceId: syncContext.parentGroupSpaceId,
+                parentSessionParticipants: syncContext.parentSessionParticipants,
+                parentSessionMessages: syncContext.parentSessionMessages,
+                parentTurnId: null,
+                parentMessageId: null,
+                projectId: null,
+                projectName: null,
+              });
+              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
+            }
+          }
+        } catch (error) {
+          setDesktopChatError(`Session created, but Bridge session sync failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
         return;
       }
 
@@ -1365,6 +1405,7 @@ export function useKordiAppModel() {
     handleCreateChatSession,
     isNativeShell,
     selectNewChatSession,
+    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 
