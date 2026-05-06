@@ -205,6 +205,14 @@ export type ContactRequest = {
   direction?: string | null;
 };
 
+export type AgentBridgeReachout = {
+  sessionId: string;
+  title: string;
+  preview: string;
+  updatedAtLabel?: string;
+  unread?: number;
+};
+
 export type Agent = {
   name: string;
   id: string;
@@ -245,6 +253,7 @@ export type Agent = {
   isBridgeRegistered?: boolean;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
+  bridgeReachouts?: AgentBridgeReachout[];
 };
 
 export type ProjectSession = {

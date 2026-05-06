@@ -138,6 +138,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
 
           void args.handleStartChatWithAgent(agent);
         },
+        onOpenAgentReachoutSession: (sessionId) => {
+          args.setActiveNav('chats');
+          void args.handleSelectChatSession(sessionId);
+        },
       }}
       bridgePageProps={buildBridgePageProps(args)}
       settingsPageProps={{

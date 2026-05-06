@@ -17,6 +17,7 @@ import {
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   chatSessionIdForPersonStart,
+  existingSessionIdForPersonStart,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
@@ -204,9 +205,47 @@ test('buildChatCreateAgentOptions derives agent rows from displayed agents', () 
   assert.equal(options[0]?.detail, 'Coding partner');
 });
 
-test('person create flow starts a fresh direct-person session id for each new same-contact chat', () => {
+test('person create flow can still derive a direct-person session id for new local pairs', () => {
   assert.equal(chatSessionIdForPersonStart('first-id'), 'session:direct-person:first-id');
   assert.equal(chatSessionIdForPersonStart('second-id'), 'session:direct-person:second-id');
+});
+
+test('existingSessionIdForPersonStart reuses the existing human pair session', () => {
+  const alice = contact({ id: 'contact:alice', name: 'Alice', bridgeHumanId: 'human-alice' });
+  const conversations = [
+    chatConversation({
+      id: 'session:direct-person:older',
+      canonicalSessionId: 'session:direct-person:older',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:human-alice', name: 'Alice', kind: 'human', role: 'person', source: 'local', humanId: 'human-alice', avatarKey: 'alice' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    chatConversation({
+      id: 'session:direct-person:newer',
+      canonicalSessionId: 'session:direct-person:newer',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:human-alice', name: 'Alice', kind: 'human', role: 'person', source: 'local', humanId: 'human-alice', avatarKey: 'alice' },
+      ],
+      _updatedAtMs: 3,
+    }),
+    chatConversation({
+      id: 'session:direct-person:bob',
+      canonicalSessionId: 'session:direct-person:bob',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'local', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 5,
+    }),
+  ];
+
+  assert.equal(existingSessionIdForPersonStart(alice, conversations), 'session:direct-person:newer');
 });
 
 test('agent create flow starts a new selected-agent session under My chats', () => {

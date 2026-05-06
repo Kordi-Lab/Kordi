@@ -269,6 +269,37 @@ function agentMatchKeys(agent: Agent) {
   return new Set(baseKeys.map(normalizedMatchKey).filter(Boolean));
 }
 
+function personMatchKeys(contact: Contact) {
+  const identityRequest = contactCanonicalIdentityRequest(contact);
+  const canonicalIdentityId = identityRequest.id;
+  const baseKeys = uniqueNonEmpty([
+    contact.id,
+    cleanText(contact.id).replace(/^human:/, ''),
+    contact.bridgeHumanId ?? '',
+    contact.bridgePeerNodeId ?? '',
+    canonicalIdentityId ?? '',
+    cleanText(canonicalIdentityId).replace(/^human:/, ''),
+  ]);
+  return new Set(baseKeys.map(normalizedMatchKey).filter(Boolean));
+}
+
+function conversationPersonMatchKeys(conversation: Conversation) {
+  const metadata = metadataRecord(conversation.metadata);
+  return uniqueNonEmpty([
+    metadataText(metadata, 'contactId'),
+    metadataText(metadata, 'peerHumanId'),
+    metadataText(metadata, 'peerNodeId'),
+    conversation.bridgeTarget?.humanId ?? '',
+    conversation.bridgeTarget?.nodeId ?? '',
+    ...(conversation.canonicalParticipants ?? []).filter((participant) => participant.kind === 'human' && participant.role !== 'self').flatMap((participant) => [
+      participant.id,
+      participant.humanId ?? '',
+      participant.bridgeNodeId ?? '',
+      participant.avatarKey ?? '',
+    ]),
+  ]).flatMap((key) => [key, key.replace(/^human:/, '')]);
+}
+
 function conversationAgentMatchKeys(conversation: Conversation) {
   const metadata = metadataRecord(conversation.metadata);
   return uniqueNonEmpty([
@@ -299,6 +330,18 @@ export function existingBlankSessionIdForAgentStart(agent: Agent, conversations:
     .sort((left, right) => conversationUpdatedAtMs(right) - conversationUpdatedAtMs(left))[0];
 
   return blankConversation?.canonicalSessionId ?? blankConversation?.id ?? null;
+}
+
+export function existingSessionIdForPersonStart(contact: Contact, conversations: Conversation[]) {
+  const personKeys = personMatchKeys(contact);
+  const existingConversation = conversations
+    .filter((conversation) => {
+      if (conversation.type !== 'person') return false;
+      return conversationPersonMatchKeys(conversation).some((key) => personKeys.has(normalizedMatchKey(key)));
+    })
+    .sort((left, right) => conversationUpdatedAtMs(right) - conversationUpdatedAtMs(left))[0];
+
+  return existingConversation?.canonicalSessionId ?? existingConversation?.id ?? null;
 }
 
 export function canCreateGroup(selectedContactIds: string[]) {

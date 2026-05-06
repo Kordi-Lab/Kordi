@@ -43,6 +43,7 @@ import {
   chatSessionIdForPersonStart,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForAgentStart,
+  existingSessionIdForPersonStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
   isApprovedBridgeContact,
@@ -1013,6 +1014,11 @@ export function useKordiAppModel() {
     }
 
     if (!isNativeShell) return;
+    const existingSessionId = existingSessionIdForPersonStart(contact, chatConversations);
+    if (existingSessionId) {
+      selectNewChatSession(existingSessionId);
+      return;
+    }
     const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId) {
       throw new Error('Local profile identity is not ready yet.');
@@ -1040,6 +1046,7 @@ export function useKordiAppModel() {
     selectNewChatSession(sessionId);
   }, [
     canonicalSessionState?.profile.humanIdentityId,
+    chatConversations,
     handleStartBridgePersonSession,
     isNativeShell,
     selectNewChatSession,
