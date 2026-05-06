@@ -14,6 +14,8 @@ export function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnaps
     failed: !turn.succeeded && turn.status !== 'cancelled',
     thinkingText: turn.thinkingText,
     tools: turn.tools,
+    turnStartedAtMs: turn.startedAtMs ?? null,
+    turnCompletedAtMs: turn.completedAtMs ?? null,
   };
 }
 
@@ -67,11 +69,16 @@ export function mergeDesktopTurnSnapshot(
     return existing ? mergeDesktopTurnToolSnapshot(existing, tool) : tool;
   });
 
+  const startedAtMs = current.startedAtMs ?? next.startedAtMs;
+  const completedAtMs = next.completedAtMs ?? current.completedAtMs;
+
   return {
     ...current,
     ...next,
     assistantText: longerLiveText(current.assistantText, next.assistantText),
     thinkingText: longerLiveText(current.thinkingText, next.thinkingText),
+    ...(startedAtMs != null ? { startedAtMs } : {}),
+    ...(completedAtMs != null ? { completedAtMs } : {}),
     tools: [
       ...mergedTools,
       ...current.tools.filter((tool) => !nextToolIds.has(tool.id)),
@@ -153,6 +160,8 @@ export function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefine
     || left.thinkingText !== right.thinkingText
     || left.completed !== right.completed
     || left.succeeded !== right.succeeded
+    || left.startedAtMs !== right.startedAtMs
+    || left.completedAtMs !== right.completedAtMs
     || left.error !== right.error
     || Boolean(left.transcriptRefreshRequired) !== Boolean(right.transcriptRefreshRequired)
     || left.tools.length !== right.tools.length

@@ -599,6 +599,8 @@ export type DesktopChatMessage = {
   mentions?: MessageMention[];
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
+  turnStartedAtMs?: number | null;
+  turnCompletedAtMs?: number | null;
 };
 
 export type DesktopChatSessionSummary = {

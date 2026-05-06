@@ -272,6 +272,82 @@ test('task dashboard prefers model-generated task titles from tool arguments', (
   assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
 });
 
+test('task dashboard records task time and duration metadata', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-duration',
+    sessionId: 'session-1',
+    prompt: '@Kordi write a website options report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the requested report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    startedAtMs: 1_000,
+    completedAtMs: 76_500,
+    tools: [
+      {
+        id: 'plan-duration',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Website Options Report', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(turn)] });
+
+  assert.equal(dashboard.tasks[0].timeLabel, '10:00');
+  assert.equal(dashboard.tasks[0].durationLabel, '1m 15s');
+});
+
+test('task panel renders completed task time without status or duration clutter', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-duration',
+    sessionId: 'session-1',
+    prompt: '@Kordi write a website options report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the requested report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    startedAtMs: 1_000,
+    completedAtMs: 76_500,
+    tools: [
+      {
+        id: 'plan-duration',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Website Options Report', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /10:00/);
+  assert.doesNotMatch(markup, /Completed 10:00/);
+  assert.doesNotMatch(markup, /Response complete/);
+  assert.doesNotMatch(markup, /1m 15s/);
+});
+
 test('task dashboard names completed artifact tasks when historical prompts are unavailable', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-report',

@@ -4,8 +4,8 @@ use kordi_cli::desktop_runtime::DesktopRuntimeSession;
 
 use super::turns::{snapshot_turn, update_turn};
 use super::{
-    bridge_agent_session_cwd, DesktopChatManager, DesktopChatToolSnapshot, DesktopChatTurnSnapshot,
-    DesktopSessionHandle,
+    bridge_agent_session_cwd, now_millis, DesktopChatManager, DesktopChatToolSnapshot,
+    DesktopChatTurnSnapshot, DesktopSessionHandle,
 };
 
 async fn ensure_bridge_agent_execution_session(
@@ -100,6 +100,7 @@ async fn run_bridge_agent_prompt_once(
     let (target_session_id, session) = ensure_bridge_agent_execution_session(manager, cwd).await?;
     let execution_session_id = target_session_id.clone();
 
+    let started_at_ms = now_millis();
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: target_session_id,
@@ -111,6 +112,8 @@ async fn run_bridge_agent_prompt_once(
         tools: Vec::new(),
         completed: false,
         succeeded: false,
+        started_at_ms,
+        completed_at_ms: None,
         error: None,
         transcript_refresh_required: false,
     }));
@@ -159,6 +162,7 @@ async fn run_bridge_agent_prompt_once(
                 state.status = "complete".to_string();
                 state.message = "Response complete".to_string();
                 state.completed = true;
+                state.completed_at_ms = Some(now_millis());
                 state.succeeded = assistant.is_some();
                 if let Some(message) = assistant {
                     state.assistant_text = message.text;
@@ -191,6 +195,7 @@ async fn run_bridge_agent_prompt_once(
                 state.status = "failed".to_string();
                 state.message = message.clone();
                 state.completed = true;
+                state.completed_at_ms = Some(now_millis());
                 state.succeeded = false;
                 state.error = Some(message.clone());
             });
@@ -268,6 +273,8 @@ mod tests {
             tools: Vec::new(),
             completed: true,
             succeeded: false,
+            started_at_ms: 1,
+            completed_at_ms: Some(2),
             error: Some("default auth failed".to_string()),
             transcript_refresh_required: false,
         };

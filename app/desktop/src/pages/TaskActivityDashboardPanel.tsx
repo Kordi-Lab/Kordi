@@ -69,9 +69,9 @@ function formatTaskElapsed(elapsedMs: number) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
+function useRunningElapsedLabel(running: boolean, resetKey?: string | null, startedAtMs?: number | null) {
   const key = resetKey ?? '';
-  const startedAtRef = useRef<number | null>(running ? Date.now() : null);
+  const startedAtRef = useRef<number | null>(running ? (startedAtMs ?? Date.now()) : null);
   const runningKeyRef = useRef(key);
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -84,7 +84,7 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
     }
 
     if (startedAtRef.current === null || runningKeyRef.current !== key) {
-      startedAtRef.current = Date.now();
+      startedAtRef.current = startedAtMs ?? Date.now();
       runningKeyRef.current = key;
       setElapsedMs(0);
     }
@@ -93,7 +93,7 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
     updateElapsed();
     const interval = window.setInterval(updateElapsed, 1_000);
     return () => window.clearInterval(interval);
-  }, [key, running]);
+  }, [key, running, startedAtMs]);
 
   return running ? formatTaskElapsed(elapsedMs) : null;
 }
@@ -171,8 +171,10 @@ function TaskContent({
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 }) {
-  const secondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
-  const runningElapsed = useRunningElapsedLabel(nested && task.status === 'active', task.id);
+  const rawSecondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
+  const genericCompletedSummary = /^(?:complete|completed|response complete|done)$/i.test(rawSecondaryText.trim());
+  const secondaryText = task.status === 'completed' && genericCompletedSummary ? '' : rawSecondaryText;
+  const runningElapsed = useRunningElapsedLabel(task.status === 'active', task.id, task.startedAtMs);
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
   const rawSubtaskLabel = subtaskCount > 0
@@ -181,6 +183,10 @@ function TaskContent({
       : `${subtaskCount} subtask${subtaskCount === 1 ? '' : 's'}`
     : null;
   const subtaskLabel = rawSubtaskLabel && rawSubtaskLabel !== secondaryText ? rawSubtaskLabel : null;
+  const durationText = task.status === 'completed' || task.status === 'closed'
+    ? null
+    : task.durationLabel ?? (runningElapsed ? `Running · ${runningElapsed}` : null);
+  const timeParts = [task.timeLabel, durationText].filter((part): part is string => Boolean(part));
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
@@ -189,8 +195,8 @@ function TaskContent({
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
-            <div className="mt-1 app-inspector-text-block">{secondaryText}</div>
-            {runningElapsed ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">Running · {runningElapsed}</div> : null}
+            {secondaryText ? <div className="mt-1 app-inspector-text-block">{secondaryText}</div> : null}
+            {timeParts.length > 0 ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{timeParts.join(' · ')}</div> : null}
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
           </div>
           {!nested && 'responseMessageId' in task ? (

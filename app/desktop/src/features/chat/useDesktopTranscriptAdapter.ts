@@ -80,6 +80,8 @@ export function mapDesktopMessagesForTranscript(
               tools: message.tools ?? [],
               completed: true,
               succeeded: !failedAssistant && !(message.tools ?? []).some((tool) => tool.isError),
+              startedAtMs: message.turnStartedAtMs ?? null,
+              completedAtMs: message.turnCompletedAtMs ?? message.timestampMs,
               error: failedAssistant ? message.text : undefined,
             }
           : undefined,

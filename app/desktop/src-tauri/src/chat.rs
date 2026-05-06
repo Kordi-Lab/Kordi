@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -28,6 +29,13 @@ pub(crate) use attachments::{
 
 pub(crate) use bridge_agent_runner::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting};
 pub(super) use bridge_outreach::bridge_agent_session_cwd;
+
+pub(super) fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or_default()
+}
 
 use bridge_outreach::prepare_desktop_session_for_send;
 use canonical_sync::{
@@ -117,6 +125,8 @@ pub struct DesktopChatTurnSnapshot {
     pub tools: Vec<DesktopChatToolSnapshot>,
     pub completed: bool,
     pub succeeded: bool,
+    pub started_at_ms: i64,
+    pub completed_at_ms: Option<i64>,
     pub error: Option<String>,
     pub transcript_refresh_required: bool,
 }
@@ -768,6 +778,7 @@ pub async fn desktop_chat_start_message(
         );
     }
     let turn_id = uuid::Uuid::new_v4().to_string();
+    let started_at_ms = now_millis();
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
         id: turn_id.clone(),
         session_id: target_session_id.clone(),
@@ -779,6 +790,8 @@ pub async fn desktop_chat_start_message(
         tools: Vec::new(),
         completed: false,
         succeeded: false,
+        started_at_ms,
+        completed_at_ms: None,
         error: None,
         transcript_refresh_required: false,
     }));
@@ -816,6 +829,7 @@ pub async fn desktop_chat_start_message(
                     state.status = "failed".to_string();
                     state.message = error.clone();
                     state.completed = true;
+                    state.completed_at_ms = Some(now_millis());
                     state.succeeded = false;
                     state.error = Some(error);
                 });
@@ -847,6 +861,7 @@ pub async fn desktop_chat_start_message(
                 state.status = "failed".to_string();
                 state.message = error.clone();
                 state.completed = true;
+                state.completed_at_ms = Some(now_millis());
                 state.succeeded = false;
                 state.error = Some(error);
             });
@@ -864,6 +879,7 @@ pub async fn desktop_chat_start_message(
                     state.status = "failed".to_string();
                     state.message = "Chat request failed".to_string();
                     state.completed = true;
+                    state.completed_at_ms = Some(now_millis());
                     state.succeeded = false;
                     state.error = Some(err.to_string());
                 });
@@ -895,6 +911,7 @@ pub async fn desktop_chat_start_message(
                     state.status = "cancelled".to_string();
                     state.message = "Response stopped".to_string();
                     state.completed = true;
+                    state.completed_at_ms = Some(now_millis());
                     state.succeeded = false;
                     state.error = None;
                 });
@@ -910,6 +927,7 @@ pub async fn desktop_chat_start_message(
                     state.status = "succeeded".to_string();
                     state.message = "Response complete".to_string();
                     state.completed = true;
+                    state.completed_at_ms = Some(now_millis());
                     state.succeeded = true;
                     state.error = None;
                 });
@@ -918,6 +936,7 @@ pub async fn desktop_chat_start_message(
                 state.status = "cancelled".to_string();
                 state.message = "Response stopped".to_string();
                 state.completed = true;
+                state.completed_at_ms = Some(now_millis());
                 state.succeeded = false;
                 state.error = None;
             }),
@@ -925,6 +944,7 @@ pub async fn desktop_chat_start_message(
                 state.status = "failed".to_string();
                 state.message = "Chat request failed".to_string();
                 state.completed = true;
+                state.completed_at_ms = Some(now_millis());
                 state.succeeded = false;
                 state.error = Some(err.to_string());
             }),
@@ -972,6 +992,7 @@ pub async fn desktop_chat_cancel_turn(
             state.status = "cancelled".to_string();
             state.message = "Response stopped".to_string();
             state.completed = true;
+            state.completed_at_ms = Some(now_millis());
             state.succeeded = false;
             state.error = None;
         }

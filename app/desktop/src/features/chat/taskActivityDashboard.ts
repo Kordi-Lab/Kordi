@@ -1,4 +1,5 @@
 import { generatedArtifactIdsFromTurn } from '@/features/chat/artifacts';
+import { formatDesktopClockTime } from '@/lib/time';
 import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 
 export type TaskDashboardStatus = 'planned' | 'active' | 'completed' | 'failed' | 'closed';
@@ -14,6 +15,9 @@ type TaskDashboardBase = {
   target?: string | null;
   writeScope: string[];
   live: boolean;
+  timeLabel?: string | null;
+  durationLabel?: string | null;
+  startedAtMs?: number | null;
 };
 
 export type TaskDashboardSubtask = TaskDashboardBase;
@@ -44,6 +48,7 @@ type TurnWithSequence = {
   live: boolean;
   sequence: number;
   responseMessageId?: string | null;
+  timeLabel?: string | null;
 };
 
 type ToolWithTurn = TurnWithSequence & {
@@ -89,10 +94,40 @@ function stringArrayValue(value: unknown) {
     : [];
 }
 
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function compact(value: string, maxLength = 180) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+}
+
+function formatTaskDuration(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+function taskDurationLabel(turn: DesktopChatTurnSnapshot) {
+  const startedAtMs = numberValue(turn.startedAtMs);
+  const completedAtMs = numberValue(turn.completedAtMs);
+  if (startedAtMs === null || completedAtMs === null || completedAtMs < startedAtMs) return null;
+  return formatTaskDuration(completedAtMs - startedAtMs);
+}
+
+function taskTimeLabel(turn: DesktopChatTurnSnapshot, messageTimeLabel?: string | null) {
+  const explicitTime = messageTimeLabel?.trim();
+  const fallbackTime = explicitTime
+    || (turn.completedAtMs ? formatDesktopClockTime(turn.completedAtMs) : null)
+    || (turn.startedAtMs ? formatDesktopClockTime(turn.startedAtMs) : null);
+  if (!fallbackTime) return null;
+  if (!turn.completed || turn.succeeded) return fallbackTime;
+  if (turn.status === 'cancelled') return `Stopped ${fallbackTime}`;
+  return `Failed ${fallbackTime}`;
 }
 
 function titleFromPrompt(prompt?: string | null) {
@@ -322,7 +357,7 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
   let sequence = 0;
   for (const message of messages) {
     if (message.turn) {
-      turns.push({ turn: message.turn, live: false, sequence: sequence++, responseMessageId: message.id ?? message.turn.id });
+      turns.push({ turn: message.turn, live: false, sequence: sequence++, responseMessageId: message.id ?? message.turn.id, timeLabel: message.time });
     }
   }
 
@@ -333,7 +368,7 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
   return turns;
 }
 
-function createParentTask({ turn, live, sequence, responseMessageId }: TurnWithSequence): MutableParentTask {
+function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }: TurnWithSequence): MutableParentTask {
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   const artifactIds = generatedArtifactIdsFromTurn(turn);
   return {
@@ -345,6 +380,9 @@ function createParentTask({ turn, live, sequence, responseMessageId }: TurnWithS
     target: null,
     writeScope: [],
     live,
+    timeLabel: taskTimeLabel(turn, timeLabel),
+    durationLabel: taskDurationLabel(turn),
+    startedAtMs: numberValue(turn.startedAtMs),
     sequence,
     completed: turn.completed,
     succeeded: turn.succeeded,
@@ -406,6 +444,9 @@ function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
     live: parent.live || status === 'active',
     responseMessageId: parent.responseMessageId,
     artifactIds: parent.artifactIds,
+    timeLabel: parent.timeLabel,
+    durationLabel: parent.durationLabel,
+    startedAtMs: parent.startedAtMs,
     subtasks,
     subtaskCount: subtasks.length,
     activeSubtaskCount,

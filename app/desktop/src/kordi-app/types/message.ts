@@ -153,6 +153,8 @@ export type DesktopChatTurnSnapshot = {
   tools: DesktopChatToolSnapshot[];
   completed: boolean;
   succeeded: boolean;
+  startedAtMs?: number | null;
+  completedAtMs?: number | null;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
   replyToMessageId?: string | null;
