@@ -572,6 +572,58 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
 export type StopBridgeAgentRequestHandler = (request: BridgeAgentRequestControl) => Promise<void> | void;
 export type StopActiveTurnHandler = () => Promise<void> | void;
 
+const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
+
+function normalizedLiveStatusMessage(value: string) {
+  return value.trim().toLowerCase().replace(/\.\.\.$/, '…');
+}
+
+function liveStatusMessageIsGeneric(value: string) {
+  return GENERIC_LIVE_STATUS_MESSAGES.has(normalizedLiveStatusMessage(value));
+}
+
+function toolStatusIsComplete(status: string) {
+  const normalized = status.trim().toLowerCase();
+  return normalized === 'done' || normalized === 'complete' || normalized === 'completed';
+}
+
+function toolStatusIsFailed(status: string, isError: boolean) {
+  const normalized = status.trim().toLowerCase();
+  return isError || normalized === 'error' || normalized.includes('failed');
+}
+
+function livePhaseLabelFromTool(tool: DesktopChatTurnSnapshot['tools'][number]) {
+  switch (toolTimelineTypeLabel(tool)) {
+    case 'Observation':
+      return 'Observation…';
+    case 'Planning':
+      return 'Planning…';
+    case 'Operator':
+      return 'Coordination…';
+    case 'Execution':
+      return 'Execution…';
+    case 'Reflection':
+      return 'Reflection…';
+    default:
+      return null;
+  }
+}
+
+function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
+  const explicitMessage = turn.message?.trim() ?? '';
+  if (explicitMessage && !liveStatusMessageIsGeneric(explicitMessage)) return explicitMessage;
+
+  const activeTool = [...turn.tools].reverse().find((tool) => !toolStatusIsComplete(tool.status) && !toolStatusIsFailed(tool.status, tool.isError));
+  const activePhase = activeTool ? livePhaseLabelFromTool(activeTool) : null;
+  if (activePhase) return activePhase;
+
+  const latestTool = [...turn.tools].reverse().find((tool) => !toolStatusIsFailed(tool.status, tool.isError));
+  const latestPhase = latestTool ? livePhaseLabelFromTool(latestTool) : null;
+  if (latestPhase) return latestPhase;
+
+  return 'Planning…';
+}
+
 function TurnStopButton({
   onStop,
   ariaLabel = 'Stop agent request',
@@ -691,25 +743,21 @@ function LiveChatTurnCardView({
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingBridgeAgentRequest;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
     || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
-  const liveStatusText = visibleTurn.message?.trim().length
-    ? visibleTurn.message
-    : visibleTurn.status === 'cancelling'
-      ? 'Stopping…'
-      : visibleTurn.status === 'retrying'
-        ? 'Retrying…'
-        : visibleTurn.status === 'compacting'
-          ? 'Compressing conversation…'
-          : visibleTurn.status === 'compacted'
-            ? 'Conversation compressed. Continuing…'
-            : visibleTurn.status === 'compaction_failed'
-              ? 'Compression needs attention'
-              : visibleTurn.status === 'typing'
-                ? 'Typing…'
-                : visibleTurn.status === 'writing'
-                  ? 'Replying…'
-                  : visibleTurn.status === 'streaming' || visibleTurn.status === 'starting'
-                    ? 'Replying…'
-                    : 'Working…';
+  const liveStatusText = visibleTurn.status === 'cancelling'
+    ? 'Stopping…'
+    : visibleTurn.status === 'retrying'
+      ? 'Retrying…'
+      : visibleTurn.status === 'compacting'
+        ? 'Compressing conversation…'
+        : visibleTurn.status === 'compacted'
+          ? 'Conversation compressed. Continuing…'
+          : visibleTurn.status === 'compaction_failed'
+            ? 'Compression needs attention'
+            : visibleTurn.status === 'typing'
+              ? 'Typing…'
+              : visibleTurn.status === 'writing'
+                ? 'Replying…'
+                : liveTurnPhaseStatusText(visibleTurn);
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const hasResponseSurface = Boolean(
