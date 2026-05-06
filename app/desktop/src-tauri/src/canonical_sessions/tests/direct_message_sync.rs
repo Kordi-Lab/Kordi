@@ -244,12 +244,8 @@ fn message_scoped_outreach_groups_include_same_request_response_without_message_
 
 #[test]
 fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_participants() {
-    let storage_root = std::env::temp_dir().join(format!(
-        "kordi-direct-person-title-test-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
-    std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+    let storage =
+        crate::test_support::ScopedKordiStorageRoot::new("kordi-direct-person-title-test");
 
     let session_id = "session:bridge:humans:stable-pair";
     let first_message_outreach = crate::bridge::DesktopBridgeOutreachMetadata {
@@ -411,8 +407,7 @@ fn direct_person_bridge_conversation_uses_first_message_title_without_renaming_p
         Some("Shuyang".to_string()),
     );
 
-    std::env::remove_var("KORDI_STORAGE_ROOT");
-    let _ = std::fs::remove_dir_all(storage_root);
+    drop(storage);
 }
 
 #[test]

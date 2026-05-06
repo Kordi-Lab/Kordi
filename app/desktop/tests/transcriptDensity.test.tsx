@@ -66,6 +66,34 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
+test('renders initial generic working status as starting until a real tool phase appears', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-starting-work',
+    sessionId: 'session-1',
+    prompt: '@Kordi plan the website choices',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@Kordi plan the website choices',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /Starting…/);
+  assert.doesNotMatch(markup, /Planning…/);
+  assert.doesNotMatch(markup, /Working…/);
+});
+
 test('renders failed own message delivery as visible red failed text', () => {
   const message: Message = {
     role: 'user',

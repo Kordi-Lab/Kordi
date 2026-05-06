@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Braces, ChevronLeft, FileText, FolderOpen, LoaderCircle } from 'lucide-react';
+import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle } from 'lucide-react';
 
-import { MarkdownCodeBlock } from '@/kordi-app/components';
+import { MarkdownCodeBlock, MarkdownContent } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -17,10 +17,38 @@ type ArtifactInspectorProps = {
   footer?: ReactNode;
 };
 
-function artifactIcon(kind: SessionArtifact['kind']) {
+function fileNameFromPath(path: string) {
+  return path.split('/').filter(Boolean).pop()?.trim() || path;
+}
+
+function parentPathFromPath(path: string) {
+  const parts = path.split('/').filter(Boolean);
+  parts.pop();
+  return parts;
+}
+
+function compactArtifactLocation(path: string, fileName = fileNameFromPath(path)) {
+  const parts = parentPathFromPath(path);
+  if (parts.length === 0) return '';
+  const visibleCount = path.startsWith('/') ? 1 : 2;
+  const visibleParts = parts.slice(-visibleCount).filter((part) => part !== fileName);
+  if (visibleParts.length === 0) return '';
+  return parts.length > visibleParts.length ? `…/${visibleParts.join('/')}` : visibleParts.join('/');
+}
+
+function extensionLabel(path: string, fallback: SessionArtifact['kind'] = 'file') {
+  const extension = fileNameFromPath(path).split('.').pop()?.trim().toLowerCase();
+  if (!extension || extension === fileNameFromPath(path).toLowerCase()) return fallback;
+  if (extension === 'markdown') return 'md';
+  return extension;
+}
+
+function artifactIcon(kind: SessionArtifact['kind'], path = '') {
+  const extension = extensionLabel(path, kind);
+  if (extension === 'html' || extension === 'htm') return Globe2;
   if (kind === 'code') return Braces;
   if (kind === 'document') return FileText;
-  return FolderOpen;
+  return FileText;
 }
 
 function languageFromPath(path: string) {
@@ -35,12 +63,42 @@ function languageFromPath(path: string) {
   return extension;
 }
 
-function renderPreview(preview: DesktopArtifactPreview) {
+function artifactPreviewKind(path: string) {
+  const extension = extensionLabel(path).toLowerCase();
+  if (extension === 'html' || extension === 'htm') return 'html';
+  if (extension === 'md' || extension === 'mdx') return 'markdown';
+  return 'source';
+}
+
+export function renderArtifactPreview(preview: DesktopArtifactPreview) {
   if (preview.lines.length === 0) {
     return <div className="px-4 py-4 text-[12px] text-slate-400">This artifact is empty.</div>;
   }
 
   const source = preview.lines.map((line) => line.text).join('\n');
+  const previewKind = artifactPreviewKind(preview.path);
+
+  if (previewKind === 'html') {
+    return (
+      <div className="bg-[color:var(--app-transcript-bg)] p-3">
+        <iframe
+          title={`${fileNameFromPath(preview.path)} preview`}
+          srcDoc={source}
+          sandbox="allow-forms allow-popups allow-scripts"
+          className="h-[32rem] w-full rounded-[16px] border border-white/10 bg-white text-slate-950"
+        />
+      </div>
+    );
+  }
+
+  if (previewKind === 'markdown') {
+    return (
+      <div className="max-h-[32rem] overflow-auto px-4 py-4">
+        <MarkdownContent text={source} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-3">
       <MarkdownCodeBlock
@@ -81,9 +139,89 @@ function artifactFromDirectoryEntry(entry: DesktopArtifactDirectoryEntry): Sessi
     path: entry.path,
     name: entry.name,
     kind: entry.kind === 'directory' ? 'file' : entry.kind,
+    category: 'related',
     summary: `Project folder file • ${formatFileSize(entry.sizeBytes)}`,
     timeLabel: 'Folder',
   };
+}
+
+function artifactCategory(artifact: SessionArtifact): NonNullable<SessionArtifact['category']> {
+  return artifact.category ?? 'artifact';
+}
+
+type ArtifactListSectionProps = {
+  title: string;
+  section: 'generated' | 'related' | 'memory';
+  description?: string;
+  artifacts: SessionArtifact[];
+  activeArtifact: SessionArtifact | null;
+  onSelect: (artifactId: string) => void;
+};
+
+function ArtifactListSection({ title, section, description, artifacts, activeArtifact, onSelect }: ArtifactListSectionProps) {
+  if (artifacts.length === 0) return null;
+
+  return (
+    <section className="app-detail-section" data-artifact-section={section}>
+      {title ? <div className="app-detail-kicker">{title}</div> : null}
+      {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
+      <div className="overflow-hidden rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)]/60">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-[color:var(--app-divider)] px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-[color:var(--utility-muted-text)]">
+          <span>Name</span>
+          <span>Modified</span>
+        </div>
+        <div className="divide-y divide-[color:var(--app-divider)]">
+          {artifacts.map((artifact) => {
+            const displayName = artifact.name || fileNameFromPath(artifact.path);
+            const Icon = artifactIcon(artifact.kind, artifact.path);
+            const isActive = activeArtifact?.id === artifact.id;
+            const location = compactArtifactLocation(artifact.path, displayName);
+            const typeLabel = extensionLabel(artifact.path, artifact.kind).toUpperCase();
+
+            return (
+              <button
+                key={artifact.id}
+                type="button"
+                data-artifact-file-row="true"
+                onClick={() => onSelect(artifact.id)}
+                className={cn(
+                  'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition',
+                  isActive ? 'bg-white/[0.055]' : 'hover:bg-white/[0.025]',
+                )}
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-slate-300">
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 truncate app-inspector-heading">{displayName}</div>
+                      <span className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                        {typeLabel}
+                      </span>
+                      {artifact.pinned ? (
+                        <span className="shrink-0 rounded-md border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-amber-100">
+                          pinned
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[color:var(--utility-muted-text)]">
+                      {location ? <span className="truncate">{location}</span> : null}
+                      {location && artifact.summary ? <span className="shrink-0 text-slate-600">•</span> : null}
+                      {artifact.summary ? <span className="truncate">{artifact.summary}</span> : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 text-[10px] text-slate-500">
+                  {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function ArtifactInspector({
@@ -113,16 +251,21 @@ export function ArtifactInspector({
       : null;
   }, [browserPath, folderBrowserRootPath]);
 
+  const generatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'artifact'), [artifacts]);
   const activeArtifact = useMemo(
-    () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null,
-    [activeArtifactId, artifacts],
+    () => generatedArtifacts.find((artifact) => artifact.id === activeArtifactId) ?? generatedArtifacts[0] ?? null,
+    [activeArtifactId, generatedArtifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
+  const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
   const activePreviewKey = previewArtifact
-    ? `${previewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
+    ? `${effectivePreviewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
     : null;
   const cachedPreview = activePreviewKey ? previewCache[activePreviewKey] ?? null : null;
   const previewErrorDetails = previewError ? previewErrorCopy(previewError, previewArtifact) : null;
+  const previewFileName = previewArtifact ? fileNameFromPath(previewArtifact.path) : '';
+  const previewLocation = previewArtifact ? compactArtifactLocation(previewArtifact.path, previewFileName) : '';
+  const previewKind = previewArtifact ? artifactPreviewKind(previewArtifact.path) : null;
 
   useEffect(() => {
     if (artifacts.length === 0) {
@@ -136,8 +279,8 @@ export function ArtifactInspector({
       return;
     }
 
-    onSelectArtifact(artifacts[0].id);
-  }, [activeArtifactId, artifacts, onSelectArtifact]);
+    onSelectArtifact(activeArtifact?.id ?? null);
+  }, [activeArtifact?.id, activeArtifactId, artifacts, onSelectArtifact]);
 
   useEffect(() => {
     setBrowserPath(null);
@@ -187,7 +330,7 @@ export function ArtifactInspector({
     let cancelled = false;
     setIsPreviewLoading(true);
 
-    fetchDesktopChatArtifactPreview(previewArtifact.path, previewBaseRoot)
+    fetchDesktopChatArtifactPreview(previewArtifact.path, effectivePreviewBaseRoot)
       .then((preview) => {
         if (cancelled) return;
         setPreviewCache((current) => ({
@@ -208,7 +351,7 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activePreviewKey, cachedPreview, isNativeShell, previewArtifact?.id, previewArtifact?.path, previewBaseRoot]);
+  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, previewArtifact?.id, previewArtifact?.path]);
 
   return (
     <>
@@ -216,8 +359,8 @@ export function ArtifactInspector({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>
           <div className="app-inspector-emphasis">
-            <div className="break-all font-mono text-[11px] text-[color:var(--utility-foreground)]">
-              {browserDirectory?.path ?? folderBrowserRootPath}
+            <div className="truncate text-[11px] text-[color:var(--utility-foreground)]">
+              {fileNameFromPath(browserDirectory?.path ?? folderBrowserRootPath)}
             </div>
             <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">
               Browse the full project folder. Open folders to inspect their files; select a file to preview it here.
@@ -246,8 +389,10 @@ export function ArtifactInspector({
                 </button>
               ) : null}
               {browserDirectory.entries.length > 0 ? browserDirectory.entries.map((entry) => {
-                const Icon = entry.isDirectory ? FolderOpen : artifactIcon(entry.kind === 'directory' ? 'file' : entry.kind);
+                const entryKind = entry.kind === 'directory' ? 'file' : entry.kind;
+                const Icon = entry.isDirectory ? FolderOpen : artifactIcon(entryKind, entry.path);
                 const isSelected = browserSelectedArtifact?.path === entry.path;
+                const entryLocation = compactArtifactLocation(entry.path, entry.name);
                 return (
                   <button
                     key={entry.path}
@@ -271,7 +416,7 @@ export function ArtifactInspector({
                           <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
                           <div className="min-w-0 truncate app-inspector-heading">{entry.name}</div>
                         </div>
-                        <div className="mt-1 break-all app-inspector-subtext">{entry.path}</div>
+                        {entryLocation ? <div className="mt-1 truncate app-inspector-subtext">{entryLocation}</div> : null}
                       </div>
                       <div className="shrink-0 text-[10px] text-slate-500">
                         {entry.isDirectory ? 'Folder' : formatFileSize(entry.sizeBytes)}
@@ -287,58 +432,38 @@ export function ArtifactInspector({
         </section>
       ) : null}
 
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Artifacts and related files</div>
-        {artifacts.length > 0 ? (
-          <div className="app-inspector-list">
-            {artifacts.map((artifact) => {
-              const Icon = artifactIcon(artifact.kind);
-              const isActive = activeArtifact?.id === artifact.id;
-
-              return (
-                <button
-                  key={artifact.id}
-                  type="button"
-                  onClick={() => {
-                    setBrowserSelectedArtifact(null);
-                    onSelectArtifact(artifact.id);
-                  }}
-                  className={cn(
-                    'app-inspector-source-row w-full text-left transition',
-                    isActive ? 'bg-white/[0.04] ring-1 ring-white/10' : 'hover:bg-white/[0.02]',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                        <div className="min-w-0 truncate app-inspector-heading">{artifact.name}</div>
-                        <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-400">
-                          {artifact.kind}
-                        </span>
-                      </div>
-                      <div className="mt-1 break-all app-inspector-subtext">{artifact.path}</div>
-                      <div className="mt-1 app-inspector-text-block">{artifact.summary}</div>
-                    </div>
-                    <div className="shrink-0 text-[10px] text-slate-500">
-                      {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
+      {generatedArtifacts.length > 0 ? (
+        <ArtifactListSection
+          title=""
+          section="generated"
+          artifacts={generatedArtifacts}
+          activeArtifact={activeArtifact}
+          onSelect={(artifactId) => {
+            setBrowserSelectedArtifact(null);
+            onSelectArtifact(artifactId);
+          }}
+        />
+      ) : (
+        <section className="app-detail-section">
+          <div className="app-detail-kicker">Artifacts</div>
           <div className="app-inspector-empty">{emptyMessage}</div>
-        )}
-      </section>
+        </section>
+      )}
 
       {previewArtifact ? (
         <section className="app-detail-section">
           <div className="app-detail-kicker">Preview</div>
           <div className="app-code-panel overflow-hidden rounded-[20px] shadow-[var(--app-shadow-soft)]">
-            <div className="app-code-toolbar border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
-              <div className="truncate">{previewArtifact.path}</div>
+            <div className="app-code-toolbar flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
+              <div className="min-w-0">
+                <div className="truncate font-medium text-slate-200">{previewFileName}</div>
+                {previewLocation ? (
+                  <div className="truncate text-[10.5px] text-slate-500">{previewLocation}</div>
+                ) : null}
+              </div>
+              <div className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                {previewKind === 'html' ? 'Preview' : previewKind === 'markdown' ? 'Markdown' : 'Source'}
+              </div>
             </div>
             {isPreviewLoading ? (
               <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
@@ -352,7 +477,7 @@ export function ArtifactInspector({
               </div>
             ) : cachedPreview ? (
               <>
-                {renderPreview(cachedPreview)}
+                {renderArtifactPreview(cachedPreview)}
                 {cachedPreview.truncated ? (
                   <div className="border-t border-white/10 px-4 py-2 text-[11px] text-slate-500">
                     Preview truncated for large files.

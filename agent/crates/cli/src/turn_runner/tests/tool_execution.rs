@@ -110,11 +110,15 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
     result.expect("turn should continue after errored tool result");
 
     let mut saw_timeout_tool_error = false;
+    let mut saw_reflection_advisory = false;
     let mut saw_done = false;
     while let Ok(event) = event_rx.try_recv() {
         match event {
             TurnEvent::ToolResult {
-                is_error, content, ..
+                is_error,
+                content,
+                details,
+                ..
             } => {
                 if is_error {
                     let text = content
@@ -127,6 +131,14 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
                         .join("\n");
                     if text.contains("timed out") {
                         saw_timeout_tool_error = true;
+                    }
+                    if details
+                        .as_ref()
+                        .and_then(|value| value.get("reflectionAdvisory"))
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|message| message.contains("reflection"))
+                    {
+                        saw_reflection_advisory = true;
                     }
                 }
             }
@@ -141,6 +153,10 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
     assert!(
         saw_timeout_tool_error,
         "should persist the errored tool result"
+    );
+    assert!(
+        saw_reflection_advisory,
+        "errored tools should include a scoped reflection advisory"
     );
     assert!(
         saw_done,
@@ -219,6 +235,105 @@ async fn run_turn_normalizes_builtin_tool_aliases_before_lookup() {
         "normalized alias should execute the builtin tool"
     );
     assert!(saw_done, "turn should complete after the aliased tool call");
+}
+
+#[tokio::test]
+async fn run_turn_preserves_reflection_runtime_for_tool_execution() {
+    let conn = store::open_memory().expect("memory db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let reflection_invocations = Arc::new(AtomicUsize::new(0));
+    let reflection_invocations_for_runtime = reflection_invocations.clone();
+    let save_lesson: kordi_tools::SaveReflectionLessonFn = Arc::new(move |request| {
+        let reflection_invocations_for_runtime = reflection_invocations_for_runtime.clone();
+        Box::pin(async move {
+            reflection_invocations_for_runtime.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(request.scope, "conversation");
+            assert_eq!(request.scope_id, "session-1");
+            assert_eq!(request.source, "manual");
+            assert_eq!(request.lesson, "Keep lesson storage scoped.");
+            Ok(kordi_tools::ReflectionLessonResponse {
+                lesson_id: "lesson-1".to_string(),
+                scope: request.scope,
+                scope_id: request.scope_id,
+                artifact_path: "reflection-lessons/conversation/session-1.md".to_string(),
+            })
+        })
+    });
+    let mut tool_ctx = test_tool_context();
+    tool_ctx.reflection = Some(kordi_tools::ReflectionRuntime { save_lesson });
+
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id,
+        system_prompt: "system".to_string(),
+        model: test_model(128_000),
+        provider: Arc::new(ReflectionCallProvider {
+            call_count: AtomicUsize::new(0),
+        }),
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
+        tool_registry: ToolRegistry::from_tools(vec![Box::new(
+            kordi_tools::reflection_tool::ReflectionTool,
+        )]),
+        tool_ctx,
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(config, event_tx, "hi".to_string()).await;
+    result.expect("reflection tool should receive configured lesson runtime");
+    assert_eq!(reflection_invocations.load(Ordering::SeqCst), 1);
+
+    let mut saw_reflection_tool_result = false;
+    let mut saw_done = false;
+    while let Ok(event) = event_rx.try_recv() {
+        match event {
+            TurnEvent::ToolResult {
+                is_error,
+                content,
+                artifact_path,
+                ..
+            } => {
+                let text = content
+                    .iter()
+                    .filter_map(|block| match block {
+                        ContentBlock::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !is_error
+                    && text.contains("Reflection lesson saved")
+                    && artifact_path.as_deref()
+                        == Some("reflection-lessons/conversation/session-1.md")
+                {
+                    saw_reflection_tool_result = true;
+                }
+            }
+            TurnEvent::Done { text } => {
+                saw_done = true;
+                assert_eq!(text, "done");
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_reflection_tool_result,
+        "reflection should execute with configured runtime instead of unavailable storage"
+    );
+    assert!(saw_done, "turn should complete after reflection tool call");
 }
 
 #[tokio::test]

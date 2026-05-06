@@ -1176,13 +1176,9 @@ mod tests {
 
     #[test]
     fn mailbox_poll_rebuild_skips_canonical_sync_when_no_storage_changed() {
-        let storage_root = std::env::temp_dir().join(format!(
-            "kordi-mailbox-no-change-test-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
-        let canonical_db_path = storage_root.join("canonical-sessions.sqlite3");
+        let storage =
+            crate::test_support::ScopedKordiStorageRoot::new("kordi-mailbox-no-change-test");
+        let canonical_db_path = storage.root().join("canonical-sessions.sqlite3");
         let store = DesktopBridgeStore {
             active_host_id: Some("host-1".to_string()),
             local_agent_routing: DesktopBridgeAgentRouting::default(),
@@ -1216,8 +1212,7 @@ mod tests {
             "changed mailbox polls should still sync canonical sessions"
         );
 
-        std::env::remove_var("KORDI_STORAGE_ROOT");
-        let _ = std::fs::remove_dir_all(storage_root);
+        drop(storage);
     }
 
     #[test]

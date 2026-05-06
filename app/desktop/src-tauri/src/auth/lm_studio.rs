@@ -14,9 +14,9 @@ use environment::{
 use parsing::{
     canonical_lm_studio_model_id, collect_rest_loaded_llm_model_ids,
     is_lm_studio_embedding_model_id, is_safe_model_id, lm_studio_model_match_key,
-    model_max_context_length_from_value, parse_catalog_models,
-    parse_catalog_variants, parse_installed_models, parse_loaded_model_instances, parse_model_ids,
-    sanitize_model_arg, LmStudioLoadedModelInstance,
+    model_max_context_length_from_value, parse_catalog_models, parse_catalog_variants,
+    parse_installed_models, parse_loaded_model_instances, parse_model_ids, sanitize_model_arg,
+    LmStudioLoadedModelInstance,
 };
 
 pub(crate) fn lm_studio_model_ids_match(left: &str, right: &str) -> bool {

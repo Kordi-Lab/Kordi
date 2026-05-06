@@ -1,4 +1,4 @@
-use kordi_tools::{Tool, builtin_tools};
+use kordi_tools::{Tool, ToolMetadata, builtin_tools};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +58,8 @@ struct RegisteredTool {
 pub(crate) struct ToolRegistry {
     active_tools: Vec<Box<dyn Tool>>,
     tool_defs: Vec<serde_json::Value>,
+    #[allow(dead_code)]
+    metadata_by_name: HashMap<String, ToolMetadata>,
     #[cfg(test)]
     active_names: Vec<String>,
     #[cfg(test)]
@@ -69,6 +71,7 @@ impl Default for ToolRegistry {
         Self {
             active_tools: Vec::new(),
             tool_defs: Vec::new(),
+            metadata_by_name: HashMap::new(),
             #[cfg(test)]
             active_names: Vec::new(),
             #[cfg(test)]
@@ -116,10 +119,12 @@ impl ToolRegistry {
         #[cfg(not(test))]
         let active_tools = activate_tools(deduped, &selection);
         let tool_defs = build_tool_defs(&active_tools);
+        let metadata_by_name = build_tool_metadata(&active_tools);
 
         Self {
             active_tools,
             tool_defs,
+            metadata_by_name,
             #[cfg(test)]
             active_names,
             #[cfg(test)]
@@ -140,6 +145,11 @@ impl ToolRegistry {
 
     pub(crate) fn tool_defs(&self) -> &[serde_json::Value] {
         &self.tool_defs
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn metadata_for(&self, tool_name: &str) -> Option<&ToolMetadata> {
+        self.metadata_by_name.get(tool_name)
     }
 
     #[cfg(test)]
@@ -252,16 +262,24 @@ fn activate_tools(deduped: Vec<RegisteredTool>, selection: &ToolSelection) -> Ve
     }
 }
 
+fn build_tool_metadata(tools: &[Box<dyn Tool>]) -> HashMap<String, ToolMetadata> {
+    tools
+        .iter()
+        .map(|tool| (tool.name().to_string(), tool.metadata()))
+        .collect()
+}
+
 pub(crate) fn build_tool_defs(tools: &[Box<dyn Tool>]) -> Vec<serde_json::Value> {
     tools
         .iter()
         .map(|tool| {
+            let definition = tool.definition();
             serde_json::json!({
                 "type": "function",
                 "function": {
-                    "name": tool.name(),
-                    "description": tool.description(),
-                    "parameters": tool.parameters_schema(),
+                    "name": definition.name,
+                    "description": definition.description,
+                    "parameters": definition.parameters_schema,
                 }
             })
         })
@@ -272,6 +290,7 @@ pub(crate) fn build_tool_defs(tools: &[Box<dyn Tool>]) -> Vec<serde_json::Value>
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use kordi_tools::{ToolLayer, ToolRiskLevel};
     use serde_json::{Value, json};
     use tokio_util::sync::CancellationToken;
 
@@ -302,6 +321,30 @@ mod tests {
         ) -> kordi_core::error::KordiResult<kordi_tools::ToolResult> {
             unimplemented!("tool execution is not needed for registry tests")
         }
+    }
+
+    #[test]
+    fn active_tool_metadata_defaults_to_observation_read_only_without_changing_model_schema() {
+        let registry = ToolRegistry::from_sources(
+            vec![Box::new(NamedTool {
+                name: "read",
+                description: "read",
+            })],
+            vec![],
+            ToolSelection::All,
+        );
+
+        let metadata = registry
+            .metadata_for("read")
+            .expect("active tool metadata should be available");
+        assert_eq!(metadata.layer, ToolLayer::Observation);
+        assert_eq!(metadata.risk, ToolRiskLevel::ReadOnly);
+        assert!(metadata.supports_parallel);
+        assert!(
+            registry.tool_defs()[0]["function"]
+                .get("metadata")
+                .is_none()
+        );
     }
 
     #[test]

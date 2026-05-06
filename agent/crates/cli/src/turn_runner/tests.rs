@@ -142,6 +142,10 @@ struct AliasProvider {
     call_count: AtomicUsize,
 }
 
+struct ReflectionCallProvider {
+    call_count: AtomicUsize,
+}
+
 #[async_trait]
 impl Provider for AliasProvider {
     fn name(&self) -> &str {
@@ -408,6 +412,46 @@ impl Provider for StalledLocalProvider {
     ) -> KordiResult<()> {
         self.stream_count.fetch_add(1, Ordering::SeqCst);
         std::future::pending::<()>().await;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Provider for ReflectionCallProvider {
+    fn name(&self) -> &str {
+        "reflection-call-provider"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if call_index == 0 {
+            let _ = tx.send(StreamEvent::ToolCallStart {
+                id: "reflection-tool-1".to_string(),
+                name: "reflection".to_string(),
+            });
+            let _ = tx.send(StreamEvent::ToolCallDelta {
+                id: "reflection-tool-1".to_string(),
+                arguments_delta: r#"{"scope":"conversation","scopeId":"session-1","source":"manual","lesson":"Keep lesson storage scoped."}"#.to_string(),
+            });
+        } else {
+            let _ = tx.send(StreamEvent::TextDelta {
+                text: "done".to_string(),
+            });
+        }
+        let _ = tx.send(StreamEvent::Done);
         Ok(())
     }
 }
@@ -742,10 +786,13 @@ fn test_tool_context() -> kordi_tools::ToolContext {
     kordi_tools::ToolContext {
         cwd: "/tmp".into(),
         artifacts_dir: "/tmp".into(),
+        model: None,
         execution_policy: kordi_tools::ExecutionPolicy::Safety,
         on_output: None,
         web_search: None,
         reach_out: None,
+        reflection: None,
+        task_operator: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }

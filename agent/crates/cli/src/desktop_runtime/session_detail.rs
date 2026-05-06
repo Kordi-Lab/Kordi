@@ -13,10 +13,10 @@ use crate::session_info::collect_session_info_summary;
 
 use super::{
     DesktopChatAgentProfile, DesktopChatContextWindowStatus, DesktopChatMessage,
-    DesktopChatSessionDetail, DesktopChatSessionSummary, attachment_summary_from_metadata,
-    desktop_thinking_levels_for_model, load_project_info, load_session_messages,
-    repair_session_title_from_history, session_activity_label, session_title_from_messages,
-    truncate_chars,
+    DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopSessionArtifact,
+    attachment_summary_from_metadata, desktop_thinking_levels_for_model, load_project_info,
+    load_session_messages, repair_session_title_from_history, session_activity_label,
+    session_title_from_messages, truncate_chars,
 };
 
 fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
@@ -35,6 +35,61 @@ fn repo_relative_display_path(root: &std::path::Path, path: &std::path::Path) ->
     path.strip_prefix(root)
         .ok()
         .map(|relative| relative.display().to_string())
+}
+
+fn lesson_artifact_name(scope: &str) -> &'static str {
+    match scope {
+        "project" => "Project lessons",
+        _ => "Session lessons",
+    }
+}
+
+fn lesson_artifact_summary(scope: &str) -> &'static str {
+    match scope {
+        "project" => "Pinned project-scoped reflection lessons",
+        _ => "Pinned conversation-scoped reflection lessons",
+    }
+}
+
+fn scoped_lesson_artifact(
+    artifacts_dir: &std::path::Path,
+    scope: &str,
+    scope_id: &str,
+) -> DesktopSessionArtifact {
+    let path =
+        crate::reflection_runtime::reflection_lesson_artifact_path(artifacts_dir, scope, scope_id);
+    let path_text = path.display().to_string();
+    DesktopSessionArtifact {
+        id: path_text.clone(),
+        path: path_text,
+        name: lesson_artifact_name(scope).to_string(),
+        kind: "document".to_string(),
+        summary: lesson_artifact_summary(scope).to_string(),
+        time_label: Some("Pinned".to_string()),
+        pinned: true,
+    }
+}
+
+fn reflection_lesson_artifacts_for_session(
+    setup: &SessionRuntimeSetup,
+    project_root: Option<&str>,
+) -> Vec<DesktopSessionArtifact> {
+    let mut artifacts = vec![scoped_lesson_artifact(
+        &setup.tool_ctx.artifacts_dir,
+        "conversation",
+        &setup.session_id,
+    )];
+    if let Some(project_root) = project_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        artifacts.push(scoped_lesson_artifact(
+            &setup.tool_ctx.artifacts_dir,
+            "project",
+            project_root,
+        ));
+    }
+    artifacts
 }
 
 fn infer_agent_label(_cwd: &std::path::Path) -> String {
@@ -174,10 +229,12 @@ pub(super) fn build_detail_from_setup(
         .unwrap_or_else(|| "Draft".to_string());
 
     let context_window_status = current_context_window_status(setup);
-    let project = session_row
+    let project_root = session_row
         .as_ref()
         .filter(|row| row.session_scope == "project")
-        .and_then(|row| row.project_root.as_deref())
+        .and_then(|row| row.project_root.as_deref());
+    let reflection_lesson_artifacts = reflection_lesson_artifacts_for_session(setup, project_root);
+    let project = project_root
         .map(std::path::PathBuf::from)
         .as_deref()
         .and_then(load_project_info);
@@ -207,6 +264,7 @@ pub(super) fn build_detail_from_setup(
                 kordi_session::compaction::AUTO_COMPACTION_THRESHOLD_PERCENT,
         },
         project,
+        reflection_lesson_artifacts,
         messages,
     })
 }

@@ -7,6 +7,7 @@ import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import { composerThinkingLabel, fallbackComposerThinkingValue, type ComposerModelOption, type ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
+import { promptDisplayText } from './promptDisplay';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
@@ -63,7 +64,7 @@ function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
 }
 
 function truncatePrompt(value: string) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
+  const normalized = promptDisplayText(value).replace(/\s+/g, ' ').trim();
   if (!normalized) return 'No real prompt payload is exposed for this identity.';
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 179).trimEnd()}…`;

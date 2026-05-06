@@ -162,7 +162,7 @@ function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurn
   };
 }
 
-function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot): Message {
+function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot, overrides: Partial<Message> = {}): Message {
   return {
     role: 'owned-agent',
     sender,
@@ -170,6 +170,7 @@ function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot): Mes
     text: '',
     time: '12:36',
     turn: messageTurn,
+    ...overrides,
   };
 }
 
@@ -208,6 +209,46 @@ test('drops local intro fragment when the following final local turn extends it'
   const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
 
   assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('drops local intro fragment across minute boundary when historical prompts are unavailable', () => {
+  const intro = agentMessage('Kordi', turn({
+    id: 'turn-brainstorm-intro',
+    prompt: '',
+    assistantText: "I'm using the brainstorming skill to explore website options before any build plan.",
+    thinkingText: '',
+    tools: [],
+  }), { time: '10:59' });
+  const finalAnswer = agentMessage('My Kordi', turn({
+    id: 'turn-brainstorm-final',
+    prompt: '',
+    assistantText: "I'm using the brainstorming skill to explore website options before any build plan. Some of what we're working on might be easier to explain visually.",
+    thinkingText: '',
+  }), { time: '11:00' });
+
+  const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('keeps separate agent turns across minute boundary when prompts differ', () => {
+  const first = agentMessage('Kordi', turn({
+    id: 'turn-first',
+    prompt: '@Kordi brainstorm website choices',
+    assistantText: 'I can outline three website directions.',
+    thinkingText: '',
+    tools: [],
+  }), { time: '10:59' });
+  const second = agentMessage('My Kordi', turn({
+    id: 'turn-second',
+    prompt: '@Kordi now turn the first direction into a plan',
+    assistantText: 'I can outline three website directions. Next, I will turn the first direction into a plan.',
+    thinkingText: '',
+  }), { time: '11:00' });
+
+  const deduped = dedupeAdjacentAgentTurns([first, second]);
+
+  assert.deepEqual(deduped, [first, second]);
 });
 
 test('suppresses all local owned-agent runtime fragments after the triggering user while live turn is rendered', () => {

@@ -199,19 +199,40 @@ fn flatten_tool_output_for_responses(content: &Value) -> String {
     content.to_string()
 }
 
+fn function_tool_name(tool: &Value) -> Option<&str> {
+    tool.get("function")?
+        .get("name")?
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+}
+
 fn convert_tools_for_responses(tools: &[Value]) -> Vec<Value> {
-    tools
-        .iter()
-        .filter_map(|tool| {
-            let func = tool.get("function")?;
-            Some(json!({
-                "type": "function",
-                "name": func.get("name").and_then(|v| v.as_str()).unwrap_or("tool"),
-                "description": func.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                "parameters": func.get("parameters").cloned().unwrap_or_else(|| json!({"type": "object"})),
-            }))
-        })
-        .collect()
+    let mut converted = Vec::new();
+    let mut hosted_web_search = false;
+
+    for tool in tools {
+        let Some(func) = tool.get("function") else {
+            continue;
+        };
+        let name = function_tool_name(tool).unwrap_or("tool");
+        if name == "web_search" {
+            hosted_web_search = true;
+            continue;
+        }
+        converted.push(json!({
+            "type": "function",
+            "name": name,
+            "description": func.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "parameters": func.get("parameters").cloned().unwrap_or_else(|| json!({"type": "object"})),
+        }));
+    }
+
+    if hosted_web_search {
+        converted.insert(0, json!({ "type": "web_search" }));
+    }
+
+    converted
 }
 
 fn convert_messages_for_responses(messages: &[Value]) -> Vec<Value> {
@@ -585,6 +606,42 @@ mod tests {
         let request = completion_request("gpt-5.4");
         let options = request_options("https://openrouter.ai/api/v1");
         assert!(!should_use_responses_api(&request, &options));
+    }
+
+    #[test]
+    fn responses_body_prefers_hosted_web_search_over_custom_function() {
+        let mut request = completion_request("gpt-5.4");
+        request.tools = vec![
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search with custom DuckDuckGo fallback",
+                    "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "web_fetch",
+                    "description": "Fetch a URL",
+                    "parameters": {"type": "object", "properties": {"url": {"type": "string"}}}
+                }
+            }),
+        ];
+
+        let body = build_responses_request_body(&request, vec![]);
+        let tools = body["tools"].as_array().expect("tools array");
+
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0], json!({"type": "web_search"}));
+        assert_eq!(tools[1]["type"], "function");
+        assert_eq!(tools[1]["name"], "web_fetch");
+        assert!(
+            tools
+                .iter()
+                .all(|tool| tool.get("name") != Some(&json!("web_search")))
+        );
     }
 
     #[test]

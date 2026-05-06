@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 import { CornerDownLeft } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
@@ -10,12 +10,32 @@ export function transcriptMessageDomId(messageId: string) {
 }
 
 export function navigateToTranscriptMessage(messageId: string) {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') return false;
   const target = document.getElementById(transcriptMessageDomId(messageId));
-  if (!target) return;
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  target.classList.add('app-transcript-message-highlight');
-  window.setTimeout(() => target.classList.remove('app-transcript-message-highlight'), 1500);
+  if (!target) return false;
+  const visibleTarget = target.closest?.('[data-transcript-message-root]') ?? target;
+  visibleTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  visibleTarget.classList.add('app-transcript-message-highlight');
+  window.setTimeout(() => visibleTarget.classList.remove('app-transcript-message-highlight'), 1500);
+  return true;
+}
+
+export function scrollTranscriptToBottom(scrollRef?: RefObject<HTMLElement | null> | null) {
+  const scrollContainer = scrollRef?.current;
+  if (!scrollContainer) return false;
+  if (typeof scrollContainer.scrollTo === 'function') {
+    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+  } else {
+    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+  }
+  return true;
+}
+
+export function navigateToTranscriptMessageOrScrollBottom(
+  messageId: string,
+  scrollRef?: RefObject<HTMLElement | null> | null,
+) {
+  return navigateToTranscriptMessage(messageId) || scrollTranscriptToBottom(scrollRef);
 }
 
 function sourceQuoteText(sourceMessage: MessageSourceReference) {
