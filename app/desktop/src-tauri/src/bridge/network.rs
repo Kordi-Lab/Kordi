@@ -250,16 +250,22 @@ async fn fetch_serve_node_keys(
     api_key: &str,
     target_node_id: &str,
     project_id: Option<&str>,
+    target_kind: Option<&str>,
 ) -> Result<ServeNodeKeysResponse, String> {
     let trimmed_project_id = project_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
+    let trimmed_target_kind = target_kind
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     let cache_key = format!(
-        "{}|{}|{}",
+        "{}|{}|{}|{}",
         trimmed_base_url(base_url),
         target_node_id,
-        trimmed_project_id.as_deref().unwrap_or("")
+        trimmed_project_id.as_deref().unwrap_or(""),
+        trimmed_target_kind.as_deref().unwrap_or("")
     );
     let cache = SERVE_NODE_KEY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut guard) = cache.lock() {
@@ -272,8 +278,15 @@ async fn fetch_serve_node_keys(
     }
 
     let mut url = format!("{}/v1/keys/{target_node_id}", trimmed_base_url(base_url));
+    let mut query_params = Vec::new();
     if let Some(project_id) = trimmed_project_id.as_deref() {
-        url = format!("{url}?project={project_id}");
+        query_params.push(format!("project={project_id}"));
+    }
+    if let Some(target_kind) = trimmed_target_kind.as_deref() {
+        query_params.push(format!("targetKind={target_kind}"));
+    }
+    if !query_params.is_empty() {
+        url = format!("{url}?{}", query_params.join("&"));
     }
     let response = send_request(
         bridge_client().get(url).bearer_auth(api_key),
@@ -410,6 +423,7 @@ pub(super) async fn encrypt_bridge_payload_for_target(
     sender_host: &DesktopBridgeHostConfig,
     target_node_id: &str,
     project_id: Option<&str>,
+    target_kind: Option<&str>,
     payload: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let recipient_keys = fetch_serve_node_keys(
@@ -417,6 +431,7 @@ pub(super) async fn encrypt_bridge_payload_for_target(
         &sender_host.api_key,
         target_node_id,
         project_id,
+        target_kind,
     )
     .await?;
     encrypt_payload_for_recipient(sender_host, &recipient_keys, payload)
@@ -1337,8 +1352,9 @@ pub(super) async fn relay_plaintext_message(
     project_id: Option<&str>,
     payload: &serde_json::Value,
 ) -> Result<(), String> {
+    let target_kind = relay_target_kind_for_payload(payload);
     let encrypted_payload =
-        encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, target_kind, payload).await?;
     let blob = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     let url = format!("{}/v1/relay", trimmed_base_url(&host.coordination));
@@ -1346,7 +1362,7 @@ pub(super) async fn relay_plaintext_message(
         "targetNodeId": target_node_id,
         "blob": blob,
         "projectId": project_id,
-        "targetKind": relay_target_kind_for_payload(payload),
+        "targetKind": target_kind,
     });
     let response = send_request(
         bridge_client()

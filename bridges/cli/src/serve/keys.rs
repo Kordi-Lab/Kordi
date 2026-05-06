@@ -27,8 +27,10 @@ pub struct UpdateKeysReq {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeysQuery {
     pub project: Option<String>,
+    pub target_kind: Option<String>,
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -44,8 +46,24 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
+fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAccessKind {
+    match target_kind
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "agent" | "bridge-agent" | "ask" => DirectAccessKind::Agent,
+        "person-invite" | "bridge-person-invite" | "session-invite" | "group-invite" => {
+            DirectAccessKind::GroupInvite
+        }
+        "person" | "bridge-person" | "human" => DirectAccessKind::Person,
+        _ => DirectAccessKind::Any,
+    }
+}
+
 /// Get a specific node's public keys. Requires auth — caller must either
-/// share a project with the target node or have a contact relationship.
+/// share a project with the target node or have a permitted direct relationship.
 async fn get_keys(
     State(state): State<Arc<ServerState>>,
     Extension(auth): Extension<AuthNode>,
@@ -75,8 +93,13 @@ async fn get_keys(
         )
         .is_ok()
     } else {
-        nodes_can_directly_reach(&db, &auth.0, &node_id, DirectAccessKind::Any)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        nodes_can_directly_reach(
+            &db,
+            &auth.0,
+            &node_id,
+            direct_access_kind_from_target_kind(q.target_kind.as_deref()),
+        )
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     if !allowed {
         return Err(StatusCode::FORBIDDEN);
@@ -214,7 +237,10 @@ mod tests {
         let result = get_keys(
             State(state),
             Extension(AuthNode("kd_viewer".to_string())),
-            Query(KeysQuery { project: None }),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
             Path("kd_target".to_string()),
         )
         .await;
@@ -238,7 +264,10 @@ mod tests {
         let keys = get_keys(
             State(state),
             Extension(AuthNode("kd_viewer".to_string())),
-            Query(KeysQuery { project: None }),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
             Path("kd_target".to_string()),
         )
         .await
@@ -247,6 +276,71 @@ mod tests {
 
         assert_eq!(keys.node_id, "kd_target");
         assert_eq!(keys.ed25519_pubkey, "ed_target");
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_contacted_owner_only_default_agent_when_requesting_person_keys() {
+        let state = super::super::make_test_state();
+        seed_registered_node_with_policy(
+            &state,
+            "kd_viewer",
+            "ed_viewer",
+            Some("human-viewer"),
+            Some("server-approval"),
+            None,
+        );
+        let db = state.open_connection().unwrap();
+        db.execute(
+            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, is_default_agent, human_visibility_policy, agent_reachability_policy, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?10, ?11, ?12)",
+            rusqlite::params![
+                "kd_target",
+                "ed_target",
+                "x25519_target",
+                "Target's Kordi",
+                "Target",
+                "kordi-desktop",
+                "human-target",
+                "agent-target",
+                "server-approval",
+                "owner",
+                "hash-target",
+                chrono::Utc::now().to_rfc3339(),
+            ],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["kd_viewer", "kd_target", chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let keys = get_keys(
+            State(state.clone()),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("person".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
+
+        let agent_result = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("agent".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await;
+        assert_eq!(agent_result.unwrap_err(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -264,7 +358,10 @@ mod tests {
         let result = get_keys(
             State(state),
             Extension(AuthNode("kd_viewer".to_string())),
-            Query(KeysQuery { project: None }),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
             Path("kd_target".to_string()),
         )
         .await;
@@ -283,6 +380,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await;
@@ -301,6 +399,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await
@@ -329,6 +428,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await

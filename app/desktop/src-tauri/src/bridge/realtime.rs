@@ -193,14 +193,15 @@ async fn encode_outbound_frame(
     payload: &Value,
     durable: bool,
 ) -> Result<String, String> {
+    let target_kind = relay_target_kind_for_payload(payload);
     let encrypted_payload =
-        encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, target_kind, payload).await?;
     let data = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     Ok(serde_json::json!({
         "dst": target_node_id,
         "durable": durable,
-        "targetKind": relay_target_kind_for_payload(payload),
+        "targetKind": target_kind,
         "data": data,
     })
     .to_string())
