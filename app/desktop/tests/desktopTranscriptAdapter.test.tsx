@@ -8,6 +8,43 @@ import { MessageBubble } from '../src/kordi-app/components/transcript';
 import { mapDesktopMessagesForTranscript } from '../src/features/chat/useDesktopTranscriptAdapter';
 import type { DesktopChatMessage } from '../src/kordi-app/types';
 
+test('desktop transcript assigns stable ids before reply attribution so task jumps can highlight rendered turns', () => {
+  const messages: DesktopChatMessage[] = [
+    {
+      role: 'user',
+      sender: 'Me',
+      text: 'Check Kordi project status for: /tmp/kordi/app/desktop',
+      timeLabel: '16:22',
+      timestampMs: 10,
+    },
+    {
+      role: 'assistant',
+      sender: 'My Kordi',
+      text: 'Project status is healthy.',
+      timeLabel: '16:22',
+      timestampMs: 20,
+      tools: [{
+        id: 'plan-status',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Check Kordi project status' }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      }],
+    },
+  ];
+
+  const mapped = mapDesktopMessagesForTranscript('session-status', messages);
+  const attributed = buildReplyAttribution(mapped).messages;
+
+  assert.equal(mapped[1].id, 'desktop-message:session-status:20:1:assistant');
+  assert.equal(attributed[1].id, mapped[1].id);
+});
+
 test('desktop transcript maps plain completed assistant replies to foldable sourced turn cards', () => {
   const longClaudeReply = [
     'Here’s the current Mac landscape as of today (May 6, 2026):',

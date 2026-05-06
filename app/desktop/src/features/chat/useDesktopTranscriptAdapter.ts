@@ -18,6 +18,11 @@ type DesktopTranscriptAvatarSeeds = {
   agent?: string | null;
 };
 
+function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessage, index: number) {
+  const role = message.role.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'message';
+  return `desktop-message:${sessionId}:${message.timestampMs}:${index}:${role}`;
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
@@ -41,6 +46,7 @@ export function mapDesktopMessagesForTranscript(
     }
 
     return [{
+      id: desktopTranscriptMessageId(sessionId, message, index),
       role:
         message.role === 'assistant'
           ? ('owned-agent' as const)

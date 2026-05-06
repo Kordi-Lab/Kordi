@@ -899,6 +899,7 @@ function LiveChatTurnMessageView({
   return (
     <div
       id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
+      data-transcript-message-root="true"
       className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
     >
       <div className="app-message-meta">{sender}</div>

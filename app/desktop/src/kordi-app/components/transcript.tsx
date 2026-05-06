@@ -463,8 +463,12 @@ function MessageBubbleView({
     return (
       <div
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
+        data-transcript-message-root="true"
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
+        {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
+          <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
+        ) : null}
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -508,6 +512,7 @@ function MessageBubbleView({
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      data-transcript-message-root="true"
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',

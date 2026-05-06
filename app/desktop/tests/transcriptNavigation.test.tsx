@@ -40,6 +40,62 @@ test('task response navigation falls back to transcript bottom when live target 
   }
 });
 
+test('task response navigation highlights the visible message root when it lands on a turn-id alias', () => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  let rootHighlighted = false;
+  let scrolledRoot = false;
+  let aliasHighlighted = false;
+  const visibleRoot = {
+    scrollIntoView() {
+      scrolledRoot = true;
+    },
+    classList: {
+      add(value: string) {
+        rootHighlighted = value === 'app-transcript-message-highlight';
+      },
+      remove(_value: string) {},
+    },
+  };
+  const aliasAnchor = {
+    scrollIntoView() {},
+    closest(selector: string) {
+      return selector === '[data-transcript-message-root]' ? visibleRoot : null;
+    },
+    classList: {
+      add(value: string) {
+        aliasHighlighted = value === 'app-transcript-message-highlight';
+      },
+      remove(_value: string) {},
+    },
+  };
+  const fakeDocument = {
+    getElementById(id: string) {
+      return id === transcriptMessageDomId('turn-alias') ? aliasAnchor : null;
+    },
+  } as unknown as Document;
+  const fakeWindow = {
+    setTimeout(_callback: TimerHandler, _timeout?: number) {
+      return 0;
+    },
+  } as unknown as Window & typeof globalThis;
+
+  try {
+    Object.defineProperty(globalThis, 'document', { value: fakeDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: fakeWindow, configurable: true });
+
+    const navigated = navigateToTranscriptMessageOrScrollBottom('turn-alias');
+
+    assert.equal(navigated, true);
+    assert.equal(scrolledRoot, true);
+    assert.equal(rootHighlighted, true);
+    assert.equal(aliasHighlighted, false);
+  } finally {
+    Object.defineProperty(globalThis, 'document', { value: originalDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
+  }
+});
+
 test('task response navigation still jumps to mounted transcript messages first', () => {
   const originalDocument = globalThis.document;
   const originalWindow = globalThis.window;

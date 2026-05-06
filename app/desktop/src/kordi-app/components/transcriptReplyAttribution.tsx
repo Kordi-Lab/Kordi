@@ -13,9 +13,10 @@ export function navigateToTranscriptMessage(messageId: string) {
   if (typeof document === 'undefined') return false;
   const target = document.getElementById(transcriptMessageDomId(messageId));
   if (!target) return false;
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  target.classList.add('app-transcript-message-highlight');
-  window.setTimeout(() => target.classList.remove('app-transcript-message-highlight'), 1500);
+  const visibleTarget = target.closest?.('[data-transcript-message-root]') ?? target;
+  visibleTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  visibleTarget.classList.add('app-transcript-message-highlight');
+  window.setTimeout(() => visibleTarget.classList.remove('app-transcript-message-highlight'), 1500);
   return true;
 }
 
