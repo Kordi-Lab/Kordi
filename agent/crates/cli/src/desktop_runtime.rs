@@ -657,6 +657,12 @@ impl DesktopRuntimeSession {
             .sibling_conn
             .clone()
             .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?;
+        turn_runner::append_interrupted_unanswered_request_if_needed(
+            &sibling_conn,
+            &self.setup.session_id,
+            &self.setup.model,
+        )
+        .await?;
         turn_runner::append_user_message_with_images(
             &sibling_conn,
             &self.setup.session_id,

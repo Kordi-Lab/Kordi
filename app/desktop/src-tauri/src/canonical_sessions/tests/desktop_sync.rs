@@ -1,4 +1,5 @@
 use super::*;
+use crate::canonical_sessions::desktop_sync::sync_desktop_chat_message;
 
 #[test]
 fn direct_agent_outreach_sync_keeps_owner_out_of_private_parent_participants() {
@@ -379,6 +380,96 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
         "session:bridge:humans:test",
         &normal_message,
     ));
+}
+
+#[test]
+fn desktop_sync_links_agent_turn_to_latest_user_request() {
+    let conn = test_conn();
+    let user = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "user".to_string(),
+        sender: Some("You".to_string()),
+        text: "how about the new mac".to_string(),
+        detail: None,
+        time_label: "17:09".to_string(),
+        timestamp_ms: 1_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+    };
+    let model_notice = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "system".to_string(),
+        sender: None,
+        text: "Switched model to anthropic/claude-opus-4-7".to_string(),
+        detail: Some("Model updated".to_string()),
+        time_label: "17:09".to_string(),
+        timestamp_ms: 1_100,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+    };
+    let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("Kordi".to_string()),
+        text: "Here’s the current Mac landscape.".to_string(),
+        detail: Some("anthropic/claude-opus-4-7 • completed".to_string()),
+        time_label: "17:09".to_string(),
+        timestamp_ms: 2_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+    };
+
+    let user_id = sync_desktop_chat_message(
+        &conn,
+        "session:local",
+        "human:local",
+        "agent:local",
+        0,
+        &user,
+        None,
+    )
+    .expect("sync user")
+    .expect("user message id");
+    assert_eq!(
+        sync_desktop_chat_message(
+            &conn,
+            "session:local",
+            "human:local",
+            "agent:local",
+            1,
+            &model_notice,
+            None,
+        )
+        .expect("skip model notice"),
+        None
+    );
+    let assistant_id = sync_desktop_chat_message(
+        &conn,
+        "session:local",
+        "human:local",
+        "agent:local",
+        2,
+        &assistant,
+        Some(user_id.as_str()),
+    )
+    .expect("sync assistant")
+    .expect("assistant message id");
+
+    let (parent_message_id, reply_to_message_id): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT parent_message_id, json_extract(content_json, '$.replyToMessageId')
+             FROM session_messages
+             WHERE id = ?1",
+            [&assistant_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read synced assistant");
+
+    assert_eq!(parent_message_id.as_deref(), Some(user_id.as_str()));
+    assert_eq!(reply_to_message_id.as_deref(), Some(user_id.as_str()));
 }
 
 #[test]
