@@ -66,12 +66,12 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
-test('renders generic working status as a planning phase label', () => {
+test('renders initial generic working status as starting until a real tool phase appears', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-starting-work',
     sessionId: 'session-1',
     prompt: '@Kordi plan the website choices',
-    status: 'streaming',
+    status: 'starting',
     message: 'Working…',
     assistantText: '',
     thinkingText: '',
@@ -89,7 +89,8 @@ test('renders generic working status as a planning phase label', () => {
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.match(markup, /Planning…/);
+  assert.match(markup, /Starting…/);
+  assert.doesNotMatch(markup, /Planning…/);
   assert.doesNotMatch(markup, /Working…/);
 });
 

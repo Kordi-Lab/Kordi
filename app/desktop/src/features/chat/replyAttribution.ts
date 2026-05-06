@@ -160,7 +160,6 @@ function inferredReplyTargetForLiveTurn(
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
-  if (!inferLatestHumanRequest) return null;
   const promptText = comparablePromptText(liveTurn.prompt);
   if (promptText) {
     for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
@@ -168,6 +167,8 @@ function inferredReplyTargetForLiveTurn(
       if (comparablePromptText(candidate.message.text) === promptText) return candidate.messageId;
     }
   }
+
+  if (!inferLatestHumanRequest) return null;
 
   const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
   if (latestPlainRequest) return latestPlainRequest.messageId;

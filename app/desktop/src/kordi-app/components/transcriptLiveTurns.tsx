@@ -621,7 +621,8 @@ function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
   const latestPhase = latestTool ? livePhaseLabelFromTool(latestTool) : null;
   if (latestPhase) return latestPhase;
 
-  return 'Planning…';
+  if (turn.status === 'starting') return 'Starting…';
+  return 'Thinking…';
 }
 
 function TurnStopButton({

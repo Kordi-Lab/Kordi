@@ -300,6 +300,26 @@ test('buildReplyAttribution scopes inferred replies to each mentioned agent requ
   assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:bob-request');
 });
 
+test('buildReplyAttribution links direct live turns to matching prompt without broad fallback inference', () => {
+  const request = humanRequest({ id: 'msg:direct-request', text: 'check the gym in kaust' });
+  const liveTurn = turn({
+    id: 'turn-direct-live',
+    prompt: 'check the gym in kaust',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    completed: false,
+    succeeded: false,
+  });
+
+  const result = buildReplyAttribution([request], liveTurn, { inferLatestHumanRequest: false });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 0);
+  assert.equal(result.messages[0]?.replySummary?.pending, true);
+  assert.equal(result.liveTurn?.sourceMessage?.messageId, 'msg:direct-request');
+  assert.equal(result.liveTurn?.sourceMessage?.text, 'check the gym in kaust');
+});
+
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {
   const request = humanRequest({ id: 'msg:live-request', text: '@MyKordi summarize launch risks.' });
   const liveTurn = turn({
