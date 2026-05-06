@@ -163,6 +163,30 @@ export function localAgentRelayFailureText(turn: Pick<LocalAgentRelayTurnResult,
   return 'Processing failed';
 }
 
+export async function awaitRelayProgressBeforeTerminal(
+  progressRelayPromise: Promise<void> | null,
+  timeoutMs = 1_500,
+) {
+  if (!progressRelayPromise) return;
+  await Promise.race([
+    progressRelayPromise,
+    new Promise<void>((resolve) => globalThis.setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
+export async function waitForCompletedDesktopTurn(
+  fetchTurnState: (turnId: string) => Promise<DesktopChatTurnSnapshot>,
+  turnId: string,
+  pollIntervalMs = 60,
+) {
+  let turn = await fetchTurnState(turnId);
+  while (!turn.completed) {
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, pollIntervalMs));
+    turn = await fetchTurnState(turn.id);
+  }
+  return turn;
+}
+
 export function bridgeConversationSendPlan({
   activeConvId,
   hasMaterializedBridgeConversation,
@@ -1307,8 +1331,8 @@ export function useChatMessageActions({
             let completedTurn: DesktopChatTurnSnapshot | null = null;
             try {
               await watchDesktopLiveTurn(turn);
-              await processingRelayPromise;
-              completedTurn = await fetchDesktopChatTurnState(turn.id);
+              completedTurn = await waitForCompletedDesktopTurn(fetchDesktopChatTurnState, turn.id);
+              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
               const assistantText = stripLeadingAddressMentions(
                 completedTurn.assistantText.trim(),
                 localHumanAddressLabels(desktopBridgeState),
@@ -1331,7 +1355,7 @@ export function useChatMessageActions({
                 localAgentBridgeRequestId,
               );
             } catch (error) {
-              await processingRelayPromise;
+              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
               const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(turn.id)
                 || (completedTurn && userCancelledTurnIdsRef.current.delete(completedTurn.id));
               const wasCancelled = userCancelledThisTurn

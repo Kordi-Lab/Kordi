@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   activeLocalTurnShouldDelayChatSend,
+  awaitRelayProgressBeforeTerminal,
   bridgeConversationSendPlan,
   bridgeSessionOutreachTarget,
   chatDraftSessionIdsToClearForSend,
@@ -14,6 +15,7 @@ import {
   localChatSendIsInFlightForTarget,
   localChatTargetHasRunningTurn,
   queuedDesktopChatMessageFromDraft,
+  waitForCompletedDesktopTurn,
 } from '../src/features/chat/messageActions/chatMessages';
 import { chatComposerSubmitMode } from '../src/pages/ChatsPage';
 
@@ -151,6 +153,28 @@ test('canonical external-agent sessions send session messages to the bridge agen
     targetHumanId: null,
     targetAgentId: 'agent-bob',
   });
+});
+
+test('local agent relay waits for the completed turn even when UI watcher returned early', async () => {
+  const states = [
+    { id: 'turn-1', sessionId: 'session-1', completed: false, succeeded: false, status: 'running', assistantText: '', error: null },
+    { id: 'turn-1', sessionId: 'session-1', completed: true, succeeded: true, status: 'completed', assistantText: 'done', error: null },
+  ];
+  const completed = await waitForCompletedDesktopTurn(
+    async () => states.shift() as never,
+    'turn-1',
+    1,
+  );
+
+  assert.equal(completed.completed, true);
+  assert.equal(completed.assistantText, 'done');
+});
+
+test('terminal local agent relay does not wait forever for progress relay', async () => {
+  const startedAt = Date.now();
+  await awaitRelayProgressBeforeTerminal(new Promise(() => undefined), 10);
+
+  assert.ok(Date.now() - startedAt < 500);
 });
 
 test('failed local agent bridge relay turns produce a terminal failed delivery state', () => {
