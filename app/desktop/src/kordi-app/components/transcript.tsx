@@ -765,13 +765,22 @@ export function ContactRequestRow({
   onReview,
   onAccept,
   onReject,
+  actionState = null,
 }: {
   request: ContactRequest;
   active: boolean;
   onReview: () => void;
   onAccept?: () => void;
   onReject?: () => void;
+  actionState?: 'accepting' | 'rejecting' | null;
 }) {
+  const isBusy = Boolean(actionState);
+  const statusText = actionState === 'accepting'
+    ? 'Accepting and sending greeting…'
+    : actionState === 'rejecting'
+      ? 'Rejecting request…'
+      : '';
+
   return (
     <div
       className={cn(
@@ -794,14 +803,31 @@ export function ContactRequestRow({
           </div>
           <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview}>
+            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview} disabled={isBusy}>
               Review details
             </Button>
-            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept}>Accept</Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject}>
-              Reject
+            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
+              {actionState === 'accepting' ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Accepting…
+                </>
+              ) : 'Accept'}
+            </Button>
+            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject || isBusy}>
+              {actionState === 'rejecting' ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Rejecting…
+                </>
+              ) : 'Reject'}
             </Button>
           </div>
+          {statusText ? (
+            <div className="mt-2 text-[11px] leading-4 text-slate-400" aria-live="polite">
+              {statusText}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

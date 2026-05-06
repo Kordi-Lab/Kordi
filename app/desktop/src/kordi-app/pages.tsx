@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -69,6 +69,8 @@ export function ContactsPage({
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
   const [removeContactState, setRemoveContactState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [removeContactError, setRemoveContactError] = useState('');
+  const [contactRequestAction, setContactRequestAction] = useState<{ requestId: string; kind: 'accept' | 'reject' } | null>(null);
+  const [contactRequestActionError, setContactRequestActionError] = useState('');
 
   useEffect(() => {
     setRemoveContactState('idle');
@@ -138,6 +140,25 @@ export function ContactsPage({
     }
   };
 
+  const contactRequestActionState = (request: ContactRequest) => {
+    if (contactRequestAction?.requestId !== request.id) return null;
+    return contactRequestAction.kind === 'accept' ? 'accepting' : 'rejecting';
+  };
+
+  const submitContactRequestAction = async (request: ContactRequest, kind: 'accept' | 'reject') => {
+    const handler = kind === 'accept' ? onAcceptRequest : onRejectRequest;
+    if (!handler || contactRequestAction) return;
+    setContactRequestAction({ requestId: request.id, kind });
+    setContactRequestActionError('');
+    try {
+      await handler(request);
+    } catch (error) {
+      setContactRequestActionError(error instanceof Error ? error.message : `Unable to ${kind} contact request`);
+    } finally {
+      setContactRequestAction(null);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1">
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -177,12 +198,18 @@ export function ContactsPage({
                       request={request}
                       active={activeContactRequestId === request.id}
                       onReview={() => onReviewRequest(request.id)}
-                      onAccept={() => { void onAcceptRequest?.(request); }}
-                      onReject={() => { void onRejectRequest?.(request); }}
+                      onAccept={() => { void submitContactRequestAction(request, 'accept'); }}
+                      onReject={() => { void submitContactRequestAction(request, 'reject'); }}
+                      actionState={contactRequestActionState(request)}
                     />
                   )) : (
                     <div className="app-surface-muted rounded-2xl px-3 py-3 text-[12px] text-slate-400">No pending contact approvals.</div>
                   )}
+                  {contactRequestActionError ? (
+                    <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
+                      {contactRequestActionError}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -412,14 +439,35 @@ export function ContactsPage({
                     </div>
                     <div className="mb-5 text-sm text-slate-300">{activeContactRequest.detail}</div>
                     <div className="grid gap-2">
-                      <Button className="rounded-xl" onClick={() => { void onAcceptRequest?.(activeContactRequest); }} disabled={!onAcceptRequest}>Accept</Button>
-                      <Button variant="secondary" className="rounded-xl" onClick={() => { void onRejectRequest?.(activeContactRequest); }} disabled={!onRejectRequest}>
-                        Reject
+                      <Button className="rounded-xl" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
+                        {contactRequestActionState(activeContactRequest) === 'accepting' ? (
+                          <>
+                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                            Accepting…
+                          </>
+                        ) : 'Accept'}
                       </Button>
-                      <Button variant="secondary" className="rounded-xl" onClick={onCloseOverlay}>
+                      <Button variant="secondary" className="rounded-xl" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
+                        {contactRequestActionState(activeContactRequest) === 'rejecting' ? (
+                          <>
+                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                            Rejecting…
+                          </>
+                        ) : 'Reject'}
+                      </Button>
+                      <Button variant="secondary" className="rounded-xl" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
                         Close review
                       </Button>
                     </div>
+                    {contactRequestActionState(activeContactRequest) === 'accepting' ? (
+                      <div className="mt-3 text-[11px] leading-4 text-slate-400" aria-live="polite">Accepting and sending greeting…</div>
+                    ) : contactRequestActionState(activeContactRequest) === 'rejecting' ? (
+                      <div className="mt-3 text-[11px] leading-4 text-slate-400" aria-live="polite">Rejecting request…</div>
+                    ) : contactRequestActionError ? (
+                      <div className="mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
+                        {contactRequestActionError}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
@@ -31,6 +31,30 @@ test('renders live turn errors as raw red inline text instead of a popped bubble
   assert.doesNotMatch(markup, /border-rose-500/);
   assert.doesNotMatch(markup, /bg-rose-500/);
   assert.doesNotMatch(markup, /circle-alert/);
+});
+
+test('contact request row shows accept progress while sending the greeting', () => {
+  const request: ContactRequest = {
+    id: 'request-1',
+    initials: 'TU',
+    title: 'Testuser4 wants to connect',
+    detail: "I am Testuser4. I'd like to add you as a Kordi contact.",
+    time: 'now',
+  };
+
+  const markup = renderToStaticMarkup(createElement(ContactRequestRow, {
+    request,
+    active: false,
+    onReview: () => undefined,
+    onAccept: () => undefined,
+    onReject: () => undefined,
+    actionState: 'accepting',
+  }));
+
+  assert.match(markup, />Accepting…</);
+  assert.match(markup, />Accepting and sending greeting…</);
+  assert.match(markup, /animate-spin/);
+  assert.match(markup, /disabled=""/);
 });
 
 test('renders bridge agent stop control beside pending processing text', () => {
