@@ -199,6 +199,52 @@ test('buildReplyAttribution prefers a newer own plain request over a stale @Kord
   assert.equal(result.messages[0]?.replySummary?.targetMessageId, 'msg:old-error-response');
 });
 
+test('buildReplyAttribution prefers a newer direct plain request over a stale @Kordi mention without broad fallback inference', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:old-kordi-request',
+      text: '@Kordi why i cannot send the seconed message',
+      time: '15:02',
+    }),
+    {
+      id: 'msg:old-error-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '15:02',
+      turn: turn({
+        id: 'turn-old-error',
+        assistantText: '',
+        message: 'Provider error: overloaded',
+        status: 'failed',
+        succeeded: false,
+        error: 'Provider error: overloaded',
+      }),
+    },
+    humanRequest({
+      id: 'msg:new-plain-request',
+      text: 'No you need show me the short what to ask',
+      time: '15:27',
+    }),
+    {
+      id: 'msg:new-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '15:27',
+      turn: turn({ id: 'turn-new-response', assistantText: 'Ask me this:' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: false });
+
+  assert.equal(result.messages[2]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:new-plain-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.text, 'No you need show me the short what to ask');
+});
+
 test('buildReplyAttribution prefers the latest matching @mention over later non-request chat', () => {
   const messages: Message[] = [
     humanRequest({

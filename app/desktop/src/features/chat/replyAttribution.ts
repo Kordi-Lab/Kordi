@@ -117,14 +117,19 @@ function requestMentionsAgent(request: Message, agentMessage: Message) {
   return false;
 }
 
+function isLocalAgentResponseMessage(message: Message) {
+  const aliases = agentTargetAliases(message);
+  return message.role === 'owned-agent' || aliases.has('kordi') || aliases.has('mykordi');
+}
+
 function inferredReplyTargetForAgentMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
-  if (inferLatestHumanRequest) {
-    const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
-    if (latestPlainRequest) return latestPlainRequest.messageId;
+  const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
+  if (latestPlainRequest && (inferLatestHumanRequest || isLocalAgentResponseMessage(message))) {
+    return latestPlainRequest.messageId;
   }
 
   for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
