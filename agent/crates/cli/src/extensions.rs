@@ -22,6 +22,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
+mod bundled_skills;
 mod command_results;
 mod discovery;
 mod packages;

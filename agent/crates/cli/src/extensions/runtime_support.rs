@@ -103,6 +103,12 @@ pub(crate) async fn load_runtime_extension_support_with_ui(
     bootstrap: &ExtensionBootstrap,
     has_ui: bool,
 ) -> Result<RuntimeExtensionSupport> {
+    if settings.enable_skill_commands
+        && let Err(err) = super::bundled_skills::ensure_bundled_skills(cwd)
+    {
+        tracing::warn!("failed to prepare bundled Kordi skills: {err:#}");
+    }
+
     let package_dirs = resolve_package_directories(cwd, settings, bootstrap)?;
     let discovered = discover_runtime_resources(cwd, settings, bootstrap, &package_dirs)?;
 

@@ -225,6 +225,7 @@ fn default_prompt_roots(cwd: &Path) -> Vec<PathBuf> {
 fn default_skill_roots(cwd: &Path) -> Vec<PathBuf> {
     let mut roots = config::global_resource_dir_candidates("skills");
     roots.extend(config::project_resource_dir_candidates(cwd, "skills"));
+    roots.push(super::bundled_skills::bundled_skill_root(cwd));
     if let Some(home) = home_path() {
         roots.push(home.join(".agents").join("skills"));
     }

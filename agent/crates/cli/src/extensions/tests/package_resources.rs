@@ -128,6 +128,64 @@ async fn loads_package_skills_and_prompts_from_settings() {
 }
 
 #[tokio::test]
+async fn bundled_super_collaboration_skill_is_loaded_by_default() {
+    let cwd = tempdir().unwrap();
+    let settings = Settings::default();
+
+    let support =
+        load_runtime_extension_support(cwd.path(), &settings, &ExtensionBootstrap::default())
+            .await
+            .unwrap();
+
+    let skill = support
+        .session_resources
+        .skills
+        .iter()
+        .find(|skill| skill.info.name == "super-collaboration")
+        .expect("super-collaboration bundled skill should load by default");
+
+    assert!(
+        skill.info.description.contains("multi-user")
+            || skill.info.description.contains("multi-agent"),
+        "description should trigger on collaborative sessions: {:?}",
+        skill.info.description
+    );
+    assert!(
+        std::path::Path::new(&skill.info.source_info.path).exists(),
+        "model-readable bundled skill path should exist: {}",
+        skill.info.source_info.path
+    );
+
+    let section = build_skill_system_prompt_section(&support.session_resources);
+    assert!(section.contains("<name>super-collaboration</name>"));
+    assert!(section.contains("super-collaboration/SKILL.md</location>"));
+}
+
+#[test]
+fn super_collaboration_skill_covers_deliberation_requirements() {
+    let skill = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../skills/super-collaboration/SKILL.md"),
+    )
+    .expect("super collaboration skill file");
+
+    for required in [
+        "Topic",
+        "Participants",
+        "Positions",
+        "Deliberation map",
+        "agreement",
+        "disagreement",
+        "Do not invent opinions",
+        "Do not impersonate",
+        "replyAs",
+        "Decision summary",
+    ] {
+        assert!(skill.contains(required), "missing {required:?}\n{skill}");
+    }
+}
+
+#[tokio::test]
 async fn disabled_skills_are_excluded_from_runtime_resources() {
     let cwd = tempdir().unwrap();
     let package_dir = cwd.path().join("skills-package");
@@ -516,8 +574,9 @@ fn build_skill_section_includes_skills_and_prompts() {
     };
     let section = build_skill_system_prompt_section(&resources);
     assert!(section.contains("<available_skills>"));
-    assert!(section.contains("demo-review"));
+    assert!(section.contains("<name>demo-review</name>"));
     assert!(section.contains("Review code carefully"));
+    assert!(section.contains("<location>/skills/demo-review/SKILL.md</location>"));
     assert!(section.contains("/fix-tests"));
     assert!(section.contains("Fix all failing tests"));
 }
