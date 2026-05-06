@@ -72,7 +72,7 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
 
   const conversations = readModel?.buildChatConversations([localRuntimeConversation as never], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
 
-  assert.equal(conversations[0]?.name, 'hi bob');
+  assert.equal(conversations[0]?.name, 'Bob');
   assert.deepEqual(conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText), ['hi bob', 'hello', 'done']);
   assert.deepEqual(conversations[0]?.messages[2]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
