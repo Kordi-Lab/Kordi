@@ -231,6 +231,49 @@ test('drops local intro fragment across minute boundary when historical prompts 
   assert.deepEqual(deduped, [finalAnswer]);
 });
 
+test('drops local tool-bearing intro fragment when a refreshed final turn extends it', () => {
+  const intro = agentMessage('Kordi', turn({
+    id: 'turn-repo-intro',
+    prompt: '',
+    assistantText: 'Using the brainstorming, TDD, debugging/review, and worktree skills to clarify the issue, inspect the implementation, review it, and implement safely.',
+    thinkingText: 'Inspecting the repo',
+    tools: [{
+      id: 'tool-status',
+      name: 'bash',
+      status: 'done',
+      arguments: '{"command":"git status --short"}',
+      liveOutput: '',
+      resultText: 'ok',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'execution',
+      isError: false,
+    }],
+  }), { time: '20:05' });
+  const finalAnswer = agentMessage('My Kordi', turn({
+    id: 'turn-repo-final',
+    prompt: '',
+    assistantText: 'Using the brainstorming, TDD, debugging/review, and worktree skills to clarify the issue, inspect the implementation, review it, and implement safely. I found Kordi issue #301.',
+    thinkingText: 'Inspecting the repo',
+    tools: [{
+      id: 'tool-status',
+      name: 'bash',
+      status: 'done',
+      arguments: '{"command":"git status --short"}',
+      liveOutput: '',
+      resultText: 'ok',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'execution',
+      isError: false,
+    }],
+  }), { time: '20:06' });
+
+  const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
+});
+
 test('keeps separate agent turns across minute boundary when prompts differ', () => {
   const first = agentMessage('Kordi', turn({
     id: 'turn-first',

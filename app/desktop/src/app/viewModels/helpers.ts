@@ -316,7 +316,14 @@ function agentTurnsShareRequest(current: Message, next: Message) {
   const nextPrompt = cleanComparableText(next.turn?.prompt);
   if (currentPrompt && nextPrompt && currentPrompt === nextPrompt) return true;
 
-  return !currentPrompt && !nextPrompt && (current.turn?.tools.length ?? 0) === 0;
+  if (!currentPrompt && !nextPrompt) {
+    const currentText = cleanComparableText(current.turn?.assistantText);
+    const nextText = cleanComparableText(next.turn?.assistantText);
+    if (currentText && nextText.startsWith(currentText)) return true;
+    return (current.turn?.tools.length ?? 0) === 0;
+  }
+
+  return false;
 }
 
 function agentTurnIsSubsumedByNext(current: Message, next: Message) {
