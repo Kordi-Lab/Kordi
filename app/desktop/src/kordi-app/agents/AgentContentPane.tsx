@@ -3,6 +3,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Agent } from '../types';
 import { getAgentConfigPath, type AgentConfigDraft, type AgentSaveFeedback } from './model';
+import { promptDisplayText } from './promptDisplay';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
@@ -60,6 +61,7 @@ export function AgentContentPane({
     const activeConfigPath = getAgentConfigPath(activeAgent);
     const isEditable = Boolean(activeConfigPath);
     const hasRuntimePrompt = activeAgentConfig.systemPrompt.trim().length > 0;
+    const displayedSystemPrompt = promptDisplayText(activeAgentConfig.systemPrompt);
 
     return (
       <section className="app-agent-content-pane flex min-h-0 min-w-0 flex-col">
@@ -122,7 +124,7 @@ export function AgentContentPane({
               />
             ) : (
               <ScrollArea className="min-h-0 flex-1">
-                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{activeAgentConfig.systemPrompt || 'No real prompt payload is exposed for this identity.'}</pre>
+                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{displayedSystemPrompt || 'No real prompt payload is exposed for this identity.'}</pre>
               </ScrollArea>
             )}
           </div>
