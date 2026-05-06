@@ -64,7 +64,7 @@ async fn inbound_mailbox_messages_keep_sender_timestamp() {
         std::process::id(),
         uuid::Uuid::new_v4()
     ));
-    std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+    std::env::set_var("APP_DATA_DIR", &storage_root);
 
     let target = test_mailbox_target();
     let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RAW, Some("person"), None);
@@ -83,7 +83,7 @@ async fn inbound_mailbox_messages_keep_sender_timestamp() {
         .expect("stored message");
     assert_eq!(message.timestamp_ms, 1_777_000_001_234);
 
-    std::env::remove_var("KORDI_STORAGE_ROOT");
+    std::env::remove_var("APP_DATA_DIR");
     let _ = std::fs::remove_dir_all(storage_root);
 }
 
