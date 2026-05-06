@@ -557,6 +557,79 @@ test('task dashboard names completed artifact tasks when historical prompts are 
   assert.equal(dashboard.tasks[0].title, 'Kordi Project Structure Report');
 });
 
+test('task dashboard derives a concise task title from plan steps when taskTitle is missing', () => {
+  const liveTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-plan-title',
+    sessionId: 'session-1',
+    prompt: 'open a issue from here, in the chat you need show the new write and changed files as artifacts',
+    status: 'tooling',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    completed: false,
+    succeeded: false,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({
+          plan: [
+            { step: 'Open issue for artifact display', status: 'in_progress' },
+            { step: 'Add artifact regression coverage', status: 'pending' },
+          ],
+        }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [], liveTurn });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Open issue for artifact display');
+});
+
+test('task dashboard keeps completed failed tool turns visible after the live turn finishes', () => {
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-failed-worktree',
+    sessionId: 'session-1',
+    prompt: "let’s fix the prolem in a new worktree",
+    status: 'failed',
+    message: '1 tool failed',
+    assistantText: "I'm using the using-git-worktrees skill to set up an isolated workspace.",
+    thinkingText: '',
+    completed: true,
+    succeeded: false,
+    tools: [
+      {
+        id: 'bash-1',
+        name: 'bash',
+        status: 'error',
+        arguments: JSON.stringify({ command: 'git worktree add /tmp/example -b fix/example' }),
+        liveOutput: '',
+        resultText: 'fatal: invalid reference',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: true,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(completedTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, "let’s fix the prolem in a new worktree");
+  assert.equal(dashboard.tasks[0].status, 'failed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Failed');
+});
+
 test('task dashboard keeps completed titled tasks visible after the live turn finishes', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',

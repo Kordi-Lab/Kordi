@@ -179,13 +179,42 @@ function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[], exp
     ?? 'Task';
 }
 
+function titleFromPlanSteps(args: Record<string, unknown>) {
+  const plan = Array.isArray(args.plan) ? args.plan : [];
+  const selectedStep = plan
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .find((item) => stringValue(item.status)?.toLowerCase() === 'in_progress')
+    ?? plan.find((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+  return selectedStep ? stringValue(selectedStep.step) : null;
+}
+
 function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
   for (const tool of tools) {
     const args = safeParseToolArguments(tool.arguments);
-    const title = stringValue(args?.taskTitle);
+    if (!args) continue;
+    const title = stringValue(args.taskTitle) ?? stringValue(args.task_title);
     if (title) return compact(title, 96);
   }
+
+  const hasOperatorTask = tools.some((tool) => tool.name.trim().toLowerCase() === 'task_operator');
+  if (!hasOperatorTask) {
+    for (const tool of tools) {
+      if (tool.name.trim().toLowerCase() !== 'update_plan') continue;
+      const args = safeParseToolArguments(tool.arguments);
+      if (!args) continue;
+      const title = stringValue(args.explanation) ?? titleFromPlanSteps(args);
+      if (title) return compact(title, 96);
+    }
+  }
+
   return null;
+}
+
+function turnHasTaskActivity(turn: DesktopChatTurnSnapshot) {
+  return turn.tools.some((tool) => {
+    const name = tool.name.trim().toLowerCase();
+    return name === 'update_plan' || name === 'task_operator' || tool.isError;
+  });
 }
 
 function targetFromTaskResult(text?: string | null) {
@@ -520,7 +549,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   for (const turnWithSequence of collectTurns(messages, liveTurn)) {
     let currentParent: MutableParentTask | null = null;
-    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0) {
+    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0 || turnHasTaskActivity(turnWithSequence.turn)) {
       currentParent = ensureParent(turnWithSequence);
     }
 
