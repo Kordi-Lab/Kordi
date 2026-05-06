@@ -4,9 +4,7 @@ use kordi_cli::desktop_runtime::DesktopRuntimeSession;
 use kordi_core::error::KordiError;
 use kordi_tools::ReachOutRuntime;
 
-use crate::bridge::{
-    desktop_bridge_outreach_prompt_context, desktop_bridge_reach_out_impl, DesktopBridgeManager,
-};
+use crate::bridge::{desktop_bridge_reach_out_impl, DesktopBridgeManager};
 
 use super::{chat_cwd, DesktopChatManager};
 
@@ -163,22 +161,17 @@ pub(super) async fn prepare_desktop_session_for_send(
     user_text: &str,
 ) {
     let local_agent_labels = local_agent_mention_labels(runtime, &cwd);
-    let local_session_context = if text_mentions_local_agent(user_text, &local_agent_labels) {
+    let mentions_local_agent = text_mentions_local_agent(user_text, &local_agent_labels);
+    let mentions_non_local_target = text_mentions_non_local_target(user_text, &local_agent_labels);
+    let local_session_context = if mentions_local_agent || mentions_non_local_target {
         crate::canonical_sessions::local_agent_session_prompt_context(Some(runtime.session_id()))
             .ok()
             .flatten()
     } else {
         None
     };
-    if text_mentions_non_local_target(user_text, &local_agent_labels) {
-        let prompt_context = desktop_bridge_outreach_prompt_context(&bridge_manager).await;
-        runtime.set_bridge_outreach_prompt_context(match (local_session_context, prompt_context) {
-            (Some(local_context), Some(bridge_context)) => {
-                Some(format!("{local_context}\n\n{bridge_context}"))
-            }
-            (Some(local_context), None) => Some(local_context),
-            (None, bridge_context) => bridge_context,
-        });
+    runtime.set_bridge_outreach_prompt_context(local_session_context);
+    if mentions_non_local_target {
         install_reach_out_runtime(
             runtime,
             bridge_manager,
@@ -188,7 +181,6 @@ pub(super) async fn prepare_desktop_session_for_send(
             local_agent_labels,
         );
     } else {
-        runtime.set_bridge_outreach_prompt_context(local_session_context);
         runtime.set_reach_out_runtime(None);
     }
 }

@@ -368,7 +368,6 @@ fn payload_identity_agent_prompt(
         Ok(path) => {
             lines.push(String::new());
             lines.push(format!("Session identity file: {}", path.display()));
-            lines.push("If this is your first turn in this shared session, read this file before answering. Do not read it again until a visible participant/identity event says the identity file changed.".to_string());
         }
         Err(_) => {
             lines.push(String::new());

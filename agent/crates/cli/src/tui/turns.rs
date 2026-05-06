@@ -164,6 +164,10 @@ impl TuiController {
             conn: sibling_conn,
             session_id: self.session_setup.session_id.clone(),
             system_prompt: self.session_setup.system_prompt.clone(),
+            bridge_outreach_prompt_context: self
+                .session_setup
+                .bridge_outreach_prompt_context
+                .clone(),
             model: self.session_setup.model.clone(),
             provider: self.session_setup.provider.clone(),
             auth: self.session_setup.auth.clone(),

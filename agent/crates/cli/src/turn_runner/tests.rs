@@ -13,11 +13,47 @@ use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, U
 use kordi_session::store;
 use kordi_tools::{Tool, ToolResult, ToolScheduling};
 use serde_json::json;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, mpsc};
 use tokio::time::{Duration, timeout};
 use tokio_util::sync::CancellationToken;
+
+struct CaptureRequestProvider {
+    captured: Arc<Mutex<Vec<CompletionRequest>>>,
+}
+
+#[async_trait]
+impl Provider for CaptureRequestProvider {
+    fn name(&self) -> &str {
+        "capture-request"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        self.captured
+            .lock()
+            .expect("captured requests lock")
+            .push(request);
+        let _ = tx.send(StreamEvent::TextDelta {
+            text: "captured".to_string(),
+        });
+        let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
 
 struct DummyProvider {
     call_count: AtomicUsize,
@@ -466,6 +502,113 @@ impl Provider for ErrorAwareToolProvider {
             Ok(())
         }
     }
+}
+
+fn append_user_text(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    id: &str,
+    parent_id: Option<&str>,
+    text: &str,
+) {
+    let entry = SessionEntry::Message {
+        base: EntryBase {
+            id: kordi_core::types::EntryId(id.to_string()),
+            parent_id: parent_id.map(|value| kordi_core::types::EntryId(value.to_string())),
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::User(UserMessage {
+            content: vec![ContentBlock::Text {
+                text: text.to_string(),
+            }],
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(conn, session_id, &entry).expect("append user text");
+}
+
+#[tokio::test]
+async fn run_turn_keeps_system_prompt_stable_and_inserts_bridge_context_before_current_user() {
+    let conn = store::open_memory().expect("memory db");
+    let session_id = store::create_session(&conn, "/tmp").expect("session");
+    append_user_text(
+        &conn,
+        &session_id,
+        "old0001",
+        None,
+        "Alice: earlier shared message",
+    );
+    append_user_text(
+        &conn,
+        &session_id,
+        "curr0002",
+        Some("old0001"),
+        "@Kordi ask @Bob's Kordi if the build is green",
+    );
+
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let (event_tx, _event_rx) = mpsc::unbounded_channel();
+    let config = TurnConfig {
+        conn: wrap_conn(conn),
+        session_id,
+        system_prompt: "stable system prompt".to_string(),
+        bridge_outreach_prompt_context: Some(
+            "Bob's Kordi joined via @mention.\nSession identity file: /tmp/session-identity.md"
+                .to_string(),
+        ),
+        model: test_model(128_000),
+        provider: Arc::new(CaptureRequestProvider {
+            captured: captured.clone(),
+        }),
+        auth: None,
+        api_key: "dummy".to_string(),
+        base_url: "http://dummy.invalid".to_string(),
+        headers: std::collections::HashMap::new(),
+        compaction_settings: kordi_core::types::CompactionSettings::default(),
+        tool_registry: ToolRegistry::from_tools(Vec::new()),
+        tool_ctx: test_tool_context(),
+        thinking: None,
+        retry_enabled: false,
+        retry_max_retries: 1,
+        retry_base_delay_ms: 10,
+        retry_max_delay_ms: 10,
+        cancel: CancellationToken::new(),
+        extensions: ExtensionCommandRegistry::default(),
+        request_metrics_tracker: test_request_metrics_tracker(),
+        request_metrics_log_path: None,
+    };
+
+    let (_returned_config, result) = run_turn(
+        config,
+        event_tx,
+        "@Kordi ask @Bob's Kordi if the build is green".to_string(),
+    )
+    .await;
+    result.expect("turn succeeds");
+
+    let requests = captured.lock().expect("captured requests lock");
+    let request = requests.first().expect("provider request captured");
+    assert_eq!(request.system_prompt, "stable system prompt");
+    assert!(!request.system_prompt.contains("Session identity file:"));
+    assert!(!request.system_prompt.contains("Bob's Kordi joined"));
+
+    let contents = request
+        .messages
+        .iter()
+        .filter_map(|message| message.get("content").and_then(|value| value.as_str()))
+        .collect::<Vec<_>>();
+    let context_index = contents
+        .iter()
+        .position(|content| content.contains("Session identity file: /tmp/session-identity.md"))
+        .expect("dynamic bridge/session context is a provider message");
+    let current_index = contents
+        .iter()
+        .position(|content| content.contains("@Kordi ask @Bob's Kordi"))
+        .expect("current user message is present");
+    assert!(
+        context_index < current_index,
+        "dynamic context should precede the current user message\n{contents:#?}"
+    );
 }
 
 struct PanicTool;

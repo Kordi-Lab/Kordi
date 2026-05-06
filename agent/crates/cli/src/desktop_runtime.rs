@@ -83,8 +83,6 @@ fn is_false(value: &bool) -> bool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
-const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
-const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatAttachment {
@@ -524,18 +522,11 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_bridge_outreach_prompt_context(&mut self, context: Option<String>) {
-        let base_prompt = strip_bridge_outreach_prompt_context(&self.setup.system_prompt);
-        let Some(context) = context
+        self.setup.bridge_outreach_prompt_context = context
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        else {
-            self.setup.system_prompt = base_prompt;
-            return;
-        };
-        self.setup.system_prompt = format!(
-            "{base_prompt}{DESKTOP_BRIDGE_OUTREACH_CONTEXT_START}\n{context}\n{DESKTOP_BRIDGE_OUTREACH_CONTEXT_END}"
-        );
+            .map(ToString::to_string);
     }
 
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {
@@ -699,19 +690,6 @@ impl DesktopRuntimeSession {
     }
 }
 
-fn strip_bridge_outreach_prompt_context(prompt: &str) -> String {
-    let Some(start) = prompt.find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_START) else {
-        return prompt.to_string();
-    };
-    let Some(end_relative) = prompt[start..].find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_END) else {
-        return prompt.to_string();
-    };
-    let end = start + end_relative + DESKTOP_BRIDGE_OUTREACH_CONTEXT_END.len();
-    format!("{}{}", &prompt[..start], &prompt[end..])
-        .trim_end()
-        .to_string()
-}
-
 pub fn session_exists(session_id: &str) -> Result<bool> {
     let conn = open_sessions_db()?;
     Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
@@ -867,6 +845,7 @@ fn build_turn_config(
         conn: sibling_conn,
         session_id: setup.session_id.clone(),
         system_prompt: setup.system_prompt.clone(),
+        bridge_outreach_prompt_context: setup.bridge_outreach_prompt_context.clone(),
         model: setup.model.clone(),
         provider: setup.provider.clone(),
         auth: setup.auth.clone(),

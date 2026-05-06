@@ -405,7 +405,7 @@ fn identity_markdown_escapes_table_delimiters_and_tags() {
 }
 
 #[test]
-fn identity_markdown_notice_keeps_friendly_text_and_adds_read_instruction() {
+fn identity_markdown_notice_keeps_friendly_text_and_adds_identity_file_path() {
     let path = std::path::PathBuf::from("/tmp/kordi/session-identities/session-group-456.md");
     let notice = session_identity_model_visible_notice(
         "Kordi User 1's Kordi joined via @mention",
@@ -423,8 +423,12 @@ fn identity_markdown_notice_keeps_friendly_text_and_adds_read_instruction() {
     );
     assert!(
         notice
-            .contains("Read /tmp/kordi/session-identities/session-group-456.md before answering."),
+            .contains("Session identity file: /tmp/kordi/session-identities/session-group-456.md"),
         "{notice}"
+    );
+    assert!(
+        !notice.contains("before answering"),
+        "read instructions belong in the stable system prompt\n{notice}"
     );
 }
 
@@ -690,10 +694,8 @@ fn prompt_context_local_agent_uses_identity_frame_for_multi_participant_session(
         "shared session prompt should point to the identity file\n{prompt}"
     );
     assert!(
-        prompt.contains(
-            "If this is your first turn in this shared session, read this file before answering."
-        ),
-        "shared session prompt should include first-turn read rule\n{prompt}"
+        !prompt.contains("If this is your first turn"),
+        "read rules should stay in the stable system prompt, not dynamic context\n{prompt}"
     );
     assert!(
         !prompt.contains("<multi_participant_identity_context"),
@@ -1161,7 +1163,14 @@ fn prompt_context_participant_event_adds_model_visible_identity_file_notice() {
         prompt.contains("Identity file changed for session session:alice-bob-prompt-context."),
         "{prompt}"
     );
-    assert!(prompt.contains("before answering."), "{prompt}");
+    assert!(
+        prompt.contains(&format!("Session identity file: {}", path.display())),
+        "{prompt}"
+    );
+    assert!(
+        !prompt.contains("before answering."),
+        "read instruction belongs in stable system prompt, not participant event text\n{prompt}"
+    );
 }
 
 #[test]

@@ -25,6 +25,7 @@ pub(crate) struct TurnConfig {
     pub conn: Arc<Mutex<rusqlite::Connection>>,
     pub session_id: String,
     pub system_prompt: String,
+    pub bridge_outreach_prompt_context: Option<String>,
     pub model: Model,
     pub provider: Arc<dyn Provider>,
     pub auth: Option<ResolvedProviderAuth>,

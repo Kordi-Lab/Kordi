@@ -601,53 +601,6 @@ pub struct DesktopBridgeManager {
     app_handle: Arc<tokio::sync::RwLock<Option<tauri::AppHandle>>>,
 }
 
-pub(crate) async fn desktop_bridge_outreach_prompt_context(
-    manager: &DesktopBridgeManager,
-) -> Option<String> {
-    let state = build_current_bridge_state(manager).await;
-    let active_host_id = state.active_host_id.as_deref();
-    let mut target_lines = Vec::new();
-
-    for host in &state.hosts {
-        let host_label = format!("{} / {}", host.display_name, host.owner_name);
-        for peer in &host.visible_peers {
-            let target_kind = if self::constants::is_agent_like_runtime(&peer.runtime) {
-                "bridge-agent"
-            } else {
-                "bridge-person"
-            };
-            let name = peer
-                .display_name
-                .as_deref()
-                .or(peer.owner_name.as_deref())
-                .unwrap_or(&peer.node_id);
-            let owner = peer.owner_name.as_deref().unwrap_or("unknown owner");
-            let active = if Some(host.id.as_str()) == active_host_id {
-                "active host"
-            } else {
-                "available host"
-            };
-            target_lines.push(format!(
-                "- {target_kind}: target=\"{name}\" owner=\"{owner}\" runtime=\"{}\" nodeId=\"{}\" via=\"{host_label}\" ({active})",
-                peer.runtime, peer.node_id
-            ));
-        }
-    }
-
-    if target_lines.is_empty() {
-        return Some(
-            "Bridge outreach: reach_out is available, but no bridge agents or people are currently visible. Ask the user to connect or expose a bridge target before using it."
-                .to_string(),
-        );
-    }
-
-    target_lines.truncate(50);
-    Some(format!(
-        "Bridge outreach is available through the reach_out tool only for explicit non-local @Person/@Agent mentions in the current user message. Use it only when the current user message names one of the visible bridge targets below; never use it for @Kordi/the local agent and do not proactively contact participants. Outreach is allowed without asking for approval, creates a visible/resumable bridge conversation, and returns the remote reply when possible.\n\nVisible bridge targets:\n{}",
-        target_lines.join("\n")
-    ))
-}
-
 impl Default for DesktopBridgeManager {
     fn default() -> Self {
         Self {

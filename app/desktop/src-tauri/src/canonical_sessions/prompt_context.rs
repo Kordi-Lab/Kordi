@@ -726,10 +726,6 @@ pub(crate) fn write_session_identity_markdown_for_prompt(
 fn push_session_identity_file_notice(lines: &mut Vec<String>, path: &std::path::Path) {
     lines.push(String::new());
     lines.push(format!("Session identity file: {}", path.display()));
-    lines.push(
-        "If this is your first turn in this shared session, read this file before answering. Do not read it again until a visible participant/identity event says the identity file changed."
-            .to_string(),
-    );
 }
 
 pub(crate) fn local_agent_session_prompt_context(

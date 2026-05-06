@@ -190,6 +190,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         conn: wrap_conn(conn),
         session_id,
         system_prompt,
+        bridge_outreach_prompt_context: None,
         model,
         provider,
         auth,

@@ -22,7 +22,7 @@ pub(crate) fn session_identity_model_visible_notice(
     path: &Path,
 ) -> String {
     format!(
-        "{}\nIdentity file changed for session {}.\nRead {} before answering.",
+        "{}\nIdentity file changed for session {}.\nSession identity file: {}",
         visible_text.trim(),
         session_id.trim(),
         path.display()

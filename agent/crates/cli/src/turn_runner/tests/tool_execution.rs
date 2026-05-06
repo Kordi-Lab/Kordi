@@ -10,6 +10,7 @@ async fn run_turn_contains_tool_panics_without_aborting_the_turn() {
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(DummyProvider {
             call_count: AtomicUsize::new(0),
@@ -84,6 +85,7 @@ async fn run_turn_continues_after_error_tool_results_when_provider_needs_error_f
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(ErrorAwareToolProvider {
             call_count: AtomicUsize::new(0),
@@ -159,6 +161,7 @@ async fn run_turn_normalizes_builtin_tool_aliases_before_lookup() {
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(AliasProvider {
             call_count: AtomicUsize::new(0),
@@ -233,6 +236,7 @@ async fn cancelled_turn_with_tool_calls_persists_cancelled_tool_results() {
         conn: wrapped.clone(),
         session_id: session_id.clone(),
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(CancelAfterToolCallProvider),
         auth: None,
@@ -330,6 +334,7 @@ async fn read_only_tool_calls_can_overlap_in_real_turn_execution() {
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(MultiToolProvider {
             tool_name: "overlap-probe",
@@ -396,6 +401,7 @@ async fn same_file_mutations_stay_serialized_in_real_turn_execution() {
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(MultiToolProvider {
             tool_name: "same-file-mutation-probe",

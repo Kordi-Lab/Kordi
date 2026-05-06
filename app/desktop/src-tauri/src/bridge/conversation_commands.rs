@@ -421,10 +421,8 @@ mod tests {
 
         assert!(prompt.contains("Session identity file:"), "{prompt}");
         assert!(
-            prompt.contains(
-                "If this is your first turn in this shared session, read this file before answering."
-            ),
-            "{prompt}"
+            !prompt.contains("If this is your first turn"),
+            "read rules should stay in stable system prompt, not payload prompt\n{prompt}"
         );
         assert!(
             !prompt.contains("<multi_participant_identity_context"),

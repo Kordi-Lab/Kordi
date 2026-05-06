@@ -13,6 +13,7 @@ async fn run_turn_retries_retryable_stream_provider_errors_before_failing_the_tu
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: provider.clone(),
         auth: None,
@@ -79,6 +80,7 @@ async fn run_turn_reports_local_model_overload_when_stream_stalls() {
         conn: wrap_conn(conn),
         session_id: session_id.clone(),
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model,
         provider: Arc::new(StalledLocalProvider {
             stream_count: stream_count.clone(),
@@ -149,6 +151,7 @@ async fn run_turn_writes_request_metrics_log_when_path_is_configured() {
         conn: wrap_conn(conn),
         session_id,
         system_prompt: "system".to_string(),
+        bridge_outreach_prompt_context: None,
         model: test_model(128_000),
         provider: Arc::new(MetricsProvider),
         auth: None,

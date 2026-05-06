@@ -584,6 +584,7 @@ mod tests {
             tool_selection: crate::tool_registry::ToolSelection::All,
             tool_ctx,
             system_prompt: String::new(),
+            bridge_outreach_prompt_context: None,
             base_system_prompt: String::new(),
             thinking_level: "medium".to_string(),
             compaction_enabled: true,

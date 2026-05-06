@@ -49,7 +49,7 @@ impl Tool for ReachOutTool {
     }
 
     fn description(&self) -> &str {
-        "Internal executor for @Person/@Agent participation. Use this when a mentioned or visible connected person/agent may have relevant information. The outreach is always allowed, creates a visible join event in the current session when possible, includes policy-scoped context by default, and can return the remote reply as the tool result."
+        "Internal executor for explicit non-local @Person/@Agent participation. Use this only when the current user message explicitly mentions a non-local person or agent; never use it for @Kordi/the local agent or for unmentioned bridge participants. The outreach is allowed, creates a visible join event in the current session when possible, includes policy-scoped context by default, and can return the remote reply as the tool result."
     }
 
     fn parameters_schema(&self) -> Value {

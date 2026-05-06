@@ -354,7 +354,8 @@ pub(crate) async fn run_turn_inner(
         }
 
         let request_started_at_ms = Utc::now().timestamp_millis();
-        let (request, mut mutation_flags) = build_request(config, event_tx, &system_prompt).await?;
+        let (request, mut mutation_flags) =
+            build_request(config, event_tx, &system_prompt, turn_index, user_prompt).await?;
         mutation_flags.system_prompt_mutated = system_prompt_mutated;
 
         let prepared_metrics = {
@@ -531,6 +532,8 @@ async fn build_request(
     config: &TurnConfig,
     event_tx: &mpsc::UnboundedSender<TurnEvent>,
     system_prompt: &str,
+    turn_index: u32,
+    user_prompt: &str,
 ) -> Result<(CompletionRequest, RequestMutationFlags)> {
     let conn = config.conn.lock().await;
     let context = context::build_context(&conn, &config.session_id)?;
@@ -538,7 +541,14 @@ async fn build_request(
 
     let (messages, context_rewritten) =
         apply_context_hook(config, event_tx, context.messages).await?;
-    let provider_messages = messages_to_provider(&messages);
+    let mut provider_messages = messages_to_provider(&messages);
+    if turn_index == 0 {
+        insert_bridge_outreach_context_message(
+            &mut provider_messages,
+            config.bridge_outreach_prompt_context.as_deref(),
+            user_prompt,
+        );
+    }
 
     let mut mutation_flags = RequestMutationFlags::default();
     mutation_flags.context_rewritten = context_rewritten;
@@ -581,6 +591,53 @@ async fn build_request(
     }
 
     Ok((request, mutation_flags))
+}
+
+fn insert_bridge_outreach_context_message(
+    provider_messages: &mut Vec<serde_json::Value>,
+    context: Option<&str>,
+    user_prompt: &str,
+) {
+    let Some(context) = context.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    let context_message = serde_json::json!({"role": "user", "content": context});
+    let current_prompt = user_prompt.trim();
+    let insertion_index = if current_prompt.is_empty() {
+        None
+    } else {
+        provider_messages.iter().rposition(|message| {
+            message.get("role").and_then(|value| value.as_str()) == Some("user")
+                && provider_message_content_text(message)
+                    .is_some_and(|content| content.trim() == current_prompt)
+        })
+    }
+    .unwrap_or(provider_messages.len());
+    provider_messages.insert(insertion_index, context_message);
+}
+
+fn provider_message_content_text(message: &serde_json::Value) -> Option<String> {
+    let content = message.get("content")?;
+    if let Some(text) = content.as_str() {
+        return Some(text.to_string());
+    }
+    let blocks = content.as_array()?;
+    let text = blocks
+        .iter()
+        .filter_map(|block| {
+            block
+                .get("text")
+                .and_then(|value| value.as_str())
+                .or_else(|| {
+                    block
+                        .get("source")
+                        .and_then(|source| source.get("text"))
+                        .and_then(|value| value.as_str())
+                })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
 }
 
 async fn apply_context_hook(
