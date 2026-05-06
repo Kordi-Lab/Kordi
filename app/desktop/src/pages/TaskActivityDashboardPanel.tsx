@@ -173,7 +173,7 @@ function TaskContent({
 }) {
   const rawSecondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
   const genericCompletedSummary = /^(?:complete|completed|response complete|done)$/i.test(rawSecondaryText.trim());
-  const secondaryText = task.status === 'completed' && genericCompletedSummary ? '' : rawSecondaryText;
+  const secondaryText = (task.status === 'completed' || task.status === 'waiting') && genericCompletedSummary ? '' : rawSecondaryText;
   const runningElapsed = useRunningElapsedLabel(task.status === 'active', task.id, task.startedAtMs);
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
@@ -183,7 +183,7 @@ function TaskContent({
       : `${subtaskCount} subtask${subtaskCount === 1 ? '' : 's'}`
     : null;
   const subtaskLabel = rawSubtaskLabel && rawSubtaskLabel !== secondaryText ? rawSubtaskLabel : null;
-  const durationText = task.status === 'completed' || task.status === 'closed'
+  const durationText = task.status === 'completed' || task.status === 'closed' || task.status === 'waiting'
     ? null
     : task.durationLabel ?? (runningElapsed ? `Running · ${runningElapsed}` : null);
   const timeParts = [task.timeLabel, durationText].filter((part): part is string => Boolean(part));

@@ -19,6 +19,16 @@ function assistantTurnMessage(turn: DesktopChatTurnSnapshot): Message {
   };
 }
 
+function userMessage(text: string, id = `user:${text.slice(0, 16)}`): Message {
+  return {
+    id,
+    role: 'user',
+    sender: 'Me',
+    text,
+    time: '10:01',
+  };
+}
+
 test('right-panel task dashboard shows the whole long-running request, not the current bash command', () => {
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
@@ -129,11 +139,13 @@ test('right-panel task dashboard nests subagent tasks under the whole request', 
   assert.equal(dashboard.tasks.length, 2);
   assert.equal(dashboard.tasks[0].title, 'review the code and give me a report');
   assert.equal(dashboard.tasks[0].statusLabel, 'Active');
-  assert.equal(dashboard.tasks[0].subtasks.length, 1);
-  assert.equal(dashboard.tasks[0].subtasks[0].title, 'research_docs');
-  assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Subagent active');
-  assert.equal(dashboard.tasks[0].subtasks[0].target, '/root/research_docs');
-  assert.deepEqual(dashboard.tasks[0].subtasks[0].writeScope, ['docs']);
+  assert.equal(dashboard.tasks[0].subtasks.length, 2);
+  assert.equal(dashboard.tasks[0].subtasks[0].title, 'Inspect');
+  assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Done');
+  assert.equal(dashboard.tasks[0].subtasks[1].title, 'research_docs');
+  assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Subagent active');
+  assert.equal(dashboard.tasks[0].subtasks[1].target, '/root/research_docs');
+  assert.deepEqual(dashboard.tasks[0].subtasks[1].writeScope, ['docs']);
   assert.equal(dashboard.tasks[1].title, 'run tests');
   assert.equal(dashboard.tasks[1].subtasks.length, 0);
 });
@@ -180,8 +192,8 @@ test('task dashboard updates nested subagent state when a later task operator re
   const dashboard = buildTaskActivityDashboard({ messages });
 
   assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].status, 'completed');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
+  assert.equal(dashboard.tasks[0].status, 'waiting');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
   assert.equal(dashboard.tasks[0].subtasks.length, 1);
   assert.equal(dashboard.tasks[0].subtasks[0].status, 'completed');
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Done');
@@ -347,9 +359,11 @@ test('task dashboard does not fail the whole task when a completed response cont
 
   const dashboard = buildTaskActivityDashboard({ messages: transcriptMessages });
 
-  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].status, 'active');
   assert.equal(dashboard.tasks[0].timeLabel, '22:33');
-  assert.equal(dashboard.completedCount, 1);
+  assert.equal(dashboard.tasks[0].subtasks.length, 1);
+  assert.equal(dashboard.tasks[0].subtasks[0].status, 'failed');
+  assert.equal(dashboard.completedCount, 0);
 
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: transcriptMessages,
@@ -626,8 +640,132 @@ test('task dashboard keeps completed failed tool turns visible after the live tu
 
   assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, "let’s fix the prolem in a new worktree");
-  assert.equal(dashboard.tasks[0].status, 'failed');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Failed');
+  assert.equal(dashboard.tasks[0].status, 'active');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
+  assert.equal(dashboard.tasks[0].subtasks.length, 1);
+  assert.equal(dashboard.tasks[0].subtasks[0].status, 'failed');
+});
+
+test('task dashboard keeps completed plan tasks open until human confirmation', () => {
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-waiting-confirmation',
+    sessionId: 'session-1',
+    prompt: '@Kordi implement the shortcut issue',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'The implementation is complete. Please review it.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({
+          taskTitle: 'Review and implement shortcut',
+          plan: [
+            { step: 'Review issue requirements', status: 'completed' },
+            { step: 'Implement shortcut', status: 'completed' },
+          ],
+        }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(completedTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].status, 'waiting');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
+  assert.equal(dashboard.tasks[0].subtasks.length, 2);
+  assert.equal(dashboard.tasks[0].subtasks[0].status, 'completed');
+});
+
+test('task dashboard marks the parent done only after human confirmation', () => {
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-human-confirmed',
+    sessionId: 'session-1',
+    prompt: '@Kordi implement the shortcut issue',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'The implementation is complete. Please review it.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({
+          taskTitle: 'Review and implement shortcut',
+          plan: [
+            { step: 'Review issue requirements', status: 'completed' },
+            { step: 'Implement shortcut', status: 'completed' },
+          ],
+        }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [
+    assistantTurnMessage(completedTurn),
+    userMessage('yes, this is finished', 'user-confirmed'),
+  ] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].status, 'completed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
+});
+
+test('task dashboard shows failed tools as subtasks without failing the parent task', () => {
+  const failedToolTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-failed-tool-subtask',
+    sessionId: 'session-1',
+    prompt: '@Kordi implement the shortcut issue',
+    status: 'failed',
+    message: '1 tool failed',
+    assistantText: 'I hit a tool error while checking the issue.',
+    thinkingText: '',
+    completed: true,
+    succeeded: false,
+    tools: [
+      {
+        id: 'read-1',
+        name: 'read',
+        status: 'error',
+        arguments: JSON.stringify({ path: 'missing.md' }),
+        liveOutput: '',
+        resultText: 'File not found',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'observation',
+        isError: true,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(failedToolTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].status, 'active');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
+  assert.equal(dashboard.tasks[0].subtasks.length, 1);
+  assert.equal(dashboard.tasks[0].subtasks[0].status, 'failed');
+  assert.match(dashboard.tasks[0].subtasks[0].title, /read/i);
 });
 
 test('task dashboard keeps completed titled tasks visible after the live turn finishes', () => {
@@ -661,8 +799,8 @@ test('task dashboard keeps completed titled tasks visible after the live turn fi
 
   assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
-  assert.equal(dashboard.tasks[0].status, 'completed');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Done');
+  assert.equal(dashboard.tasks[0].status, 'waiting');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
 });
 
 test('task panel renders the whole task as an expandable row with a checkbox-style status icon', () => {

@@ -2,7 +2,7 @@ import { generatedArtifactIdsFromTurn } from '@/features/chat/artifacts';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { DesktopChatToolSnapshot, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 
-export type TaskDashboardStatus = 'planned' | 'active' | 'completed' | 'failed' | 'closed';
+export type TaskDashboardStatus = 'planned' | 'active' | 'waiting' | 'completed' | 'failed' | 'closed';
 export type TaskDashboardTone = 'muted' | 'running' | 'success' | 'error' | 'closed';
 
 type TaskDashboardBase = {
@@ -241,6 +241,8 @@ function statusMeta(status: TaskDashboardStatus, kind: 'task' | 'subtask' = 'tas
   switch (status) {
     case 'active':
       return { statusLabel: kind === 'subtask' ? 'Subagent active' : 'Active', tone: 'running' };
+    case 'waiting':
+      return { statusLabel: 'Needs input', tone: 'muted' };
     case 'completed':
       return { statusLabel: 'Done', tone: 'success' };
     case 'failed':
@@ -300,6 +302,58 @@ function upsertSubtask(parent: MutableParentTask, next: MutableSubtask) {
     parent.subtasksByKey.delete(existingKey);
   }
   parent.subtasksByKey.set(taskKey(merged.target, merged.nameKey, merged.id), merged);
+}
+
+function planStatus(status: string | null): TaskDashboardStatus {
+  switch (status?.trim().toLowerCase()) {
+    case 'completed':
+      return 'completed';
+    case 'in_progress':
+      return 'active';
+    case 'pending':
+    default:
+      return 'planned';
+  }
+}
+
+function planSubtasks(args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask[] {
+  const plan = Array.isArray(args.plan) ? args.plan : [];
+  const explanation = stringValue(args.explanation) ?? '';
+  return plan.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+    const record = candidate as Record<string, unknown>;
+    const title = stringValue(record.step);
+    if (!title) return [];
+    const status = planStatus(stringValue(record.status));
+    return [{
+      id: `plan:${sequence}:${index}:${title}`,
+      nameKey: `plan:${title}`,
+      title,
+      summary: explanation,
+      status,
+      ...statusMeta(status),
+      target: null,
+      writeScope: [],
+      live,
+      sequence,
+    }];
+  });
+}
+
+function failedToolSubtask(tool: DesktopChatToolSnapshot, sequence: number, live: boolean): MutableSubtask {
+  const toolName = tool.name.trim() || 'Tool';
+  return {
+    id: `tool:${sequence}:${tool.id || toolName}`,
+    nameKey: `tool:${tool.id || toolName}`,
+    title: `${toolName} failed`,
+    summary: compact(tool.resultText || tool.detail || tool.liveOutput || 'Tool failed'),
+    status: 'failed',
+    ...statusMeta('failed', 'subtask'),
+    target: null,
+    writeScope: [],
+    live,
+    sequence,
+  };
 }
 
 function manifestSubtasks(args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask[] {
@@ -376,9 +430,18 @@ function resultSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unkno
 }
 
 function subtaskItems({ tool, live, toolSequence }: ToolWithTurn): MutableSubtask[] {
-  if (tool.name.trim().toLowerCase() !== 'task_operator') return [];
+  const toolName = tool.name.trim().toLowerCase();
+  if (toolName === 'update_plan') {
+    const args = safeParseToolArguments(tool.arguments);
+    return args ? planSubtasks(args, toolSequence, live) : [];
+  }
+
+  if (toolName !== 'task_operator') {
+    return tool.isError ? [failedToolSubtask(tool, toolSequence, live)] : [];
+  }
+
   const args = safeParseToolArguments(tool.arguments);
-  if (!args) return [];
+  if (!args) return tool.isError ? [failedToolSubtask(tool, toolSequence, live)] : [];
 
   const action = stringValue(args.action);
   if (action === 'manifest') return manifestSubtasks(args, toolSequence, live);
@@ -388,23 +451,41 @@ function subtaskItems({ tool, live, toolSequence }: ToolWithTurn): MutableSubtas
   }
 
   const task = resultSubtask(tool, args, toolSequence, live);
-  return task ? [task] : [];
+  return task ? [task] : tool.isError ? [failedToolSubtask(tool, toolSequence, live)] : [];
 }
 
 function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | null) {
   const turns: TurnWithSequence[] = [];
-  let sequence = 0;
-  for (const message of messages) {
+  for (const [sequence, message] of messages.entries()) {
     if (message.turn) {
-      turns.push({ turn: message.turn, live: false, sequence: sequence++, responseMessageId: message.id ?? message.turn.id, timeLabel: message.time });
+      turns.push({ turn: message.turn, live: false, sequence, responseMessageId: message.id ?? message.turn.id, timeLabel: message.time });
     }
   }
 
   if (liveTurn && !liveTurn.completed) {
-    turns.push({ turn: liveTurn, live: true, sequence: sequence++, responseMessageId: liveTurn.id });
+    turns.push({ turn: liveTurn, live: true, sequence: messages.length, responseMessageId: liveTurn.id });
   }
 
   return turns;
+}
+
+function isHumanCompletionConfirmation(text: string) {
+  const value = text.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!value || /[?？]/.test(value)) return false;
+  if (/^(done|finished|complete|completed|approved|accepted|ship it|looks good|lgtm)\b/.test(value)) return true;
+  if (/^yes\b.*\b(done|finished|complete|completed|approved|accepted)\b/.test(value)) return true;
+  if (/\b(this|it|the work|the task|the issue)\s+(is|'s|was)?\s*(done|finished|complete|completed|approved|accepted)\b/.test(value)) return true;
+  return false;
+}
+
+function humanCompletionConfirmationSequences(messages: Message[]) {
+  return messages.flatMap((message, sequence) => (
+    message.role === 'user' && isHumanCompletionConfirmation(message.text) ? [sequence] : []
+  ));
+}
+
+function hasHumanConfirmationAfter(sequence: number, confirmationSequences: number[]) {
+  return confirmationSequences.some((confirmationSequence) => confirmationSequence > sequence);
 }
 
 function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }: TurnWithSequence): MutableParentTask {
@@ -469,14 +550,15 @@ function findExistingSubtaskParent(parents: MutableParentTask[], subtask: Mutabl
   return null;
 }
 
-function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[]): TaskDashboardStatus {
+function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[], humanConfirmed: boolean): TaskDashboardStatus {
   if (parent.live && !parent.completed) return 'active';
-  if (subtasks.some((subtask) => subtask.status === 'failed')) return 'failed';
   if (subtasks.some((subtask) => subtask.status === 'active')) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'planned')) return 'planned';
-  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'closed')) return 'closed';
-  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'completed' || subtask.status === 'closed')) return 'completed';
-  if (parent.completed) return parent.succeeded ? 'completed' : 'failed';
+  if (subtasks.some((subtask) => subtask.status === 'failed')) return 'active';
+  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'closed')) return humanConfirmed ? 'closed' : 'waiting';
+  if (subtasks.length > 0 && subtasks.every((subtask) => subtask.status === 'completed' || subtask.status === 'closed')) return humanConfirmed ? 'completed' : 'waiting';
+  if (parent.completed && parent.succeeded) return humanConfirmed ? 'completed' : 'waiting';
+  if (parent.completed && !parent.succeeded) return 'active';
   return 'active';
 }
 
@@ -493,18 +575,18 @@ function parentSummary(parent: MutableParentTask, subtasks: TaskDashboardSubtask
   return `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}`;
 }
 
-function finalizeParent(parent: MutableParentTask): TaskDashboardItem {
+function finalizeParent(parent: MutableParentTask, confirmationSequences: number[]): TaskDashboardItem {
   const subtasks = Array.from(parent.subtasksByKey.values())
     .sort((left, right) => left.sequence - right.sequence)
     .map(({ nameKey: _nameKey, sequence: _sequence, ...subtask }) => subtask);
-  const status = deriveParentStatus(parent, subtasks);
+  const status = deriveParentStatus(parent, subtasks, hasHumanConfirmationAfter(parent.sequence, confirmationSequences));
   const meta = statusMeta(status);
   const activeSubtaskCount = subtasks.filter((subtask) => subtask.status === 'active').length;
 
   return {
     id: parent.id,
     title: parent.title,
-    summary: parentSummary(parent, subtasks),
+    summary: status === 'waiting' ? 'Awaiting human input.' : parentSummary(parent, subtasks),
     status,
     ...meta,
     target: parent.target,
@@ -525,6 +607,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
   const parents: MutableParentTask[] = [];
   const parentsByTurnId = new Map<string, MutableParentTask>();
   const parentsByMergeKey = new Map<string, MutableParentTask>();
+  const confirmationSequences = humanCompletionConfirmationSequences(messages);
   let toolSequence = 0;
 
   const ensureParent = (turnWithSequence: TurnWithSequence) => {
@@ -565,7 +648,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   const tasks = parents
     .sort((left, right) => left.sequence - right.sequence)
-    .map(finalizeParent);
+    .map((parent) => finalizeParent(parent, confirmationSequences));
   const activeCount = tasks.filter((task) => task.status === 'active').length;
   const completedCount = tasks.filter((task) => task.status === 'completed').length;
 
