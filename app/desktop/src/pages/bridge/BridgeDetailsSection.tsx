@@ -95,6 +95,35 @@ function normalizeAgentReachabilityPolicy(value?: string | null): AgentReachabil
   return 'contacts';
 }
 
+type ReachabilityPolicyAgent = {
+  id: string;
+  reachabilityPolicy?: string | null;
+};
+
+export function pendingAgentReachabilityPolicySaves(
+  agents: ReachabilityPolicyAgent[],
+  draftByAgent: Record<string, AgentReachabilityPolicy>,
+) {
+  return agents.flatMap((agent) => {
+    const saved = normalizeAgentReachabilityPolicy(agent.reachabilityPolicy);
+    const selected = draftByAgent[agent.id] ?? saved;
+    return selected === saved ? [] : [{ agentId: agent.id, reachabilityPolicy: selected }];
+  });
+}
+
+export function agentReachabilityStatusText(
+  selectedReachabilityPolicy: AgentReachabilityPolicy,
+  reachabilitySaveState: ReachabilitySaveState,
+  hasPendingChange: boolean,
+) {
+  const selectedReachabilityLabel = agentReachabilityLabel(selectedReachabilityPolicy);
+  if (reachabilitySaveState === 'saving') return `Saving ${selectedReachabilityLabel.toLowerCase()}…`;
+  if (reachabilitySaveState === 'error') return 'Could not update. Try another option again.';
+  if (reachabilitySaveState === 'saved') return `${selectedReachabilityLabel} • Saved`;
+  if (hasPendingChange) return `${selectedReachabilityLabel} • Not saved`;
+  return selectedReachabilityLabel;
+}
+
 export function BridgeDetailsSection({
   activeBridgeHost,
   activeBridgePeople,
@@ -608,6 +637,39 @@ function BridgeAgentsStep({
     setReachabilitySaveStateByAgent({});
   }, [activeBridgeHost.id, reachabilityPolicySignature]);
 
+  const pendingReachabilitySaves = pendingAgentReachabilityPolicySaves(activeBridgeHost.agents, reachabilityDraftByAgent);
+  const isSavingReachability = Object.values(reachabilitySaveStateByAgent).some((state) => state === 'saving');
+
+  const handleContinueFromAgents = async () => {
+    const saves = pendingAgentReachabilityPolicySaves(activeBridgeHost.agents, reachabilityDraftByAgent);
+    if (saves.length === 0) {
+      setActiveStep('review');
+      return;
+    }
+
+    const savingAgentIds = new Set(saves.map((save) => save.agentId));
+    setReachabilitySaveStateByAgent((current) => ({
+      ...current,
+      ...Object.fromEntries(saves.map((save) => [save.agentId, 'saving' as ReachabilitySaveState])),
+    }));
+
+    try {
+      for (const save of saves) {
+        await onSetBridgeAgentReachabilityPolicy(activeBridgeHost.id, save.agentId, save.reachabilityPolicy);
+      }
+      setReachabilitySaveStateByAgent((current) => ({
+        ...current,
+        ...Object.fromEntries(saves.map((save) => [save.agentId, 'saved' as ReachabilitySaveState])),
+      }));
+      setActiveStep('review');
+    } catch {
+      setReachabilitySaveStateByAgent((current) => ({
+        ...current,
+        ...Object.fromEntries([...savingAgentIds].map((agentId) => [agentId, 'error' as ReachabilitySaveState])),
+      }));
+    }
+  };
+
   return (
     <div className="w-full space-y-4">
       <Card className="app-bridge-card app-bridge-panel rounded-[26px] border-white/10 bg-white/5 shadow-none">
@@ -623,14 +685,12 @@ function BridgeAgentsStep({
               const savedReachabilityPolicy = normalizeAgentReachabilityPolicy(agent.reachabilityPolicy);
               const selectedReachabilityPolicy = reachabilityDraftByAgent[agent.id] ?? savedReachabilityPolicy;
               const reachabilitySaveState = reachabilitySaveStateByAgent[agent.id] ?? 'idle';
-              const selectedReachabilityLabel = agentReachabilityLabel(selectedReachabilityPolicy);
-              const reachabilityStatusText = reachabilitySaveState === 'saving'
-                ? `Saving ${selectedReachabilityLabel.toLowerCase()}…`
-                : reachabilitySaveState === 'error'
-                  ? 'Could not update. Try another option again.'
-                  : reachabilitySaveState === 'saved'
-                    ? `${selectedReachabilityLabel} • Saved`
-                    : selectedReachabilityLabel;
+              const hasPendingReachabilityChange = selectedReachabilityPolicy !== savedReachabilityPolicy;
+              const reachabilityStatusText = agentReachabilityStatusText(
+                selectedReachabilityPolicy,
+                reachabilitySaveState,
+                hasPendingReachabilityChange,
+              );
 
               return (
                 <div key={agent.id} className="app-bridge-list-item rounded-[18px] border border-white/10 bg-white/[0.04] px-3 py-3">
@@ -677,17 +737,9 @@ function BridgeAgentsStep({
                               aria-checked={active}
                               aria-label={`${option.label}${active ? ' selected' : ''}: ${option.detail}`}
                               onClick={() => {
-                                if (active && reachabilitySaveState !== 'error') return;
+                                if (active) return;
                                 setReachabilityDraftByAgent((current) => ({ ...current, [agent.id]: option.value }));
-                                setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'saving' }));
-                                void onSetBridgeAgentReachabilityPolicy(activeBridgeHost.id, agent.id, option.value)
-                                  .then(() => {
-                                    setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'saved' }));
-                                  })
-                                  .catch(() => {
-                                    setReachabilityDraftByAgent((current) => ({ ...current, [agent.id]: savedReachabilityPolicy }));
-                                    setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'error' }));
-                                  });
+                                setReachabilitySaveStateByAgent((current) => ({ ...current, [agent.id]: 'idle' }));
                               }}
                               className={cn(
                                 'group rounded-[14px] border px-3 py-2 text-left text-[11px] transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60',
@@ -750,8 +802,8 @@ function BridgeAgentsStep({
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button className="rounded-[14px] text-[12px]" onClick={() => setActiveStep('review')} disabled={!activeBridgeHost.registered}>
-              Next: review <ChevronRight className="ml-2 h-4 w-4" />
+            <Button className="rounded-[14px] text-[12px]" onClick={() => { void handleContinueFromAgents(); }} disabled={!activeBridgeHost.registered || isSavingReachability}>
+              {isSavingReachability ? 'Saving reachability…' : pendingReachabilitySaves.length > 0 ? 'Save & next: review' : 'Next: review'} <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
         </CardContent>
