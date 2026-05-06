@@ -179,6 +179,39 @@ export function sessionDisplayTitle(messages: Message[], fallback: string, optio
   return firstMessageTitle(messages) ?? fallback;
 }
 
+function participantIsSelf(participant: ConversationParticipant) {
+  return participant.role === 'self'
+    || (participant.source === 'local' && participant.kind === 'human');
+}
+
+function directPersonContactTitle(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+) {
+  if (session.kind !== 'direct-person' && session.kind !== 'relationship') return null;
+  const metadata = sessionMetadata(session);
+  const isBridgeDirectPerson = stringValue(metadata.source) === 'bridge-session-thread'
+    || Boolean(stringValue(metadata.bridgeHostId) || stringValue(metadata.peerNodeId));
+  if (!isBridgeDirectPerson) return null;
+  const primary = session.primaryIdentityId
+    ? participants.find((participant) => participant.id === session.primaryIdentityId && participant.kind === 'human')
+    : null;
+  const contact = primary ?? participants.find((participant) => participant.kind === 'human' && !participantIsSelf(participant));
+  const name = contact?.name.trim();
+  return name || null;
+}
+
+export function sessionConversationDisplayTitle(
+  session: CanonicalSessionState['sessions'][number],
+  participants: ConversationParticipant[],
+  messages: Message[],
+  fallback: string,
+  options: { preferFallback?: boolean } = {},
+) {
+  return directPersonContactTitle(session, participants)
+    ?? sessionDisplayTitle(messages, fallback, options);
+}
+
 export function sessionHasActiveProcessing(messages: Message[]) {
   return messages.some((message) => message.turn && !message.turn.completed)
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
@@ -206,7 +239,7 @@ export function syntheticConversation(
   const updatedAtLabel = messages[messages.length - 1]?.time
     ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
 
-  const displayTitle = sessionDisplayTitle(messages, session.title, { preferFallback: sessionHasManualTitle(session) });
+  const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionHasManualTitle(session) });
 
   return {
     id: session.id,

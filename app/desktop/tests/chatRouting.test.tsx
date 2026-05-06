@@ -8,6 +8,55 @@ import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 
+test('canonical direct person conversations use contact name and latest-message subtitle', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', humanId: 'kh_bob', bridgeNodeId: 'kd_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: 'session:bridge:humans:bob',
+      kind: 'direct-person',
+      title: 'how is weather in jeddah',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'human:bob',
+      relationshipIdentityId: 'human:bob',
+      metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'kd_bob', peerRuntime: 'person' },
+      createdAtMs: 1,
+      updatedAtMs: 3,
+      lastMessageAtMs: 3,
+    }],
+    participants: [
+      { sessionId: 'session:bridge:humans:bob', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:bridge:humans:bob', identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:first', sessionId: 'session:bridge:humans:bob', senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'how is weather in jeddah', content: { sender: 'Kordi User 2', timeLabel: '00:29' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'first' },
+      { id: 'msg:latest', sessionId: 'session:bridge:humans:bob', senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'Jeddah is mostly clear now', content: { sender: 'Kordi User 2', timeLabel: '00:31' }, status: 'sent', sequenceNum: 2, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'latest' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[messages.length - 1]?.text ?? fallback ?? '') ?? [];
+  const conversation = conversations.find((item) => item.canonicalSessionId === 'session:bridge:humans:bob');
+
+  assert.equal(conversation?.name, 'Kordi User 2');
+  assert.equal(conversation?.subtitle, 'Jeddah is mostly clear now');
+});
+
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
   function Probe() {

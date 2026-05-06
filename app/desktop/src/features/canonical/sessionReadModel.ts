@@ -12,7 +12,7 @@ import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
   sessionChatActivityAtMs,
-  sessionDisplayTitle,
+  sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
   sessionHasManualTitle,
   sessionMetadata,
@@ -283,7 +283,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const participants = canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
+      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
