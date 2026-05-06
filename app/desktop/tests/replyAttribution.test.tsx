@@ -152,6 +152,53 @@ test('buildReplyAttribution can infer other peoples requests as source when expl
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Shenzhe Zhu');
 });
 
+test('buildReplyAttribution prefers a newer own plain request over a stale @Kordi mention', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:old-kordi-request',
+      text: '@Kordi why i cannot send the second message',
+      time: '12:54',
+    }),
+    {
+      id: 'msg:old-error-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '12:54',
+      turn: turn({
+        id: 'turn-old-error',
+        assistantText: '',
+        message: 'Provider error: overloaded',
+        status: 'failed',
+        succeeded: false,
+        error: 'Provider error: overloaded',
+      }),
+    },
+    humanRequest({
+      id: 'msg:new-plain-request',
+      text: 'Create a markdown form to preview',
+      time: '13:34',
+    }),
+    {
+      id: 'msg:new-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '13:34',
+      turn: turn({ id: 'turn-new-response', assistantText: 'Considering markdown formatting options.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[2]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:new-plain-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.text, 'Create a markdown form to preview');
+  assert.equal(result.messages[0]?.replySummary?.targetMessageId, 'msg:old-error-response');
+});
+
 test('buildReplyAttribution prefers the latest matching @mention over later non-request chat', () => {
   const messages: Message[] = [
     humanRequest({

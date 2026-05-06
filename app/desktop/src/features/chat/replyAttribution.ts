@@ -122,6 +122,11 @@ function inferredReplyTargetForAgentMessage(
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
+  if (inferLatestHumanRequest) {
+    const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
+    if (latestPlainRequest) return latestPlainRequest.messageId;
+  }
+
   for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
     const candidate = requestCandidates[index];
     if (requestMentionsAgent(candidate.message, message)) return candidate.messageId;
@@ -143,6 +148,13 @@ function requestMentionsLocalAgent(message: Message) {
   return mentionTargets.has('kordi') || mentionTargets.has('mykordi');
 }
 
+function latestOwnPlainRequest(requestCandidates: readonly RequestCandidate[]) {
+  const latest = requestCandidates[requestCandidates.length - 1] ?? null;
+  if (!latest) return null;
+  const own = latest.message.isOwnMessage ?? latest.message.role === 'user';
+  return own && mentionTargetsForRequest(latest.message).size === 0 ? latest : null;
+}
+
 function inferredReplyTargetForLiveTurn(
   liveTurn: DesktopChatTurnSnapshot,
   requestCandidates: readonly RequestCandidate[],
@@ -156,6 +168,9 @@ function inferredReplyTargetForLiveTurn(
       if (comparablePromptText(candidate.message.text) === promptText) return candidate.messageId;
     }
   }
+
+  const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
+  if (latestPlainRequest) return latestPlainRequest.messageId;
 
   for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
     const candidate = requestCandidates[index];
