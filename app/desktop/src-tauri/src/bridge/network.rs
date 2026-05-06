@@ -15,8 +15,8 @@ use super::storage::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
 };
 use super::{
-    generate_registry_node_id, DesktopBridgeContactRequest, DesktopBridgeHostConfig,
-    DesktopBridgePeer, DesktopBridgeProject,
+    DesktopBridgeContactRequest, DesktopBridgeHostConfig, DesktopBridgePeer, DesktopBridgeProject,
+    generate_registry_node_id,
 };
 
 #[derive(Debug, Deserialize)]
@@ -1323,6 +1323,9 @@ pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Opti
     if message_type.eq_ignore_ascii_case("ask") {
         return Some("agent");
     }
+    if message_type.eq_ignore_ascii_case("response") {
+        return Some("person");
+    }
     let payload_body = payload.get("payload");
     let target_kind = payload_body
         .and_then(|value| value.get("sessionThread"))
@@ -1344,6 +1347,28 @@ pub(super) fn relay_target_kind_for_payload(payload: &serde_json::Value) -> Opti
         ("bridge-person", "session-invite") => Some("person-invite"),
         ("bridge-person", _) => Some("person"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_payload_uses_person_key_access_even_when_original_target_was_agent() {
+        let payload = serde_json::json!({
+            "messageType": "response",
+            "payload": {
+                "message": "hello",
+                "done": true,
+                "sessionThread": {
+                    "targetKind": "bridge-agent",
+                    "contextPolicy": "session-message"
+                }
+            }
+        });
+
+        assert_eq!(relay_target_kind_for_payload(&payload), Some("person"));
     }
 }
 
