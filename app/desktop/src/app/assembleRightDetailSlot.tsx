@@ -3,6 +3,7 @@ import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
+import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
 import type { DetailTab } from '@/kordi-app/types';
@@ -10,6 +11,9 @@ import type { DetailTab } from '@/kordi-app/types';
 export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const activeChatSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
   const activeProjectSessionId = args.activeProjectSession.id;
+  const navigateToResponse = (messageId: string) => {
+    navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
+  };
   const detailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
     ? [
         { id: 'info', label: 'Info', icon: Info },
@@ -59,6 +63,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveArtifactId(artifactId);
             args.setActiveDetailTab('artifacts');
           }}
+          onNavigateToResponse={navigateToResponse}
         />
       ) : (
         <ChatDetailPanel
@@ -83,6 +88,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveArtifactId(artifactId);
             args.setActiveDetailTab('artifacts');
           }}
+          onNavigateToResponse={navigateToResponse}
           onOpenOutreachThread={(conversationId) => {
             args.setActiveNav('chats');
             args.setActiveConvId(conversationId);

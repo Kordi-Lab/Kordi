@@ -164,6 +164,7 @@ type ChatDetailPanelProps = {
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
   onOpenOutreachThread?: (conversationId: string) => void;
 };
 
@@ -210,6 +211,7 @@ function ChatDetailPanelView({
   activeArtifactId,
   onSelectArtifact,
   onOpenArtifact,
+  onNavigateToResponse,
 }: ChatDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
@@ -395,6 +397,7 @@ function ChatDetailPanelView({
         emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
+        onNavigateToResponse={onNavigateToResponse}
       />
     </div>
   );
@@ -418,7 +421,8 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.activeSessionProject === next.activeSessionProject
     && previous.artifacts === next.artifacts
     && previous.activeArtifactId === next.activeArtifactId
-    && previous.onOpenArtifact === next.onOpenArtifact;
+    && previous.onOpenArtifact === next.onOpenArtifact
+    && previous.onNavigateToResponse === next.onNavigateToResponse;
 }
 
 export const ChatDetailPanel = memo(ChatDetailPanelView, chatDetailPanelPropsEqual);

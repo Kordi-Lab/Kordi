@@ -59,6 +59,7 @@ type ProjectDetailPanelProps = {
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
 };
 
 type MetaRowProps = {
@@ -152,6 +153,7 @@ export function ProjectDetailPanel({
   activeArtifactId,
   onSelectArtifact,
   onOpenArtifact,
+  onNavigateToResponse,
 }: ProjectDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
@@ -355,6 +357,7 @@ export function ProjectDetailPanel({
         emptyMessage="No planning or execution task activity in this project session yet."
         artifacts={projectArtifacts}
         onOpenArtifact={onOpenArtifact}
+        onNavigateToResponse={onNavigateToResponse}
       />
       {activeProject.pendingInvites.length > 0 ? (
         <section className="app-detail-section">

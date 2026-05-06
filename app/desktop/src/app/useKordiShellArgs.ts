@@ -256,6 +256,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       activeSessionProject: args.activeSessionProject,
       activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
+      chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     },
     overlay: {
       showAuthGate: args.showAuthGate,

@@ -573,6 +573,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'lastBridgePollAtLabel'
   | 'activeSessionProject'
   | 'activeQueuedDesktopMessages'
+  | 'chatTranscriptScrollRef'
 >;
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
