@@ -588,6 +588,14 @@ function parentSummary(parent: MutableParentTask, subtasks: TaskDashboardSubtask
   return `${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}`;
 }
 
+function waitingTimeLabel(timeLabel?: string | null) {
+  const value = timeLabel?.trim();
+  if (!value) return value ?? null;
+  return /^(?:Failed|Stopped)\s+/i.test(value)
+    ? `Last activity ${value.replace(/^(?:Failed|Stopped)\s+/i, '')}`
+    : value;
+}
+
 function finalizeParent(parent: MutableParentTask, confirmationSequences: number[]): TaskDashboardItem {
   const subtasks = Array.from(parent.subtasksByKey.values())
     .sort((left, right) => left.sequence - right.sequence)
@@ -607,7 +615,7 @@ function finalizeParent(parent: MutableParentTask, confirmationSequences: number
     live: parent.live || status === 'active',
     responseMessageId: parent.responseMessageId,
     artifactIds: parent.artifactIds,
-    timeLabel: parent.timeLabel,
+    timeLabel: status === 'waiting' ? waitingTimeLabel(parent.timeLabel) : parent.timeLabel,
     durationLabel: parent.durationLabel,
     startedAtMs: parent.startedAtMs,
     subtasks,

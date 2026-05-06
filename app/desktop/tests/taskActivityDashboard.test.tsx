@@ -768,6 +768,47 @@ test('task dashboard shows failed tools as subtasks without failing the parent t
   assert.match(dashboard.tasks[0].subtasks[0].title, /read/i);
 });
 
+test('task panel labels waiting failed-turn time as last activity instead of failed', () => {
+  const waitingTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-waiting-after-recovered-failure',
+    sessionId: 'session-1',
+    prompt: '@Kordi implement the shortcut issue',
+    status: 'failed',
+    message: 'Response complete',
+    assistantText: 'I need input before continuing.',
+    thinkingText: '',
+    completed: true,
+    succeeded: false,
+    tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({
+          taskTitle: 'Review and implement shortcut',
+          plan: [{ step: 'Fix shortcut', status: 'completed' }],
+        }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(waitingTurn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /Awaiting human input/);
+  assert.match(markup, /Last activity 10:00/);
+  assert.doesNotMatch(markup, /Failed 10:00/);
+});
+
 test('task dashboard clears a failed tool issue after a later same-tool retry succeeds', () => {
   const retriedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-retried-tool-subtask',
