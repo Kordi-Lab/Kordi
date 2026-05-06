@@ -73,6 +73,17 @@ pub(super) fn validate_and_repair_messages_for_provider(
                     pending_tool_calls.clear();
                     seen_tool_results.clear();
                     summary.skipped_errored_assistant_tool_messages += 1;
+                    if provider_messages
+                        .last()
+                        .and_then(provider_message_role)
+                        .is_some_and(|role| role == "user")
+                        && let Some(content) = failed_assistant_status_content(assistant)
+                    {
+                        provider_messages.push(json!({
+                            "role": "assistant",
+                            "content": content,
+                        }));
+                    }
                     continue;
                 }
 
@@ -211,6 +222,47 @@ pub(super) fn validate_and_repair_messages_for_provider(
         messages: provider_messages,
         summary,
     }
+}
+
+fn provider_message_role(message: &Value) -> Option<&str> {
+    message.get("role")?.as_str()
+}
+
+fn compact_error_detail(value: &str) -> String {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= 500 {
+        return normalized;
+    }
+    let mut truncated = normalized.chars().take(499).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
+fn failed_assistant_status_content(assistant: &crate::types::AssistantMessage) -> Option<String> {
+    let detail = assistant
+        .error_message
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(compact_error_detail)
+        .or_else(|| {
+            let text = agent::extract_text(&assistant.content);
+            let trimmed = text.trim();
+            (!trimmed.is_empty()).then(|| compact_error_detail(trimmed))
+        });
+
+    let prefix = match assistant.stop_reason {
+        StopReason::Error => "Previous request failed before an answer was produced",
+        StopReason::Aborted => "Previous request was stopped before an answer was produced",
+        _ => return None,
+    };
+    let summary = match detail {
+        Some(detail) => format!("{prefix}: {detail}"),
+        None => prefix.to_string(),
+    };
+    Some(format!(
+        "{summary}\n\nDo not retry or continue that failed request unless the user explicitly asks for it."
+    ))
 }
 
 fn base_tool_call_id(id: &str) -> String {

@@ -14,6 +14,8 @@ export function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnaps
     failed: !turn.succeeded && turn.status !== 'cancelled',
     thinkingText: turn.thinkingText,
     tools: turn.tools,
+    turnStartedAtMs: turn.startedAtMs ?? null,
+    turnCompletedAtMs: turn.completedAtMs ?? null,
   };
 }
 
@@ -26,6 +28,8 @@ function liveTurnToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
     tool.liveOutput,
     tool.resultText ?? '',
     tool.detail ?? '',
+    tool.artifactPath ?? '',
+    tool.toolLayer ?? '',
     String(tool.isError),
   ].join('\u0000');
 }
@@ -38,6 +42,8 @@ function mergeDesktopTurnToolSnapshot(
   current: DesktopChatTurnSnapshot['tools'][number],
   next: DesktopChatTurnSnapshot['tools'][number],
 ): DesktopChatTurnSnapshot['tools'][number] {
+  const artifactPath = next.artifactPath || current.artifactPath;
+  const toolLayer = next.toolLayer || current.toolLayer;
   return {
     ...current,
     ...next,
@@ -45,6 +51,8 @@ function mergeDesktopTurnToolSnapshot(
     liveOutput: longerLiveText(current.liveOutput ?? '', next.liveOutput ?? ''),
     resultText: next.resultText || current.resultText,
     detail: next.detail || current.detail,
+    ...(artifactPath ? { artifactPath } : {}),
+    ...(toolLayer ? { toolLayer } : {}),
   };
 }
 
@@ -61,11 +69,16 @@ export function mergeDesktopTurnSnapshot(
     return existing ? mergeDesktopTurnToolSnapshot(existing, tool) : tool;
   });
 
+  const startedAtMs = current.startedAtMs ?? next.startedAtMs;
+  const completedAtMs = next.completedAtMs ?? current.completedAtMs;
+
   return {
     ...current,
     ...next,
     assistantText: longerLiveText(current.assistantText, next.assistantText),
     thinkingText: longerLiveText(current.thinkingText, next.thinkingText),
+    ...(startedAtMs != null ? { startedAtMs } : {}),
+    ...(completedAtMs != null ? { completedAtMs } : {}),
     tools: [
       ...mergedTools,
       ...current.tools.filter((tool) => !nextToolIds.has(tool.id)),
@@ -147,6 +160,8 @@ export function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefine
     || left.thinkingText !== right.thinkingText
     || left.completed !== right.completed
     || left.succeeded !== right.succeeded
+    || left.startedAtMs !== right.startedAtMs
+    || left.completedAtMs !== right.completedAtMs
     || left.error !== right.error
     || Boolean(left.transcriptRefreshRequired) !== Boolean(right.transcriptRefreshRequired)
     || left.tools.length !== right.tools.length

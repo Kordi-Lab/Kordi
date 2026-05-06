@@ -350,9 +350,41 @@ export function suppressLiveTurnEchoMessages(messages: Message[], turn?: Desktop
   return filtered.length === messages.length ? messages : filtered;
 }
 
+function cleanComparableText(value?: string | null) {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
+}
+
+function explicitAgentReplyTarget(message: Message) {
+  return cleanComparableText(message.replyToMessageId)
+    || cleanComparableText(message.turn?.replyToMessageId)
+    || cleanComparableText(message.sourceMessage?.messageId)
+    || cleanComparableText(message.turn?.sourceMessage?.messageId);
+}
+
+function agentTurnsShareRequest(current: Message, next: Message) {
+  if (current.time === next.time) return true;
+
+  const currentTarget = explicitAgentReplyTarget(current);
+  const nextTarget = explicitAgentReplyTarget(next);
+  if (currentTarget && nextTarget && currentTarget === nextTarget) return true;
+
+  const currentPrompt = cleanComparableText(current.turn?.prompt);
+  const nextPrompt = cleanComparableText(next.turn?.prompt);
+  if (currentPrompt && nextPrompt && currentPrompt === nextPrompt) return true;
+
+  if (!currentPrompt && !nextPrompt) {
+    const currentText = cleanComparableText(current.turn?.assistantText);
+    const nextText = cleanComparableText(next.turn?.assistantText);
+    if (currentText && nextText.startsWith(currentText)) return true;
+    return (current.turn?.tools.length ?? 0) === 0;
+  }
+
+  return false;
+}
+
 function agentTurnIsSubsumedByNext(current: Message, next: Message) {
   if (!current.turn || !next.turn) return false;
-  if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || current.time !== next.time) return false;
+  if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || !agentTurnsShareRequest(current, next)) return false;
   if (!current.turn.completed || !next.turn.completed) return false;
   const currentAssistantText = current.turn.assistantText.trim();
   const nextAssistantText = next.turn.assistantText.trim();

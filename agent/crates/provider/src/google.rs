@@ -12,7 +12,9 @@ use tokio::sync::mpsc;
 
 use crate::{CompletionRequest, Provider, RequestOptions, StreamEvent, retry::with_retry};
 
-pub use convert::{convert_messages_google, convert_tools_google};
+pub use convert::{
+    convert_messages_google, convert_tools_google, convert_tools_google_with_hosted_search,
+};
 use events::process_google_event;
 
 /// Google Generative AI (Gemini) provider.
@@ -73,7 +75,7 @@ impl Provider for GoogleProvider {
         );
 
         let contents = convert_messages_google(&request.messages);
-        let tools = convert_tools_google(&request.tools);
+        let tools = convert_tools_google_with_hosted_search(&request.tools);
 
         let mut body = json!({
             "contents": contents,
@@ -89,7 +91,7 @@ impl Provider for GoogleProvider {
         }
 
         if !tools.is_empty() {
-            body["tools"] = json!([{ "functionDeclarations": tools }]);
+            body["tools"] = json!(tools);
         }
 
         let response = with_retry(

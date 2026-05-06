@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -42,6 +43,7 @@ type ActiveConversation = {
   trust: string;
   directness: string;
   participants: string[];
+  messages: Message[];
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
@@ -149,6 +151,7 @@ type ChatDetailPanelProps = {
   activeConv: ActiveConversation;
   activeConvHasSubtitle: boolean;
   activeLastMessage?: { time?: string; text?: string };
+  activeLiveTurn?: DesktopChatTurnSnapshot | null;
   activeConversationIsBridge: boolean;
   activeBridgeConversationHostNodeId?: string | null;
   activeBridgeConversationHostUrl?: string | null;
@@ -160,6 +163,8 @@ type ChatDetailPanelProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
   onOpenOutreachThread?: (conversationId: string) => void;
 };
 
@@ -193,6 +198,7 @@ function ChatDetailPanelView({
   activeConv,
   activeConvHasSubtitle,
   activeLastMessage,
+  activeLiveTurn,
   activeConversationIsBridge,
   activeBridgeConversationHostNodeId,
   activeBridgeConversationHostUrl,
@@ -204,10 +210,13 @@ function ChatDetailPanelView({
   artifacts,
   activeArtifactId,
   onSelectArtifact,
+  onOpenArtifact,
+  onNavigateToResponse,
 }: ChatDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
 
   if (activeDetailTab === 'info') {
     return (
@@ -228,9 +237,6 @@ function ChatDetailPanelView({
               {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}
               {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />
-              <MetaRow label="Trust" value={activeConv.trust} />
-              <MetaRow label="Mode" value={activeConv.directness} />
-              {activeConv.outreach ? <MetaRow label="Outreach status" value={activeConv.outreach.status} /> : null}
             </div>
           </div>
         </section>
@@ -289,27 +295,6 @@ function ChatDetailPanelView({
             })}
           </div>
         </section>
-
-        {activeConv.outreach ? (
-          <section className="app-detail-section">
-            <div className="app-detail-kicker">Outreach</div>
-            <div className="space-y-3">
-              <EmphasisBlock title={activeConv.outreach.targetKind === 'bridge-person' ? 'Person outreach' : 'Agent outreach'}>
-                <div>{activeConv.outreach.requestText}</div>
-                {activeConv.outreach.contextText ? <div className="mt-2 app-inspector-subtext">Context included by default</div> : null}
-              </EmphasisBlock>
-              <div className="app-inspector-meta-list">
-                <MetaRow label="Target" value={activeConv.outreach.targetDisplayName} />
-                <MetaRow label="Owner" value={activeConv.outreach.targetOwnerName} />
-                <MetaRow label="Source chat ID" value={activeConv.outreach.parentSessionId} valueClassName="max-w-[11rem] truncate" />
-                <MetaRow label="Local human" value={activeConv.identity?.localHumanName} />
-                <MetaRow label="Local agent" value={activeConv.identity?.localAgentName} />
-                <MetaRow label="Remote human" value={activeConv.identity?.remoteHumanName} />
-                <MetaRow label="Remote agent" value={activeConv.identity?.remoteAgentName} />
-              </div>
-            </div>
-          </section>
-        ) : null}
 
         {activeConversationIsBridge && activeBridgeConversation ? (
           <section className="app-detail-section">
@@ -406,25 +391,14 @@ function ChatDetailPanelView({
 
   return (
     <div className="app-detail-sheet">
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <div className="space-y-3">
-          <EmphasisBlock title="Research Agent relay">
-            <div className="mb-2">
-              <Badge className="app-badge-neutral px-2.5 py-1">Running</Badge>
-            </div>
-            Waiting for external follow-up notes.
-          </EmphasisBlock>
-          <EmphasisBlock title="Code Agent outbound share">
-            <div className="mb-2">
-              <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
-                Needs approval
-              </Badge>
-            </div>
-            Agent wants to send a patch summary to Bob.
-          </EmphasisBlock>
-        </div>
-      </section>
+      <TaskActivityDashboardPanel
+        messages={activeConv.messages}
+        liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
+        emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
+        artifacts={artifacts}
+        onOpenArtifact={onOpenArtifact}
+        onNavigateToResponse={onNavigateToResponse}
+      />
     </div>
   );
 }
@@ -436,6 +410,7 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.activeConvHasSubtitle === next.activeConvHasSubtitle
     && previous.activeLastMessage?.time === next.activeLastMessage?.time
     && previous.activeLastMessage?.text === next.activeLastMessage?.text
+    && previous.activeLiveTurn === next.activeLiveTurn
     && previous.activeConversationIsBridge === next.activeConversationIsBridge
     && previous.activeBridgeConversationHostNodeId === next.activeBridgeConversationHostNodeId
     && previous.activeBridgeConversationHostUrl === next.activeBridgeConversationHostUrl
@@ -445,7 +420,9 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.lastBridgePollAtLabel === next.lastBridgePollAtLabel
     && previous.activeSessionProject === next.activeSessionProject
     && previous.artifacts === next.artifacts
-    && previous.activeArtifactId === next.activeArtifactId;
+    && previous.activeArtifactId === next.activeArtifactId
+    && previous.onOpenArtifact === next.onOpenArtifact
+    && previous.onNavigateToResponse === next.onNavigateToResponse;
 }
 
 export const ChatDetailPanel = memo(ChatDetailPanelView, chatDetailPanelPropsEqual);

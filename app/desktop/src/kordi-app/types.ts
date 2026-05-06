@@ -8,6 +8,7 @@ import type {
   MessageMention,
   MessageSourceReference,
   QueuedDesktopChatMessage,
+  SessionArtifact,
   SessionStatusIndicator,
 } from './types/message';
 
@@ -109,6 +110,7 @@ export type Conversation = {
   participants: string[];
   canonicalParticipants?: ConversationParticipant[];
   messages: Message[];
+  reflectionLessonArtifacts?: SessionArtifact[];
   contextWindowStatus?: DesktopChatContextWindowStatus;
   cacheMonitorText?: string | null;
   queuedMessages?: QueuedDesktopChatMessage[];
@@ -256,6 +258,7 @@ export type ProjectSession = {
   tasks: number;
   unread: number;
   statusIndicator?: SessionStatusIndicator;
+  reflectionLessonArtifacts?: SessionArtifact[];
   messages: Message[];
 };
 
@@ -606,6 +609,8 @@ export type DesktopChatMessage = {
   mentions?: MessageMention[];
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
+  turnStartedAtMs?: number | null;
+  turnCompletedAtMs?: number | null;
 };
 
 export type DesktopChatSessionSummary = {
@@ -925,6 +930,7 @@ export type DesktopChatSessionDetail = {
   contextWindowText: string;
   contextWindowStatus: DesktopChatContextWindowStatus;
   project?: DesktopChatProjectInfo | null;
+  reflectionLessonArtifacts?: SessionArtifact[];
   messages: DesktopChatMessage[];
 };
 

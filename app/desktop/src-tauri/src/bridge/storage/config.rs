@@ -81,6 +81,10 @@ fn bridge_keychain_service_name() -> String {
 }
 
 pub(in crate::bridge) fn korde_dir() -> Result<PathBuf, String> {
+    if let Some(storage_root) = std::env::var_os("KORDI_STORAGE_ROOT") {
+        return Ok(PathBuf::from(storage_root).join(KORDE_DIR_NAME.trim_start_matches('.')));
+    }
+
     if let Some(data_dir) = std::env::var_os("APP_DATA_DIR") {
         return Ok(PathBuf::from(data_dir).join(KORDE_DIR_NAME.trim_start_matches('.')));
     }

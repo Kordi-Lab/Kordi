@@ -12,6 +12,7 @@ import type {
   Message,
   NavId,
   ProjectSession,
+  SessionArtifact,
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
@@ -27,6 +28,7 @@ function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
       tool.name,
       tool.status,
       tool.arguments,
+      tool.artifactPath ?? '',
       tool.isError ? 'error' : 'ok',
     ].join('\u0000')),
   ].join('\u0001');
@@ -89,7 +91,7 @@ type UseKordiDesktopActivityArgs = {
   activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
   activeConvId: string;
-  activeConv: { id: string; canonicalSessionId?: string; messages: Message[] };
+  activeConv: { id: string; canonicalSessionId?: string; messages: Message[]; reflectionLessonArtifacts?: SessionArtifact[] };
   activeProjectSessionId: string;
   activeProjectSession: ProjectSession;
   activeConversationIsBridge: boolean;
@@ -140,12 +142,12 @@ export function useKordiDesktopActivity({
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(
-    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn),
-    [activeChatArtifactLiveTurn, activeConv.messages, activeConversationIsBridge],
+    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn, activeConv.reflectionLessonArtifacts),
+    [activeChatArtifactLiveTurn, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationIsBridge],
   );
   const activeProjectArtifacts = useMemo(
-    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn),
-    [activeProjectArtifactLiveTurn, activeProjectSession.messages],
+    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn, activeProjectSession.reflectionLessonArtifacts),
+    [activeProjectArtifactLiveTurn, activeProjectSession.messages, activeProjectSession.reflectionLessonArtifacts],
   );
   const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
   const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;

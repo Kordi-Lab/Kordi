@@ -4,6 +4,8 @@ mod bridge;
 mod canonical_sessions;
 mod chat;
 mod project;
+#[cfg(test)]
+mod test_support;
 mod workspace;
 
 use std::process::Command;

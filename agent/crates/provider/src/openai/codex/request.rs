@@ -64,19 +64,40 @@ fn flatten_tool_output_for_codex(content: &Value) -> String {
     content.to_string()
 }
 
+fn function_tool_name(tool: &Value) -> Option<&str> {
+    tool.get("function")?
+        .get("name")?
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+}
+
 pub(super) fn convert_tools_for_codex(tools: &[Value]) -> Vec<Value> {
-    tools
-        .iter()
-        .filter_map(|tool| {
-            let func = tool.get("function")?;
-            Some(json!({
-                "type": "function",
-                "name": func.get("name").and_then(|v| v.as_str()).unwrap_or("tool"),
-                "description": func.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                "parameters": func.get("parameters").cloned().unwrap_or_else(|| json!({"type": "object"})),
-            }))
-        })
-        .collect()
+    let mut converted = Vec::new();
+    let mut hosted_web_search = false;
+
+    for tool in tools {
+        let Some(func) = tool.get("function") else {
+            continue;
+        };
+        let name = function_tool_name(tool).unwrap_or("tool");
+        if name == "web_search" {
+            hosted_web_search = true;
+            continue;
+        }
+        converted.push(json!({
+            "type": "function",
+            "name": name,
+            "description": func.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "parameters": func.get("parameters").cloned().unwrap_or_else(|| json!({"type": "object"})),
+        }));
+    }
+
+    if hosted_web_search {
+        converted.insert(0, json!({ "type": "web_search" }));
+    }
+
+    converted
 }
 
 pub(super) fn sanitize_messages_for_codex(messages: &[Value]) -> Vec<Value> {

@@ -244,6 +244,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeProject: args.activeProject,
       activeProjectSession: args.activeProjectSession,
       activeProjectLastMessage: args.activeProjectLastMessage,
+      desktopLiveTurn: args.desktopLiveTurn,
       activeProjectBridgeHost: args.activeProjectBridgeHost,
       activeProjectBridgeProject: args.activeProjectBridgeProject,
       isProjectBridgeBusy: args.isProjectBridgeBusy,
@@ -263,6 +264,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       activeSessionProject: args.activeSessionProject,
       activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
+      chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     },
     overlay: {
       showAuthGate: args.showAuthGate,

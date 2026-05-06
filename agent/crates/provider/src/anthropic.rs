@@ -70,19 +70,8 @@ impl Provider for AnthropicProvider {
         let mut messages = convert_messages_for_anthropic(&request.messages);
         apply_cache_control_to_last_user_message(&mut messages);
 
-        let mut tools: Vec<Value> = request
-            .tools
-            .iter()
-            .map(|t| {
-                let func = &t["function"];
-                json!({
-                    "name": func["name"],
-                    "description": func["description"],
-                    "input_schema": func["parameters"],
-                })
-            })
-            .collect();
-        tools.extend(request.extra_tool_schemas.iter().cloned());
+        let (tools, hosted_web_search) =
+            build_anthropic_tools(&request.tools, &request.extra_tool_schemas);
 
         let mut body = json!({
             "model": request.model,
@@ -165,14 +154,14 @@ impl Provider for AnthropicProvider {
                         .header("Authorization", format!("Bearer {}", options.api_key))
                         .header(
                             "anthropic-beta",
-                            "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14",
+                            anthropic_oauth_beta_header(hosted_web_search),
                         )
                         .header("user-agent", "claude-cli/2.1.75")
                         .header("x-app", "cli");
                 } else {
                     r = r
                         .header("x-api-key", &options.api_key)
-                        .header("anthropic-beta", "fine-grained-tool-streaming-2025-05-14");
+                        .header("anthropic-beta", anthropic_beta_header(hosted_web_search));
                 }
 
                 for (k, v) in &options.headers {
@@ -266,6 +255,65 @@ impl Provider for AnthropicProvider {
     }
 }
 
+fn function_tool_name(tool: &Value) -> Option<&str> {
+    tool.get("function")?
+        .get("name")?
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+}
+
+fn build_anthropic_tools(tools: &[Value], extra_tool_schemas: &[Value]) -> (Vec<Value>, bool) {
+    let mut converted = Vec::new();
+    let mut hosted_web_search = false;
+
+    for tool in tools {
+        let Some(func) = tool.get("function") else {
+            continue;
+        };
+        let name = function_tool_name(tool).unwrap_or("tool");
+        if name == "web_search" {
+            hosted_web_search = true;
+            continue;
+        }
+        converted.push(json!({
+            "name": name,
+            "description": func.get("description").cloned().unwrap_or_else(|| json!("")),
+            "input_schema": func.get("parameters").cloned().unwrap_or_else(|| json!({"type": "object"})),
+        }));
+    }
+
+    if hosted_web_search {
+        converted.insert(
+            0,
+            json!({
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 5,
+            }),
+        );
+    }
+    converted.extend(extra_tool_schemas.iter().cloned());
+
+    (converted, hosted_web_search)
+}
+
+fn anthropic_beta_header(hosted_web_search: bool) -> &'static str {
+    if hosted_web_search {
+        "fine-grained-tool-streaming-2025-05-14,web-search-2025-03-05"
+    } else {
+        "fine-grained-tool-streaming-2025-05-14"
+    }
+}
+
+fn anthropic_oauth_beta_header(hosted_web_search: bool) -> &'static str {
+    if hosted_web_search {
+        "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,web-search-2025-03-05"
+    } else {
+        "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
+    }
+}
+
 fn cache_metrics_source_for_auth_mode(auth_mode: &ProviderAuthMode) -> CacheMetricsSource {
     match auth_mode {
         ProviderAuthMode::ApiKey => CacheMetricsSource::Official,
@@ -340,11 +388,65 @@ fn supports_adaptive_thinking(model: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CacheMetricsSource, ProviderAuthMode, apply_cache_control_to_last_user_message,
+        CacheMetricsSource, ProviderAuthMode, anthropic_beta_header, anthropic_oauth_beta_header,
+        apply_cache_control_to_last_user_message, build_anthropic_tools,
         cache_metrics_source_for_auth_mode, next_sse_block_delimiter, sse_block_event_name,
         system_text_block,
     };
     use serde_json::json;
+
+    #[test]
+    fn anthropic_tools_prefer_hosted_web_search_over_custom_function() {
+        let tools = vec![
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search with custom DuckDuckGo fallback",
+                    "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "description": "Read a file",
+                    "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}
+                }
+            }),
+        ];
+
+        let (converted, hosted_web_search) = build_anthropic_tools(&tools, &[]);
+
+        assert!(hosted_web_search);
+        assert_eq!(converted.len(), 2);
+        assert_eq!(converted[0]["type"], "web_search_20250305");
+        assert_eq!(converted[0]["name"], "web_search");
+        assert_eq!(converted[1]["name"], "read");
+        assert_eq!(
+            converted
+                .iter()
+                .filter(|tool| tool["name"] == "web_search")
+                .count(),
+            1,
+        );
+    }
+
+    #[test]
+    fn anthropic_beta_headers_enable_web_search_only_when_hosted_search_is_present() {
+        assert_eq!(
+            anthropic_beta_header(false),
+            "fine-grained-tool-streaming-2025-05-14"
+        );
+        assert_eq!(
+            anthropic_beta_header(true),
+            "fine-grained-tool-streaming-2025-05-14,web-search-2025-03-05"
+        );
+        assert_eq!(
+            anthropic_oauth_beta_header(true),
+            "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,web-search-2025-03-05"
+        );
+    }
 
     #[test]
     fn api_key_uses_official_cache_metrics_and_oauth_uses_estimates() {

@@ -25,6 +25,8 @@ pub fn format_tool_call_content(name: &str, raw_args: &str, expanded: bool) -> S
         "read" | "ls" | "grep" | "find" | "web_search" | "web_fetch" | "browser_fetch" => {
             Vec::new()
         }
+        "task_operator" => super::task_operator::render_call_body(&args, expanded),
+        "reflection" => super::reflection::render_call_body(&args, expanded),
         _ => render_generic_call_body(&args),
     };
 

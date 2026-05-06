@@ -138,6 +138,7 @@ mod tests {
                     compaction_threshold_percent: 90,
                 },
                 project: None,
+                reflection_lesson_artifacts: Vec::new(),
                 messages: vec![
                     DesktopChatMessage {
                         role: "user".to_string(),
@@ -227,6 +228,7 @@ mod tests {
                 compaction_threshold_percent: 90,
             },
             project: None,
+            reflection_lesson_artifacts: Vec::new(),
             messages: vec![
                 DesktopChatMessage {
                     role: "user".to_string(),
@@ -258,6 +260,8 @@ mod tests {
                         live_output: String::new(),
                         result_text: Some("repo page".to_string()),
                         detail: None,
+                        artifact_path: None,
+                        tool_layer: Some("observation".to_string()),
                         is_error: false,
                     }],
                 },

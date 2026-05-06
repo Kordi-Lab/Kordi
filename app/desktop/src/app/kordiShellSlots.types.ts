@@ -574,6 +574,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveNav'
   | 'setActiveConvId'
   | 'getStatusBadgeClass'
+  | 'desktopLiveTurn'
   | 'activeConv'
   | 'activeConvHasSubtitle'
   | 'activeLastMessage'
@@ -585,6 +586,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'lastBridgePollAtLabel'
   | 'activeSessionProject'
   | 'activeQueuedDesktopMessages'
+  | 'chatTranscriptScrollRef'
 >;
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,

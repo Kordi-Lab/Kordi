@@ -117,11 +117,21 @@ function requestMentionsAgent(request: Message, agentMessage: Message) {
   return false;
 }
 
+function isLocalAgentResponseMessage(message: Message) {
+  const aliases = agentTargetAliases(message);
+  return message.role === 'owned-agent' || aliases.has('kordi') || aliases.has('mykordi');
+}
+
 function inferredReplyTargetForAgentMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
+  const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
+  if (latestPlainRequest && (inferLatestHumanRequest || isLocalAgentResponseMessage(message))) {
+    return latestPlainRequest.messageId;
+  }
+
   for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
     const candidate = requestCandidates[index];
     if (requestMentionsAgent(candidate.message, message)) return candidate.messageId;
@@ -143,12 +153,18 @@ function requestMentionsLocalAgent(message: Message) {
   return mentionTargets.has('kordi') || mentionTargets.has('mykordi');
 }
 
+function latestOwnPlainRequest(requestCandidates: readonly RequestCandidate[]) {
+  const latest = requestCandidates[requestCandidates.length - 1] ?? null;
+  if (!latest) return null;
+  const own = latest.message.isOwnMessage ?? latest.message.role === 'user';
+  return own && mentionTargetsForRequest(latest.message).size === 0 ? latest : null;
+}
+
 function inferredReplyTargetForLiveTurn(
   liveTurn: DesktopChatTurnSnapshot,
   requestCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
-  if (!inferLatestHumanRequest) return null;
   const promptText = comparablePromptText(liveTurn.prompt);
   if (promptText) {
     for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
@@ -156,6 +172,11 @@ function inferredReplyTargetForLiveTurn(
       if (comparablePromptText(candidate.message.text) === promptText) return candidate.messageId;
     }
   }
+
+  if (!inferLatestHumanRequest) return null;
+
+  const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
+  if (latestPlainRequest) return latestPlainRequest.messageId;
 
   for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
     const candidate = requestCandidates[index];

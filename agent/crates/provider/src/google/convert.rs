@@ -174,12 +174,24 @@ pub fn convert_messages_google(messages: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+fn function_tool_name(tool: &Value) -> Option<&str> {
+    tool.get("function")?
+        .get("name")?
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+}
+
 /// Convert OpenAI-style tool definitions to Google functionDeclarations format.
 pub fn convert_tools_google(tools: &[Value]) -> Vec<Value> {
     tools
         .iter()
         .filter_map(|tool| {
             let func = tool.get("function")?;
+            let name = function_tool_name(tool)?;
+            if name == "web_search" {
+                return None;
+            }
             let description = func
                 .get("description")
                 .cloned()
@@ -191,12 +203,27 @@ pub fn convert_tools_google(tools: &[Value]) -> Vec<Value> {
             let google_params = convert_schema_to_google(&parameters);
 
             Some(json!({
-                "name": func.get("name")?,
+                "name": name,
                 "description": description,
                 "parameters": google_params
             }))
         })
         .collect()
+}
+
+pub fn convert_tools_google_with_hosted_search(tools: &[Value]) -> Vec<Value> {
+    let hosted_web_search = tools
+        .iter()
+        .any(|tool| function_tool_name(tool) == Some("web_search"));
+    let function_declarations = convert_tools_google(tools);
+    let mut entries = Vec::new();
+    if hosted_web_search {
+        entries.push(json!({ "google_search": {} }));
+    }
+    if !function_declarations.is_empty() {
+        entries.push(json!({ "functionDeclarations": function_declarations }));
+    }
+    entries
 }
 
 fn convert_schema_to_google(schema: &Value) -> Value {

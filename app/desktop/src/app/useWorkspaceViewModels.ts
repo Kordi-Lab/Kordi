@@ -268,6 +268,7 @@ export function useWorkspaceViewModels({
       const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
       const outreachThreads = outreachRecords.map(({ updatedAtMs: _updatedAtMs, inlineMessages: _inlineMessages, ...thread }) => thread);
       const messages = [...activeMessages, ...outreachRecords.flatMap((thread) => thread.inlineMessages)];
+      const reflectionLessonArtifacts = isActiveSession ? (desktopChatState.activeSession.reflectionLessonArtifacts ?? []) : [];
 
       return {
         id: session.id,
@@ -288,6 +289,7 @@ export function useWorkspaceViewModels({
           Kordi: localAgentAvatarSeed,
         },
         messages,
+        reflectionLessonArtifacts,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         bridgeTarget: undefined,
@@ -769,6 +771,9 @@ export function useWorkspaceViewModels({
           const outreachMessages = (outreachThreadsByParentSession.get(sessionId) ?? []).flatMap((thread) => thread.inlineMessages);
           const legacyMessages = [...baseMessages, ...outreachMessages];
           const messages = canonicalReadModel ? canonicalReadModel.preferMessages(sessionId, legacyMessages) : legacyMessages;
+          const reflectionLessonArtifacts = desktopChatState?.activeSessionId === sessionId
+            ? (desktopChatState.activeSession.reflectionLessonArtifacts ?? [])
+            : [];
           const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'My Kordi']) : ['Me', 'My Kordi'];
 
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
@@ -789,6 +794,7 @@ export function useWorkspaceViewModels({
               showBackgroundActivity: !isVisibleSession,
               liveTurn: desktopLiveTurnsForViewModel[sessionId],
             }),
+            reflectionLessonArtifacts,
             messages,
           };
         }),

@@ -75,6 +75,10 @@ pub struct DesktopChatStoredTool {
     pub live_output: String,
     pub result_text: Option<String>,
     pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_layer: Option<String>,
     pub is_error: bool,
 }
 
@@ -100,6 +104,18 @@ pub struct DesktopChatAttachment {
     pub local_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopSessionArtifact {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+    pub summary: String,
+    pub time_label: Option<String>,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -207,6 +223,7 @@ pub struct DesktopChatSessionDetail {
     pub context_window_text: String,
     pub context_window_status: DesktopChatContextWindowStatus,
     pub project: Option<DesktopChatProjectInfo>,
+    pub reflection_lesson_artifacts: Vec<DesktopSessionArtifact>,
     pub messages: Vec<DesktopChatMessage>,
 }
 
@@ -640,6 +657,12 @@ impl DesktopRuntimeSession {
             .sibling_conn
             .clone()
             .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?;
+        turn_runner::append_interrupted_unanswered_request_if_needed(
+            &sibling_conn,
+            &self.setup.session_id,
+            &self.setup.model,
+        )
+        .await?;
         turn_runner::append_user_message_with_images(
             &sibling_conn,
             &self.setup.session_id,
@@ -882,10 +905,13 @@ fn build_turn_config(
         tool_ctx: kordi_tools::ToolContext {
             cwd: setup.tool_ctx.cwd.clone(),
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
+            model: None,
             execution_policy: setup.tool_ctx.execution_policy,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),
+            reflection: setup.tool_ctx.reflection.clone(),
+            task_operator: setup.tool_ctx.task_operator.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

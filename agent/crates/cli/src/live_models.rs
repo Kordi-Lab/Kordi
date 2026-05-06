@@ -139,6 +139,12 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
 
     for provider in login::authenticated_providers_for_settings(settings) {
         let static_models = by_provider.get(&provider).cloned().unwrap_or_default();
+        let auth_mode_static_models = login::model_candidates_for_provider_auth_mode(
+            &registry,
+            settings,
+            &provider,
+            &static_models,
+        );
         if let Some(live_ids) =
             fetch_live_model_ids_for_provider_with_settings(&provider, settings).await
         {
@@ -148,10 +154,17 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
                     &registry,
                     settings,
                     &provider,
-                    &static_models,
+                    &auth_mode_static_models,
                     live_ids,
                 ),
             );
+        } else if auth_mode_static_models.len() != static_models.len()
+            || auth_mode_static_models
+                .iter()
+                .zip(static_models.iter())
+                .any(|(left, right)| left.id != right.id || left.provider != right.provider)
+        {
+            by_provider.insert(provider.clone(), auth_mode_static_models);
         }
     }
 

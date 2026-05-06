@@ -4,6 +4,8 @@ mod compaction_exec;
 mod extensions;
 mod input_files;
 mod live_models;
+#[allow(dead_code)]
+mod reflection_runtime;
 mod runtime_model;
 #[allow(dead_code)]
 mod session_bootstrap;
@@ -11,6 +13,7 @@ mod session_bootstrap;
 mod session_info;
 #[allow(dead_code)]
 mod slash;
+pub mod task_operator;
 mod tool_registry;
 pub mod turn_runner;
 

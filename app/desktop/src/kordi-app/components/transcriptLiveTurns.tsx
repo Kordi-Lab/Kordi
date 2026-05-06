@@ -26,10 +26,14 @@ import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import {
   firstMeaningfulThinkingLine,
   formatRunningElapsed,
+  toolTimelineDisplayArguments,
+  toolTimelineFailureLabel,
   toolTimelineFoldedLabel,
+  toolTimelineLayerGroups,
   toolTimelineRunningToolLabel,
   toolTimelineToolLabel,
   toolTimelineTypeLabel,
+  type ToolTimelineLayerGroup,
 } from './toolTimeline';
 import type { BridgeAgentRequestControl, DesktopChatTurnSnapshot } from '../types';
 
@@ -226,7 +230,7 @@ function toolDetailsAvailable(tool: ToolSnapshot) {
 function ToolDetailBlocks({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
   return (
     <div>
-      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={tool.arguments} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
+      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={toolTimelineDisplayArguments(tool)} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
       {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
       {tool.resultText ? <ToolTranscriptBlock label={display.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
     </div>
@@ -325,6 +329,67 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
   return running ? formatRunningElapsed(elapsedMs) : null;
 }
 
+function toolGroupIcon(label: string) {
+  switch (label) {
+    case 'Observation':
+      return FileText;
+    case 'Planning':
+    case 'Operator':
+      return Wrench;
+    case 'Execution':
+      return TerminalSquare;
+    case 'Reflection':
+      return CheckCircle2;
+    default:
+      return Wrench;
+  }
+}
+
+function toolGroupSummary(tools: ToolSnapshot[]) {
+  const labels: string[] = [];
+  for (const tool of tools) {
+    const label = toolTimelineToolLabel(tool);
+    if (!labels.includes(label)) labels.push(label);
+  }
+  const visibleLabels = labels.slice(0, 3).join(' · ');
+  const remaining = labels.length - 3;
+  return remaining > 0 ? `${visibleLabels} · ${remaining} more` : visibleLabels;
+}
+
+function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<ToolSnapshot> }) {
+  const [expandedGroup, setExpandedGroup] = useState(false);
+  const Icon = toolGroupIcon(group.label);
+  const title = `${group.label} × ${group.tools.length}`;
+  const summary = toolGroupSummary(group.tools);
+
+  return (
+    <div className={cn('app-transcript-timeline-row app-transcript-timeline-group-row', group.running && 'app-transcript-timeline-row-running', group.failed && 'app-transcript-timeline-row-error')}>
+      <span className="app-transcript-timeline-rail" aria-hidden="true">
+        <span className="app-transcript-timeline-node">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </span>
+      <div className="app-transcript-timeline-row-body">
+        <button
+          type="button"
+          className="app-transcript-timeline-group-summary"
+          onClick={() => setExpandedGroup((current) => !current)}
+          aria-expanded={expandedGroup}
+        >
+          <span className="app-transcript-timeline-row-title">{title}</span>
+          <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', expandedGroup && 'rotate-90')} aria-hidden="true" />
+        </button>
+        {summary ? <div className="app-transcript-timeline-row-meta truncate">{summary}</div> : null}
+        {expandedGroup ? (
+          <div className="app-transcript-timeline-group-tools">
+            {group.tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   const display = toolDisplayConfig(tool.name);
   const Icon = display.icon;
@@ -360,7 +425,8 @@ function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   );
 }
 
-function ToolTimelineCompletionRow({ failed }: { failed: boolean }) {
+function ToolTimelineCompletionRow({ failedCount }: { failedCount: number }) {
+  const failed = failedCount > 0;
   return (
     <div className={cn('app-transcript-timeline-row app-transcript-timeline-row-complete', failed && 'app-transcript-timeline-row-error')}>
       <span className="app-transcript-timeline-rail" aria-hidden="true">
@@ -370,8 +436,8 @@ function ToolTimelineCompletionRow({ failed }: { failed: boolean }) {
       </span>
       <div className="app-transcript-timeline-row-body">
         <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{failed ? 'Needs attention' : 'Done'}</span>
-          <span className="app-transcript-timeline-pill">{failed ? 'Issue' : 'Complete'}</span>
+          <span className="app-transcript-timeline-row-title">{failed ? toolTimelineFailureLabel(failedCount) : 'Done'}</span>
+          {failed ? null : <span className="app-transcript-timeline-pill">Complete</span>}
         </div>
       </div>
     </div>
@@ -393,7 +459,8 @@ function FoldableToolTimeline({
 }) {
   const [expandedTimeline, setExpandedTimeline] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
-  const failed = tools.some(isFailedTool);
+  const failedCount = tools.filter(isFailedTool).length;
+  const failed = failedCount > 0;
   const runningTool = tools.find(isRunningTool);
   const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
   const summary = toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
@@ -422,8 +489,8 @@ function FoldableToolTimeline({
       {expandedTimeline ? (
         <div className="app-transcript-timeline-list">
           {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
-          {tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
-          {completed || failed ? <ToolTimelineCompletionRow failed={failed} /> : null}
+          {toolTimelineLayerGroups(tools).map((group) => <ToolTimelineToolGroupRow key={group.id} group={group} />)}
+          {completed || failed ? <ToolTimelineCompletionRow failedCount={failedCount} /> : null}
         </div>
       ) : null}
     </section>
@@ -445,6 +512,8 @@ function mergeVisibleToolSnapshot(
     liveOutput: longerText(current.liveOutput ?? '', next.liveOutput ?? ''),
     resultText: next.resultText || current.resultText,
     detail: next.detail || current.detail,
+    artifactPath: next.artifactPath || current.artifactPath,
+    toolLayer: next.toolLayer || current.toolLayer,
   };
 }
 
@@ -502,6 +571,59 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
 
 export type StopBridgeAgentRequestHandler = (request: BridgeAgentRequestControl) => Promise<void> | void;
 export type StopActiveTurnHandler = () => Promise<void> | void;
+
+const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
+
+function normalizedLiveStatusMessage(value: string) {
+  return value.trim().toLowerCase().replace(/\.\.\.$/, '…');
+}
+
+function liveStatusMessageIsGeneric(value: string) {
+  return GENERIC_LIVE_STATUS_MESSAGES.has(normalizedLiveStatusMessage(value));
+}
+
+function toolStatusIsComplete(status: string) {
+  const normalized = status.trim().toLowerCase();
+  return normalized === 'done' || normalized === 'complete' || normalized === 'completed';
+}
+
+function toolStatusIsFailed(status: string, isError: boolean) {
+  const normalized = status.trim().toLowerCase();
+  return isError || normalized === 'error' || normalized.includes('failed');
+}
+
+function livePhaseLabelFromTool(tool: DesktopChatTurnSnapshot['tools'][number]) {
+  switch (toolTimelineTypeLabel(tool)) {
+    case 'Observation':
+      return 'Observation…';
+    case 'Planning':
+      return 'Planning…';
+    case 'Operator':
+      return 'Coordination…';
+    case 'Execution':
+      return 'Execution…';
+    case 'Reflection':
+      return 'Reflection…';
+    default:
+      return null;
+  }
+}
+
+function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
+  const explicitMessage = turn.message?.trim() ?? '';
+  if (explicitMessage && !liveStatusMessageIsGeneric(explicitMessage)) return explicitMessage;
+
+  const activeTool = [...turn.tools].reverse().find((tool) => !toolStatusIsComplete(tool.status) && !toolStatusIsFailed(tool.status, tool.isError));
+  const activePhase = activeTool ? livePhaseLabelFromTool(activeTool) : null;
+  if (activePhase) return activePhase;
+
+  const latestTool = [...turn.tools].reverse().find((tool) => !toolStatusIsFailed(tool.status, tool.isError));
+  const latestPhase = latestTool ? livePhaseLabelFromTool(latestTool) : null;
+  if (latestPhase) return latestPhase;
+
+  if (turn.status === 'starting') return 'Starting…';
+  return 'Thinking…';
+}
 
 function TurnStopButton({
   onStop,
@@ -622,25 +744,21 @@ function LiveChatTurnCardView({
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingBridgeAgentRequest;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
     || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
-  const liveStatusText = visibleTurn.message?.trim().length
-    ? visibleTurn.message
-    : visibleTurn.status === 'cancelling'
-      ? 'Stopping…'
-      : visibleTurn.status === 'retrying'
-        ? 'Retrying…'
-        : visibleTurn.status === 'compacting'
-          ? 'Compressing conversation…'
-          : visibleTurn.status === 'compacted'
-            ? 'Conversation compressed. Continuing…'
-            : visibleTurn.status === 'compaction_failed'
-              ? 'Compression needs attention'
-              : visibleTurn.status === 'typing'
-                ? 'Typing…'
-                : visibleTurn.status === 'writing'
-                  ? 'Replying…'
-                  : visibleTurn.status === 'streaming' || visibleTurn.status === 'starting'
-                    ? 'Replying…'
-                    : 'Working…';
+  const liveStatusText = visibleTurn.status === 'cancelling'
+    ? 'Stopping…'
+    : visibleTurn.status === 'retrying'
+      ? 'Retrying…'
+      : visibleTurn.status === 'compacting'
+        ? 'Compressing conversation…'
+        : visibleTurn.status === 'compacted'
+          ? 'Conversation compressed. Continuing…'
+          : visibleTurn.status === 'compaction_failed'
+            ? 'Compression needs attention'
+            : visibleTurn.status === 'typing'
+              ? 'Typing…'
+              : visibleTurn.status === 'writing'
+                ? 'Replying…'
+                : liveTurnPhaseStatusText(visibleTurn);
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const hasResponseSurface = Boolean(
@@ -749,6 +867,8 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
       tool.liveOutput,
       tool.resultText ?? '',
       tool.detail ?? '',
+      tool.artifactPath ?? '',
+      tool.toolLayer ?? '',
       tool.isError ? 'error' : 'ok',
     ].join('\u0000')),
   ].join('\u0001');
@@ -779,6 +899,7 @@ function LiveChatTurnMessageView({
   return (
     <div
       id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
+      data-transcript-message-root="true"
       className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
     >
       <div className="app-message-meta">{sender}</div>
