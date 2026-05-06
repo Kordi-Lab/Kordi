@@ -195,6 +195,7 @@ export function markOptimisticBridgeMessageFailed(
   current: DesktopBridgeState | null,
   conversationId: string,
   optimisticMessageId: string,
+  detail?: string | null,
 ): DesktopBridgeState | null {
   if (!current) return current;
 
@@ -207,9 +208,49 @@ export function markOptimisticBridgeMessageFailed(
         awaitingReply: false,
         messages: conversation.messages.map((message) => (
           message.id === optimisticMessageId
-            ? { ...message, deliveryState: 'failed' }
+            ? {
+                ...message,
+                deliveryState: 'failed',
+                detail: detail?.trim() || message.detail,
+              }
             : message
         )),
+      };
+    }),
+  };
+}
+
+function optimisticContentRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function markOptimisticCanonicalMessageFailed(
+  current: CanonicalSessionState | null,
+  sessionId: string,
+  messageId: string | null | undefined,
+  detail?: string | null,
+): CanonicalSessionState | null {
+  if (!current || !messageId) return current;
+  const updatedAtMs = Date.now();
+
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => (
+      session.id === sessionId
+        ? { ...session, updatedAtMs: Math.max(session.updatedAtMs, updatedAtMs) }
+        : session
+    )),
+    messages: current.messages.map((message) => {
+      if (message.id !== messageId || message.sessionId !== sessionId) return message;
+      return {
+        ...message,
+        status: 'failed',
+        updatedAtMs: Math.max(message.updatedAtMs, updatedAtMs),
+        content: {
+          ...optimisticContentRecord(message.content),
+          deliveryState: 'failed',
+          ...(detail?.trim() ? { detail: detail.trim() } : null),
+        },
       };
     }),
   };
@@ -232,6 +273,25 @@ export type PreparedCanonicalUserMessage = {
   timestampMs: number;
   request: AppendCanonicalMessageRequest;
 };
+
+export function failedPreparedCanonicalUserMessage(
+  prepared: PreparedCanonicalUserMessage | null,
+  detail?: string | null,
+): PreparedCanonicalUserMessage | null {
+  if (!prepared) return prepared;
+  return {
+    ...prepared,
+    request: {
+      ...prepared.request,
+      status: 'failed',
+      content: {
+        ...optimisticContentRecord(prepared.request.content),
+        deliveryState: 'failed',
+        ...(detail?.trim() ? { detail: detail.trim() } : null),
+      },
+    },
+  };
+}
 
 export function prepareCanonicalUserMessage(
   sessionId: string,

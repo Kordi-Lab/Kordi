@@ -1,8 +1,122 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+
+function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
+  return {
+    id: 'host-1',
+    registered: true,
+    connected: true,
+    serverUrl: 'http://127.0.0.1:17080',
+    nodeId: 'kd_self',
+    displayName: 'My Kordi',
+    ownerName: 'Me',
+    endpoint: 'http://127.0.0.1:17080/kd_self',
+    tokenPresent: true,
+    humanId: 'kh_self',
+    discoveryMode: 'open',
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    activeAgentId: null,
+    agents: [],
+    visiblePeers: [],
+    visiblePeerCount: 0,
+    projects: [],
+    contactRequests: [],
+    lastError: null,
+    ...overrides,
+  };
+}
+
+test('bridgePeerIsApprovedContact treats only approved bridge peers as Contacts-page contacts', () => {
+  const basePeer = {
+    nodeId: 'kd_bob',
+    displayName: 'Bob Agent',
+    runtime: 'person',
+    endpoint: '',
+    ownerName: 'Bob',
+    createdAt: null,
+    sharedProjects: [],
+    humanId: 'kh_bob',
+    agentId: null,
+    isDefaultAgent: false,
+    discoveryMode: null,
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    agentReachabilityPolicy: 'contacts',
+    isContact: false,
+    contactRequestStatus: null,
+    contactRequestDirection: null,
+  };
+
+  assert.equal(bridgePeerIsApprovedContact(basePeer), false);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'pending' }), false);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, isContact: true }), true);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'approved' }), true);
+});
+
+test('bridgePeerIsReachableAgent hides owner-only agents from other people', () => {
+  const basePeer = {
+    nodeId: 'kd_agent',
+    displayName: 'Owner Kordi',
+    runtime: 'kordi-desktop',
+    endpoint: '',
+    ownerName: 'Owner',
+    createdAt: null,
+    sharedProjects: [],
+    humanId: 'kh_owner',
+    agentId: 'ka_owner',
+    isDefaultAgent: true,
+    discoveryMode: null,
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    isContact: true,
+    contactRequestStatus: 'contact',
+    contactRequestDirection: null,
+  };
+
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'owner' }), false);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'contacts' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'server' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, runtime: 'person', agentReachabilityPolicy: 'owner' }), false);
+});
+
+test('bridgeContactRequestsForContactsPage exposes pending incoming approvals only', () => {
+  const requests = bridgeContactRequestsForContactsPage(bridgeHost({
+    visiblePeers: [{
+      nodeId: 'kd_bob',
+      displayName: 'Bob Agent',
+      runtime: 'person',
+      endpoint: '',
+      ownerName: 'Bob',
+      createdAt: null,
+      sharedProjects: [],
+      humanId: 'kh_bob',
+      agentId: null,
+      isDefaultAgent: false,
+      discoveryMode: null,
+      humanVisibilityPolicy: 'server-approval',
+      contactApprovalPolicy: 'approval-required',
+      agentReachabilityPolicy: 'contacts',
+      isContact: false,
+      contactRequestStatus: 'pending',
+      contactRequestDirection: 'incoming',
+    }],
+    contactRequests: [
+      { requestId: 'req-in', requesterNodeId: 'kd_bob', targetNodeId: 'kd_self', status: 'pending', message: 'Please add me', createdAt: '2026-05-05T00:00:00Z', direction: 'incoming' },
+      { requestId: 'req-out', requesterNodeId: 'kd_self', targetNodeId: 'kd_alice', status: 'pending', message: null, createdAt: '2026-05-05T00:00:00Z', direction: 'outgoing' },
+      { requestId: 'req-done', requesterNodeId: 'kd_carol', targetNodeId: 'kd_self', status: 'approved', message: null, createdAt: '2026-05-05T00:00:00Z', direction: 'incoming' },
+    ],
+  }));
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].title, 'Bob wants to connect');
+  assert.equal(requests[0].detail, 'Please add me');
+  assert.equal(requests[0].bridgeHostId, 'host-1');
+  assert.equal(requests[0].bridgeRequestId, 'req-in');
+});
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
   const [conversation] = hideRawConversationIds([{

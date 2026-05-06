@@ -305,6 +305,7 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
   for (const host of bridgeState.hosts) {
     for (const peer of host.visiblePeers) {
       const isAgent = isBridgeAgentRuntime(peer.runtime);
+      const agentIsReachable = !isAgent || (peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts') !== 'owner';
       const seenForPeer = new Set<string>();
       const pushLabel = (value: string | null | undefined, targetKind: BridgeMentionCandidate['targetKind']) => {
         const displayLabel = value?.trim();
@@ -323,17 +324,19 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
         });
       };
 
-      const hasAgentLabel = Boolean(peer.displayName?.trim());
+      const hasAgentLabel = agentIsReachable && Boolean(peer.displayName?.trim());
       const hasPersonLabel = Boolean(peer.ownerName?.trim() || (!isAgent && peer.displayName?.trim()));
 
-      if (isAgent && peer.humanId?.trim()) {
+      if (isAgent && peer.humanId?.trim() && (agentIsReachable || peer.isDefaultAgent)) {
         pushLabel(peer.ownerName, 'bridge-person');
       }
-      pushLabel(peer.displayName, isAgent ? 'bridge-agent' : 'bridge-person');
+      if (!isAgent || agentIsReachable) {
+        pushLabel(peer.displayName, isAgent ? 'bridge-agent' : 'bridge-person');
+      }
       if (!isAgent) {
         pushLabel(peer.ownerName, 'bridge-person');
       }
-      if (isAgent ? !hasAgentLabel : !hasPersonLabel) {
+      if (isAgent ? agentIsReachable && !hasAgentLabel : !hasPersonLabel) {
         pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
       }
     }

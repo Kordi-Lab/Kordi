@@ -8,6 +8,7 @@ import {
   buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
+  buildChatCreateGroupPersonOptions,
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
   buildChatCreatePersonOptions,
@@ -16,6 +17,7 @@ import {
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
   chatSessionIdForPersonStart,
+  existingSessionIdForPersonStart,
   existingBlankSessionIdForAgentStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
@@ -150,6 +152,18 @@ test('buildChatCreatePersonOptions excludes agent contacts', () => {
   assert.equal(options[0]?.label, 'Alice');
 });
 
+test('buildChatCreatePersonOptions includes only approved Bridge contacts', () => {
+  const options = buildChatCreatePersonOptions([
+    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:approved-request', name: 'Approved request', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved_request', bridgeContactStatus: 'approved' }),
+    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:local-only', name: 'Local' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:approved-request', 'contact:local-only']);
+});
+
 test('participant-space continuations inherit bridge target metadata from the source session', () => {
   assert.deepEqual(buildParticipantSpaceContinuationMetadata({
     sourceMetadata: {
@@ -191,9 +205,47 @@ test('buildChatCreateAgentOptions derives agent rows from displayed agents', () 
   assert.equal(options[0]?.detail, 'Coding partner');
 });
 
-test('person create flow starts a fresh direct-person session id for each new same-contact chat', () => {
+test('person create flow can still derive a direct-person session id for new local pairs', () => {
   assert.equal(chatSessionIdForPersonStart('first-id'), 'session:direct-person:first-id');
   assert.equal(chatSessionIdForPersonStart('second-id'), 'session:direct-person:second-id');
+});
+
+test('existingSessionIdForPersonStart reuses the existing human pair session', () => {
+  const alice = contact({ id: 'contact:alice', name: 'Alice', bridgeHumanId: 'human-alice' });
+  const conversations = [
+    chatConversation({
+      id: 'session:direct-person:older',
+      canonicalSessionId: 'session:direct-person:older',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:human-alice', name: 'Alice', kind: 'human', role: 'person', source: 'local', humanId: 'human-alice', avatarKey: 'alice' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    chatConversation({
+      id: 'session:direct-person:newer',
+      canonicalSessionId: 'session:direct-person:newer',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:human-alice', name: 'Alice', kind: 'human', role: 'person', source: 'local', humanId: 'human-alice', avatarKey: 'alice' },
+      ],
+      _updatedAtMs: 3,
+    }),
+    chatConversation({
+      id: 'session:direct-person:bob',
+      canonicalSessionId: 'session:direct-person:bob',
+      type: 'person',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'local', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 5,
+    }),
+  ];
+
+  assert.equal(existingSessionIdForPersonStart(alice, conversations), 'session:direct-person:newer');
 });
 
 test('agent create flow starts a new selected-agent session under My chats', () => {
@@ -291,16 +343,26 @@ test('groupDefaultName uses people names only and truncates long groups', () => 
   assert.equal(groupDefaultName(['Alice', 'Bob', 'Chen', 'Dev']), 'Alice, Bob +2 more');
 });
 
-test('group create bridge invites target every bridge-backed selected person', () => {
+test('group create options require approved bridge contacts', () => {
+  const options = buildChatCreateGroupPersonOptions([
+    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:local-only', name: 'Local' }),
+  ]);
+
+  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:local-only']);
+});
+
+test('group create bridge invites target only approved bridge contacts', () => {
   const targets = buildChatCreateGroupBridgeInviteTargets([
-    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice' }),
-    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob' }),
+    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice', bridgeContactStatus: 'contact' }),
+    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob', bridgeContactStatus: 'pending' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
   assert.deepEqual(targets, [
     { hostId: 'host-1', nodeId: 'kd_alice', displayName: 'Alice', ownerName: 'Alice', humanId: 'kh_alice' },
-    { hostId: 'host-1', nodeId: 'kd_bob', displayName: 'Bob', ownerName: 'Bobby', humanId: 'kh_bob' },
   ]);
 });
 

@@ -87,6 +87,7 @@ export type AssembleKordiShellSlotsArgs = {
   setExpandedProjectIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   groupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
   displayedContacts: Contact[];
+  addableContacts: Contact[];
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
@@ -126,7 +127,7 @@ export type AssembleKordiShellSlotsArgs = {
   setExpandedContactGroups: Dispatch<SetStateAction<Record<ContactClass, boolean>>>;
   activeContactId: string;
   activeContact: Contact;
-  activeContactRequest: ContactRequest;
+  activeContactRequest?: ContactRequest;
   contactOverlayMode: 'contact' | 'request' | null;
   getStatusBadgeClass: (value: string) => string;
   handleOpenBridgeConversation: (
@@ -176,6 +177,10 @@ export type AssembleKordiShellSlotsArgs = {
   handleImportBridgeHostsConfig: (raw: string) => Promise<void>;
   handleAddBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   handleSetBridgeDiscoveryMode: (hostId: string, discoveryMode: 'off' | 'contacts' | 'open') => Promise<void>;
+  handleSetBridgeHostPrivacyPolicy: (hostId: string, humanVisibilityPolicy: 'server-open' | 'server-approval' | 'private', contactApprovalPolicy: 'auto' | 'approval-required') => Promise<void>;
+  handleSetBridgeAgentReachabilityPolicy: (hostId: string, agentId: string, reachabilityPolicy: 'server' | 'contacts' | 'owner') => Promise<void>;
+  handleApproveBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
+  handleRejectBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
   handleCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
   handleActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
   handleSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
@@ -340,6 +345,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'
   | 'handleCreateChatGroup'
+  | 'handleAddBridgeContact'
   | 'handleCreateChatSessionInParticipantSpace'
   | 'handleRenameChatGroup'
   | 'handleRenameChatSession'
@@ -364,6 +370,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectProjectSession'
   | 'groupedContacts'
   | 'displayedContacts'
+  | 'addableContacts'
+  | 'contactRequests'
   | 'setActiveContactGroup'
   | 'setActiveContactId'
   | 'displayedAgents'
@@ -383,6 +391,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSelectChatSession'
   | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
+  | 'addableContacts'
   | 'isContactRequestsOpen'
   | 'setIsContactRequestsOpen'
   | 'contactRequests'
@@ -435,6 +444,10 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleImportBridgeHostsConfig'
   | 'handleAddBridgeContact'
   | 'handleSetBridgeDiscoveryMode'
+  | 'handleSetBridgeHostPrivacyPolicy'
+  | 'handleSetBridgeAgentReachabilityPolicy'
+  | 'handleApproveBridgeContactRequest'
+  | 'handleRejectBridgeContactRequest'
   | 'handleCreateBridgeAgent'
   | 'handleActivateBridgeAgent'
   | 'handleSetDefaultBridgeAgent'

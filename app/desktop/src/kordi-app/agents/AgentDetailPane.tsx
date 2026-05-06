@@ -375,6 +375,7 @@ export function AgentDetailPane({
   onUpdateModelRouting,
   onReset,
   onMessage,
+  onOpenReachoutSession,
   onOpenPromptDetail,
   onStartEditing,
   onSave,
@@ -405,6 +406,7 @@ export function AgentDetailPane({
   ) => Promise<void> | void;
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
+  onOpenReachoutSession?: (sessionId: string) => void;
   onOpenPromptDetail: (agentId: string) => void;
   onStartEditing: (agentId: string, section: 'prompt' | 'skills') => void;
   onSave: (agent: Agent, section: 'prompt' | 'skills') => void;
@@ -681,6 +683,30 @@ export function AgentDetailPane({
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-5 px-5 py-5">
           {modelRoutingSection}
+
+          {(activeAgent.bridgeReachouts?.length ?? 0) > 0 ? (
+            <AgentInspectorSection title="Direct reachouts" detail="People contacting this agent directly appear here instead of in your person chats.">
+              <div className="app-agent-inner-list overflow-hidden rounded-[14px] border">
+                {activeAgent.bridgeReachouts?.map((reachout, index) => (
+                  <button
+                    key={reachout.sessionId}
+                    type="button"
+                    className={cn('app-agent-inner-list-row block w-full px-3 py-3 text-left', index > 0 && 'border-t')}
+                    onClick={() => onOpenReachoutSession?.(reachout.sessionId)}
+                    disabled={!onOpenReachoutSession}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="app-agent-row-title truncate text-[13px] font-medium">{reachout.title}</div>
+                        <div className="app-agent-row-meta mt-1 truncate text-[12px]">{reachout.preview || 'No messages yet'}</div>
+                      </div>
+                      <div className="app-agent-row-meta shrink-0 text-[11px]">{reachout.updatedAtLabel ?? ''}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </AgentInspectorSection>
+          ) : null}
 
           <AgentInspectorSection title="Overview" detail="System prompt and markdown/config files open in the right panel.">
             <div className="space-y-3">

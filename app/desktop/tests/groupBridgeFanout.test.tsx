@@ -6,6 +6,7 @@ import {
   bridgeGroupMentionRelayTargets,
   bridgeGroupSessionSendTargets,
   bridgeGroupSessionSpaceId,
+  bridgeLocalAgentMentionCanRelayToBridge,
   bridgeLocalAgentRelayTargets,
   isBridgeGroupSession,
   shouldUseBridgeConversationRouting,
@@ -90,6 +91,14 @@ test('group bridge routing remains enabled when the synthetic active target is m
     activeConversationIsBridge: false,
     activeConvBridgeTarget: null,
     activeGroupSessionScope: groupConversation(),
+  }), true);
+});
+
+test('group local-agent mention can relay even when no synthetic active bridge target exists', () => {
+  assert.equal(bridgeLocalAgentMentionCanRelayToBridge({
+    activeGroupSessionIsGroup: true,
+    activeConvBridgeTarget: null,
+    hasLocalAgentMention: true,
   }), true);
 });
 

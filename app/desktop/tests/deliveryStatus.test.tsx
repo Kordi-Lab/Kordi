@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
+import { shouldShowBridgeSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
 
 test('messageDeliveryVisual maps sent to a single gray check', () => {
   assert.deepEqual(messageDeliveryVisual('sent'), {
@@ -32,9 +33,22 @@ test('messageDeliveryVisual maps read and responded to blue double checks', () =
   });
 });
 
+test('inline bridge send failures do not also show a sidebar failure notice', () => {
+  assert.equal(shouldShowBridgeSendFailureNotice(true), false);
+  assert.equal(shouldShowBridgeSendFailureNotice(false), true);
+});
+
 test('messageDeliveryVisual keeps transient and failure states distinct', () => {
   assert.equal(messageDeliveryVisual('sending')?.glyph, 'clock');
   assert.equal(messageDeliveryVisual('processing')?.glyph, 'spinner');
-  assert.equal(messageDeliveryVisual('processing_failed')?.glyph, 'exclamation');
-  assert.equal(messageDeliveryVisual('failed')?.glyph, 'exclamation');
+  assert.deepEqual(messageDeliveryVisual('processing_failed'), {
+    glyph: 'exclamation',
+    tone: 'red',
+    label: 'Sending failed',
+  });
+  assert.deepEqual(messageDeliveryVisual('failed'), {
+    glyph: 'exclamation',
+    tone: 'red',
+    label: 'Sending failed',
+  });
 });

@@ -24,8 +24,8 @@ use super::constants::{
 use super::local_server::current_local_server_status_for_runtime;
 use super::{
     build_conversation_only_bridge_state, encrypt_bridge_payload_for_target,
-    load_conversation_store, now_ms, relay_plaintext_message, DesktopBridgeHostConfig,
-    DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
+    load_conversation_store, now_ms, relay_plaintext_message, relay_target_kind_for_payload,
+    DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
 };
 
 mod local_agent;
@@ -161,6 +161,8 @@ fn local_realtime_targets(store: &DesktopBridgeStore) -> HashMap<String, LocalRe
                 owner: host.owner.clone(),
                 human_id: host.human_id.clone(),
                 discovery_mode: host.discovery_mode.clone(),
+                human_visibility_policy: host.human_visibility_policy.clone(),
+                contact_approval_policy: host.contact_approval_policy.clone(),
                 active_agent_id: Some(agent.id.clone()),
                 agents: vec![agent.clone()],
                 api_style: host.api_style.clone(),
@@ -191,13 +193,16 @@ async fn encode_outbound_frame(
     payload: &Value,
     durable: bool,
 ) -> Result<String, String> {
+    let target_kind = relay_target_kind_for_payload(payload);
     let encrypted_payload =
-        encrypt_bridge_payload_for_target(host, target_node_id, project_id, payload).await?;
+        encrypt_bridge_payload_for_target(host, target_node_id, project_id, target_kind, payload)
+            .await?;
     let data = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&encrypted_payload).map_err(|err| err.to_string())?);
     Ok(serde_json::json!({
         "dst": target_node_id,
         "durable": durable,
+        "targetKind": target_kind,
         "data": data,
     })
     .to_string())

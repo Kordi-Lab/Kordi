@@ -22,6 +22,7 @@ export type AgentsPageProps = {
     },
   ) => Promise<void> | void;
   onMessageAgent?: (agent: Agent) => void;
+  onOpenAgentReachoutSession?: (sessionId: string) => void;
 };
 
 export type AgentConfigDraft = {

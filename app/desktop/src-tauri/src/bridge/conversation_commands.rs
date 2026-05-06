@@ -100,6 +100,12 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
             agent_id: request_target_agent_id.clone(),
             is_default_agent: false,
             discovery_mode: None,
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         }
     } else {
         let current_state = build_current_bridge_state(manager).await;
@@ -376,6 +382,12 @@ mod tests {
             agent_id: Some("ka_peer".to_string()),
             is_default_agent: true,
             discovery_mode: None,
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         };
 
         assert!(!outreach_target_matches(&peer, "Kordi"));
@@ -408,6 +420,8 @@ mod tests {
             owner: Some("Owner".to_string()),
             human_id: Some("kh_self".to_string()),
             discovery_mode: "open".to_string(),
+            human_visibility_policy: "server-approval".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: None,
             agents: Vec::new(),
             api_style: API_STYLE_SERVE.to_string(),

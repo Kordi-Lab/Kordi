@@ -6,7 +6,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import type { Agent, Contact, Conversation } from '../src/kordi-app/types';
+import { bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
+import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
 import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
@@ -51,6 +52,51 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     owner: 'Alice',
     avatarSeed: 'alice',
     profileImageUrl: null,
+    ...overrides,
+  };
+}
+
+function bridgeConversation(overrides: Partial<DesktopBridgeConversation> = {}): DesktopBridgeConversation {
+  return {
+    id: 'bridge:host-1:node-bob:kordi-desktop',
+    canonicalSessionId: 'session:bridge:host-1:node-bob:kordi-desktop',
+    hostId: 'host-1',
+    peerNodeId: 'node-bob',
+    peerDisplayName: "Bob's Kordi",
+    peerOwnerName: 'Bob',
+    peerRuntime: 'kordi-desktop',
+    projectId: null,
+    projectName: null,
+    title: 'Bob to my Kordi',
+    subtitle: 'Please help',
+    unreadCount: 1,
+    updatedAtMs: 1,
+    updatedAtLabel: '10:00',
+    awaitingReply: false,
+    peerTyping: false,
+    outreach: {
+      targetKind: 'bridge-agent',
+      parentSessionId: null,
+      bridgeHostId: 'host-1',
+      targetNodeId: 'node-me',
+      targetAgentId: 'agent-local',
+      targetDisplayName: 'My Kordi',
+      targetRuntime: 'kordi-desktop',
+      requestText: 'Please help',
+      status: 'awaitingReply',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identity: {
+      bridgeHostId: 'host-1',
+      localHumanId: 'human-me',
+      localHumanName: 'Me',
+      localAgentId: 'agent-local',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'human-bob',
+      remoteHumanName: 'Bob',
+    },
+    messages: [],
     ...overrides,
   };
 }
@@ -119,6 +165,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onStartChatWithPerson: () => {},
     onStartChatWithAgent: () => {},
     onCreateChatGroup: () => {},
+    onAddContactByNodeId: () => {},
     onCreateChatSessionInParticipantSpace: () => {},
     onRenameChatGroup: () => {},
     onAddChatGroupMembers: () => {},
@@ -142,6 +189,8 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onSelectProjectSession: () => {},
     groupedContacts: [],
     displayedContacts: [],
+    addableContacts: [],
+    contactRequestCount: 0,
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
@@ -154,7 +203,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar renders participant spaces as first-page expandable rows with row actions', () => {
+test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {
   const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     participantSpaces,
@@ -168,23 +217,26 @@ test('WorkspaceSidebar renders participant spaces as first-page expandable rows 
   assert.match(markup, />Agent</);
   assert.doesNotMatch(markup, />People</);
   assert.match(markup, /Bob/);
-  assert.match(markup, /2 sessions/);
+  assert.match(markup, /Person • 1 chat/);
   assert.match(markup, /New preview/);
   assert.match(markup, /data-participant-space-row-shell="true"/);
   assert.match(markup, /app-participant-space-row-button/);
   assert.match(markup, /app-participant-space-row-title/);
   assert.match(markup, /app-participant-space-row-preview/);
   assert.match(markup, /app-participant-space-row-detail/);
-  assert.match(markup, /data-participant-space-toggle="true"/);
-  assert.match(markup, /aria-label="Collapse Bob"/);
-  assert.match(markup, /aria-label="Create session in Bob"/);
-  assert.match(markup, /data-participant-space-context-create="true"/);
+  assert.doesNotMatch(markup, /data-participant-space-toggle="true"/);
+  assert.doesNotMatch(markup, /aria-label="Collapse Bob"/);
+  assert.doesNotMatch(markup, /aria-label="Expand Bob"/);
+  assert.doesNotMatch(markup, /aria-label="Create session in Bob"/);
+  assert.doesNotMatch(markup, /data-participant-space-context-create="true"/);
+  assert.doesNotMatch(markup, /data-participant-space-toggle-button="true"/);
+  assert.doesNotMatch(markup, /data-testid="participant-space-session-row"/);
   assert.doesNotMatch(markup, /absolute right-1\.5 top-1\.5/);
   assert.doesNotMatch(markup, /pr-\[4\.75rem\]/);
   assert.doesNotMatch(markup, /data-participant-space-enter="true"/);
   assert.doesNotMatch(markup, /Back to chats/);
-  assert.match(markup, /Old Bob thread/);
-  assert.match(markup, /New Bob thread/);
+  assert.doesNotMatch(markup, /Old Bob thread/);
+  assert.doesNotMatch(markup, /New Bob thread/);
 });
 
 function countMatches(value: string, pattern: RegExp) {
@@ -202,6 +254,23 @@ test('WorkspaceSidebar shows Bridge message sync progress inline in the chats su
   assert.match(markup, /app-bridge-sync-dot/);
   assert.doesNotMatch(markup, /Syncing messages/);
   assert.doesNotMatch(markup, /pulling missed Bridge updates/);
+});
+
+test('direct remote-human to my-agent Bridge reachouts route to the Agent page, while group reachouts stay in the group', () => {
+  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation()), true);
+  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+    outreach: {
+      ...bridgeConversation().outreach!,
+      parentSessionId: 'session:group:launch',
+      parentSessionKind: 'group',
+    },
+  })), false);
+  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+    outreach: {
+      ...bridgeConversation().outreach!,
+      targetAgentId: 'agent-remote',
+    },
+  })), false);
 });
 
 test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () => {
@@ -404,7 +473,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   }) as never));
 
   assert.match(markup, /shu/);
-  assert.match(markup, /Person • 1 session/);
+  assert.match(markup, /Person • 1 chat/);
   assert.match(markup, /My chats/);
   assert.match(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
@@ -432,9 +501,61 @@ test('ChatCreateDialog renders compact theme-aware choices beside the plus butto
   assert.doesNotMatch(markup, /bg-white\/80/);
   assert.doesNotMatch(markup, /text-slate-950/);
   assert.doesNotMatch(markup, /fixed inset-0 z-50 flex items-center justify-center/);
-  assert.match(markup, /Chat with person/);
+  assert.match(markup, /Chat with contact/);
+  assert.doesNotMatch(markup, /Chat with person/);
   assert.match(markup, /Chat with agent/);
   assert.match(markup, /Start group/);
+  assert.match(markup, /Add contacts/);
+});
+
+test('ChatCreateDialog add contact mode requests a private Bridge node id', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'add-contact',
+    contacts: [],
+    agents: [],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+    onAddContact: () => {},
+  }));
+
+  assert.match(markup, /Add contact/);
+  assert.match(markup, /Bridge node ID/);
+  assert.match(markup, /Send request/);
+  assert.match(markup, /private\/unlisted user node ID/);
+});
+
+test('ChatCreateDialog add contact mode shows visible non-contact Bridge users', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'add-contact',
+    contacts: [],
+    addableContacts: [
+      contact({
+        id: 'bridge-addable:kordi-user-6',
+        name: 'Kordi User 6',
+        entityType: 'Person',
+        subtitle: 'Needs approval',
+        detail: 'Node: kd_user6',
+        bridgeHostId: 'host-1',
+        bridgePeerNodeId: 'kd_user6',
+        bridgeContactStatus: 'none',
+      }),
+    ],
+    agents: [],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+    onAddContact: () => {},
+  }));
+
+  assert.match(markup, /Visible users/);
+  assert.match(markup, /Kordi User 6/);
+  assert.match(markup, /Needs approval/);
+  assert.match(markup, /Request/);
 });
 
 test('ChatCreateDialog group picker requires at least 2 people and excludes agents', () => {
@@ -688,9 +809,40 @@ test('WorkspaceSidebar explicit expansion shows all sessions in the active My ch
   assert.match(markup, /# Old note/);
 });
 
-test('WorkspaceSidebar expanded participant space keeps contextual create on the first-page row and rich child previews', () => {
-  const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
+test('WorkspaceSidebar expanded group space keeps contextual create on the first-page row and rich child previews', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group:old',
+      canonicalSessionId: 'session:group:old',
+      name: 'Old group thread',
+      subtitle: 'Old group preview',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:group:new',
+      canonicalSessionId: 'session:group:new',
+      name: 'New group thread',
+      subtitle: 'New group preview',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      messages: [{ role: 'person', sender: 'Alice', text: 'New group preview', time: '10:00' }],
+      updatedAtLabel: '10:00',
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
     participantSpaces,
     contactParticipantSpaces: participantSpaces,
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
@@ -699,9 +851,9 @@ test('WorkspaceSidebar expanded participant space keeps contextual create on the
   assert.doesNotMatch(markup, /Page 2/);
   assert.doesNotMatch(markup, /Back to chats/);
   assert.match(markup, /data-participant-space-row-actions="true"/);
-  assert.match(markup, /aria-label="Create session in Bob"/);
+  assert.match(markup, /aria-label="Create session in Alice, Bob"/);
   assert.match(markup, /data-participant-space-context-create="true"/);
-  assert.match(markup, /data-session-preview="New preview"/);
+  assert.match(markup, /data-session-preview="New group preview"/);
   assert.match(markup, /data-session-updated-at="10:00"/);
 });
 

@@ -4,7 +4,10 @@ import type { DesktopBridgeHost, DesktopBridgePeer, DesktopBridgeState } from '@
 import type { BridgeSetupMode } from './BridgeSetupSections';
 
 export type DiscoveryMode = 'off' | 'contacts' | 'open';
-export type BridgeStepId = 'setup' | 'identity' | 'agents' | 'discover';
+export type HumanVisibilityPolicy = 'server-open' | 'server-approval' | 'private';
+export type ContactApprovalPolicy = 'auto' | 'approval-required';
+export type AgentReachabilityPolicy = 'server' | 'contacts' | 'owner';
+export type BridgeStepId = 'setup' | 'identity' | 'visibility' | 'approvals' | 'agents' | 'discover' | 'review';
 export type BridgePageSection = 'servers' | 'details' | 'advanced';
 
 export type BridgeSettingsDraft = {
@@ -39,7 +42,7 @@ export type BridgeConfigPageProps = {
   onSelectBridgeHost: (hostId: string) => void;
   onCreateBridgeDraft: () => void;
   onRefreshBridge: () => Promise<void> | void;
-  onSaveBridgeSettings: (draftOverride?: BridgeSettingsDraft) => void;
+  onSaveBridgeSettings: (draftOverride?: BridgeSettingsDraft) => Promise<void>;
   onRemoveBridgeHost: (hostId: string) => Promise<void>;
   onCopyBridgeText: (value: string, successMessage?: string) => void;
   onOpenBridgeConfigFolder: () => Promise<void>;
@@ -48,6 +51,10 @@ export type BridgeConfigPageProps = {
   onImportBridgeHostsConfig: (raw: string) => Promise<void>;
   onAddBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
   onSetBridgeDiscoveryMode: (hostId: string, discoveryMode: DiscoveryMode) => Promise<void>;
+  onSetBridgeHostPrivacyPolicy: (hostId: string, humanVisibilityPolicy: HumanVisibilityPolicy, contactApprovalPolicy: ContactApprovalPolicy) => Promise<void>;
+  onSetBridgeAgentReachabilityPolicy: (hostId: string, agentId: string, reachabilityPolicy: AgentReachabilityPolicy) => Promise<void>;
+  onApproveBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
+  onRejectBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
   onCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
   onActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
   onSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
@@ -103,6 +110,10 @@ export type BridgeDetailsSectionProps = Pick<
   | 'onSaveBridgeSettings'
   | 'onCopyBridgeText'
   | 'onSetBridgeDiscoveryMode'
+  | 'onSetBridgeHostPrivacyPolicy'
+  | 'onSetBridgeAgentReachabilityPolicy'
+  | 'onApproveBridgeContactRequest'
+  | 'onRejectBridgeContactRequest'
   | 'onCreateBridgeAgent'
   | 'onActivateBridgeAgent'
   | 'onSetDefaultBridgeAgent'

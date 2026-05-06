@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
+import { activeChatLiveTurnForConversation, visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { bridgeChatConversationIsVisible } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -28,6 +28,32 @@ test('activity marks bridge-backed chat sessions as visible local sessions for u
     activeChatSessionId: 'bridge:host:peer:person',
     activeProjectSessionId: '',
   }), null);
+});
+
+test('active bridge conversations read live turns from their canonical contact session id', () => {
+  const turn = {
+    id: 'turn-1',
+    sessionId: 'session:bridge:humans:peer',
+    prompt: '@Kordi hello',
+    status: 'starting',
+    message: 'Starting…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+
+  assert.equal(activeChatLiveTurnForConversation({
+    activeConv: {
+      id: 'bridge:host:peer:person',
+      canonicalSessionId: 'session:bridge:humans:peer',
+    },
+    desktopLiveTurnsBySession: {
+      'session:bridge:humans:peer': turn,
+    },
+  }), turn);
 });
 
 test('canonical read model keeps bridge unread when a local runtime source shares the same session', () => {

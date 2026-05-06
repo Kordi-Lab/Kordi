@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
 import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
-import { buildBridgePageProps } from '../src/app/mainContentShellBuilders';
+import { buildBridgePageProps, buildChatsPageProps } from '../src/app/mainContentShellBuilders';
 
 function directPersonConversation() {
   return {
@@ -79,6 +79,8 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     handleStartChatWithPerson: async () => {},
     handleStartChatWithAgent: async () => {},
     handleCreateChatGroup: async () => {},
+    handleAddBridgeContact: async () => {},
+    handleCreateChatSessionInParticipantSpace: async () => {},
     handleRenameChatGroup: async () => {},
     handleAddChatGroupMembers: async () => {},
     handleRemoveChatGroupMember: async () => {},
@@ -101,6 +103,8 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     handleSelectProjectSession: async () => {},
     groupedContacts: [],
     displayedContacts: [],
+    addableContacts: [],
+    contactRequests: [],
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
@@ -248,6 +252,25 @@ test('contact Message starts a fresh person session instead of selecting an exis
   assert.deepEqual(calls, ['overlay:null', 'startPerson:host-1:node-shared:human-bob']);
 });
 
+test('contact detail delete removes the bridge contact and closes the overlay', async () => {
+  const calls: string[] = [];
+  const element = assembleMainContentSlot(baseShellArgs(calls, {
+    handleRemoveBridgeContact: async (hostId: string, peerNodeId: string) => {
+      calls.push(`remove:${hostId}:${peerNodeId}`);
+    },
+  }) as never) as never as { props: { contactsPageProps: { onRemoveContact: (contact: Record<string, unknown>) => Promise<void> } } };
+
+  await element.props.contactsPageProps.onRemoveContact({
+    id: 'contact-bob',
+    classType: 'other-users',
+    bridgePeerNodeId: 'node-shared',
+    bridgeHostId: 'host-1',
+    name: 'Bob',
+  });
+
+  assert.deepEqual(calls, ['remove:host-1:node-shared', 'overlay:null']);
+});
+
 test('agent Message starts a fresh external agent session under My chats', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
@@ -328,6 +351,29 @@ test('bridge Add + chat without a peer runtime defaults to a person session', ()
   props.onOpenBridgeConversation('host-1', 'node-new');
 
   assert.deepEqual(calls, ['startPerson:host-1:node-new:undefined']);
+});
+
+test('chat transcript contact-request hint calls Add contact for the active bridge person', async () => {
+  const calls: string[] = [];
+  const props = buildChatsPageProps(baseShellArgs(calls, {
+    activeConv: {
+      ...directPersonConversation(),
+      bridgeTarget: {
+        hostId: 'host-1',
+        nodeId: 'node-shared',
+        displayName: 'Bob',
+        ownerName: 'Bob',
+        runtime: 'person',
+      },
+    },
+    handleAddBridgeContact: async (hostId: string, peerNodeId: string) => {
+      calls.push(`add:${hostId}:${peerNodeId}`);
+    },
+  }) as never) as never as { onRequestBridgeContact?: () => Promise<void> | void };
+
+  await props.onRequestBridgeContact?.();
+
+  assert.deepEqual(calls, ['add:host-1:node-shared']);
 });
 
 test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {

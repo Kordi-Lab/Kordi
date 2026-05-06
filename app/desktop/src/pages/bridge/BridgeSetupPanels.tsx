@@ -331,7 +331,7 @@ export function BridgeSetupSection({
                 )}
               />
               <div className="flex flex-wrap items-center gap-1.5">
-                <Button className="rounded-[14px] text-[12px]" onClick={() => onSaveBridgeSettings()} disabled={isDesktopBridgeSaving || !bridgeSettingsDraft.serverUrl.trim()}>
+                <Button className="rounded-[14px] text-[12px]" onClick={() => { void onSaveBridgeSettings().catch(() => {}); }} disabled={isDesktopBridgeSaving || !bridgeSettingsDraft.serverUrl.trim()}>
                   {isDesktopBridgeSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
                   {bridgeSettingsDraft.hostId ? 'Save changes' : 'Connect host'}
                 </Button>

@@ -162,6 +162,7 @@ fn active_path_has_unanswered_user_request(
     Ok(pending_user_request)
 }
 
+#[cfg_attr(not(feature = "desktop-runtime"), allow(dead_code))]
 pub(crate) async fn append_interrupted_unanswered_request_if_needed(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,

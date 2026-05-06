@@ -767,6 +767,8 @@ fn mailbox_targets(store: &DesktopBridgeStore) -> Vec<LocalBridgeMailboxTarget> 
                     owner: host.owner.clone(),
                     human_id: host.human_id.clone(),
                     discovery_mode: host.discovery_mode.clone(),
+                    human_visibility_policy: host.human_visibility_policy.clone(),
+                    contact_approval_policy: host.contact_approval_policy.clone(),
                     active_agent_id: Some(agent.id.clone()),
                     agents: vec![agent.clone()],
                     api_style: host.api_style.clone(),

@@ -12,7 +12,7 @@ import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
   sessionChatActivityAtMs,
-  sessionDisplayTitle,
+  sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
   sessionHasManualTitle,
   sessionMetadata,
@@ -89,9 +89,19 @@ function sameOwnedAgentTurn(canonical: Message, local: Message) {
   return false;
 }
 
+function isBridgeProcessingOnlyRuntimePlaceholder(message: Message) {
+  if (!message.id?.startsWith('bridge-live-turn:') || !message.turn) return false;
+  return !message.turn.completed
+    && !message.text.trim()
+    && !message.turn.assistantText.trim()
+    && !message.turn.thinkingText.trim()
+    && message.turn.tools.length === 0;
+}
+
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
+    && !isBridgeProcessingOnlyRuntimePlaceholder(message)
     && (
       (message.turn?.tools?.length ?? 0) > 0
       || (message.turn?.thinkingText?.trim().length ?? 0) > 0
@@ -273,7 +283,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const participants = canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
+      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(sessionChatActivityAtMs(session));

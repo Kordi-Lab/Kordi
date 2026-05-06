@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
-import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
+import { contactRequests as demoContactRequests, projects, settingsSections } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
@@ -43,8 +43,10 @@ import {
   chatSessionIdForPersonStart,
   contactCanonicalIdentityRequest,
   existingBlankSessionIdForAgentStart,
+  existingSessionIdForPersonStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
+  isApprovedBridgeContact,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
@@ -54,6 +56,7 @@ import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration
 import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
@@ -80,12 +83,14 @@ import {
   canonicalAvatarSeed,
   canonicalGroupInviteContextForSession,
   canonicalGroupParticipantsForSession,
+  canonicalGroupSessionSyncContextForSession,
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
   isNativeDesktopShell,
+  mergeCanonicalStatePreservingBridgeUiMessages,
   metadataGroupSpaceId,
   metadataString,
   metadataStringArray,
@@ -350,7 +355,8 @@ export function useKordiAppModel() {
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
-        setCanonicalSessionState(await fetchCanonicalSessionState());
+        const fetchedCanonicalState = await fetchCanonicalSessionState();
+        setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
       } catch {
         // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
       }
@@ -373,6 +379,7 @@ export function useKordiAppModel() {
     activeLastMessage,
     activeConvHasSubtitle,
     displayedContacts,
+    addableContacts,
     displayedAgents,
     groupedContacts,
     filteredGroupedContacts,
@@ -450,6 +457,12 @@ export function useKordiAppModel() {
     setLocalAgentAvatarSeed(localAgentAvatarSeed);
   }, [localAgentAvatarSeed]);
 
+  const bridgeContactRequests = useMemo(
+    () => bridgeContactRequestsForContactsPage(activeBridgeHost),
+    [activeBridgeHost],
+  );
+  const contactRequests = isNativeShell ? bridgeContactRequests : demoContactRequests;
+
   const {
     activeContactRequest,
     activeSettingsSection,
@@ -461,6 +474,7 @@ export function useKordiAppModel() {
   } = useKordiDesktopActivity({
     activeContactRequestId: contactsUi.activeContactRequestId,
     activeSettingsSectionId: settingsUi.activeSettingsSectionId,
+    contactRequests,
     activeBridgeHost,
     activeNav,
     activeConvId,
@@ -540,6 +554,10 @@ export function useKordiAppModel() {
     handleRemoveBridgeContact,
     handleStartBridgePersonSession,
     handleSetBridgeDiscoveryMode,
+    handleSetBridgeHostPrivacyPolicy,
+    handleSetBridgeAgentReachabilityPolicy,
+    handleApproveBridgeContactRequest,
+    handleRejectBridgeContactRequest,
     handleSetDefaultBridgeAgent,
     handleUpdateBridgeAgentModelRouting,
     handleUpdateLocalAgentModelRouting,
@@ -997,6 +1015,11 @@ export function useKordiAppModel() {
     }
 
     if (!isNativeShell) return;
+    const existingSessionId = existingSessionIdForPersonStart(contact, chatConversations);
+    if (existingSessionId) {
+      selectNewChatSession(existingSessionId);
+      return;
+    }
     const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId) {
       throw new Error('Local profile identity is not ready yet.');
@@ -1024,6 +1047,7 @@ export function useKordiAppModel() {
     selectNewChatSession(sessionId);
   }, [
     canonicalSessionState?.profile.humanIdentityId,
+    chatConversations,
     handleStartBridgePersonSession,
     isNativeShell,
     selectNewChatSession,
@@ -1125,6 +1149,10 @@ export function useKordiAppModel() {
       .filter((contact): contact is Contact => Boolean(contact));
     if (contacts.length < 2) {
       throw new Error('Select at least 2 people to start a group.');
+    }
+    const blockedBridgeContacts = contacts.filter((contact) => contact.bridgePeerNodeId && !isApprovedBridgeContact(contact));
+    if (blockedBridgeContacts.length > 0) {
+      throw new Error('Approve people as contacts before adding them to a group.');
     }
 
     const identityIds: string[] = [];
@@ -1300,6 +1328,45 @@ export function useKordiAppModel() {
         });
         setCanonicalSessionState(nextState);
         selectNewChatSession(sessionId);
+
+        try {
+          const participants = canonicalGroupParticipantsForSession(nextState, sessionId);
+          const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId: creatorIdentityId, participants });
+          if (targets.length > 0) {
+            const syncContext = canonicalGroupSessionSyncContextForSession(nextState, sessionId, groupSpaceId ?? sessionId);
+            const actorName = canonicalIdentityDisplayName(nextState, creatorIdentityId) ?? 'Someone';
+            const requestText = `${actorName} created a new group session`;
+            for (const target of targets) {
+              const bridgeState = await createDesktopBridgeOutreach({
+                hostId: target.hostId,
+                targetNodeId: target.nodeId,
+                targetKind: 'bridge-person',
+                requestText,
+                targetDisplayName: target.displayName,
+                targetOwnerName: target.ownerName,
+                targetRuntime: 'person',
+                targetHumanId: target.humanId,
+                targetAgentId: null,
+                triggerText: null,
+                contextText: null,
+                contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
+                parentSessionId: sessionId,
+                parentSessionTitle: syncContext.parentSessionTitle,
+                parentSessionKind: 'group',
+                parentGroupSpaceId: syncContext.parentGroupSpaceId,
+                parentSessionParticipants: syncContext.parentSessionParticipants,
+                parentSessionMessages: syncContext.parentSessionMessages,
+                parentTurnId: null,
+                parentMessageId: null,
+                projectId: null,
+                projectName: null,
+              });
+              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
+            }
+          }
+        } catch (error) {
+          setDesktopChatError(`Session created, but Bridge session sync failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
         return;
       }
 
@@ -1338,6 +1405,7 @@ export function useKordiAppModel() {
     handleCreateChatSession,
     isNativeShell,
     selectNewChatSession,
+    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 
@@ -1425,6 +1493,10 @@ export function useKordiAppModel() {
     const contacts = uniqueStrings(contactIds)
       .map((contactId) => peopleContactById.get(contactId))
       .filter((contact): contact is Contact => Boolean(contact));
+    const blockedBridgeContacts = contacts.filter((contact) => contact.bridgePeerNodeId && !isApprovedBridgeContact(contact));
+    if (blockedBridgeContacts.length > 0) {
+      throw new Error('Approve people as contacts before adding them to a group.');
+    }
     const identityIds: string[] = [];
     let nextState = canonicalSessionState;
     for (const contact of contacts) {
@@ -1663,6 +1735,7 @@ export function useKordiAppModel() {
     setExpandedProjectIds: projectsUi.setExpandedProjectIds,
     groupedContacts,
     displayedContacts,
+    addableContacts,
     setActiveContactGroup: contactsUi.setActiveContactGroup,
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,
@@ -1695,6 +1768,10 @@ export function useKordiAppModel() {
     handleRemoveBridgeContact,
     handleStartBridgePersonSession,
     handleSetBridgeDiscoveryMode,
+    handleSetBridgeHostPrivacyPolicy,
+    handleSetBridgeAgentReachabilityPolicy,
+    handleApproveBridgeContactRequest,
+    handleRejectBridgeContactRequest,
     handleSetDefaultBridgeAgent,
     handleUpdateBridgeAgentModelRouting,
     handleUpdateLocalAgentModelRouting,

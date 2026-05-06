@@ -5,8 +5,13 @@ import { canonicalAttachments } from '../src/features/canonical/readModel/messag
 import {
   appendOptimisticBridgeMessage,
   bridgeAttachmentTransportFields,
+  failedPreparedCanonicalUserMessage,
+  markOptimisticBridgeMessageFailed,
+  markOptimisticCanonicalMessageFailed,
+  prepareCanonicalUserMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
+import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const imageAttachment = {
   id: 'first',
@@ -92,4 +97,100 @@ test('attachment-only bridge optimistic messages render as attachment cards with
   assert.equal(conversation?.subtitle, 'Attached Screenshot 1.png');
   assert.equal(conversation?.messages[0]?.text, '');
   assert.equal(conversation?.messages[0]?.attachments?.[0]?.localPath, '/tmp/pi-clipboard-1.png');
+});
+
+test('canonical optimistic bridge messages can be marked failed for visible send errors', () => {
+  const state = {
+    sessions: [{ id: 'session-1', updatedAtMs: 1, lastMessageAtMs: 1 }],
+    messages: [{
+      id: 'msg-1',
+      sessionId: 'session-1',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'hello',
+      content: { sender: 'Me', timeLabel: '12:31' },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      contentHash: null,
+      sourceTransport: 'desktop-bridge-ui',
+      sourceEventId: 'desktop-bridge-ui:session-1:1',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const next = markOptimisticCanonicalMessageFailed(
+    state,
+    'session-1',
+    'msg-1',
+    'Contact request was rejected, so messages are blocked.',
+  );
+  const [message] = next?.messages ?? [];
+
+  assert.equal(message?.status, 'failed');
+  assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
+  assert.equal((message?.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+});
+
+
+test('failed prepared canonical bridge messages preserve attachment-only sends for persistence', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session-1',
+    'human:me',
+    '',
+    [imageAttachment],
+    '12:31',
+    'desktop-bridge-ui',
+    'sending',
+  );
+
+  const failed = failedPreparedCanonicalUserMessage(prepared, 'Contact request was rejected, so messages are blocked.');
+
+  assert.equal(failed?.request.status, 'failed');
+  assert.equal(failed?.request.contentText, '');
+  assert.equal((failed?.request.content as { deliveryState?: string }).deliveryState, 'failed');
+  assert.equal((failed?.request.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+  assert.equal(((failed?.request.content as { attachments?: Array<{ localPath?: string }> }).attachments ?? [])[0]?.localPath, '/tmp/pi-clipboard-1.png');
+});
+
+
+test('bridge optimistic messages keep the send failure detail inline', () => {
+  const next = markOptimisticBridgeMessageFailed({
+    configPath: '/tmp/config.json',
+    legacyConfigPath: '/tmp/legacy.json',
+    conversationsPath: '/tmp/conversations.sqlite3',
+    activeHostId: 'host-1',
+    hosts: [],
+    localServer: { running: false },
+    conversations: [{
+      id: 'bridge:host-1:peer-1:person',
+      hostId: 'host-1',
+      peerNodeId: 'peer-1',
+      peerRuntime: 'person',
+      title: 'Peer',
+      subtitle: 'Peer',
+      unreadCount: 0,
+      updatedAtMs: 1,
+      updatedAtLabel: '12:00',
+      awaitingReply: true,
+      peerTyping: false,
+      messages: [{
+        id: 'pending-1',
+        direction: 'outbound',
+        sender: 'Me',
+        text: 'hello',
+        timeLabel: '12:31',
+        timestampMs: 1,
+        deliveryState: 'sending',
+      }],
+    }],
+  }, 'bridge:host-1:peer-1:person', 'pending-1', 'Contact request was rejected, so messages are blocked.');
+
+  const message = next?.conversations[0]?.messages[0];
+
+  assert.equal(message?.deliveryState, 'failed');
+  assert.equal(message?.detail, 'Contact request was rejected, so messages are blocked.');
 });

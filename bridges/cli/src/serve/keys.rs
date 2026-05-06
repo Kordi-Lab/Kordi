@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::auth::{auth_middleware, AuthNode};
-use super::{nodes_share_project_or_contact, ServerState};
+use super::{nodes_can_directly_reach, DirectAccessKind, ServerState};
 
 #[derive(Debug, Serialize)]
 pub struct KeysResp {
@@ -27,8 +27,10 @@ pub struct UpdateKeysReq {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeysQuery {
     pub project: Option<String>,
+    pub target_kind: Option<String>,
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -44,8 +46,27 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state)
 }
 
+fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAccessKind {
+    match target_kind
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "agent" | "bridge-agent" | "ask" => DirectAccessKind::Agent,
+        "person-invite" | "bridge-person-invite" | "session-invite" | "group-invite" => {
+            DirectAccessKind::GroupInvite
+        }
+        "session-participant" | "group-session" | "session-message" | "session-relay" => {
+            DirectAccessKind::SessionParticipant
+        }
+        "person" | "bridge-person" | "human" => DirectAccessKind::Person,
+        _ => DirectAccessKind::Any,
+    }
+}
+
 /// Get a specific node's public keys. Requires auth — caller must either
-/// share a project with the target node or have a contact relationship.
+/// share a project with the target node or have a permitted direct relationship.
 async fn get_keys(
     State(state): State<Arc<ServerState>>,
     Extension(auth): Extension<AuthNode>,
@@ -55,6 +76,16 @@ async fn get_keys(
     let db = state
         .open_connection()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let target_exists = db
+        .query_row(
+            "SELECT 1 FROM registered_nodes WHERE node_id = ?1 AND revoked_at IS NULL",
+            rusqlite::params![node_id.as_str()],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if !target_exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
     let allowed = if let Some(project_id) = q.project {
         db.query_row(
             "SELECT 1 FROM server_members m1 \
@@ -65,8 +96,13 @@ async fn get_keys(
         )
         .is_ok()
     } else {
-        nodes_share_project_or_contact(&db, &auth.0, &node_id)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        nodes_can_directly_reach(
+            &db,
+            &auth.0,
+            &node_id,
+            direct_access_kind_from_target_kind(q.target_kind.as_deref()),
+        )
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     if !allowed {
         return Err(StatusCode::FORBIDDEN);
@@ -166,15 +202,29 @@ mod tests {
     }
 
     fn seed_registered_node(state: &Arc<ServerState>, node_id: &str, ed25519_pubkey: &str) {
+        seed_registered_node_with_policy(state, node_id, ed25519_pubkey, None, None, None);
+    }
+
+    fn seed_registered_node_with_policy(
+        state: &Arc<ServerState>,
+        node_id: &str,
+        ed25519_pubkey: &str,
+        human_id: Option<&str>,
+        human_visibility_policy: Option<&str>,
+        agent_reachability_policy: Option<&str>,
+    ) {
         let db = state.open_connection().unwrap();
         db.execute(
-            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, human_id, human_visibility_policy, agent_reachability_policy, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 node_id,
                 ed25519_pubkey,
                 "x25519_pub",
                 Option::<String>::None,
                 Option::<String>::None,
+                human_id,
+                human_visibility_policy,
+                agent_reachability_policy,
                 "hash",
                 chrono::Utc::now().to_rfc3339(),
             ],
@@ -190,12 +240,147 @@ mod tests {
         let result = get_keys(
             State(state),
             Extension(AuthNode("kd_viewer".to_string())),
-            Query(KeysQuery { project: None }),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
             Path("kd_target".to_string()),
         )
         .await;
 
         assert_eq!(result.unwrap_err(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_server_open_target_without_contact() {
+        let state = super::super::make_test_state();
+        seed_registered_node(&state, "kd_viewer", "ed_viewer");
+        seed_registered_node_with_policy(
+            &state,
+            "kd_target",
+            "ed_target",
+            Some("human-target"),
+            Some("server-open"),
+            None,
+        );
+
+        let keys = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_contacted_owner_only_default_agent_when_requesting_person_keys() {
+        let state = super::super::make_test_state();
+        seed_registered_node_with_policy(
+            &state,
+            "kd_viewer",
+            "ed_viewer",
+            Some("human-viewer"),
+            Some("server-approval"),
+            None,
+        );
+        let db = state.open_connection().unwrap();
+        db.execute(
+            "INSERT INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, is_default_agent, human_visibility_policy, agent_reachability_policy, api_key_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?10, ?11, ?12)",
+            rusqlite::params![
+                "kd_target",
+                "ed_target",
+                "x25519_target",
+                "Target's Kordi",
+                "Target",
+                "kordi-desktop",
+                "human-target",
+                "agent-target",
+                "server-approval",
+                "owner",
+                "hash-target",
+                chrono::Utc::now().to_rfc3339(),
+            ],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["kd_viewer", "kd_target", chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let keys = get_keys(
+            State(state.clone()),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("person".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
+
+        let agent_result = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("agent".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await;
+        assert_eq!(agent_result.unwrap_err(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_keys_allows_session_participant_without_contact() {
+        let state = super::super::make_test_state();
+        seed_registered_node_with_policy(
+            &state,
+            "kd_viewer",
+            "ed_viewer",
+            Some("human-viewer"),
+            Some("server-approval"),
+            None,
+        );
+        seed_registered_node_with_policy(
+            &state,
+            "kd_target",
+            "ed_target",
+            Some("human-target"),
+            Some("server-approval"),
+            None,
+        );
+
+        let keys = get_keys(
+            State(state),
+            Extension(AuthNode("kd_viewer".to_string())),
+            Query(KeysQuery {
+                project: None,
+                target_kind: Some("session-participant".to_string()),
+            }),
+            Path("kd_target".to_string()),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(keys.node_id, "kd_target");
+        assert_eq!(keys.ed25519_pubkey, "ed_target");
     }
 
     #[tokio::test]
@@ -213,7 +398,10 @@ mod tests {
         let result = get_keys(
             State(state),
             Extension(AuthNode("kd_viewer".to_string())),
-            Query(KeysQuery { project: None }),
+            Query(KeysQuery {
+                project: None,
+                target_kind: None,
+            }),
             Path("kd_target".to_string()),
         )
         .await;
@@ -232,6 +420,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await;
@@ -250,6 +439,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await
@@ -278,6 +468,7 @@ mod tests {
             Extension(AuthNode("kd_viewer".to_string())),
             Query(KeysQuery {
                 project: Some("proj_keys".to_string()),
+                target_kind: None,
             }),
         )
         .await

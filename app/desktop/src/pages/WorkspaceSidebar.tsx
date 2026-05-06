@@ -178,6 +178,7 @@ type WorkspaceSidebarProps = {
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
   onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
   onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
   onRenameChatSession: (sessionId: string, title: string) => void;
@@ -202,6 +203,8 @@ type WorkspaceSidebarProps = {
   onSelectProjectSession: (projectId: string, sessionId: string) => void;
   groupedContacts: Array<{ id: ContactClass; label: string; items: ContactItem[] }>;
   displayedContacts: ContactItem[];
+  addableContacts: ContactItem[];
+  contactRequestCount: number;
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
@@ -302,7 +305,7 @@ function participantSpaceDetailText(space: ParticipantSpaceItem) {
     return `Personal • ${sessionText}`;
   }
   if (space.kind === 'direct-human') {
-    return `Person • ${sessionText}`;
+    return 'Person • 1 chat';
   }
   if (space.kind === 'group') {
     const humanCount = participantSpaceHumanCount(space);
@@ -370,6 +373,7 @@ export function WorkspaceSidebar({
   onStartChatWithPerson,
   onStartChatWithAgent,
   onCreateChatGroup,
+  onAddContactByNodeId,
   onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
   onRenameChatSession,
@@ -394,6 +398,8 @@ export function WorkspaceSidebar({
   onSelectProjectSession,
   groupedContacts,
   displayedContacts,
+  addableContacts,
+  contactRequestCount,
   setActiveContactGroup,
   setActiveContactId,
   displayedAgents,
@@ -407,6 +413,7 @@ export function WorkspaceSidebar({
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
   const contactUnread = contactParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
   const agentUnread = agentParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
+  const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
   const chatStatusLabel = isBridgePolling
@@ -473,15 +480,20 @@ export function WorkspaceSidebar({
 
   const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
     const latestSession = space.sessions[0];
+    const isDirectHuman = space.kind === 'direct-human';
     const isActiveSpace = activeParticipantSpaceId === space.id;
-    const isSelectedSpace = selectedParticipantSpaceId === space.id;
-    const isExpanded = isSelectedSpace || isActiveSpace;
-    const isAutoExpanded = isActiveSpace && !isSelectedSpace;
+    const isSelectedSpace = !isDirectHuman && selectedParticipantSpaceId === space.id;
+    const isExpanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
+    const isAutoExpanded = isExpanded && isActiveSpace && !isSelectedSpace;
     const visibleSessions = isAutoExpanded
       ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
       : space.sessions;
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const toggleSpace = () => {
+      if (isDirectHuman) {
+        if (latestSession) onSelectChatSession(latestSession.id);
+        return;
+      }
       setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
     };
     return (
@@ -497,8 +509,8 @@ export function WorkspaceSidebar({
           <button
             type="button"
             data-testid="participant-space-row"
-            data-participant-space-toggle="true"
-            aria-expanded={isExpanded}
+            data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
+            aria-expanded={isDirectHuman ? undefined : isExpanded}
             onClick={toggleSpace}
             className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
           >
@@ -514,55 +526,57 @@ export function WorkspaceSidebar({
             </div>
           </button>
           <div className="app-participant-space-row-side">
-            <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
-              {space.kind === 'group' ? (
+            {!isDirectHuman ? (
+              <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
+                {space.kind === 'group' ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedParticipantSpaceId(space.id);
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                      setIsGroupDetailsDialogOpen(true);
+                    }}
+                    className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
+                    title="Group management"
+                    aria-label="Open group management"
+                    aria-haspopup="dialog"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
+                )}
                 <button
                   type="button"
+                  data-participant-space-context-create="true"
+                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
+                  aria-label={`Create session in ${space.title}`}
+                  title={`Create session in ${space.title}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedParticipantSpaceId(space.id);
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-                    setIsGroupDetailsDialogOpen(true);
+                    void onCreateChatSessionInParticipantSpace(space);
                   }}
-                  className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
-                  title="Group management"
-                  aria-label="Open group management"
-                  aria-haspopup="dialog"
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <Plus className="h-3.5 w-3.5" />
                 </button>
-              ) : (
-                <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
-              )}
-              <button
-                type="button"
-                data-participant-space-context-create="true"
-                className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
-                aria-label={`Create session in ${space.title}`}
-                title={`Create session in ${space.title}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setSelectedParticipantSpaceId(space.id);
-                  void onCreateChatSessionInParticipantSpace(space);
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                data-participant-space-toggle-button="true"
-                className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
-                aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleSpace();
-                }}
-              >
-                <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  data-participant-space-toggle-button="true"
+                  className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
+                  title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
+                  aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSpace();
+                  }}
+                >
+                  <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
+                </button>
+              </div>
+            ) : null}
             <div className="app-participant-space-row-meta">
               <SidebarSessionMetaColumn
                 timeLabel={rowTimeLabel}
@@ -766,6 +780,14 @@ export function WorkspaceSidebar({
                           {formatUnreadCount(totalUnread)}
                         </span>
                       ) : null}
+                      {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
+                        <span
+                          className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
+                          aria-label={`${formatUnreadCount(pendingContactRequestCount)} pending contact request${pendingContactRequestCount === 1 ? '' : 's'}`}
+                        >
+                          {formatUnreadCount(pendingContactRequestCount)}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 );
@@ -825,7 +847,7 @@ export function WorkspaceSidebar({
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
                     {chatChannel === 'contact'
-                      ? 'Expand a contact or group to see its sessions.'
+                      ? 'People open as one flat chat; groups expand into sessions.'
                       : 'Each row is a # session with one of your agents.'}
                   </div>
 
@@ -1168,6 +1190,7 @@ export function WorkspaceSidebar({
       <ChatCreateDialog
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
+        addableContacts={addableContacts}
         agents={displayedAgents}
         onClose={() => {
           setIsChatCreateDialogOpen(false);
@@ -1176,6 +1199,7 @@ export function WorkspaceSidebar({
         onStartPerson={onStartChatWithPerson}
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
+        onAddContact={onAddContactByNodeId}
         anchorRect={chatCreateAnchor}
       />
 

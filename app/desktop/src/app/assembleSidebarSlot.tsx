@@ -36,6 +36,12 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         await args.handleStartChatWithAgent(agent);
       }}
       onCreateChatGroup={args.handleCreateChatGroup}
+      onAddContactByNodeId={async (nodeId) => {
+        if (!args.activeBridgeHost?.id) {
+          throw new Error('Set up a Bridge host before adding contacts.');
+        }
+        await args.handleAddBridgeContact(args.activeBridgeHost.id, nodeId);
+      }}
       onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
       onRenameChatGroup={args.handleRenameChatGroup}
       onRenameChatSession={(sessionId, title) => {
@@ -70,6 +76,8 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       }}
       groupedContacts={args.groupedContacts}
       displayedContacts={args.displayedContacts}
+      addableContacts={args.addableContacts}
+      contactRequestCount={args.contactRequests?.length ?? 0}
       setActiveContactGroup={args.setActiveContactGroup}
       setActiveContactId={args.setActiveContactId}
       displayedAgents={args.displayedAgents}

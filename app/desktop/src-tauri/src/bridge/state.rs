@@ -5,11 +5,12 @@ use super::constants::{
 use super::{
     augment_peers_with_project_membership, build_conversation_state, build_public_bridge_agents,
     current_local_server_status, default_display_name, default_endpoint, default_owner_name,
-    fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery, health_check,
-    load_bridge_store, load_conversation_store, sync_realtime_connections,
-    DesktopBridgeConversation, DesktopBridgeConversationStore, DesktopBridgeHost,
-    DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus, DesktopBridgeManager,
-    DesktopBridgePeer, DesktopBridgeProject, DesktopBridgeState, DesktopBridgeStore,
+    fetch_registry_visible_nodes, fetch_serve_contact_requests, fetch_serve_contacts,
+    fetch_serve_discovery, health_check, load_bridge_store, load_conversation_store,
+    sync_realtime_connections, DesktopBridgeConversation, DesktopBridgeConversationStore,
+    DesktopBridgeHost, DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus,
+    DesktopBridgeManager, DesktopBridgePeer, DesktopBridgeProject, DesktopBridgeState,
+    DesktopBridgeStore,
 };
 use super::{
     desktop_bridge_config_path, desktop_bridge_conversations_path, generate_human_id,
@@ -29,6 +30,7 @@ async fn build_bridge_host_state(
         }
     };
 
+    let mut contact_requests = Vec::new();
     let (visible_peers, projects): (Vec<DesktopBridgePeer>, Vec<DesktopBridgeProject>) =
         if connected && !config.api_key.trim().is_empty() {
             if config.api_style == API_STYLE_REGISTRY {
@@ -48,16 +50,52 @@ async fn build_bridge_host_state(
                             Vec::new()
                         }
                     };
+                if let Ok(requests) =
+                    fetch_serve_contact_requests(&config.coordination, &config.api_key).await
+                {
+                    contact_requests = requests;
+                }
                 if let Ok(contact_nodes) =
                     fetch_serve_contacts(&config.coordination, &config.api_key).await
                 {
-                    let mut seen = std::collections::HashSet::new();
-                    for peer in &nodes {
-                        seen.insert(peer.node_id.clone());
+                    let mut seen = std::collections::HashMap::new();
+                    for (index, peer) in nodes.iter().enumerate() {
+                        seen.insert(peer.node_id.clone(), index);
                     }
                     for peer in contact_nodes {
-                        if seen.insert(peer.node_id.clone()) {
+                        if let Some(index) = seen.get(&peer.node_id).copied() {
+                            let existing = &mut nodes[index];
+                            existing.is_contact = true;
+                            existing.contact_request_status = Some("contact".to_string());
+                            existing.contact_request_direction = None;
+                            if existing.display_name.is_none() {
+                                existing.display_name = peer.display_name.clone();
+                            }
+                            if existing.owner_name.is_none() {
+                                existing.owner_name = peer.owner_name.clone();
+                            }
+                            if existing.human_id.is_none() {
+                                existing.human_id = peer.human_id.clone();
+                            }
+                            if existing.agent_id.is_none() {
+                                existing.agent_id = peer.agent_id.clone();
+                            }
+                        } else {
+                            seen.insert(peer.node_id.clone(), nodes.len());
                             nodes.push(peer);
+                        }
+                    }
+                }
+                for request in &contact_requests {
+                    let peer_node_id = if request.direction == "incoming" {
+                        request.requester_node_id.as_str()
+                    } else {
+                        request.target_node_id.as_str()
+                    };
+                    if let Some(peer) = nodes.iter_mut().find(|peer| peer.node_id == peer_node_id) {
+                        if !peer.is_contact {
+                            peer.contact_request_status = Some(request.status.clone());
+                            peer.contact_request_direction = Some(request.direction.clone());
                         }
                     }
                 }
@@ -95,11 +133,14 @@ async fn build_bridge_host_state(
         token_present: !config.api_key.trim().is_empty(),
         human_id: config.human_id.clone().unwrap_or_else(generate_human_id),
         discovery_mode: config.discovery_mode.clone(),
+        human_visibility_policy: config.human_visibility_policy.clone(),
+        contact_approval_policy: config.contact_approval_policy.clone(),
         active_agent_id: config.active_agent_id.clone(),
         agents: build_public_bridge_agents(config),
         visible_peer_count: visible_peers.len(),
         visible_peers,
         projects,
+        contact_requests,
         last_error,
     }
 }
