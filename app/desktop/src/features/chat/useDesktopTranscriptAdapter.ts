@@ -24,13 +24,19 @@ export function mapDesktopMessagesForTranscript(
   avatarSeeds?: DesktopTranscriptAvatarSeeds,
 ): Message[] {
   return messages.flatMap((message, index) => {
-    const failedAssistant = message.role === 'assistant' && message.failed === true;
-    const hasHistoricalTurn =
-      message.role === 'assistant'
-      && (failedAssistant || ((message.thinkingText ?? '').trim().length > 0) || ((message.tools?.length ?? 0) > 0));
+    const isAssistant = message.role === 'assistant';
+    const failedAssistant = isAssistant && message.failed === true;
     const assistantText = message.text.trim();
+    const hasHistoricalTurn =
+      isAssistant
+      && (
+        failedAssistant
+        || assistantText.length > 0
+        || ((message.thinkingText ?? '').trim().length > 0)
+        || ((message.tools?.length ?? 0) > 0)
+      );
 
-    if (message.role === 'assistant' && !hasHistoricalTurn && assistantText.length === 0) {
+    if (isAssistant && !hasHistoricalTurn) {
       return [];
     }
 
