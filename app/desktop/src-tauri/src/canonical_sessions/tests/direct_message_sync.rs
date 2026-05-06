@@ -46,6 +46,88 @@ fn source_event_dedupes_messages() {
 }
 
 #[test]
+fn source_event_reconcile_noops_when_bridge_message_is_unchanged() {
+    let conn = test_conn();
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:no-churn".to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("Peer".to_string()),
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: Some("human:peer".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:peer".to_string()),
+            participant_identity_ids: vec!["human:peer".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("open session");
+
+    let request = AppendCanonicalMessageRequest {
+        id: None,
+        session_id: "session:no-churn".to_string(),
+        sender_identity_id: "human:peer".to_string(),
+        sender_role: "person".to_string(),
+        message_kind: "text".to_string(),
+        content_text: "@PeerKordi what are you doing".to_string(),
+        content: Some(serde_json::json!({ "kind": "session-relay", "timeLabel": "14:11" })),
+        created_at_ms: Some(1_000),
+        parent_message_id: None,
+        delegated_exchange_id: None,
+        status: Some("sent".to_string()),
+        source_transport: Some("desktop-bridge-session-relay".to_string()),
+        source_event_id: Some("relay:message-1".to_string()),
+    };
+
+    let first = message_reconcile::append_or_reconcile_message_from_sync(
+        &conn,
+        request.clone(),
+        "desktop-bridge-ui",
+        5_000,
+    )
+    .expect("append relay");
+    conn.execute(
+        "UPDATE session_messages SET updated_at_ms = ?1 WHERE id = ?2",
+        rusqlite::params![111_i64, first.id],
+    )
+    .expect("pin message updated_at");
+    conn.execute(
+        "UPDATE sessions SET updated_at_ms = ?1 WHERE id = ?2",
+        rusqlite::params![222_i64, "session:no-churn"],
+    )
+    .expect("pin session updated_at");
+
+    let second = message_reconcile::append_or_reconcile_message_from_sync(
+        &conn,
+        request,
+        "desktop-bridge-ui",
+        5_000,
+    )
+    .expect("reconcile unchanged relay");
+
+    assert_eq!(second.id, first.id);
+    let message_updated_at: i64 = conn
+        .query_row(
+            "SELECT updated_at_ms FROM session_messages WHERE id = ?1",
+            rusqlite::params![second.id],
+            |row| row.get(0),
+        )
+        .expect("message updated_at");
+    let session_updated_at: i64 = conn
+        .query_row(
+            "SELECT updated_at_ms FROM sessions WHERE id = ?1",
+            rusqlite::params!["session:no-churn"],
+            |row| row.get(0),
+        )
+        .expect("session updated_at");
+    assert_eq!(message_updated_at, 111);
+    assert_eq!(session_updated_at, 222);
+}
+
+#[test]
 fn source_event_reconcile_updates_streamed_agent_content() {
     let conn = test_conn();
     open_or_create_session_in_db(

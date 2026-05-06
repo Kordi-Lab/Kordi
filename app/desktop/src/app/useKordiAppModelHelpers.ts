@@ -109,6 +109,41 @@ function isBridgeContactLocalAgentUiMessageToPreserve(message: CanonicalSessionM
     && optimisticCanonicalMessageStatusIsPreservable(message);
 }
 
+function isBridgeSessionSyncMessageToPreserve(message: CanonicalSessionMessage) {
+  if (!message.sessionId.startsWith('session:bridge:')) return false;
+  const sourceTransport = message.sourceTransport?.trim().toLowerCase() ?? '';
+  return sourceTransport === 'desktop-chat'
+    || sourceTransport === 'desktop-chat-ui'
+    || sourceTransport === 'desktop-bridge'
+    || sourceTransport === 'desktop-bridge-parent'
+    || sourceTransport === 'desktop-bridge-session-relay'
+    || sourceTransport === 'desktop-bridge-outreach';
+}
+
+function normalizedCanonicalMessageText(value: string) {
+  return value.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
+function canonicalRefreshMessageAlreadyFetched(
+  fetchedMessages: CanonicalSessionMessage[],
+  currentMessage: CanonicalSessionMessage,
+) {
+  const currentText = normalizedCanonicalMessageText(currentMessage.contentText);
+  return fetchedMessages.some((fetchedMessage) => (
+    fetchedMessage.sessionId === currentMessage.sessionId
+    && fetchedMessage.senderRole === currentMessage.senderRole
+    && fetchedMessage.messageKind === currentMessage.messageKind
+    && normalizedCanonicalMessageText(fetchedMessage.contentText) === currentText
+    && Math.abs(fetchedMessage.createdAtMs - currentMessage.createdAtMs) <= 10_000
+  ));
+}
+
+function shouldPreserveCanonicalMessageDuringRefresh(message: CanonicalSessionMessage) {
+  return isBridgeUiMessageToPreserve(message)
+    || isBridgeContactLocalAgentUiMessageToPreserve(message)
+    || isBridgeSessionSyncMessageToPreserve(message);
+}
+
 export function mergeCanonicalStatePreservingBridgeUiMessages(
   fetched: CanonicalSessionState | null,
   current: CanonicalSessionState | null,
@@ -117,9 +152,10 @@ export function mergeCanonicalStatePreservingBridgeUiMessages(
   const fetchedMessageIds = new Set(fetched.messages.map((message) => message.id));
   const fetchedSessionIds = new Set(fetched.sessions.map((session) => session.id));
   const preservedMessages = current.messages.filter((message) => (
-    (isBridgeUiMessageToPreserve(message) || isBridgeContactLocalAgentUiMessageToPreserve(message))
+    shouldPreserveCanonicalMessageDuringRefresh(message)
     && !fetchedMessageIds.has(message.id)
     && fetchedSessionIds.has(message.sessionId)
+    && !canonicalRefreshMessageAlreadyFetched(fetched.messages, message)
   ));
   if (preservedMessages.length === 0) return fetched;
   return {

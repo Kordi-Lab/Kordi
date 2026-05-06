@@ -40,6 +40,9 @@ pub(super) fn append_or_reconcile_message_from_sync(
                     }
                 }
             }
+            if message_matches_request(&message, &request, created_at_ms) {
+                return Ok(message);
+            }
             update_optimistic_message(conn, &message.id, &request, created_at_ms)?;
             return select_message(conn, &message.id)?
                 .ok_or_else(|| "Unable to load updated canonical message".to_string());
@@ -53,12 +56,36 @@ pub(super) fn append_or_reconcile_message_from_sync(
         created_at_ms,
         match_window_ms,
     )? {
+        if let Some(message) = select_message(conn, &message_id)? {
+            if message_matches_request(&message, &request, created_at_ms) {
+                return Ok(message);
+            }
+        }
         update_optimistic_message(conn, &message_id, &request, created_at_ms)?;
         return select_message(conn, &message_id)?
             .ok_or_else(|| "Unable to load reconciled canonical message".to_string());
     }
 
     append_message_in_db(conn, request)
+}
+
+fn message_matches_request(
+    message: &CanonicalSessionMessage,
+    request: &AppendCanonicalMessageRequest,
+    created_at_ms: i64,
+) -> bool {
+    message.session_id == request.session_id
+        && message.sender_identity_id == request.sender_identity_id
+        && message.sender_role == request.sender_role
+        && message.message_kind == request.message_kind
+        && message.content_text == request.content_text
+        && message.content == request.content
+        && message.parent_message_id == clean_optional(request.parent_message_id.clone())
+        && message.delegated_exchange_id == clean_optional(request.delegated_exchange_id.clone())
+        && message.status == validate_status(request.status.clone(), "sent")
+        && message.created_at_ms == created_at_ms
+        && message.source_transport == clean_optional(request.source_transport.clone())
+        && message.source_event_id == clean_optional(request.source_event_id.clone())
 }
 
 fn select_optimistic_message_id(

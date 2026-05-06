@@ -83,6 +83,98 @@ test('canonical refresh preserves optimistic local-agent contact messages until 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:local-agent-contact-send']);
 });
 
+test('canonical refresh preserves bridge relay messages when a fetched snapshot lags behind bridge sync', () => {
+  const fetched = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [{
+      id: 'msg:old',
+      sessionId: 'session:bridge:person',
+      senderIdentityId: 'human:peer',
+      senderRole: 'person',
+      messageKind: 'text',
+      contentText: 'old message',
+      content: { sender: 'Peer', timeLabel: '14:10' },
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      sourceTransport: 'desktop-bridge-parent',
+      sourceEventId: 'old-source',
+    }],
+  } as unknown as CanonicalSessionState;
+  const current = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [
+      fetched.messages[0],
+      {
+        id: 'msg:relay:new-peer-request',
+        sessionId: 'session:bridge:person',
+        senderIdentityId: 'human:peer',
+        senderRole: 'person',
+        messageKind: 'text',
+        contentText: '@PeerKordi what are you doing',
+        content: { sender: 'Peer', timeLabel: '14:11', kind: 'session-relay' },
+        status: 'sent',
+        sequenceNum: 2,
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        sourceTransport: 'desktop-bridge-session-relay',
+        sourceEventId: 'relay-source',
+      },
+    ],
+  } as unknown as CanonicalSessionState;
+
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+
+  assert.deepEqual(next.messages.map((message) => message.id), ['msg:old', 'msg:relay:new-peer-request']);
+});
+
+test('canonical refresh does not duplicate preserved bridge messages already fetched under another id', () => {
+  const fetched = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [{
+      id: 'msg:canonical:new-peer-request',
+      sessionId: 'session:bridge:person',
+      senderIdentityId: 'human:peer',
+      senderRole: 'person',
+      messageKind: 'text',
+      contentText: '@PeerKordi what are you doing',
+      content: { sender: 'Peer', timeLabel: '14:11', kind: 'session-relay' },
+      status: 'sent',
+      sequenceNum: 2,
+      createdAtMs: 2,
+      updatedAtMs: 2,
+      sourceTransport: 'desktop-bridge-session-relay',
+      sourceEventId: 'relay-source:new',
+    }],
+  } as unknown as CanonicalSessionState;
+  const current = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [
+      fetched.messages[0],
+      {
+        id: 'msg:relay:old-duplicate-id',
+        sessionId: 'session:bridge:person',
+        senderIdentityId: 'human:peer',
+        senderRole: 'person',
+        messageKind: 'text',
+        contentText: '@PeerKordi   what are you doing',
+        content: { sender: 'Peer', timeLabel: '14:11', kind: 'session-relay' },
+        status: 'sent',
+        sequenceNum: 1,
+        createdAtMs: 2,
+        updatedAtMs: 1,
+        sourceTransport: 'desktop-bridge-session-relay',
+        sourceEventId: 'relay-source:old',
+      },
+    ],
+  } as unknown as CanonicalSessionState;
+
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+
+  assert.deepEqual(next.messages.map((message) => message.id), ['msg:canonical:new-peer-request']);
+});
+
 test('canonical refresh preserves optimistic sent bridge session messages until they are persisted', () => {
   const fetched = {
     sessions: [{ id: 'session:bridge:person' }],
