@@ -38,6 +38,7 @@ Use only the subskills needed for the current turn:
 - **REQUIRED SUB-SKILL:** Use disagreement-map when opinions conflict, consensus is unclear, ambiguity remains, or discussion is stalled.
 - **REQUIRED SUB-SKILL:** Use decision-process when the group needs to choose between options or agree on how to decide.
 - **REQUIRED SUB-SKILL:** Use summary-actions after convergence, when the user asks for a recap, or when action items/owners are needed.
+- **REQUIRED SUB-SKILL:** Use visual-cards when a browser visual companion is available and the group needs to compare selectable options, participant positions, disagreement maps, or decision processes visually.
 
 ## Default Response Shape
 
@@ -73,3 +74,4 @@ Ask one targeted clarifying question when:
 - **disagreement-map** - Maps agreement, disagreement, and resolution needs.
 - **decision-process** - Suggests consensus checks, pros/cons, DRI decisions, votes, or escalation.
 - **summary-actions** - Produces decision records and action items.
+- **visual-cards** - Renders browser-selectable option cards when visual comparison would help.

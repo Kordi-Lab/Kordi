@@ -54,6 +54,13 @@ const BUNDLED_SKILLS: &[(&str, &str)] = &[
             "/../../skills/summary-actions/SKILL.md"
         )),
     ),
+    (
+        "visual-cards",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../skills/visual-cards/SKILL.md"
+        )),
+    ),
 ];
 
 pub(crate) fn bundled_skill_root(cwd: &Path) -> PathBuf {

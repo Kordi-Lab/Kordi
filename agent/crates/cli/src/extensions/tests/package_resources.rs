@@ -212,6 +212,9 @@ fn super_collaboration_skill_covers_deliberation_requirements() {
         "replyAs",
         "Decision summary",
         "REQUIRED SUB-SKILL",
+        "visual-cards",
+        "browser",
+        "data-choice",
     ] {
         assert!(
             combined.contains(required),
@@ -232,6 +235,7 @@ fn super_collaboration_subskill_names() -> impl Iterator<Item = &'static str> {
         "disagreement-map",
         "decision-process",
         "summary-actions",
+        "visual-cards",
     ]
     .into_iter()
 }
