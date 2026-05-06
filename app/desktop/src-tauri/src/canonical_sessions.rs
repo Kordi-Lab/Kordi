@@ -9,6 +9,7 @@ mod commands;
 mod core;
 mod desktop_sync;
 mod group_participants;
+mod identity_context;
 mod identity_helpers;
 mod message_lookup;
 mod message_reconcile;
@@ -56,6 +57,10 @@ pub(crate) use self::group_participants::{
     add_session_participants_in_db, remove_session_participant_in_db,
     rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
+};
+pub(crate) use self::identity_context::{
+    render_multi_participant_identity_context, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 use self::identity_helpers::{
     canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,

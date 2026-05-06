@@ -688,6 +688,8 @@ mod tests {
             parent_group_space_id: Some("session:group:test".to_string()),
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
             parent_turn_id: None,
             parent_message_id: Some("msg:request".to_string()),
             bridge_host_id: "host-1".to_string(),

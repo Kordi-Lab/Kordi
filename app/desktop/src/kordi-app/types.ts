@@ -760,10 +760,26 @@ export type DesktopBridgeSessionThreadMessage = {
 export type DesktopBridgeSessionParticipant = {
   identityId?: string | null;
   displayName: string;
+  kind?: string | null;
   role?: string | null;
+  ownerIdentityId?: string | null;
+  ownerDisplayName?: string | null;
   bridgeNodeId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
+  runtime?: string | null;
+};
+
+export type DesktopBridgePromptIdentity = {
+  identityId?: string | null;
+  displayName: string;
+  kind: string;
+  ownerIdentityId?: string | null;
+  ownerDisplayName?: string | null;
+  bridgeNodeId?: string | null;
+  humanId?: string | null;
+  agentId?: string | null;
+  runtime?: string | null;
 };
 
 export type DesktopBridgeOutreachMetadata = {
@@ -774,6 +790,8 @@ export type DesktopBridgeOutreachMetadata = {
   parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
+  initiatorIdentity?: DesktopBridgePromptIdentity | null;
+  selfTargetIdentity?: DesktopBridgePromptIdentity | null;
   parentTurnId?: string | null;
   parentMessageId?: string | null;
   bridgeHostId: string;
@@ -857,6 +875,8 @@ export type DesktopBridgeCreateOutreachRequest = {
   parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
   parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
+  initiatorIdentity?: DesktopBridgePromptIdentity | null;
+  selfTargetIdentity?: DesktopBridgePromptIdentity | null;
   parentTurnId?: string | null;
   parentMessageId?: string | null;
   bridgeRequestId?: string | null;

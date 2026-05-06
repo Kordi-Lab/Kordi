@@ -18,16 +18,31 @@ fn canonical_desktop_project_group_id(project_root: &str) -> Option<String> {
 }
 
 fn seed_identity(conn: &Connection, id: &str, display_name: &str, kind: &str) -> CanonicalIdentity {
+    seed_identity_with_source(conn, id, display_name, kind, "local", None)
+}
+
+fn seed_identity_with_source(
+    conn: &Connection,
+    id: &str,
+    display_name: &str,
+    kind: &str,
+    source: &str,
+    owner_identity_id: Option<&str>,
+) -> CanonicalIdentity {
     upsert_identity_in_db(
         conn,
         UpsertCanonicalIdentityRequest {
             id: Some(id.to_string()),
             kind: kind.to_string(),
             display_name: display_name.to_string(),
-            owner_identity_id: None,
-            source: Some("local".to_string()),
-            source_host_id: None,
-            bridge_node_id: None,
+            owner_identity_id: owner_identity_id.map(ToString::to_string),
+            source: Some(source.to_string()),
+            source_host_id: source
+                .eq_ignore_ascii_case("bridge")
+                .then(|| "bridge-host".to_string()),
+            bridge_node_id: source
+                .eq_ignore_ascii_case("bridge")
+                .then(|| format!("node-{}", id.replace(':', "-"))),
             human_id: kind
                 .eq_ignore_ascii_case("human")
                 .then(|| id.trim_start_matches("human:").to_string()),
@@ -47,6 +62,145 @@ mod direct_message_sync;
 mod group_agent_requests;
 mod group_agent_responses;
 mod group_message_sync;
+
+#[test]
+fn identity_context_renderer_preserves_people_agents_and_permissions() {
+    let rendered = render_multi_participant_identity_context(&IdentityContextRequest {
+        self_identity: IdentityContextRole {
+            identity_id: "agent:alice-kordi".to_string(),
+            display_name: "Alice's Kordi".to_string(),
+            kind: "agent".to_string(),
+            owner_identity_id: Some("human:alice".to_string()),
+            owner_display_name: Some("Alice".to_string()),
+            locality: Some("local".to_string()),
+        },
+        requester: Some(IdentityContextRole {
+            identity_id: "human:alice".to_string(),
+            display_name: "Alice".to_string(),
+            kind: "human".to_string(),
+            owner_identity_id: None,
+            owner_display_name: None,
+            locality: Some("local".to_string()),
+        }),
+        target: Some(IdentityContextRole {
+            identity_id: "agent:bob-kordi".to_string(),
+            display_name: "Bob's Kordi".to_string(),
+            kind: "agent".to_string(),
+            owner_identity_id: Some("human:bob".to_string()),
+            owner_display_name: Some("Bob".to_string()),
+            locality: Some("non-local".to_string()),
+        }),
+        participants: vec![
+            IdentityContextParticipant {
+                identity_id: "human:bob".to_string(),
+                display_name: "Bob".to_string(),
+                kind: "human".to_string(),
+                role: "member".to_string(),
+                owner_identity_id: None,
+                owner_display_name: None,
+                bridge_node_id: Some("bob-node".to_string()),
+                human_id: Some("bob".to_string()),
+                agent_id: None,
+                runtime: Some("person".to_string()),
+                locality: Some("non-local".to_string()),
+            },
+            IdentityContextParticipant {
+                identity_id: "agent:bob-kordi".to_string(),
+                display_name: "Bob's Kordi".to_string(),
+                kind: "agent".to_string(),
+                role: "delegate".to_string(),
+                owner_identity_id: Some("human:bob".to_string()),
+                owner_display_name: Some("Bob".to_string()),
+                bridge_node_id: Some("bob-agent-node".to_string()),
+                human_id: None,
+                agent_id: Some("bob-kordi".to_string()),
+                runtime: Some("kordi-desktop".to_string()),
+                locality: Some("non-local".to_string()),
+            },
+        ],
+        permissions: IdentityContextPermissions {
+            reply_as_identity_id: "agent:alice-kordi".to_string(),
+            allowed_targets: vec!["agent:bob-kordi".to_string()],
+            reach_out_allowed: true,
+            context_policy: "recent-window".to_string(),
+            requires_approval: false,
+        },
+        session_id: Some("session:alice-bob".to_string()),
+        session_kind: Some("group".to_string()),
+        project_name: None,
+    });
+
+    assert!(rendered.contains("<multi_participant_identity_context version=\"v1\">"));
+    assert!(rendered.contains("- replyAs: agent:alice-kordi only"));
+    assert!(rendered.contains("Requester / initiator:"));
+    assert!(rendered.contains("Current target:"));
+    assert!(rendered.contains("agent:bob-kordi | Bob's Kordi | agent"));
+    assert!(rendered.contains("owner: Bob (human:bob)"));
+    assert!(rendered.contains("allowedTargets: [\"agent:bob-kordi\"]"));
+}
+
+#[test]
+fn bridge_agent_prompt_includes_inline_identity_frame_for_parent_session() {
+    let storage = crate::test_support::ScopedKordiStorageRoot::new("identity-context-prompt");
+    let conn = open_db().expect("open db");
+    seed_identity_with_source(&conn, "human:alice", "Alice", "human", "local", None);
+    seed_identity_with_source(
+        &conn,
+        "agent:alice-kordi",
+        "Alice's Kordi",
+        "agent",
+        "local",
+        Some("human:alice"),
+    );
+    seed_identity_with_source(&conn, "human:bob", "Bob", "human", "bridge", None);
+    seed_identity_with_source(
+        &conn,
+        "agent:bob-kordi",
+        "Bob's Kordi",
+        "agent",
+        "bridge",
+        Some("human:bob"),
+    );
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:alice-bob".to_string()),
+            kind: "group".to_string(),
+            title: Some("Alice and Bob".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: Some("agent:alice-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![
+                "human:alice".to_string(),
+                "agent:alice-kordi".to_string(),
+                "human:bob".to_string(),
+                "agent:bob-kordi".to_string(),
+            ],
+            metadata: None,
+        },
+    )
+    .expect("seed group session");
+    drop(conn);
+
+    let prompt = bridge_agent_parent_session_prompt(
+        Some("session:alice-bob"),
+        "Bob's Kordi",
+        Some("Bob"),
+        "Can you review this?",
+        None,
+    )
+    .expect("prompt");
+
+    assert!(prompt.contains("<multi_participant_identity_context version=\"v1\">"));
+    assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
+    assert!(prompt.contains("- identityId: human:alice"));
+    assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
+    assert!(!prompt.contains("Session identity file:"));
+    drop(storage);
+}
 
 #[test]
 fn shared_agent_display_name_keeps_already_scoped_remote_agent_name() {

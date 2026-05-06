@@ -741,7 +741,7 @@ export function ChatsPage({
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                placeholder="Message a person, an agent, or delegate a task…"
+                placeholder="Ask your agent…"
               />
             </div>
           </div>

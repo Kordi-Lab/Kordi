@@ -408,7 +408,7 @@ export function useComposerInputActions({
 
   const setChatComposerText = useCallback((value: string) => {
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, value));
-    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', value);
+    resizeComposerTextarea('textarea[placeholder="Ask your agent…"]', value);
   }, [activeConvId, setComposerDrafts]);
 
   const setProjectComposerText = useCallback((value: string) => {

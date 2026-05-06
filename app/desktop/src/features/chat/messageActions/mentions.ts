@@ -23,12 +23,27 @@ export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | n
 }
 
 export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeTarget) {
+  const targetDisplayName = target.displayLabel;
+  const targetOwnerName = target.peer.ownerName ?? null;
+  const targetRuntime = target.peer.runtime;
+  const targetHumanId = target.peer.humanId ?? null;
+  const targetAgentId = target.peer.agentId ?? null;
   return {
-    targetDisplayName: target.displayLabel,
-    targetOwnerName: target.peer.ownerName ?? null,
-    targetRuntime: target.peer.runtime,
-    targetHumanId: target.peer.humanId ?? null,
-    targetAgentId: target.peer.agentId ?? null,
+    targetDisplayName,
+    targetOwnerName,
+    targetRuntime,
+    targetHumanId,
+    targetAgentId,
+    selfTargetIdentity: {
+      identityId: targetAgentId ? `agent:${targetAgentId}` : (targetHumanId ? `human:${targetHumanId}` : null),
+      displayName: targetDisplayName,
+      kind: target.targetKind === 'bridge-agent' ? 'agent' : 'human',
+      ownerDisplayName: targetOwnerName,
+      bridgeNodeId: target.peer.nodeId,
+      humanId: targetHumanId,
+      agentId: targetAgentId,
+      runtime: targetRuntime,
+    },
   };
 }
 

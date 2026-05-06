@@ -265,7 +265,7 @@ export function useComposerMessageActions({
       activeConvId,
       insertMentionIntoDraft(composerDrafts.chat, label),
     ));
-    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', insertMentionIntoDraft(composerDrafts.chat, label));
+    resizeComposerTextarea('textarea[placeholder="Ask your agent…"]', insertMentionIntoDraft(composerDrafts.chat, label));
   }, [activeConvId, composerDrafts.chat, setComposerDrafts]);
 
   const acceptProjectMentionTarget = useCallback((label: string) => {
