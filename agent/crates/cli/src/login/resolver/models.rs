@@ -15,6 +15,7 @@ const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
 ];
 
 const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
+    "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
     "claude-opus-4-20260115",
@@ -444,8 +445,14 @@ mod tests {
 
         let model_ids = model_ids_for_provider("anthropic");
 
+        assert!(model_ids.contains(&"claude-opus-4-7".to_string()));
         assert!(model_ids.contains(&"claude-opus-4-6".to_string()));
         assert!(model_ids.contains(&"claude-sonnet-4-6".to_string()));
+        assert!(model_id_allowed_for_active_auth(
+            &Settings::default(),
+            "anthropic",
+            "claude-opus-4-7"
+        ));
         assert!(!model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
         assert!(!model_ids.contains(&"claude-haiku-4-20260115".to_string()));
     }
