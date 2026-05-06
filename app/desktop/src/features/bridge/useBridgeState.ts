@@ -8,6 +8,10 @@ import {
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
 import {
+  BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+  BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+} from '@/features/bridge/messages';
+import {
   BRIDGE_READ_ATTENTION_EVENTS,
   activeUnreadBridgeConversationsForSession,
   bridgeReadReceiptBatchSignature,
@@ -125,25 +129,46 @@ function mergeBridgeMessage(
   };
 }
 
+function normalizedBridgeMessageRequestId(message: DesktopBridgeConversationMessage) {
+  return message.requestId?.trim() ?? '';
+}
+
+function isBridgeAgentResponseMessage(message: DesktopBridgeConversationMessage) {
+  return message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+    || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+}
+
+function compareBridgeConversationMessages(
+  left: DesktopBridgeConversationMessage,
+  right: DesktopBridgeConversationMessage,
+) {
+  const leftRequestId = normalizedBridgeMessageRequestId(left);
+  const rightRequestId = normalizedBridgeMessageRequestId(right);
+  if (leftRequestId && leftRequestId === rightRequestId) {
+    const leftIsResponse = isBridgeAgentResponseMessage(left);
+    const rightIsResponse = isBridgeAgentResponseMessage(right);
+    if (leftIsResponse !== rightIsResponse) return leftIsResponse ? 1 : -1;
+  }
+
+  return left.timestampMs - right.timestampMs
+    || Number(isBridgeAgentResponseMessage(left)) - Number(isBridgeAgentResponseMessage(right))
+    || left.id.localeCompare(right.id);
+}
+
 function mergeConversationMessages(
   current: DesktopBridgeConversationMessage[],
   next: DesktopBridgeConversationMessage[],
 ) {
-  const currentById = new Map(current.map((message) => [message.id, message]));
-  const merged = next.map((message) => {
-    const existing = currentById.get(message.id);
-    return existing ? mergeBridgeMessage(existing, message) : message;
-  });
-
-  if (current.length <= next.length) {
-    return merged;
+  const mergedById = new Map<string, DesktopBridgeConversationMessage>();
+  for (const message of current) {
+    mergedById.set(message.id, message);
+  }
+  for (const message of next) {
+    const existing = mergedById.get(message.id);
+    mergedById.set(message.id, existing ? mergeBridgeMessage(existing, message) : message);
   }
 
-  const nextIds = new Set(next.map((message) => message.id));
-  return current.map((message) => {
-    const incoming = nextIds.has(message.id) ? next.find((candidate) => candidate.id === message.id) : undefined;
-    return incoming ? mergeBridgeMessage(message, incoming) : message;
-  });
+  return [...mergedById.values()].sort(compareBridgeConversationMessages);
 }
 
 function mergeBridgeConversation(
