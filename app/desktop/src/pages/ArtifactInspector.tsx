@@ -179,15 +179,9 @@ export function ArtifactInspector({
   }, [browserPath, folderBrowserRootPath]);
 
   const generatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'artifact'), [artifacts]);
-  const relatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'related'), [artifacts]);
-  const memoryArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'memory'), [artifacts]);
   const activeArtifact = useMemo(
-    () => artifacts.find((artifact) => artifact.id === activeArtifactId)
-      ?? generatedArtifacts[0]
-      ?? relatedArtifacts[0]
-      ?? memoryArtifacts[0]
-      ?? null,
-    [activeArtifactId, artifacts, generatedArtifacts, memoryArtifacts, relatedArtifacts],
+    () => generatedArtifacts.find((artifact) => artifact.id === activeArtifactId) ?? generatedArtifacts[0] ?? null,
+    [activeArtifactId, generatedArtifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
   const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
@@ -360,42 +354,18 @@ export function ArtifactInspector({
         </section>
       ) : null}
 
-      {artifacts.length > 0 ? (
-        <>
-          <ArtifactListSection
-            title="Artifacts"
-            section="generated"
-            description="Generated work products worth reopening, refining, or sharing."
-            artifacts={generatedArtifacts}
-            activeArtifact={activeArtifact}
-            onSelect={(artifactId) => {
-              setBrowserSelectedArtifact(null);
-              onSelectArtifact(artifactId);
-            }}
-          />
-          <ArtifactListSection
-            title="Related files"
-            section="related"
-            description="Source, config, package, and referenced files touched while producing the work."
-            artifacts={relatedArtifacts}
-            activeArtifact={activeArtifact}
-            onSelect={(artifactId) => {
-              setBrowserSelectedArtifact(null);
-              onSelectArtifact(artifactId);
-            }}
-          />
-          <ArtifactListSection
-            title="Memory"
-            section="memory"
-            description="Scoped Kordi memory related to this session."
-            artifacts={memoryArtifacts}
-            activeArtifact={activeArtifact}
-            onSelect={(artifactId) => {
-              setBrowserSelectedArtifact(null);
-              onSelectArtifact(artifactId);
-            }}
-          />
-        </>
+      {generatedArtifacts.length > 0 ? (
+        <ArtifactListSection
+          title="Artifacts"
+          section="generated"
+          description="Generated work products worth reopening, refining, or sharing."
+          artifacts={generatedArtifacts}
+          activeArtifact={activeArtifact}
+          onSelect={(artifactId) => {
+            setBrowserSelectedArtifact(null);
+            onSelectArtifact(artifactId);
+          }}
+        />
       ) : (
         <section className="app-detail-section">
           <div className="app-detail-kicker">Artifacts</div>

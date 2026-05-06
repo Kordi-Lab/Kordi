@@ -22,7 +22,7 @@ function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatT
   };
 }
 
-test('session lesson files are categorized as memory while source writes are related files', () => {
+test('session artifact extraction hides memory and source writes from the artifact list', () => {
   const messages: Message[] = [{
     role: 'owned-agent',
     sender: 'My Kordi',
@@ -62,15 +62,11 @@ test('session lesson files are categorized as memory while source writes are rel
 
   const artifacts = extractSessionArtifacts(messages, null, [lessonArtifact]);
 
-  const lesson = artifacts.find((artifact) => artifact.id === lessonArtifact.id);
-  const generatedSource = artifacts.find((artifact) => artifact.path === 'src/generated.ts');
-
-  assert.equal(lesson?.pinned, true);
-  assert.equal(lesson?.category, 'memory');
-  assert.equal(generatedSource?.category, 'related');
+  assert.equal(artifacts.some((artifact) => artifact.id === lessonArtifact.id), false);
+  assert.equal(artifacts.some((artifact) => artifact.path === 'src/generated.ts'), false);
 });
 
-test('extractSessionArtifacts separates generated artifacts from related package and skill files', () => {
+test('extractSessionArtifacts keeps generated artifacts but hides package and skill files', () => {
   const messages: Message[] = [{
     role: 'owned-agent',
     sender: 'My Kordi',
@@ -111,6 +107,25 @@ test('extractSessionArtifacts separates generated artifacts from related package
           arguments: JSON.stringify({ path: 'app/desktop/src/pages/TaskActivityDashboardPanel.tsx' }),
           resultText: 'read source',
         }),
+        toolSnapshot({
+          id: 'source-report',
+          name: 'write',
+          arguments: JSON.stringify({ path: 'app/desktop/src/reports/report.ts' }),
+          resultText: 'wrote implementation source',
+        }),
+        toolSnapshot({
+          id: 'test-spec',
+          name: 'write',
+          arguments: JSON.stringify({ path: 'tests/generated-report.spec.ts' }),
+          resultText: 'wrote test source',
+        }),
+        toolSnapshot({
+          id: 'read-artifact-path',
+          name: 'read',
+          arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+          artifactPath: 'artifacts/read-output.txt',
+          resultText: 'read report',
+        }),
       ],
     },
   }];
@@ -119,12 +134,15 @@ test('extractSessionArtifacts separates generated artifacts from related package
   const byPath = new Map(artifacts.map((artifact) => [artifact.path, artifact]));
 
   assert.equal(byPath.get('docs/reports/kordi-project-structure-report.md')?.category, 'artifact');
-  assert.equal(byPath.get('package.json')?.category, 'related');
-  assert.equal(byPath.get('app/desktop/docs/superpowers/skills/reviewer/SKILL.md')?.category, 'related');
-  assert.equal(byPath.get('app/desktop/src/pages/TaskActivityDashboardPanel.tsx')?.category, 'related');
+  assert.equal(byPath.has('package.json'), false);
+  assert.equal(byPath.has('app/desktop/docs/superpowers/skills/reviewer/SKILL.md'), false);
+  assert.equal(byPath.has('app/desktop/src/pages/TaskActivityDashboardPanel.tsx'), false);
+  assert.equal(byPath.has('app/desktop/src/reports/report.ts'), false);
+  assert.equal(byPath.has('tests/generated-report.spec.ts'), false);
+  assert.equal(byPath.has('artifacts/read-output.txt'), false);
 });
 
-test('artifact inspector groups generated artifacts separately from related files and memory', () => {
+test('artifact inspector only renders generated artifacts in the artifact list', () => {
   const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
     isNativeShell: false,
     activeArtifactId: null,
@@ -160,8 +178,9 @@ test('artifact inspector groups generated artifacts separately from related file
   }));
 
   assert.match(markup, /data-artifact-section="generated"/);
-  assert.match(markup, /data-artifact-section="related"/);
-  assert.match(markup, /data-artifact-section="memory"/);
-  assert.ok(markup.indexOf('kordi-project-structure-report.md') < markup.indexOf('package.json'));
-  assert.ok(markup.indexOf('package.json') < markup.indexOf('Session lessons'));
+  assert.match(markup, /kordi-project-structure-report.md/);
+  assert.doesNotMatch(markup, /data-artifact-section="related"/);
+  assert.doesNotMatch(markup, /data-artifact-section="memory"/);
+  assert.doesNotMatch(markup, /package\.json/);
+  assert.doesNotMatch(markup, /Session lessons/);
 });

@@ -481,6 +481,43 @@ test('task panel renders response and artifact navigation buttons for linked tas
   assert.match(markup, /aria-label="Open related artifact"/);
 });
 
+test('task panel renders artifact navigation as soon as the task has a generated artifact id', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-report',
+    sessionId: 'session-1',
+    prompt: '@Kordi create a project structure report',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'report-artifact',
+        name: 'write',
+        status: 'done',
+        arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+        liveOutput: '',
+        resultText: 'wrote report',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+    onOpenArtifact: () => undefined,
+  }));
+
+  assert.match(markup, /data-task-action="open-artifact"/);
+});
+
 test('task panel lets long task titles wrap instead of truncating them', () => {
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',

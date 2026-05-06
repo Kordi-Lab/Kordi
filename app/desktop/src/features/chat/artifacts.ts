@@ -69,6 +69,15 @@ function pathExtension(path: string) {
   return extension && extension !== fileName ? extension : '';
 }
 
+function isImplementationSourcePath(path: string) {
+  const segments = pathSegments(path);
+  if (segments.some((segment) => ['src', 'test', 'tests', '__tests__'].includes(segment))) return true;
+
+  const extension = pathExtension(path);
+  return CODE_EXTENSIONS.has(extension)
+    && segments.some((segment) => ['agent', 'app', 'components', 'crates', 'features', 'lib', 'pages', 'packages', 'scripts'].includes(segment));
+}
+
 function isReflectionLessonPath(path: string) {
   const normalized = normalizeSessionArtifactId(path).toLowerCase();
   return normalized.includes('/reflection-lessons/') || normalized.includes('reflection-lessons/');
@@ -87,7 +96,7 @@ function isPackageOrConfigPath(path: string) {
 }
 
 function pathLooksLikeGeneratedArtifact(path: string) {
-  if (isReflectionLessonPath(path) || isSkillPath(path) || isPackageOrConfigPath(path)) return false;
+  if (isReflectionLessonPath(path) || isSkillPath(path) || isPackageOrConfigPath(path) || isImplementationSourcePath(path)) return false;
 
   const segments = pathSegments(path);
   if (segments.some((segment) => GENERATED_ARTIFACT_SEGMENTS.has(segment))) return true;
@@ -102,8 +111,8 @@ function pathLooksLikeGeneratedArtifact(path: string) {
 export function sessionArtifactCategoryForToolPath(toolName: string, path: string, explicitArtifactPath = false): SessionArtifactCategory {
   const normalizedTool = toolName.trim().toLowerCase();
   if (normalizedTool === 'reflection' || isReflectionLessonPath(path)) return 'memory';
-  if (isSkillPath(path) || isPackageOrConfigPath(path)) return 'related';
-  if (explicitArtifactPath || (isGeneratedArtifactTool(normalizedTool) && pathLooksLikeGeneratedArtifact(path))) return 'artifact';
+  if (isSkillPath(path) || isPackageOrConfigPath(path) || isImplementationSourcePath(path)) return 'related';
+  if (isGeneratedArtifactTool(normalizedTool) && (explicitArtifactPath || pathLooksLikeGeneratedArtifact(path))) return 'artifact';
   return 'related';
 }
 
@@ -163,6 +172,7 @@ function upsertArtifact(
 
   const existing = byId.get(normalizedId);
   if (existing?.pinned && existing.order > order) return;
+  if (existing?.category === 'artifact' && category !== 'artifact') return;
 
   const name = normalizedId.split('/').pop() || normalizedId;
   byId.set(normalizedId, {
@@ -292,6 +302,7 @@ export function extractSessionArtifacts(
   }
 
   return Array.from(byId.values())
+    .filter((artifact) => artifact.category === 'artifact')
     .sort((left, right) => categorySortPriority(left.category ?? 'artifact') - categorySortPriority(right.category ?? 'artifact') || right.order - left.order)
     .map(({ order: _order, ...artifact }) => artifact);
 }

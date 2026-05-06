@@ -227,7 +227,7 @@ function firstLinkedArtifactId(task: TaskDashboardItem, artifacts: SessionArtifa
       .filter((artifact) => artifactCategory(artifact) === 'artifact')
       .map((artifact) => artifact.id),
   );
-  return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? null;
+  return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? task.artifactIds[0] ?? null;
 }
 
 function TaskRow({
