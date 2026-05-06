@@ -48,6 +48,7 @@ fn active_oauth_model_ids_for_provider(
     }
 }
 
+#[cfg_attr(not(feature = "desktop-runtime"), allow(dead_code))]
 pub fn model_id_allowed_for_active_auth(
     settings: &Settings,
     provider: &str,
