@@ -1,5 +1,7 @@
 use axum::extract::{Path, State};
+#[cfg(test)]
 use axum::http::StatusCode;
+#[cfg(test)]
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -16,10 +18,9 @@ use crate::transport::Transport;
 mod messages;
 mod pending;
 
-use messages::{
-    handle_ask, handle_broadcast, handle_debate, handle_publish, handle_send, AskRequest,
-    BroadcastRequest, DebateRequest, PublishRequest, SendRequest,
-};
+use messages::{handle_ask, handle_broadcast, handle_debate, handle_publish, handle_send};
+#[cfg(test)]
+use messages::{AskRequest, BroadcastRequest, DebateRequest, PublishRequest, SendRequest};
 #[cfg(test)]
 use pending::{insert_pending, note_pending_stage};
 pub use pending::{
