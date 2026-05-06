@@ -55,6 +55,34 @@ test('canonical refresh preserves in-flight bridge UI sends until they are persi
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:pending']);
 });
 
+test('canonical refresh preserves optimistic local-agent contact messages until they are persisted', () => {
+  const fetched = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [],
+  } as unknown as CanonicalSessionState;
+  const current = {
+    sessions: [{ id: 'session:bridge:person' }],
+    messages: [{
+      id: 'msg:ui:local-agent-contact-send',
+      sessionId: 'session:bridge:person',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '@MyKordi what are you doing',
+      content: { sender: 'Me', timeLabel: '14:12' },
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      sourceTransport: 'desktop-chat-ui',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+
+  assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:local-agent-contact-send']);
+});
+
 test('canonical refresh preserves optimistic sent bridge session messages until they are persisted', () => {
   const fetched = {
     sessions: [{ id: 'session:bridge:person' }],

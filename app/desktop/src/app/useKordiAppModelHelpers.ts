@@ -87,15 +87,26 @@ export function removeSessionFromDesktopState(state: DesktopChatState | null, se
   };
 }
 
-function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
+function optimisticCanonicalMessageStatusIsPreservable(message: CanonicalSessionMessage) {
   const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
     ? message.content as Record<string, unknown>
     : {};
   const deliveryState = typeof content.deliveryState === 'string' ? content.deliveryState.trim().toLowerCase() : '';
   const status = message.status?.trim().toLowerCase() ?? '';
+  return status === 'sending' || status === 'sent' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'sent' || deliveryState === 'failed';
+}
+
+function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
   return message.sourceTransport === 'desktop-bridge-ui'
     && message.senderRole === 'user'
-    && (status === 'sending' || status === 'sent' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'sent' || deliveryState === 'failed');
+    && optimisticCanonicalMessageStatusIsPreservable(message);
+}
+
+function isBridgeContactLocalAgentUiMessageToPreserve(message: CanonicalSessionMessage) {
+  return message.sourceTransport === 'desktop-chat-ui'
+    && message.senderRole === 'user'
+    && message.sessionId.startsWith('session:bridge:')
+    && optimisticCanonicalMessageStatusIsPreservable(message);
 }
 
 export function mergeCanonicalStatePreservingBridgeUiMessages(
@@ -106,7 +117,7 @@ export function mergeCanonicalStatePreservingBridgeUiMessages(
   const fetchedMessageIds = new Set(fetched.messages.map((message) => message.id));
   const fetchedSessionIds = new Set(fetched.sessions.map((session) => session.id));
   const preservedMessages = current.messages.filter((message) => (
-    isBridgeUiMessageToPreserve(message)
+    (isBridgeUiMessageToPreserve(message) || isBridgeContactLocalAgentUiMessageToPreserve(message))
     && !fetchedMessageIds.has(message.id)
     && fetchedSessionIds.has(message.sessionId)
   ));
