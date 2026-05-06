@@ -59,12 +59,8 @@ fn parsed_event(
 
 #[tokio::test]
 async fn inbound_mailbox_messages_keep_sender_timestamp() {
-    let storage_root = std::env::temp_dir().join(format!(
-        "kordi-mailbox-sender-time-test-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
-    std::env::set_var("KORDI_STORAGE_ROOT", &storage_root);
+    let storage =
+        crate::test_support::ScopedKordiStorageRoot::new("kordi-mailbox-sender-time-test");
 
     let target = test_mailbox_target();
     let mut event = parsed_event(BRIDGE_MESSAGE_TYPE_RAW, Some("person"), None);
@@ -83,8 +79,7 @@ async fn inbound_mailbox_messages_keep_sender_timestamp() {
         .expect("stored message");
     assert_eq!(message.timestamp_ms, 1_777_000_001_234);
 
-    std::env::remove_var("KORDI_STORAGE_ROOT");
-    let _ = std::fs::remove_dir_all(storage_root);
+    drop(storage);
 }
 
 #[test]
