@@ -89,9 +89,19 @@ function sameOwnedAgentTurn(canonical: Message, local: Message) {
   return false;
 }
 
+function isBridgeProcessingOnlyRuntimePlaceholder(message: Message) {
+  if (!message.id?.startsWith('bridge-live-turn:') || !message.turn) return false;
+  return !message.turn.completed
+    && !message.text.trim()
+    && !message.turn.assistantText.trim()
+    && !message.turn.thinkingText.trim()
+    && message.turn.tools.length === 0;
+}
+
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
+    && !isBridgeProcessingOnlyRuntimePlaceholder(message)
     && (
       (message.turn?.tools?.length ?? 0) > 0
       || (message.turn?.thinkingText?.trim().length ?? 0) > 0

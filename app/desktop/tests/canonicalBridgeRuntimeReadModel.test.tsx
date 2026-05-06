@@ -300,6 +300,84 @@ test('canonical read model prefers local rich owned-agent runtime over later pla
   assert.deepEqual(messages[1]?.turn?.tools.map((tool: { name: string }) => tool.name), ['read']);
 });
 
+test('canonical read model does not duplicate raw bridge processing while local owned agent delegation is pending', () => {
+  const sessionId = 'session:bridge:humans:pending-local-agent';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Testuser5',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Testuser5', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Testuser4', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: "Testuser5's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'direct-person', title: 'Testuser4', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2_000, lastMessageAtMs: 2_000 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@Testuser5sKordi which model are you using?', content: { sender: 'Testuser4', timeLabel: '14:02', kind: 'mention-request', deliveryState: 'processing' }, status: 'complete', sequenceNum: 1, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
+    ],
+    delegatedExchanges: [
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 2_000, updatedAtMs: 2_100 },
+    ],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const bridgeConversationSource = {
+    id: 'bridge:host-1:node-peer:person',
+    canonicalSessionId: sessionId,
+    name: 'Testuser4',
+    type: 'person',
+    subtitle: '',
+    unread: 0,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Testuser4'],
+    messages: [
+      {
+        id: 'bridge-live-turn:bridge:host-1:node-peer:person:processing',
+        role: 'owned-agent',
+        sender: 'My Kordi',
+        text: '',
+        time: '14:02',
+        turn: {
+          id: 'bridge-live-turn:processing',
+          sessionId: 'bridge:host-1:node-peer:person',
+          prompt: '',
+          status: 'processing',
+          message: 'Processing…',
+          assistantText: '',
+          thinkingText: '',
+          tools: [],
+          completed: false,
+          succeeded: false,
+          error: null,
+        },
+      },
+    ],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversation = readModel?.applyConversation(bridgeConversationSource as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
+  const processingMessages = conversation?.messages.filter((message) => message.turn?.status === 'processing') ?? [];
+
+  assert.equal(processingMessages.length, 1);
+  assert.equal(processingMessages[0]?.id?.startsWith('bridge-live-turn:'), false);
+});
+
 test('canonical read model replaces bridge relay copy with active local owned-agent group turn', () => {
   const sessionId = 'session:group:local-owner-duplicate';
   const localText = 'I’ll quickly check current public info/reviews for Al-Marsa Restaurant pricing before answering.\n\nAl-Marsa Restaurant in KAUST is probably **medium to expensive**.';
