@@ -13,10 +13,16 @@ export function canAutoMarkBridgeRead(documentLike: BridgeReadDocumentLike | nul
     && Boolean(documentLike.hasFocus?.());
 }
 
+function bridgeConversationSessionKeys(conversation: DesktopBridgeConversation) {
+  return [
+    conversation.id,
+    conversation.canonicalSessionId?.trim(),
+    conversation.outreach?.parentSessionId?.trim(),
+  ].filter((value): value is string => Boolean(value));
+}
+
 function bridgeConversationMatchesSession(conversation: DesktopBridgeConversation, normalizedActiveSessionId: string) {
-  return conversation.id === normalizedActiveSessionId
-    || conversation.canonicalSessionId === normalizedActiveSessionId
-    || conversation.outreach?.parentSessionId?.trim() === normalizedActiveSessionId;
+  return bridgeConversationSessionKeys(conversation).includes(normalizedActiveSessionId);
 }
 
 export function activeBridgeConversationsForSession(
@@ -25,7 +31,12 @@ export function activeBridgeConversationsForSession(
 ) {
   const normalizedActiveSessionId = activeSessionId.trim();
   if (!normalizedActiveSessionId) return [];
-  return conversations.filter((conversation) => bridgeConversationMatchesSession(conversation, normalizedActiveSessionId));
+  const directlyActiveConversations = conversations.filter((conversation) => bridgeConversationMatchesSession(conversation, normalizedActiveSessionId));
+  if (directlyActiveConversations.length === 0) return [];
+  const activeSessionKeys = new Set(directlyActiveConversations.flatMap(bridgeConversationSessionKeys));
+  return conversations.filter((conversation) => (
+    bridgeConversationSessionKeys(conversation).some((sessionId) => activeSessionKeys.has(sessionId))
+  ));
 }
 
 export function activeBridgeConversationForSession(
