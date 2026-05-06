@@ -95,9 +95,43 @@ function compact(value: string, maxLength = 180) {
   return `${normalized.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
-function titleFromPrompt(prompt: string) {
-  const withoutLeadingMention = prompt.replace(/^\s*(?:@\S+\s+)+/, '').trim();
-  return compact(withoutLeadingMention || prompt || 'Current task', 96);
+function titleFromPrompt(prompt?: string | null) {
+  const rawPrompt = prompt?.trim() ?? '';
+  if (!rawPrompt) return null;
+  const withoutLeadingMention = rawPrompt.replace(/^\s*(?:@\S+\s+)+/, '').trim();
+  return compact(withoutLeadingMention || rawPrompt, 96);
+}
+
+function titleFromArtifactId(artifactId: string) {
+  const fileName = artifactId.split('/').filter(Boolean).pop()?.trim() ?? '';
+  const baseName = fileName.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!baseName) return null;
+  return compact(baseName.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase()), 96);
+}
+
+function titleFromGeneratedArtifacts(artifactIds: string[]) {
+  for (const artifactId of artifactIds) {
+    const title = titleFromArtifactId(artifactId);
+    if (title) return title;
+  }
+  return null;
+}
+
+function titleFromTurnText(turn: DesktopChatTurnSnapshot) {
+  const assistantLine = turn.assistantText.split('\n').map((line) => line.trim()).find(Boolean);
+  if (assistantLine) return compact(assistantLine.replace(/^#+\s*/, ''), 96);
+
+  const message = turn.message.trim();
+  return message && !/^response complete$/i.test(message) ? compact(message, 96) : null;
+}
+
+function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[]) {
+  return titleFromToolArguments(turn.tools)
+    ?? titleFromPrompt(turn.prompt)
+    ?? titleFromPrompt(turn.sourceMessage?.text)
+    ?? titleFromGeneratedArtifacts(artifactIds)
+    ?? titleFromTurnText(turn)
+    ?? 'Task';
 }
 
 function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
@@ -301,9 +335,10 @@ function collectTurns(messages: Message[], liveTurn?: DesktopChatTurnSnapshot | 
 
 function createParentTask({ turn, live, sequence, responseMessageId }: TurnWithSequence): MutableParentTask {
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
+  const artifactIds = generatedArtifactIdsFromTurn(turn);
   return {
     id: `turn:${turn.id}`,
-    title: titleFromToolArguments(turn.tools) ?? titleFromPrompt(turn.prompt),
+    title: titleFromTurn(turn, artifactIds),
     summary: compact(turn.message || turn.assistantText || ''),
     status,
     ...statusMeta(status),
@@ -316,7 +351,7 @@ function createParentTask({ turn, live, sequence, responseMessageId }: TurnWithS
     message: turn.message,
     assistantText: turn.assistantText,
     responseMessageId,
-    artifactIds: generatedArtifactIdsFromTurn(turn),
+    artifactIds,
     subtasksByKey: new Map(),
   };
 }

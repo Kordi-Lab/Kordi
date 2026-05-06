@@ -272,6 +272,39 @@ test('task dashboard prefers model-generated task titles from tool arguments', (
   assert.equal(dashboard.tasks[0].title, 'Review Open Claw Code');
 });
 
+test('task dashboard names completed artifact tasks when historical prompts are unavailable', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-report',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the requested report.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [
+      {
+        id: 'write-report',
+        name: 'write',
+        status: 'done',
+        arguments: JSON.stringify({ path: 'docs/reports/kordi-project-structure-report.md' }),
+        liveOutput: '',
+        resultText: 'wrote report',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'execution',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(turn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Kordi Project Structure Report');
+});
+
 test('task dashboard keeps completed titled tasks visible after the live turn finishes', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
