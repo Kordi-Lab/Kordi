@@ -27,7 +27,6 @@ export function openInlineChangedFile(row: ChangedFileRow, onOpenArtifact?: (art
 
 export function InlineChangedFiles({
   rows,
-  incomplete = false,
   onOpenArtifact,
 }: {
   rows: ChangedFileRow[];
@@ -43,10 +42,7 @@ export function InlineChangedFiles({
 
   return (
     <div data-inline-changed-files="true" className="app-inline-changed-files mt-2.5 rounded-[16px] border border-white/10 bg-white/[0.035] p-2.5 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-3 px-1">
-        <div className="text-[12px] font-semibold text-slate-200">{header}</div>
-        {incomplete ? <div className="text-[10px] font-medium text-amber-200/80">incomplete</div> : null}
-      </div>
+      <div className="mb-2 px-1 text-[12px] font-semibold text-slate-200">{header}</div>
       <div className="space-y-1.5">
         {visibleRows.map((row) => {
           const statusLabel = changedFileStatusLabel(row.status);

@@ -124,7 +124,7 @@ test('hidden changed file kinds are filtered out of inline rows and artifact ext
   assert.deepEqual(extractSessionArtifacts([message]), []);
 });
 
-test('failed turns still show files written before the failure with an incomplete hint', () => {
+test('failed turns still show successful file writes without an incomplete badge', () => {
   const turn = turnWithTools([
     {
       id: 'tool-write',
@@ -144,8 +144,47 @@ test('failed turns still show files written before the failure with an incomplet
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /Changed 1 file/);
-  assert.match(markup, /incomplete/);
+  assert.doesNotMatch(markup, /incomplete/);
   assert.match(markup, /docs\/failure-report.md/);
+});
+
+test('failed file write attempts are not shown as changed files', () => {
+  const turn = turnWithTools([
+    {
+      id: 'tool-failed-write',
+      name: 'write',
+      status: 'error',
+      arguments: JSON.stringify({ path: '/root/tmp_test_task/README.md' }),
+      liveOutput: '',
+      resultText: 'Permission denied',
+      isError: true,
+    },
+    {
+      id: 'tool-successful-write',
+      name: 'write',
+      status: 'done',
+      arguments: JSON.stringify({ path: 'tmp_test_task.md' }),
+      liveOutput: '',
+      resultText: '+content',
+      isError: false,
+    },
+  ], {
+    status: 'failed',
+    succeeded: false,
+    error: 'Could not write under /root.',
+  });
+
+  assert.deepEqual(changedFileRowsFromTurn(turn), [{
+    path: 'tmp_test_task.md',
+    status: 'new',
+    artifactId: 'tmp_test_task.md',
+    diffStat: { added: 1, removed: 0 },
+  }]);
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  assert.match(markup, /Changed 1 file/);
+  assert.match(markup, /tmp_test_task.md/);
+  assert.doesNotMatch(markup, /\/root\/tmp_test_task\/README.md/);
 });
 
 test('long inline changed file lists collapse after five rows', () => {

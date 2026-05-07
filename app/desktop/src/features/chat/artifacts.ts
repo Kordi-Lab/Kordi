@@ -64,7 +64,8 @@ function changedFileStatusForTool(toolName: string): ChangedFileRow['status'] {
 
 function changedFileToolIsComplete(tool: DesktopChatTurnSnapshot['tools'][number], turnCompleted: boolean) {
   const status = tool.status.trim().toLowerCase();
-  return turnCompleted || tool.isError || status === 'done' || status === 'complete' || status === 'completed' || status === 'error';
+  if (tool.isError || status === 'error' || status.includes('failed')) return false;
+  return turnCompleted || status === 'done' || status === 'complete' || status === 'completed';
 }
 
 function isRelatedFileTool(toolName: string) {
