@@ -418,7 +418,11 @@ test('styles folded source quote expand control as muted overlay on the fade', (
   assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
   assert.match(sourceOverlayBlock, /position:\s*absolute/);
   assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
-  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(1\.2px\)/);
+  assert.match(sourceOverlayBlock, /background:\s*transparent/);
+  assert.match(sourceOverlayBlock, /border:\s*0/);
+  assert.match(sourceOverlayBlock, /backdrop-filter:\s*none/);
+  assert.match(sourceFoldedAfterBlock, /mask-image:\s*linear-gradient/);
+  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
 });
 
 test('styles reply attribution surfaces with stronger dark-mode contrast', () => {
