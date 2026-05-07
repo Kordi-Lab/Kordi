@@ -166,10 +166,6 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
       {title ? <div className="app-detail-kicker">{title}</div> : null}
       {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
       <div className="overflow-hidden rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)]/60">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-[color:var(--app-divider)] px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-[color:var(--utility-muted-text)]">
-          <span>Name</span>
-          <span>Modified</span>
-        </div>
         <div className="divide-y divide-[color:var(--app-divider)]">
           {artifacts.map((artifact) => {
             const displayName = artifact.name || fileNameFromPath(artifact.path);

@@ -212,6 +212,7 @@ test('artifact inspector renders generated artifacts and related changed files, 
         kind: 'code',
         summary: 'Related package metadata',
         category: 'related',
+        timeLabel: '11:19',
       },
       {
         id: 'lesson:conversation:session-123',
@@ -229,6 +230,9 @@ test('artifact inspector renders generated artifacts and related changed files, 
   assert.match(markup, /kordi-project-structure-report.md/);
   assert.match(markup, /data-artifact-section="related"/);
   assert.match(markup, /package\.json/);
+  assert.match(markup, /11:19/);
+  assert.doesNotMatch(markup, />Name</);
+  assert.doesNotMatch(markup, />Modified</);
   assert.doesNotMatch(markup, /Local files changed by assistant turns/);
   assert.doesNotMatch(markup, /Remote-only group files/);
   assert.doesNotMatch(markup, /data-artifact-section="memory"/);
