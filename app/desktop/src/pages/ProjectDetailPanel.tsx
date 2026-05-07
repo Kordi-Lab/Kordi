@@ -4,7 +4,7 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { ConversationParticipant, DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -19,8 +19,24 @@ type ProjectSession = {
   artifacts: number;
   tasks: number;
   taskActivities?: SessionTaskActivity[];
+  canonicalParticipants?: ConversationParticipant[];
   messages: Message[];
 };
+
+function projectTaskParticipantAvatarSeed(
+  participant: ConversationParticipant,
+  localProfileSeed?: string,
+  localAgentSeed?: string,
+) {
+  const fallbackSeed = participant.avatarKey?.trim() || participant.name;
+  if (participant.kind !== 'agent' && (participant.role === 'self' || /^(you|me)$/i.test(participant.name.trim()))) {
+    return localProfileSeed || getLocalProfileAvatarSeed() || fallbackSeed;
+  }
+  if (participant.kind === 'agent' && (participant.source === 'local' || participant.role === 'owned-agent')) {
+    return localAgentSeed || getLocalAgentAvatarSeed(participant.name) || fallbackSeed;
+  }
+  return fallbackSeed;
+}
 
 type ProjectWorkspace = {
   id: string;
@@ -356,6 +372,10 @@ export function ProjectDetailPanel({
         messages={activeProjectSession.messages}
         liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
         taskActivities={activeProjectSession.taskActivities ?? []}
+        targetParticipants={(activeProjectSession.canonicalParticipants ?? []).map((participant) => ({
+          ...participant,
+          avatarSeed: projectTaskParticipantAvatarSeed(participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed),
+        }))}
         emptyMessage="No planning or execution task activity in this project session yet."
         artifacts={projectArtifacts}
         onOpenArtifact={onOpenArtifact}

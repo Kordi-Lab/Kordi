@@ -22,8 +22,8 @@ use super::events::{
 };
 pub(super) use super::mailbox_events::parse_mailbox_event;
 use super::mailbox_events::{
-    bridge_response_is_done, bridge_response_payload, event_session_thread_has_parent_turn,
-    event_session_thread_target_kind, event_targets_group_session,
+    bridge_response_is_done, bridge_response_payload, bridge_response_payload_with_tools,
+    event_session_thread_has_parent_turn, event_session_thread_target_kind, event_targets_group_session,
     group_session_thread_relay_targets, should_buffer_partial_agent_response,
 };
 use super::outreach::mark_outreach_status;
@@ -38,7 +38,8 @@ use super::{
     note_peer_heartbeat_in_storage, note_peer_typing_in_storage, now_ms, poll_mailbox_v2,
     record_bridge_inbox_event_and_agent_job, relay_plaintext_message,
     update_message_delivery_state_in_storage, AckedMailboxEntry, BridgeAgentJobRecord,
-    BridgeInboxEventRecord, DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState,
+    BridgeInboxEventRecord, DesktopBridgeHostConfig, DesktopBridgeManager,
+    DesktopBridgeOutreachMetadata, DesktopBridgeSessionThreadMessage, DesktopBridgeState,
     DesktopBridgeStore,
 };
 
@@ -115,6 +116,41 @@ async fn deliver_agent_response_payload(
         )
         .await;
     }
+}
+
+fn model_task_tool_values(tools: &[crate::chat::DesktopChatToolSnapshot]) -> Vec<Value> {
+    tools
+        .iter()
+        .filter(|tool| {
+            let name = tool.name.trim().to_lowercase();
+            name == "task_operator" || name == "update_plan" || tool.is_error
+        })
+        .filter_map(|tool| serde_json::to_value(tool).ok())
+        .collect()
+}
+
+fn outreach_metadata_with_agent_task_tools(
+    host: &DesktopBridgeHostConfig,
+    event: &ParsedMailboxEvent,
+    peer_runtime: &str,
+    response_text: &str,
+    task_tools: &[Value],
+) -> Option<DesktopBridgeOutreachMetadata> {
+    let mut outreach = outreach_metadata_for_event(host, event, peer_runtime)?;
+    if task_tools.is_empty() {
+        return Some(outreach);
+    }
+    outreach
+        .parent_session_messages
+        .push(DesktopBridgeSessionThreadMessage {
+            role: "assistant".to_string(),
+            sender: None,
+            text: response_text.to_string(),
+            time_label: None,
+            index: None,
+            tools: task_tools.to_vec(),
+        });
+    Some(outreach)
 }
 
 async fn fanout_group_agent_response(
@@ -513,6 +549,7 @@ async fn execute_persisted_agent_job(
         Ok(final_snapshot) if final_snapshot.succeeded => {
             let assistant_text =
                 sanitize_agent_response_for_event(&event, &final_snapshot.assistant_text);
+            let task_tools = model_task_tool_values(&final_snapshot.tools);
             if !assistant_text.trim().is_empty() {
                 append_conversation_message_to_storage(
                     &target.host.id,
@@ -527,7 +564,13 @@ async fn execute_persisted_agent_job(
                         &event,
                         &peer_runtime,
                     )),
-                    outreach_metadata_for_event(&target.host, &event, &peer_runtime),
+                    outreach_metadata_with_agent_task_tools(
+                        &target.host,
+                        &event,
+                        &peer_runtime,
+                        &assistant_text,
+                        &task_tools,
+                    ),
                     BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
                     Some(response_sender_name.clone()),
                     assistant_text.clone(),
@@ -546,7 +589,7 @@ async fn execute_persisted_agent_job(
                     "projectId": event.project_id,
                     "messageType": BRIDGE_MESSAGE_TYPE_RESPONSE,
                     "requestId": event.request_id,
-                    "payload": bridge_response_payload(&event, &assistant_text, true),
+                    "payload": bridge_response_payload_with_tools(&event, &assistant_text, true, &task_tools),
                 });
                 deliver_agent_response_payload(Some(&manager), &target, &event, &response).await;
             }

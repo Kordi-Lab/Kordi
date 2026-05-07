@@ -12,8 +12,9 @@ use crate::support::text_result;
 use crate::{Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel};
 use cost::estimate_cost_microunits;
 use models::{
-    TaskEstimate, TaskEstimateRequest, TaskManifestRequest, TaskOperatorRequest,
-    TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse,
+    TaskCloseRequest, TaskCreateRequest, TaskEstimate, TaskEstimateRequest, TaskManifestRequest,
+    TaskOperatorRequest, TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse,
+    TaskSearchRequest,
 };
 use validation::validate_manifest_tasks;
 
@@ -26,7 +27,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Operator tool for Kordi task manifests, estimates, and local child task agents. Use for multi-step or parallelizable work with independent write scopes; keep immediate critical-path blockers local. Include taskTitle as a concise 5-10 word, user-facing name for the overall task when manifesting or spawning subtasks. Actions: manifest/estimate are planning-only; spawn starts a local child agent, message sends follow-up, wait observes completion, list reports task status, close aborts/closes a task. Side effects: spawn/message/close affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
+        "Operator tool for verifiable Kordi task events and local child task agents. Use create/search/close for durable user-visible task events; include taskTitle and involvedParticipants for shared tasks. Use manifest/estimate/spawn/message/wait/list for multi-step or parallelizable child-agent work. Actions: create records a task event, search records a verifiable task lookup, close records task closure or closes a child-agent path, manifest/estimate are planning-only, spawn starts a local child agent, message sends follow-up, wait observes completion, list reports child-agent status. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -35,12 +36,33 @@ impl Tool for TaskOperatorTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["manifest", "estimate", "spawn", "message", "wait", "list", "close"],
+                    "enum": ["create", "search", "manifest", "estimate", "spawn", "message", "wait", "list", "close"],
                     "description": "Task operator action."
                 },
                 "taskTitle": {
                     "type": "string",
-                    "description": "Optional concise 5-10 words user-facing title for the overall task shown in task panels; generate one when manifesting or spawning subtasks."
+                    "description": "Concise 5-10 words user-facing title for action=create or task close events; optional overall task title when manifesting or spawning subtasks."
+                },
+                "involvedParticipants": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Display names of the people or agents who need to be involved in this task. Include this for shared or multi-user tasks."
+                },
+                "taskId": {
+                    "type": "string",
+                    "description": "Stable id for action=create or action=close durable task events. Use lowercase letters, digits, dashes, or underscores when generating one."
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Short user-facing summary for action=create."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search text for action=search, or fallback match text for action=close when taskId/taskTitle is unavailable."
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Optional task status filter for action=search."
                 },
                 "tasks": {
                     "type": "array",
@@ -97,7 +119,7 @@ impl Tool for TaskOperatorTool {
                 },
                 "target": {
                     "type": "string",
-                    "description": "Task path for action=message or action=close."
+                    "description": "Child-agent task path for action=message or legacy child-agent action=close. Do not use this for user-visible task assignment."
                 },
                 "timeoutMs": {
                     "type": "number",
@@ -127,6 +149,8 @@ impl Tool for TaskOperatorTool {
             .map_err(|err| KordiError::Tool(format!("Invalid task_operator parameters: {err}")))?;
 
         match request {
+            TaskOperatorRequest::Create(request) => handle_create(request),
+            TaskOperatorRequest::Search(request) => handle_search(request),
             TaskOperatorRequest::Manifest(request) => handle_manifest(request, ctx),
             TaskOperatorRequest::Estimate(request) => handle_estimate(request, ctx),
             TaskOperatorRequest::Spawn(request) => {
@@ -141,11 +165,95 @@ impl Tool for TaskOperatorTool {
             TaskOperatorRequest::List(request) => {
                 handle_runtime(TaskOperatorRuntimeRequest::List(request), ctx).await
             }
-            TaskOperatorRequest::Close(request) => {
-                handle_runtime(TaskOperatorRuntimeRequest::Close(request), ctx).await
-            }
+            TaskOperatorRequest::Close(request) => handle_close(request, ctx).await
         }
     }
+}
+
+fn handle_create(request: TaskCreateRequest) -> KordiResult<ToolResult> {
+    let title = request.task_title.trim();
+    if title.is_empty() {
+        return Err(KordiError::Tool("taskTitle cannot be empty for task create".to_string()));
+    }
+    let task_id = request
+        .task_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("task_{}", Uuid::new_v4().simple()));
+    let summary = request.summary.as_deref().map(str::trim).filter(|value| !value.is_empty());
+
+    Ok(text_result(
+        format!("Task created: {title}"),
+        Some(json!({
+            "action": "create",
+            "status": "created",
+            "taskId": task_id,
+            "taskTitle": title,
+            "summary": summary,
+            "involvedParticipants": request.involved_participants,
+        })),
+    ))
+}
+
+fn handle_search(request: TaskSearchRequest) -> KordiResult<ToolResult> {
+    let query = request.query.trim();
+    if query.is_empty() {
+        return Err(KordiError::Tool("query cannot be empty for task search".to_string()));
+    }
+    Ok(text_result(
+        format!("Task search: {query}"),
+        Some(json!({
+            "action": "search",
+            "status": "searched",
+            "query": query,
+            "statusFilter": request.status,
+            "tasks": [],
+        })),
+    ))
+}
+
+async fn handle_close(request: TaskCloseRequest, ctx: &ToolContext) -> KordiResult<ToolResult> {
+    let child_agent_target = request
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|target| target.starts_with('/'));
+    if child_agent_target.is_some() {
+        return handle_runtime(TaskOperatorRuntimeRequest::Close(request), ctx).await;
+    }
+
+    let title = request
+        .task_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let task_id = request
+        .task_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let query = request
+        .query
+        .as_deref()
+        .or(request.target.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let label = title.or(task_id).or(query).ok_or_else(|| {
+        KordiError::Tool("task close requires taskId, taskTitle, query, or child-agent target".to_string())
+    })?;
+
+    Ok(text_result(
+        format!("Task closed: {label}"),
+        Some(json!({
+            "action": "close",
+            "status": "closed",
+            "taskId": task_id,
+            "taskTitle": title,
+            "query": query,
+        })),
+    ))
 }
 
 fn handle_manifest(request: TaskManifestRequest, ctx: &ToolContext) -> KordiResult<ToolResult> {
@@ -241,6 +349,13 @@ mod tests {
     use crate::task_operator::models::{TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse};
     use crate::{TaskOperatorFn, TaskOperatorRuntime, Tool, ToolContext, ToolLayer, ToolRiskLevel};
 
+    fn text_content(result: &crate::ToolResult) -> &str {
+        match result.content.as_slice() {
+            [kordi_core::types::ContentBlock::Text { text }] => text,
+            _ => panic!("expected single text result"),
+        }
+    }
+
     fn make_ctx(runtime: Option<TaskOperatorRuntime>) -> ToolContext {
         ToolContext {
             cwd: "/tmp".into(),
@@ -281,6 +396,53 @@ mod tests {
 
         assert!(description.contains("overall task"));
         assert!(description.contains("5-10 words"));
+    }
+
+    #[tokio::test]
+    async fn task_operator_create_search_and_close_emit_verifiable_events_without_runtime() {
+        let tool = super::TaskOperatorTool;
+        let create = tool
+            .execute(
+                serde_json::json!({
+                    "action": "create",
+                    "taskId": "task_user_2",
+                    "taskTitle": "Test Task For Kordi User 2",
+                    "summary": "Verify task visibility across the group.",
+                    "involvedParticipants": ["Kordi User 2"]
+                }),
+                &make_ctx(None),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("create should not require child-agent runtime");
+        assert_eq!(text_content(&create), "Task created: Test Task For Kordi User 2");
+        assert_eq!(create.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("created"));
+        assert_eq!(create.details.as_ref().and_then(|value| value.get("taskId")).and_then(|value| value.as_str()), Some("task_user_2"));
+
+        let search = tool
+            .execute(
+                serde_json::json!({ "action": "search", "query": "Kordi User 2", "status": "open" }),
+                &make_ctx(None),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("search should emit a verifiable query event");
+        assert_eq!(search.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("searched"));
+
+        let close = tool
+            .execute(
+                serde_json::json!({
+                    "action": "close",
+                    "taskId": "task_user_2",
+                    "taskTitle": "Test Task For Kordi User 2"
+                }),
+                &make_ctx(None),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("close should emit a verifiable task event");
+        assert_eq!(text_content(&close), "Task closed: Test Task For Kordi User 2");
+        assert_eq!(close.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("closed"));
     }
 
     #[tokio::test]

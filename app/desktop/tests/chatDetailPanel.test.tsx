@@ -81,7 +81,7 @@ test('chat detail panel keeps outreach threads out of the normal info view', () 
   assert.doesNotMatch(markup, /Internal outreach copy/);
 });
 
-test('chat detail task panel renders delegated task in the existing task row style', () => {
+test('chat detail task panel renders model-created task rows, not simple delegation rows', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
     activeDetailTab: 'tasks',
@@ -96,7 +96,40 @@ test('chat detail task panel renders delegated task in the existing task row sty
       trust: 'Bridge',
       directness: 'Group chat',
       participants: ['Me', 'Alice', 'Remote Kordi'],
-      messages: [],
+      messages: [{
+        id: 'msg:remote-agent-task-response',
+        role: 'external-agent',
+        sender: 'Remote Kordi',
+        senderType: 'agent',
+        isOwnMessage: false,
+        showSenderMeta: true,
+        text: '',
+        time: '13:58',
+        turn: {
+          id: 'turn:remote-agent-task-response',
+          sessionId: 'session:group:weekend-plan',
+          prompt: '',
+          status: 'complete',
+          message: 'Complete',
+          assistantText: 'Done — I created a temporary test task for us and marked it complete.',
+          thinkingText: '',
+          tools: [{
+            id: 'tool:task-operator',
+            name: 'task_operator',
+            status: 'done',
+            arguments: JSON.stringify({ taskTitle: 'Temporary Test Task', plan: [{ step: 'Create temporary test task', status: 'completed' }] }),
+            liveOutput: '',
+            resultText: 'Done',
+            detail: null,
+            artifactPath: null,
+            toolLayer: null,
+            isError: false,
+          }],
+          completed: true,
+          succeeded: true,
+          error: null,
+        },
+      }],
       taskActivities: [{
         id: 'delegation:1',
         sessionId: 'session:group:weekend-plan',
@@ -130,11 +163,11 @@ test('chat detail task panel renders delegated task in the existing task row sty
     onSelectArtifact: () => {},
   }));
 
-  assert.match(markup, /Remote Kordi/);
-  assert.match(markup, /Delegated by Me/);
-  assert.match(markup, /Shared with 3 participants/);
-  assert.match(markup, /Running/);
-  assert.doesNotMatch(markup, /Research Agent relay/);
+  assert.match(markup, /Temporary Test Task/);
+  assert.match(markup, /data-task-action="jump-response"/);
+  assert.doesNotMatch(markup, /Remote Kordi<\/div><div class="mt-1 app-inspector-text-block">Running/);
+  assert.doesNotMatch(markup, /Delegated by Me/);
+  assert.doesNotMatch(markup, /Shared with 3 participants/);
 });
 
 test('chat detail task panel renders empty task state', () => {

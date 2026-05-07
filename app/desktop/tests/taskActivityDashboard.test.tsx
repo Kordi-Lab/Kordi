@@ -138,12 +138,12 @@ test('right-panel task dashboard nests subagent tasks under the whole request', 
 
   assert.equal(dashboard.tasks.length, 2);
   assert.equal(dashboard.tasks[0].title, 'review the code and give me a report');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
   assert.equal(dashboard.tasks[0].subtasks.length, 2);
   assert.equal(dashboard.tasks[0].subtasks[0].title, 'Inspect');
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks[1].title, 'research_docs');
-  assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Subagent active');
+  assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks[1].target, '/root/research_docs');
   assert.deepEqual(dashboard.tasks[0].subtasks[1].writeScope, ['docs']);
   assert.equal(dashboard.tasks[1].title, 'run tests');
@@ -250,6 +250,216 @@ test('task dashboard nests manifest tasks under the whole request before subagen
   assert.equal(dashboard.tasks[0].subtasks[0].title, 'Inspect task UI');
   assert.equal(dashboard.tasks[0].subtasks[0].summary, 'Review the task panel layout and copy.');
   assert.equal(dashboard.tasks[0].subtasks[0].statusLabel, 'Planned');
+});
+
+test('task panel shows model-declared involved participant avatars on task rows', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-target-avatar',
+    sessionId: 'session:group:target-avatar',
+    prompt: '@Kordi create a task for Kordi User 2',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Opened another test task: “Test Task For User 2”.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    error: null,
+    tools: [{
+      id: 'task-target-avatar',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ taskTitle: 'Test Task For User 2', taskName: 'test_for_user_2', action: 'spawn', involvedParticipants: ['Kordi User 2'] }),
+      liveOutput: '',
+      resultText: 'Task agent running: /root/test_for_user_2',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [
+      { id: 'human:user-2', name: 'Kordi User 2', kind: 'human', role: 'person', avatarKey: 'kordi-user-2' },
+      { id: 'human:user-3', name: 'Kordi User 3', kind: 'human', role: 'person', avatarKey: 'kordi-user-3' },
+    ],
+  }));
+
+  assert.match(markup, /Kordi User 2 avatar/);
+  assert.doesNotMatch(markup, /Kordi User 3 avatar/);
+});
+
+test('task panel shows fallback involved participant avatars when canonical participants have not synced yet', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-target-avatar-fallback',
+    sessionId: 'session:group:target-avatar',
+    prompt: '@Kordi create a task for Kordi User 6',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Created a test task for Kordi User 6.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    error: null,
+    tools: [{
+      id: 'task-target-avatar-fallback',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ action: 'create', taskTitle: 'Test Task For Kordi User 6', involvedParticipants: ['Kordi User 6'] }),
+      liveOutput: '',
+      resultText: 'Task created: Test Task For Kordi User 6',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [],
+  }));
+
+  assert.match(markup, /Kordi User 6 avatar/);
+});
+
+test('task panel uses the matched canonical participant avatar instead of a fallback avatar', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-target-avatar-deterministic',
+    sessionId: 'session:group:target-avatar',
+    prompt: '@Kordi create a task for Kordi User 2',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Created a test task for Kordi User 2.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    error: null,
+    tools: [{
+      id: 'task-target-avatar-deterministic',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ action: 'create', taskTitle: 'Pay The Bill Task 4', involvedParticipants: ['Kordi User 2'] }),
+      liveOutput: '',
+      resultText: 'Task created: Pay The Bill Task 4',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const withMatchedParticipant = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [{ id: 'human:user-2', name: 'Kordi User 2', kind: 'human', role: 'person', avatarKey: 'different-local-key' }],
+  }));
+  const withFallbackParticipant = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [],
+  }));
+
+  assert.notEqual(withMatchedParticipant, withFallbackParticipant);
+});
+
+test('task dashboard creates and closes durable task_operator task events by task id', () => {
+  const createTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create',
+    sessionId: 'session-1',
+    prompt: '@KordiUser2sKordi create a task for your owner',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created a test task for Kordi User 2.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-1',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"create","taskId":"task_user_2","taskTitle":"Test Task For Kordi User 2","summary":"Verify task visibility across the group.","involvedParticipants":["Kordi User 2"]}',
+      liveOutput: '',
+      resultText: 'Task created: Test Task For Kordi User 2',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const closeTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-close',
+    sessionId: 'session-1',
+    prompt: '@KordiUser2sKordi close the task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Closed the test task for Kordi User 2.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'close-1',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"close","taskId":"task_user_2","taskTitle":"Test Task For Kordi User 2"}',
+      liveOutput: '',
+      resultText: 'Task closed: Test Task For Kordi User 2',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({
+    messages: [assistantTurnMessage(createTurn), assistantTurnMessage(closeTurn)],
+  });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Test Task For Kordi User 2');
+  assert.equal(dashboard.tasks[0].status, 'closed');
+  assert.equal(dashboard.tasks[0].statusLabel, 'Closed');
+  assert.deepEqual(dashboard.tasks[0].involvedParticipantNames, ['Kordi User 2']);
+});
+
+test('task dashboard merges task events by task id when title text differs', () => {
+  const firstTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-task-id-a',
+    sessionId: 'session-1',
+    prompt: '@Kordi create task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-a',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"create","taskId":"shared_task_1","taskTitle":"First Visible Title","involvedParticipants":["Kordi User 2"]}',
+      liveOutput: '',
+      resultText: 'Task created: First Visible Title',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const secondTurn: DesktopChatTurnSnapshot = {
+    ...firstTurn,
+    id: 'turn-task-id-b',
+    assistantText: 'Created the task for you.',
+    tools: [{ ...firstTurn.tools[0], id: 'create-b', arguments: '{"action":"create","taskId":"shared_task_1","taskTitle":"Second Visible Title","involvedParticipants":["Kordi User 2"]}' }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(firstTurn), assistantTurnMessage(secondTurn)] });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].taskId, 'shared_task_1');
 });
 
 test('task dashboard prefers model-generated task titles from tool arguments', () => {
@@ -929,26 +1139,26 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
   assert.doesNotMatch(markup, />▸</);
   assert.doesNotMatch(markup, />Done</);
   assert.match(markup, /review code/);
-  assert.equal(markup.match(/1 active subtask/g)?.length, 1);
+  assert.equal(markup.match(/1 subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
 });
 
-test('task panel shows running subtasks with a circle and elapsed time', () => {
-  const messages: Message[] = [assistantTurnMessage({
+test('task panel shows running subtasks with a circle and elapsed time only for live tool work', () => {
+  const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
     sessionId: 'session-1',
     prompt: '@Kordi review code',
-    status: 'succeeded',
-    message: 'Response complete',
+    status: 'tooling',
+    message: 'Running tool…',
     assistantText: '',
     thinkingText: '',
-    completed: true,
-    succeeded: true,
+    completed: false,
+    succeeded: false,
     tools: [
       {
         id: 'spawn-1',
         name: 'task_operator',
-        status: 'done',
+        status: 'running',
         arguments: '{"action":"spawn","taskName":"research_docs","message":"Inspect docs"}',
         liveOutput: '',
         resultText: 'Task agent running: /root/research_docs',
@@ -958,17 +1168,16 @@ test('task panel shows running subtasks with a circle and elapsed time', () => {
         isError: false,
       },
     ],
-  })];
+  };
 
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
-    messages,
-    liveTurn: null,
+    messages: [],
+    liveTurn,
     emptyMessage: 'No tasks',
   }));
 
   assert.match(markup, /data-subtask-status-icon="circle"/);
   assert.match(markup, /Running · 0s/);
-  assert.doesNotMatch(markup, /Subagent active/);
 });
 
 test('task dashboard exposes response and generated artifact links for task rows', () => {

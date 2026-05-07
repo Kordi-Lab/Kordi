@@ -159,9 +159,34 @@ pub(super) fn bridge_response_payload(
     message: &str,
     done: bool,
 ) -> Value {
+    bridge_response_payload_with_tools(event, message, done, &[])
+}
+
+pub(super) fn bridge_response_payload_with_tools(
+    event: &ParsedMailboxEvent,
+    message: &str,
+    done: bool,
+    tools: &[Value],
+) -> Value {
     let mut payload = serde_json::json!({ "message": message, "done": done });
     if let Some(thread) = event_session_thread(event) {
-        payload["sessionThread"] = thread.clone();
+        let mut thread = thread.clone();
+        if !tools.is_empty() {
+            let task_message = serde_json::json!({
+                "role": "assistant",
+                "sender": null,
+                "text": message,
+                "timeLabel": null,
+                "index": null,
+                "tools": tools,
+            });
+            if let Some(messages) = thread.get_mut("messages").and_then(Value::as_array_mut) {
+                messages.push(task_message);
+            } else {
+                thread["messages"] = serde_json::json!([task_message]);
+            }
+        }
+        payload["sessionThread"] = thread;
     }
     payload
 }

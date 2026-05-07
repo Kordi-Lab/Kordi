@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ProjectDetailPanel } from '../src/pages/ProjectDetailPanel';
 
-test('project detail task panel renders active session task activity in the existing task row style', () => {
+test('project detail task panel ignores simple delegated chat task activity rows', () => {
   const activeProjectSession = {
     id: 'session:project:one',
     name: 'Project session',
@@ -67,10 +67,9 @@ test('project detail task panel renders active session task activity in the exis
     onSelectArtifact: () => {},
   }));
 
-  assert.doesNotMatch(markup, /Project task summary/);
-  assert.match(markup, /app-inspector-source-row/);
-  assert.match(markup, /Remote Kordi/);
-  assert.match(markup, /Complete/);
-  assert.match(markup, /Delegated by Me/);
-  assert.match(markup, /Shared with 2 participants/);
+  assert.match(markup, /No planning or execution task activity in this project session yet/);
+  assert.doesNotMatch(markup, /app-inspector-source-row/);
+  assert.doesNotMatch(markup, /Remote Kordi/);
+  assert.doesNotMatch(markup, /Delegated by Me/);
+  assert.doesNotMatch(markup, /Shared with 2 participants/);
 });

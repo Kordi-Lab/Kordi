@@ -1,4 +1,4 @@
-import type { ConversationBridgeTarget, DesktopBridgeSessionParticipant, DesktopBridgeState } from '@/kordi-app/types';
+import type { ConversationBridgeTarget, DesktopBridgeSessionParticipant, DesktopBridgeSessionThreadMessage, DesktopBridgeState, DesktopChatToolSnapshot } from '@/kordi-app/types';
 import { createDesktopBridgeOutreach } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
@@ -26,6 +26,8 @@ export type RelaySharedSessionMessageOptions = {
   parentSessionKind?: string | null;
   parentGroupSpaceId?: string | null;
   parentSessionParticipants?: DesktopBridgeSessionParticipant[];
+  parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
+  taskTools?: DesktopChatToolSnapshot[];
   attachments?: AttachmentItem[];
 };
 
@@ -40,6 +42,19 @@ export async function relaySharedSessionMessage(
   bridgeRequestId?: string | null,
   options: RelaySharedSessionMessageOptions = {},
 ) {
+  const taskTools = (options.taskTools ?? []).filter((tool) => tool.name.trim().toLowerCase() === 'task_operator' || tool.name.trim().toLowerCase() === 'update_plan' || tool.isError);
+  const parentSessionMessages = [
+    ...(options.parentSessionMessages ?? []),
+    ...(taskTools.length > 0 ? [{
+      role: 'assistant',
+      sender: null,
+      text: requestText,
+      timeLabel: null,
+      index: null,
+      tools: taskTools,
+    }] : []),
+  ];
+
   return createDesktopBridgeOutreach({
     hostId: target.hostId,
     targetNodeId: target.nodeId,
@@ -58,7 +73,7 @@ export async function relaySharedSessionMessage(
     parentSessionKind: options.parentSessionKind,
     parentGroupSpaceId: options.parentGroupSpaceId,
     parentSessionParticipants: options.parentSessionParticipants ?? [],
-    parentSessionMessages: [],
+    parentSessionMessages,
     parentTurnId,
     parentMessageId,
     bridgeRequestId,

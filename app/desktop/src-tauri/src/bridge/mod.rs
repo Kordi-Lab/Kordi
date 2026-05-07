@@ -307,6 +307,8 @@ pub struct DesktopBridgeSessionThreadMessage {
     pub text: String,
     pub time_label: Option<String>,
     pub index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

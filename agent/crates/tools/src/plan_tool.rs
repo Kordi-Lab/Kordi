@@ -14,6 +14,8 @@ struct UpdatePlanInput {
     explanation: Option<String>,
     #[serde(default)]
     task_title: Option<String>,
+    #[serde(default)]
+    involved_participants: Vec<String>,
     plan: Vec<PlanItem>,
 }
 
@@ -47,6 +49,11 @@ impl Tool for UpdatePlanTool {
                 "taskTitle": {
                     "type": "string",
                     "description": "Optional concise 5-10 words user-facing title for the overall task shown in task panels; generate one for long-running or multi-step work."
+                },
+                "involvedParticipants": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Display names of the people or agents who need to be involved in this task. Include this for shared or multi-user tasks."
                 },
                 "plan": {
                     "type": "array",
@@ -90,6 +97,7 @@ impl Tool for UpdatePlanTool {
             Some(json!({
                 "explanation": input.explanation,
                 "taskTitle": input.task_title,
+                "involvedParticipants": input.involved_participants,
                 "plan": input.plan,
             })),
         ))

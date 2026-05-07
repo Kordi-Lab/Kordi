@@ -797,6 +797,151 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
 }
 
 #[test]
+fn stale_group_agent_processing_relay_response_is_marked_failed() {
+    let conn = test_conn();
+    for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
+        ("human:local", "human", "Local", Some("kh_local"), Some("kd_local"), None, None),
+        ("human:remote", "human", "Remote", Some("kh_remote"), Some("kd_remote"), None, None),
+        ("agent:remote", "agent", "Remote Kordi", None, Some("kd_remote"), Some("human:remote"), Some("ka_remote")),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_id.map(ToString::to_string),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: node_id.map(ToString::to_string),
+                human_id: human_id.map(ToString::to_string),
+                agent_id: agent_id.map(ToString::to_string),
+                avatar_key: human_id.or(agent_id).map(ToString::to_string),
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:stale-processing-relay";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("Task group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:local".to_string(), "human:remote".to_string(), "agent:remote".to_string()],
+            metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
+        },
+    )
+    .expect("seed group");
+
+    let stale_timestamp_ms = crate::bridge::BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS + 1_000;
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Task group".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some(parent_session_id.to_string()),
+        parent_session_participants: Vec::new(),
+        parent_session_messages: Vec::new(),
+        initiator_identity: None,
+        self_target_identity: None,
+        parent_turn_id: Some("turn:remote".to_string()),
+        parent_message_id: Some("msg:parent:request".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:remote-person".to_string()),
+        bridge_request_id: Some("bridge_req_stale_processing".to_string()),
+        delivery_state: Some("processing".to_string()),
+        target_node_id: "kd_remote".to_string(),
+        target_human_id: Some("kh_remote".to_string()),
+        target_agent_id: Some("ka_remote".to_string()),
+        target_display_name: "Remote Kordi".to_string(),
+        target_owner_name: Some("Remote".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "@RemoteKordi create a task".to_string(),
+        trigger_text: Some("@RemoteKordi create a task".to_string()),
+        context_text: None,
+        context_policy: Some("session-relay".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "processing".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: stale_timestamp_ms,
+        completed_at_ms: None,
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:remote-person".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_remote".to_string(),
+        peer_display_name: Some("Remote".to_string()),
+        peer_owner_name: Some("Remote".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Remote".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: stale_timestamp_ms,
+        updated_at_label: "10:00".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_stale_processing".to_string(),
+        direction: "inbound-response".to_string(),
+        sender: Some("Remote Kordi".to_string()),
+        text: "processing...".to_string(),
+        time_label: "10:00".to_string(),
+        timestamp_ms: stale_timestamp_ms,
+        request_id: outreach.bridge_request_id.clone(),
+        delivery_state: Some("processing".to_string()),
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local",
+        None,
+        Some("human:remote"),
+        "human:remote",
+        false,
+    )
+    .expect("sync stale processing response");
+
+    let row: (String, String, String) = conn
+        .query_row(
+            "SELECT content_text, status, json_extract(content_json, '$.deliveryState')
+             FROM session_messages
+             WHERE session_id = ?1 AND sender_role = 'external-agent' AND message_kind = 'agent-turn'",
+            rusqlite::params![parent_session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("stale response row");
+
+    assert_eq!(row.0, crate::bridge::BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT);
+    assert_eq!(row.1, "failed");
+    assert_eq!(row.2, "processing_failed");
+}
+
+#[test]
 fn group_person_session_message_does_not_create_delegated_exchange_task() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [

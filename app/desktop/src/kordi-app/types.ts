@@ -298,6 +298,7 @@ export type ProjectSession = {
   artifacts: number;
   tasks: number;
   taskActivities?: SessionTaskActivity[];
+  canonicalParticipants?: ConversationParticipant[];
   unread: number;
   statusIndicator?: SessionStatusIndicator;
   reflectionLessonArtifacts?: SessionArtifact[];
@@ -788,6 +789,7 @@ export type DesktopBridgeSessionThreadMessage = {
   text: string;
   timeLabel?: string | null;
   index?: number | null;
+  tools?: DesktopChatToolSnapshot[];
 };
 
 export type DesktopBridgeSessionParticipant = {

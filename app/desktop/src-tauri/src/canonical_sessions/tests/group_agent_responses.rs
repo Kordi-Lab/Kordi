@@ -117,7 +117,22 @@ fn group_local_agent_response_fanout_reconciles_duplicate_response_copies() {
             parent_session_kind: Some("group".to_string()),
             parent_group_space_id: Some(parent_session_id.to_string()),
             parent_session_participants: Vec::new(),
-            parent_session_messages: Vec::new(),
+            parent_session_messages: vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+                role: "assistant".to_string(),
+                sender: Some("Local Kordi".to_string()),
+                text: "weather answer".to_string(),
+                time_label: Some("10:03".to_string()),
+                index: None,
+                tools: vec![serde_json::json!({
+                    "id": "tool_task_operator",
+                    "name": "task_operator",
+                    "status": "done",
+                    "arguments": "{\"taskTitle\":\"Temporary Test Task\",\"plan\":[]}",
+                    "liveOutput": "",
+                    "resultText": "Done",
+                    "isError": false
+                })],
+            }],
             initiator_identity: None,
             self_target_identity: None,
             parent_turn_id: Some("turn:local-agent".to_string()),
@@ -200,6 +215,17 @@ fn group_local_agent_response_fanout_reconciles_duplicate_response_copies() {
         )
         .expect("agent response count");
     assert_eq!(message_count, 1);
+
+    let synced_tool_title: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.tools[0].arguments')
+             FROM session_messages
+             WHERE session_id = ?1 AND message_kind = 'agent-turn'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("synced task tool arguments");
+    assert!(synced_tool_title.contains("Temporary Test Task"));
 }
 
 #[test]

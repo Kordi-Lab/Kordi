@@ -847,6 +847,7 @@ fn inbound_group_session_invite_imports_snapshot_messages() {
                 text: "Earlier question".to_string(),
                 time_label: Some("13:04".to_string()),
                 index: Some(0),
+                tools: Vec::new(),
             },
             crate::bridge::DesktopBridgeSessionThreadMessage {
                 role: "person".to_string(),
@@ -854,6 +855,7 @@ fn inbound_group_session_invite_imports_snapshot_messages() {
                 text: "Earlier reply".to_string(),
                 time_label: Some("13:05".to_string()),
                 index: Some(1),
+                tools: Vec::new(),
             },
         ],
         initiator_identity: None,

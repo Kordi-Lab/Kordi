@@ -57,6 +57,7 @@ import {
   prepareCanonicalUserMessage,
 } from './optimistic';
 import { pendingOutreachFromState, relaySharedSessionMessage } from './relay';
+import type { RelaySharedSessionMessageOptions } from './relay';
 import type { PendingBridgeOutreach } from './types';
 
 export type LocalChatSendInFlight = {
@@ -1276,7 +1277,7 @@ export function useChatMessageActions({
         parentTurnId?: string | null,
         deliveryState?: 'processing' | LocalAgentRelayTerminalDeliveryState,
         bridgeRequestId?: string | null,
-        attachments?: typeof chatComposerAttachments,
+        options: Pick<RelaySharedSessionMessageOptions, 'attachments' | 'taskTools'> = {},
       ) => {
         if (!localAgentRelayPlan) return;
         for (const target of localAgentRelayPlan.targets) {
@@ -1293,7 +1294,8 @@ export function useChatMessageActions({
               parentSessionKind: localAgentRelayPlan.parentSessionKind,
               parentGroupSpaceId: localAgentRelayPlan.parentGroupSpaceId,
               parentSessionParticipants: localAgentRelayPlan.parentSessionParticipants,
-              attachments,
+              attachments: options.attachments,
+              taskTools: options.taskTools,
             },
           );
           setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
@@ -1333,7 +1335,7 @@ export function useChatMessageActions({
               null,
               undefined,
               undefined,
-              chatComposerAttachments,
+              { attachments: chatComposerAttachments },
             ).catch((error: unknown) => {
               setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
             })
@@ -1392,6 +1394,7 @@ export function useChatMessageActions({
                 completedTurn.id,
                 terminalDeliveryState,
                 localAgentBridgeRequestId,
+                { taskTools: completedTurn.tools },
               );
             } catch (error) {
               await awaitRelayProgressBeforeTerminal(processingRelayPromise);
@@ -1408,6 +1411,7 @@ export function useChatMessageActions({
                 completedTurn?.id ?? turn.id,
                 wasCancelled ? 'cancelled' : 'processing_failed',
                 localAgentBridgeRequestId,
+                completedTurn ? { taskTools: completedTurn.tools } : undefined,
               );
               throw error;
             } finally {
