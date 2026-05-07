@@ -117,7 +117,22 @@ fn group_local_agent_response_fanout_reconciles_duplicate_response_copies() {
             parent_session_kind: Some("group".to_string()),
             parent_group_space_id: Some(parent_session_id.to_string()),
             parent_session_participants: Vec::new(),
-            parent_session_messages: Vec::new(),
+            parent_session_messages: vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+                role: "assistant".to_string(),
+                sender: Some("Local Kordi".to_string()),
+                text: "weather answer".to_string(),
+                time_label: Some("10:03".to_string()),
+                index: None,
+                tools: vec![serde_json::json!({
+                    "id": "tool_task_operator",
+                    "name": "task_operator",
+                    "status": "done",
+                    "arguments": "{\"taskTitle\":\"Temporary Test Task\",\"plan\":[]}",
+                    "liveOutput": "",
+                    "resultText": "Done",
+                    "isError": false
+                })],
+            }],
             initiator_identity: None,
             self_target_identity: None,
             parent_turn_id: Some("turn:local-agent".to_string()),
@@ -200,6 +215,17 @@ fn group_local_agent_response_fanout_reconciles_duplicate_response_copies() {
         )
         .expect("agent response count");
     assert_eq!(message_count, 1);
+
+    let synced_tool_title: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.tools[0].arguments')
+             FROM session_messages
+             WHERE session_id = ?1 AND message_kind = 'agent-turn'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("synced task tool arguments");
+    assert!(synced_tool_title.contains("Temporary Test Task"));
 }
 
 #[test]
@@ -559,4 +585,141 @@ fn inbound_group_local_agent_response_join_uses_response_sender_agent() {
         )
         .expect("response sender");
     assert_eq!(response_sender, "Testuser5's Kordi");
+}
+
+
+#[test]
+fn group_local_agent_response_relay_creates_delegated_exchange_task() {
+    let conn = test_conn();
+    for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
+        ("human:local", "human", "Local", Some("kh_local"), Some("kd_local"), None, None),
+        ("human:remote", "human", "Remote", Some("kh_remote"), Some("kd_remote"), None, None),
+        ("agent:local", "agent", "Local Kordi", None, Some("kd_local"), Some("human:local"), Some("ka_local")),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_id.map(ToString::to_string),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: node_id.map(ToString::to_string),
+                human_id: human_id.map(ToString::to_string),
+                agent_id: agent_id.map(ToString::to_string),
+                avatar_key: human_id.or(agent_id).map(ToString::to_string),
+                profile_image_url: None,
+                metadata: None,
+            },
+        ).expect("upsert identity");
+    }
+
+    let parent_session_id = "session:group:local-agent-task";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "group".to_string(),
+            title: Some("Local agent group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:local".to_string(), "human:remote".to_string(), "agent:local".to_string()],
+            metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
+        },
+    ).expect("seed group");
+
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-person".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Local agent group".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some(parent_session_id.to_string()),
+        parent_session_participants: Vec::new(),
+        parent_session_messages: Vec::new(),
+        initiator_identity: None,
+        self_target_identity: None,
+        parent_turn_id: Some("turn:local-agent".to_string()),
+        parent_message_id: Some("msg:local-agent-request".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:remote".to_string()),
+        bridge_request_id: Some("bridge_req_local_agent_task".to_string()),
+        delivery_state: Some("responded".to_string()),
+        target_node_id: "kd_remote".to_string(),
+        target_human_id: Some("kh_remote".to_string()),
+        target_agent_id: None,
+        target_display_name: "Remote".to_string(),
+        target_owner_name: Some("Remote".to_string()),
+        target_runtime: Some("person".to_string()),
+        request_text: "local answer".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("session-relay".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 2_000,
+        updated_at_ms: 2_100,
+        completed_at_ms: Some(2_100),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:remote".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_remote".to_string(),
+        peer_display_name: Some("Remote".to_string()),
+        peer_owner_name: Some("Remote".to_string()),
+        peer_runtime: "person".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Remote".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_100,
+        updated_at_label: "10:03".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![crate::bridge::DesktopBridgeConversationMessage {
+        id: "bridge_msg_local_agent_relay".to_string(),
+        direction: "outbound-response".to_string(),
+        sender: Some("Local Kordi".to_string()),
+        text: "local answer".to_string(),
+        time_label: "10:03".to_string(),
+        timestamp_ms: 2_100,
+        request_id: outreach.bridge_request_id.clone(),
+        delivery_state: Some("responded".to_string()),
+        outreach: Some(outreach.clone()),
+        attachments: Vec::new(),
+    }];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local",
+        Some("agent:local"),
+        Some("human:remote"),
+        "human:remote",
+        false,
+    ).expect("sync local agent relay task");
+
+    let row: (String, String, String) = conn.query_row(
+        "SELECT initiator_identity_id, target_identity_id, status FROM delegated_exchanges WHERE session_id = ?1",
+        rusqlite::params![parent_session_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).expect("delegated exchange");
+    assert_eq!(row.0, "agent:local");
+    assert_eq!(row.1, "agent:local");
+    assert_eq!(row.2, "complete");
 }

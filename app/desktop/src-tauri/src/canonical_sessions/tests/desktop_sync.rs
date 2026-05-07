@@ -876,6 +876,7 @@ fn snapshot_you_sender_uses_remote_human_name_for_receiver() {
             text: "check todays weather again for jeddah".to_string(),
             time_label: Some("22:07".to_string()),
             index: Some(0),
+            tools: Vec::new(),
         }],
         initiator_identity: None,
         self_target_identity: None,

@@ -27,6 +27,32 @@ use crate::bridge::{
     DesktopBridgeOutreachMetadata,
 };
 
+fn outreach_has_model_task_tools(outreach: &DesktopBridgeOutreachMetadata) -> bool {
+    outreach.parent_session_messages.iter().any(|message| {
+        message.tools.iter().any(|tool| {
+            let name = tool
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+            name == "task_operator" || name == "update_plan"
+        })
+    })
+}
+
+fn should_replace_message_outreach(
+    existing: Option<&DesktopBridgeOutreachMetadata>,
+    incoming: Option<&DesktopBridgeOutreachMetadata>,
+) -> bool {
+    let Some(incoming) = incoming else {
+        return false;
+    };
+    existing.is_none()
+        || (outreach_has_model_task_tools(incoming)
+            && !existing.is_some_and(outreach_has_model_task_tools))
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::bridge) struct BridgeInboxEventInsert {
@@ -628,7 +654,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage_with_timestamp(
             if let Some(delivery_state) = delivery_state {
                 message.delivery_state = Some(delivery_state);
             }
-            if message.outreach.is_none() {
+            if should_replace_message_outreach(message.outreach.as_ref(), message_outreach.as_ref()) {
                 message.outreach = message_outreach.clone();
             }
             if !attachments.is_empty() {
@@ -994,4 +1020,77 @@ pub(in crate::bridge) fn delete_conversations_for_host(host_id: &str) -> Result<
     .map_err(sqlite_error)?;
     tx.commit().map_err(sqlite_error)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::DesktopBridgeSessionThreadMessage;
+
+    fn test_outreach_with_tools(tools: Vec<serde_json::Value>) -> DesktopBridgeOutreachMetadata {
+        DesktopBridgeOutreachMetadata {
+            target_kind: "bridge-agent".to_string(),
+            parent_session_id: Some("session:group:test".to_string()),
+            parent_session_title: Some("Group".to_string()),
+            parent_session_kind: Some("group".to_string()),
+            parent_group_space_id: Some("session:group:test".to_string()),
+            parent_session_participants: Vec::new(),
+            parent_session_messages: if tools.is_empty() {
+                Vec::new()
+            } else {
+                vec![DesktopBridgeSessionThreadMessage {
+                    role: "assistant".to_string(),
+                    sender: None,
+                    text: "Created task".to_string(),
+                    time_label: None,
+                    index: None,
+                    tools,
+                }]
+            },
+            initiator_identity: None,
+            self_target_identity: None,
+            parent_turn_id: None,
+            parent_message_id: Some("msg:parent".to_string()),
+            bridge_host_id: "host-1".to_string(),
+            bridge_conversation_id: Some("bridge:host-1:peer-1".to_string()),
+            bridge_request_id: Some("req-1".to_string()),
+            delivery_state: Some("processing".to_string()),
+            target_node_id: "peer-1".to_string(),
+            target_human_id: Some("human-1".to_string()),
+            target_agent_id: Some("agent-1".to_string()),
+            target_display_name: "Peer Kordi".to_string(),
+            target_owner_name: Some("Peer".to_string()),
+            target_runtime: Some("kordi-desktop".to_string()),
+            request_text: "Create task".to_string(),
+            trigger_text: None,
+            context_text: None,
+            context_policy: Some("session-relay".to_string()),
+            project_id: None,
+            project_name: None,
+            status: "completed".to_string(),
+            created_at_ms: 1_000,
+            updated_at_ms: 1_000,
+            completed_at_ms: Some(1_000),
+            error: None,
+        }
+    }
+
+    #[test]
+    fn message_outreach_with_task_tools_replaces_processing_placeholder_outreach() {
+        let existing = test_outreach_with_tools(Vec::new());
+        let incoming = test_outreach_with_tools(vec![serde_json::json!({
+            "name": "task_operator",
+            "arguments": "{\"action\":\"create\",\"taskTitle\":\"Pay The Bill\"}"
+        })]);
+
+        assert!(should_replace_message_outreach(Some(&existing), Some(&incoming)));
+    }
+
+    #[test]
+    fn message_outreach_without_task_tools_does_not_replace_existing_outreach() {
+        let existing = test_outreach_with_tools(Vec::new());
+        let incoming = test_outreach_with_tools(Vec::new());
+
+        assert!(!should_replace_message_outreach(Some(&existing), Some(&incoming)));
+    }
 }

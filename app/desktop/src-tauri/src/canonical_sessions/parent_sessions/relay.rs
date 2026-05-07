@@ -316,6 +316,71 @@ fn outreach_group_name_event_at_ms(outreach: &crate::bridge::DesktopBridgeOutrea
     outreach.created_at_ms.max(0)
 }
 
+fn relay_agent_task_tools(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> Vec<serde_json::Value> {
+    outreach
+        .parent_session_messages
+        .iter()
+        .rev()
+        .find_map(|message| (!message.tools.is_empty()).then(|| message.tools.clone()))
+        .unwrap_or_default()
+}
+
+fn content_has_model_task_tools(tools: &[serde_json::Value]) -> bool {
+    tools.iter().any(|tool| {
+        let name = tool
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase();
+        name == "task_operator" || name == "update_plan"
+    })
+}
+
+fn relay_message_content(
+    is_session_message: bool,
+    message: &crate::bridge::DesktopBridgeConversationMessage,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    canonical_delivery_state: Option<&str>,
+    sender_role: &str,
+    agent_task_tools: &[serde_json::Value],
+) -> serde_json::Value {
+    let mut content = serde_json::json!({
+        "kind": if is_session_message { "session-message" } else { "session-relay" },
+        "direction": message.direction,
+        "sender": message.sender,
+        "timeLabel": message.time_label,
+        "timestampMs": message.timestamp_ms,
+        "deliveryState": canonical_delivery_state,
+        "requestId": message.request_id,
+        "bridgeConversationId": conversation.id,
+        "parentSessionTitle": outreach.parent_session_title,
+        "parentSessionKind": outreach.parent_session_kind,
+        "parentGroupSpaceId": outreach.parent_group_space_id,
+        "targetDisplayName": outreach.target_display_name,
+        "attachments": message.attachments,
+        "mentions": [{
+            "label": outreach.target_display_name,
+            "targetKind": outreach.target_kind,
+            "bridgeHostId": conversation.host_id,
+            "nodeId": outreach.target_node_id,
+            "humanId": outreach.target_human_id,
+            "agentId": outreach.target_agent_id,
+        }],
+    });
+
+    if (sender_role == "external-agent" || sender_role == "owned-agent")
+        && content_has_model_task_tools(agent_task_tools)
+    {
+        content["tools"] = serde_json::Value::Array(agent_task_tools.to_vec());
+    }
+
+    content
+}
+
 fn clean_parent_session_title(
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
 ) -> Option<String> {
@@ -535,6 +600,21 @@ pub(super) fn sync_parent_session_update(
         }
         Ok(())
     }
+}
+
+fn relay_processing_response_timeout_due(
+    message: &crate::bridge::DesktopBridgeConversationMessage,
+    sync_now_ms: i64,
+) -> bool {
+    matches!(message.direction.as_str(), "inbound-response" | "outbound-response")
+        && message
+            .delivery_state
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|state| state.eq_ignore_ascii_case("processing"))
+        && is_processing_placeholder_text(&message.text)
+        && sync_now_ms.saturating_sub(message.timestamp_ms)
+            >= BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS
 }
 
 fn canonical_delivery_state_for_parent_session_relay(
@@ -851,6 +931,7 @@ pub(super) fn sync_parent_session_relay_messages(
     )?
     .map(|(identity_id, _)| identity_id);
     let sync_now_ms = now_ms();
+    let agent_task_tools = relay_agent_task_tools(outreach);
     for message in messages.iter().filter(matches_relay_message) {
         let is_outbound = matches!(message.direction.as_str(), "outbound" | "outbound-response");
         let is_inbound = matches!(message.direction.as_str(), "inbound" | "inbound-response");
@@ -869,15 +950,27 @@ pub(super) fn sync_parent_session_relay_messages(
             continue;
         }
 
+        let response_timed_out = relay_processing_response_timeout_due(message, sync_now_ms);
+        let canonical_delivery_state = if response_timed_out {
+            Some("processing_failed".to_string())
+        } else {
+            canonical_delivery_state_for_parent_session_relay(message, is_group_session_message)
+        };
+        let canonical_message_text = if response_timed_out {
+            BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT
+        } else {
+            message.text.as_str()
+        };
+
         let relay_agent_text = if relay_is_local_agent_response && is_outbound {
             sanitize_shared_agent_response_text_with_conn(
                 conn,
                 Some(parent_session_id),
-                &message.text,
+                canonical_message_text,
                 &[],
             )?
         } else {
-            message.text.clone()
+            canonical_message_text.to_string()
         };
 
         if relay_is_local_agent_response
@@ -924,11 +1017,11 @@ pub(super) fn sync_parent_session_relay_messages(
             sanitize_shared_agent_response_text_with_conn(
                 conn,
                 Some(parent_session_id),
-                &message.text,
+                canonical_message_text,
                 &[],
             )?
         } else {
-            message.text.clone()
+            canonical_message_text.to_string()
         };
         let is_agent_response_message = matches!(
             message.direction.as_str(),
@@ -969,8 +1062,6 @@ pub(super) fn sync_parent_session_relay_messages(
         } else {
             format!("{}:{}", conversation.id, message.id)
         };
-        let canonical_delivery_state =
-            canonical_delivery_state_for_parent_session_relay(message, is_group_session_message);
         message_reconcile::append_or_reconcile_message_from_sync(
             conn,
             AppendCanonicalMessageRequest {
@@ -984,25 +1075,15 @@ pub(super) fn sync_parent_session_relay_messages(
                     "text".to_string()
                 },
                 content_text,
-                content: Some(serde_json::json!({
-                    "kind": if is_session_message { "session-message" } else { "session-relay" },
-                    "direction": message.direction,
-                    "sender": message.sender,
-                    "timeLabel": message.time_label,
-                    "timestampMs": message.timestamp_ms,
-                    "deliveryState": canonical_delivery_state,
-                    "requestId": message.request_id,
-                    "bridgeConversationId": conversation.id,
-                    "attachments": message.attachments,
-                    "mentions": [{
-                        "label": outreach.target_display_name,
-                        "targetKind": outreach.target_kind,
-                        "bridgeHostId": conversation.host_id,
-                        "nodeId": outreach.target_node_id,
-                        "humanId": outreach.target_human_id,
-                        "agentId": outreach.target_agent_id,
-                    }],
-                })),
+                content: Some(relay_message_content(
+                    is_session_message,
+                    message,
+                    outreach,
+                    conversation,
+                    canonical_delivery_state.as_deref(),
+                    &sender_role,
+                    &agent_task_tools,
+                )),
                 created_at_ms: Some(message.timestamp_ms),
                 parent_message_id: outreach.parent_message_id.clone(),
                 delegated_exchange_id: None,

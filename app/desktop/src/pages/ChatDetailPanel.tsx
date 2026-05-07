@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -47,6 +47,7 @@ type ActiveConversation = {
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+  taskActivities?: SessionTaskActivity[];
   participantAvatarSeeds?: Record<string, string>;
 };
 
@@ -394,6 +395,8 @@ function ChatDetailPanelView({
       <TaskActivityDashboardPanel
         messages={activeConv.messages}
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
+        taskActivities={activeConv.taskActivities ?? []}
+        targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}

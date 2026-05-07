@@ -1,15 +1,30 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-react';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
-import type { DesktopChatTurnSnapshot, Message, SessionArtifact } from '@/kordi-app/types';
+import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
+
+type TaskTargetParticipant = Pick<ConversationParticipant,
+  | 'id'
+  | 'name'
+  | 'kind'
+  | 'role'
+  | 'ownerName'
+  | 'avatarKey'
+  | 'profileImageUrl'
+> & {
+  avatarSeed?: string | null;
+};
 
 type TaskActivityDashboardPanelProps = {
   messages: Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   emptyMessage: string;
   artifacts?: SessionArtifact[];
+  taskActivities?: SessionTaskActivity[];
+  targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 };
@@ -98,6 +113,84 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null, star
   return running ? formatTaskElapsed(elapsedMs) : null;
 }
 
+function normalizedParticipantMatchText(value?: string | null) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function userNumberLabel(value: string) {
+  return /\buser\s*(\d+)\b/i.exec(value)?.[1] ?? null;
+}
+
+function taskSearchText(task: TaskDashboardItem) {
+  return [
+    task.title,
+    task.summary,
+    task.target,
+    ...task.subtasks.flatMap((subtask) => [subtask.title, subtask.summary, subtask.target]),
+  ].filter((value): value is string => Boolean(value?.trim())).join(' ');
+}
+
+function participantMatchesTask(participant: TaskTargetParticipant, taskText: string, normalizedTaskText: string) {
+  const names = [participant.name, participant.ownerName].filter((value): value is string => Boolean(value?.trim()));
+  for (const name of names) {
+    const normalizedName = normalizedParticipantMatchText(name);
+    if (normalizedName && normalizedTaskText.includes(normalizedName)) return true;
+    const participantUserNumber = userNumberLabel(name);
+    if (participantUserNumber && participantUserNumber === userNumberLabel(taskText)) return true;
+  }
+  return false;
+}
+
+function fallbackParticipantForInvolvedName(name: string): TaskTargetParticipant {
+  return {
+    id: `task-involved:${name}`,
+    name,
+    kind: 'human',
+    role: 'participant',
+    avatarKey: name,
+  };
+}
+
+function taskTargetParticipants(task: TaskDashboardItem, participants: TaskTargetParticipant[]) {
+  if (task.involvedParticipantNames.length === 0) return [];
+  const involvedText = task.involvedParticipantNames.join(' ');
+  const normalizedInvolvedText = normalizedParticipantMatchText(involvedText);
+  const humans = participants.filter((participant) => participant.kind !== 'agent' && participantMatchesTask(participant, involvedText, normalizedInvolvedText));
+  const matched = (humans.length > 0 ? humans : participants.filter((participant) => participantMatchesTask(participant, involvedText, normalizedInvolvedText))).slice(0, 4);
+  const matchedText = normalizedParticipantMatchText(matched.map((participant) => participant.name).join(' '));
+  const fallbackParticipants = task.involvedParticipantNames
+    .filter((name) => {
+      const normalizedName = normalizedParticipantMatchText(name);
+      return normalizedName && !matchedText.includes(normalizedName);
+    })
+    .map(fallbackParticipantForInvolvedName);
+  return [...matched, ...fallbackParticipants].slice(0, 4);
+}
+
+function TaskTargetAvatars({ participants }: { participants: TaskTargetParticipant[] }) {
+  if (participants.length === 0) return null;
+  return (
+    <div className="flex shrink-0 -space-x-2" aria-label="Task target participants">
+      {participants.map((participant) => (
+        <IdentityAvatar
+          key={participant.id}
+          kind={participant.kind === 'agent' ? 'agent' : 'human'}
+          seed={participant.avatarKey ?? participant.avatarSeed ?? participant.name}
+          avatarKey={participant.avatarKey}
+          imageUrl={participant.profileImageUrl}
+          name={participant.name}
+          className="h-7 w-7 border-2 border-[color:var(--app-panel-bg)]"
+          generatedClassName="scale-105"
+        />
+      ))}
+    </div>
+  );
+}
+
 function TaskActions({
   responseMessageId,
   artifactId,
@@ -162,12 +255,14 @@ function TaskContent({
   task,
   nested = false,
   artifactId,
+  targetParticipants = [],
   onOpenArtifact,
   onNavigateToResponse,
 }: {
   task: TaskDashboardItem | TaskDashboardSubtask;
   nested?: boolean;
   artifactId?: string | null;
+  targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 }) {
@@ -200,12 +295,15 @@ function TaskContent({
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
           </div>
           {!nested && 'responseMessageId' in task ? (
-            <TaskActions
-              responseMessageId={task.responseMessageId}
-              artifactId={artifactId}
-              onOpenArtifact={onOpenArtifact}
-              onNavigateToResponse={onNavigateToResponse}
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <TaskTargetAvatars participants={targetParticipants} />
+              <TaskActions
+                responseMessageId={task.responseMessageId}
+                artifactId={artifactId}
+                onOpenArtifact={onOpenArtifact}
+                onNavigateToResponse={onNavigateToResponse}
+              />
+            </div>
           ) : null}
         </div>
         {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
@@ -239,20 +337,23 @@ function firstLinkedArtifactId(task: TaskDashboardItem, artifacts: SessionArtifa
 function TaskRow({
   task,
   artifacts,
+  targetParticipants,
   onOpenArtifact,
   onNavigateToResponse,
 }: {
   task: TaskDashboardItem;
   artifacts: SessionArtifact[];
+  targetParticipants: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 }) {
   const artifactId = firstLinkedArtifactId(task, artifacts);
+  const matchedTargetParticipants = taskTargetParticipants(task, targetParticipants);
 
   if (task.subtasks.length === 0) {
     return (
       <div className="app-inspector-source-row">
-        <TaskContent task={task} artifactId={artifactId} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
+        <TaskContent task={task} artifactId={artifactId} targetParticipants={matchedTargetParticipants} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </div>
     );
   }
@@ -260,7 +361,7 @@ function TaskRow({
   return (
     <details className="group app-inspector-source-row">
       <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-        <TaskContent task={task} artifactId={artifactId} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
+        <TaskContent task={task} artifactId={artifactId} targetParticipants={matchedTargetParticipants} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </summary>
       <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
         {task.subtasks.map((subtask) => (
@@ -273,18 +374,23 @@ function TaskRow({
   );
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
-  const dashboard = useMemo(() => buildTaskActivityDashboard({ messages, liveTurn }), [liveTurn, messages]);
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
+  // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
+  // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
+  // as the transcript rerenders, even if the array identity did not change.
+  const dashboard = buildTaskActivityDashboard({ messages, liveTurn });
+  const tasks = dashboard.tasks;
 
   return (
     <section className="app-detail-section">
-      {dashboard.hasActivity ? (
+      {tasks.length > 0 ? (
         <div className="app-inspector-list">
-          {dashboard.tasks.map((task) => (
+          {tasks.map((task) => (
             <TaskRow
               key={task.id}
               task={task}
               artifacts={artifacts}
+              targetParticipants={targetParticipants}
               onOpenArtifact={onOpenArtifact}
               onNavigateToResponse={onNavigateToResponse}
             />

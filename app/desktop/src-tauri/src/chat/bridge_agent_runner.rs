@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use kordi_cli::desktop_runtime::DesktopRuntimeSession;
 
-use super::turns::{snapshot_turn, update_turn};
+use super::turns::{desktop_task_tools_from_messages, snapshot_turn, update_turn};
 use super::{
-    bridge_agent_session_cwd, now_millis, DesktopChatManager, DesktopChatToolSnapshot,
-    DesktopChatTurnSnapshot, DesktopSessionHandle,
+    bridge_agent_session_cwd, now_millis, DesktopChatManager, DesktopChatTurnSnapshot,
+    DesktopSessionHandle,
 };
 
 async fn ensure_bridge_agent_execution_session(
@@ -158,6 +158,7 @@ async fn run_bridge_agent_prompt_once(
                 .rev()
                 .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
                 .cloned();
+            let task_tools = desktop_task_tools_from_messages(&detail.messages);
             update_turn(&snapshot, |state| {
                 state.status = "complete".to_string();
                 state.message = "Response complete".to_string();
@@ -167,22 +168,7 @@ async fn run_bridge_agent_prompt_once(
                 if let Some(message) = assistant {
                     state.assistant_text = message.text;
                     state.thinking_text = message.thinking_text.unwrap_or_default();
-                    state.tools = message
-                        .tools
-                        .into_iter()
-                        .map(|tool| DesktopChatToolSnapshot {
-                            id: tool.id,
-                            name: tool.name,
-                            status: tool.status,
-                            arguments: tool.arguments,
-                            live_output: tool.live_output,
-                            result_text: tool.result_text,
-                            detail: tool.detail,
-                            artifact_path: tool.artifact_path,
-                            tool_layer: tool.tool_layer,
-                            is_error: tool.is_error,
-                        })
-                        .collect();
+                    state.tools = task_tools;
                 } else {
                     state.status = "failed".to_string();
                     state.message = "Bridge agent returned no text response".to_string();
@@ -259,6 +245,82 @@ pub(crate) async fn run_bridge_agent_prompt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn stored_tool(
+        id: &str,
+        name: &str,
+    ) -> kordi_cli::desktop_runtime::DesktopChatStoredTool {
+        stored_tool_with_arguments(id, name, "{}")
+    }
+
+    fn stored_tool_with_arguments(
+        id: &str,
+        name: &str,
+        arguments: &str,
+    ) -> kordi_cli::desktop_runtime::DesktopChatStoredTool {
+        kordi_cli::desktop_runtime::DesktopChatStoredTool {
+            id: id.to_string(),
+            name: name.to_string(),
+            status: "done".to_string(),
+            arguments: arguments.to_string(),
+            live_output: String::new(),
+            result_text: Some("done".to_string()),
+            detail: None,
+            artifact_path: None,
+            tool_layer: Some("operator".to_string()),
+            is_error: false,
+        }
+    }
+
+    fn chat_message(
+        role: &str,
+        text: &str,
+        tools: Vec<kordi_cli::desktop_runtime::DesktopChatStoredTool>,
+    ) -> kordi_cli::desktop_runtime::DesktopChatMessage {
+        kordi_cli::desktop_runtime::DesktopChatMessage {
+            role: role.to_string(),
+            sender: None,
+            text: text.to_string(),
+            detail: None,
+            time_label: "10:00".to_string(),
+            timestamp_ms: 1,
+            failed: false,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools,
+        }
+    }
+
+    #[test]
+    fn bridge_agent_task_tools_include_tools_from_earlier_assistant_messages() {
+        let messages = vec![
+            chat_message("assistant", "", vec![stored_tool("tool-create", "task_operator")]),
+            chat_message("assistant", "Created the task.", Vec::new()),
+        ];
+
+        let tools = desktop_task_tools_from_messages(&messages);
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "task_operator");
+    }
+
+    #[test]
+    fn bridge_agent_task_tools_only_include_latest_turn_tools() {
+        let messages = vec![
+            chat_message("user", "create old task", Vec::new()),
+            chat_message("assistant", "", vec![stored_tool_with_arguments("tool-old", "task_operator", "{\"taskTitle\":\"Old Task\"}")]),
+            chat_message("assistant", "Created old task.", Vec::new()),
+            chat_message("user", "create new task", Vec::new()),
+            chat_message("assistant", "", vec![stored_tool_with_arguments("tool-new", "task_operator", "{\"taskTitle\":\"New Task\"}")]),
+            chat_message("assistant", "Created new task.", Vec::new()),
+        ];
+
+        let tools = desktop_task_tools_from_messages(&messages);
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].id, "tool-new");
+        assert!(tools[0].arguments.contains("New Task"));
+    }
 
     #[test]
     fn bridge_agent_fallback_route_distinguishes_auth_choice_from_default_route() {

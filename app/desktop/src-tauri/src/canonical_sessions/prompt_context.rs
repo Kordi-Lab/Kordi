@@ -491,6 +491,10 @@ pub(crate) fn bridge_agent_parent_session_prompt(
         "You joined this shared Kordi session because someone mentioned you with @Agent. Reply directly to the request using the session context. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to."
             .to_string(),
     );
+    lines.push(
+        "If the request asks you to create, manage, persist, search, or close a task, use task_operator so the application records a real task event; do not merely say that you created, found, or closed a task. Use task_operator action=create for task creation, action=search for task lookup, and action=close for task closure. For shared or multi-user tasks, include involvedParticipants with the display names of the people or agents who need to participate in the task."
+            .to_string(),
+    );
 
     if let Some(session_id) = parent_session_id
         .map(str::trim)

@@ -231,7 +231,7 @@ impl TaskOperatorState {
     }
 
     async fn close(&self, request: TaskCloseRequest) -> Result<TaskOperatorRuntimeResponse> {
-        let target = request.target.trim();
+        let target = request.target.as_deref().unwrap_or_default().trim();
         if target.is_empty() {
             bail!("close target cannot be empty")
         }
@@ -589,7 +589,10 @@ mod tests {
 
         (runtime.run)(TaskOperatorRuntimeRequest::Close(
             kordi_tools::task_operator::models::TaskCloseRequest {
-                target: "/root/research".to_string(),
+                target: Some("/root/research".to_string()),
+                task_id: None,
+                task_title: None,
+                query: None,
             },
         ))
         .await

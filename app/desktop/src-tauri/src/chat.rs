@@ -52,8 +52,8 @@ use session_actions::{
 };
 
 use turns::{
-    apply_desktop_turn_event, prune_finished_turns, session_has_running_turn, snapshot_turn,
-    update_turn,
+    apply_desktop_turn_event, desktop_task_tools_from_messages, prune_finished_turns,
+    session_has_running_turn, snapshot_turn, turn_snapshot_has_model_task_tools, update_turn,
 };
 
 #[cfg(test)]
@@ -923,7 +923,17 @@ pub async fn desktop_chat_start_message(
                     &session_handle,
                 )
                 .await;
+                let task_tools = {
+                    let session = session_handle.lock().await;
+                    session
+                        .detail()
+                        .map(|detail| desktop_task_tools_from_messages(&detail.messages))
+                        .unwrap_or_default()
+                };
                 update_turn(&snapshot_for_task, |state| {
+                    if !task_tools.is_empty() && !turn_snapshot_has_model_task_tools(&state.tools) {
+                        state.tools = task_tools;
+                    }
                     state.status = "succeeded".to_string();
                     state.message = "Response complete".to_string();
                     state.completed = true;

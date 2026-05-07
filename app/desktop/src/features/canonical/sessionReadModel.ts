@@ -4,6 +4,7 @@ import type {
   ConversationBridgeTarget,
   ConversationParticipant,
   Message,
+  SessionTaskActivity,
 } from '@/kordi-app/types';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
@@ -31,6 +32,7 @@ type CanonicalConversationLike = {
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
   canonicalDelegatedExchangeCount?: number;
+  taskActivities?: SessionTaskActivity[];
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   canonicalParticipants?: ConversationParticipant[];
@@ -273,6 +275,7 @@ export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
   participantDetails: (sessionId: string) => ConversationParticipant[];
+  taskActivities: (sessionId: string) => SessionTaskActivity[];
   messages: (sessionId: string) => Message[];
   preferMessages: (sessionId: string, existingMessages: Message[]) => Message[];
   applyConversation: <T extends CanonicalConversationLike>(
@@ -300,6 +303,9 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
     },
     participantDetails(sessionId) {
       return indexes.canonicalParticipantsBySessionId.get(sessionId) ?? [];
+    },
+    taskActivities(sessionId) {
+      return indexes.taskActivitiesBySessionId.get(sessionId) ?? [];
     },
     messages(sessionId) {
       return indexes.canonicalMessagesBySessionId.get(sessionId) ?? [];
@@ -339,6 +345,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
         ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
         : conversation.unread ?? 0;
+      const taskActivities = this.taskActivities(sessionId);
 
       return {
         ...conversation,
@@ -359,9 +366,10 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
         bridgeTarget,
+        taskActivities,
         canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
-        canonicalDelegatedExchangeCount: indexes.delegatedExchangeCountBySessionId.get(sessionId) ?? 0,
+        canonicalDelegatedExchangeCount: taskActivities.length,
         canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
         canonicalPresenceSummary: indexes.presenceSummaryBySessionId.get(sessionId),
       };

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum TaskOperatorRequest {
+    Create(TaskCreateRequest),
+    Search(TaskSearchRequest),
     Manifest(TaskManifestRequest),
     Estimate(TaskEstimateRequest),
     Spawn(TaskSpawnRequest),
@@ -25,6 +27,7 @@ pub enum TaskOperatorRuntimeRequest {
 impl TaskOperatorRequest {
     pub fn into_runtime_request(self) -> Option<TaskOperatorRuntimeRequest> {
         match self {
+            Self::Create(_) | Self::Search(_) => None,
             Self::Spawn(request) => Some(TaskOperatorRuntimeRequest::Spawn(request)),
             Self::Message(request) => Some(TaskOperatorRuntimeRequest::Message(request)),
             Self::Wait(request) => Some(TaskOperatorRuntimeRequest::Wait(request)),
@@ -46,6 +49,26 @@ pub struct TaskManifestRequest {
 pub struct TaskEstimateRequest {
     pub estimated_input_tokens: u64,
     pub estimated_output_tokens: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskCreateRequest {
+    #[serde(default)]
+    pub task_id: Option<String>,
+    pub task_title: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub involved_participants: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskSearchRequest {
+    pub query: String,
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -80,7 +103,14 @@ pub struct TaskListRequest {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskCloseRequest {
-    pub target: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub task_title: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -174,6 +204,35 @@ mod tests {
     }
 
     #[test]
+    fn durable_task_actions_deserialize_from_tagged_requests() {
+        let create: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
+            "action": "create",
+            "taskId": "task_user_2",
+            "taskTitle": "Test Task For Kordi User 2",
+            "summary": "Verify task visibility across the group.",
+            "involvedParticipants": ["Kordi User 2"]
+        }))
+        .expect("create request should deserialize");
+        assert!(matches!(create, TaskOperatorRequest::Create(request) if request.task_title == "Test Task For Kordi User 2"));
+
+        let search: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
+            "action": "search",
+            "query": "Kordi User 2",
+            "status": "open"
+        }))
+        .expect("search request should deserialize");
+        assert!(matches!(search, TaskOperatorRequest::Search(request) if request.query == "Kordi User 2"));
+
+        let close: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
+            "action": "close",
+            "taskId": "task_user_2",
+            "taskTitle": "Test Task For Kordi User 2"
+        }))
+        .expect("task close request should deserialize");
+        assert!(matches!(close, TaskOperatorRequest::Close(request) if request.task_id.as_deref() == Some("task_user_2")));
+    }
+
+    #[test]
     fn orchestration_actions_deserialize_from_tagged_requests() {
         let spawn: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "spawn",
@@ -221,7 +280,7 @@ mod tests {
         }))
         .expect("close request should deserialize");
         assert!(
-            matches!(close, TaskOperatorRequest::Close(request) if request.target == "/root/research_docs")
+            matches!(close, TaskOperatorRequest::Close(request) if request.target.as_deref() == Some("/root/research_docs"))
         );
     }
 

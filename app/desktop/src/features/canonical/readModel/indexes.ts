@@ -5,6 +5,7 @@ import type {
   CanonicalSessionState,
   ConversationParticipant,
   Message,
+  SessionTaskActivity,
 } from '@/kordi-app/types';
 
 import {
@@ -31,6 +32,7 @@ export type CanonicalIndexes = {
   canonicalMessagesBySessionId: Map<string, Message[]>;
   rawMessageCountBySessionId: Map<string, number>;
   delegatedExchangeCountBySessionId: Map<string, number>;
+  taskActivitiesBySessionId: Map<string, SessionTaskActivity[]>;
   contextSnapshotCountBySessionId: Map<string, number>;
   presenceSummaryBySessionId: Map<string, string>;
 };
@@ -47,6 +49,7 @@ function emptyIndexes(): CanonicalIndexes {
     canonicalMessagesBySessionId: new Map(),
     rawMessageCountBySessionId: new Map(),
     delegatedExchangeCountBySessionId: new Map(),
+    taskActivitiesBySessionId: new Map(),
     contextSnapshotCountBySessionId: new Map(),
     presenceSummaryBySessionId: new Map(),
   };
@@ -422,6 +425,62 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   return staleIds;
 }
 
+function taskParticipantFromIdentity(
+  identity: CanonicalIdentity | undefined,
+  identityById: Map<string, CanonicalIdentity>,
+  profileHumanIdentityId?: string | null,
+): SessionTaskActivity['initiator'] {
+  if (!identity) return null;
+  const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+  return {
+    id: identity.id,
+    name: ownerScopedAgentName(identity, identityById, profileHumanIdentityId) ?? identity.displayName,
+    kind: identity.kind,
+    role: identity.id === profileHumanIdentityId ? 'self' : identity.kind === 'agent' ? 'delegate' : 'person',
+    source: identity.source,
+    ownerIdentityId: identity.ownerIdentityId,
+    ownerName: owner ? (ownerScopedAgentName(owner, identityById, profileHumanIdentityId) ?? owner.displayName) : null,
+    bridgeHostId: identity.sourceHostId,
+    bridgeNodeId: identity.bridgeNodeId,
+    humanId: identity.humanId,
+    agentId: identity.agentId,
+    avatarKey: identity.avatarKey,
+    profileImageUrl: identity.profileImageUrl,
+  };
+}
+
+function buildTaskActivitiesBySessionId(
+  canonicalState: CanonicalSessionState,
+  identityById: Map<string, CanonicalIdentity>,
+  canonicalParticipantsBySessionId: Map<string, ConversationParticipant[]>,
+) {
+  const activities = new Map<string, SessionTaskActivity[]>();
+  for (const exchange of canonicalState.delegatedExchanges) {
+    const targetIdentity = identityById.get(exchange.targetIdentityId);
+    if (targetIdentity?.kind !== 'agent') continue;
+    const participants = canonicalParticipantsBySessionId.get(exchange.sessionId) ?? [];
+    const activity: SessionTaskActivity = {
+      id: exchange.id,
+      sessionId: exchange.sessionId,
+      status: exchange.status,
+      initiator: taskParticipantFromIdentity(identityById.get(exchange.initiatorIdentityId), identityById, canonicalState.profile.humanIdentityId),
+      target: taskParticipantFromIdentity(targetIdentity, identityById, canonicalState.profile.humanIdentityId),
+      participants: participants.map((participant) => ({ ...participant })),
+      createdAtMs: exchange.createdAtMs,
+      updatedAtMs: exchange.updatedAtMs,
+      bridgeConversationId: exchange.bridgeConversationId,
+      bridgeRequestId: exchange.bridgeRequestId,
+      contextPolicy: exchange.contextPolicy,
+      error: exchange.error,
+    };
+    activities.set(exchange.sessionId, [...(activities.get(exchange.sessionId) ?? []), activity]);
+  }
+  for (const [sessionId, sessionActivities] of activities) {
+    activities.set(sessionId, sessionActivities.sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.id.localeCompare(right.id)));
+  }
+  return activities;
+}
+
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
 
@@ -673,6 +732,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     contextSnapshotCountBySessionId.set(snapshot.sessionId, (contextSnapshotCountBySessionId.get(snapshot.sessionId) ?? 0) + 1);
   }
 
+  const taskActivitiesBySessionId = buildTaskActivitiesBySessionId(
+    canonicalState,
+    identityById,
+    canonicalParticipantsBySessionId,
+  );
+
   const presenceSummaryBySessionId = new Map<string, string>();
   for (const [sessionId, participants] of canonicalParticipantsBySessionId) {
     const counts = participants.reduce<Record<string, number>>((acc, participant) => {
@@ -701,6 +766,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     canonicalMessagesBySessionId,
     rawMessageCountBySessionId,
     delegatedExchangeCountBySessionId,
+    taskActivitiesBySessionId,
     contextSnapshotCountBySessionId,
     presenceSummaryBySessionId,
   };

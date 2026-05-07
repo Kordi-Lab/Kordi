@@ -63,6 +63,29 @@ pub(super) fn bridge_conversation_has_unrouted_direct_messages(
     })
 }
 
+fn outreach_has_model_task_tools(outreach: &crate::bridge::DesktopBridgeOutreachMetadata) -> bool {
+    outreach.parent_session_messages.iter().any(|message| {
+        message.tools.iter().any(|tool| {
+            let name = tool
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+            name == "task_operator" || name == "update_plan"
+        })
+    })
+}
+
+fn merge_richer_message_outreach(
+    current: &mut crate::bridge::DesktopBridgeOutreachMetadata,
+    incoming: &crate::bridge::DesktopBridgeOutreachMetadata,
+) {
+    if !outreach_has_model_task_tools(current) && outreach_has_model_task_tools(incoming) {
+        current.parent_session_messages = incoming.parent_session_messages.clone();
+    }
+}
+
 fn should_restore_group_session_message_policy(
     message: &crate::bridge::DesktopBridgeConversationMessage,
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
@@ -171,6 +194,7 @@ pub(super) fn message_scoped_outreach_groups(
                 if current_outreach.bridge_request_id.is_none() {
                     current_outreach.bridge_request_id = outreach.bridge_request_id.clone();
                 }
+                merge_richer_message_outreach(current_outreach, &outreach);
                 if !messages.iter().any(|existing| existing.id == message.id) {
                     messages.push(message.clone());
                 }

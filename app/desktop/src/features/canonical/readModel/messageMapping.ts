@@ -89,6 +89,59 @@ export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
   });
 }
 
+function safeToolArguments(rawArguments: string) {
+  if (!rawArguments.trim()) return {};
+  try {
+    const parsed = JSON.parse(rawArguments);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function contentTaskTarget(content: Record<string, unknown>) {
+  const explicit = stringValue(content.taskTarget)?.trim();
+  if (explicit) return explicit;
+  const parentSessionKind = stringValue(content.parentSessionKind)?.trim().toLowerCase();
+  const parentGroupSpaceId = stringValue(content.parentGroupSpaceId)?.trim();
+  const parentSessionTitle = stringValue(content.parentSessionTitle)?.trim();
+  if (parentSessionKind === 'group' || parentGroupSpaceId || parentSessionTitle?.startsWith('Group:')) {
+    return `Group: ${parentSessionTitle || parentGroupSpaceId || 'Shared session'}`;
+  }
+  const targetDisplayName = stringValue(content.targetDisplayName)?.trim();
+  const sender = stringValue(content.sender)?.trim();
+  if (targetDisplayName) return `User: ${targetDisplayName}`;
+  if (sender) return `User: ${sender}`;
+  return null;
+}
+
+function toolHasTaskTarget(tool: DesktopChatToolSnapshot) {
+  const args = safeToolArguments(tool.arguments);
+  return Boolean(
+    stringValue(args.taskTarget)
+      || stringValue(args.task_target)
+      || stringValue(args.targetAudience)
+      || stringValue(args.target_audience)
+      || stringValue(args.targetGroup)
+      || stringValue(args.target_group)
+      || stringValue(args.targetUser)
+      || stringValue(args.target_user),
+  );
+}
+
+function toolsWithEventTaskTarget(tools: DesktopChatToolSnapshot[], content: Record<string, unknown>) {
+  const target = contentTaskTarget(content);
+  if (!target) return tools;
+  return tools.map((tool) => {
+    const name = tool.name.trim().toLowerCase();
+    if ((name !== 'task_operator' && name !== 'update_plan') || toolHasTaskTarget(tool)) return tool;
+    return {
+      ...tool,
+      arguments: JSON.stringify({ ...safeToolArguments(tool.arguments), taskTarget: target }),
+    };
+  });
+}
+
 export function directBridgeSourceEventForOutreachDuplicate(message: CanonicalSessionMessage) {
   if (message.sourceTransport !== 'desktop-bridge-outreach') return null;
   const sourceEventId = message.sourceEventId?.trim();
@@ -329,7 +382,7 @@ export function mapCanonicalMessage(
     && (viewerOwnsAgent || viewerIsInitiator)
     ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
     : undefined;
-  const tools = canonicalTools(content.tools);
+  const tools = toolsWithEventTaskTarget(canonicalTools(content.tools), content);
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
   const contentSender = stringValue(content.sender)?.trim();
@@ -348,7 +401,11 @@ export function mapCanonicalMessage(
     return selfDisplayName(contentSender || identity?.displayName || scopedAgentSender, isOwnMessage);
   })();
   const thinkingText = role === 'owned-agent' ? stringValue(content.thinkingText) ?? '' : '';
-  const visibleTools = role === 'owned-agent' ? tools : [];
+  const hasSharedModelTaskTools = tools.some((tool) => {
+    const name = tool.name.trim().toLowerCase();
+    return name === 'task_operator' || name === 'update_plan';
+  });
+  const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
   const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(

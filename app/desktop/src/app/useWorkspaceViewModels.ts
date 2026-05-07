@@ -12,6 +12,7 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
@@ -116,6 +117,13 @@ function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSn
     ].join('\u0000'))
     .sort()
     .join('\u0001');
+}
+
+function canonicalTaskActivitiesForSession(
+  readModel: ReturnType<typeof createCanonicalSessionReadModel>,
+  sessionId: string,
+) {
+  return readModel?.taskActivities(sessionId) ?? [];
 }
 
 type UseWorkspaceViewModelsArgs = {
@@ -805,6 +813,16 @@ export function useWorkspaceViewModels({
       const projectSummary = desktopProject?.summary
         ?? workspaceProject?.summary
         ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : projectScope);
+      const sessionTaskActivitiesById = new Map(
+        group.sessions.map(({ id: sessionId }) => [
+          sessionId,
+          canonicalTaskActivitiesForSession(canonicalReadModel, sessionId),
+        ]),
+      );
+      const canonicalProjectTaskCount = group.sessions.reduce((total, { id: sessionId }) => {
+        const messages = canonicalReadModel?.messages(sessionId) ?? [];
+        return total + buildTaskActivityDashboard({ messages }).tasks.length;
+      }, 0);
 
       return {
         id: group.id,
@@ -817,7 +835,7 @@ export function useWorkspaceViewModels({
         agents: workspaceProject?.agents ?? [],
         pendingInvites: workspaceProject?.pendingInvites ?? [],
         artifacts: sharedSources.length,
-        tasks: workspaceProject?.tasks ?? 0,
+        tasks: canonicalProjectTaskCount > 0 ? canonicalProjectTaskCount : (workspaceProject?.tasks ?? 0),
         root: projectScope,
         sharedContext: desktopProject?.summary ?? workspaceProject?.sharedContext,
         backgroundSystem: desktopProject?.backgroundSystem ?? workspaceProject?.backgroundSystem,
@@ -842,10 +860,15 @@ export function useWorkspaceViewModels({
           const reflectionLessonArtifacts = desktopChatState?.activeSessionId === sessionId
             ? (desktopChatState.activeSession.reflectionLessonArtifacts ?? [])
             : [];
-          const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'My Kordi']) : ['Me', 'My Kordi'];
+          const canonicalParticipants = canonicalReadModel?.participantDetails(sessionId) ?? [];
+          const participants = canonicalParticipants.length > 0
+            ? canonicalParticipants.map((participant) => participant.name)
+            : ['Me', 'My Kordi'];
 
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
+          const taskActivities = sessionTaskActivitiesById.get(sessionId) ?? [];
+          const taskCount = buildTaskActivityDashboard({ messages }).tasks.length || (workspaceProject?.tasks ?? 0);
 
           return {
             id: sessionId,
@@ -855,7 +878,9 @@ export function useWorkspaceViewModels({
             status: desktopSession?.draft || canonicalSession?.status === 'draft' ? 'Draft' : 'Active',
             participants,
             artifacts: sharedSources.length,
-            tasks: workspaceProject?.tasks ?? 0,
+            tasks: taskCount,
+            taskActivities,
+            canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
             unread: unreadCount,
             statusIndicator: buildSessionStatusIndicator({
               unreadCount,
@@ -940,6 +965,7 @@ export function useWorkspaceViewModels({
     participants: ['Me', 'My Kordi'],
     artifacts: activeProject.artifacts,
     tasks: activeProject.tasks,
+    taskActivities: [],
     unread: 0,
     statusIndicator: undefined,
     messages: [] as Message[],

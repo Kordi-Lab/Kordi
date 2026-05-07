@@ -267,6 +267,31 @@ fn mailbox_group_agent_response_delivery_targets_include_requester_and_other_mem
 }
 
 #[test]
+fn bridge_agent_response_payload_carries_model_task_tools_in_session_thread() {
+    let event = group_agent_ask_event();
+    let tools = vec![serde_json::json!({
+        "id": "tool-task-operator",
+        "name": "task_operator",
+        "status": "done",
+        "arguments": "{\"taskTitle\":\"Dashboard Visibility Test Task\",\"plan\":[]}",
+        "liveOutput": "",
+        "resultText": "Done",
+        "isError": false
+    })];
+
+    let payload = bridge_response_payload_with_tools(&event, "done", true, &tools);
+
+    assert_eq!(
+        payload["sessionThread"]["messages"][0]["tools"][0]["name"].as_str(),
+        Some("task_operator")
+    );
+    assert_eq!(
+        payload["sessionThread"]["messages"][0]["tools"][0]["arguments"].as_str(),
+        Some("{\"taskTitle\":\"Dashboard Visibility Test Task\",\"plan\":[]}")
+    );
+}
+
+#[test]
 fn mailbox_group_agent_response_delivery_targets_skip_self_requester() {
     let target = test_mailbox_target();
     let mut event = group_agent_ask_event();

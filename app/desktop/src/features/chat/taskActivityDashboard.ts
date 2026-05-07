@@ -24,7 +24,9 @@ export type TaskDashboardSubtask = TaskDashboardBase;
 
 export type TaskDashboardItem = TaskDashboardBase & {
   responseMessageId?: string | null;
+  taskId?: string | null;
   artifactIds: string[];
+  involvedParticipantNames: string[];
   subtasks: TaskDashboardSubtask[];
   subtaskCount: number;
   activeSubtaskCount: number;
@@ -66,10 +68,12 @@ type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | '
   mergeKey?: string | null;
   completed: boolean;
   succeeded: boolean;
+  lifecycleStatus: TaskDashboardStatus | null;
   message: string;
   assistantText: string;
   responseMessageId?: string | null;
   artifactIds: string[];
+  involvedParticipantNames: string[];
   subtasksByKey: Map<string, MutableSubtask>;
 };
 
@@ -87,6 +91,17 @@ function safeParseToolArguments(rawArguments?: string | null) {
 
 function stringValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function participantNameValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return item.trim() ? [item.trim()] : [];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const name = stringValue(record.name) ?? stringValue(record.displayName) ?? stringValue(record.label);
+    return name ? [name] : [];
+  });
 }
 
 function stringArrayValue(value: unknown) {
@@ -170,6 +185,17 @@ function taskMergeKeyFromTitle(title?: string | null) {
   return normalized ? `task-title:${normalized}` : null;
 }
 
+function taskMergeKeyFromId(taskId?: string | null) {
+  const normalized = taskId?.trim();
+  return normalized ? `task-id:${normalized}` : null;
+}
+
+function stableTaskDashboardId(sessionId: string, taskId?: string | null, fallbackTurnId?: string | null) {
+  const normalizedTaskId = taskId?.trim();
+  if (normalizedTaskId) return `task:${sessionId}:${normalizedTaskId}`;
+  return `turn:${fallbackTurnId?.trim() || 'unknown'}`;
+}
+
 function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[], explicitTitle = titleFromToolArguments(turn.tools)) {
   return explicitTitle
     ?? titleFromPrompt(turn.prompt)
@@ -186,6 +212,16 @@ function titleFromPlanSteps(args: Record<string, unknown>) {
     .find((item) => stringValue(item.status)?.toLowerCase() === 'in_progress')
     ?? plan.find((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
   return selectedStep ? stringValue(selectedStep.step) : null;
+}
+
+function taskIdFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  for (const tool of tools) {
+    if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
+    const args = safeParseToolArguments(tool.arguments);
+    const taskId = stringValue(args?.taskId) ?? stringValue(args?.task_id);
+    if (taskId) return taskId;
+  }
+  return null;
 }
 
 function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
@@ -210,11 +246,63 @@ function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
   return null;
 }
 
+function involvedParticipantsFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  const names: string[] = [];
+  for (const tool of tools) {
+    const toolName = tool.name.trim().toLowerCase();
+    if (toolName !== 'task_operator' && toolName !== 'update_plan') continue;
+    const args = safeParseToolArguments(tool.arguments);
+    if (!args) continue;
+    names.push(
+      ...participantNameValues(args.involvedParticipants),
+      ...participantNameValues(args.involved_participants),
+      ...participantNameValues(args.assignees),
+      ...participantNameValues(args.participants),
+    );
+  }
+  return Array.from(new Set(names));
+}
+
+function targetFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  for (const tool of tools) {
+    const toolName = tool.name.trim().toLowerCase();
+    if (toolName !== 'task_operator' && toolName !== 'update_plan') continue;
+    const args = safeParseToolArguments(tool.arguments);
+    if (!args) continue;
+    const target = stringValue(args.taskTarget)
+      ?? stringValue(args.task_target)
+      ?? stringValue(args.targetAudience)
+      ?? stringValue(args.target_audience)
+      ?? stringValue(args.targetGroup)
+      ?? stringValue(args.target_group)
+      ?? stringValue(args.targetUser)
+      ?? stringValue(args.target_user);
+    if (target) return compact(target, 96);
+  }
+  return null;
+}
+
 function turnHasTaskActivity(turn: DesktopChatTurnSnapshot) {
   return turn.tools.some((tool) => {
     const name = tool.name.trim().toLowerCase();
-    return name === 'update_plan' || name === 'task_operator' || tool.isError;
+    if (name === 'task_operator') {
+      const args = safeParseToolArguments(tool.arguments);
+      return stringValue(args?.action)?.toLowerCase() !== 'search';
+    }
+    return name === 'update_plan' || tool.isError;
   });
+}
+
+function taskLifecycleStatusFromToolArguments(tools: DesktopChatToolSnapshot[]): TaskDashboardStatus | null {
+  let status: TaskDashboardStatus | null = null;
+  for (const tool of tools) {
+    if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
+    const args = safeParseToolArguments(tool.arguments);
+    const action = stringValue(args?.action)?.toLowerCase();
+    if (action === 'create') status = 'planned';
+    if (action === 'close') status = 'closed';
+  }
+  return status;
 }
 
 function targetFromTaskResult(text?: string | null) {
@@ -391,7 +479,7 @@ function spawnSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unknow
   if (!taskName && !target) return null;
 
   const failed = tool.isError || /task failed|failed|error/i.test(resultText);
-  const status: TaskDashboardStatus = failed ? 'failed' : 'active';
+  const status: TaskDashboardStatus = failed ? 'failed' : live && toolIsStillRunning(tool) ? 'active' : 'completed';
   return {
     id: `spawn:${sequence}:${target ?? taskName}`,
     nameKey: taskName ?? (target ? targetName(target) : null),
@@ -496,14 +584,19 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   const artifactIds = generatedArtifactIdsFromTurn(turn);
   const explicitTitle = titleFromToolArguments(turn.tools);
+  const explicitTarget = targetFromToolArguments(turn.tools);
+  const involvedParticipantNames = involvedParticipantsFromToolArguments(turn.tools);
+  const lifecycleStatus = taskLifecycleStatusFromToolArguments(turn.tools);
+  const taskId = taskIdFromToolArguments(turn.tools);
   return {
-    id: `turn:${turn.id}`,
+    id: stableTaskDashboardId(turn.sessionId, taskId, turn.id),
     title: titleFromTurn(turn, artifactIds, explicitTitle),
-    mergeKey: taskMergeKeyFromTitle(explicitTitle),
+    taskId,
+    mergeKey: taskMergeKeyFromId(taskId) ?? taskMergeKeyFromTitle(explicitTitle),
     summary: compact(turn.message || turn.assistantText || ''),
     status,
     ...statusMeta(status),
-    target: null,
+    target: explicitTarget,
     writeScope: [],
     live,
     timeLabel: taskTimeLabel(turn, timeLabel),
@@ -512,10 +605,12 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
     sequence,
     completed: turn.completed,
     succeeded: turn.succeeded,
+    lifecycleStatus,
     message: turn.message,
     assistantText: turn.assistantText,
     responseMessageId,
     artifactIds,
+    involvedParticipantNames,
     subtasksByKey: new Map(),
   };
 }
@@ -530,8 +625,12 @@ function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTas
     ? (incomingIsLater ? incoming.succeeded : existing.succeeded)
     : existing.succeeded || incoming.succeeded;
   existing.live = existing.live || incoming.live || !existing.completed;
+  existing.taskId = incoming.taskId ?? existing.taskId;
   existing.artifactIds = Array.from(new Set([...existing.artifactIds, ...incoming.artifactIds]));
+  existing.involvedParticipantNames = Array.from(new Set([...existing.involvedParticipantNames, ...incoming.involvedParticipantNames]));
   existing.writeScope = Array.from(new Set([...existing.writeScope, ...incoming.writeScope]));
+  existing.lifecycleStatus = incoming.lifecycleStatus ?? existing.lifecycleStatus;
+  existing.target = incoming.target ?? existing.target;
   if (!existing.responseMessageId) {
     existing.responseMessageId = incoming.responseMessageId;
   }
@@ -564,6 +663,7 @@ function clearRecoveredToolFailure(parents: MutableParentTask[], tool: DesktopCh
 }
 
 function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSubtask[], humanConfirmed: boolean): TaskDashboardStatus {
+  if (parent.lifecycleStatus === 'closed') return 'closed';
   if (parent.live && !parent.completed) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'active')) return 'active';
   if (subtasks.some((subtask) => subtask.status === 'planned')) return 'planned';
@@ -614,7 +714,9 @@ function finalizeParent(parent: MutableParentTask, confirmationSequences: number
     writeScope: parent.writeScope,
     live: parent.live || status === 'active',
     responseMessageId: parent.responseMessageId,
+    taskId: parent.taskId,
     artifactIds: parent.artifactIds,
+    involvedParticipantNames: parent.involvedParticipantNames,
     timeLabel: status === 'waiting' ? waitingTimeLabel(parent.timeLabel) : parent.timeLabel,
     durationLabel: parent.durationLabel,
     startedAtMs: parent.startedAtMs,

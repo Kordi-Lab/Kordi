@@ -91,6 +91,37 @@ export type ConversationBridgeTarget = {
   agentId?: string | null;
 };
 
+export type SessionTaskParticipant = Pick<ConversationParticipant,
+  | 'id'
+  | 'name'
+  | 'kind'
+  | 'role'
+  | 'source'
+  | 'ownerIdentityId'
+  | 'ownerName'
+  | 'bridgeHostId'
+  | 'bridgeNodeId'
+  | 'humanId'
+  | 'agentId'
+  | 'avatarKey'
+  | 'profileImageUrl'
+>;
+
+export type SessionTaskActivity = {
+  id: string;
+  sessionId: string;
+  status: string;
+  initiator: SessionTaskParticipant | null;
+  target: SessionTaskParticipant | null;
+  participants: SessionTaskParticipant[];
+  createdAtMs: number;
+  updatedAtMs: number;
+  bridgeConversationId?: string | null;
+  bridgeRequestId?: string | null;
+  contextPolicy: string;
+  error?: string | null;
+};
+
 export type Conversation = {
   id: string;
   canonicalSessionId?: string;
@@ -99,6 +130,7 @@ export type Conversation = {
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
   canonicalDelegatedExchangeCount?: number;
+  taskActivities?: SessionTaskActivity[];
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   name: string;
@@ -266,6 +298,8 @@ export type ProjectSession = {
   participants: string[];
   artifacts: number;
   tasks: number;
+  taskActivities?: SessionTaskActivity[];
+  canonicalParticipants?: ConversationParticipant[];
   unread: number;
   statusIndicator?: SessionStatusIndicator;
   reflectionLessonArtifacts?: SessionArtifact[];
@@ -756,6 +790,7 @@ export type DesktopBridgeSessionThreadMessage = {
   text: string;
   timeLabel?: string | null;
   index?: number | null;
+  tools?: DesktopChatToolSnapshot[];
 };
 
 export type DesktopBridgeSessionParticipant = {

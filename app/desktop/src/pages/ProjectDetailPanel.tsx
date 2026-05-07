@@ -4,7 +4,7 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact } from '@/kordi-app/types';
+import type { ConversationParticipant, DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -18,6 +18,8 @@ type ProjectSession = {
   participants: string[];
   artifacts: number;
   tasks: number;
+  taskActivities?: SessionTaskActivity[];
+  canonicalParticipants?: ConversationParticipant[];
   messages: Message[];
 };
 
@@ -354,6 +356,8 @@ export function ProjectDetailPanel({
       <TaskActivityDashboardPanel
         messages={activeProjectSession.messages}
         liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
+        taskActivities={activeProjectSession.taskActivities ?? []}
+        targetParticipants={activeProjectSession.canonicalParticipants ?? []}
         emptyMessage="No planning or execution task activity in this project session yet."
         artifacts={projectArtifacts}
         onOpenArtifact={onOpenArtifact}
