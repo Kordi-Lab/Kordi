@@ -6,7 +6,7 @@ export const WINDOW_DEFAULT_HEIGHT = 900;
 export const SESSION_PANEL_MIN_WIDTH = 220;
 export const MAIN_CONTENT_MIN_WIDTH = 600;
 export const DETAIL_PANEL_MIN_WIDTH = 300;
-export const DETAIL_PANEL_MAX_WIDTH = 760;
+export const DETAIL_PANEL_MAX_WIDTH = 1040;
 
 type ViewportBoundsOptions = {
   minWidth?: number;

@@ -23,6 +23,13 @@ export type SessionArtifact = {
   pinned?: boolean;
 };
 
+export type ChangedFileRow = {
+  path: string;
+  status: 'new' | 'modified' | 'deleted';
+  artifactId: string;
+  diffStat?: { added: number; removed: number };
+};
+
 export type DesktopArtifactPreview = {
   path: string;
   lines: SourcePreviewLine[];

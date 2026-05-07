@@ -19,10 +19,12 @@ import {
   Wrench,
 } from 'lucide-react';
 
+import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
+import { InlineChangedFiles } from './transcriptChangedFiles';
 import {
   firstMeaningfulThinkingLine,
   formatRunningElapsed,
@@ -726,12 +728,14 @@ function LiveChatTurnCardView({
   onStopBridgeAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
+  onOpenArtifact,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   const hasAssistant = visibleTurn.assistantText.trim().length > 0;
@@ -761,12 +765,14 @@ function LiveChatTurnCardView({
                 : liveTurnPhaseStatusText(visibleTurn);
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
+  const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const hasResponseSurface = Boolean(
     visibleTurn.sourceMessage
       || showLiveStatusHeader
       || isCompressionStatus
       || hasTimelineActivity
-      || hasAssistant,
+      || hasAssistant
+      || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
 
@@ -837,6 +843,12 @@ function LiveChatTurnCardView({
               {visibleTurn.error}
             </div>
           ) : null}
+
+          <InlineChangedFiles
+            rows={changedFileRows}
+            incomplete={visibleTurn.completed && !visibleTurn.succeeded}
+            onOpenArtifact={onOpenArtifact}
+          />
         </div>
       ) : null}
     </div>
@@ -880,6 +892,7 @@ export const LiveChatTurnCard = memo(
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.onOpenArtifact === next.onOpenArtifact
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
@@ -889,12 +902,14 @@ function LiveChatTurnMessageView({
   onStopBridgeAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
+  onOpenArtifact,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
   return (
     <div
@@ -908,6 +923,7 @@ function LiveChatTurnMessageView({
         onStopBridgeAgentRequest={onStopBridgeAgentRequest}
         onStopActiveTurn={onStopActiveTurn}
         onNavigateToMessage={onNavigateToMessage}
+        onOpenArtifact={onOpenArtifact}
       />
     </div>
   );
@@ -919,5 +935,6 @@ export const LiveChatTurnMessage = memo(
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.onOpenArtifact === next.onOpenArtifact
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );

@@ -1,4 +1,4 @@
-import type { DesktopChatTurnSnapshot, Message, SessionArtifact } from '@/kordi-app/types';
+import type { ChangedFileRow, DesktopChatTurnSnapshot, Message, SessionArtifact } from '@/kordi-app/types';
 
 const CODE_EXTENSIONS = new Set([
   'c', 'cc', 'cpp', 'cs', 'css', 'go', 'h', 'hpp', 'html', 'java', 'js', 'json', 'jsx', 'kt', 'mjs', 'php', 'py', 'rb', 'rs', 'scss', 'sh', 'sql', 'swift', 'toml', 'ts', 'tsx', 'vue', 'xml', 'yaml', 'yml',
@@ -8,7 +8,7 @@ const DOCUMENT_EXTENSIONS = new Set([
   'adoc', 'csv', 'ipynb', 'markdown', 'md', 'mdx', 'pdf', 'rst', 'rtf', 'txt',
 ]);
 
-type StoredArtifact = SessionArtifact & { order: number };
+type StoredArtifact = SessionArtifact & { order: number; changed?: boolean };
 
 type SessionArtifactCategory = NonNullable<SessionArtifact['category']>;
 
@@ -44,6 +44,28 @@ function classifyArtifactKind(path: string): SessionArtifact['kind'] {
 function isGeneratedArtifactTool(toolName: string) {
   const normalized = toolName.trim().toLowerCase();
   return normalized.includes('write') || normalized.includes('edit') || normalized.includes('patch');
+}
+
+function isChangedFileTool(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  return isGeneratedArtifactTool(normalized)
+    || normalized.includes('create')
+    || normalized.includes('delete')
+    || normalized.includes('remove')
+    || normalized.includes('unlink');
+}
+
+function changedFileStatusForTool(toolName: string): ChangedFileRow['status'] {
+  const normalized = toolName.trim().toLowerCase();
+  if (normalized.includes('delete') || normalized.includes('remove') || normalized.includes('unlink')) return 'deleted';
+  if (normalized.includes('write') || normalized.includes('create')) return 'new';
+  return 'modified';
+}
+
+function changedFileToolIsComplete(tool: DesktopChatTurnSnapshot['tools'][number], turnCompleted: boolean) {
+  const status = tool.status.trim().toLowerCase();
+  if (tool.isError || status === 'error' || status.includes('failed')) return false;
+  return turnCompleted || status === 'done' || status === 'complete' || status === 'completed';
 }
 
 function isRelatedFileTool(toolName: string) {
@@ -93,6 +115,10 @@ function isPackageOrConfigPath(path: string) {
   return RELATED_METADATA_FILE_NAMES.has(fileName)
     || /^.+\.config\.[cm]?[jt]s$/.test(fileName)
     || /^\.?[a-z0-9_-]+rc(?:\..+)?$/.test(fileName);
+}
+
+function isHiddenChangedFilePath(path: string) {
+  return isReflectionLessonPath(path) || isSkillPath(path) || isPackageOrConfigPath(path);
 }
 
 function pathLooksLikeGeneratedArtifact(path: string) {
@@ -145,6 +171,55 @@ function collectToolArtifactPaths(toolName: string, argumentsJson: string): Coll
   }));
 }
 
+function changedFilePathsForTool(tool: DesktopChatTurnSnapshot['tools'][number]): CollectedArtifactPath[] {
+  if (!isChangedFileTool(tool.name)) return [];
+
+  return [
+    ...collectToolArtifactPaths(tool.name, tool.arguments),
+    ...(tool.artifactPath?.trim()
+      ? [{ path: tool.artifactPath.trim(), category: sessionArtifactCategoryForToolPath(tool.name, tool.artifactPath.trim(), true) }]
+      : []),
+  ].filter(({ path }) => !isHiddenChangedFilePath(path));
+}
+
+function diffStatFromToolOutput(tool: DesktopChatTurnSnapshot['tools'][number]): ChangedFileRow['diffStat'] {
+  const output = `${tool.resultText ?? ''}\n${tool.liveOutput ?? ''}`;
+  if (!output.trim()) return undefined;
+
+  let added = 0;
+  let removed = 0;
+  for (const line of output.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    if (line.startsWith('+')) added += 1;
+    if (line.startsWith('-')) removed += 1;
+  }
+
+  return added > 0 || removed > 0 ? { added, removed } : undefined;
+}
+
+export function changedFileRowsFromTurn(turn: DesktopChatTurnSnapshot): ChangedFileRow[] {
+  const byId = new Map<string, ChangedFileRow>();
+
+  for (const tool of turn.tools) {
+    if (!changedFileToolIsComplete(tool, turn.completed)) continue;
+    const status = changedFileStatusForTool(tool.name);
+    const diffStat = diffStatFromToolOutput(tool);
+
+    for (const { path } of changedFilePathsForTool(tool)) {
+      const artifactId = normalizeSessionArtifactId(path);
+      if (!artifactId) continue;
+      byId.set(artifactId, {
+        path,
+        status,
+        artifactId,
+        ...(diffStat ? { diffStat } : {}),
+      });
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 function buildArtifactSummary(toolName: string, live: boolean, category: SessionArtifactCategory) {
   const normalized = toolName.trim().toLowerCase();
   if (category === 'memory') {
@@ -166,6 +241,7 @@ function upsertArtifact(
   timeLabel?: string,
   live = false,
   pinned = false,
+  changed = false,
 ) {
   const normalizedId = normalizeSessionArtifactId(path);
   if (!normalizedId) return;
@@ -185,6 +261,7 @@ function upsertArtifact(
     timeLabel,
     live,
     pinned,
+    changed,
     order,
   });
 }
@@ -207,9 +284,11 @@ function collectTurnArtifacts(
     ];
 
     const seen = new Set<string>();
+    const toolChangedFile = isChangedFileTool(tool.name) && changedFileToolIsComplete(tool, turn.completed);
     paths.forEach(({ path, category }) => {
+      const changed = toolChangedFile && !isHiddenChangedFilePath(path);
       const id = normalizeSessionArtifactId(path);
-      if (!id || seen.has(id)) return;
+      if (!id || seen.has(id) || (toolChangedFile && isHiddenChangedFilePath(path))) return;
       seen.add(id);
       upsertArtifact(
         byId,
@@ -219,6 +298,8 @@ function collectTurnArtifacts(
         category,
         timeLabel,
         artifactLive,
+        false,
+        changed,
       );
     });
   });
@@ -288,7 +369,8 @@ export function extractSessionArtifacts(
 
     if (message.edit?.files?.length) {
       message.edit.files.forEach((file, fileIndex) => {
-        upsertArtifact(byId, file.path, baseOrder + fileIndex, 'Related edited file', 'related', message.time);
+        if (isHiddenChangedFilePath(file.path)) return;
+        upsertArtifact(byId, file.path, baseOrder + fileIndex, 'Related edited file', 'related', message.time, false, false, true);
       });
     }
 
@@ -302,7 +384,7 @@ export function extractSessionArtifacts(
   }
 
   return Array.from(byId.values())
-    .filter((artifact) => artifact.category === 'artifact')
+    .filter((artifact) => artifact.category === 'artifact' || Boolean(artifact.changed))
     .sort((left, right) => categorySortPriority(left.category ?? 'artifact') - categorySortPriority(right.category ?? 'artifact') || right.order - left.order)
-    .map(({ order: _order, ...artifact }) => artifact);
+    .map(({ order: _order, changed: _changed, ...artifact }) => artifact);
 }

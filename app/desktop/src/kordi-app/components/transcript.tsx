@@ -28,6 +28,7 @@ import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopBridgeAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
+export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
   Contact,
   ContactRequest,
@@ -371,6 +372,7 @@ function MessageBubbleView({
   onOpenSource,
   onStopBridgeAgentRequest,
   onNavigateToMessage,
+  onOpenArtifact,
   onRequestBridgeContact,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
@@ -379,6 +381,7 @@ function MessageBubbleView({
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  onOpenArtifact?: (artifactId: string) => void;
   onRequestBridgeContact?: () => Promise<void> | void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
@@ -537,6 +540,7 @@ function MessageBubbleView({
           historical={msg.turn.completed}
           onStopBridgeAgentRequest={onStopBridgeAgentRequest}
           onNavigateToMessage={onNavigateToMessage}
+          onOpenArtifact={onOpenArtifact}
         />
       </div>
     );
@@ -722,6 +726,7 @@ export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
