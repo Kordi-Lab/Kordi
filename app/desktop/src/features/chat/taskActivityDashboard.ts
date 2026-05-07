@@ -190,6 +190,12 @@ function taskMergeKeyFromId(taskId?: string | null) {
   return normalized ? `task-id:${normalized}` : null;
 }
 
+function stableTaskDashboardId(sessionId: string, taskId?: string | null, fallbackTurnId?: string | null) {
+  const normalizedTaskId = taskId?.trim();
+  if (normalizedTaskId) return `task:${sessionId}:${normalizedTaskId}`;
+  return `turn:${fallbackTurnId?.trim() || 'unknown'}`;
+}
+
 function titleFromTurn(turn: DesktopChatTurnSnapshot, artifactIds: string[], explicitTitle = titleFromToolArguments(turn.tools)) {
   return explicitTitle
     ?? titleFromPrompt(turn.prompt)
@@ -583,7 +589,7 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
   const lifecycleStatus = taskLifecycleStatusFromToolArguments(turn.tools);
   const taskId = taskIdFromToolArguments(turn.tools);
   return {
-    id: `turn:${turn.id}`,
+    id: stableTaskDashboardId(turn.sessionId, taskId, turn.id),
     title: titleFromTurn(turn, artifactIds, explicitTitle),
     taskId,
     mergeKey: taskMergeKeyFromId(taskId) ?? taskMergeKeyFromTitle(explicitTitle),

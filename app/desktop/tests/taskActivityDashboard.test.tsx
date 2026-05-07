@@ -465,6 +465,37 @@ test('task dashboard creates and closes durable task_operator task events by tas
   assert.deepEqual(dashboard.tasks[0].involvedParticipantNames, ['Kordi User 2']);
 });
 
+test('task dashboard uses group-scoped stable task ids from model task id', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'local-turn-id-a',
+    sessionId: 'session:group:stable-task-id',
+    prompt: '@Kordi create task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-stable-id',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"create","taskId":"new_test_task_for_kordi_user_6_2","taskTitle":"New Test Task"}',
+      liveOutput: '',
+      resultText: 'Task created: New Test Task',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(turn)] });
+
+  assert.equal(dashboard.tasks[0].id, 'task:session:group:stable-task-id:new_test_task_for_kordi_user_6_2');
+  assert.equal(dashboard.tasks[0].taskId, 'new_test_task_for_kordi_user_6_2');
+});
+
 test('task dashboard merges task events by task id when title text differs', () => {
   const firstTurn: DesktopChatTurnSnapshot = {
     id: 'turn-task-id-a',
