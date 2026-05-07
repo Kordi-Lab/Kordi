@@ -495,6 +495,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatTranscriptScrollRef'
   | 'onProjectTranscriptScroll'
   | 'setActiveSourcePreview'
+  | 'setActiveArtifactId'
+  | 'setActiveDetailTab'
   | 'desktopLiveTurn'
   | 'filteredProjectSlashCommands'
   | 'filteredProjectMentionTargets'

@@ -17,6 +17,7 @@ export type {
   DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
   DesktopArtifactPreview,
+  ChangedFileRow,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   EditDiffLine,

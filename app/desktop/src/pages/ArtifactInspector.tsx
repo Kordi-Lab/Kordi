@@ -252,9 +252,10 @@ export function ArtifactInspector({
   }, [browserPath, folderBrowserRootPath]);
 
   const generatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'artifact'), [artifacts]);
+  const relatedArtifacts = useMemo(() => artifacts.filter((artifact) => artifactCategory(artifact) === 'related'), [artifacts]);
   const activeArtifact = useMemo(
-    () => generatedArtifacts.find((artifact) => artifact.id === activeArtifactId) ?? generatedArtifacts[0] ?? null,
-    [activeArtifactId, generatedArtifacts],
+    () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? generatedArtifacts[0] ?? relatedArtifacts[0] ?? null,
+    [activeArtifactId, artifacts, generatedArtifacts, relatedArtifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
   const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
@@ -432,17 +433,30 @@ export function ArtifactInspector({
         </section>
       ) : null}
 
-      {generatedArtifacts.length > 0 ? (
-        <ArtifactListSection
-          title=""
-          section="generated"
-          artifacts={generatedArtifacts}
-          activeArtifact={activeArtifact}
-          onSelect={(artifactId) => {
-            setBrowserSelectedArtifact(null);
-            onSelectArtifact(artifactId);
-          }}
-        />
+      {generatedArtifacts.length > 0 || relatedArtifacts.length > 0 ? (
+        <>
+          <ArtifactListSection
+            title={generatedArtifacts.length > 0 ? 'Generated artifacts' : ''}
+            section="generated"
+            artifacts={generatedArtifacts}
+            activeArtifact={activeArtifact}
+            onSelect={(artifactId) => {
+              setBrowserSelectedArtifact(null);
+              onSelectArtifact(artifactId);
+            }}
+          />
+          <ArtifactListSection
+            title="Related changed files"
+            section="related"
+            description="Local files changed by assistant turns in this viewer's worktree. Remote-only group files are not clickable here."
+            artifacts={relatedArtifacts}
+            activeArtifact={activeArtifact}
+            onSelect={(artifactId) => {
+              setBrowserSelectedArtifact(null);
+              onSelectArtifact(artifactId);
+            }}
+          />
+        </>
       ) : (
         <section className="app-detail-section">
           <div className="app-detail-kicker">Artifacts</div>

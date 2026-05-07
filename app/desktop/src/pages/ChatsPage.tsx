@@ -211,6 +211,7 @@ type ChatsPageProps = {
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
+  onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
@@ -270,6 +271,7 @@ export function ChatsPage({
   chatTranscriptScrollRef,
   onTranscriptScroll,
   onOpenSource,
+  onOpenArtifact,
   desktopLiveTurn,
   queuedDesktopMessages,
   filteredChatSlashCommands,
@@ -573,6 +575,7 @@ export function ChatsPage({
                 key={`${msg.id ?? msg.role}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
+                onOpenArtifact={onOpenArtifact}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onRequestBridgeContact={onRequestBridgeContact}
                 isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
@@ -585,6 +588,7 @@ export function ChatsPage({
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
+                onOpenArtifact={onOpenArtifact}
               />
             ) : null}
             {queuedDesktopMessages.map((message) => (

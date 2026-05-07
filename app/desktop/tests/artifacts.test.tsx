@@ -22,7 +22,7 @@ function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatT
   };
 }
 
-test('session artifact extraction hides memory and source writes from the artifact list', () => {
+test('session artifact extraction hides memory but keeps local source writes as related files', () => {
   const messages: Message[] = [{
     role: 'owned-agent',
     sender: 'My Kordi',
@@ -63,7 +63,7 @@ test('session artifact extraction hides memory and source writes from the artifa
   const artifacts = extractSessionArtifacts(messages, null, [lessonArtifact]);
 
   assert.equal(artifacts.some((artifact) => artifact.id === lessonArtifact.id), false);
-  assert.equal(artifacts.some((artifact) => artifact.path === 'src/generated.ts'), false);
+  assert.equal(artifacts.find((artifact) => artifact.path === 'src/generated.ts')?.category, 'related');
 });
 
 test('extractSessionArtifacts keeps generated artifacts but hides package and skill files', () => {
@@ -137,8 +137,8 @@ test('extractSessionArtifacts keeps generated artifacts but hides package and sk
   assert.equal(byPath.has('package.json'), false);
   assert.equal(byPath.has('app/desktop/docs/superpowers/skills/reviewer/SKILL.md'), false);
   assert.equal(byPath.has('app/desktop/src/pages/TaskActivityDashboardPanel.tsx'), false);
-  assert.equal(byPath.has('app/desktop/src/reports/report.ts'), false);
-  assert.equal(byPath.has('tests/generated-report.spec.ts'), false);
+  assert.equal(byPath.get('app/desktop/src/reports/report.ts')?.category, 'related');
+  assert.equal(byPath.get('tests/generated-report.spec.ts')?.category, 'related');
   assert.equal(byPath.has('artifacts/read-output.txt'), false);
 });
 
@@ -190,7 +190,7 @@ test('artifact preview renders html and markdown as previewable documents', () =
   assert.doesNotMatch(markdownMarkup, />Copy</);
 });
 
-test('artifact inspector only renders generated artifacts in the artifact list', () => {
+test('artifact inspector renders generated artifacts and related changed files, but hides memory', () => {
   const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
     isNativeShell: false,
     activeArtifactId: null,
@@ -227,8 +227,8 @@ test('artifact inspector only renders generated artifacts in the artifact list',
 
   assert.match(markup, /data-artifact-section="generated"/);
   assert.match(markup, /kordi-project-structure-report.md/);
-  assert.doesNotMatch(markup, /data-artifact-section="related"/);
+  assert.match(markup, /data-artifact-section="related"/);
+  assert.match(markup, /package\.json/);
   assert.doesNotMatch(markup, /data-artifact-section="memory"/);
-  assert.doesNotMatch(markup, /package\.json/);
   assert.doesNotMatch(markup, /Session lessons/);
 });

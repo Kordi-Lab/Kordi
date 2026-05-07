@@ -175,6 +175,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       chatTranscriptScrollRef: args.chatTranscriptScrollRef,
       onProjectTranscriptScroll: args.onProjectTranscriptScroll,
       setActiveSourcePreview: args.setActiveSourcePreview,
+      setActiveArtifactId: args.setActiveArtifactId,
+      setActiveDetailTab: args.setActiveDetailTab,
       desktopLiveTurn: args.desktopLiveTurn,
       filteredProjectSlashCommands: args.filteredProjectSlashCommands,
       filteredProjectMentionTargets: args.filteredProjectMentionTargets,

@@ -106,6 +106,12 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
       args.setActiveSourcePreview(file);
       args.setIsDetailPanelCollapsed(false);
     },
+    onOpenArtifact: (artifactId) => {
+      args.setActiveSourcePreview(null);
+      args.setActiveArtifactId(artifactId);
+      args.setActiveDetailTab('artifacts');
+      args.setIsDetailPanelCollapsed(false);
+    },
     desktopLiveTurn: args.desktopLiveTurn,
     filteredProjectSlashCommands: args.filteredProjectSlashCommands,
     filteredProjectMentionTargets: args.filteredProjectMentionTargets,
@@ -173,6 +179,12 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onTranscriptScroll: args.onChatTranscriptScroll,
     onOpenSource: (file) => {
       args.setActiveSourcePreview(file);
+      args.setIsDetailPanelCollapsed(false);
+    },
+    onOpenArtifact: (artifactId) => {
+      args.setActiveSourcePreview(null);
+      args.setActiveArtifactId(artifactId);
+      args.setActiveDetailTab('artifacts');
       args.setIsDetailPanelCollapsed(false);
     },
     desktopLiveTurn: args.desktopLiveTurn,

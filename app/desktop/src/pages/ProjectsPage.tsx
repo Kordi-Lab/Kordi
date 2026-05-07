@@ -101,6 +101,7 @@ type ProjectsPageProps = {
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
+  onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredProjectMentionTargets: ComposerMentionOption[];
@@ -155,6 +156,7 @@ export function ProjectsPage({
   chatTranscriptScrollRef,
   onTranscriptScroll,
   onOpenSource,
+  onOpenArtifact,
   desktopLiveTurn,
   filteredProjectSlashCommands,
   filteredProjectMentionTargets,
@@ -338,6 +340,7 @@ export function ProjectsPage({
                 key={`${activeProjectSession.id}-${msg.time}-${idx}`}
                 msg={msg}
                 onOpenSource={onOpenSource}
+                onOpenArtifact={onOpenArtifact}
               />
             ))}
             {shouldRenderLiveTurn && activeProjectLiveTurn ? (
@@ -345,6 +348,7 @@ export function ProjectsPage({
                 turn={activeProjectLiveTurn}
                 sender={liveTurnSender}
                 onStopActiveTurn={onStopDesktopChatTurn}
+                onOpenArtifact={onOpenArtifact}
               />
             ) : null}
           </motion.div>
