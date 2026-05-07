@@ -377,7 +377,7 @@ function ChatDetailPanelView({
 
   if (activeDetailTab === 'artifacts') {
     return (
-      <div className="app-detail-sheet">
+      <div className="app-detail-sheet flex h-full min-h-0 flex-col overflow-hidden">
         <ArtifactInspector
           isNativeShell={isNativeShell}
           artifacts={artifacts}

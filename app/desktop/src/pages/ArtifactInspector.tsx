@@ -107,13 +107,15 @@ function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
   });
 }
 
-function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: 'panel' | 'window' }) {
+type ArtifactPreviewMode = 'panel' | 'rail' | 'window';
+
+function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: ArtifactPreviewMode }) {
   const rows = parseDelimitedRows(source, delimiter);
   if (rows.length === 0) return <div className="px-4 py-4 text-[12px] text-slate-400">This table is empty.</div>;
   const [headers, ...bodyRows] = rows;
 
   return (
-    <div data-artifact-preview-mode={mode} className={cn('overflow-auto p-3', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
+    <div data-artifact-preview-mode={mode} className={cn('overflow-auto p-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
       <div className="overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-control-bg)]/70">
         <table className="min-w-full border-collapse text-left text-[12px] text-slate-100">
           <thead className="bg-white/[0.05] text-[10px] uppercase tracking-[0.12em] text-slate-400">
@@ -142,7 +144,7 @@ function formattedJsonSource(source: string) {
   }
 }
 
-export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: 'panel' | 'window' = 'panel') {
+export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: ArtifactPreviewMode = 'panel') {
   if (preview.lines.length === 0) {
     return <div className="px-4 py-4 text-[12px] text-slate-400">This artifact is empty.</div>;
   }
@@ -152,12 +154,12 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: 'pa
 
   if (previewKind === 'html' || previewKind === 'svg') {
     return (
-      <div data-artifact-preview-mode={mode} className={cn('bg-[color:var(--app-transcript-bg)] p-3', mode === 'window' && 'min-h-full')}>
+      <div data-artifact-preview-mode={mode} className={cn('bg-[color:var(--app-transcript-bg)] p-3', mode !== 'panel' && 'min-h-full')}>
         <iframe
           title={`${fileNameFromPath(preview.path)} preview`}
           srcDoc={source}
           sandbox="allow-forms allow-popups allow-scripts"
-          className={cn('w-full rounded-[16px] border border-white/10 bg-white text-slate-950', mode === 'window' ? 'h-[calc(100vh-10rem)] min-h-[36rem]' : 'h-[32rem]')}
+          className={cn('w-full rounded-[16px] border border-white/10 bg-white text-slate-950', mode === 'window' ? 'h-[calc(100vh-10rem)] min-h-[36rem]' : mode === 'rail' ? 'h-full min-h-[28rem]' : 'h-[32rem]')}
         />
       </div>
     );
@@ -166,20 +168,20 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: 'pa
   if (previewKind === 'image') {
     const imageSource = source.trim().startsWith('data:image/') ? source.trim() : preview.path;
     return (
-      <div data-artifact-preview-mode={mode} className={cn('flex items-center justify-center overflow-auto bg-[color:var(--app-transcript-bg)] p-4', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
+      <div data-artifact-preview-mode={mode} className={cn('flex items-center justify-center overflow-auto bg-[color:var(--app-transcript-bg)] p-4', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
         <img src={imageSource} alt={`${fileNameFromPath(preview.path)} preview`} className="max-h-[30rem] max-w-full rounded-[16px] border border-white/10 bg-white object-contain" />
       </div>
     );
   }
 
   if (previewKind === 'mermaid') {
-    return <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}><MermaidDiagram code={source} className={mode === 'window' ? 'min-h-full' : undefined} /></div>;
+    return <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}><MermaidDiagram code={source} className={mode !== 'panel' ? 'min-h-full' : undefined} /></div>;
   }
 
   if (previewKind === 'json') {
     return (
-      <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}>
-        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'window' ? 'max-h-none' : 'max-h-[32rem]'} wrapLines />
+      <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}>
+        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'} wrapLines />
       </div>
     );
   }
@@ -190,18 +192,18 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: 'pa
 
   if (previewKind === 'markdown') {
     return (
-      <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-4 py-4', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
-        <MarkdownContent text={source} className={mode === 'window' ? 'min-h-full' : undefined} />
+      <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-4 py-4', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
+        <MarkdownContent text={source} className={mode !== 'panel' ? 'min-h-full' : undefined} />
       </div>
     );
   }
 
   return (
-    <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}>
+    <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}>
       <MarkdownCodeBlock
         language={languageFromPath(preview.path)}
         code={source}
-        maxHeightClass={mode === 'window' ? 'max-h-none' : 'max-h-[32rem]'}
+        maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'}
         wrapLines
       />
     </div>
@@ -516,9 +518,10 @@ export function ArtifactInspector({
   }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, previewArtifact?.id, previewArtifact?.path]);
 
   return (
-    <>
-      {folderBrowserRootPath ? (
-        <section className="app-detail-section">
+    <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">
+      <div data-artifact-file-list="true" className="shrink-0 overflow-y-auto pr-1 max-h-[38%]">
+        {folderBrowserRootPath ? (
+          <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>
           <div className="app-inspector-emphasis">
             <div className="truncate text-[11px] text-[color:var(--utility-foreground)]">
@@ -591,11 +594,11 @@ export function ArtifactInspector({
               )}
             </div>
           ) : null}
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      {generatedArtifacts.length > 0 || relatedArtifacts.length > 0 ? (
-        <>
+        {generatedArtifacts.length > 0 || relatedArtifacts.length > 0 ? (
+          <>
           <ArtifactListSection
             title={generatedArtifacts.length > 0 ? 'Generated artifacts' : ''}
             section="generated"
@@ -616,18 +619,19 @@ export function ArtifactInspector({
               onSelectArtifact(artifactId);
             }}
           />
-        </>
-      ) : (
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Artifacts</div>
-          <div className="app-inspector-empty">{emptyMessage}</div>
-        </section>
-      )}
+          </>
+        ) : (
+          <section className="app-detail-section">
+            <div className="app-detail-kicker">Artifacts</div>
+            <div className="app-inspector-empty">{emptyMessage}</div>
+          </section>
+        )}
+      </div>
 
       {previewArtifact ? (
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Preview</div>
-          <div className="app-code-panel overflow-hidden rounded-[20px] shadow-[var(--app-shadow-soft)]">
+        <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">
+          <div className="app-detail-kicker shrink-0">Preview</div>
+          <div className="app-code-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] shadow-[var(--app-shadow-soft)]">
             <div className="app-code-toolbar flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
               <div className="min-w-0">
                 <div className="truncate font-medium text-slate-200">{previewFileName}</div>
@@ -654,18 +658,20 @@ export function ArtifactInspector({
               </div>
             </div>
             {isPreviewLoading ? (
-              <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
+              <div className="flex min-h-0 flex-1 items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
                 <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                 Loading artifact preview…
               </div>
             ) : previewErrorDetails ? (
-              <div className="px-4 py-4">
+              <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
                 <div className="text-[13px] font-medium text-[color:var(--utility-foreground)]">{previewErrorDetails.title}</div>
                 <div className="mt-1 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{previewErrorDetails.description}</div>
               </div>
             ) : cachedPreview ? (
               <>
-                {renderArtifactPreview(cachedPreview)}
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {renderArtifactPreview(cachedPreview, 'rail')}
+                </div>
                 {cachedPreview.truncated ? (
                   <div className="border-t border-white/10 px-4 py-2 text-[11px] text-slate-500">
                     Preview truncated for large files.
@@ -673,7 +679,7 @@ export function ArtifactInspector({
                 ) : null}
               </>
             ) : (
-              <div className="px-4 py-4 text-[12px] text-slate-500">
+              <div className="min-h-0 flex-1 px-4 py-4 text-[12px] text-slate-500">
                 {isNativeShell ? 'Select an artifact to load its preview.' : 'Artifact previews are available in the desktop app.'}
               </div>
             )}
@@ -690,7 +696,7 @@ export function ArtifactInspector({
         />
       ) : null}
 
-      {footer}
-    </>
+      {footer ? <div className="shrink-0">{footer}</div> : null}
+    </div>
   );
 }

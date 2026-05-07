@@ -298,6 +298,31 @@ test('markdown code blocks highlight additional file types and render mermaid di
   assert.match(mermaidMarkdown, />B</);
 });
 
+test('artifact inspector gives the selected preview the flexible right-panel space', () => {
+  const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
+    isNativeShell: false,
+    activeArtifactId: 'docs/flow.md',
+    onSelectArtifact: () => undefined,
+    emptyMessage: 'No artifacts',
+    artifacts: [
+      {
+        id: 'docs/flow.md',
+        path: 'docs/flow.md',
+        name: 'flow.md',
+        kind: 'document',
+        summary: 'Related file from write',
+        category: 'related',
+      },
+    ],
+  }));
+
+  assert.match(markup, /data-artifact-inspector="true"/);
+  assert.match(markup, /data-artifact-file-list="true"/);
+  assert.match(markup, /data-artifact-preview-section="true"/);
+  assert.match(markup, /flex-1/);
+  assert.match(markup, /min-h-0/);
+});
+
 test('artifact preview window uses full-height preview rendering', () => {
   const preview = {
     path: 'tmp_test_task_mermaid.md',
