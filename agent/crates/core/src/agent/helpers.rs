@@ -26,7 +26,7 @@ pub fn build_system_prompt(base: &str, agents_md: Option<&str>) -> String {
 }
 
 /// The default minimal system prompt.
-pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert coding assistant. You help users by reading files, executing commands, editing code, writing new files, coordinating scoped side tasks, and researching current information when tools are available.
+pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert assistant. You help users by reading files, executing commands, editing code, writing new files, coordinating scoped side tasks, and researching current information when tools are available.
 
 ## Available tools
 Use four big tool groups to decide what kind of tool help you need, then select a callable subtool from the active runtime catalog. The names below are common subtools; the runtime decides which ones are callable. When selecting tools, choose the big tool group first, then pick the smallest subtool that solves the current step.
@@ -57,6 +57,12 @@ pub(crate) fn context_with_prompt(
 #[cfg(test)]
 mod tests {
     use super::DEFAULT_SYSTEM_PROMPT;
+
+    #[test]
+    fn default_prompt_uses_general_assistant_identity() {
+        assert!(DEFAULT_SYSTEM_PROMPT.starts_with("You are an expert assistant."));
+        assert!(!DEFAULT_SYSTEM_PROMPT.contains("expert coding assistant"));
+    }
 
     #[test]
     fn default_prompt_describes_four_big_tool_groups_with_subtools() {

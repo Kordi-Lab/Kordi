@@ -109,12 +109,56 @@ function hasLocalOwnedAgentRuntimeStatus(message: Message) {
     );
 }
 
+function isPendingCanonicalAgentPlaceholder(message: Message) {
+  return Boolean(
+    message.turn
+      && !message.turn.completed
+      && (message.role === 'owned-agent' || message.role === 'external-agent')
+      && message.id?.startsWith('canonical-delegation-processing:'),
+  );
+}
+
+function localRuntimeProgressForCanonicalPlaceholder(canonicalMessage: Message, localMessage: Message): Message {
+  if (!localMessage.turn) return canonicalMessage;
+  const canonicalReplyToMessageId = canonicalMessage.replyToMessageId ?? canonicalMessage.turn?.replyToMessageId;
+  return {
+    ...localMessage,
+    id: canonicalMessage.id,
+    role: canonicalMessage.role,
+    replyToMessageId: canonicalReplyToMessageId ?? localMessage.replyToMessageId,
+    sourceMessage: canonicalMessage.sourceMessage ?? localMessage.sourceMessage,
+    replyAliasIds: canonicalMessage.replyAliasIds ?? localMessage.replyAliasIds,
+    turn: {
+      ...localMessage.turn,
+      id: canonicalMessage.turn?.id ?? localMessage.turn.id,
+      sessionId: canonicalMessage.turn?.sessionId ?? localMessage.turn.sessionId,
+      replyToMessageId: canonicalReplyToMessageId ?? localMessage.turn.replyToMessageId,
+      sourceMessage: canonicalMessage.turn?.sourceMessage ?? localMessage.turn.sourceMessage,
+      pendingBridgeAgentRequest: canonicalMessage.turn?.pendingBridgeAgentRequest ?? localMessage.turn.pendingBridgeAgentRequest,
+    },
+  };
+}
+
 function mergeLocalOwnedAgentRuntimeStatus(
   canonicalMessages: Message[],
   existingMessages: Message[],
 ) {
   const merged = [...canonicalMessages];
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
+    if (localMessage.turn && !localMessage.turn.completed) {
+      const pendingCanonicalIndex = merged.findIndex((message) => (
+        isPendingCanonicalAgentPlaceholder(message)
+        && message.role === localMessage.role
+      ));
+      if (pendingCanonicalIndex >= 0) {
+        merged[pendingCanonicalIndex] = localRuntimeProgressForCanonicalPlaceholder(
+          merged[pendingCanonicalIndex],
+          localMessage,
+        );
+        continue;
+      }
+    }
+
     const matchingCanonicalIndex = merged.findIndex((message) => sameOwnedAgentTurn(message, localMessage));
     if (matchingCanonicalIndex >= 0) {
       merged[matchingCanonicalIndex] = localMessage;

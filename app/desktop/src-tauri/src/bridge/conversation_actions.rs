@@ -97,28 +97,37 @@ fn pending_read_receipt_request_ids(conversation: &DesktopBridgeConversationReco
 }
 
 fn session_thread_for_outreach(outreach: &DesktopBridgeOutreachMetadata) -> Option<Value> {
-    outreach.parent_session_id.as_ref().map(|parent_session_id| {
-        serde_json::json!({
-            "parentSessionId": parent_session_id,
-            "parentSessionTitle": outreach.parent_session_title.as_deref(),
-            "parentSessionKind": outreach.parent_session_kind.as_deref(),
-            "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
-            "participants": &outreach.parent_session_participants,
-            "messages": &outreach.parent_session_messages,
-            "parentTurnId": outreach.parent_turn_id.as_deref(),
-            "parentMessageId": outreach.parent_message_id.as_deref(),
-            "targetKind": outreach.target_kind.as_str(),
-            "targetDisplayName": outreach.target_display_name.as_str(),
-            "targetNodeId": outreach.target_node_id.as_str(),
-            "requestText": outreach.request_text.as_str(),
-            "triggerText": outreach.trigger_text.as_deref(),
-            "contextPolicy": outreach.context_policy.as_deref(),
-            "projectName": outreach.project_name.as_deref(),
+    outreach
+        .parent_session_id
+        .as_ref()
+        .map(|parent_session_id| {
+            serde_json::json!({
+                "parentSessionId": parent_session_id,
+                "parentSessionTitle": outreach.parent_session_title.as_deref(),
+                "parentSessionKind": outreach.parent_session_kind.as_deref(),
+                "parentGroupSpaceId": outreach.parent_group_space_id.as_deref(),
+                "participants": &outreach.parent_session_participants,
+                "messages": &outreach.parent_session_messages,
+                "initiator": &outreach.initiator_identity,
+                "selfTarget": &outreach.self_target_identity,
+                "parentTurnId": outreach.parent_turn_id.as_deref(),
+                "parentMessageId": outreach.parent_message_id.as_deref(),
+                "targetKind": outreach.target_kind.as_str(),
+                "targetDisplayName": outreach.target_display_name.as_str(),
+                "targetNodeId": outreach.target_node_id.as_str(),
+                "requestText": outreach.request_text.as_str(),
+                "triggerText": outreach.trigger_text.as_deref(),
+                "contextPolicy": outreach.context_policy.as_deref(),
+                "projectName": outreach.project_name.as_deref(),
+            })
         })
-    })
 }
 
-fn read_receipt_payload(host_node_id: &str, request_id: &str, session_thread: Option<Value>) -> Value {
+fn read_receipt_payload(
+    host_node_id: &str,
+    request_id: &str,
+    session_thread: Option<Value>,
+) -> Value {
     let mut payload = serde_json::json!({
         "from": host_node_id,
         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
@@ -1464,6 +1473,8 @@ mod tests {
             parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
             parent_turn_id: parent_turn_id.map(ToString::to_string),
             parent_message_id: Some("msg-user".to_string()),
             bridge_host_id: "host-1".to_string(),

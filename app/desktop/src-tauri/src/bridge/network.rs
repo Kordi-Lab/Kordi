@@ -15,8 +15,8 @@ use super::storage::{
     derive_node_id, ed25519_to_x25519_public, load_or_create_bridge_identity_for_agent,
 };
 use super::{
-    DesktopBridgeContactRequest, DesktopBridgeHostConfig, DesktopBridgePeer, DesktopBridgeProject,
-    generate_registry_node_id,
+    generate_registry_node_id, DesktopBridgeContactRequest, DesktopBridgeHostConfig,
+    DesktopBridgePeer, DesktopBridgeProject,
 };
 
 #[derive(Debug, Deserialize)]
@@ -1380,7 +1380,10 @@ mod tests {
             }
         });
 
-        assert_eq!(relay_target_kind_for_payload(&payload), Some("session-participant"));
+        assert_eq!(
+            relay_target_kind_for_payload(&payload),
+            Some("session-participant")
+        );
     }
 
     #[test]

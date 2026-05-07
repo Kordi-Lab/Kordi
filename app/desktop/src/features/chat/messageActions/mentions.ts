@@ -23,12 +23,27 @@ export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | n
 }
 
 export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeTarget) {
+  const targetDisplayName = target.displayLabel;
+  const targetOwnerName = target.peer.ownerName ?? null;
+  const targetRuntime = target.peer.runtime;
+  const targetHumanId = target.peer.humanId ?? null;
+  const targetAgentId = target.peer.agentId ?? null;
   return {
-    targetDisplayName: target.displayLabel,
-    targetOwnerName: target.peer.ownerName ?? null,
-    targetRuntime: target.peer.runtime,
-    targetHumanId: target.peer.humanId ?? null,
-    targetAgentId: target.peer.agentId ?? null,
+    targetDisplayName,
+    targetOwnerName,
+    targetRuntime,
+    targetHumanId,
+    targetAgentId,
+    selfTargetIdentity: {
+      identityId: targetAgentId ? `agent:${targetAgentId}` : (targetHumanId ? `human:${targetHumanId}` : null),
+      displayName: targetDisplayName,
+      kind: target.targetKind === 'bridge-agent' ? 'agent' : 'human',
+      ownerDisplayName: targetOwnerName,
+      bridgeNodeId: target.peer.nodeId,
+      humanId: targetHumanId,
+      agentId: targetAgentId,
+      runtime: targetRuntime,
+    },
   };
 }
 
@@ -297,6 +312,19 @@ function dedupeBridgeMentionCandidateHandles(candidates: BridgeMentionCandidate[
   });
 }
 
+function peerIsApprovedBridgeContact(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+  const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
+  return Boolean(peer.isContact || status === 'contact' || status === 'approved');
+}
+
+function agentCanBeMentionedDirectly(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+  if (!isBridgeAgentRuntime(peer.runtime)) return true;
+  const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
+  if (agentReachabilityPolicy === 'owner') return false;
+  if (agentReachabilityPolicy === 'server') return true;
+  return peerIsApprovedBridgeContact(peer) || (peer.sharedProjects?.length ?? 0) > 0;
+}
+
 export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
   if (!bridgeState) return [];
 
@@ -305,7 +333,7 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
   for (const host of bridgeState.hosts) {
     for (const peer of host.visiblePeers) {
       const isAgent = isBridgeAgentRuntime(peer.runtime);
-      const agentIsReachable = !isAgent || (peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts') !== 'owner';
+      const agentIsReachable = !isAgent || agentCanBeMentionedDirectly(peer);
       const seenForPeer = new Set<string>();
       const pushLabel = (value: string | null | undefined, targetKind: BridgeMentionCandidate['targetKind']) => {
         const displayLabel = value?.trim();

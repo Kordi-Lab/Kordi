@@ -129,9 +129,9 @@ test('group session root id follows participant-space ids for continuations', ()
 
 test('group bridge thread metadata carries all human members for remote group reconstruction', () => {
   assert.deepEqual(bridgeGroupSessionParticipants(groupConversation()), [
-    { identityId: 'human:me', displayName: 'Me', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me' },
-    { identityId: 'human:alice', displayName: 'Alice', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice' },
-    { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
+    { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
+    { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
+    { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
   ]);
 });
 
@@ -139,9 +139,9 @@ test('self-reference local label is replaced with the public bridge owner name w
   assert.deepEqual(
     bridgeGroupSessionParticipants(groupConversation(), { selfPublicName: 'Kordi User 1' }),
     [
-      { identityId: 'human:me', displayName: 'Kordi User 1', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me' },
-      { identityId: 'human:alice', displayName: 'Alice', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice' },
-      { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
+      { identityId: 'human:me', displayName: 'Kordi User 1', kind: 'human', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
+      { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
+      { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
     ],
   );
 });
@@ -152,9 +152,9 @@ test('self-reference broadcast falls through to local label when no public name 
   assert.deepEqual(
     bridgeGroupSessionParticipants(groupConversation(), { selfPublicName: null }),
     [
-      { identityId: 'human:me', displayName: 'Me', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me' },
-      { identityId: 'human:alice', displayName: 'Alice', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice' },
-      { identityId: 'human:bob', displayName: 'Bob', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob' },
+      { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'self', bridgeNodeId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
+      { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', bridgeNodeId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
+      { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', bridgeNodeId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
     ],
   );
 });

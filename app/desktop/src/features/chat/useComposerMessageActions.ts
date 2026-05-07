@@ -7,7 +7,7 @@ import {
   cancelDesktopChatTurn,
 } from '@/lib/desktop';
 
-import { resizeComposerTextarea } from './composerController.shared';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, resizeComposerTextarea } from './composerController.shared';
 import type { UseComposerControllerArgs } from './composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from './composerDrafts';
 import {
@@ -265,7 +265,7 @@ export function useComposerMessageActions({
       activeConvId,
       insertMentionIntoDraft(composerDrafts.chat, label),
     ));
-    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]', insertMentionIntoDraft(composerDrafts.chat, label));
+    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR, insertMentionIntoDraft(composerDrafts.chat, label));
   }, [activeConvId, composerDrafts.chat, setComposerDrafts]);
 
   const acceptProjectMentionTarget = useCallback((label: string) => {

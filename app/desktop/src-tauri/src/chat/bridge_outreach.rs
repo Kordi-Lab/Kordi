@@ -284,4 +284,30 @@ mod tests {
             &labels
         ));
     }
+
+    #[test]
+    fn hidden_or_unmentioned_reach_out_targets_are_denied() {
+        let labels = vec!["Kordi".to_string(), "Alice's Kordi".to_string()];
+
+        assert!(!reach_out_target_allowed_by_user_text(
+            "Can someone review this?",
+            "Bob's Kordi",
+            &labels,
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Bob's Kordi can you review this?",
+            "Charlie's Kordi",
+            &labels,
+        ));
+        assert!(!reach_out_target_allowed_by_user_text(
+            "@Kordi please ask Bob's Kordi",
+            "Bob's Kordi",
+            &labels,
+        ));
+        assert!(reach_out_target_allowed_by_user_text(
+            "@Bob's Kordi can you review this?",
+            "Bob's Kordi",
+            &labels,
+        ));
+    }
 }

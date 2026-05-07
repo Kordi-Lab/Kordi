@@ -250,7 +250,7 @@ test('owner-only bridge agents are hidden from mention candidates while their de
   );
 });
 
-test('group mention candidates include group people and their agents, not outside contacts', () => {
+test('group mention candidates include group people and approved agents, not outside contacts or non-contact agents', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
@@ -293,7 +293,7 @@ test('group mention candidates include group people and their agents, not outsid
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob'],
   );
 });
 
@@ -477,6 +477,60 @@ test('group mention scope keeps active child participants when legacy root has n
 
   assert.equal(scope.canonicalParticipants?.length, 3);
   assert.deepEqual(scope.canonicalParticipants?.map((participant) => participant.name), ['Host Owner', 'Alice', 'Bob']);
+});
+
+test('group mention candidates hide non-contact contacts-only agents while keeping the person mentionable', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+      isContact: false,
+      contactRequestStatus: null,
+      agentReachabilityPolicy: 'contacts',
+    }),
+  ]);
+  const group = groupConversationWithHumans([
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-agent' },
+  ]);
+
+  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+
+  assert.deepEqual(
+    scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Bob'],
+  );
+});
+
+test('group mention candidates include server-reachable agents even without contact approval', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+      isContact: false,
+      contactRequestStatus: null,
+      agentReachabilityPolicy: 'server',
+    }),
+  ]);
+  const group = groupConversationWithHumans([
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-agent' },
+  ]);
+
+  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+
+  assert.deepEqual(
+    scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+  );
 });
 
 test('mention candidates hide active host person and agent duplicates', () => {

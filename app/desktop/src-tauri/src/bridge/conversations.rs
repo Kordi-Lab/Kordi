@@ -214,6 +214,8 @@ mod tests {
             parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
             parent_turn_id: None,
             parent_message_id: None,
             bridge_host_id: "bridge_host".to_string(),

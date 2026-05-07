@@ -10,6 +10,8 @@ import type {
   Conversation,
   ConversationBridgeTarget,
   DesktopChatState,
+  DesktopBridgePromptIdentity,
+  DesktopBridgeState,
   DesktopBridgeSessionParticipant,
   DesktopChatTurnSnapshot,
   QueuedDesktopChatMessage,
@@ -26,7 +28,7 @@ import {
   updateDesktopChatSessionConfig,
 } from '@/lib/desktop';
 
-import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
@@ -457,12 +459,30 @@ export function bridgeGroupSessionParticipants(
     participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
       identityId: cleanText(participant.id),
       displayName,
+      kind: 'human',
       role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
       bridgeNodeId,
       humanId,
+      runtime: 'person',
     });
   }
   return [...participants.values()];
+}
+
+function initiatorIdentityForBridgeHost(
+  activeBridgeHost: DesktopBridgeState['hosts'][number] | null | undefined,
+  canonicalHumanIdentityId: string | null | undefined,
+): DesktopBridgePromptIdentity | null {
+  const displayName = cleanText(activeBridgeHost?.ownerName) || cleanText(activeBridgeHost?.displayName);
+  if (!displayName && !canonicalHumanIdentityId) return null;
+  return {
+    identityId: canonicalHumanIdentityId || activeBridgeHost?.humanId || activeBridgeHost?.id || null,
+    displayName: displayName ?? 'Me',
+    kind: 'human',
+    bridgeNodeId: activeBridgeHost?.nodeId ?? null,
+    humanId: activeBridgeHost?.humanId ?? null,
+    runtime: 'person',
+  };
 }
 
 type UseChatMessageActionsArgs = Pick<
@@ -594,7 +614,7 @@ export function useChatMessageActions({
     setDesktopChatError(null);
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
-    resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
   }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((turn: DesktopChatTurnSnapshot) => {
@@ -701,6 +721,10 @@ export function useChatMessageActions({
     const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
       || activeBridgeHost?.displayName?.trim()
       || null;
+    const bridgePromptInitiatorIdentity = initiatorIdentityForBridgeHost(
+      activeBridgeHost,
+      canonicalHumanIdentityId,
+    );
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
       ? bridgeGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName })
       : [];
@@ -723,7 +747,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const sentAt = formatDesktopEventTime();
         const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
         const groupMentionRelayTargets = activeGroupSessionIsGroup
@@ -770,6 +794,7 @@ export function useChatMessageActions({
               parentGroupSpaceId: activeGroupSessionSpaceId,
               parentSessionParticipants: activeGroupSessionParticipants,
               parentSessionMessages: mentionIsSessionMessage ? [] : parentSessionMessagesForOutreach(activeConvMessages),
+              initiatorIdentity: bridgePromptInitiatorIdentity,
               parentMessageId,
               projectId: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.root,
               projectName: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.name,
@@ -796,6 +821,7 @@ export function useChatMessageActions({
                 parentGroupSpaceId: activeGroupSessionSpaceId,
                 parentSessionParticipants: activeGroupSessionParticipants,
                 parentSessionMessages: [],
+                initiatorIdentity: bridgePromptInitiatorIdentity,
                 parentMessageId,
                 projectId: null,
                 projectName: null,
@@ -952,7 +978,7 @@ export function useChatMessageActions({
         }
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const resolvedConversationId = targetConversationId;
         void (async () => {
           try {
@@ -1076,7 +1102,7 @@ export function useChatMessageActions({
     });
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-      resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
       setOpenComposerSelector(null);
       return;
     }
@@ -1111,7 +1137,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const parentSessionId = await ensureLocalSessionId();
         const sentAt = formatDesktopEventTime();
         const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -1244,7 +1270,7 @@ export function useChatMessageActions({
         )
       ));
       setChatComposerAttachments([]);
-      resizeComposerTextarea('textarea[placeholder="Message a person, an agent, or delegate a task…"]');
+      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
       const relayToLocalAgentTargets = async (
         requestText: string,
         parentTurnId?: string | null,
