@@ -35,3 +35,27 @@ test('jump-to-message highlight overrides the whole assistant response surface, 
   assert.match(highlightSurfaceRule, /box-shadow:[\s\S]*inset 0 0 0 1px/);
   assert.match(highlightSurfaceRule, /border-color:/);
 });
+
+test('folded bottom overlays use progressive diffusion without a solid mask or pill chrome', () => {
+  const shellCss = readDesktopShellCss();
+  const quoteFadeRule = cssRule(shellCss, '.app-source-message-quote-folded::after');
+  const answerFadeRule = cssRule(shellCss, '.app-live-assistant-answer-folded::after');
+  const quoteToggleRule = cssRule(shellCss, '.app-source-message-quote-toggle-overlay');
+  const answerToggleRule = cssRule(shellCss, '.app-live-assistant-answer-toggle-overlay');
+
+  for (const rule of [quoteFadeRule, answerFadeRule]) {
+    assert.match(rule, /linear-gradient\(\s*180deg,\s*transparent/);
+    assert.match(rule, /backdrop-filter:\s*blur\(/);
+    assert.match(rule, /mask-image:\s*linear-gradient/);
+    assert.doesNotMatch(rule, /border-radius:/);
+    assert.doesNotMatch(rule, /box-shadow:/);
+  }
+
+  for (const rule of [quoteToggleRule, answerToggleRule]) {
+    assert.match(rule, /background:\s*transparent/);
+    assert.match(rule, /border:\s*0/);
+    assert.match(rule, /backdrop-filter:\s*none/);
+    assert.doesNotMatch(rule, /border-radius:\s*999px/);
+    assert.doesNotMatch(rule, /box-shadow:/);
+  }
+});
