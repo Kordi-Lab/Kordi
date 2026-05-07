@@ -825,6 +825,56 @@ test('canonical read model shows fresh bridge-parent processing placeholders for
   assert.equal(messages.find((message) => message.turn?.status === 'processing')?.turn?.message, 'Processing…');
 });
 
+test('canonical read model dedupes owner local and public group agent processing for the same request', () => {
+  const sessionId = 'session:group:owner-public-duplicate-processing';
+  const now = Date.now();
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:user3',
+      displayName: 'Kordi User 3',
+      humanIdentityId: 'human:user3',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:user3', kind: 'human', displayName: 'Kordi User 3', source: 'local', avatarKey: 'user3', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user2', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-user2', humanId: 'human-user2', avatarKey: 'user2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user3-bridge', kind: 'human', displayName: 'Kordi User 3', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-user3', humanId: 'human-user3', avatarKey: 'user3-bridge', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:user3', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:public-user3', kind: 'agent', displayName: "Kordi User 3's Kordi", source: 'bridge', ownerIdentityId: 'human:user3-bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-user3', agentId: 'agent-user3', avatarKey: 'agent-public-user3', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Kordi User 2, Kordi User 3', status: 'active', createdByIdentityId: 'human:user2', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-group', bridgeHostId: 'host-1' }, createdAtMs: 1, updatedAtMs: now + 100, lastMessageAtMs: now + 100 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:user3', role: 'self', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId, identityId: 'human:user2', role: 'person', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:user3', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:public-user3', role: 'external-agent', state: 'active', addedByIdentityId: 'human:user2', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group-request', sessionId, senderIdentityId: 'human:user2', senderRole: 'person', messageKind: 'text', contentText: "@KordiUser3sKordi what is open claw?", content: { sender: 'Kordi User 2', timeLabel: '12:54' }, status: 'sent', sequenceNum: 1, createdAtMs: now, updatedAtMs: now, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'request' },
+      { id: 'msg:public-processing', sessionId, senderIdentityId: 'agent:public-user3', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Processing...', content: { sender: "Kordi User 3's Kordi", timeLabel: '12:54', kind: 'session-message', deliveryState: 'processing' }, status: 'processing', sequenceNum: 2, createdAtMs: now + 100, updatedAtMs: now + 100, contentHash: null, parentMessageId: 'msg:group-request', sourceTransport: 'desktop-bridge-parent', sourceEventId: 'public-processing' },
+    ],
+    delegatedExchanges: [
+      { id: 'delegation:owner-processing', sessionId, initiatorIdentityId: 'human:user2', targetIdentityId: 'agent:local', triggerMessageId: 'msg:group-request', requestMessageId: 'msg:group-request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:group', bridgeRequestId: 'bridge_req_owner_processing', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: now, updatedAtMs: now + 100 },
+    ],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+  const processingTurns = messages.filter((message) => message.turn?.status === 'processing');
+
+  assert.equal(processingTurns.length, 1);
+  assert.equal(processingTurns[0]?.sender, 'My Kordi');
+  assert.equal(processingTurns[0]?.replyToMessageId, 'msg:group-request');
+});
+
 test('canonical read model keeps later active processing placeholder when an earlier same-agent request completes', () => {
   const sessionId = 'session:group:parallel-processing-same-agent';
   const now = Date.now();
