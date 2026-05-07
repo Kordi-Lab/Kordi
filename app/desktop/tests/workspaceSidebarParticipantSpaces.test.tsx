@@ -239,6 +239,36 @@ test('WorkspaceSidebar renders direct human participant spaces as one flat chat 
   assert.doesNotMatch(markup, /New Bob thread/);
 });
 
+test('WorkspaceSidebar renders an Agent tab shortcut for new My agent sessions', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:my-agent:new',
+      canonicalSessionId: 'session:my-agent:new',
+      name: 'My agent session',
+      type: 'owned-agent',
+      subtitle: 'New plan',
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: [],
+    agentParticipantSpaces: participantSpaces,
+    activeConvId: 'session:my-agent:new',
+    initialChatChannel: 'agent',
+  }) as never));
+
+  assert.match(markup, />Agent</);
+  assert.match(markup, /New My agent session/);
+  assert.match(markup, /New session/);
+});
+
 function countMatches(value: string, pattern: RegExp) {
   return value.match(pattern)?.length ?? 0;
 }

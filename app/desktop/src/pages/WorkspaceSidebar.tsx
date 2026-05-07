@@ -173,6 +173,7 @@ type WorkspaceSidebarProps = {
   contactParticipantSpaces: ParticipantSpaceItem[];
   agentParticipantSpaces: ParticipantSpaceItem[];
   initialSelectedParticipantSpaceId?: string | null;
+  initialChatChannel?: ChatChannel;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
@@ -361,6 +362,7 @@ export function WorkspaceSidebar({
   activeNav,
   setActiveNav,
   chatConversations,
+  onCreateChatSession,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -368,6 +370,7 @@ export function WorkspaceSidebar({
   contactParticipantSpaces,
   agentParticipantSpaces,
   initialSelectedParticipantSpaceId = null,
+  initialChatChannel = 'contact',
   activeConvId,
   onSelectChatSession,
   onStartChatWithPerson,
@@ -436,7 +439,7 @@ export function WorkspaceSidebar({
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
-  const [chatChannel, setChatChannel] = useState<ChatChannel>('contact');
+  const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
@@ -729,6 +732,20 @@ export function WorkspaceSidebar({
   const renderAgentSessionList = (rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>, emptyMessage: string) => (
     <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="agent-sessions-flat">
       <div className="w-full space-y-0.5">
+        <div className="mb-1 flex justify-center px-1">
+          <button
+            type="button"
+            onClick={() => {
+              void onCreateChatSession();
+            }}
+            className="app-participant-space-action app-participant-space-context-create inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
+            title="New My agent session"
+            aria-label="New My agent session"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>New session</span>
+          </button>
+        </div>
         {rows.length > 0 ? rows.map(renderAgentSessionRow) : (
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
             {emptyMessage}
