@@ -99,6 +99,117 @@ fn group_agent_response_without_top_level_context_rejoins_session_message_group(
 }
 
 #[test]
+fn group_agent_response_outreach_tools_replace_request_placeholder_outreach() {
+    let request_outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some("session:group:test".to_string()),
+        parent_session_title: Some("Group".to_string()),
+        parent_session_kind: Some("group".to_string()),
+        parent_group_space_id: Some("session:group:test".to_string()),
+        parent_session_participants: Vec::new(),
+        parent_session_messages: Vec::new(),
+        initiator_identity: None,
+        self_target_identity: None,
+        parent_turn_id: None,
+        parent_message_id: Some("msg:ui:request".to_string()),
+        bridge_host_id: "bridge-local".to_string(),
+        bridge_conversation_id: Some("bridge:local:remote".to_string()),
+        bridge_request_id: Some("bridge_req_group_agent_tools".to_string()),
+        delivery_state: Some("processing".to_string()),
+        target_node_id: "kd_remote".to_string(),
+        target_human_id: Some("kh_remote".to_string()),
+        target_agent_id: Some("ka_remote".to_string()),
+        target_display_name: "Remote Kordi".to_string(),
+        target_owner_name: Some("Remote".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "@RemoteKordi create a task".to_string(),
+        trigger_text: Some("@RemoteKordi create a task".to_string()),
+        context_text: None,
+        context_policy: Some("session-message".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "processing".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 1_000,
+        completed_at_ms: None,
+        error: None,
+    };
+    let mut response_outreach = request_outreach.clone();
+    response_outreach.delivery_state = Some("responded".to_string());
+    response_outreach.status = "completed".to_string();
+    response_outreach.updated_at_ms = 2_000;
+    response_outreach.completed_at_ms = Some(2_000);
+    response_outreach.parent_session_messages = vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+        role: "assistant".to_string(),
+        sender: Some("Remote Kordi".to_string()),
+        text: "Created the task".to_string(),
+        time_label: Some("10:01".to_string()),
+        index: Some(1),
+        tools: vec![serde_json::json!({
+            "name": "task_operator",
+            "arguments": "{\"action\":\"create\",\"taskTitle\":\"Buy A Big House 2\"}",
+        })],
+    }];
+
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:local:remote".to_string(),
+        canonical_session_id: "session:group:test".to_string(),
+        host_id: "bridge-local".to_string(),
+        peer_node_id: "kd_remote".to_string(),
+        peer_display_name: Some("Remote Kordi".to_string()),
+        peer_owner_name: Some("Remote".to_string()),
+        peer_runtime: "kordi-desktop".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Remote Kordi".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_000,
+        updated_at_label: "Now".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: vec![
+            crate::bridge::DesktopBridgeConversationMessage {
+                id: "msg-request".to_string(),
+                direction: "outbound".to_string(),
+                sender: Some("Local".to_string()),
+                text: "@RemoteKordi create a task".to_string(),
+                time_label: "10:00".to_string(),
+                timestamp_ms: 1_000,
+                request_id: Some("bridge_req_group_agent_tools".to_string()),
+                delivery_state: Some("responded".to_string()),
+                outreach: Some(request_outreach),
+                attachments: Vec::new(),
+            },
+            crate::bridge::DesktopBridgeConversationMessage {
+                id: "msg-response".to_string(),
+                direction: "inbound-response".to_string(),
+                sender: Some("Remote Kordi".to_string()),
+                text: "Created the task".to_string(),
+                time_label: "10:01".to_string(),
+                timestamp_ms: 2_000,
+                request_id: Some("bridge_req_group_agent_tools".to_string()),
+                delivery_state: Some("responded".to_string()),
+                outreach: Some(response_outreach),
+                attachments: Vec::new(),
+            },
+        ],
+    };
+
+    let groups = message_scoped_outreach_groups(&conversation);
+
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].0.parent_session_messages.len(), 1);
+    assert_eq!(
+        groups[0].0.parent_session_messages[0].tools[0]["name"],
+        serde_json::json!("task_operator")
+    );
+}
+
+#[test]
 fn group_session_fanout_reconciles_duplicate_parent_message_copies() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [
