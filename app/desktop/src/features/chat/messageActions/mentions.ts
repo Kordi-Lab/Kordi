@@ -312,6 +312,19 @@ function dedupeBridgeMentionCandidateHandles(candidates: BridgeMentionCandidate[
   });
 }
 
+function peerIsApprovedBridgeContact(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+  const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
+  return Boolean(peer.isContact || status === 'contact' || status === 'approved');
+}
+
+function agentCanBeMentionedDirectly(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+  if (!isBridgeAgentRuntime(peer.runtime)) return true;
+  const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
+  if (agentReachabilityPolicy === 'owner') return false;
+  if (agentReachabilityPolicy === 'server') return true;
+  return peerIsApprovedBridgeContact(peer) || (peer.sharedProjects?.length ?? 0) > 0;
+}
+
 export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
   if (!bridgeState) return [];
 
@@ -320,7 +333,7 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
   for (const host of bridgeState.hosts) {
     for (const peer of host.visiblePeers) {
       const isAgent = isBridgeAgentRuntime(peer.runtime);
-      const agentIsReachable = !isAgent || (peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts') !== 'owner';
+      const agentIsReachable = !isAgent || agentCanBeMentionedDirectly(peer);
       const seenForPeer = new Set<string>();
       const pushLabel = (value: string | null | undefined, targetKind: BridgeMentionCandidate['targetKind']) => {
         const displayLabel = value?.trim();
