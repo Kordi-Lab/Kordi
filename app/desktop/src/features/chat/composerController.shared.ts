@@ -100,6 +100,15 @@ export function parseModelSelection(value: string) {
   };
 }
 
+export const CHAT_COMPOSER_TEXTAREA_SELECTOR = 'textarea[data-composer-scope="chat"]';
+
+export function focusComposerTextarea(selector: string) {
+  window.requestAnimationFrame(() => {
+    const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;
+    textarea?.focus();
+  });
+}
+
 export function resizeComposerTextarea(selector: string, value?: string) {
   window.requestAnimationFrame(() => {
     const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;

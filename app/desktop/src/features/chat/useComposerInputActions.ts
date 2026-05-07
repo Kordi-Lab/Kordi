@@ -11,6 +11,8 @@ import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotic
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
+  CHAT_COMPOSER_TEXTAREA_SELECTOR,
+  focusComposerTextarea,
   formatDesktopEventTime,
   formatThinkingSelectionLabel,
   parseModelSelection,
@@ -217,6 +219,9 @@ export function useComposerInputActions({
       },
     }));
     setOpenComposerSelector(null);
+    if (scope === 'chat') {
+      focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+    }
 
     const targetSessionId = scope === 'project'
       ? activeProjectSessionId
@@ -408,7 +413,7 @@ export function useComposerInputActions({
 
   const setChatComposerText = useCallback((value: string) => {
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, value));
-    resizeComposerTextarea('textarea[placeholder="Ask your agent…"]', value);
+    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR, value);
   }, [activeConvId, setComposerDrafts]);
 
   const setProjectComposerText = useCallback((value: string) => {

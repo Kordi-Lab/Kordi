@@ -28,7 +28,7 @@ import {
   updateDesktopChatSessionConfig,
 } from '@/lib/desktop';
 
-import { formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
@@ -614,7 +614,7 @@ export function useChatMessageActions({
     setDesktopChatError(null);
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
-    resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
   }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((turn: DesktopChatTurnSnapshot) => {
@@ -747,7 +747,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const sentAt = formatDesktopEventTime();
         const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
         const groupMentionRelayTargets = activeGroupSessionIsGroup
@@ -978,7 +978,7 @@ export function useChatMessageActions({
         }
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const resolvedConversationId = targetConversationId;
         void (async () => {
           try {
@@ -1102,7 +1102,7 @@ export function useChatMessageActions({
     });
     if (chatComposerAttachments.length === 0 && (await handleLocalSlashCommand(text))) {
       setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-      resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
       setOpenComposerSelector(null);
       return;
     }
@@ -1137,7 +1137,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         const parentSessionId = await ensureLocalSessionId();
         const sentAt = formatDesktopEventTime();
         const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -1270,7 +1270,7 @@ export function useChatMessageActions({
         )
       ));
       setChatComposerAttachments([]);
-      resizeComposerTextarea('textarea[placeholder="Ask your agent…"]');
+      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
       const relayToLocalAgentTargets = async (
         requestText: string,
         parentTurnId?: string | null,
