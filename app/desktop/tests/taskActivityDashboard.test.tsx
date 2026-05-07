@@ -326,7 +326,7 @@ test('task panel shows fallback involved participant avatars when canonical part
   assert.match(markup, /Kordi User 6 avatar/);
 });
 
-test('task panel uses the local self avatar seed for self participant tasks', () => {
+test('task panel uses canonical avatar keys for participant tasks across self and remote views', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-self-avatar',
     sessionId: 'session:group:self-avatar',
@@ -352,18 +352,18 @@ test('task panel uses the local self avatar seed for self participant tasks', ()
     }],
   };
 
-  const implicitSelfSeedMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+  const selfViewMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [assistantTurnMessage(turn)],
     emptyMessage: 'No tasks',
-    targetParticipants: [{ id: 'human:self', name: 'Kordi User 6', kind: 'human', role: 'self', avatarKey: 'canonical-self-key' }],
+    targetParticipants: [{ id: 'human:self', name: 'Kordi User 6', kind: 'human', role: 'self', avatarKey: 'kh_663f447f166a', avatarSeed: 'local-human-profile:user6' }],
   }));
-  const explicitSelfSeedMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+  const remoteViewMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [assistantTurnMessage(turn)],
     emptyMessage: 'No tasks',
-    targetParticipants: [{ id: 'human:self', name: 'Kordi User 6', kind: 'human', role: 'self', avatarKey: 'canonical-self-key', avatarSeed: 'local-human-profile' }],
+    targetParticipants: [{ id: 'human:remote', name: 'Kordi User 6', kind: 'human', role: 'person', avatarKey: 'kh_663f447f166a' }],
   }));
 
-  assert.equal(implicitSelfSeedMarkup, explicitSelfSeedMarkup);
+  assert.equal(selfViewMarkup, remoteViewMarkup);
 });
 
 test('task panel uses the matched canonical participant avatar instead of a fallback avatar', () => {

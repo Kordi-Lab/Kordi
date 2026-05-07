@@ -23,21 +23,6 @@ type ProjectSession = {
   messages: Message[];
 };
 
-function projectTaskParticipantAvatarSeed(
-  participant: ConversationParticipant,
-  localProfileSeed?: string,
-  localAgentSeed?: string,
-) {
-  const fallbackSeed = participant.avatarKey?.trim() || participant.name;
-  if (participant.kind !== 'agent' && (participant.role === 'self' || /^(you|me)$/i.test(participant.name.trim()))) {
-    return localProfileSeed || getLocalProfileAvatarSeed() || fallbackSeed;
-  }
-  if (participant.kind === 'agent' && (participant.source === 'local' || participant.role === 'owned-agent')) {
-    return localAgentSeed || getLocalAgentAvatarSeed(participant.name) || fallbackSeed;
-  }
-  return fallbackSeed;
-}
-
 type ProjectWorkspace = {
   id: string;
   name: string;
@@ -372,10 +357,7 @@ export function ProjectDetailPanel({
         messages={activeProjectSession.messages}
         liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
         taskActivities={activeProjectSession.taskActivities ?? []}
-        targetParticipants={(activeProjectSession.canonicalParticipants ?? []).map((participant) => ({
-          ...participant,
-          avatarSeed: projectTaskParticipantAvatarSeed(participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed),
-        }))}
+        targetParticipants={activeProjectSession.canonicalParticipants ?? []}
         emptyMessage="No planning or execution task activity in this project session yet."
         artifacts={projectArtifacts}
         onOpenArtifact={onOpenArtifact}

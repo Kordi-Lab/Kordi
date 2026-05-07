@@ -396,10 +396,7 @@ function ChatDetailPanelView({
         messages={activeConv.messages}
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
         taskActivities={activeConv.taskActivities ?? []}
-        targetParticipants={(activeConv.canonicalParticipants ?? []).map((participant) => ({
-          ...participant,
-          avatarSeed: canonicalParticipantAvatarSeed(activeConv, participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed),
-        }))}
+        targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
