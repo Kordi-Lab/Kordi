@@ -107,13 +107,13 @@ function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
   });
 }
 
-function ArtifactDataTable({ source, delimiter }: { source: string; delimiter: ',' | '\t' }) {
+function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: 'panel' | 'window' }) {
   const rows = parseDelimitedRows(source, delimiter);
   if (rows.length === 0) return <div className="px-4 py-4 text-[12px] text-slate-400">This table is empty.</div>;
   const [headers, ...bodyRows] = rows;
 
   return (
-    <div className="max-h-[32rem] overflow-auto p-3">
+    <div data-artifact-preview-mode={mode} className={cn('overflow-auto p-3', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
       <div className="overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-control-bg)]/70">
         <table className="min-w-full border-collapse text-left text-[12px] text-slate-100">
           <thead className="bg-white/[0.05] text-[10px] uppercase tracking-[0.12em] text-slate-400">
@@ -142,7 +142,7 @@ function formattedJsonSource(source: string) {
   }
 }
 
-export function renderArtifactPreview(preview: DesktopArtifactPreview) {
+export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: 'panel' | 'window' = 'panel') {
   if (preview.lines.length === 0) {
     return <div className="px-4 py-4 text-[12px] text-slate-400">This artifact is empty.</div>;
   }
@@ -152,12 +152,12 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview) {
 
   if (previewKind === 'html' || previewKind === 'svg') {
     return (
-      <div className="bg-[color:var(--app-transcript-bg)] p-3">
+      <div data-artifact-preview-mode={mode} className={cn('bg-[color:var(--app-transcript-bg)] p-3', mode === 'window' && 'min-h-full')}>
         <iframe
           title={`${fileNameFromPath(preview.path)} preview`}
           srcDoc={source}
           sandbox="allow-forms allow-popups allow-scripts"
-          className="h-[32rem] w-full rounded-[16px] border border-white/10 bg-white text-slate-950"
+          className={cn('w-full rounded-[16px] border border-white/10 bg-white text-slate-950', mode === 'window' ? 'h-[calc(100vh-10rem)] min-h-[36rem]' : 'h-[32rem]')}
         />
       </div>
     );
@@ -166,42 +166,42 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview) {
   if (previewKind === 'image') {
     const imageSource = source.trim().startsWith('data:image/') ? source.trim() : preview.path;
     return (
-      <div className="flex max-h-[32rem] items-center justify-center overflow-auto bg-[color:var(--app-transcript-bg)] p-4">
+      <div data-artifact-preview-mode={mode} className={cn('flex items-center justify-center overflow-auto bg-[color:var(--app-transcript-bg)] p-4', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
         <img src={imageSource} alt={`${fileNameFromPath(preview.path)} preview`} className="max-h-[30rem] max-w-full rounded-[16px] border border-white/10 bg-white object-contain" />
       </div>
     );
   }
 
   if (previewKind === 'mermaid') {
-    return <div className="p-3"><MermaidDiagram code={source} /></div>;
+    return <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}><MermaidDiagram code={source} className={mode === 'window' ? 'min-h-full' : undefined} /></div>;
   }
 
   if (previewKind === 'json') {
     return (
-      <div className="p-3">
-        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass="max-h-[32rem]" wrapLines />
+      <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}>
+        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'window' ? 'max-h-none' : 'max-h-[32rem]'} wrapLines />
       </div>
     );
   }
 
   if (previewKind === 'table') {
-    return <ArtifactDataTable source={source} delimiter={extensionLabel(preview.path).toLowerCase() === 'tsv' ? '\t' : ','} />;
+    return <ArtifactDataTable source={source} delimiter={extensionLabel(preview.path).toLowerCase() === 'tsv' ? '\t' : ','} mode={mode} />;
   }
 
   if (previewKind === 'markdown') {
     return (
-      <div className="max-h-[32rem] overflow-auto px-4 py-4">
-        <MarkdownContent text={source} />
+      <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-4 py-4', mode === 'window' ? 'min-h-full' : 'max-h-[32rem]')}>
+        <MarkdownContent text={source} className={mode === 'window' ? 'min-h-full' : undefined} />
       </div>
     );
   }
 
   return (
-    <div className="p-3">
+    <div data-artifact-preview-mode={mode} className={cn('p-3', mode === 'window' && 'min-h-full')}>
       <MarkdownCodeBlock
         language={languageFromPath(preview.path)}
         code={source}
-        maxHeightClass="max-h-[32rem]"
+        maxHeightClass={mode === 'window' ? 'max-h-none' : 'max-h-[32rem]'}
         wrapLines
       />
     </div>
@@ -362,7 +362,7 @@ export function ArtifactPreviewWindow({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--app-transcript-bg)]">
-          {renderArtifactPreview(preview)}
+          {renderArtifactPreview(preview, 'window')}
         </div>
       </div>
     </div>

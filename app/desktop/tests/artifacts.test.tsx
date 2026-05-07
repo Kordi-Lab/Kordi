@@ -298,6 +298,30 @@ test('markdown code blocks highlight additional file types and render mermaid di
   assert.match(mermaidMarkdown, />B</);
 });
 
+test('artifact preview window uses full-height preview rendering', () => {
+  const preview = {
+    path: 'tmp_test_task_mermaid.md',
+    lines: [
+      { number: 1, text: '```mermaid' },
+      { number: 2, text: 'graph TD' },
+      { number: 3, text: 'A-->B' },
+      { number: 4, text: '```' },
+    ],
+    truncated: false,
+  };
+  const markup = renderToStaticMarkup(createElement(ArtifactPreviewWindow, {
+    preview,
+    title: 'tmp_test_task_mermaid.md',
+    kindLabel: 'Markdown',
+    onClose: () => undefined,
+  }));
+
+  assert.match(markup, /data-artifact-preview-mode="window"/);
+  assert.match(markup, /min-h-full/);
+  assert.doesNotMatch(markup, /max-h-\[32rem\] overflow-auto px-4 py-4/);
+  assert.match(markup, /data-mermaid-diagram="true"/);
+});
+
 test('artifact preview exposes a larger preview window surface', () => {
   const preview = {
     path: 'tmp_test_task.py',
