@@ -31,6 +31,10 @@ fn attachment_extension(path: &Path) -> Option<String> {
 }
 
 fn stored_attachment_kind(path: &Path) -> String {
+    if path.is_dir() {
+        return "folder".to_string();
+    }
+
     match attachment_extension(path).as_deref() {
         Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg") => "image".to_string(),
         _ => "file".to_string(),
@@ -38,6 +42,10 @@ fn stored_attachment_kind(path: &Path) -> String {
 }
 
 fn stored_attachment_mime_type(path: &Path) -> Option<String> {
+    if path.is_dir() {
+        return None;
+    }
+
     match attachment_extension(path).as_deref() {
         Some("png") => Some("image/png".to_string()),
         Some("jpg" | "jpeg") => Some("image/jpeg".to_string()),
@@ -53,6 +61,10 @@ fn stored_attachment_mime_type(path: &Path) -> Option<String> {
 }
 
 fn stored_attachment_format_label(path: &Path) -> Option<String> {
+    if path.is_dir() {
+        return Some("Folder".to_string());
+    }
+
     attachment_extension(path).map(|extension| extension.to_ascii_uppercase())
 }
 
@@ -142,8 +154,11 @@ pub(crate) fn stored_chat_attachment_from_path(
             path.display()
         )
     })?;
-    if !metadata.is_file() {
-        return Err(format!("Attachment is not a file: {}", path.display()));
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Err(format!(
+            "Attachment is not a file or folder: {}",
+            path.display()
+        ));
     }
     let name = path
         .file_name()
@@ -157,7 +172,7 @@ pub(crate) fn stored_chat_attachment_from_path(
         kind: stored_attachment_kind(path),
         mime_type: stored_attachment_mime_type(path),
         format_label: stored_attachment_format_label(path),
-        size_bytes: Some(metadata.len()),
+        size_bytes: metadata.is_file().then_some(metadata.len()),
     })
 }
 
@@ -174,10 +189,31 @@ pub(crate) fn store_chat_attachment_file(
     source: &Path,
     name: &str,
 ) -> Result<DesktopStoredChatAttachment, String> {
-    let source = ensure_attachment_file_path(source)?;
+    let canonical_source = std::fs::canonicalize(source)
+        .map_err(|err| format!("Unable to read attachment file {}: {err}", source.display()))?;
+    let metadata = std::fs::metadata(&canonical_source).map_err(|err| {
+        format!(
+            "Unable to read attachment metadata {}: {err}",
+            source.display()
+        )
+    })?;
     let display_name = safe_attachment_name(name);
+
+    if metadata.is_dir() {
+        let mut stored = stored_chat_attachment_from_path(source)?;
+        stored.name = display_name;
+        return Ok(stored);
+    }
+
+    if !metadata.is_file() {
+        return Err(format!(
+            "Attachment is not a file or folder: {}",
+            source.display()
+        ));
+    }
+
     let target = unique_attachment_path(&display_name)?;
-    std::fs::copy(&source, &target).map_err(|err| err.to_string())?;
+    std::fs::copy(&canonical_source, &target).map_err(|err| err.to_string())?;
     let mut stored = stored_chat_attachment_from_path(&target)?;
     stored.name = display_name;
     Ok(stored)
@@ -243,5 +279,39 @@ mod tests {
             Some("image/png")
         );
         assert_eq!(stored_attachment_format_label(path).as_deref(), Some("PNG"));
+    }
+
+    #[test]
+    fn stored_attachment_from_directory_preserves_folder_path() {
+        let dir =
+            std::env::temp_dir().join(format!("kordi-attachment-folder-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp attachment folder");
+
+        let attachment = stored_chat_attachment_from_path(&dir).expect("directory attaches");
+
+        assert_eq!(attachment.path, dir.display().to_string());
+        assert_eq!(attachment.kind, "folder");
+        assert_eq!(attachment.format_label.as_deref(), Some("Folder"));
+        assert_eq!(attachment.size_bytes, None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn store_attachment_file_preserves_directory_source_path() {
+        let dir =
+            std::env::temp_dir().join(format!("kordi-attachment-folder-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp attachment folder");
+
+        let attachment =
+            store_chat_attachment_file(&dir, "Project Folder").expect("directory attaches");
+
+        assert_eq!(attachment.path, dir.display().to_string());
+        assert_eq!(attachment.name, "Project Folder");
+        assert_eq!(attachment.kind, "folder");
+        assert_eq!(attachment.format_label.as_deref(), Some("Folder"));
+        assert_eq!(attachment.size_bytes, None);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

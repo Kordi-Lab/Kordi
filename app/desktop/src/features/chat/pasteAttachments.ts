@@ -55,20 +55,6 @@ function decodeFileUrl(value: string) {
   }
 }
 
-function normalizeLocalPathCandidate(value: string) {
-  const unquoted = stripWrappingQuotes(value);
-  if (!unquoted) return null;
-
-  const filePath = decodeFileUrl(unquoted);
-  if (filePath) return filePath;
-
-  if (unquoted.startsWith('/') || unquoted.startsWith('~/') || /^[A-Za-z]:[\\/]/.test(unquoted)) {
-    return unquoted;
-  }
-
-  return null;
-}
-
 function unique(values: string[]) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -85,27 +71,10 @@ function pathsFromUriList(uriList: string) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map(normalizeLocalPathCandidate)
+    .map((line) => decodeFileUrl(stripWrappingQuotes(line)))
     .filter((path): path is string => Boolean(path));
 }
 
-function pathsFromPlainText(text: string) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const paths = lines.map(normalizeLocalPathCandidate);
-  if (paths.some((path) => !path)) return [];
-  return paths as string[];
-}
-
-export function extractPastedLocalFilePaths(plainText: string, uriList = ''): string[] {
-  const uriPaths = pathsFromUriList(uriList);
-  if (uriPaths.length > 0) {
-    return unique(uriPaths);
-  }
-
-  return unique(pathsFromPlainText(plainText));
+export function extractPastedLocalFilePaths(_plainText: string, uriList = ''): string[] {
+  return unique(pathsFromUriList(uriList));
 }
