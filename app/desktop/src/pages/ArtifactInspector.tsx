@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle } from 'lucide-react';
+import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
 
 import { MarkdownCodeBlock, MarkdownContent } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
@@ -224,6 +224,58 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
   );
 }
 
+export function ArtifactPreviewWindow({
+  preview,
+  title,
+  kindLabel,
+  onClose,
+}: {
+  preview: DesktopArtifactPreview;
+  title: string;
+  kindLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/55 p-3 backdrop-blur-sm sm:p-6" role="presentation">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Preview window"
+        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-white/12 bg-[color:var(--app-panel-bg)] shadow-2xl"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-slate-200">
+              <Maximize2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--utility-muted-text)]">Preview window</div>
+              <div className="truncate text-[14px] font-semibold text-[color:var(--utility-foreground)]">{title}</div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+              {kindLabel}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="app-icon-button grid h-8 w-8 place-items-center rounded-xl text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+              aria-label="Close preview window"
+              title="Close preview window"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--app-transcript-bg)]">
+          {renderArtifactPreview(preview)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ArtifactInspector({
   isNativeShell,
   artifacts,
@@ -242,6 +294,7 @@ export function ArtifactInspector({
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [isBrowserLoading, setIsBrowserLoading] = useState(false);
   const [browserSelectedArtifact, setBrowserSelectedArtifact] = useState<SessionArtifact | null>(null);
+  const [previewWindowOpen, setPreviewWindowOpen] = useState(false);
 
   const folderBrowserRootPath = folderBrowserRoot?.trim() ?? '';
   const effectiveBrowserPath = useMemo(() => {
@@ -267,6 +320,7 @@ export function ArtifactInspector({
   const previewFileName = previewArtifact ? fileNameFromPath(previewArtifact.path) : '';
   const previewLocation = previewArtifact ? compactArtifactLocation(previewArtifact.path, previewFileName) : '';
   const previewKind = previewArtifact ? artifactPreviewKind(previewArtifact.path) : null;
+  const previewKindLabel = previewKind === 'html' ? 'Preview' : previewKind === 'markdown' ? 'Markdown' : 'Source';
 
   useEffect(() => {
     if (artifacts.length === 0) {
@@ -319,6 +373,10 @@ export function ArtifactInspector({
       cancelled = true;
     };
   }, [effectiveBrowserPath, folderBrowserRootPath, isNativeShell]);
+
+  useEffect(() => {
+    setPreviewWindowOpen(false);
+  }, [previewArtifact?.id]);
 
   useEffect(() => {
     setPreviewError(null);
@@ -448,7 +506,6 @@ export function ArtifactInspector({
           <ArtifactListSection
             title="Related changed files"
             section="related"
-            description="Local files changed by assistant turns in this viewer's worktree. Remote-only group files are not clickable here."
             artifacts={relatedArtifacts}
             activeArtifact={activeArtifact}
             onSelect={(artifactId) => {
@@ -475,8 +532,22 @@ export function ArtifactInspector({
                   <div className="truncate text-[10.5px] text-slate-500">{previewLocation}</div>
                 ) : null}
               </div>
-              <div className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
-                {previewKind === 'html' ? 'Preview' : previewKind === 'markdown' ? 'Markdown' : 'Source'}
+              <div className="flex shrink-0 items-center gap-2">
+                {cachedPreview ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewWindowOpen(true)}
+                    className="app-utility-button inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10.5px] font-medium text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
+                    aria-label="Open preview window"
+                    title="Open preview window"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    Open
+                  </button>
+                ) : null}
+                <div className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                  {previewKindLabel}
+                </div>
               </div>
             </div>
             {isPreviewLoading ? (
@@ -505,6 +576,15 @@ export function ArtifactInspector({
             )}
           </div>
         </section>
+      ) : null}
+
+      {previewWindowOpen && cachedPreview ? (
+        <ArtifactPreviewWindow
+          preview={cachedPreview}
+          title={previewFileName || cachedPreview.path}
+          kindLabel={previewKindLabel}
+          onClose={() => setPreviewWindowOpen(false)}
+        />
       ) : null}
 
       {footer}

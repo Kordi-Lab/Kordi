@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { DesktopChatToolSnapshot, Message, SessionArtifact } from '../src/kordi-app/types';
 import { extractSessionArtifacts } from '../src/features/chat/artifacts';
-import { ArtifactInspector, renderArtifactPreview } from '../src/pages/ArtifactInspector';
+import { ArtifactInspector, ArtifactPreviewWindow, renderArtifactPreview } from '../src/pages/ArtifactInspector';
 
 function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatToolSnapshot {
   return {
@@ -229,6 +229,31 @@ test('artifact inspector renders generated artifacts and related changed files, 
   assert.match(markup, /kordi-project-structure-report.md/);
   assert.match(markup, /data-artifact-section="related"/);
   assert.match(markup, /package\.json/);
+  assert.doesNotMatch(markup, /Local files changed by assistant turns/);
+  assert.doesNotMatch(markup, /Remote-only group files/);
   assert.doesNotMatch(markup, /data-artifact-section="memory"/);
   assert.doesNotMatch(markup, /Session lessons/);
+});
+
+test('artifact preview exposes a larger preview window surface', () => {
+  const preview = {
+    path: 'tmp_test_task.py',
+    lines: [
+      { number: 1, text: '#!/usr/bin/env python3' },
+      { number: 2, text: 'print("Hello from preview")' },
+    ],
+    truncated: false,
+  };
+  const markup = renderToStaticMarkup(createElement(ArtifactPreviewWindow, {
+    preview,
+    title: 'tmp_test_task.py',
+    kindLabel: 'Source',
+    onClose: () => undefined,
+  }));
+
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /Preview window/);
+  assert.match(markup, /tmp_test_task.py/);
+  assert.match(markup, /Hello from preview/);
+  assert.match(markup, /aria-label="Close preview window"/);
 });
