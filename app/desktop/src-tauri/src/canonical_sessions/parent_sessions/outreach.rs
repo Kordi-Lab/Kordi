@@ -25,6 +25,7 @@ use super::relay::{
     sync_parent_session_invite, sync_parent_session_relay_join_event,
     sync_parent_session_relay_messages, sync_parent_session_update,
 };
+use super::tasks::sync_group_agent_task_activity;
 
 pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
     conn: &Connection,
@@ -156,6 +157,18 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
                 remote_target_identity_id,
             )?;
         }
+        sync_group_agent_task_activity(
+            conn,
+            parent_session_id,
+            conversation,
+            messages,
+            outreach,
+            local_human_identity_id,
+            local_agent_identity_id,
+            relationship_identity_id,
+            remote_target_identity_id,
+            peer_is_agent,
+        )?;
         return Ok(!is_session_message);
     }
     let agent_authored = outreach.parent_turn_id.is_some();

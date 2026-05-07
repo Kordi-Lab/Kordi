@@ -2,6 +2,7 @@ mod messages;
 mod outreach;
 mod participants;
 mod relay;
+mod tasks;
 
 #[cfg(test)]
 pub(super) use messages::sync_parent_session_snapshot_messages;
