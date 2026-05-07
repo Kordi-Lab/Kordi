@@ -434,13 +434,15 @@ function buildTaskActivitiesBySessionId(
 ) {
   const activities = new Map<string, SessionTaskActivity[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
+    const targetIdentity = identityById.get(exchange.targetIdentityId);
+    if (targetIdentity?.kind !== 'agent') continue;
     const participants = canonicalParticipantsBySessionId.get(exchange.sessionId) ?? [];
     const activity: SessionTaskActivity = {
       id: exchange.id,
       sessionId: exchange.sessionId,
       status: exchange.status,
       initiator: taskParticipantFromIdentity(identityById.get(exchange.initiatorIdentityId), identityById, canonicalState.profile.humanIdentityId),
-      target: taskParticipantFromIdentity(identityById.get(exchange.targetIdentityId), identityById, canonicalState.profile.humanIdentityId),
+      target: taskParticipantFromIdentity(targetIdentity, identityById, canonicalState.profile.humanIdentityId),
       participants: participants.map((participant) => ({ ...participant })),
       createdAtMs: exchange.createdAtMs,
       updatedAtMs: exchange.updatedAtMs,

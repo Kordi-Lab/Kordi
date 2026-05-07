@@ -53,7 +53,7 @@ test('chat detail panel keeps outreach threads out of the normal info view', () 
 });
 
 
-test('chat detail task panel renders delegated task participants', () => {
+test('chat detail task panel renders delegated task in the existing task row style', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
     activeDetailTab: 'tasks',
@@ -104,7 +104,7 @@ test('chat detail task panel renders delegated task participants', () => {
 
   assert.match(markup, /Remote Kordi/);
   assert.match(markup, /Delegated by Me/);
-  assert.match(markup, /Alice/);
+  assert.match(markup, /Shared with 3 participants/);
   assert.match(markup, /Running/);
   assert.doesNotMatch(markup, /Research Agent relay/);
 });

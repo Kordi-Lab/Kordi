@@ -4,10 +4,10 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
-import { TaskActivityList } from '@/pages/TaskActivityList';
+import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 
 type ProjectSession = {
   id: string;
@@ -19,7 +19,7 @@ type ProjectSession = {
   artifacts: number;
   tasks: number;
   taskActivities?: SessionTaskActivity[];
-  messages: Array<{ sender?: string; text: string; time: string }>;
+  messages: Message[];
 };
 
 type ProjectWorkspace = {
@@ -345,32 +345,25 @@ export function ProjectDetailPanel({
 
   return (
     <div className="app-detail-sheet">
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <div className="space-y-3">
-          <EmphasisBlock title="Project task summary">
-            <div className="mb-2 flex items-center gap-2">
-              <Badge className="app-badge-neutral px-2.5 py-1">{activeProject.tasks}</Badge>
-              <span>delegated task{activeProject.tasks === 1 ? '' : 's'} across project sessions</span>
+      <TaskActivityDashboardPanel
+        messages={activeProjectSession.messages}
+        taskActivities={activeProjectSession.taskActivities ?? []}
+        emptyMessage="No delegated tasks in this project session yet."
+        artifacts={projectArtifacts}
+      />
+      {activeProject.pendingInvites.length > 0 ? (
+        <section className="app-detail-section">
+          <div className="app-detail-kicker">Pending invites</div>
+          <div className="app-inspector-emphasis">
+            <div className="mb-2">
+              <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
+                {activeProject.pendingInvites.length}
+              </Badge>
             </div>
-            Active session: {activeProjectSession.tasks} delegated task{activeProjectSession.tasks === 1 ? '' : 's'}.
-          </EmphasisBlock>
-          <TaskActivityList
-            activities={activeProjectSession.taskActivities ?? []}
-            emptyMessage="No delegated tasks in this project session yet."
-          />
-          {activeProject.pendingInvites.length > 0 ? (
-            <EmphasisBlock title="Pending invites">
-              <div className="mb-2">
-                <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
-                  {activeProject.pendingInvites.length}
-                </Badge>
-              </div>
-              Membership approvals still waiting at the project level.
-            </EmphasisBlock>
-          ) : null}
-        </div>
-      </section>
+            <div className="app-inspector-text-block">Membership approvals still waiting at the project level.</div>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

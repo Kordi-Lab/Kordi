@@ -7,7 +7,7 @@ import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, use
 import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
-import { TaskActivityList } from '@/pages/TaskActivityList';
+import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -408,13 +408,10 @@ function ChatDetailPanelView({
 
   return (
     <div className="app-detail-sheet">
-      <section className="app-detail-section">
-        <div className="app-detail-kicker">Tasks</div>
-        <TaskActivityList
-          activities={activeConv.taskActivities ?? []}
-          emptyMessage="No delegated tasks in this session yet."
-        />
-      </section>
+      <TaskActivityDashboardPanel
+        taskActivities={activeConv.taskActivities ?? []}
+        emptyMessage="No delegated tasks in this session yet."
+      />
     </div>
   );
 }

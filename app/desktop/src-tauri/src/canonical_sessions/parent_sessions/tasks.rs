@@ -188,6 +188,16 @@ fn response_message_source_ids(
     ids
 }
 
+fn identity_kind(conn: &Connection, identity_id: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT kind FROM identities WHERE id = ?1",
+        params![identity_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
 fn first_message_id_for_sources(
     conn: &Connection,
     source_event_ids: &[String],
@@ -272,6 +282,9 @@ pub(super) fn sync_group_agent_task_activity(
         remote_target_identity_id.to_string()
     };
 
+    if identity_kind(conn, &target_identity_id)?.as_deref() != Some("agent") {
+        return Ok(());
+    }
     if identity_display_name(conn, &target_identity_id)?.is_none() {
         return Ok(());
     }
