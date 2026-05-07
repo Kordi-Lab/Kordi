@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-react';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
@@ -172,21 +172,27 @@ function taskTargetParticipants(task: TaskDashboardItem, participants: TaskTarge
 }
 
 function TaskTargetAvatars({ participants }: { participants: TaskTargetParticipant[] }) {
+  const localProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const localAgentAvatarSeed = useLocalAgentAvatarSeed();
   if (participants.length === 0) return null;
   return (
     <div className="flex shrink-0 -space-x-2" aria-label="Task target participants">
-      {participants.map((participant) => (
-        <IdentityAvatar
-          key={participant.id}
-          kind={participant.kind === 'agent' ? 'agent' : 'human'}
-          seed={participant.avatarSeed ?? participant.avatarKey ?? participant.name}
-          avatarKey={participant.avatarKey}
-          imageUrl={participant.profileImageUrl}
-          name={participant.name}
-          className="h-7 w-7 border-2 border-[color:var(--app-panel-bg)]"
-          generatedClassName="scale-105"
-        />
-      ))}
+      {participants.map((participant) => {
+        const isSelfHuman = participant.kind !== 'agent' && participant.role === 'self';
+        const isOwnedAgent = participant.kind === 'agent' && participant.role === 'owned-agent';
+        return (
+          <IdentityAvatar
+            key={participant.id}
+            kind={participant.kind === 'agent' ? 'agent' : 'human'}
+            seed={participant.avatarSeed ?? (isSelfHuman ? localProfileAvatarSeed : null) ?? (isOwnedAgent ? localAgentAvatarSeed : null) ?? participant.avatarKey ?? participant.name}
+            avatarKey={participant.avatarKey}
+            imageUrl={participant.profileImageUrl}
+            name={participant.name}
+            className="h-7 w-7 border-2 border-[color:var(--app-panel-bg)]"
+            generatedClassName="scale-105"
+          />
+        );
+      })}
     </div>
   );
 }

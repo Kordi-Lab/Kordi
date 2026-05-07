@@ -326,6 +326,46 @@ test('task panel shows fallback involved participant avatars when canonical part
   assert.match(markup, /Kordi User 6 avatar/);
 });
 
+test('task panel uses the local self avatar seed for self participant tasks', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-self-avatar',
+    sessionId: 'session:group:self-avatar',
+    prompt: '@Kordi create a task for me',
+    status: 'complete',
+    message: 'Complete',
+    assistantText: 'Created a test task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    error: null,
+    tools: [{
+      id: 'task-self-avatar',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ action: 'create', taskTitle: 'New Test Task', involvedParticipants: ['Kordi User 6'] }),
+      liveOutput: '',
+      resultText: 'Task created: New Test Task',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const implicitSelfSeedMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [{ id: 'human:self', name: 'Kordi User 6', kind: 'human', role: 'self', avatarKey: 'canonical-self-key' }],
+  }));
+  const explicitSelfSeedMarkup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(turn)],
+    emptyMessage: 'No tasks',
+    targetParticipants: [{ id: 'human:self', name: 'Kordi User 6', kind: 'human', role: 'self', avatarKey: 'canonical-self-key', avatarSeed: 'local-human-profile' }],
+  }));
+
+  assert.equal(implicitSelfSeedMarkup, explicitSelfSeedMarkup);
+});
+
 test('task panel uses the matched canonical participant avatar instead of a fallback avatar', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-target-avatar-deterministic',
