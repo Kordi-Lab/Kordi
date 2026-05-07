@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DetailTab, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { TaskActivityList } from '@/pages/TaskActivityList';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -45,6 +46,7 @@ type ActiveConversation = {
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+  taskActivities?: SessionTaskActivity[];
   participantAvatarSeeds?: Record<string, string>;
 };
 
@@ -408,22 +410,10 @@ function ChatDetailPanelView({
     <div className="app-detail-sheet">
       <section className="app-detail-section">
         <div className="app-detail-kicker">Tasks</div>
-        <div className="space-y-3">
-          <EmphasisBlock title="Research Agent relay">
-            <div className="mb-2">
-              <Badge className="app-badge-neutral px-2.5 py-1">Running</Badge>
-            </div>
-            Waiting for external follow-up notes.
-          </EmphasisBlock>
-          <EmphasisBlock title="Code Agent outbound share">
-            <div className="mb-2">
-              <Badge variant="secondary" className="app-badge-attention px-2.5 py-1">
-                Needs approval
-              </Badge>
-            </div>
-            Agent wants to send a patch summary to Bob.
-          </EmphasisBlock>
-        </div>
+        <TaskActivityList
+          activities={activeConv.taskActivities ?? []}
+          emptyMessage="No delegated tasks in this session yet."
+        />
       </section>
     </div>
   );
