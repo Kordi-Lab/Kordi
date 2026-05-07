@@ -385,6 +385,7 @@ fn should_retry_direct_serve_with_contact_fallback(
 ) -> bool {
     context.host.api_style == API_STYLE_SERVE
         && context.conversation.project_id.is_none()
+        && !conversation_is_group_session_transport(&context.conversation)
         && error.contains("HTTP 403")
 }
 
@@ -1274,6 +1275,24 @@ mod tests {
                 Some("project-1"),
                 Vec::new(),
             ),
+            host: test_host(API_STYLE_SERVE),
+        };
+
+        assert!(!should_retry_direct_serve_with_contact_fallback(
+            &context,
+            "Unable to fetch bridge recipient keys: HTTP 403 Forbidden",
+        ));
+    }
+
+    #[test]
+    fn group_session_forbidden_keys_do_not_auto_request_contact() {
+        let mut conversation = test_conversation(Vec::new());
+        let mut outreach = test_outreach(None);
+        outreach.parent_session_kind = Some("group".to_string());
+        outreach.context_policy = Some("session-message".to_string());
+        conversation.outreach = Some(outreach);
+        let context = ConversationContext {
+            conversation,
             host: test_host(API_STYLE_SERVE),
         };
 
