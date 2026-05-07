@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Tool, ToolContext, ToolResult, ToolScheduling,
+    Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel, ToolScheduling,
     path::{ensure_write_allowed, resolve_path},
     support::text_result,
 };
@@ -34,6 +34,10 @@ impl Tool for WriteTool {
             },
             "required": ["path", "content"]
         })
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::execution(ToolRiskLevel::Medium)
     }
 
     fn scheduling(&self, params: &Value, ctx: &ToolContext) -> ToolScheduling {

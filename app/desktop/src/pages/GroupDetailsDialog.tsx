@@ -5,7 +5,7 @@ import { ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   adminIdentityIdsFromMetadata,
-  buildChatCreatePersonOptions,
+  buildChatCreateGroupPersonOptions,
   contactCanonicalIdentityRequest,
   participantSpaceCanonicalSessionIds,
 } from '@/features/chat/chatCreateFlows';
@@ -138,11 +138,14 @@ export function GroupDetailsDialog({
   const [nameDraft, setNameDraft] = useState(space?.title ?? '');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const addOptions = useMemo(() => (
-    buildChatCreatePersonOptions(contacts).filter((option) => {
+    buildChatCreateGroupPersonOptions(contacts).filter((option) => {
       const identityId = contactCanonicalIdentityRequest(option.contact).id;
       return !memberIds.has(option.contact.id) && !memberIds.has(option.id) && !memberIds.has(identityId ?? '');
     })
   ), [contacts, memberIds]);
+  const selectedAddContactIds = addOptions
+    .filter((option) => selectedContactIds.includes(option.id))
+    .map((option) => option.id);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -292,16 +295,16 @@ export function GroupDetailsDialog({
                     </button>
                   );
                 }) : (
-                  <div className="app-group-management-empty rounded-[12px] border px-2.5 py-2 text-[12px]">No additional people contacts available.</div>
+                  <div className="app-group-management-empty rounded-[12px] border px-2.5 py-2 text-[12px]">No additional approved contacts available.</div>
                 )}
               </div>
               <Button
                 type="button"
                 className="mt-2 h-9 w-full rounded-[12px] text-[12px]"
-                disabled={!canManageGroup || selectedContactIds.length === 0}
+                disabled={!canManageGroup || selectedAddContactIds.length === 0}
                 onClick={() => {
                   if (!canManageGroup) return;
-                  void onAddMembers(groupSessionIds, selectedContactIds);
+                  void onAddMembers(groupSessionIds, selectedAddContactIds);
                   setSelectedContactIds([]);
                 }}
               >

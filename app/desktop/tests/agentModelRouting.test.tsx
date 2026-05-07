@@ -11,6 +11,7 @@ import {
   localOwnedBridgeAgentsForModelRouting,
   routingSelectionForBridgeAgent,
 } from '../src/features/bridge/agentModelRouting';
+import { AgentContentPane } from '../src/kordi-app/agents/AgentContentPane';
 import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
 import { BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS, BRIDGE_ROUTING_NOTICE_EXIT_MS } from '../src/pages/ChatsPage';
 import type { Agent, DesktopBridgeHost, DesktopChatState } from '../src/kordi-app/types';
@@ -82,6 +83,58 @@ const desktopChatState = {
     defaultModel: 'gpt-5.4',
   },
 } as DesktopChatState;
+
+test('agent prompt preview placeholders scoped lesson artifact paths instead of showing session-specific absolutes', () => {
+  const scopedPrompt = [
+    'You are Kordi.',
+    '',
+    '## Scoped lesson artifacts',
+    'Lesson content lives in files, not this prompt.',
+    '- Conversation scope `690702c4-a4ac-4ba5-b443-0e85e886434a`: /Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop/.multi-instance-data/pr289-merge/kordi/artifacts/reflection-lessons/conversation/690702c4-a4ac-4ba5-b443-0e85e886434a-abcd12.md',
+    '- Project scope `/Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop`: /Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop/.multi-instance-data/pr289-merge/kordi/artifacts/reflection-lessons/project/Users-shuyang-config-superpowers-worktrees-kordi-pr289-main-merge-validation-app-desktop-ef3456.md',
+  ].join('\n');
+  const agent: Agent = {
+    id: 'agent-scoped-lessons',
+    name: 'My Kordi',
+    type: 'owned-agent',
+    description: 'Local coding agent',
+    status: 'Active',
+    tasks: 0,
+    systemPrompt: scopedPrompt,
+    xMd: null,
+    identityFiles: [],
+    loadedTools: [],
+    loadedSkills: [],
+    loadedPlugins: [],
+    lastActivities: [],
+  };
+
+  const markup = renderToStaticMarkup(createElement(AgentContentPane, {
+    activeAgent: agent,
+    activeDetail: { kind: 'prompt' },
+    activeAgentConfig: { systemPrompt: scopedPrompt, loadedSkills: [], identityFiles: [] },
+    activeEditingSection: null,
+    activeSaveFeedback: null,
+    activeFilePreview: { status: 'idle', text: '' },
+    activeFileDraft: '',
+    activeFileCanEdit: false,
+    activeFileIsEditing: false,
+    activeFileSaveFeedback: null,
+    onStartPromptEditing: () => undefined,
+    onSavePrompt: () => undefined,
+    onCancelPromptEditing: () => undefined,
+    onPromptChange: () => undefined,
+    onStartFileEditing: () => undefined,
+    onCancelFileEditing: () => undefined,
+    onSaveFile: () => undefined,
+    onFileDraftChange: () => undefined,
+  }));
+
+  assert.match(markup, /Conversation scope `\{session_id\}`: &lt;conversation lesson artifact path&gt;/);
+  assert.match(markup, /Project scope `\{project_scope_id\}`: &lt;project lesson artifact path&gt;/);
+  assert.doesNotMatch(markup, /pr289-main-merge-validation\/app\/desktop/);
+  assert.doesNotMatch(markup, /690702c4-a4ac-4ba5-b443-0e85e886434a/);
+});
 
 test('localOwnedBridgeAgentsForModelRouting returns only agents owned by local bridge hosts', () => {
   const agents = localOwnedBridgeAgentsForModelRouting(hosts, desktopChatState);

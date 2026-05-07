@@ -1,8 +1,122 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+
+function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
+  return {
+    id: 'host-1',
+    registered: true,
+    connected: true,
+    serverUrl: 'http://127.0.0.1:17080',
+    nodeId: 'kd_self',
+    displayName: 'My Kordi',
+    ownerName: 'Me',
+    endpoint: 'http://127.0.0.1:17080/kd_self',
+    tokenPresent: true,
+    humanId: 'kh_self',
+    discoveryMode: 'open',
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    activeAgentId: null,
+    agents: [],
+    visiblePeers: [],
+    visiblePeerCount: 0,
+    projects: [],
+    contactRequests: [],
+    lastError: null,
+    ...overrides,
+  };
+}
+
+test('bridgePeerIsApprovedContact treats only approved bridge peers as Contacts-page contacts', () => {
+  const basePeer = {
+    nodeId: 'kd_bob',
+    displayName: 'Bob Agent',
+    runtime: 'person',
+    endpoint: '',
+    ownerName: 'Bob',
+    createdAt: null,
+    sharedProjects: [],
+    humanId: 'kh_bob',
+    agentId: null,
+    isDefaultAgent: false,
+    discoveryMode: null,
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    agentReachabilityPolicy: 'contacts',
+    isContact: false,
+    contactRequestStatus: null,
+    contactRequestDirection: null,
+  };
+
+  assert.equal(bridgePeerIsApprovedContact(basePeer), false);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'pending' }), false);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, isContact: true }), true);
+  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'approved' }), true);
+});
+
+test('bridgePeerIsReachableAgent hides owner-only agents from other people', () => {
+  const basePeer = {
+    nodeId: 'kd_agent',
+    displayName: 'Owner Kordi',
+    runtime: 'kordi-desktop',
+    endpoint: '',
+    ownerName: 'Owner',
+    createdAt: null,
+    sharedProjects: [],
+    humanId: 'kh_owner',
+    agentId: 'ka_owner',
+    isDefaultAgent: true,
+    discoveryMode: null,
+    humanVisibilityPolicy: 'server-approval',
+    contactApprovalPolicy: 'approval-required',
+    isContact: true,
+    contactRequestStatus: 'contact',
+    contactRequestDirection: null,
+  };
+
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'owner' }), false);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'contacts' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'server' }), true);
+  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, runtime: 'person', agentReachabilityPolicy: 'owner' }), false);
+});
+
+test('bridgeContactRequestsForContactsPage exposes pending incoming approvals only', () => {
+  const requests = bridgeContactRequestsForContactsPage(bridgeHost({
+    visiblePeers: [{
+      nodeId: 'kd_bob',
+      displayName: 'Bob Agent',
+      runtime: 'person',
+      endpoint: '',
+      ownerName: 'Bob',
+      createdAt: null,
+      sharedProjects: [],
+      humanId: 'kh_bob',
+      agentId: null,
+      isDefaultAgent: false,
+      discoveryMode: null,
+      humanVisibilityPolicy: 'server-approval',
+      contactApprovalPolicy: 'approval-required',
+      agentReachabilityPolicy: 'contacts',
+      isContact: false,
+      contactRequestStatus: 'pending',
+      contactRequestDirection: 'incoming',
+    }],
+    contactRequests: [
+      { requestId: 'req-in', requesterNodeId: 'kd_bob', targetNodeId: 'kd_self', status: 'pending', message: 'Please add me', createdAt: '2026-05-05T00:00:00Z', direction: 'incoming' },
+      { requestId: 'req-out', requesterNodeId: 'kd_self', targetNodeId: 'kd_alice', status: 'pending', message: null, createdAt: '2026-05-05T00:00:00Z', direction: 'outgoing' },
+      { requestId: 'req-done', requesterNodeId: 'kd_carol', targetNodeId: 'kd_self', status: 'approved', message: null, createdAt: '2026-05-05T00:00:00Z', direction: 'incoming' },
+    ],
+  }));
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].title, 'Bob wants to connect');
+  assert.equal(requests[0].detail, 'Please add me');
+  assert.equal(requests[0].bridgeHostId, 'host-1');
+  assert.equal(requests[0].bridgeRequestId, 'req-in');
+});
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
   const [conversation] = hideRawConversationIds([{
@@ -162,7 +276,7 @@ function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurn
   };
 }
 
-function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot): Message {
+function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot, overrides: Partial<Message> = {}): Message {
   return {
     role: 'owned-agent',
     sender,
@@ -170,6 +284,7 @@ function agentMessage(sender: string, messageTurn: DesktopChatTurnSnapshot): Mes
     text: '',
     time: '12:36',
     turn: messageTurn,
+    ...overrides,
   };
 }
 
@@ -208,6 +323,89 @@ test('drops local intro fragment when the following final local turn extends it'
   const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
 
   assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('drops local intro fragment across minute boundary when historical prompts are unavailable', () => {
+  const intro = agentMessage('Kordi', turn({
+    id: 'turn-brainstorm-intro',
+    prompt: '',
+    assistantText: "I'm using the brainstorming skill to explore website options before any build plan.",
+    thinkingText: '',
+    tools: [],
+  }), { time: '10:59' });
+  const finalAnswer = agentMessage('My Kordi', turn({
+    id: 'turn-brainstorm-final',
+    prompt: '',
+    assistantText: "I'm using the brainstorming skill to explore website options before any build plan. Some of what we're working on might be easier to explain visually.",
+    thinkingText: '',
+  }), { time: '11:00' });
+
+  const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('drops local tool-bearing intro fragment when a refreshed final turn extends it', () => {
+  const intro = agentMessage('Kordi', turn({
+    id: 'turn-repo-intro',
+    prompt: '',
+    assistantText: 'Using the brainstorming, TDD, debugging/review, and worktree skills to clarify the issue, inspect the implementation, review it, and implement safely.',
+    thinkingText: 'Inspecting the repo',
+    tools: [{
+      id: 'tool-status',
+      name: 'bash',
+      status: 'done',
+      arguments: '{"command":"git status --short"}',
+      liveOutput: '',
+      resultText: 'ok',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'execution',
+      isError: false,
+    }],
+  }), { time: '20:05' });
+  const finalAnswer = agentMessage('My Kordi', turn({
+    id: 'turn-repo-final',
+    prompt: '',
+    assistantText: 'Using the brainstorming, TDD, debugging/review, and worktree skills to clarify the issue, inspect the implementation, review it, and implement safely. I found Kordi issue #301.',
+    thinkingText: 'Inspecting the repo',
+    tools: [{
+      id: 'tool-status',
+      name: 'bash',
+      status: 'done',
+      arguments: '{"command":"git status --short"}',
+      liveOutput: '',
+      resultText: 'ok',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'execution',
+      isError: false,
+    }],
+  }), { time: '20:06' });
+
+  const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
+
+  assert.deepEqual(deduped, [finalAnswer]);
+});
+
+test('keeps separate agent turns across minute boundary when prompts differ', () => {
+  const first = agentMessage('Kordi', turn({
+    id: 'turn-first',
+    prompt: '@Kordi brainstorm website choices',
+    assistantText: 'I can outline three website directions.',
+    thinkingText: '',
+    tools: [],
+  }), { time: '10:59' });
+  const second = agentMessage('My Kordi', turn({
+    id: 'turn-second',
+    prompt: '@Kordi now turn the first direction into a plan',
+    assistantText: 'I can outline three website directions. Next, I will turn the first direction into a plan.',
+    thinkingText: '',
+  }), { time: '11:00' });
+
+  const deduped = dedupeAdjacentAgentTurns([first, second]);
+
+  assert.deepEqual(deduped, [first, second]);
 });
 
 test('suppresses all local owned-agent runtime fragments after the triggering user while live turn is rendered', () => {

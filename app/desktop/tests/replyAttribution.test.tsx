@@ -124,6 +124,35 @@ test('buildReplyAttribution resolves canonical bridge parent aliases as the sour
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Jiaxin');
 });
 
+test('buildReplyAttribution falls back to visible request when explicit reply target was hidden as duplicate', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:visible-ui-request',
+      text: '@MyKordi how are yo',
+    }),
+    {
+      id: 'msg:my-agent-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '00:14',
+      replyToMessageId: 'msg:hidden-runtime-duplicate',
+      turn: turn({
+        id: 'turn-my-agent',
+        assistantText: 'I’m doing well — here and ready to help.',
+        replyToMessageId: 'msg:hidden-runtime-duplicate',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[1]?.replyToMessageId, 'msg:visible-ui-request');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:visible-ui-request');
+});
+
 test('buildReplyAttribution can infer other peoples requests as source when explicit reply ids are missing', () => {
   const messages: Message[] = [
     humanRequest({
@@ -150,6 +179,99 @@ test('buildReplyAttribution can infer other peoples requests as source when expl
   assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
   assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:peer-request');
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Shenzhe Zhu');
+});
+
+test('buildReplyAttribution prefers a newer own plain request over a stale @Kordi mention', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:old-kordi-request',
+      text: '@Kordi why i cannot send the second message',
+      time: '12:54',
+    }),
+    {
+      id: 'msg:old-error-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '12:54',
+      turn: turn({
+        id: 'turn-old-error',
+        assistantText: '',
+        message: 'Provider error: overloaded',
+        status: 'failed',
+        succeeded: false,
+        error: 'Provider error: overloaded',
+      }),
+    },
+    humanRequest({
+      id: 'msg:new-plain-request',
+      text: 'Create a markdown form to preview',
+      time: '13:34',
+    }),
+    {
+      id: 'msg:new-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '13:34',
+      turn: turn({ id: 'turn-new-response', assistantText: 'Considering markdown formatting options.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+
+  assert.equal(result.messages[2]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:new-plain-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.text, 'Create a markdown form to preview');
+  assert.equal(result.messages[0]?.replySummary?.targetMessageId, 'msg:old-error-response');
+});
+
+test('buildReplyAttribution prefers a newer direct plain request over a stale @Kordi mention without broad fallback inference', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:old-kordi-request',
+      text: '@Kordi why i cannot send the seconed message',
+      time: '15:02',
+    }),
+    {
+      id: 'msg:old-error-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '15:02',
+      turn: turn({
+        id: 'turn-old-error',
+        assistantText: '',
+        message: 'Provider error: overloaded',
+        status: 'failed',
+        succeeded: false,
+        error: 'Provider error: overloaded',
+      }),
+    },
+    humanRequest({
+      id: 'msg:new-plain-request',
+      text: 'No you need show me the short what to ask',
+      time: '15:27',
+    }),
+    {
+      id: 'msg:new-response',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '15:27',
+      turn: turn({ id: 'turn-new-response', assistantText: 'Ask me this:' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: false });
+
+  assert.equal(result.messages[2]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:new-plain-request');
+  assert.equal(result.messages[3]?.turn?.sourceMessage?.text, 'No you need show me the short what to ask');
 });
 
 test('buildReplyAttribution prefers the latest matching @mention over later non-request chat', () => {
@@ -251,6 +373,26 @@ test('buildReplyAttribution scopes inferred replies to each mentioned agent requ
   assert.equal(result.messages[1]?.replySummary?.replyCount, 1);
   assert.equal(result.messages[2]?.turn?.sourceMessage?.messageId, 'msg:alice-request');
   assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:bob-request');
+});
+
+test('buildReplyAttribution links direct live turns to matching prompt without broad fallback inference', () => {
+  const request = humanRequest({ id: 'msg:direct-request', text: 'check the gym in kaust' });
+  const liveTurn = turn({
+    id: 'turn-direct-live',
+    prompt: 'check the gym in kaust',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    completed: false,
+    succeeded: false,
+  });
+
+  const result = buildReplyAttribution([request], liveTurn, { inferLatestHumanRequest: false });
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 0);
+  assert.equal(result.messages[0]?.replySummary?.pending, true);
+  assert.equal(result.liveTurn?.sourceMessage?.messageId, 'msg:direct-request');
+  assert.equal(result.liveTurn?.sourceMessage?.text, 'check the gym in kaust');
 });
 
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {

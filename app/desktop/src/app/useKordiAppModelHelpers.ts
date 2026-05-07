@@ -87,6 +87,83 @@ export function removeSessionFromDesktopState(state: DesktopChatState | null, se
   };
 }
 
+function optimisticCanonicalMessageStatusIsPreservable(message: CanonicalSessionMessage) {
+  const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
+    ? message.content as Record<string, unknown>
+    : {};
+  const deliveryState = typeof content.deliveryState === 'string' ? content.deliveryState.trim().toLowerCase() : '';
+  const status = message.status?.trim().toLowerCase() ?? '';
+  return status === 'sending' || status === 'sent' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'sent' || deliveryState === 'failed';
+}
+
+function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
+  return message.sourceTransport === 'desktop-bridge-ui'
+    && message.senderRole === 'user'
+    && optimisticCanonicalMessageStatusIsPreservable(message);
+}
+
+function isBridgeContactLocalAgentUiMessageToPreserve(message: CanonicalSessionMessage) {
+  return message.sourceTransport === 'desktop-chat-ui'
+    && message.senderRole === 'user'
+    && message.sessionId.startsWith('session:bridge:')
+    && optimisticCanonicalMessageStatusIsPreservable(message);
+}
+
+function isBridgeSessionSyncMessageToPreserve(message: CanonicalSessionMessage) {
+  if (!message.sessionId.startsWith('session:bridge:')) return false;
+  const sourceTransport = message.sourceTransport?.trim().toLowerCase() ?? '';
+  return sourceTransport === 'desktop-chat'
+    || sourceTransport === 'desktop-chat-ui'
+    || sourceTransport === 'desktop-bridge'
+    || sourceTransport === 'desktop-bridge-parent'
+    || sourceTransport === 'desktop-bridge-session-relay'
+    || sourceTransport === 'desktop-bridge-outreach';
+}
+
+function normalizedCanonicalMessageText(value: string) {
+  return value.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
+function canonicalRefreshMessageAlreadyFetched(
+  fetchedMessages: CanonicalSessionMessage[],
+  currentMessage: CanonicalSessionMessage,
+) {
+  const currentText = normalizedCanonicalMessageText(currentMessage.contentText);
+  return fetchedMessages.some((fetchedMessage) => (
+    fetchedMessage.sessionId === currentMessage.sessionId
+    && fetchedMessage.senderRole === currentMessage.senderRole
+    && fetchedMessage.messageKind === currentMessage.messageKind
+    && normalizedCanonicalMessageText(fetchedMessage.contentText) === currentText
+    && Math.abs(fetchedMessage.createdAtMs - currentMessage.createdAtMs) <= 10_000
+  ));
+}
+
+function shouldPreserveCanonicalMessageDuringRefresh(message: CanonicalSessionMessage) {
+  return isBridgeUiMessageToPreserve(message)
+    || isBridgeContactLocalAgentUiMessageToPreserve(message)
+    || isBridgeSessionSyncMessageToPreserve(message);
+}
+
+export function mergeCanonicalStatePreservingBridgeUiMessages(
+  fetched: CanonicalSessionState | null,
+  current: CanonicalSessionState | null,
+): CanonicalSessionState | null {
+  if (!fetched || !current) return fetched;
+  const fetchedMessageIds = new Set(fetched.messages.map((message) => message.id));
+  const fetchedSessionIds = new Set(fetched.sessions.map((session) => session.id));
+  const preservedMessages = current.messages.filter((message) => (
+    shouldPreserveCanonicalMessageDuringRefresh(message)
+    && !fetchedMessageIds.has(message.id)
+    && fetchedSessionIds.has(message.sessionId)
+    && !canonicalRefreshMessageAlreadyFetched(fetched.messages, message)
+  ));
+  if (preservedMessages.length === 0) return fetched;
+  return {
+    ...fetched,
+    messages: [...fetched.messages, ...preservedMessages],
+  };
+}
+
 export function removeSessionFromCanonicalState(state: CanonicalSessionState | null, sessionId: string) {
   if (!state) return state;
   return {
@@ -190,6 +267,28 @@ export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
   );
 }
 
+export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string, updatedAtMs = Date.now()) {
+  const groupId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
+  return {
+    ...metadata,
+    customName: title,
+    groupId,
+    groupSpaceId: groupId,
+    groupNameUpdatedAtMs: updatedAtMs,
+  };
+}
+
+export function sessionRenameNoticeText(actorName: string | null | undefined, title: string, scope: 'group' | 'session') {
+  const actor = actorName?.trim() || 'Someone';
+  return `${actor} changed the ${scope} name to ${title.trim()}`;
+}
+
+export function canonicalIdentityDisplayName(state: CanonicalSessionState | null | undefined, identityId: string | null | undefined) {
+  const id = identityId?.trim();
+  if (!state || !id) return null;
+  return state.identities.find((identity) => identity.id === id)?.displayName?.trim() || null;
+}
+
 function nonGenericGroupInviteTitle(value?: string | null) {
   const title = value?.trim();
   if (!title) return null;
@@ -270,22 +369,45 @@ export type CanonicalGroupInviteContext = {
   parentSessionMessages: DesktopBridgeSessionThreadMessage[];
 };
 
+function groupSpaceIdForSession(state: CanonicalSessionState | null, sessionId: string, fallbackGroupSpaceId: string) {
+  const currentMetadata = sessionMetadataRecord(state, sessionId);
+  return metadataGroupSpaceId(currentMetadata)
+    || normalizeStoredGroupSpaceId(fallbackGroupSpaceId);
+}
+
+function groupSessionParticipantsForSync(state: CanonicalSessionState | null, sessionId: string) {
+  return buildChatGroupBridgeUpdateParticipants({
+    participants: canonicalGroupParticipantsForSession(state, sessionId),
+    adminIdentityIds: activeGroupAdminIds(state, sessionId),
+  });
+}
+
 export function canonicalGroupInviteContextForSession(
   state: CanonicalSessionState | null,
   sessionId: string,
   fallbackGroupSpaceId: string,
 ): CanonicalGroupInviteContext {
-  const currentMetadata = sessionMetadataRecord(state, sessionId);
-  const groupSpaceId = metadataGroupSpaceId(currentMetadata)
-    || normalizeStoredGroupSpaceId(fallbackGroupSpaceId);
+  const groupSpaceId = groupSpaceIdForSession(state, sessionId, fallbackGroupSpaceId);
   return {
     parentSessionTitle: canonicalGroupInviteTitleForSession(state, sessionId),
     parentGroupSpaceId: groupSpaceId || null,
-    parentSessionParticipants: buildChatGroupBridgeUpdateParticipants({
-      participants: canonicalGroupParticipantsForSession(state, sessionId),
-      adminIdentityIds: activeGroupAdminIds(state, sessionId),
-    }),
+    parentSessionParticipants: groupSessionParticipantsForSync(state, sessionId),
     parentSessionMessages: canonicalSessionMessagesForGroupInvite(state, sessionId),
+  };
+}
+
+export function canonicalGroupSessionSyncContextForSession(
+  state: CanonicalSessionState | null,
+  sessionId: string,
+  fallbackGroupSpaceId: string,
+): CanonicalGroupInviteContext {
+  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
+  const groupSpaceId = groupSpaceIdForSession(state, sessionId, fallbackGroupSpaceId);
+  return {
+    parentSessionTitle: session?.title?.trim() || 'New session',
+    parentGroupSpaceId: groupSpaceId || null,
+    parentSessionParticipants: groupSessionParticipantsForSync(state, sessionId),
+    parentSessionMessages: [],
   };
 }
 

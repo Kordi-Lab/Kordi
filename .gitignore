@@ -17,6 +17,7 @@ app/desktop/scripts/multi-instance/configs/local/
 .env.local
 
 tmp-chrome-profile.*
+.superpowers/
 
 # Local-only scratch assets and helper scripts
 logo.png

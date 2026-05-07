@@ -8,7 +8,9 @@ use crate::bridge::{
 use super::super::bridge_identities::upsert_bridge_agent_identity;
 use super::super::bridge_routing::{
     canonical_bridge_message_status, outreach_is_session_message, outreach_is_session_relay,
+    outreach_is_session_title_update,
 };
+use super::super::group_participants::rename_any_session_title_in_db;
 use super::super::message_reconcile;
 use super::super::models::AppendCanonicalMessageRequest;
 use super::super::sanitization::sanitize_shared_agent_response_text_with_conn;
@@ -19,7 +21,7 @@ use super::super::{
 };
 use super::participants::{
     ensure_parent_group_session_participants, ensure_parent_session_participants,
-    promote_session_message_parent_session,
+    promote_session_message_parent_session, GroupNameUpdateMode,
 };
 
 fn is_processing_placeholder_text(text: &str) -> bool {
@@ -310,6 +312,88 @@ pub(super) fn sync_parent_session_relay_join_event(
     Ok(())
 }
 
+fn outreach_group_name_event_at_ms(outreach: &crate::bridge::DesktopBridgeOutreachMetadata) -> i64 {
+    outreach.created_at_ms.max(0)
+}
+
+fn clean_parent_session_title(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> Option<String> {
+    outreach
+        .parent_session_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn session_update_notice_text(actor_name: &str, title: &str, scope: &str) -> String {
+    let actor = actor_name.trim();
+    let actor = if actor.is_empty() { "Someone" } else { actor };
+    format!("{actor} changed the {scope} name to {}", title.trim())
+}
+
+fn session_update_actor_name(
+    conn: &Connection,
+    actor_identity_id: &str,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+) -> Result<String, String> {
+    Ok(identity_display_name(conn, actor_identity_id)?
+        .or_else(|| conversation.peer_display_name.clone())
+        .or_else(|| conversation.peer_owner_name.clone())
+        .unwrap_or_else(|| "Someone".to_string()))
+}
+
+fn append_parent_session_update_notice(
+    conn: &Connection,
+    parent_session_id: &str,
+    conversation: &crate::bridge::DesktopBridgeConversation,
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+    actor_identity_id: &str,
+    title: &str,
+    scope: &str,
+) -> Result<(), String> {
+    let actor_name = session_update_actor_name(conn, actor_identity_id, conversation)?;
+    let text = session_update_notice_text(&actor_name, title, scope);
+    let request_key = outreach
+        .bridge_request_id
+        .as_deref()
+        .or(outreach.parent_message_id.as_deref())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("at-{}", outreach.created_at_ms.max(0)));
+    message_reconcile::append_or_reconcile_message_from_sync(
+        conn,
+        AppendCanonicalMessageRequest {
+            id: None,
+            session_id: parent_session_id.to_string(),
+            sender_identity_id: actor_identity_id.to_string(),
+            sender_role: "system".to_string(),
+            message_kind: "status".to_string(),
+            content_text: text,
+            content: Some(serde_json::json!({
+                "kind": "session-title-update",
+                "scope": scope,
+                "title": title,
+                "actorDisplayName": actor_name,
+                "bridgeConversationId": conversation.id,
+                "requestId": outreach.bridge_request_id.as_deref(),
+                "contextPolicy": outreach.context_policy.as_deref(),
+            })),
+            created_at_ms: Some(outreach.created_at_ms.max(0)),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            source_transport: Some("desktop-bridge-session-update".to_string()),
+            source_event_id: Some(format!(
+                "desktop-bridge-session-update:{parent_session_id}:{scope}:{request_key}"
+            )),
+        },
+        "desktop-bridge-session-update-ui",
+        5_000,
+    )?;
+    Ok(())
+}
+
 fn outreach_targets_group_parent(
     parent_session_id: &str,
     outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
@@ -337,12 +421,16 @@ pub(super) fn sync_parent_session_invite(
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            GroupNameUpdateMode::SetIfMissing {
+                updated_at_ms: outreach_group_name_event_at_ms(outreach),
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,
             &conversation.host_id,
             &outreach.parent_session_participants,
         )
+        .map(|_| ())
     } else {
         ensure_parent_session_participants(
             conn,
@@ -367,18 +455,57 @@ pub(super) fn sync_parent_session_update(
     relationship_identity_id: Option<&str>,
     remote_target_identity_id: &str,
 ) -> Result<(), String> {
+    let is_session_title_update = outreach_is_session_title_update(outreach);
+    let update_title = clean_parent_session_title(outreach);
+    let is_inbound_update = conversation.peer_node_id != outreach.target_node_id;
+    let actor_identity_id = if is_inbound_update {
+        remote_target_identity_id
+    } else {
+        local_human_identity_id
+    };
     if outreach_targets_group_parent(parent_session_id, outreach) {
-        ensure_parent_group_session_participants(
+        let group_name_applied = ensure_parent_group_session_participants(
             conn,
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            if is_session_title_update {
+                GroupNameUpdateMode::Skip
+            } else {
+                GroupNameUpdateMode::SetIfNewer {
+                    updated_at_ms: outreach_group_name_event_at_ms(outreach),
+                }
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,
             &conversation.host_id,
             &outreach.parent_session_participants,
-        )
+        )?;
+        if let Some(title) = update_title
+            .as_deref()
+            .filter(|_| is_session_title_update || group_name_applied)
+        {
+            if is_session_title_update {
+                rename_any_session_title_in_db(conn, parent_session_id, title)?;
+            }
+            if is_inbound_update {
+                append_parent_session_update_notice(
+                    conn,
+                    parent_session_id,
+                    conversation,
+                    outreach,
+                    actor_identity_id,
+                    title,
+                    if is_session_title_update {
+                        "session"
+                    } else {
+                        "group"
+                    },
+                )?;
+            }
+        }
+        Ok(())
     } else {
         ensure_parent_session_participants(
             conn,
@@ -389,7 +516,24 @@ pub(super) fn sync_parent_session_update(
             remote_target_identity_id,
             relationship_identity_id,
             false,
-        )
+        )?;
+        if is_session_title_update {
+            if let Some(title) = update_title.as_deref() {
+                rename_any_session_title_in_db(conn, parent_session_id, title)?;
+                if is_inbound_update {
+                    append_parent_session_update_notice(
+                        conn,
+                        parent_session_id,
+                        conversation,
+                        outreach,
+                        actor_identity_id,
+                        title,
+                        "session",
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -544,6 +688,8 @@ mod tests {
             parent_group_space_id: Some("session:group:test".to_string()),
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
             parent_turn_id: None,
             parent_message_id: Some("msg:request".to_string()),
             bridge_host_id: "host-1".to_string(),
@@ -629,11 +775,14 @@ pub(super) fn sync_parent_session_relay_messages(
                 .is_some_and(|value| !value.is_empty())
             || parent_session_id.starts_with("session:group:"));
     if is_group_session_message {
-        ensure_parent_group_session_participants(
+        let _ = ensure_parent_group_session_participants(
             conn,
             parent_session_id,
             outreach.parent_session_title.as_deref(),
             outreach.parent_group_space_id.as_deref(),
+            GroupNameUpdateMode::SetIfMissing {
+                updated_at_ms: outreach_group_name_event_at_ms(outreach),
+            },
             local_human_identity_id,
             remote_target_identity_id,
             relationship_identity_id,

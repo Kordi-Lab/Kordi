@@ -14,6 +14,7 @@ export function AgentsPage({
   composerProviderOptions,
   onUpdateAgentModelRouting,
   onMessageAgent,
+  onOpenAgentReachoutSession,
 }: AgentsPageProps) {
   const {
     agentConfigs,
@@ -68,6 +69,7 @@ export function AgentsPage({
               ? () => onMessageAgent({ ...activeAgent, ...activeAgentConfig, loadedSkills: activeAgentConfig.loadedSkills })
               : undefined
           }
+          onOpenReachoutSession={onOpenAgentReachoutSession}
           onOpenPromptDetail={openPromptDetail}
           onStartEditing={startEditing}
           onSave={(agent, section) => void saveAgentConfig(agent, section)}

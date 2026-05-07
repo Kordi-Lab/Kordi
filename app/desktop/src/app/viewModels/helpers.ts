@@ -3,6 +3,7 @@ import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/ses
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
+  ContactRequest,
   Conversation,
   DesktopBridgeConversation,
   DesktopBridgeHost,
@@ -29,6 +30,61 @@ export function toBridgePersonPeer(peer: DesktopBridgePeer): DesktopBridgePeer {
     agentId: undefined,
     isDefaultAgent: false,
   };
+}
+
+export function bridgePeerIsApprovedContact(peer: DesktopBridgePeer) {
+  const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
+  return Boolean(peer.isContact || status === 'contact' || status === 'approved');
+}
+
+export function bridgePeerIsReachableAgent(peer: DesktopBridgePeer) {
+  if (!isBridgeAgentRuntime(peer.runtime)) return false;
+  const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
+  return agentReachabilityPolicy !== 'owner';
+}
+
+function firstNonEmptyViewModelText(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).find(Boolean) ?? '';
+}
+
+function contactRequestInitials(label: string) {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? '').join('') || '?';
+}
+
+export function bridgeContactRequestsForContactsPage(host: DesktopBridgeHost | null | undefined): ContactRequest[] {
+  if (!host) return [];
+  return (host.contactRequests ?? [])
+    .filter((request) => request.direction === 'incoming' && request.status === 'pending')
+    .map((request) => {
+      const requesterNodeId = request.requesterNodeId.trim();
+      const peer = host.visiblePeers.find((candidate) => candidate.nodeId === requesterNodeId);
+      const requesterName = firstNonEmptyViewModelText(
+        peer?.ownerName,
+        peer?.displayName,
+        peer?.humanId,
+        requesterNodeId,
+        'Bridge user',
+      );
+      const message = request.message?.trim();
+      return {
+        id: `bridge-contact-request:${host.id}:${request.requestId}`,
+        initials: contactRequestInitials(requesterName),
+        title: `${requesterName} wants to connect`,
+        detail: message || `Approve before direct messages and group invites are allowed. Node: ${requesterNodeId}`,
+        time: 'Pending approval',
+        profileImageUrl: null,
+        avatarSeed: peer?.humanId ?? peer?.agentId ?? requesterNodeId,
+        source: 'bridge',
+        bridgeHostId: host.id,
+        bridgeRequestId: request.requestId,
+        requesterNodeId,
+        targetNodeId: request.targetNodeId,
+        status: request.status,
+        direction: request.direction,
+      };
+    });
 }
 
 export function visibleBridgePeople(peers: DesktopBridgePeer[]) {
@@ -96,6 +152,7 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
     || outreach.contextPolicy === 'session-message'
     || outreach.contextPolicy === 'session-invite'
     || outreach.contextPolicy === 'session-update'
+    || outreach.contextPolicy === 'session-title-update'
   ) return [];
 
   const isAgent = outreach.targetKind === 'bridge-agent';
@@ -293,9 +350,41 @@ export function suppressLiveTurnEchoMessages(messages: Message[], turn?: Desktop
   return filtered.length === messages.length ? messages : filtered;
 }
 
+function cleanComparableText(value?: string | null) {
+  return value?.trim().replace(/\s+/g, ' ').toLowerCase() ?? '';
+}
+
+function explicitAgentReplyTarget(message: Message) {
+  return cleanComparableText(message.replyToMessageId)
+    || cleanComparableText(message.turn?.replyToMessageId)
+    || cleanComparableText(message.sourceMessage?.messageId)
+    || cleanComparableText(message.turn?.sourceMessage?.messageId);
+}
+
+function agentTurnsShareRequest(current: Message, next: Message) {
+  if (current.time === next.time) return true;
+
+  const currentTarget = explicitAgentReplyTarget(current);
+  const nextTarget = explicitAgentReplyTarget(next);
+  if (currentTarget && nextTarget && currentTarget === nextTarget) return true;
+
+  const currentPrompt = cleanComparableText(current.turn?.prompt);
+  const nextPrompt = cleanComparableText(next.turn?.prompt);
+  if (currentPrompt && nextPrompt && currentPrompt === nextPrompt) return true;
+
+  if (!currentPrompt && !nextPrompt) {
+    const currentText = cleanComparableText(current.turn?.assistantText);
+    const nextText = cleanComparableText(next.turn?.assistantText);
+    if (currentText && nextText.startsWith(currentText)) return true;
+    return (current.turn?.tools.length ?? 0) === 0;
+  }
+
+  return false;
+}
+
 function agentTurnIsSubsumedByNext(current: Message, next: Message) {
   if (!current.turn || !next.turn) return false;
-  if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || current.time !== next.time) return false;
+  if (current.role !== next.role || comparableAgentTurnSender(current) !== comparableAgentTurnSender(next) || !agentTurnsShareRequest(current, next)) return false;
   if (!current.turn.completed || !next.turn.completed) return false;
   const currentAssistantText = current.turn.assistantText.trim();
   const nextAssistantText = next.turn.assistantText.trim();

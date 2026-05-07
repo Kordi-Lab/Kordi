@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
@@ -31,6 +31,30 @@ test('renders live turn errors as raw red inline text instead of a popped bubble
   assert.doesNotMatch(markup, /border-rose-500/);
   assert.doesNotMatch(markup, /bg-rose-500/);
   assert.doesNotMatch(markup, /circle-alert/);
+});
+
+test('contact request row shows accept progress while sending the greeting', () => {
+  const request: ContactRequest = {
+    id: 'request-1',
+    initials: 'TU',
+    title: 'Testuser4 wants to connect',
+    detail: "I am Testuser4. I'd like to add you as a Kordi contact.",
+    time: 'now',
+  };
+
+  const markup = renderToStaticMarkup(createElement(ContactRequestRow, {
+    request,
+    active: false,
+    onReview: () => undefined,
+    onAccept: () => undefined,
+    onReject: () => undefined,
+    actionState: 'accepting',
+  }));
+
+  assert.match(markup, />Accepting…</);
+  assert.match(markup, />Accepting and sending greeting…</);
+  assert.match(markup, /animate-spin/);
+  assert.match(markup, /disabled=""/);
 });
 
 test('renders bridge agent stop control beside pending processing text', () => {
@@ -66,7 +90,35 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
-test('renders failed own message delivery as visible red failed text', () => {
+test('renders initial generic working status as starting until a real tool phase appears', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-starting-work',
+    sessionId: 'session-1',
+    prompt: '@Kordi plan the website choices',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@Kordi plan the website choices',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /Starting…/);
+  assert.doesNotMatch(markup, /Planning…/);
+  assert.doesNotMatch(markup, /Working…/);
+});
+
+test('renders failed own message delivery as a compact red exclamation', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -79,8 +131,63 @@ test('renders failed own message delivery as visible red failed text', () => {
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, />Failed</);
+  assert.doesNotMatch(markup, />Sending failed</);
+  assert.match(markup, />!<\/span>/);
   assert.match(markup, /text-rose-400/);
+});
+
+test('renders contact-gated failed sends as a centered notice instead of changing the message bubble', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello again',
+    time: '00:45',
+    detail: 'Send a contact request before messages can be delivered.',
+    statusChips: ['failed'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    onRequestBridgeContact: async () => undefined,
+  }));
+
+  assert.match(markup, /app-contact-request-failure-notice/);
+  assert.match(markup, /self-center/);
+  assert.doesNotMatch(markup, /self-start/);
+  assert.match(markup, />Message not delivered\.</);
+  assert.match(markup, />Send contact request</);
+  assert.doesNotMatch(markup, />Send a contact request before messages can be delivered\.</);
+  assert.doesNotMatch(markup, /Messages are blocked until this person approves you/);
+
+  const bubbleStart = markup.indexOf('app-chat-bubble-user');
+  const noticeStart = markup.indexOf('app-contact-request-failure-notice');
+  assert.ok(bubbleStart >= 0);
+  assert.ok(noticeStart > bubbleStart);
+  assert.doesNotMatch(markup.slice(bubbleStart, noticeStart), /Send a contact request before messages can be delivered/);
+});
+
+test('renders pending contact request failures with the same explicit request action', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello again',
+    time: '00:45',
+    detail: 'Contact request is pending. They need to approve it before messages can be delivered.',
+    statusChips: ['failed'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    onRequestBridgeContact: async () => undefined,
+  }));
+
+  assert.match(markup, />Message not delivered\.</);
+  assert.match(markup, />Send contact request</);
+  assert.doesNotMatch(markup, />Contact request is pending\. They need to approve it before messages can be delivered\.</);
 });
 
 test('renders transcript system notices with compact stable spacing', () => {
@@ -114,6 +221,22 @@ test('renders human messages with a larger reading width than before', () => {
   assert.match(markup, /max-w-\[34rem\]/);
   assert.match(markup, /text-\[14px\]/);
   assert.doesNotMatch(markup, /max-w-\[26rem\]/);
+});
+
+test('renders plain My Kordi replies on a subtle assistant surface', () => {
+  const message: Message = {
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: 'Hey! I am doing well, thanks for asking.',
+    time: '14:30',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-chat-bubble-agent/);
+  assert.match(markup, />Hey! I am doing well, thanks for asking\.</);
+  assert.doesNotMatch(markup, /app-message-bubble-own|app-message-bubble-peer/);
 });
 
 test('renders peer human sender names inside the bubble with colorful bold styling', () => {
@@ -295,7 +418,11 @@ test('styles folded source quote expand control as muted overlay on the fade', (
   assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
   assert.match(sourceOverlayBlock, /position:\s*absolute/);
   assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
-  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(1\.2px\)/);
+  assert.match(sourceOverlayBlock, /background:\s*transparent/);
+  assert.match(sourceOverlayBlock, /border:\s*0/);
+  assert.match(sourceOverlayBlock, /backdrop-filter:\s*none/);
+  assert.match(sourceFoldedAfterBlock, /mask-image:\s*linear-gradient/);
+  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
 });
 
 test('styles reply attribution surfaces with stronger dark-mode contrast', () => {

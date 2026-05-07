@@ -9,7 +9,9 @@ use kordi_hooks::events::{
 use kordi_hooks::{Event, ToolCallEvent};
 use kordi_provider::{CollectedResponse, CollectedToolCall};
 use kordi_session::store;
-use kordi_tools::{FileQueue, Tool, ToolContext, ToolScheduling, execute_reserved_tool_call};
+use kordi_tools::{
+    FileQueue, Tool, ToolContext, ToolMetadata, ToolScheduling, execute_reserved_tool_call,
+};
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -18,6 +20,9 @@ use super::TurnEvent;
 use super::hooks::send_extension_event_safe;
 use super::panic::catch_contained_panics;
 use super::persistence::get_leaf_raw;
+use super::tool_policy::{
+    ToolPolicyDecision, ToolPolicyState, evaluate_reflection_advisory, evaluate_tool_policy,
+};
 use crate::extensions::ExtensionCommandRegistry;
 
 pub(super) struct ToolExecutionEnv<'a> {
@@ -36,9 +41,12 @@ pub(super) async fn execute_tool_calls(
 ) -> Result<()> {
     let file_queue = FileQueue::new();
     let mut pending = Vec::new();
+    let mut policy_state = ToolPolicyState::default();
 
     for (source_index, tool_call) in collected.tool_calls.iter().enumerate() {
-        if let Some(prepared) = preflight_tool_call(source_index, tool_call, &env).await? {
+        if let Some(prepared) =
+            preflight_tool_call(source_index, tool_call, &env, &mut policy_state).await?
+        {
             pending.push(execute_prepared_tool_call(prepared, &env, &file_queue));
         }
     }
@@ -89,6 +97,8 @@ struct PreparedToolExecution {
     id: String,
     name: String,
     args: serde_json::Value,
+    metadata: Option<ToolMetadata>,
+    policy_warning: Option<String>,
     lifecycle: ToolExecutionStateMachine,
 }
 
@@ -120,6 +130,7 @@ async fn preflight_tool_call(
     source_index: usize,
     tool_call: &CollectedToolCall,
     env: &ToolExecutionEnv<'_>,
+    policy_state: &mut ToolPolicyState,
 ) -> Result<Option<PreparedToolExecution>> {
     let mut lifecycle = ToolExecutionStateMachine::new();
     let mut args = serde_json::from_str(&tool_call.arguments).unwrap_or(serde_json::json!({}));
@@ -165,11 +176,41 @@ async fn preflight_tool_call(
         .as_ref()
         .and_then(|result| result.reason.clone());
 
+    let metadata = tool_metadata_for_call(&tool_call.name, env);
+    let policy_warning = if let Some(metadata) = metadata.as_ref() {
+        let decision = evaluate_tool_policy(policy_state, metadata);
+        policy_state.record_tool_metadata(metadata);
+        match decision {
+            ToolPolicyDecision::Allow => None,
+            ToolPolicyDecision::AllowWithWarning(message) => {
+                send_tool_execution_update(
+                    env,
+                    &tool_call.id,
+                    &tool_call.name,
+                    &args,
+                    serde_json::json!({
+                        "details": {
+                            "workflowPolicy": "advisory",
+                            "warning": message,
+                        }
+                    }),
+                )
+                .await;
+                Some(message)
+            }
+            ToolPolicyDecision::Deny(message) => Some(message),
+        }
+    } else {
+        None
+    };
+
     let prepared = PreparedToolExecution {
         source_index,
         id: tool_call.id.clone(),
         name: tool_call.name.clone(),
         args,
+        metadata,
+        policy_warning,
         lifecycle,
     };
 
@@ -255,6 +296,42 @@ async fn finish_tool_call(executed: ExecutedToolCall, env: &ToolExecutionEnv<'_>
         map.insert(
             "durationMs".to_string(),
             serde_json::Value::from(duration_ms),
+        );
+        if let Some(metadata) = prepared.metadata.as_ref() {
+            map.insert(
+                "toolLayer".to_string(),
+                serde_json::to_value(metadata.layer).unwrap_or(serde_json::Value::Null),
+            );
+            map.insert(
+                "toolRisk".to_string(),
+                serde_json::to_value(metadata.risk).unwrap_or(serde_json::Value::Null),
+            );
+            map.insert(
+                "supportsParallel".to_string(),
+                serde_json::Value::from(metadata.supports_parallel),
+            );
+        }
+        if let Some(policy_warning) = prepared.policy_warning.as_ref() {
+            map.insert(
+                "workflowPolicy".to_string(),
+                serde_json::Value::from("advisory"),
+            );
+            map.insert(
+                "workflowPolicyWarning".to_string(),
+                serde_json::Value::from(policy_warning.clone()),
+            );
+        }
+    }
+    if let Some(reflection_advisory) = evaluate_reflection_advisory(
+        prepared.metadata.as_ref(),
+        &prepared.name,
+        is_error,
+        &details_json,
+    ) && let Some(map) = details_json.as_object_mut()
+    {
+        map.insert(
+            "reflectionAdvisory".to_string(),
+            serde_json::Value::from(reflection_advisory),
         );
     }
     details = Some(details_json);
@@ -401,6 +478,7 @@ fn tool_context_with_output_forwarding(
     ToolContext {
         cwd: env.tool_ctx.cwd.clone(),
         artifacts_dir: env.tool_ctx.artifacts_dir.clone(),
+        model: None,
         execution_policy: env.tool_ctx.execution_policy,
         on_output: Some(Box::new(move |chunk| {
             let _ = event_tx.send(TurnEvent::ToolOutputDelta {
@@ -410,6 +488,8 @@ fn tool_context_with_output_forwarding(
         })),
         web_search: env.tool_ctx.web_search.clone(),
         reach_out: env.tool_ctx.reach_out.clone(),
+        reflection: env.tool_ctx.reflection.clone(),
+        task_operator: env.tool_ctx.task_operator.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
     }
@@ -460,6 +540,14 @@ fn scheduler_partial_result(
         }
     }
     serde_json::json!({ "details": details })
+}
+
+fn tool_metadata_for_call(tool_name: &str, env: &ToolExecutionEnv<'_>) -> Option<ToolMetadata> {
+    let normalized_name = normalize_requested_tool_name(tool_name);
+    env.tools
+        .iter()
+        .find(|tool| tool.name() == normalized_name.as_ref())
+        .map(|tool| tool.metadata())
 }
 
 async fn send_tool_execution_update(

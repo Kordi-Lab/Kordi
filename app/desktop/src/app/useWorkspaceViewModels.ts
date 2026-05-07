@@ -51,6 +51,7 @@ function sanitizeRemotePeerName(
   return 'Bridge user';
 }
 import {
+  bridgePeerIsApprovedContact,
   buildConversationPreview,
   buildOutreachInlineMessages,
   buildSessionStatusIndicator,
@@ -60,6 +61,7 @@ import {
   preferLatestMessages,
   hideRawConversationIds,
   visibleBridgePeople,
+  bridgePeerIsReachableAgent,
 } from './viewModels/helpers';
 
 function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
@@ -82,6 +84,18 @@ function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | und
 }
 
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
+
+export function bridgeChatConversationRoutesToLocalAgentPage(
+  conversation: Pick<DesktopBridgeConversation, 'outreach' | 'identity' | 'projectId'>,
+) {
+  const outreach = conversation.outreach;
+  if (outreach?.targetKind !== 'bridge-agent') return false;
+  if (outreach.parentSessionId?.trim()) return false;
+  if (conversation.projectId?.trim()) return false;
+  const localAgentId = conversation.identity?.localAgentId?.trim();
+  const targetAgentId = outreach.targetAgentId?.trim();
+  return Boolean(localAgentId && targetAgentId && localAgentId === targetAgentId);
+}
 
 export function bridgeChatConversationIsVisible(
   conversation: Pick<DesktopBridgeConversation, 'outreach'>,
@@ -273,6 +287,7 @@ export function useWorkspaceViewModels({
       const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
       const outreachThreads = outreachRecords.map(({ updatedAtMs: _updatedAtMs, inlineMessages: _inlineMessages, ...thread }) => thread);
       const messages = [...activeMessages, ...outreachRecords.flatMap((thread) => thread.inlineMessages)];
+      const reflectionLessonArtifacts = isActiveSession ? (desktopChatState.activeSession.reflectionLessonArtifacts ?? []) : [];
 
       return {
         id: session.id,
@@ -293,6 +308,7 @@ export function useWorkspaceViewModels({
           Kordi: localAgentAvatarSeed,
         },
         messages,
+        reflectionLessonArtifacts,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         bridgeTarget: undefined,
@@ -303,11 +319,23 @@ export function useWorkspaceViewModels({
     });
   }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState, desktopBridgeState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
+  const localAgentBridgeReachoutConversations = useMemo(() => {
+    if (!isNativeShell) return [];
+    const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
+    const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
+    return (desktopBridgeState?.conversations ?? [])
+      .filter(bridgeChatConversationRoutesToLocalAgentPage)
+      .map((conversation) => (
+        mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
+      ));
+  }, [desktopBridgeState, desktopChatState?.localAgent?.label, isNativeShell]);
+
   const bridgeChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
     const hostById = new Map((desktopBridgeState?.hosts ?? []).map((host) => [host.id, host]));
     const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopBridgeState?.conversations ?? [])
+      .filter((conversation) => !bridgeChatConversationRoutesToLocalAgentPage(conversation))
       .map((conversation) => (
         mapBridgeConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
       ));
@@ -317,6 +345,10 @@ export function useWorkspaceViewModels({
     () => bridgeChatConversations.filter(bridgeChatConversationIsVisible),
     [bridgeChatConversations],
   );
+
+  const localAgentBridgeReachoutSessionIds = useMemo(() => new Set(
+    localAgentBridgeReachoutConversations.flatMap((conversation) => [conversation.id, conversation.canonicalSessionId].filter((value): value is string => Boolean(value))),
+  ), [localAgentBridgeReachoutConversations]);
 
   const chatConversations = useMemo(() => {
     if (!isNativeShell) {
@@ -330,11 +362,16 @@ export function useWorkspaceViewModels({
       ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
       : sourceConversations;
 
-    const visibleConversations = hiddenSessionIds.size === 0
+    const hiddenIds = new Set([...hiddenSessionIds, ...localAgentBridgeReachoutSessionIds]);
+    const visibleConversations = hiddenIds.size === 0
       ? hydratedConversations
-      : hydratedConversations.filter((conversation) => !hiddenSessionIds.has(conversation.canonicalSessionId ?? conversation.id));
+      : hydratedConversations.filter((conversation) => {
+          const canonicalId = conversation.canonicalSessionId ?? conversation.id;
+          if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
+          return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
+        });
     return hideRawConversationIds(visibleConversations);
-  }, [bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localChatConversations, visibleBridgeChatConversations]);
+  }, [activeConvId, bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => ({
@@ -434,34 +471,41 @@ export function useWorkspaceViewModels({
       });
 
       for (const peer of host.visiblePeers) {
+        if (!bridgePeerIsApprovedContact(peer)) continue;
         const isAgent = isBridgeAgentRuntime(peer.runtime);
-        const id = isAgent
-          ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
-          : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
-        const existing = byId.get(id);
-        const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
-        const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
-        byId.set(id, {
-          id,
-          name: peerName,
-          initials: getInitials(peerName),
-          classType: isAgent ? 'other-users-agents' : 'other-users',
-          entityType: isAgent ? 'External agent' : 'Person',
-          subtitle: peer.sharedProjects.length > 0 ? `${peer.runtime} • ${peer.sharedProjects.length} shared project${peer.sharedProjects.length === 1 ? '' : 's'}` : peer.runtime,
-          bridges: nextBridges,
-          status: host.connected ? 'Reachable' : 'Offline',
-          discoverableOn: nextBridges,
-          detail: [peer.nodeId, peer.endpoint, peer.sharedProjects.length > 0 ? `Shared projects: ${peer.sharedProjects.join(' • ')}` : null].filter(Boolean).join(' • '),
-          owner: peer.ownerName || 'Unknown',
-          bridgeHostId: host.id,
-          bridgePeerNodeId: peer.nodeId,
-          bridgePeerRuntime: peer.runtime,
-          bridgeHumanId: peer.humanId,
-          bridgeAgentId: peer.agentId,
-          avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
-        });
+        const bridgeContactStatus = peer.isContact ? 'contact' : (peer.contactRequestStatus?.trim() || 'none');
+        const bridgeContactRequestDirection = peer.contactRequestDirection?.trim() || null;
+        if (!isAgent || bridgePeerIsReachableAgent(peer)) {
+          const id = isAgent
+            ? `bridge-peer-agent:${peer.nodeId}:${peer.agentId ?? peer.runtime}`
+            : `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? 'person'}`;
+          const existing = byId.get(id);
+          const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
+          const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
+          byId.set(id, {
+            id,
+            name: peerName,
+            initials: getInitials(peerName),
+            classType: isAgent ? 'other-users-agents' : 'other-users',
+            entityType: isAgent ? 'External agent' : 'Person',
+            subtitle: peer.sharedProjects.length > 0 ? `${peer.runtime} • ${peer.sharedProjects.length} shared project${peer.sharedProjects.length === 1 ? '' : 's'}` : peer.runtime,
+            bridges: nextBridges,
+            status: host.connected ? 'Reachable' : 'Offline',
+            discoverableOn: nextBridges,
+            detail: [peer.nodeId, peer.endpoint, peer.sharedProjects.length > 0 ? `Shared projects: ${peer.sharedProjects.join(' • ')}` : null].filter(Boolean).join(' • '),
+            owner: peer.ownerName || 'Unknown',
+            bridgeHostId: host.id,
+            bridgePeerNodeId: peer.nodeId,
+            bridgePeerRuntime: peer.runtime,
+            bridgeHumanId: peer.humanId,
+            bridgeAgentId: peer.agentId,
+            bridgeContactStatus,
+            bridgeContactRequestDirection,
+            avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
+          });
+        }
 
-        if (isAgent && peer.ownerName) {
+        if (isAgent && peer.ownerName && (bridgePeerIsReachableAgent(peer) || peer.isDefaultAgent)) {
           const personId = `bridge-peer-person:${peer.nodeId}:${peer.humanId ?? peer.ownerName}`;
           const existingPerson = byId.get(personId);
           const personBridges = Array.from(new Set([...(existingPerson?.bridges ?? []), label])).sort();
@@ -483,6 +527,8 @@ export function useWorkspaceViewModels({
             bridgePeerRuntime: 'person',
             bridgeHumanId: peer.humanId,
             bridgeAgentId: peer.agentId,
+            bridgeContactStatus,
+            bridgeContactRequestDirection,
             avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
           });
         }
@@ -509,6 +555,83 @@ export function useWorkspaceViewModels({
     return Array.from(byId.values());
   }, [desktopBridgeState?.hosts, desktopChatState?.localAgent, isNativeShell]);
 
+  const addableContacts = useMemo<Contact[]>(() => {
+    if (!isNativeShell) return [];
+    const byId = new Map<string, Contact>();
+    const bridgeLabel = (url: string) => url.replace(/^https?:\/\//, '');
+
+    for (const host of desktopBridgeState?.hosts ?? []) {
+      const label = bridgeLabel(host.serverUrl);
+      for (const peer of visibleBridgePeople(host.visiblePeers)) {
+        if (bridgePeerIsApprovedContact(peer)) continue;
+        const id = `bridge-addable-person:${host.id}:${peer.nodeId}:${peer.humanId ?? 'person'}`;
+        const existing = byId.get(id);
+        const nextBridges = Array.from(new Set([...(existing?.bridges ?? []), label])).sort();
+        const peerName = sanitizeRemotePeerName(peer.displayName, peer.ownerName, peer.humanId, peer.nodeId);
+        const status = peer.contactRequestStatus?.trim().toLowerCase() || 'none';
+        const direction = peer.contactRequestDirection?.trim().toLowerCase() || null;
+        const needsApproval = peer.contactApprovalPolicy === 'approval-required';
+        const subtitle = status === 'pending' && direction === 'outgoing'
+          ? 'Request pending'
+          : status === 'pending' && direction === 'incoming'
+            ? 'Waiting for your approval'
+            : needsApproval
+              ? 'Needs approval'
+              : 'Can add immediately';
+        byId.set(id, {
+          id,
+          name: peerName,
+          initials: getInitials(peerName),
+          classType: 'other-users',
+          entityType: 'Person',
+          subtitle,
+          bridges: nextBridges,
+          status: subtitle,
+          discoverableOn: nextBridges,
+          detail: [peer.nodeId, peer.humanId ? `Human ID: ${peer.humanId}` : null].filter(Boolean).join(' • '),
+          owner: peer.ownerName || peerName,
+          bridgeHostId: host.id,
+          bridgePeerNodeId: peer.nodeId,
+          bridgePeerRuntime: 'person',
+          bridgeHumanId: peer.humanId,
+          bridgeAgentId: peer.agentId,
+          bridgeContactStatus: status,
+          bridgeContactRequestDirection: direction,
+          avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }, [desktopBridgeState?.hosts, isNativeShell]);
+
+  const localAgentBridgeReachoutsByAgentId = useMemo(() => {
+    const byAgentId = new Map<string, Agent['bridgeReachouts']>();
+    for (const conversation of localAgentBridgeReachoutConversations) {
+      const agentIds = [
+        conversation.identity?.localAgentId,
+        conversation.outreach?.targetAgentId,
+        conversation.bridgeTarget?.agentId,
+      ].map((value) => value?.trim()).filter((value): value is string => Boolean(value));
+      const uniqueAgentIds = Array.from(new Set(agentIds));
+      if (uniqueAgentIds.length === 0) continue;
+      const reachout = {
+        sessionId: conversation.id,
+        title: conversation.name,
+        preview: buildConversationPreview(conversation.messages, conversation.subtitle),
+        updatedAtLabel: conversation.updatedAtLabel,
+        unread: conversation.unread,
+      };
+      for (const agentId of uniqueAgentIds) {
+        byAgentId.set(agentId, [...(byAgentId.get(agentId) ?? []), reachout]);
+      }
+    }
+    for (const [agentId, reachouts] of byAgentId) {
+      byAgentId.set(agentId, [...(reachouts ?? [])].sort((left, right) => (right.unread ?? 0) - (left.unread ?? 0)));
+    }
+    return byAgentId;
+  }, [localAgentBridgeReachoutConversations]);
+
   const displayedAgents = useMemo<Agent[]>(() => {
     if (!isNativeShell) return [];
 
@@ -525,12 +648,16 @@ export function useWorkspaceViewModels({
         seen.add(key);
 
         const runtimeAgent = agent.isActive ? localAgent : undefined;
+        const bridgeReachouts = [
+          ...(localAgentBridgeReachoutsByAgentId.get(agent.id) ?? []),
+          ...(agent.nodeId ? localAgentBridgeReachoutsByAgentId.get(agent.nodeId) ?? [] : []),
+        ].filter((reachout, index, list) => list.findIndex((candidate) => candidate.sessionId === reachout.sessionId) === index);
         items.push({
           name: agent.label,
           id: agent.id,
           role: 'My agent',
           messaging: 'Direct local chat',
-          status: agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
+          status: bridgeReachouts.length > 0 ? `${bridgeReachouts.length} direct reachout${bridgeReachouts.length === 1 ? '' : 's'}` : agent.isActive ? 'Active' : agent.isDefault ? 'Default' : agent.registered ? 'Registered' : 'Local only',
           tasks: 0,
           defaultProvider: runtimeAgent?.defaultProvider ?? host.ownerName,
           defaultModel: agent.defaultModel ?? runtimeAgent?.defaultModel ?? agent.runtime,
@@ -548,13 +675,16 @@ export function useWorkspaceViewModels({
           loadedTools: runtimeAgent?.loadedTools ?? [],
           loadedSkills: runtimeAgent?.loadedSkills ?? [],
           loadedPlugins: runtimeAgent?.loadedPlugins ?? [],
-          lastActivities: runtimeAgent
-            ? runtimeAgent.lastActivities
-            : [
-                `Human ID: ${host.humanId}`,
-                `Node ID: ${agent.nodeId || 'Pending registration'}`,
-                `Discovery: ${host.discoveryMode}`,
-              ],
+          lastActivities: [
+            ...bridgeReachouts.slice(0, 3).map((reachout) => `Direct reachout: ${reachout.title}${reachout.preview ? ` — ${reachout.preview}` : ''}`),
+            ...(runtimeAgent
+              ? runtimeAgent.lastActivities
+              : [
+                  `Human ID: ${host.humanId}`,
+                  `Node ID: ${agent.nodeId || 'Pending registration'}`,
+                  `Discovery: ${host.discoveryMode}`,
+                ]),
+          ],
           exposesIdentityFiles: Boolean(runtimeAgent),
           exposesLoadedSkills: Boolean(runtimeAgent),
           exposesLoadedTools: Boolean(runtimeAgent),
@@ -570,6 +700,7 @@ export function useWorkspaceViewModels({
           isBridgeActive: agent.isActive,
           isBridgeRegistered: agent.registered,
           avatarSeed: agent.id,
+          bridgeReachouts,
         });
       }
     }
@@ -611,7 +742,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentBridgeReachoutsByAgentId]);
 
   const groupedContacts = useMemo(
     () =>
@@ -723,6 +854,9 @@ export function useWorkspaceViewModels({
           const outreachMessages = (outreachThreadsByParentSession.get(sessionId) ?? []).flatMap((thread) => thread.inlineMessages);
           const legacyMessages = [...baseMessages, ...outreachMessages];
           const messages = canonicalReadModel ? canonicalReadModel.preferMessages(sessionId, legacyMessages) : legacyMessages;
+          const reflectionLessonArtifacts = desktopChatState?.activeSessionId === sessionId
+            ? (desktopChatState.activeSession.reflectionLessonArtifacts ?? [])
+            : [];
           const participants = canonicalReadModel ? canonicalReadModel.participantNames(sessionId, ['Me', 'My Kordi']) : ['Me', 'My Kordi'];
 
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
@@ -746,6 +880,7 @@ export function useWorkspaceViewModels({
               showBackgroundActivity: !isVisibleSession,
               liveTurn: desktopLiveTurnsForViewModel[sessionId],
             }),
+            reflectionLessonArtifacts,
             messages,
           };
         }),
@@ -860,7 +995,7 @@ export function useWorkspaceViewModels({
     [activeBridgeHost],
   );
   const activeBridgeAgents = useMemo(
-    () => (activeBridgeHost?.visiblePeers ?? []).filter((peer) => isBridgeAgentRuntime(peer.runtime)),
+    () => (activeBridgeHost?.visiblePeers ?? []).filter(bridgePeerIsReachableAgent),
     [activeBridgeHost],
   );
   const activeBridgeAwaitingReply = activeBridgeConversation?.awaitingReply ?? false;
@@ -876,6 +1011,7 @@ export function useWorkspaceViewModels({
     activeLastMessage,
     activeConvHasSubtitle,
     displayedContacts,
+    addableContacts,
     displayedAgents,
     groupedContacts,
     filteredGroupedContacts,

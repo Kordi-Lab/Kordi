@@ -25,6 +25,7 @@ import {
   DeleteSessionDialog,
   MoveSessionDialog,
   ProjectCreateDialog,
+  RenameSessionDialog,
   SessionContextMenu,
   type SessionActionTarget,
   type SessionContextMenuTarget,
@@ -172,13 +173,16 @@ type WorkspaceSidebarProps = {
   contactParticipantSpaces: ParticipantSpaceItem[];
   agentParticipantSpaces: ParticipantSpaceItem[];
   initialSelectedParticipantSpaceId?: string | null;
+  initialChatChannel?: ChatChannel;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
   onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
   onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
+  onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
   onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
+  onRenameChatSession: (sessionId: string, title: string) => void;
   onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
@@ -200,6 +204,8 @@ type WorkspaceSidebarProps = {
   onSelectProjectSession: (projectId: string, sessionId: string) => void;
   groupedContacts: Array<{ id: ContactClass; label: string; items: ContactItem[] }>;
   displayedContacts: ContactItem[];
+  addableContacts: ContactItem[];
+  contactRequestCount: number;
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
@@ -300,7 +306,7 @@ function participantSpaceDetailText(space: ParticipantSpaceItem) {
     return `Personal • ${sessionText}`;
   }
   if (space.kind === 'direct-human') {
-    return `Person • ${sessionText}`;
+    return 'Person • 1 chat';
   }
   if (space.kind === 'group') {
     const humanCount = participantSpaceHumanCount(space);
@@ -356,6 +362,7 @@ export function WorkspaceSidebar({
   activeNav,
   setActiveNav,
   chatConversations,
+  onCreateChatSession,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -363,13 +370,16 @@ export function WorkspaceSidebar({
   contactParticipantSpaces,
   agentParticipantSpaces,
   initialSelectedParticipantSpaceId = null,
+  initialChatChannel = 'contact',
   activeConvId,
   onSelectChatSession,
   onStartChatWithPerson,
   onStartChatWithAgent,
   onCreateChatGroup,
+  onAddContactByNodeId,
   onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
+  onRenameChatSession,
   onAddChatGroupMembers,
   onRemoveChatGroupMember,
   onSetChatGroupAdmin,
@@ -391,6 +401,8 @@ export function WorkspaceSidebar({
   onSelectProjectSession,
   groupedContacts,
   displayedContacts,
+  addableContacts,
+  contactRequestCount,
   setActiveContactGroup,
   setActiveContactId,
   displayedAgents,
@@ -402,6 +414,9 @@ export function WorkspaceSidebar({
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
+  const contactUnread = contactParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
+  const agentUnread = agentParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
+  const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
   const chatStatusLabel = isBridgePolling
@@ -416,6 +431,7 @@ export function WorkspaceSidebar({
       : 'Bridge sync idle, all caught up';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
+  const [renameSessionTarget, setRenameSessionTarget] = useState<SessionActionTarget | null>(null);
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
@@ -423,7 +439,7 @@ export function WorkspaceSidebar({
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
-  const [chatChannel, setChatChannel] = useState<ChatChannel>('contact');
+  const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
@@ -462,19 +478,25 @@ export function WorkspaceSidebar({
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
     setMoveSessionTarget(null);
+    setRenameSessionTarget(null);
   };
 
   const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
     const latestSession = space.sessions[0];
+    const isDirectHuman = space.kind === 'direct-human';
     const isActiveSpace = activeParticipantSpaceId === space.id;
-    const isSelectedSpace = selectedParticipantSpaceId === space.id;
-    const isExpanded = isSelectedSpace || isActiveSpace;
-    const isAutoExpanded = isActiveSpace && !isSelectedSpace;
+    const isSelectedSpace = !isDirectHuman && selectedParticipantSpaceId === space.id;
+    const isExpanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
+    const isAutoExpanded = isExpanded && isActiveSpace && !isSelectedSpace;
     const visibleSessions = isAutoExpanded
       ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
       : space.sessions;
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const toggleSpace = () => {
+      if (isDirectHuman) {
+        if (latestSession) onSelectChatSession(latestSession.id);
+        return;
+      }
       setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
     };
     return (
@@ -490,8 +512,8 @@ export function WorkspaceSidebar({
           <button
             type="button"
             data-testid="participant-space-row"
-            data-participant-space-toggle="true"
-            aria-expanded={isExpanded}
+            data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
+            aria-expanded={isDirectHuman ? undefined : isExpanded}
             onClick={toggleSpace}
             className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
           >
@@ -507,55 +529,57 @@ export function WorkspaceSidebar({
             </div>
           </button>
           <div className="app-participant-space-row-side">
-            <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
-              {space.kind === 'group' ? (
+            {!isDirectHuman ? (
+              <div className="app-participant-space-row-actions" data-participant-space-row-actions="true">
+                {space.kind === 'group' ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedParticipantSpaceId(space.id);
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                      setIsGroupDetailsDialogOpen(true);
+                    }}
+                    className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
+                    title="Group management"
+                    aria-label="Open group management"
+                    aria-haspopup="dialog"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
+                )}
                 <button
                   type="button"
+                  data-participant-space-context-create="true"
+                  className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
+                  aria-label={`Create session in ${space.title}`}
+                  title={`Create session in ${space.title}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedParticipantSpaceId(space.id);
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setGroupDetailsAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-                    setIsGroupDetailsDialogOpen(true);
+                    void onCreateChatSessionInParticipantSpace(space);
                   }}
-                  className="app-participant-space-action app-participant-space-menu-action grid h-6 w-6 shrink-0 place-items-center rounded-[8px]"
-                  title="Group management"
-                  aria-label="Open group management"
-                  aria-haspopup="dialog"
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <Plus className="h-3.5 w-3.5" />
                 </button>
-              ) : (
-                <span className="app-participant-space-action-spacer h-6 w-6" aria-hidden="true" />
-              )}
-              <button
-                type="button"
-                data-participant-space-context-create="true"
-                className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
-                aria-label={`Create session in ${space.title}`}
-                title={`Create session in ${space.title}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setSelectedParticipantSpaceId(space.id);
-                  void onCreateChatSessionInParticipantSpace(space);
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                data-participant-space-toggle-button="true"
-                className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
-                aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleSpace();
-                }}
-              >
-                <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  data-participant-space-toggle-button="true"
+                  className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
+                  title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
+                  aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSpace();
+                  }}
+                >
+                  <ChevronDown className={cn('h-3.5 w-3.5 transition', isSelectedSpace ? 'rotate-180' : '')} />
+                </button>
+              </div>
+            ) : null}
             <div className="app-participant-space-row-meta">
               <SidebarSessionMetaColumn
                 timeLabel={rowTimeLabel}
@@ -708,6 +732,20 @@ export function WorkspaceSidebar({
   const renderAgentSessionList = (rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>, emptyMessage: string) => (
     <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="agent-sessions-flat">
       <div className="w-full space-y-0.5">
+        <div className="mb-1 flex justify-center px-1">
+          <button
+            type="button"
+            onClick={() => {
+              void onCreateChatSession();
+            }}
+            className="app-participant-space-action app-participant-space-context-create inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
+            title="New My agent session"
+            aria-label="New My agent session"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>New session</span>
+          </button>
+        </div>
         {rows.length > 0 ? rows.map(renderAgentSessionRow) : (
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
             {emptyMessage}
@@ -757,6 +795,14 @@ export function WorkspaceSidebar({
                       {item.id === 'chats' && totalUnread > 0 ? (
                         <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
                           {formatUnreadCount(totalUnread)}
+                        </span>
+                      ) : null}
+                      {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
+                        <span
+                          className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
+                          aria-label={`${formatUnreadCount(pendingContactRequestCount)} pending contact request${pendingContactRequestCount === 1 ? '' : 's'}`}
+                        >
+                          {formatUnreadCount(pendingContactRequestCount)}
                         </span>
                       ) : null}
                     </span>
@@ -818,7 +864,7 @@ export function WorkspaceSidebar({
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
                     {chatChannel === 'contact'
-                      ? 'Expand a contact or group to see its sessions.'
+                      ? 'People open as one flat chat; groups expand into sessions.'
                       : 'Each row is a # session with one of your agents.'}
                   </div>
 
@@ -835,16 +881,21 @@ export function WorkspaceSidebar({
                   <div className="mb-2 space-y-1.5">
                     <div className="app-filter-tabs w-full">
                       {([
-                        { id: 'contact', label: 'Contact' },
-                        { id: 'agent', label: 'Agent' },
-                      ] as Array<{ id: ChatChannel; label: string }>).map((tab) => (
+                        { id: 'contact', label: 'Contact', unread: contactUnread },
+                        { id: 'agent', label: 'Agent', unread: agentUnread },
+                      ] as Array<{ id: ChatChannel; label: string; unread: number }>).map((tab) => (
                         <button
                           key={tab.id}
                           type="button"
                           onClick={() => setChatChannel(tab.id)}
                           className={chatChannel === tab.id ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
                         >
-                          {tab.label}
+                          <span>{tab.label}</span>
+                          {tab.unread > 0 ? (
+                            <span className="ml-1.5 inline-flex">
+                              <SidebarUnreadBadge count={tab.unread} scope="channel-tab" />
+                            </span>
+                          ) : null}
                         </button>
                       ))}
                     </div>
@@ -1121,9 +1172,18 @@ export function WorkspaceSidebar({
         <SessionContextMenu
           target={sessionContextMenu}
           onClose={() => setSessionContextMenu(null)}
+          onRename={setRenameSessionTarget}
           onMove={setMoveSessionTarget}
           onArchive={onArchiveChatSession}
           onDelete={setRemoveSessionTarget}
+        />
+      ) : null}
+
+      {renameSessionTarget ? (
+        <RenameSessionDialog
+          target={renameSessionTarget}
+          onCancel={closeSessionDialogs}
+          onConfirm={onRenameChatSession}
         />
       ) : null}
 
@@ -1147,6 +1207,7 @@ export function WorkspaceSidebar({
       <ChatCreateDialog
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
+        addableContacts={addableContacts}
         agents={displayedAgents}
         onClose={() => {
           setIsChatCreateDialogOpen(false);
@@ -1155,6 +1216,7 @@ export function WorkspaceSidebar({
         onStartPerson={onStartChatWithPerson}
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
+        onAddContact={onAddContactByNodeId}
         anchorRect={chatCreateAnchor}
       />
 

@@ -4,7 +4,7 @@ import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -47,6 +47,7 @@ type ProjectDetailPanelProps = {
   activeProject: ProjectWorkspace;
   activeProjectSession: ProjectSession;
   activeProjectLastMessage?: { sender?: string; text?: string; time: string };
+  activeLiveTurn?: DesktopChatTurnSnapshot | null;
   activeProjectBridgeHost: DesktopBridgeHost | null;
   activeProjectBridgeProject: DesktopBridgeProject | null;
   isProjectBridgeBusy: boolean;
@@ -58,6 +59,8 @@ type ProjectDetailPanelProps = {
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
   onSelectArtifact: (artifactId: string | null) => void;
+  onOpenArtifact?: (artifactId: string) => void;
+  onNavigateToResponse?: (messageId: string) => void;
 };
 
 type MetaRowProps = {
@@ -104,6 +107,7 @@ function relatedProjectArtifacts(project: ProjectWorkspace): SessionArtifact[] {
       path: normalizedPath,
       name,
       kind: projectFileKind(normalizedPath),
+      category: 'related',
       summary,
       timeLabel: 'Related',
     });
@@ -137,6 +141,7 @@ export function ProjectDetailPanel({
   activeProject,
   activeProjectSession,
   activeProjectLastMessage,
+  activeLiveTurn,
   activeProjectBridgeHost,
   activeProjectBridgeProject,
   isProjectBridgeBusy,
@@ -148,6 +153,8 @@ export function ProjectDetailPanel({
   artifacts,
   activeArtifactId,
   onSelectArtifact,
+  onOpenArtifact,
+  onNavigateToResponse,
 }: ProjectDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
@@ -347,9 +354,12 @@ export function ProjectDetailPanel({
     <div className="app-detail-sheet">
       <TaskActivityDashboardPanel
         messages={activeProjectSession.messages}
+        liveTurn={activeLiveTurn?.sessionId === activeProjectSession.id ? activeLiveTurn : null}
         taskActivities={activeProjectSession.taskActivities ?? []}
-        emptyMessage="No delegated tasks in this project session yet."
+        emptyMessage="No planning or execution task activity in this project session yet."
         artifacts={projectArtifacts}
+        onOpenArtifact={onOpenArtifact}
+        onNavigateToResponse={onNavigateToResponse}
       />
       {activeProject.pendingInvites.length > 0 ? (
         <section className="app-detail-section">

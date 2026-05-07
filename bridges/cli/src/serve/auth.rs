@@ -12,7 +12,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-use super::ServerState;
+use super::{
+    effective_agent_reachability_policy, effective_contact_approval_policy,
+    effective_human_visibility_policy, normalize_agent_reachability_policy,
+    normalize_contact_approval_policy, normalize_human_visibility_policy, ServerState,
+};
 
 /// Extension: authenticated node (from a node API key).
 #[derive(Clone, Debug)]
@@ -53,6 +57,12 @@ pub struct RegisterReq {
     pub discovery_mode: Option<String>,
     #[serde(rename = "isDefaultAgent")]
     pub is_default_agent: Option<bool>,
+    #[serde(rename = "humanVisibilityPolicy")]
+    pub human_visibility_policy: Option<String>,
+    #[serde(rename = "contactApprovalPolicy")]
+    pub contact_approval_policy: Option<String>,
+    #[serde(rename = "agentReachabilityPolicy")]
+    pub agent_reachability_policy: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,6 +122,9 @@ struct ValidatedRegisterReq {
     agent_id: Option<String>,
     discovery_mode: String,
     is_default_agent: bool,
+    human_visibility_policy: String,
+    contact_approval_policy: String,
+    agent_reachability_policy: String,
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -157,6 +170,28 @@ fn validate_register_req(req: &RegisterReq) -> Result<ValidatedRegisterReq, Stat
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    let human_visibility_policy =
+        match normalize_optional_text(req.human_visibility_policy.as_deref()) {
+            Some(policy) => {
+                normalize_human_visibility_policy(&policy).ok_or(StatusCode::BAD_REQUEST)?
+            }
+            None => effective_human_visibility_policy(Some(discovery_mode.as_str()), None),
+        };
+    let contact_approval_policy =
+        match normalize_optional_text(req.contact_approval_policy.as_deref()) {
+            Some(policy) => {
+                normalize_contact_approval_policy(&policy).ok_or(StatusCode::BAD_REQUEST)?
+            }
+            None => effective_contact_approval_policy(None),
+        };
+    let agent_reachability_policy =
+        match normalize_optional_text(req.agent_reachability_policy.as_deref()) {
+            Some(policy) => {
+                normalize_agent_reachability_policy(&policy).ok_or(StatusCode::BAD_REQUEST)?
+            }
+            None => effective_agent_reachability_policy(None),
+        };
+
     Ok(ValidatedRegisterReq {
         node_id: derived_node_id,
         ed25519_pubkey: bs58::encode(ed_pub_bytes).into_string(),
@@ -168,6 +203,9 @@ fn validate_register_req(req: &RegisterReq) -> Result<ValidatedRegisterReq, Stat
         agent_id: normalize_optional_text(req.agent_id.as_deref()),
         discovery_mode,
         is_default_agent: req.is_default_agent.unwrap_or(false),
+        human_visibility_policy,
+        contact_approval_policy,
+        agent_reachability_policy,
     })
 }
 
@@ -222,7 +260,7 @@ async fn register(
         }
 
         db.execute(
-            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, runtime = ?3, human_id = ?4, agent_id = ?5, discovery_mode = ?6, is_default_agent = ?7, api_key_hash = ?8 WHERE node_id = ?9",
+            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, runtime = ?3, human_id = ?4, agent_id = ?5, discovery_mode = ?6, is_default_agent = ?7, human_visibility_policy = ?8, contact_approval_policy = ?9, agent_reachability_policy = ?10, api_key_hash = ?11 WHERE node_id = ?12",
             rusqlite::params![
                 validated.display_name,
                 validated.owner_name,
@@ -231,6 +269,9 @@ async fn register(
                 validated.agent_id,
                 validated.discovery_mode,
                 if validated.is_default_agent { 1 } else { 0 },
+                validated.human_visibility_policy,
+                validated.contact_approval_policy,
+                validated.agent_reachability_policy,
                 key_hash,
                 validated.node_id,
             ],
@@ -239,8 +280,8 @@ async fn register(
     } else {
         db.execute(
             "INSERT INTO registered_nodes \
-             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, discovery_mode, is_default_agent, api_key_hash, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, discovery_mode, is_default_agent, human_visibility_policy, contact_approval_policy, agent_reachability_policy, api_key_hash, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 validated.node_id,
                 validated.ed25519_pubkey,
@@ -252,6 +293,9 @@ async fn register(
                 validated.agent_id,
                 validated.discovery_mode,
                 if validated.is_default_agent { 1 } else { 0 },
+                validated.human_visibility_policy,
+                validated.contact_approval_policy,
+                validated.agent_reachability_policy,
                 key_hash,
                 now,
             ],
@@ -538,6 +582,9 @@ mod tests {
             agent_id: Some("ka_test_agent".to_string()),
             discovery_mode: Some("open".to_string()),
             is_default_agent: Some(true),
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
         }
     }
 
@@ -588,6 +635,42 @@ mod tests {
         req.x25519_pubkey = hex::encode([7u8; 32]);
 
         let result = register(State(state), Json(req)).await;
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_persists_privacy_and_reachability_policies() {
+        let state = test_state();
+        let signing = SigningKey::generate(&mut OsRng);
+        let mut req = register_req_from_signing(&signing);
+        req.human_visibility_policy = Some("server-open".to_string());
+        req.contact_approval_policy = Some("auto".to_string());
+        req.agent_reachability_policy = Some("owner".to_string());
+
+        let registered = register(State(state.clone()), Json(req)).await.unwrap().0;
+        let db = state.open_connection().unwrap();
+        let policies: (Option<String>, Option<String>, Option<String>) = db
+            .query_row(
+                "SELECT human_visibility_policy, contact_approval_policy, agent_reachability_policy FROM registered_nodes WHERE node_id = ?1",
+                rusqlite::params![registered.node_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(policies.0.as_deref(), Some("server-open"));
+        assert_eq!(policies.1.as_deref(), Some("auto"));
+        assert_eq!(policies.2.as_deref(), Some("owner"));
+    }
+
+    #[tokio::test]
+    async fn register_rejects_invalid_privacy_policy() {
+        let state = test_state();
+        let signing = SigningKey::generate(&mut OsRng);
+        let mut req = register_req_from_signing(&signing);
+        req.human_visibility_policy = Some("friends-only".to_string());
+
+        let result = register(State(state), Json(req)).await;
+
         assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
     }
 

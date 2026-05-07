@@ -40,10 +40,7 @@ fn is_self_reference_name(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("me") || value.trim().eq_ignore_ascii_case("you")
 }
 
-pub(crate) fn sanitize_remote_peer_display_name(
-    display_name: &str,
-    fallback: &str,
-) -> String {
+pub(crate) fn sanitize_remote_peer_display_name(display_name: &str, fallback: &str) -> String {
     let trimmed = display_name.trim();
     if !trimmed.is_empty() && !is_self_reference_name(trimmed) {
         return trimmed.to_string();
@@ -316,14 +313,8 @@ mod tests {
             sanitize_remote_peer_display_name("Me", "kh_c04229d839ab"),
             "kh_c04229d839ab",
         );
-        assert_eq!(
-            sanitize_remote_peer_display_name("you", "kh_abc"),
-            "kh_abc",
-        );
-        assert_eq!(
-            sanitize_remote_peer_display_name("ME", "kh_abc"),
-            "kh_abc",
-        );
+        assert_eq!(sanitize_remote_peer_display_name("you", "kh_abc"), "kh_abc",);
+        assert_eq!(sanitize_remote_peer_display_name("ME", "kh_abc"), "kh_abc",);
     }
 
     #[test]

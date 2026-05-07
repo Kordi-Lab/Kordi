@@ -88,6 +88,68 @@ test('bridge transcript keeps implicit direct person session messages as typed',
   assert.equal(view.messages[0]?.mentions, undefined);
 });
 
+test('direct person bridge transcript hides group relay agent placeholders', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    messages: [{
+      id: 'msg-direct-human',
+      direction: 'outbound',
+      sender: 'Me',
+      text: 'helllo',
+      timeLabel: '22:59',
+      timestampMs: 1,
+      requestId: 'bridge_req_direct',
+      deliveryState: 'read',
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'session:bridge:humans:peer',
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_direct',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Shenzhe',
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'helllo',
+        contextText: null,
+        contextPolicy: 'session-message',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }, {
+      id: 'msg-group-agent-processing',
+      direction: 'inbound-response',
+      sender: "Shenzhe's Kordi",
+      text: 'processing...',
+      timeLabel: '23:19',
+      timestampMs: 2,
+      requestId: 'bridge_req_group_agent',
+      deliveryState: 'processing',
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId: 'session:group:shared',
+        parentSessionKind: 'group',
+        parentGroupSpaceId: 'session:group:shared',
+        bridgeHostId: 'host-1',
+        bridgeConversationId: 'bridge:host-1:node-peer:person',
+        bridgeRequestId: 'bridge_req_group_agent',
+        targetNodeId: 'node-peer',
+        targetDisplayName: 'Shenzhe',
+        targetOwnerName: 'Shenzhe',
+        targetRuntime: 'person',
+        requestText: 'processing...',
+        contextText: null,
+        contextPolicy: 'session-relay',
+        status: 'completed',
+        createdAtMs: 2,
+        updatedAtMs: 2,
+      },
+    }],
+  }), host(), 'My Kordi');
+
+  assert.deepEqual(view.messages.map((message) => message.turn?.message ?? message.text), ['helllo']);
+});
+
 test('bridge transcript excludes hidden group invites from scoped unread badges', () => {
   const groupSessionId = 'session:group:unread';
   const view = mapBridgeConversationToViewModel(conversation({

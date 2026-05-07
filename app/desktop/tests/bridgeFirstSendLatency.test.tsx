@@ -3,15 +3,19 @@ import assert from 'node:assert/strict';
 
 import {
   activeLocalTurnShouldDelayChatSend,
+  awaitRelayProgressBeforeTerminal,
   bridgeConversationSendPlan,
   bridgeSessionOutreachTarget,
+  chatDraftSessionIdsToClearForSend,
   chatSendIsBusy,
   localAgentRelayFailureText,
   localAgentRelayTerminalDeliveryState,
+  localChatTargetSessionIdForActiveConversation,
   localChatSendDelayReason,
   localChatSendIsInFlightForTarget,
   localChatTargetHasRunningTurn,
   queuedDesktopChatMessageFromDraft,
+  waitForCompletedDesktopTurn,
 } from '../src/features/chat/messageActions/chatMessages';
 import { chatComposerSubmitMode } from '../src/pages/ChatsPage';
 
@@ -39,6 +43,32 @@ test('raw Bridge conversations still materialize before bridge-message optimisti
   assert.equal(plan.targetConversationId, null);
   assert.equal(plan.shouldOpenBeforeOptimisticSend, true);
   assert.equal(plan.canAppendBridgeOptimisticMessage, false);
+});
+
+test('local draft chats do not fall back to the previously loaded desktop session', () => {
+  assert.equal(localChatTargetSessionIdForActiveConversation({
+    activeConvId: 'draft:local-chat',
+    activeConvCanonicalSessionId: null,
+    desktopActiveSessionId: 'previous-real-session',
+  }), null);
+});
+
+test('local sends from raw Bridge contacts clear both active and canonical composer drafts', () => {
+  assert.deepEqual(chatDraftSessionIdsToClearForSend(
+    'bridge:host-1:peer-1:person',
+    'session:bridge:humans:stable-contact',
+  ), [
+    'bridge:host-1:peer-1:person',
+    'session:bridge:humans:stable-contact',
+  ]);
+});
+
+test('local agent mentions in raw Bridge contact conversations stay in the canonical contact session', () => {
+  assert.equal(localChatTargetSessionIdForActiveConversation({
+    activeConvId: 'bridge:host-1:peer-1:person',
+    activeConvCanonicalSessionId: 'session:bridge:humans:stable-contact',
+    desktopActiveSessionId: 'local-session-should-not-be-used',
+  }), 'session:bridge:humans:stable-contact');
 });
 
 test('chat send guard only blocks transient sends and same-session local turns', () => {
@@ -123,6 +153,28 @@ test('canonical external-agent sessions send session messages to the bridge agen
     targetHumanId: null,
     targetAgentId: 'agent-bob',
   });
+});
+
+test('local agent relay waits for the completed turn even when UI watcher returned early', async () => {
+  const states = [
+    { id: 'turn-1', sessionId: 'session-1', completed: false, succeeded: false, status: 'running', assistantText: '', error: null },
+    { id: 'turn-1', sessionId: 'session-1', completed: true, succeeded: true, status: 'completed', assistantText: 'done', error: null },
+  ];
+  const completed = await waitForCompletedDesktopTurn(
+    async () => states.shift() as never,
+    'turn-1',
+    1,
+  );
+
+  assert.equal(completed.completed, true);
+  assert.equal(completed.assistantText, 'done');
+});
+
+test('terminal local agent relay does not wait forever for progress relay', async () => {
+  const startedAt = Date.now();
+  await awaitRelayProgressBeforeTerminal(new Promise(() => undefined), 10);
+
+  assert.ok(Date.now() - startedAt < 500);
 });
 
 test('failed local agent bridge relay turns produce a terminal failed delivery state', () => {

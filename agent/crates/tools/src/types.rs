@@ -1,3 +1,4 @@
+use crate::task_operator::models::{TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse};
 use async_trait::async_trait;
 use kordi_core::error::KordiResult;
 use kordi_provider::{Provider, registry::Model};
@@ -157,14 +158,55 @@ pub struct ReachOutRuntime {
     pub reach_out: ReachOutFn,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflectionLessonRequest {
+    pub scope: String,
+    pub scope_id: String,
+    pub source: String,
+    pub lesson: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflectionLessonResponse {
+    pub lesson_id: String,
+    pub scope: String,
+    pub scope_id: String,
+    pub artifact_path: String,
+}
+
+pub type ReflectionLessonFuture =
+    Pin<Box<dyn Future<Output = KordiResult<ReflectionLessonResponse>> + Send>>;
+pub type SaveReflectionLessonFn =
+    Arc<dyn Fn(ReflectionLessonRequest) -> ReflectionLessonFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ReflectionRuntime {
+    pub save_lesson: SaveReflectionLessonFn,
+}
+
+pub type TaskOperatorFuture =
+    Pin<Box<dyn Future<Output = KordiResult<TaskOperatorRuntimeResponse>> + Send>>;
+pub type TaskOperatorFn =
+    Arc<dyn Fn(TaskOperatorRuntimeRequest) -> TaskOperatorFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct TaskOperatorRuntime {
+    pub run: TaskOperatorFn,
+}
+
 /// Context available to tools during execution.
 pub struct ToolContext {
     pub cwd: PathBuf,
     pub artifacts_dir: PathBuf,
+    pub model: Option<Model>,
     pub execution_policy: ExecutionPolicy,
     pub on_output: Option<OnOutputFn>,
     pub web_search: Option<WebSearchRuntime>,
     pub reach_out: Option<ReachOutRuntime>,
+    pub reflection: Option<ReflectionRuntime>,
+    pub task_operator: Option<TaskOperatorRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }
@@ -175,6 +217,19 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
+
+    fn metadata(&self) -> crate::metadata::ToolMetadata {
+        crate::metadata::ToolMetadata::default()
+    }
+
+    fn definition(&self) -> crate::metadata::ToolDefinition {
+        crate::metadata::ToolDefinition {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            parameters_schema: self.parameters_schema(),
+            metadata: self.metadata(),
+        }
+    }
 
     /// Classify whether this call is read-only or may mutate files.
     ///

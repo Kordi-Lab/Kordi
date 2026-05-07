@@ -184,10 +184,13 @@ mod tests {
         ToolContext {
             cwd: dir.to_path_buf(),
             artifacts_dir: dir.to_path_buf(),
+            model: None,
             execution_policy: crate::ExecutionPolicy::Safety,
             on_output: None,
             web_search: None,
             reach_out: None,
+            reflection: None,
+            task_operator: None,
             execution_mode: crate::ToolExecutionMode::Interactive,
             request_approval: None,
         }

@@ -41,6 +41,13 @@ fn should_skip_desktop_runtime_status_message(
     text.starts_with("Switched model to ") || text.starts_with("Thinking set to ")
 }
 
+fn desktop_runtime_message_is_agent(
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+) -> bool {
+    let role = message.role.trim().to_lowercase();
+    role != "user" && role != "system"
+}
+
 pub(super) fn should_skip_shared_local_agent_runtime_prompt(
     session_id: &str,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
@@ -57,6 +64,7 @@ pub(super) fn should_skip_shared_local_agent_runtime_prompt(
 fn content_with_desktop_runtime(
     content_json: Option<&str>,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+    reply_to_message_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let mut content = content_json
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
@@ -85,6 +93,14 @@ fn content_with_desktop_runtime(
     }
     content["timeLabel"] = serde_json::Value::String(message.time_label.clone());
     content["timestampMs"] = serde_json::Value::Number(message.timestamp_ms.into());
+    if let Some(reply_to_message_id) = reply_to_message_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        content["replyToMessageId"] = serde_json::Value::String(reply_to_message_id.to_string());
+    } else if let Some(object) = content.as_object_mut() {
+        object.remove("replyToMessageId");
+    }
     if !message.attachments.is_empty() {
         content["attachments"] =
             serde_json::to_value(&message.attachments).map_err(|err| err.to_string())?;
@@ -101,7 +117,7 @@ fn update_message_with_desktop_runtime(
     status: &str,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> Result<(), String> {
-    let content = content_with_desktop_runtime(content_json, message)?;
+    let content = content_with_desktop_runtime(content_json, message, None)?;
     let content_string = content.to_string();
     let content_hash = hash_hex(&format!("{}|{}", content_text, content_string), 16);
     conn.execute(
@@ -222,18 +238,19 @@ pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime
     Ok(true)
 }
 
-fn sync_desktop_chat_message(
+pub(crate) fn sync_desktop_chat_message(
     conn: &Connection,
     session_id: &str,
     human_identity_id: &str,
     agent_identity_id: &str,
     index: usize,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
-) -> Result<(), String> {
+    reply_to_message_id: Option<&str>,
+) -> Result<Option<String>, String> {
     if should_skip_desktop_runtime_status_message(message)
         || should_skip_shared_local_agent_runtime_prompt(session_id, message)
     {
-        return Ok(());
+        return Ok(None);
     }
     let normalized_role = message.role.trim().to_lowercase();
     let is_user = normalized_role == "user";
@@ -274,7 +291,7 @@ fn sync_desktop_chat_message(
             30_000,
             message,
         )? {
-            return Ok(());
+            return Ok(None);
         }
 
         if similar_agent_message_exists(
@@ -293,9 +310,18 @@ fn sync_desktop_chat_message(
                 30_000,
                 message,
             )?;
-            return Ok(());
+            return Ok(None);
         }
     }
+
+    let canonical_reply_to_message_id = is_agent
+        .then(|| {
+            reply_to_message_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .flatten();
 
     let request = AppendCanonicalMessageRequest {
         id: None,
@@ -304,18 +330,13 @@ fn sync_desktop_chat_message(
         sender_role: sender_role.to_string(),
         message_kind: message_kind.to_string(),
         content_text: content_text.clone(),
-        content: Some(serde_json::json!({
-            "role": message.role,
-            "sender": message.sender,
-            "detail": message.detail,
-            "timeLabel": message.time_label,
-            "timestampMs": message.timestamp_ms,
-            "attachments": message.attachments,
-            "thinkingText": message.thinking_text.as_deref(),
-            "tools": message.tools,
-        })),
+        content: Some(content_with_desktop_runtime(
+            None,
+            message,
+            canonical_reply_to_message_id.as_deref(),
+        )?),
         created_at_ms: Some(message.timestamp_ms),
-        parent_message_id: None,
+        parent_message_id: canonical_reply_to_message_id,
         delegated_exchange_id: None,
         status: Some(if is_agent { "complete" } else { "sent" }.to_string()),
         source_transport: Some("desktop-chat".to_string()),
@@ -323,7 +344,7 @@ fn sync_desktop_chat_message(
             session_id, index, message,
         )),
     };
-    message_reconcile::append_or_reconcile_message_from_sync(
+    let synced = message_reconcile::append_or_reconcile_message_from_sync(
         conn,
         request,
         if is_user {
@@ -333,7 +354,7 @@ fn sync_desktop_chat_message(
         },
         5_000,
     )?;
-    Ok(())
+    Ok(Some(synced.id))
 }
 
 pub(super) fn should_sync_desktop_chat_summary(
@@ -519,15 +540,25 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             )?;
         }
 
+        let mut latest_user_message_id: Option<String> = None;
         for (index, message) in active.messages.iter().enumerate() {
-            sync_desktop_chat_message(
+            let is_agent_message = desktop_runtime_message_is_agent(message);
+            let synced_message_id = sync_desktop_chat_message(
                 &conn,
                 &active.id,
                 &human_identity_id,
                 &agent_identity_id,
                 index,
                 message,
+                is_agent_message
+                    .then_some(latest_user_message_id.as_deref())
+                    .flatten(),
             )?;
+            if message.role.trim().eq_ignore_ascii_case("user") {
+                if let Some(message_id) = synced_message_id {
+                    latest_user_message_id = Some(message_id);
+                }
+            }
         }
     }
 

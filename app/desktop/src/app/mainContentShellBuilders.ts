@@ -32,9 +32,7 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onRefreshBridge: () => {
       void args.refreshDesktopBridge();
     },
-    onSaveBridgeSettings: (draftOverride) => {
-      void args.handleSaveBridgeSettings(draftOverride);
-    },
+    onSaveBridgeSettings: (draftOverride) => args.handleSaveBridgeSettings(draftOverride),
     onRemoveBridgeHost: (hostId) => args.handleRemoveBridgeHost(hostId),
     onCopyBridgeText: (value, successMessage) => {
       void args.handleCopyBridgeText(value, successMessage ?? 'Copied to clipboard');
@@ -45,6 +43,10 @@ export function buildBridgePageProps(args: MainContentShellArgs): ComponentProps
     onImportBridgeHostsConfig: args.handleImportBridgeHostsConfig,
     onAddBridgeContact: args.handleAddBridgeContact,
     onSetBridgeDiscoveryMode: args.handleSetBridgeDiscoveryMode,
+    onSetBridgeHostPrivacyPolicy: args.handleSetBridgeHostPrivacyPolicy,
+    onSetBridgeAgentReachabilityPolicy: args.handleSetBridgeAgentReachabilityPolicy,
+    onApproveBridgeContactRequest: args.handleApproveBridgeContactRequest,
+    onRejectBridgeContactRequest: args.handleRejectBridgeContactRequest,
     onCreateBridgeAgent: args.handleCreateBridgeAgent,
     onActivateBridgeAgent: args.handleActivateBridgeAgent,
     onSetDefaultBridgeAgent: args.handleSetDefaultBridgeAgent,
@@ -142,6 +144,11 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
 }
 
 export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<typeof ChatsPage> {
+  const activeBridgeContactTarget = args.activeConv?.bridgeTarget
+    && (args.activeConv.bridgeTarget.runtime?.trim().toLowerCase() === 'person' || args.activeConv.type === 'person')
+    ? args.activeConv.bridgeTarget
+    : null;
+
   return {
     isNativeShell: args.isNativeShell,
     showChatDetailRail: args.showChatDetailRail,
@@ -200,6 +207,9 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     isDesktopChatSending: args.isDesktopChatSending,
     onStopDesktopChatTurn: args.handleStopDesktopChatTurn,
     onStopBridgeAgentRequest: args.handleStopBridgeAgentRequest,
+    onRequestBridgeContact: activeBridgeContactTarget
+      ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
+      : undefined,
     onSendChatMessage: args.handleSendChatMessage,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,

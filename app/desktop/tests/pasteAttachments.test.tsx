@@ -44,11 +44,11 @@ test('extractClipboardFiles dedupes one pasted image exposed through files and i
   assert.deepEqual(files, [pastedImageFromFiles]);
 });
 
-test('extractPastedLocalFilePaths accepts a pasted absolute temp image path', () => {
-  assert.deepEqual(
-    extractPastedLocalFilePaths('/var/folders/sj/clipboard/pi-clipboard.png'),
-    ['/var/folders/sj/clipboard/pi-clipboard.png'],
-  );
+test('extractPastedLocalFilePaths ignores plain text paths so they stay composer text', () => {
+  assert.deepEqual(extractPastedLocalFilePaths('/var/folders/sj/clipboard/pi-clipboard.png'), []);
+  assert.deepEqual(extractPastedLocalFilePaths('~/Desktop/report.pdf'), []);
+  assert.deepEqual(extractPastedLocalFilePaths('C:\\Users\\me\\report.pdf'), []);
+  assert.deepEqual(extractPastedLocalFilePaths('/Users/shuyang/kordi-worktrees/issue-202-provider-stream-retry/app/desktop/src-tauri'), []);
 });
 
 test('extractPastedLocalFilePaths accepts file uri lists and decodes spaces', () => {
@@ -61,6 +61,13 @@ test('extractPastedLocalFilePaths accepts file uri lists and decodes spaces', ()
 test('extractPastedLocalFilePaths ignores ordinary prose containing slashes', () => {
   assert.deepEqual(
     extractPastedLocalFilePaths('please inspect /var/folders/sj/clipboard/pi-clipboard.png'),
+    [],
+  );
+});
+
+test('extractPastedLocalFilePaths ignores non-file uri-list entries', () => {
+  assert.deepEqual(
+    extractPastedLocalFilePaths('', '/var/folders/sj/clipboard/pi-clipboard.png\nhttps://example.test/file.txt'),
     [],
   );
 });

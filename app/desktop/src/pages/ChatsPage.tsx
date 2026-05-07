@@ -54,6 +54,10 @@ import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
+import {
+  CHAT_COMPOSER_TEXTAREA_SELECTOR,
+  focusComposerTextarea,
+} from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { cn } from '@/lib/utils';
 
@@ -239,6 +243,7 @@ type ChatsPageProps = {
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
+  onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -297,6 +302,7 @@ export function ChatsPage({
   isDesktopChatSending,
   onStopDesktopChatTurn,
   onStopBridgeAgentRequest,
+  onRequestBridgeContact,
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
@@ -393,6 +399,7 @@ export function ChatsPage({
     selectorType?: 'provider' | 'model' | 'thinking';
   }) => {
     if (selectorType) closeBridgeRoutingSelector(selectorType);
+    focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
     if (!selectedBridgeRoutingAgent || !selectedBridgeRoutingKey) return;
     if (isDesktopChatSending || activeLiveTurnIsRunning) {
       setBridgeRoutingNotice("Stop the running task before changing this session's model or thinking level.");
@@ -567,6 +574,7 @@ export function ChatsPage({
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onRequestBridgeContact={onRequestBridgeContact}
                 isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                 isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />
@@ -738,7 +746,8 @@ export function ChatsPage({
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                placeholder="Message a person, an agent, or delegate a task…"
+                data-composer-scope="chat"
+                placeholder="Ask your agent…"
               />
             </div>
           </div>

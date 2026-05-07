@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
-import { contactRequests, settingsSections } from '@/kordi-app/data';
+import { settingsSections } from '@/kordi-app/data';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
+  ContactRequest,
   DesktopBridgeHost,
   DesktopChatTurnSnapshot,
   DetailTab,
@@ -11,6 +12,7 @@ import type {
   Message,
   NavId,
   ProjectSession,
+  SessionArtifact,
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
@@ -26,6 +28,7 @@ function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
       tool.name,
       tool.status,
       tool.arguments,
+      tool.artifactPath ?? '',
       tool.isError ? 'error' : 'ok',
     ].join('\u0000')),
   ].join('\u0001');
@@ -68,13 +71,27 @@ export function visibleLocalSessionIdForActivity({
   return visibleSessionId;
 }
 
+export function activeChatLiveTurnForConversation({
+  activeConv,
+  desktopLiveTurnsBySession,
+}: {
+  activeConv: { id: string; canonicalSessionId?: string | null };
+  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
+}) {
+  const directTurn = desktopLiveTurnsBySession[activeConv.id];
+  if (directTurn) return directTurn;
+  const canonicalSessionId = activeConv.canonicalSessionId?.trim();
+  return canonicalSessionId ? desktopLiveTurnsBySession[canonicalSessionId] ?? null : null;
+}
+
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
   activeSettingsSectionId: SettingsSectionId;
+  contactRequests: ContactRequest[];
   activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
   activeConvId: string;
-  activeConv: { id: string; canonicalSessionId?: string; messages: Message[] };
+  activeConv: { id: string; canonicalSessionId?: string; messages: Message[]; reflectionLessonArtifacts?: SessionArtifact[] };
   activeProjectSessionId: string;
   activeProjectSession: ProjectSession;
   activeConversationIsBridge: boolean;
@@ -92,6 +109,7 @@ type UseKordiDesktopActivityArgs = {
 export function useKordiDesktopActivity({
   activeContactRequestId,
   activeSettingsSectionId,
+  contactRequests,
   activeBridgeHost,
   activeNav,
   activeConvId,
@@ -112,7 +130,7 @@ export function useKordiDesktopActivity({
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
   const activeProjectBridgeHost = activeBridgeHost;
-  const activeChatLiveTurn = desktopLiveTurnsBySession[activeConv.id] ?? null;
+  const activeChatLiveTurn = activeChatLiveTurnForConversation({ activeConv, desktopLiveTurnsBySession });
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
   const activeChatArtifactLiveTurn = useArtifactLiveTurn(activeChatLiveTurn);
@@ -124,12 +142,12 @@ export function useKordiDesktopActivity({
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(
-    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn),
-    [activeChatArtifactLiveTurn, activeConv.messages, activeConversationIsBridge],
+    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn, activeConv.reflectionLessonArtifacts),
+    [activeChatArtifactLiveTurn, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationIsBridge],
   );
   const activeProjectArtifacts = useMemo(
-    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn),
-    [activeProjectArtifactLiveTurn, activeProjectSession.messages],
+    () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn, activeProjectSession.reflectionLessonArtifacts),
+    [activeProjectArtifactLiveTurn, activeProjectSession.messages, activeProjectSession.reflectionLessonArtifacts],
   );
   const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
   const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;

@@ -18,23 +18,35 @@ type DesktopTranscriptAvatarSeeds = {
   agent?: string | null;
 };
 
+function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessage, index: number) {
+  const role = message.role.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'message';
+  return `desktop-message:${sessionId}:${message.timestampMs}:${index}:${role}`;
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
   avatarSeeds?: DesktopTranscriptAvatarSeeds,
 ): Message[] {
   return messages.flatMap((message, index) => {
-    const failedAssistant = message.role === 'assistant' && message.failed === true;
-    const hasHistoricalTurn =
-      message.role === 'assistant'
-      && (failedAssistant || ((message.thinkingText ?? '').trim().length > 0) || ((message.tools?.length ?? 0) > 0));
+    const isAssistant = message.role === 'assistant';
+    const failedAssistant = isAssistant && message.failed === true;
     const assistantText = message.text.trim();
+    const hasHistoricalTurn =
+      isAssistant
+      && (
+        failedAssistant
+        || assistantText.length > 0
+        || ((message.thinkingText ?? '').trim().length > 0)
+        || ((message.tools?.length ?? 0) > 0)
+      );
 
-    if (message.role === 'assistant' && !hasHistoricalTurn && assistantText.length === 0) {
+    if (isAssistant && !hasHistoricalTurn) {
       return [];
     }
 
     return [{
+      id: desktopTranscriptMessageId(sessionId, message, index),
       role:
         message.role === 'assistant'
           ? ('owned-agent' as const)
@@ -73,13 +85,15 @@ export function mapDesktopMessagesForTranscript(
               id: `${sessionId}-historical-${message.timestampMs}-${index}`,
               sessionId,
               prompt: '',
-              status: failedAssistant || (message.tools ?? []).some((tool) => tool.isError) ? 'failed' : 'succeeded',
+              status: failedAssistant ? 'failed' : 'succeeded',
               message: failedAssistant ? (message.detail ?? 'Request failed') : 'Response complete',
               assistantText: failedAssistant ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
               tools: message.tools ?? [],
               completed: true,
-              succeeded: !failedAssistant && !(message.tools ?? []).some((tool) => tool.isError),
+              succeeded: !failedAssistant,
+              startedAtMs: message.turnStartedAtMs ?? null,
+              completedAtMs: message.turnCompletedAtMs ?? message.timestampMs,
               error: failedAssistant ? message.text : undefined,
             }
           : undefined,

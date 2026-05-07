@@ -225,6 +225,66 @@ function MessageDeliveryGlyph({ status }: { status: string }) {
   return null;
 }
 
+function contactRequestFailureCanBeRetried(detail?: string | null) {
+  const normalized = detail?.trim().toLowerCase() ?? '';
+  return normalized.includes('contact request')
+    && (
+      normalized.includes('before messages')
+      || normalized.includes('pending')
+      || normalized.includes('rejected')
+      || normalized.includes('blocked')
+    );
+}
+
+type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
+
+function ContactRequestFailureNotice({
+  detail,
+  onRequestBridgeContact,
+}: {
+  detail?: string | null;
+  onRequestBridgeContact: () => Promise<void> | void;
+}) {
+  const [state, setState] = useState<ContactRequestActionState>('idle');
+
+  const handleRequestContact = async () => {
+    if (state === 'sending' || state === 'sent') return;
+    setState('sending');
+    try {
+      await onRequestBridgeContact();
+      setState('sent');
+    } catch {
+      setState('error');
+    }
+  };
+
+  const buttonLabel = state === 'sending'
+    ? 'Sending…'
+    : state === 'sent'
+      ? 'Request sent'
+      : 'Send contact request';
+
+  return (
+    <div
+      className="app-contact-request-failure-notice mt-1.5 inline-flex max-w-[min(100%,34rem)] items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] leading-none text-slate-300 shadow-sm"
+      title={detail?.trim() || undefined}
+    >
+      <span>Message not delivered.</span>
+      <button
+        type="button"
+        onClick={handleRequestContact}
+        disabled={state === 'sending' || state === 'sent'}
+        className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200 transition hover:bg-white/15 hover:text-sky-100 disabled:cursor-default disabled:opacity-60"
+      >
+        {buttonLabel}
+      </button>
+      {state === 'error' ? (
+        <span className="font-medium text-rose-300">Try again from Contacts.</span>
+      ) : null}
+    </div>
+  );
+}
+
 function MessageFooter({
   time,
   status,
@@ -240,7 +300,6 @@ function MessageFooter({
 }) {
   const visual = messageDeliveryVisual(status);
   const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
-  const showFailedLabel = visual?.tone === 'red';
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
   return (
@@ -250,7 +309,6 @@ function MessageFooter({
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
-      {showFailedLabel ? <span className="font-semibold text-rose-400">{visual.label}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
       <span className="inline-flex w-4 justify-center" title={visual?.label ?? status ?? undefined}>
         {glyph}
@@ -313,6 +371,7 @@ function MessageBubbleView({
   onOpenSource,
   onStopBridgeAgentRequest,
   onNavigateToMessage,
+  onRequestBridgeContact,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -320,6 +379,7 @@ function MessageBubbleView({
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onNavigateToMessage?: (messageId: string) => void;
+  onRequestBridgeContact?: () => Promise<void> | void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
@@ -462,9 +522,13 @@ function MessageBubbleView({
   if (msg.turn) {
     return (
       <div
-        id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+        id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
+        data-transcript-message-root="true"
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
+        {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
+          <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
+        ) : null}
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -482,7 +546,11 @@ function MessageBubbleView({
   const isPeerHumanMessage = !isOwnHumanMessage && ((msg.senderType === 'human') || msg.role === 'person');
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
-  const bubble = isOwnHumanMessage ? 'app-chat-bubble-user' : 'app-chat-bubble-peer';
+  const bubble = isOwnHumanMessage
+    ? 'app-chat-bubble-user'
+    : isPeerHumanMessage
+      ? 'app-chat-bubble-peer'
+      : 'app-chat-bubble-agent';
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
@@ -498,18 +566,27 @@ function MessageBubbleView({
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
   const showInlineHumanSender = Boolean(!isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showContactRequestAction = Boolean(
+    isOwnHumanMessage
+      && deliveryVisual?.tone === 'red'
+      && onRequestBridgeContact
+      && contactRequestFailureCanBeRetried(msg.detail),
+  );
+  const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      data-transcript-message-root="true"
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
         isGroupedWithNext ? 'pb-0' : 'pb-1',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
+        showContactRequestAction ? 'w-full' : '',
       )}
     >
       {showHeaderMeta ? (
@@ -559,11 +636,8 @@ function MessageBubbleView({
                 'app-message-footer app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
                 isOwnHumanMessage ? 'text-black/45' : 'text-slate-500/80',
               )}>
-                {msg.detail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
-                  <span>{msg.detail}</span>
-                ) : null}
-                {isOwnHumanMessage && deliveryVisual?.tone === 'red' ? (
-                  <span className="font-semibold text-rose-400">{deliveryVisual.label}</span>
+                {footerDetail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
+                  <span>{footerDetail}</span>
                 ) : null}
                 <span>{msg.time}</span>
                 {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
@@ -578,7 +652,7 @@ function MessageBubbleView({
               <MessageFooter
                 time={msg.time}
                 status={isOwnHumanMessage ? deliveryStatus : undefined}
-                detail={msg.detail}
+                detail={footerDetail}
                 isUser={isOwnHumanMessage}
               />
             </>
@@ -589,20 +663,25 @@ function MessageBubbleView({
               {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
               {hasText ? <MarkdownContent text={msg.text} /> : null}
             </div>
-            {(msg.statusChips?.length || msg.detail) ? (
+            {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
                 {msg.statusChips?.map((chip) => (
                   <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
                     {chip}
                   </span>
                 ))}
-                {msg.detail ? <span className="text-slate-400">{msg.detail}</span> : null}
+                {footerDetail ? <span className="text-slate-400">{footerDetail}</span> : null}
               </div>
             ) : null}
           </>
         )}
         </div>
       </div>
+      {showContactRequestAction && onRequestBridgeContact ? (
+        <div className="self-center">
+          <ContactRequestFailureNotice detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
+        </div>
+      ) : null}
       {showCompactFooter ? (
         <RequestReplyLine
           summary={msg.replySummary}
@@ -643,6 +722,7 @@ export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
+    && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
@@ -692,11 +772,24 @@ export function ContactRequestRow({
   request,
   active,
   onReview,
+  onAccept,
+  onReject,
+  actionState = null,
 }: {
   request: ContactRequest;
   active: boolean;
   onReview: () => void;
+  onAccept?: () => void;
+  onReject?: () => void;
+  actionState?: 'accepting' | 'rejecting' | null;
 }) {
+  const isBusy = Boolean(actionState);
+  const statusText = actionState === 'accepting'
+    ? 'Accepting and sending greeting…'
+    : actionState === 'rejecting'
+      ? 'Rejecting request…'
+      : '';
+
   return (
     <div
       className={cn(
@@ -707,7 +800,7 @@ export function ContactRequestRow({
       <div className="flex items-start gap-3">
         <IdentityAvatar
           kind={requestAvatarKind(request)}
-          seed={request.id}
+          seed={request.avatarSeed ?? request.id}
           name={request.title}
           imageUrl={request.profileImageUrl}
           className="h-10 w-10 border border-white/10"
@@ -719,14 +812,31 @@ export function ContactRequestRow({
           </div>
           <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview}>
+            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview} disabled={isBusy}>
               Review details
             </Button>
-            <Button className="h-8 rounded-xl px-3 text-[11px]">Accept</Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]">
-              Reject
+            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
+              {actionState === 'accepting' ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Accepting…
+                </>
+              ) : 'Accept'}
+            </Button>
+            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject || isBusy}>
+              {actionState === 'rejecting' ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Rejecting…
+                </>
+              ) : 'Reject'}
             </Button>
           </div>
+          {statusText ? (
+            <div className="mt-2 text-[11px] leading-4 text-slate-400" aria-live="polite">
+              {statusText}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

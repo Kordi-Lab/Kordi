@@ -24,7 +24,7 @@ export function messageDeliveryVisual(status?: string | null): MessageDeliveryVi
     return { glyph: 'spinner', tone: 'gray', label: 'Processing' };
   }
   if (normalized === 'failed' || normalized === 'processing_failed') {
-    return { glyph: 'exclamation', tone: 'red', label: 'Failed' };
+    return { glyph: 'exclamation', tone: 'red', label: 'Sending failed' };
   }
   return null;
 }

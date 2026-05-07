@@ -17,6 +17,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
       activeNav={args.activeNav}
       contactsPageProps={{
         filteredGroupedContacts: args.filteredGroupedContacts,
+        addableContacts: args.addableContacts,
         isContactRequestsOpen: args.isContactRequestsOpen,
         onToggleRequests: () => args.setIsContactRequestsOpen((open) => !open),
         contactRequests: args.contactRequests,
@@ -24,6 +25,27 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onReviewRequest: (requestId) => {
           args.setActiveContactRequestId(requestId);
           args.setContactOverlayMode('request');
+        },
+        onAcceptRequest: async (request) => {
+          if (!request.bridgeHostId || !request.bridgeRequestId) return;
+          await args.handleApproveBridgeContactRequest(request.bridgeHostId, request.bridgeRequestId);
+          args.setContactOverlayMode(null);
+        },
+        onRejectRequest: async (request) => {
+          if (!request.bridgeHostId || !request.bridgeRequestId) return;
+          await args.handleRejectBridgeContactRequest(request.bridgeHostId, request.bridgeRequestId);
+          args.setContactOverlayMode(null);
+        },
+        onAddContactByNodeId: async (nodeId) => {
+          if (!args.activeBridgeHost?.id) {
+            throw new Error('Set up a Bridge host before adding contacts.');
+          }
+          await args.handleAddBridgeContact(args.activeBridgeHost.id, nodeId);
+        },
+        onRemoveContact: async (contact) => {
+          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
+          await args.handleRemoveBridgeContact(contact.bridgeHostId, contact.bridgePeerNodeId);
+          args.setContactOverlayMode(null);
         },
         contactSearch: args.contactSearch,
         onContactSearchChange: args.setContactSearch,
@@ -115,6 +137,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           }
 
           void args.handleStartChatWithAgent(agent);
+        },
+        onOpenAgentReachoutSession: (sessionId) => {
+          args.setActiveNav('chats');
+          void args.handleSelectChatSession(sessionId);
         },
       }}
       bridgePageProps={buildBridgePageProps(args)}

@@ -135,6 +135,50 @@ test('activeUnreadBridgeConversationsForSession finds unread bridge agent conver
   assert.deepEqual(active.map((item) => item.id), ['bridge:host-1:peer-1']);
 });
 
+test('bridgeConversationIdsToMarkReadOnUserActivity includes sibling bridge threads for an active bridge conversation id', () => {
+  const parentSessionId = 'session:bridge:humans:shared-parent';
+  const ids = bridgeConversationIdsToMarkReadOnUserActivity([
+    conversation({
+      id: 'bridge:host-1:peer-1:person',
+      canonicalSessionId: 'session:bridge:humans:stable-pair',
+      unreadCount: 0,
+      outreach: {
+        targetKind: 'bridge-person',
+        parentSessionId,
+        bridgeHostId: 'host-1',
+        targetNodeId: 'peer-1',
+        targetDisplayName: 'Peer',
+        requestText: 'hello',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    }),
+    conversation({
+      id: 'bridge:host-1:peer-1',
+      canonicalSessionId: 'session:bridge:agents:peer-agent',
+      peerRuntime: 'kordi-desktop',
+      unreadCount: 1,
+      outreach: {
+        targetKind: 'bridge-agent',
+        parentSessionId,
+        bridgeHostId: 'host-1',
+        targetNodeId: 'peer-1',
+        targetDisplayName: 'Peer Kordi',
+        requestText: 'hello',
+        status: 'completed',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      messages: [
+        { id: 'msg-in-response', direction: 'inbound-response', sender: 'Peer Kordi', text: 'answer', timeLabel: '10:01', timestampMs: 2, requestId: 'req-1', deliveryState: 'responded' },
+      ],
+    }),
+  ], 'bridge:host-1:peer-1:person');
+
+  assert.deepEqual(ids, ['bridge:host-1:peer-1']);
+});
+
 test('bridgeConversationIdsToMarkReadOnUserActivity includes unread parent-session bridge threads', () => {
   const ids = bridgeConversationIdsToMarkReadOnUserActivity([
     conversation({

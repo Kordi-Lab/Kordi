@@ -235,6 +235,10 @@ pub fn format_tool_call_title(name: &str, raw_args: &str) -> String {
                 .map(|url| shorten_display_path(&url))
                 .unwrap_or_default()
         }
+        "task_operator" => {
+            crate::tool_preview::task_operator_title_inner(raw_args).unwrap_or_default()
+        }
+        "reflection" => crate::tool_preview::reflection_title_inner(raw_args).unwrap_or_default(),
         _ => String::new(),
     };
 
@@ -257,6 +261,8 @@ fn capitalize_tool_name(name: &str) -> &'static str {
         "web_search" => "WebSearch",
         "web_fetch" => "WebFetch",
         "browser_fetch" => "BrowserFetch",
+        "task_operator" => "TaskOperator",
+        "reflection" => "Reflection",
         _ => "Tool",
     }
 }

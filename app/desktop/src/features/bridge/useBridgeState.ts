@@ -8,11 +8,19 @@ import {
   DEFAULT_BRIDGE_OWNER_NAME,
 } from '@/features/bridge/constants';
 import {
+  BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+  BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+} from '@/features/bridge/messages';
+import {
   BRIDGE_READ_ATTENTION_EVENTS,
   activeUnreadBridgeConversationsForSession,
   bridgeReadReceiptBatchSignature,
   canAutoMarkBridgeRead,
 } from '@/features/bridge/readReceipts';
+import {
+  shouldRefreshBridgeRealtimeForVisibility,
+  shouldRunBridgeRealtimeRecovery,
+} from '@/features/bridge/realtimeRecovery';
 import type {
   DesktopBridgeConversation,
   DesktopBridgeConversationMessage,
@@ -27,6 +35,7 @@ import {
   markDesktopBridgeConversationRead,
   openDesktopBridgeConfigFolder,
   pollDesktopBridgeMailbox,
+  refreshDesktopBridgeRealtimeConnections,
   removeDesktopBridgeHost,
   revealDesktopBridgeStorageFile,
   saveDesktopBridgeHost,
@@ -120,25 +129,46 @@ function mergeBridgeMessage(
   };
 }
 
+function normalizedBridgeMessageRequestId(message: DesktopBridgeConversationMessage) {
+  return message.requestId?.trim() ?? '';
+}
+
+function isBridgeAgentResponseMessage(message: DesktopBridgeConversationMessage) {
+  return message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE
+    || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+}
+
+function compareBridgeConversationMessages(
+  left: DesktopBridgeConversationMessage,
+  right: DesktopBridgeConversationMessage,
+) {
+  const leftRequestId = normalizedBridgeMessageRequestId(left);
+  const rightRequestId = normalizedBridgeMessageRequestId(right);
+  if (leftRequestId && leftRequestId === rightRequestId) {
+    const leftIsResponse = isBridgeAgentResponseMessage(left);
+    const rightIsResponse = isBridgeAgentResponseMessage(right);
+    if (leftIsResponse !== rightIsResponse) return leftIsResponse ? 1 : -1;
+  }
+
+  return left.timestampMs - right.timestampMs
+    || Number(isBridgeAgentResponseMessage(left)) - Number(isBridgeAgentResponseMessage(right))
+    || left.id.localeCompare(right.id);
+}
+
 function mergeConversationMessages(
   current: DesktopBridgeConversationMessage[],
   next: DesktopBridgeConversationMessage[],
 ) {
-  const currentById = new Map(current.map((message) => [message.id, message]));
-  const merged = next.map((message) => {
-    const existing = currentById.get(message.id);
-    return existing ? mergeBridgeMessage(existing, message) : message;
-  });
-
-  if (current.length <= next.length) {
-    return merged;
+  const mergedById = new Map<string, DesktopBridgeConversationMessage>();
+  for (const message of current) {
+    mergedById.set(message.id, message);
+  }
+  for (const message of next) {
+    const existing = mergedById.get(message.id);
+    mergedById.set(message.id, existing ? mergeBridgeMessage(existing, message) : message);
   }
 
-  const nextIds = new Set(next.map((message) => message.id));
-  return current.map((message) => {
-    const incoming = nextIds.has(message.id) ? next.find((candidate) => candidate.id === message.id) : undefined;
-    return incoming ? mergeBridgeMessage(message, incoming) : message;
-  });
+  return [...mergedById.values()].sort(compareBridgeConversationMessages);
 }
 
 function mergeBridgeConversation(
@@ -269,6 +299,8 @@ export function useBridgeState({
   const lastBridgePollProgressShownAtRef = useRef(0);
   const bridgePollProgressTimerRef = useRef<number | null>(null);
   const mailboxPollFlightRef = useRef(createSingleFlightState());
+  const realtimeRecoveryFlightRef = useRef(createSingleFlightState());
+  const lastBridgeRealtimeRecoveryAtRef = useRef(0);
   const activeBridgeReadRequestRef = useRef<string | null>(null);
   const [bridgeReadAttentionTick, setBridgeReadAttentionTick] = useState(0);
   const currentActiveHost = (desktopBridgeState?.hosts ?? []).find((host) => host.id === desktopBridgeState?.activeHostId)
@@ -326,6 +358,7 @@ export function useBridgeState({
         setDesktopBridgeState(restoredState);
       }
       setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to save bridge host');
+      throw error;
     } finally {
       setIsDesktopBridgeSaving(false);
     }
@@ -518,7 +551,7 @@ export function useBridgeState({
   }, [currentActiveHost]);
 
   useEffect(() => {
-    if (!isNativeShell || activeNav !== 'bridge') return;
+    if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
     const refresh = () => {
       void refreshDesktopBridge();
     };
@@ -528,7 +561,7 @@ export function useBridgeState({
       window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
     };
-  }, [activeNav, isNativeShell, refreshDesktopBridge]);
+  }, [desktopBridgeState?.hosts.length, isNativeShell, refreshDesktopBridge]);
 
   useEffect(() => {
     if (!isNativeShell || !(desktopBridgeState?.hosts.length)) return;
@@ -593,6 +626,50 @@ export function useBridgeState({
       }
     };
   }, [desktopBridgeState?.hosts.length, isNativeShell]);
+
+  useEffect(() => {
+    if (!isNativeShell || typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const recoverRealtime = () => {
+      const now = Date.now();
+      if (!shouldRunBridgeRealtimeRecovery(now, lastBridgeRealtimeRecoveryAtRef.current)) return;
+      lastBridgeRealtimeRecoveryAtRef.current = now;
+
+      const run = requestSingleFlightRun(realtimeRecoveryFlightRef.current, async () => {
+        const state = await refreshDesktopBridgeRealtimeConnections();
+        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, state));
+        setLastBridgePollAt(Date.now());
+        if (state.hosts.length === 0) return;
+        try {
+          const mailboxState = await pollDesktopBridgeMailbox();
+          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, mailboxState));
+          setLastBridgePollAt(Date.now());
+        } catch {
+          // Recovery is best-effort; routine mailbox polling will keep trying.
+        }
+      });
+      void run?.catch(() => {
+        // Keep wake/focus recovery silent; explicit actions surface errors.
+      });
+    };
+
+    const recoverWhenVisible = () => {
+      if (shouldRefreshBridgeRealtimeForVisibility(document.visibilityState)) {
+        recoverRealtime();
+      }
+    };
+
+    window.addEventListener('focus', recoverRealtime);
+    window.addEventListener('online', recoverRealtime);
+    window.addEventListener('pageshow', recoverRealtime);
+    document.addEventListener('visibilitychange', recoverWhenVisible);
+    return () => {
+      window.removeEventListener('focus', recoverRealtime);
+      window.removeEventListener('online', recoverRealtime);
+      window.removeEventListener('pageshow', recoverRealtime);
+      document.removeEventListener('visibilitychange', recoverWhenVisible);
+    };
+  }, [isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell) return;

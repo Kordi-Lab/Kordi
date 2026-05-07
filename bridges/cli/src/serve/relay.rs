@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::auth::{auth_middleware, extract_node_id, AuthNode};
-use super::{nodes_share_project_or_contact, ServerState};
+use super::{nodes_can_directly_reach, DirectAccessKind, ServerState};
 
 /// Relay request: opaque message blob only.
 /// For mailbox/direct relay, the server routes the blob without understanding its body.
@@ -28,9 +28,12 @@ pub struct RelayReq {
     /// Optional project ID for authorization-aware decrypt/key lookup on clients.
     #[serde(rename = "projectId")]
     pub project_id: Option<String>,
+    /// Optional direct-access intent for host/agent reachability policy.
+    #[serde(rename = "targetKind", default)]
+    pub target_kind: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct RelayResp {
     pub delivered: bool,
     pub message: String,
@@ -95,6 +98,12 @@ struct DerpFrame {
     dst: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     durable: Option<bool>,
+    #[serde(
+        rename = "targetKind",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    target_kind: Option<String>,
     #[serde(with = "base64_serde")]
     data: Vec<u8>,
 }
@@ -115,6 +124,7 @@ fn maybe_delivery_event_frame(
         src: Some(from_node_id.to_string()),
         dst: None,
         durable: None,
+        target_kind: None,
         data: serde_json::to_vec(&payload).ok()?,
     };
     Some(Message::Text(serde_json::to_string(&frame).ok()?))
@@ -188,7 +198,8 @@ async fn relay_message(
         )
         .is_ok()
     } else {
-        nodes_share_project_or_contact(&db, &sender_node_id, &target_node_id)
+        let access_kind = direct_access_kind_from_target_kind(req.target_kind.as_deref());
+        nodes_can_directly_reach(&db, &sender_node_id, &target_node_id, access_kind)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     if !allowed {
@@ -351,16 +362,22 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                         continue;
                     }
                 };
-                let allowed = match nodes_share_project_or_contact(&db, &node_id, &dst_node_id) {
-                    Ok(allowed) => allowed,
-                    Err(err) => {
-                        eprintln!(
-                            "DERP authorization lookup error for {}: {}",
-                            dst_node_id, err
-                        );
-                        false
-                    }
-                };
+                let access_kind = frame
+                    .target_kind
+                    .as_deref()
+                    .map(|target_kind| direct_access_kind_from_target_kind(Some(target_kind)))
+                    .unwrap_or_else(|| direct_access_kind_from_payload_bytes(&request_bytes));
+                let allowed =
+                    match nodes_can_directly_reach(&db, &node_id, &dst_node_id, access_kind) {
+                        Ok(allowed) => allowed,
+                        Err(err) => {
+                            eprintln!(
+                                "DERP authorization lookup error for {}: {}",
+                                dst_node_id, err
+                            );
+                            false
+                        }
+                    };
                 if !allowed {
                     if let Some(ack) =
                         maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
@@ -402,6 +419,7 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                     src: Some(node_id.clone()),
                     dst: None,
                     durable: None,
+                    target_kind: None,
                     data: frame.data,
                 };
                 let json = match serde_json::to_string(&outbound) {
@@ -433,6 +451,34 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
         clients.remove(&node_id);
     }
     send_task.abort();
+}
+
+fn direct_access_kind_from_target_kind(target_kind: Option<&str>) -> DirectAccessKind {
+    match target_kind
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+        .as_str()
+    {
+        "agent" | "bridge-agent" | "ask" => DirectAccessKind::Agent,
+        "person-invite" | "bridge-person-invite" | "human-invite" | "session-invite" => {
+            DirectAccessKind::GroupInvite
+        }
+        "session-participant" | "group-session" | "session-message" | "session-relay" => {
+            DirectAccessKind::SessionParticipant
+        }
+        "person" | "bridge-person" | "human" => DirectAccessKind::Person,
+        _ => DirectAccessKind::Any,
+    }
+}
+
+fn direct_access_kind_from_payload_bytes(payload: &[u8]) -> DirectAccessKind {
+    let parsed = serde_json::from_slice::<serde_json::Value>(payload).ok();
+    let message_type = parsed
+        .as_ref()
+        .and_then(|value| value.get("messageType"))
+        .and_then(|value| value.as_str());
+    direct_access_kind_from_target_kind(message_type)
 }
 
 fn enqueue_mailbox_entry(
@@ -675,13 +721,35 @@ mod tests {
     }
 
     fn seed_registered_node(state: &ServerState, node_id: &str, api_key: &str) {
+        seed_registered_node_with_policy(state, node_id, api_key, None, None, None, None, None);
+    }
+
+    fn seed_registered_node_with_policy(
+        state: &ServerState,
+        node_id: &str,
+        api_key: &str,
+        human_id: Option<&str>,
+        agent_id: Option<&str>,
+        human_visibility_policy: Option<&str>,
+        contact_approval_policy: Option<&str>,
+        agent_reachability_policy: Option<&str>,
+    ) {
         let conn = state.open_connection().unwrap();
         let mut hash = Sha256::new();
         hash.update(api_key.as_bytes());
         let api_key_hash = hex::encode(hash.finalize());
         conn.execute(
-            "INSERT OR IGNORE INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, api_key_hash, created_at) VALUES (?1, 'ed25519', 'x25519', ?1, ?1, ?2, ?3)",
-            rusqlite::params![node_id, api_key_hash, chrono::Utc::now().to_rfc3339()],
+            "INSERT OR IGNORE INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, human_id, agent_id, api_key_hash, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at) VALUES (?1, 'ed25519', 'x25519', ?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                node_id,
+                human_id,
+                agent_id,
+                api_key_hash,
+                human_visibility_policy,
+                contact_approval_policy,
+                agent_reachability_policy,
+                chrono::Utc::now().to_rfc3339(),
+            ],
         )
         .unwrap();
     }
@@ -728,6 +796,7 @@ mod tests {
             src: None,
             dst: Some("receiver".to_string()),
             durable: Some(true),
+            target_kind: None,
             data: serde_json::to_vec(&payload).unwrap(),
         };
         sender_socket
@@ -803,10 +872,72 @@ mod tests {
             src: None,
             dst: Some("receiver".to_string()),
             durable: Some(true),
+            target_kind: None,
             data: serde_json::to_vec(&serde_json::json!({
                 "requestId": "bridge_req_ws_unauthorized",
                 "messageType": "raw",
                 "payload": { "message": "should not mailbox" },
+            }))
+            .unwrap(),
+        };
+        sender_socket
+            .send(TungsteniteMessage::Text(
+                serde_json::to_string(&frame).unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert!(pending.entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn derp_group_invite_requires_contact_even_for_server_open_target() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-open"),
+            Some("auto"),
+            Some("contacts"),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_state = state.clone();
+        tokio::spawn(async move {
+            axum::serve(listener, routes(server_state)).await.unwrap();
+        });
+        let base_url = format!("ws://{addr}");
+
+        let _receiver_socket = connect_test_derp_client(&base_url, "receiver-key").await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        let mut sender_socket = connect_test_derp_client(&base_url, "sender-key").await;
+        let frame = DerpFrame {
+            src: None,
+            dst: Some("receiver".to_string()),
+            durable: Some(true),
+            target_kind: Some("person-invite".to_string()),
+            data: serde_json::to_vec(&serde_json::json!({
+                "requestId": "bridge_req_ws_group_invite",
+                "messageType": "raw",
+                "payload": { "message": "group invite" },
             }))
             .unwrap(),
         };
@@ -941,6 +1072,301 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_relay_allows_server_open_target_without_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-open"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+
+        let response = relay_message(
+            State(state.clone()),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "hello".to_string(),
+                project_id: None,
+                target_kind: Some("person".to_string()),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert!(response.delivered);
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert_eq!(pending.entries.len(), 1);
+        assert_eq!(pending.entries[0].from, "sender");
+    }
+
+    #[tokio::test]
+    async fn direct_relay_blocks_approval_required_target_without_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-approval"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+
+        let status = relay_message(
+            State(state),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "hello".to_string(),
+                project_id: None,
+                target_kind: Some("person".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_blocks_approval_required_target_when_only_shared_project() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-approval"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+        seed_project_members(&state, "project-1", &["sender", "receiver"]);
+
+        let status = relay_message(
+            State(state),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "hello".to_string(),
+                project_id: None,
+                target_kind: Some("person".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_allows_session_participant_without_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-approval"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+
+        let response = relay_message(
+            State(state.clone()),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "group session message".to_string(),
+                project_id: None,
+                target_kind: Some("session-participant".to_string()),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+
+        assert!(response.delivered);
+        let pending = poll_mailbox_v2(
+            State(state),
+            Extension(AuthNode("receiver".to_string())),
+            Json(MailboxPollReq {
+                limit: Some(100),
+                after: None,
+            }),
+        )
+        .await
+        .expect("poll mailbox")
+        .0;
+        assert_eq!(pending.entries.len(), 1);
+        assert_eq!(pending.entries[0].blob, "group session message");
+    }
+
+    #[tokio::test]
+    async fn direct_relay_blocks_group_invite_to_server_open_non_contact() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node_with_policy(
+            &state,
+            "receiver",
+            "receiver-key",
+            Some("human-receiver"),
+            None,
+            Some("server-open"),
+            Some("auto"),
+            Some("contacts"),
+        );
+
+        let status = relay_message(
+            State(state),
+            Extension(AuthNode("sender".to_string())),
+            Json(RelayReq {
+                target_node_id: "receiver".to_string(),
+                blob: "invite".to_string(),
+                project_id: None,
+                target_kind: Some("person-invite".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_owner_agent_allows_same_human_and_blocks_other_humans() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node_with_policy(
+            &state,
+            "owner-device",
+            "owner-key",
+            Some("human-owner"),
+            None,
+            Some("private"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+        seed_registered_node_with_policy(
+            &state,
+            "owner-agent",
+            "agent-key",
+            Some("human-owner"),
+            Some("agent-owner"),
+            Some("private"),
+            Some("approval-required"),
+            Some("owner"),
+        );
+        seed_registered_node_with_policy(
+            &state,
+            "stranger",
+            "stranger-key",
+            Some("human-stranger"),
+            None,
+            Some("private"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+
+        let accepted = relay_message(
+            State(state.clone()),
+            Extension(AuthNode("owner-device".to_string())),
+            Json(RelayReq {
+                target_node_id: "owner-agent".to_string(),
+                blob: "ask".to_string(),
+                project_id: None,
+                target_kind: Some("agent".to_string()),
+            }),
+        )
+        .await
+        .expect("owner relay accepted")
+        .0;
+        assert!(accepted.delivered);
+
+        let rejected = relay_message(
+            State(state),
+            Extension(AuthNode("stranger".to_string())),
+            Json(RelayReq {
+                target_node_id: "owner-agent".to_string(),
+                blob: "ask".to_string(),
+                project_id: None,
+                target_kind: Some("agent".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(rejected, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn direct_relay_owner_agent_blocks_contacts_from_other_humans() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        seed_registered_node_with_policy(
+            &state,
+            "contact",
+            "contact-key",
+            Some("human-contact"),
+            None,
+            Some("private"),
+            Some("approval-required"),
+            Some("contacts"),
+        );
+        seed_registered_node_with_policy(
+            &state,
+            "owner-agent",
+            "agent-key",
+            Some("human-owner"),
+            Some("agent-owner"),
+            Some("private"),
+            Some("approval-required"),
+            Some("owner"),
+        );
+        seed_contact(&state, "contact", "owner-agent");
+
+        let rejected = relay_message(
+            State(state),
+            Extension(AuthNode("contact".to_string())),
+            Json(RelayReq {
+                target_node_id: "owner-agent".to_string(),
+                blob: "ask".to_string(),
+                project_id: None,
+                target_kind: Some("agent".to_string()),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(rejected, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn mailbox_survives_state_restart_until_fetched() {
         let db_path = test_db_path();
         let state = test_state_for_path(&db_path);
@@ -953,6 +1379,7 @@ mod tests {
                 target_node_id: "receiver".to_string(),
                 blob: "hello".to_string(),
                 project_id: Some("proj_1".to_string()),
+                target_kind: None,
             }),
         )
         .await
@@ -977,6 +1404,8 @@ mod tests {
     async fn mailbox_fetch_drains_only_once() {
         let db_path = test_db_path();
         let state = test_state_for_path(&db_path);
+        seed_registered_node(&state, "sender", "sender-key");
+        seed_registered_node(&state, "receiver", "receiver-key");
         seed_contact(&state, "sender", "receiver");
 
         for blob in ["one", "two"] {
@@ -987,6 +1416,7 @@ mod tests {
                     target_node_id: "receiver".to_string(),
                     blob: blob.to_string(),
                     project_id: None,
+                    target_kind: None,
                 }),
             )
             .await

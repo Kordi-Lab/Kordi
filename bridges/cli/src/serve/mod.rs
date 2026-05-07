@@ -78,6 +78,14 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
     add_column_if_missing(conn, "registered_nodes", "revoked_at", "TEXT")?;
     add_column_if_missing(conn, "registered_nodes", "revocation_reason", "TEXT")?;
     add_column_if_missing(conn, "registered_nodes", "replacement_node_id", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "human_visibility_policy", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "contact_approval_policy", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        "registered_nodes",
+        "agent_reachability_policy",
+        "TEXT",
+    )?;
 
     migrate_registered_nodes_to_core(conn)?;
     migrate_server_projects_to_core(conn)?;
@@ -144,6 +152,9 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             revoked_at          TEXT,
             revocation_reason   TEXT,
             replacement_node_id TEXT,
+            human_visibility_policy TEXT,
+            contact_approval_policy TEXT,
+            agent_reachability_policy TEXT,
             created_at          TEXT NOT NULL
         );
 
@@ -163,6 +174,9 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             revoked_at,
             revocation_reason,
             replacement_node_id,
+            human_visibility_policy,
+            contact_approval_policy,
+            agent_reachability_policy,
             created_at
         )
         SELECT
@@ -181,6 +195,9 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             revoked_at,
             revocation_reason,
             replacement_node_id,
+            NULL,
+            NULL,
+            NULL,
             created_at
         FROM registered_nodes;
 
@@ -292,6 +309,102 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
         .map_err(|e| format!("serve: {}", e))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DirectAccessKind {
+    Person,
+    Agent,
+    GroupInvite,
+    SessionParticipant,
+    Any,
+}
+
+pub(crate) fn normalize_human_visibility_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    match normalized.as_str() {
+        "server-open" | "server-approval" | "private" => Some(normalized),
+        _ => None,
+    }
+}
+
+pub(crate) fn normalize_contact_approval_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    match normalized.as_str() {
+        "auto" | "approval-required" => Some(normalized),
+        _ => None,
+    }
+}
+
+pub(crate) fn normalize_agent_reachability_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    match normalized.as_str() {
+        "server" | "contacts" | "owner" => Some(normalized),
+        _ => None,
+    }
+}
+
+pub(crate) fn effective_human_visibility_policy(
+    discovery_mode: Option<&str>,
+    human_visibility_policy: Option<&str>,
+) -> String {
+    if let Some(policy) = human_visibility_policy.and_then(normalize_human_visibility_policy) {
+        return policy;
+    }
+    match discovery_mode
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+        .as_str()
+    {
+        "contacts" | "off" => "private".to_string(),
+        "open" => "server-approval".to_string(),
+        _ => "server-approval".to_string(),
+    }
+}
+
+pub(crate) fn effective_contact_approval_policy(contact_approval_policy: Option<&str>) -> String {
+    contact_approval_policy
+        .and_then(normalize_contact_approval_policy)
+        .unwrap_or_else(|| "approval-required".to_string())
+}
+
+pub(crate) fn effective_agent_reachability_policy(
+    agent_reachability_policy: Option<&str>,
+) -> String {
+    agent_reachability_policy
+        .and_then(normalize_agent_reachability_policy)
+        .unwrap_or_else(|| "contacts".to_string())
+}
+
+pub(crate) fn nodes_share_project(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM server_members m1 \
+             JOIN server_members m2 ON m1.project_id = m2.project_id \
+             WHERE m1.node_id = ?1 AND m2.node_id = ?2 LIMIT 1",
+            rusqlite::params![left_node_id, right_node_id],
+            |_| Ok(()),
+        )
+        .is_ok())
+}
+
+pub(crate) fn nodes_are_contacts(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM server_contacts WHERE node_id = ?1 AND contact_node_id = ?2 LIMIT 1",
+            rusqlite::params![left_node_id, right_node_id],
+            |_| Ok(()),
+        )
+        .is_ok())
+}
+
 pub(crate) fn nodes_share_project_or_contact(
     conn: &Connection,
     left_node_id: &str,
@@ -300,27 +413,119 @@ pub(crate) fn nodes_share_project_or_contact(
     if left_node_id == right_node_id {
         return Ok(true);
     }
-
-    let shares_project = conn
-        .query_row(
-            "SELECT 1 FROM server_members m1 \
-             JOIN server_members m2 ON m1.project_id = m2.project_id \
-             WHERE m1.node_id = ?1 AND m2.node_id = ?2 LIMIT 1",
-            rusqlite::params![left_node_id, right_node_id],
-            |_| Ok(()),
-        )
-        .is_ok();
-    if shares_project {
+    if nodes_share_project(conn, left_node_id, right_node_id)? {
         return Ok(true);
     }
+    nodes_are_contacts(conn, left_node_id, right_node_id)
+}
 
+fn node_human_id(conn: &Connection, node_id: &str) -> Result<Option<String>, rusqlite::Error> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT human_id FROM registered_nodes WHERE node_id = ?1 AND revoked_at IS NULL",
+        rusqlite::params![node_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map(|value| value.flatten())
+}
+
+pub(crate) fn nodes_share_human_owner(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    let left = node_human_id(conn, left_node_id)?;
+    let right = node_human_id(conn, right_node_id)?;
+    Ok(
+        matches!((left, right), (Some(left), Some(right)) if !left.trim().is_empty() && left == right),
+    )
+}
+
+pub(crate) fn nodes_have_rejected_contact_request(
+    conn: &Connection,
+    left_node_id: &str,
+    right_node_id: &str,
+) -> Result<bool, rusqlite::Error> {
     Ok(conn
         .query_row(
-            "SELECT 1 FROM server_contacts WHERE node_id = ?1 AND contact_node_id = ?2 LIMIT 1",
+            "SELECT 1 FROM server_contact_requests
+             WHERE status = 'rejected'
+               AND ((requester_node_id = ?1 AND target_node_id = ?2) OR (requester_node_id = ?2 AND target_node_id = ?1))
+             LIMIT 1",
             rusqlite::params![left_node_id, right_node_id],
             |_| Ok(()),
         )
         .is_ok())
+}
+
+pub(crate) fn nodes_can_directly_reach(
+    conn: &Connection,
+    sender_node_id: &str,
+    target_node_id: &str,
+    access_kind: DirectAccessKind,
+) -> Result<bool, rusqlite::Error> {
+    use rusqlite::OptionalExtension;
+
+    if sender_node_id == target_node_id {
+        return Ok(true);
+    }
+
+    let target = conn
+        .query_row(
+            "SELECT discovery_mode, human_visibility_policy, agent_reachability_policy, agent_id \
+             FROM registered_nodes WHERE node_id = ?1 AND revoked_at IS NULL",
+            rusqlite::params![target_node_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((discovery_mode, human_policy, agent_policy, agent_id)) = target else {
+        return Ok(false);
+    };
+
+    let human_policy =
+        effective_human_visibility_policy(discovery_mode.as_deref(), human_policy.as_deref());
+    let agent_policy = effective_agent_reachability_policy(agent_policy.as_deref());
+    let target_is_agent = agent_id
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty());
+    let linked_by_contact = nodes_are_contacts(conn, sender_node_id, target_node_id)?;
+    if !linked_by_contact
+        && nodes_have_rejected_contact_request(conn, sender_node_id, target_node_id)?
+    {
+        return Ok(false);
+    }
+    let linked_by_project_or_contact =
+        nodes_share_project(conn, sender_node_id, target_node_id)? || linked_by_contact;
+
+    let person_access = || human_policy == "server-open" || linked_by_contact;
+    let agent_access = || -> Result<bool, rusqlite::Error> {
+        if !target_is_agent {
+            return Ok(false);
+        }
+        match agent_policy.as_str() {
+            "server" => Ok(true),
+            "contacts" => Ok(linked_by_project_or_contact),
+            "owner" => nodes_share_human_owner(conn, sender_node_id, target_node_id),
+            _ => Ok(false),
+        }
+    };
+
+    match access_kind {
+        DirectAccessKind::Person => Ok(person_access()),
+        DirectAccessKind::Agent => agent_access(),
+        DirectAccessKind::GroupInvite => Ok(linked_by_contact),
+        DirectAccessKind::SessionParticipant => Ok(true),
+        DirectAccessKind::Any if target_is_agent => agent_access(),
+        DirectAccessKind::Any => Ok(person_access()),
+    }
 }
 
 #[cfg(test)]
@@ -373,6 +578,9 @@ CREATE TABLE IF NOT EXISTS registered_nodes (
     revoked_at          TEXT,
     revocation_reason   TEXT,
     replacement_node_id TEXT,
+    human_visibility_policy TEXT,
+    contact_approval_policy TEXT,
+    agent_reachability_policy TEXT,
     created_at          TEXT NOT NULL
 );
 
@@ -381,6 +589,16 @@ CREATE TABLE IF NOT EXISTS server_contacts (
     contact_node_id     TEXT NOT NULL,
     created_at          TEXT NOT NULL,
     PRIMARY KEY (node_id, contact_node_id)
+);
+
+CREATE TABLE IF NOT EXISTS server_contact_requests (
+    request_id          TEXT PRIMARY KEY,
+    requester_node_id   TEXT NOT NULL,
+    target_node_id      TEXT NOT NULL,
+    status              TEXT NOT NULL,
+    message             TEXT,
+    created_at          TEXT NOT NULL,
+    decided_at          TEXT
 );
 
 CREATE TABLE IF NOT EXISTS server_projects (
@@ -430,6 +648,12 @@ CREATE TABLE IF NOT EXISTS server_mailbox (
 
 CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
     ON server_contacts (node_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_server_contact_requests_target_status
+    ON server_contact_requests (target_node_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_server_contact_requests_requester_status
+    ON server_contact_requests (requester_node_id, status, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
     ON server_mailbox (target_node_id, created_at);

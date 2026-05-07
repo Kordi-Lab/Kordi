@@ -53,6 +53,7 @@ function isImplicitDirectPersonSessionMessage(outreach: DesktopBridgeOutreachMet
       outreach.contextPolicy === 'session-message'
       || outreach.contextPolicy === 'session-invite'
       || outreach.contextPolicy === 'session-update'
+      || outreach.contextPolicy === 'session-title-update'
     )
     && !outreach.triggerText?.trim();
 }
@@ -169,9 +170,17 @@ function latestOutboundAgentRequestState(conversation: DesktopBridgeConversation
     ?.deliveryState;
 }
 
+function isGroupScopedBridgeMessage(message: DesktopBridgeConversationMessage) {
+  const outreach = message.outreach;
+  if (!outreach) return false;
+  return outreach.parentSessionKind?.trim().toLowerCase() === 'group'
+    || Boolean(outreach.parentGroupSpaceId?.trim())
+    || outreach.parentSessionId?.trim().startsWith('session:group:') === true;
+}
+
 function isVisibleBridgeUnreadMessage(message: DesktopBridgeConversationMessage) {
   const contextPolicy = message.outreach?.contextPolicy?.trim().toLowerCase();
-  return contextPolicy !== 'session-invite' && contextPolicy !== 'session-update';
+  return contextPolicy !== 'session-invite' && contextPolicy !== 'session-update' && contextPolicy !== 'session-title-update';
 }
 
 function bridgeUnreadByParentSessionId(conversation: DesktopBridgeConversation) {
@@ -259,6 +268,7 @@ export function mapBridgeConversationToViewModel(
       : 'Agent outreach'
     : null;
   const messages: Message[] = conversation.messages.flatMap((message) => {
+    if (isPersonChat && isGroupScopedBridgeMessage(message)) return [];
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
     const messageId = bridgeViewMessageId(message);
     const replyToMessageId = message.requestId?.trim()
@@ -363,7 +373,7 @@ export function mapBridgeConversationToViewModel(
           : [],
       mentions,
       attachments,
-      detail: undefined,
+      detail: message.detail ?? undefined,
     };
 
     if (isAgent && isOutboundHuman && isCancelledBridgeState(message.deliveryState)) {

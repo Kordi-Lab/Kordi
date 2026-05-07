@@ -4,14 +4,16 @@ use std::process::Command;
 
 use super::constants::{API_STYLE_REGISTRY, API_STYLE_SERVE};
 use super::{
-    add_serve_contact, apply_missing_agent_routing, bridge_hosts_match, build_bridge_state,
-    build_current_bridge_state, current_local_server_status, default_bridge_agent_label,
-    default_bridge_agent_runtime, default_bridge_api_style, default_display_name, default_endpoint,
-    default_owner_name, delete_bridge_host_secrets, delete_conversations_for_host,
-    ensure_host_bootstrap, generate_agent_id, health_check, legacy_bridge_config_path,
-    load_bridge_store, load_conversation_store, load_legacy_bridge_config,
-    normalize_imported_bridge_host, normalize_server_url, parse_imported_bridge_store,
-    register_bridge_host, remove_serve_contact, save_bridge_store, save_conversation_store,
+    add_serve_contact, apply_missing_agent_routing, approve_serve_contact_request,
+    bridge_hosts_match, build_bridge_state, build_current_bridge_state,
+    current_local_server_status, default_agent_reachability_policy, default_bridge_agent_label,
+    default_bridge_agent_runtime, default_bridge_api_style, default_contact_request_message,
+    default_display_name, default_endpoint, default_owner_name, delete_bridge_host_secrets,
+    delete_conversations_for_host, ensure_host_bootstrap, generate_agent_id, health_check,
+    legacy_bridge_config_path, load_bridge_store, load_conversation_store,
+    load_legacy_bridge_config, normalize_imported_bridge_host, normalize_server_url,
+    parse_imported_bridge_store, register_bridge_host, reject_serve_contact_request,
+    remove_serve_contact, save_bridge_store, save_conversation_store,
     sync_host_active_agent_fields, update_registered_registry_node, update_serve_discovery_mode,
     write_bridge_store_export, DesktopBridgeAgentConfig, DesktopBridgeAgentRouting,
     DesktopBridgeHostConfig, DesktopBridgeManager, DesktopBridgeState, DesktopBridgeStore,
@@ -125,6 +127,50 @@ fn normalize_discovery_mode(value: &str) -> Result<String, String> {
     }
 }
 
+fn normalize_human_visibility_policy(value: &str) -> Result<String, String> {
+    let normalized = value.trim().to_lowercase();
+    if matches!(
+        normalized.as_str(),
+        "server-open" | "server-approval" | "private"
+    ) {
+        Ok(normalized)
+    } else {
+        Err("Human visibility policy must be server-open, server-approval, or private".to_string())
+    }
+}
+
+fn normalize_contact_approval_policy(value: &str) -> Result<String, String> {
+    let normalized = value.trim().to_lowercase();
+    if matches!(normalized.as_str(), "auto" | "approval-required") {
+        Ok(normalized)
+    } else {
+        Err("Contact approval policy must be auto or approval-required".to_string())
+    }
+}
+
+fn normalize_agent_reachability_policy(value: &str) -> Result<String, String> {
+    let normalized = value.trim().to_lowercase();
+    if matches!(normalized.as_str(), "server" | "contacts" | "owner") {
+        Ok(normalized)
+    } else {
+        Err("Agent reachability policy must be server, contacts, or owner".to_string())
+    }
+}
+
+fn human_visibility_policy_for_discovery(discovery_mode: &str) -> String {
+    match discovery_mode {
+        "open" => "server-approval".to_string(),
+        _ => "private".to_string(),
+    }
+}
+
+fn discovery_mode_for_human_visibility_policy(policy: &str) -> String {
+    match policy {
+        "server-open" | "server-approval" => "open".to_string(),
+        _ => "off".to_string(),
+    }
+}
+
 async fn sync_registered_agent(
     host: &mut DesktopBridgeHostConfig,
     agent_index: usize,
@@ -158,6 +204,9 @@ async fn sync_registered_agent(
         host.human_id.as_deref(),
         Some(agent.id.as_str()),
         Some(host.discovery_mode.as_str()),
+        Some(host.human_visibility_policy.as_str()),
+        Some(host.contact_approval_policy.as_str()),
+        Some(agent.reachability_policy.as_str()),
         agent.is_default,
         Some(host.api_style.as_str()),
         Some(agent.node_id.as_str()),
@@ -361,6 +410,9 @@ pub(super) async fn desktop_save_bridge_host_impl(
                     next.human_id.as_deref(),
                     Some(agent.id.as_str()),
                     Some(next.discovery_mode.as_str()),
+                    Some(next.human_visibility_policy.as_str()),
+                    Some(next.contact_approval_policy.as_str()),
+                    Some(agent.reachability_policy.as_str()),
                     agent.is_default,
                     Some(next.api_style.as_str()),
                     Some(next.node_id.as_str()),
@@ -378,6 +430,9 @@ pub(super) async fn desktop_save_bridge_host_impl(
             next.human_id.as_deref(),
             Some(agent.id.as_str()),
             Some(next.discovery_mode.as_str()),
+            Some(next.human_visibility_policy.as_str()),
+            Some(next.contact_approval_policy.as_str()),
+            Some(agent.reachability_policy.as_str()),
             agent.is_default,
             Some(next.api_style.as_str()),
             Some(next.node_id.as_str()),
@@ -480,6 +535,7 @@ pub(super) async fn desktop_bridge_set_discovery_mode_impl(
     discovery_mode: String,
 ) -> Result<DesktopBridgeState, String> {
     let normalized = normalize_discovery_mode(&discovery_mode)?;
+    let next_human_visibility_policy = human_visibility_policy_for_discovery(&normalized);
     let mut store = load_bridge_store();
     let host = store
         .hosts
@@ -492,11 +548,108 @@ pub(super) async fn desktop_bridge_set_discovery_mode_impl(
             if agent.api_key.trim().is_empty() {
                 continue;
             }
-            update_serve_discovery_mode(&host.coordination, &agent.api_key, &normalized).await?;
+            update_serve_discovery_mode(
+                &host.coordination,
+                &agent.api_key,
+                &normalized,
+                Some(next_human_visibility_policy.as_str()),
+                Some(host.contact_approval_policy.as_str()),
+                Some(agent.reachability_policy.as_str()),
+            )
+            .await?;
         }
     }
 
     host.discovery_mode = normalized;
+    host.human_visibility_policy = next_human_visibility_policy;
+    sync_host_active_agent_fields(host);
+    save_bridge_store(&store)?;
+    Ok(build_bridge_state(
+        store,
+        load_conversation_store(),
+        current_local_server_status(manager).await,
+    )
+    .await)
+}
+
+pub(super) async fn desktop_bridge_set_host_privacy_policy_impl(
+    manager: &DesktopBridgeManager,
+    host_id: String,
+    human_visibility_policy: String,
+    contact_approval_policy: String,
+) -> Result<DesktopBridgeState, String> {
+    let human_visibility_policy = normalize_human_visibility_policy(&human_visibility_policy)?;
+    let contact_approval_policy = normalize_contact_approval_policy(&contact_approval_policy)?;
+    let discovery_mode = discovery_mode_for_human_visibility_policy(&human_visibility_policy);
+    let mut store = load_bridge_store();
+    let host = store
+        .hosts
+        .iter_mut()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| "Bridge host not found".to_string())?;
+
+    if host.api_style == API_STYLE_SERVE {
+        for agent in &host.agents {
+            if agent.api_key.trim().is_empty() {
+                continue;
+            }
+            update_serve_discovery_mode(
+                &host.coordination,
+                &agent.api_key,
+                &discovery_mode,
+                Some(human_visibility_policy.as_str()),
+                Some(contact_approval_policy.as_str()),
+                Some(agent.reachability_policy.as_str()),
+            )
+            .await?;
+        }
+    }
+
+    host.discovery_mode = discovery_mode;
+    host.human_visibility_policy = human_visibility_policy;
+    host.contact_approval_policy = contact_approval_policy;
+    sync_host_active_agent_fields(host);
+    save_bridge_store(&store)?;
+    Ok(build_bridge_state(
+        store,
+        load_conversation_store(),
+        current_local_server_status(manager).await,
+    )
+    .await)
+}
+
+pub(super) async fn desktop_bridge_set_agent_reachability_policy_impl(
+    manager: &DesktopBridgeManager,
+    host_id: String,
+    agent_id: String,
+    reachability_policy: String,
+) -> Result<DesktopBridgeState, String> {
+    let reachability_policy = normalize_agent_reachability_policy(&reachability_policy)?;
+    let mut store = load_bridge_store();
+    let host = store
+        .hosts
+        .iter_mut()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| "Bridge host not found".to_string())?;
+    let agent = host
+        .agents
+        .iter_mut()
+        .find(|agent| agent.id == agent_id)
+        .ok_or_else(|| "Bridge agent not found".to_string())?;
+
+    if host.api_style == API_STYLE_SERVE && !agent.api_key.trim().is_empty() {
+        update_serve_discovery_mode(
+            &host.coordination,
+            &agent.api_key,
+            &host.discovery_mode,
+            Some(host.human_visibility_policy.as_str()),
+            Some(host.contact_approval_policy.as_str()),
+            Some(reachability_policy.as_str()),
+        )
+        .await?;
+    }
+
+    agent.reachability_policy = reachability_policy;
     sync_host_active_agent_fields(host);
     save_bridge_store(&store)?;
     Ok(build_bridge_state(
@@ -541,6 +694,7 @@ pub(super) async fn desktop_bridge_create_agent_impl(
         .unwrap_or_else(default_bridge_agent_runtime);
 
     let agent_id = generate_agent_id();
+    let reachability_policy = default_agent_reachability_policy();
     let (api_style, node_id, api_key) = register_bridge_host(
         &host.coordination,
         &agent_label,
@@ -550,6 +704,9 @@ pub(super) async fn desktop_bridge_create_agent_impl(
         host.human_id.as_deref(),
         Some(agent_id.as_str()),
         Some(host.discovery_mode.as_str()),
+        Some(host.human_visibility_policy.as_str()),
+        Some(host.contact_approval_policy.as_str()),
+        Some(reachability_policy.as_str()),
         false,
         Some(host.api_style.as_str()),
         None,
@@ -571,6 +728,7 @@ pub(super) async fn desktop_bridge_create_agent_impl(
         fallback_auth_provider: None,
         fallback_auth_choice: None,
         thinking: None,
+        reachability_policy,
     };
     apply_missing_agent_routing(&mut agent, &local_agent_routing);
     host.agents.push(agent);
@@ -781,7 +939,14 @@ pub(super) async fn desktop_bridge_add_contact_impl(
     }
     let store = load_bridge_store();
     let host = require_serve_host(&store, &host_id, SERVE_ONLY_CONTACTS_MESSAGE)?;
-    add_serve_contact(&host.coordination, &host.api_key, peer_node_id).await?;
+    let message = default_contact_request_message(&host);
+    add_serve_contact(
+        &host.coordination,
+        &host.api_key,
+        peer_node_id,
+        Some(&message),
+    )
+    .await?;
     Ok(build_current_bridge_state(manager).await)
 }
 
@@ -797,5 +962,35 @@ pub(super) async fn desktop_bridge_remove_contact_impl(
     let store = load_bridge_store();
     let host = require_serve_host(&store, &host_id, SERVE_ONLY_CONTACTS_MESSAGE)?;
     remove_serve_contact(&host.coordination, &host.api_key, peer_node_id).await?;
+    Ok(build_current_bridge_state(manager).await)
+}
+
+pub(super) async fn desktop_bridge_approve_contact_request_impl(
+    manager: &DesktopBridgeManager,
+    host_id: String,
+    request_id: String,
+) -> Result<DesktopBridgeState, String> {
+    let request_id = request_id.trim();
+    if request_id.is_empty() {
+        return Err("Contact request ID cannot be empty".to_string());
+    }
+    let store = load_bridge_store();
+    let host = require_serve_host(&store, &host_id, SERVE_ONLY_CONTACTS_MESSAGE)?;
+    approve_serve_contact_request(&host.coordination, &host.api_key, request_id).await?;
+    Ok(build_current_bridge_state(manager).await)
+}
+
+pub(super) async fn desktop_bridge_reject_contact_request_impl(
+    manager: &DesktopBridgeManager,
+    host_id: String,
+    request_id: String,
+) -> Result<DesktopBridgeState, String> {
+    let request_id = request_id.trim();
+    if request_id.is_empty() {
+        return Err("Contact request ID cannot be empty".to_string());
+    }
+    let store = load_bridge_store();
+    let host = require_serve_host(&store, &host_id, SERVE_ONLY_CONTACTS_MESSAGE)?;
+    reject_serve_contact_request(&host.coordination, &host.api_key, request_id).await?;
     Ok(build_current_bridge_state(manager).await)
 }

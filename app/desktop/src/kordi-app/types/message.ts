@@ -16,9 +16,11 @@ export type SessionArtifact = {
   path: string;
   name: string;
   kind: 'code' | 'document' | 'file';
+  category?: 'artifact' | 'related' | 'memory';
   summary: string;
   timeLabel?: string;
   live?: boolean;
+  pinned?: boolean;
 };
 
 export type DesktopArtifactPreview = {
@@ -121,6 +123,8 @@ export type DesktopChatToolSnapshot = {
   liveOutput: string;
   resultText?: string | null;
   detail?: string | null;
+  artifactPath?: string | null;
+  toolLayer?: string | null;
   isError: boolean;
 };
 
@@ -149,6 +153,8 @@ export type DesktopChatTurnSnapshot = {
   tools: DesktopChatToolSnapshot[];
   completed: boolean;
   succeeded: boolean;
+  startedAtMs?: number | null;
+  completedAtMs?: number | null;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
   replyToMessageId?: string | null;

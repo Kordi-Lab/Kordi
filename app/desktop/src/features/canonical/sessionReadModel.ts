@@ -13,8 +13,9 @@ import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
   sessionChatActivityAtMs,
-  sessionDisplayTitle,
+  sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
+  sessionHasManualTitle,
   sessionMetadata,
   sessionViewMetadata,
   shouldUseCanonicalMessages,
@@ -90,14 +91,54 @@ function sameOwnedAgentTurn(canonical: Message, local: Message) {
   return false;
 }
 
+function isBridgeProcessingOnlyRuntimePlaceholder(message: Message) {
+  if (!message.id?.startsWith('bridge-live-turn:') || !message.turn) return false;
+  return !message.turn.completed
+    && !message.text.trim()
+    && !message.turn.assistantText.trim()
+    && !message.turn.thinkingText.trim()
+    && message.turn.tools.length === 0;
+}
+
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
+    && !isBridgeProcessingOnlyRuntimePlaceholder(message)
     && (
       (message.turn?.tools?.length ?? 0) > 0
       || (message.turn?.thinkingText?.trim().length ?? 0) > 0
       || message.turn?.completed === false
     );
+}
+
+function isPendingCanonicalAgentPlaceholder(message: Message) {
+  return Boolean(
+    message.turn
+      && !message.turn.completed
+      && (message.role === 'owned-agent' || message.role === 'external-agent')
+      && message.id?.startsWith('canonical-delegation-processing:'),
+  );
+}
+
+function localRuntimeProgressForCanonicalPlaceholder(canonicalMessage: Message, localMessage: Message): Message {
+  if (!localMessage.turn) return canonicalMessage;
+  const canonicalReplyToMessageId = canonicalMessage.replyToMessageId ?? canonicalMessage.turn?.replyToMessageId;
+  return {
+    ...localMessage,
+    id: canonicalMessage.id,
+    role: canonicalMessage.role,
+    replyToMessageId: canonicalReplyToMessageId ?? localMessage.replyToMessageId,
+    sourceMessage: canonicalMessage.sourceMessage ?? localMessage.sourceMessage,
+    replyAliasIds: canonicalMessage.replyAliasIds ?? localMessage.replyAliasIds,
+    turn: {
+      ...localMessage.turn,
+      id: canonicalMessage.turn?.id ?? localMessage.turn.id,
+      sessionId: canonicalMessage.turn?.sessionId ?? localMessage.turn.sessionId,
+      replyToMessageId: canonicalReplyToMessageId ?? localMessage.turn.replyToMessageId,
+      sourceMessage: canonicalMessage.turn?.sourceMessage ?? localMessage.turn.sourceMessage,
+      pendingBridgeAgentRequest: canonicalMessage.turn?.pendingBridgeAgentRequest ?? localMessage.turn.pendingBridgeAgentRequest,
+    },
+  };
 }
 
 function mergeLocalOwnedAgentRuntimeStatus(
@@ -106,6 +147,20 @@ function mergeLocalOwnedAgentRuntimeStatus(
 ) {
   const merged = [...canonicalMessages];
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
+    if (localMessage.turn && !localMessage.turn.completed) {
+      const pendingCanonicalIndex = merged.findIndex((message) => (
+        isPendingCanonicalAgentPlaceholder(message)
+        && message.role === localMessage.role
+      ));
+      if (pendingCanonicalIndex >= 0) {
+        merged[pendingCanonicalIndex] = localRuntimeProgressForCanonicalPlaceholder(
+          merged[pendingCanonicalIndex],
+          localMessage,
+        );
+        continue;
+      }
+    }
+
     const matchingCanonicalIndex = merged.findIndex((message) => sameOwnedAgentTurn(message, localMessage));
     if (matchingCanonicalIndex >= 0) {
       merged[matchingCanonicalIndex] = localMessage;
@@ -278,7 +333,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const participants = canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionDisplayTitle(messages, session.title || conversation.name);
+      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
       const latestTime = messages[messages.length - 1]?.time
         ?? conversation.updatedAtLabel
         ?? formatDesktopClockTime(sessionChatActivityAtMs(session));

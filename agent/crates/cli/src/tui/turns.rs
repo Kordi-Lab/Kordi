@@ -179,10 +179,13 @@ impl TuiController {
             tool_ctx: kordi_tools::ToolContext {
                 cwd: self.session_setup.tool_ctx.cwd.clone(),
                 artifacts_dir: self.session_setup.tool_ctx.artifacts_dir.clone(),
+                model: None,
                 execution_policy: self.session_setup.tool_ctx.execution_policy,
                 on_output: None,
                 web_search: self.session_setup.tool_ctx.web_search.clone(),
                 reach_out: self.session_setup.tool_ctx.reach_out.clone(),
+                reflection: None,
+                task_operator: None,
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
             },

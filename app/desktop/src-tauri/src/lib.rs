@@ -4,6 +4,8 @@ mod bridge;
 mod canonical_sessions;
 mod chat;
 mod project;
+#[cfg(test)]
+mod test_support;
 mod workspace;
 
 use std::process::Command;
@@ -57,7 +59,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
@@ -94,6 +96,8 @@ pub fn run() {
             bridge::desktop_remove_bridge_host,
             bridge::desktop_set_active_bridge_host,
             bridge::desktop_bridge_set_discovery_mode,
+            bridge::desktop_bridge_set_host_privacy_policy,
+            bridge::desktop_bridge_set_agent_reachability_policy,
             bridge::desktop_bridge_create_agent,
             bridge::desktop_bridge_activate_agent,
             bridge::desktop_bridge_rename_agent,
@@ -107,6 +111,8 @@ pub fn run() {
             bridge::desktop_bridge_join_project,
             bridge::desktop_bridge_add_contact,
             bridge::desktop_bridge_remove_contact,
+            bridge::desktop_bridge_approve_contact_request,
+            bridge::desktop_bridge_reject_contact_request,
             bridge::desktop_bridge_open_conversation,
             bridge::desktop_bridge_mark_conversation_read,
             bridge::desktop_bridge_send_message,
@@ -114,6 +120,7 @@ pub fn run() {
             bridge::desktop_bridge_cancel_outreach,
             bridge::desktop_bridge_send_presence,
             bridge::desktop_bridge_poll_mailbox,
+            bridge::desktop_bridge_refresh_realtime_connections,
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_upsert_identity,
             canonical_sessions::desktop_canonical_open_or_create_session,
@@ -183,6 +190,19 @@ pub fn run() {
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Kordi desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building Kordi desktop");
+
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::Resumed => {
+            bridge::schedule_bridge_realtime_refresh(app_handle, "app-resumed");
+        }
+        tauri::RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Focused(true),
+            ..
+        } => {
+            bridge::schedule_bridge_realtime_refresh(app_handle, "window-focused");
+        }
+        _ => {}
+    });
 }

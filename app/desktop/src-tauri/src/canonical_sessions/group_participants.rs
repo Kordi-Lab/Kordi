@@ -3,6 +3,22 @@ use serde_json::Value;
 
 use super::{now_ms, select_session, upsert_participant, CanonicalSession};
 
+fn manual_title_metadata(session: &CanonicalSession) -> Result<String, String> {
+    let mut metadata = match session.metadata.clone() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    metadata.insert(
+        "titleSource".to_string(),
+        Value::String("manual".to_string()),
+    );
+    metadata.insert(
+        "sessionTitleSource".to_string(),
+        Value::String("manual".to_string()),
+    );
+    serde_json::to_string(&Value::Object(metadata)).map_err(|err| err.to_string())
+}
+
 pub(crate) fn ensure_group_session(
     conn: &Connection,
     session_id: &str,
@@ -24,10 +40,31 @@ pub(crate) fn rename_session_in_db(
     if title.is_empty() {
         return Err("Group name is required".to_string());
     }
-    ensure_group_session(conn, session_id)?;
+    let session = ensure_group_session(conn, session_id)?;
+    let metadata = manual_title_metadata(&session)?;
     conn.execute(
-        "UPDATE sessions SET title = ?2, updated_at_ms = ?3 WHERE id = ?1",
-        params![session_id, title, now_ms()],
+        "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
+        params![session_id, title, metadata, now_ms()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn rename_any_session_title_in_db(
+    conn: &Connection,
+    session_id: &str,
+    title: &str,
+) -> Result<(), String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("Session title is required".to_string());
+    }
+    let session =
+        select_session(conn, session_id)?.ok_or_else(|| "Session not found".to_string())?;
+    let metadata = manual_title_metadata(&session)?;
+    conn.execute(
+        "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
+        params![session_id, title, metadata, now_ms()],
     )
     .map_err(|err| err.to_string())?;
     Ok(())

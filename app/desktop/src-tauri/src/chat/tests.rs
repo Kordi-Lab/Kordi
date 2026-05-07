@@ -29,6 +29,8 @@ async fn running_turn_lookup_is_session_scoped() {
         tools: Vec::new(),
         completed: false,
         succeeded: false,
+        started_at_ms: 1,
+        completed_at_ms: None,
         error: None,
         transcript_refresh_required: false,
     }));

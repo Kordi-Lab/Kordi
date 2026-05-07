@@ -8,6 +8,55 @@ import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 
+test('canonical direct person conversations use contact name and latest-message subtitle', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', humanId: 'kh_bob', bridgeNodeId: 'kd_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: 'session:bridge:humans:bob',
+      kind: 'direct-person',
+      title: 'how is weather in jeddah',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'human:bob',
+      relationshipIdentityId: 'human:bob',
+      metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'kd_bob', peerRuntime: 'person' },
+      createdAtMs: 1,
+      updatedAtMs: 3,
+      lastMessageAtMs: 3,
+    }],
+    participants: [
+      { sessionId: 'session:bridge:humans:bob', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:bridge:humans:bob', identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:first', sessionId: 'session:bridge:humans:bob', senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'how is weather in jeddah', content: { sender: 'Kordi User 2', timeLabel: '00:29' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'first' },
+      { id: 'msg:latest', sessionId: 'session:bridge:humans:bob', senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'Jeddah is mostly clear now', content: { sender: 'Kordi User 2', timeLabel: '00:31' }, status: 'sent', sequenceNum: 2, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'latest' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[messages.length - 1]?.text ?? fallback ?? '') ?? [];
+  const conversation = conversations.find((item) => item.canonicalSessionId === 'session:bridge:humans:bob');
+
+  assert.equal(conversation?.name, 'Kordi User 2');
+  assert.equal(conversation?.subtitle, 'Jeddah is mostly clear now');
+});
+
 test('workspace view model exposes participant spaces alongside flat chat conversations', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
   function Probe() {
@@ -57,6 +106,108 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.ok(viewModels?.participantSpaces[0]?.sessions.length);
   const totalChannelSpaces = (viewModels?.contactParticipantSpaces.length ?? 0) + (viewModels?.agentParticipantSpaces.length ?? 0);
   assert.equal(totalChannelSpaces, viewModels?.participantSpaces.length);
+});
+
+test('workspace view model exposes visible non-contact Bridge people for Add contacts only', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: null,
+      desktopBridgeState: {
+        configPath: '/tmp/bridge.json',
+        legacyConfigPath: '/tmp/legacy.json',
+        conversationsPath: '/tmp/conversations.sqlite3',
+        activeHostId: 'host-1',
+        hosts: [{
+          id: 'host-1',
+          registered: true,
+          connected: true,
+          serverUrl: 'https://bridge.test',
+          nodeId: 'kd_me',
+          displayName: 'Me',
+          ownerName: 'Me',
+          endpoint: 'https://bridge.test/kd_me',
+          tokenPresent: true,
+          humanId: 'kh_me',
+          discoveryMode: 'open',
+          humanVisibilityPolicy: 'server-approval',
+          contactApprovalPolicy: 'approval-required',
+          activeAgentId: null,
+          agents: [],
+          visiblePeers: [{
+            nodeId: 'kd_visible',
+            displayName: 'Kordi User 6',
+            runtime: 'person',
+            endpoint: '',
+            ownerName: 'Kordi User 6',
+            createdAt: null,
+            sharedProjects: [],
+            humanId: 'kh_visible',
+            agentId: null,
+            isDefaultAgent: false,
+            discoveryMode: null,
+            humanVisibilityPolicy: 'server-approval',
+            contactApprovalPolicy: 'approval-required',
+            agentReachabilityPolicy: 'contacts',
+            isContact: false,
+            contactRequestStatus: null,
+            contactRequestDirection: null,
+          }, {
+            nodeId: 'kd_contact',
+            displayName: 'Existing Contact',
+            runtime: 'person',
+            endpoint: '',
+            ownerName: 'Existing Contact',
+            createdAt: null,
+            sharedProjects: [],
+            humanId: 'kh_contact',
+            agentId: null,
+            isDefaultAgent: false,
+            discoveryMode: null,
+            humanVisibilityPolicy: 'server-open',
+            contactApprovalPolicy: 'auto',
+            agentReachabilityPolicy: 'contacts',
+            isContact: true,
+            contactRequestStatus: 'contact',
+            contactRequestDirection: null,
+          }],
+          visiblePeerCount: 2,
+          projects: [],
+          contactRequests: [],
+          lastError: null,
+        }],
+        conversations: [],
+        localServer: { running: true },
+      } as never,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'contacts',
+      activeConvId: '',
+      activeProjectId: '',
+      activeProjectSessionId: '',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.deepEqual(viewModels?.addableContacts.map((contact) => contact.name), ['Kordi User 6']);
+  assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Kordi User 6'), false);
+  assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Existing Contact'), true);
 });
 
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
@@ -247,6 +398,158 @@ test('canonical read model names chat-created direct and group sessions from the
   assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
   assert.equal(groupSpace?.title, 'Design crew');
   assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
+});
+
+test('canonical read model prefers a manually renamed session title over the first user message', () => {
+  const sessionId = 'session:direct-person:alice-renamed';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'direct-person',
+      title: 'Renamed lunch thread',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'human:alice',
+      relationshipIdentityId: 'human:alice',
+      metadata: { createdFrom: 'chat-create-flow', titleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:direct:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Plan lunch tomorrow with the launch notes before standup', content: { sender: 'Me', timeLabel: '10:01' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'direct:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const conversation = conversations.find((item) => item.id === sessionId);
+  const space = buildParticipantSpaces(conversations).find((item) => item.sessions.some((session) => session.id === sessionId));
+
+  assert.equal(conversation?.name, 'Renamed lunch thread');
+  assert.equal(space?.sessions[0]?.title, 'Renamed lunch thread');
+});
+
+test('canonical read model keeps group space names separate from first-message session titles after group rename', () => {
+  const sessionId = 'session:group:renamed-space';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Atestgroup',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { customName: 'Atestgroup', groupId: sessionId, groupSpaceId: sessionId, titleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello guys', content: { sender: 'Me', timeLabel: '10:13' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((item) => item.id === `group:${sessionId}`);
+
+  assert.equal(space?.title, 'Atestgroup');
+  assert.equal(space?.sessions[0]?.title, 'hello guys');
+});
+
+test('canonical read model can show a manually renamed group session without changing the group space name', () => {
+  const sessionId = 'session:group:manual-session-title';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Sprint retro notes',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { customName: 'Design crew', groupId: sessionId, groupSpaceId: sessionId, sessionTitleSource: 'manual' },
+      createdAtMs: 1,
+      updatedAtMs: 30,
+      lastMessageAtMs: 10,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:group:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello guys', content: { sender: 'Me', timeLabel: '10:13' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const space = buildParticipantSpaces(conversations).find((item) => item.id === `group:${sessionId}`);
+
+  assert.equal(space?.title, 'Design crew');
+  assert.equal(space?.sessions[0]?.title, 'Sprint retro notes');
 });
 
 test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {

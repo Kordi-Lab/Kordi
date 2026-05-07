@@ -20,7 +20,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
@@ -40,12 +40,14 @@ use self::conversations::{
 use self::local_server::{current_local_server_status, start_local_server, stop_local_server};
 #[allow(unused_imports)]
 use self::network::{
-    ack_mailbox_v2, add_serve_contact, augment_peers_with_project_membership, create_serve_invite,
-    create_serve_project, decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target,
-    fetch_mailbox, fetch_registry_visible_nodes, fetch_serve_contacts, fetch_serve_discovery,
-    health_check, join_serve_project, poll_mailbox_v2, register_bridge_host,
-    relay_plaintext_message, remove_serve_contact, update_registered_registry_node,
-    update_serve_discovery_mode, AckedMailboxEntry,
+    ack_mailbox_v2, add_serve_contact, approve_serve_contact_request,
+    augment_peers_with_project_membership, create_serve_invite, create_serve_project,
+    decrypt_bridge_payload_for_host, encrypt_bridge_payload_for_target, fetch_mailbox,
+    fetch_registry_visible_nodes, fetch_serve_contact_requests, fetch_serve_contacts,
+    fetch_serve_discovery, health_check, join_serve_project, poll_mailbox_v2, register_bridge_host,
+    reject_serve_contact_request, relay_plaintext_message, relay_target_kind_for_payload,
+    remove_serve_contact, update_registered_registry_node, update_serve_discovery_mode,
+    AckedMailboxEntry,
 };
 #[allow(unused_imports)]
 use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_STATE_EVENT};
@@ -187,6 +189,11 @@ struct DesktopBridgeAgentConfig {
     fallback_auth_choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     thinking: Option<String>,
+    #[serde(
+        rename = "reachabilityPolicy",
+        default = "default_agent_reachability_policy"
+    )]
+    reachability_policy: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +216,13 @@ struct DesktopBridgeHostConfig {
     human_id: Option<String>,
     #[serde(rename = "discoveryMode", default = "default_discovery_mode")]
     discovery_mode: String,
+    #[serde(rename = "humanVisibilityPolicy", default)]
+    human_visibility_policy: String,
+    #[serde(
+        rename = "contactApprovalPolicy",
+        default = "default_contact_approval_policy"
+    )]
+    contact_approval_policy: String,
     #[serde(
         rename = "activeAgentId",
         default,
@@ -300,10 +314,38 @@ pub struct DesktopBridgeSessionThreadMessage {
 pub struct DesktopBridgeSessionParticipant {
     pub identity_id: Option<String>,
     pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_identity_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_display_name: Option<String>,
     pub bridge_node_id: Option<String>,
     pub human_id: Option<String>,
     pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgePromptIdentity {
+    pub identity_id: Option<String>,
+    pub display_name: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_identity_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +361,10 @@ pub struct DesktopBridgeOutreachMetadata {
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiator_identity: Option<DesktopBridgePromptIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_target_identity: Option<DesktopBridgePromptIdentity>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub bridge_host_id: String,
@@ -382,6 +428,7 @@ pub struct DesktopBridgeAgent {
     pub fallback_auth_provider: Option<String>,
     pub fallback_auth_choice: Option<String>,
     pub thinking: Option<String>,
+    pub reachability_policy: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,6 +445,13 @@ pub struct DesktopBridgePeer {
     pub agent_id: Option<String>,
     pub is_default_agent: bool,
     pub discovery_mode: Option<String>,
+    pub human_visibility_policy: Option<String>,
+    pub contact_approval_policy: Option<String>,
+    pub agent_reachability_policy: Option<String>,
+    #[serde(default)]
+    pub is_contact: bool,
+    pub contact_request_status: Option<String>,
+    pub contact_request_direction: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -422,12 +476,29 @@ pub struct DesktopBridgeHost {
     pub token_present: bool,
     pub human_id: String,
     pub discovery_mode: String,
+    pub human_visibility_policy: String,
+    pub contact_approval_policy: String,
     pub active_agent_id: Option<String>,
     pub agents: Vec<DesktopBridgeAgent>,
     pub visible_peers: Vec<DesktopBridgePeer>,
     pub visible_peer_count: usize,
     pub projects: Vec<DesktopBridgeProject>,
+    #[serde(default)]
+    pub contact_requests: Vec<DesktopBridgeContactRequest>,
     pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBridgeContactRequest {
+    pub request_id: String,
+    pub requester_node_id: String,
+    pub target_node_id: String,
+    pub status: String,
+    pub message: Option<String>,
+    pub created_at: String,
+    pub decided_at: Option<String>,
+    pub direction: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -529,6 +600,8 @@ pub struct DesktopBridgeCreateOutreachRequest {
     pub parent_session_participants: Vec<DesktopBridgeSessionParticipant>,
     #[serde(default)]
     pub parent_session_messages: Vec<DesktopBridgeSessionThreadMessage>,
+    pub initiator_identity: Option<DesktopBridgePromptIdentity>,
+    pub self_target_identity: Option<DesktopBridgePromptIdentity>,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
     pub bridge_request_id: Option<String>,
@@ -611,6 +684,25 @@ pub(crate) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: t
     realtime::set_bridge_app_handle(manager, app).await;
 }
 
+pub(crate) fn schedule_bridge_realtime_refresh(app: &tauri::AppHandle, reason: &'static str) {
+    let manager = app.state::<DesktopBridgeManager>().inner().clone();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match realtime::refresh_realtime_connections(&manager).await {
+            Ok(state) => {
+                if let Err(error) = app.emit(BRIDGE_STATE_EVENT, state) {
+                    eprintln!(
+                        "Bridge realtime refresh after {reason} could not emit state: {error}"
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!("Bridge realtime refresh after {reason} failed: {error}");
+            }
+        }
+    });
+}
+
 fn default_bridge_api_style() -> String {
     constants::API_STYLE_REGISTRY.to_string()
 }
@@ -623,12 +715,66 @@ fn default_discovery_mode() -> String {
     "open".to_string()
 }
 
+fn default_human_visibility_policy() -> String {
+    "server-approval".to_string()
+}
+
+fn default_contact_approval_policy() -> String {
+    "approval-required".to_string()
+}
+
+fn default_agent_reachability_policy() -> String {
+    "contacts".to_string()
+}
+
+fn normalize_stored_human_visibility_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    matches!(
+        normalized.as_str(),
+        "server-open" | "server-approval" | "private"
+    )
+    .then_some(normalized)
+}
+
+fn normalize_stored_contact_approval_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    matches!(normalized.as_str(), "auto" | "approval-required").then_some(normalized)
+}
+
+fn normalize_stored_agent_reachability_policy(value: &str) -> Option<String> {
+    let normalized = value.trim().to_lowercase();
+    matches!(normalized.as_str(), "server" | "contacts" | "owner").then_some(normalized)
+}
+
+fn human_visibility_policy_for_stored_discovery(discovery_mode: &str) -> String {
+    match discovery_mode.trim().to_lowercase().as_str() {
+        "contacts" | "off" => "private".to_string(),
+        _ => default_human_visibility_policy(),
+    }
+}
+
 fn default_display_name() -> String {
     constants::DEFAULT_DISPLAY_NAME.to_string()
 }
 
 fn default_owner_name() -> String {
     constants::DEFAULT_OWNER_NAME.to_string()
+}
+
+fn default_contact_request_message(host: &DesktopBridgeHostConfig) -> String {
+    let owner = host
+        .owner
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            host.display_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("a Kordi user");
+    format!("I am {owner}. I'd like to add you as a Kordi contact.")
 }
 
 fn default_bridge_agent_label(owner_name: &str) -> String {
@@ -740,6 +886,8 @@ fn ensure_host_bootstrap(
         owner: None,
         human_id: None,
         discovery_mode: default_discovery_mode(),
+        human_visibility_policy: default_human_visibility_policy(),
+        contact_approval_policy: default_contact_approval_policy(),
         active_agent_id: None,
         agents: Vec::new(),
         api_style: default_bridge_api_style(),
@@ -757,9 +905,18 @@ fn ensure_host_bootstrap(
             generate_human_id()
         }
     }));
-    if host.discovery_mode.trim().is_empty() {
+    if !matches!(
+        host.discovery_mode.trim().to_lowercase().as_str(),
+        "off" | "contacts" | "open"
+    ) {
         host.discovery_mode = default_discovery_mode();
     }
+    host.human_visibility_policy =
+        normalize_stored_human_visibility_policy(&host.human_visibility_policy)
+            .unwrap_or_else(|| human_visibility_policy_for_stored_discovery(&host.discovery_mode));
+    host.contact_approval_policy =
+        normalize_stored_contact_approval_policy(&host.contact_approval_policy)
+            .unwrap_or_else(default_contact_approval_policy);
 
     if host.agents.is_empty() {
         host.agents.push(DesktopBridgeAgentConfig {
@@ -786,6 +943,7 @@ fn ensure_host_bootstrap(
             fallback_auth_provider: None,
             fallback_auth_choice: None,
             thinking: None,
+            reachability_policy: default_agent_reachability_policy(),
         });
     } else {
         let active_id = host.active_agent_id.clone();
@@ -812,6 +970,9 @@ fn ensure_host_bootstrap(
             if agent.runtime.trim().is_empty() {
                 agent.runtime = default_bridge_agent_runtime();
             }
+            agent.reachability_policy =
+                normalize_stored_agent_reachability_policy(&agent.reachability_policy)
+                    .unwrap_or_else(default_agent_reachability_policy);
             agent.is_default = index == default_index;
         }
     }
@@ -845,6 +1006,7 @@ fn build_public_bridge_agents(host: &DesktopBridgeHostConfig) -> Vec<DesktopBrid
             fallback_auth_provider: agent.fallback_auth_provider.clone(),
             fallback_auth_choice: agent.fallback_auth_choice.clone(),
             thinking: agent.thinking.clone(),
+            reachability_policy: agent.reachability_policy.clone(),
         })
         .collect()
 }
@@ -920,6 +1082,38 @@ pub async fn desktop_bridge_set_discovery_mode(
     discovery_mode: String,
 ) -> Result<DesktopBridgeState, String> {
     host_commands::desktop_bridge_set_discovery_mode_impl(&manager, host_id, discovery_mode).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_set_host_privacy_policy(
+    manager: State<'_, DesktopBridgeManager>,
+    host_id: String,
+    human_visibility_policy: String,
+    contact_approval_policy: String,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_set_host_privacy_policy_impl(
+        &manager,
+        host_id,
+        human_visibility_policy,
+        contact_approval_policy,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_set_agent_reachability_policy(
+    manager: State<'_, DesktopBridgeManager>,
+    host_id: String,
+    agent_id: String,
+    reachability_policy: String,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_set_agent_reachability_policy_impl(
+        &manager,
+        host_id,
+        agent_id,
+        reachability_policy,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1101,6 +1295,24 @@ pub async fn desktop_bridge_remove_contact(
 }
 
 #[tauri::command]
+pub async fn desktop_bridge_approve_contact_request(
+    manager: State<'_, DesktopBridgeManager>,
+    host_id: String,
+    request_id: String,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_approve_contact_request_impl(&manager, host_id, request_id).await
+}
+
+#[tauri::command]
+pub async fn desktop_bridge_reject_contact_request(
+    manager: State<'_, DesktopBridgeManager>,
+    host_id: String,
+    request_id: String,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_reject_contact_request_impl(&manager, host_id, request_id).await
+}
+
+#[tauri::command]
 pub async fn desktop_bridge_open_conversation(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,
@@ -1186,9 +1398,34 @@ pub async fn desktop_bridge_poll_mailbox(
     mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
 }
 
+#[tauri::command]
+pub async fn desktop_bridge_refresh_realtime_connections(
+    manager: State<'_, DesktopBridgeManager>,
+) -> Result<DesktopBridgeState, String> {
+    realtime::refresh_realtime_connections(&manager).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_host_config() -> DesktopBridgeHostConfig {
+        DesktopBridgeHostConfig {
+            id: "host-1".to_string(),
+            coordination: "https://bridge.example".to_string(),
+            node_id: "kd_self".to_string(),
+            api_key: "secret".to_string(),
+            display_name: Some("My Kordi".to_string()),
+            owner: Some("Me".to_string()),
+            human_id: Some("kh_self".to_string()),
+            discovery_mode: default_discovery_mode(),
+            human_visibility_policy: default_human_visibility_policy(),
+            contact_approval_policy: default_contact_approval_policy(),
+            active_agent_id: None,
+            agents: Vec::new(),
+            api_style: default_bridge_api_style(),
+        }
+    }
 
     fn empty_agent() -> DesktopBridgeAgentConfig {
         DesktopBridgeAgentConfig {
@@ -1205,7 +1442,19 @@ mod tests {
             fallback_auth_provider: None,
             fallback_auth_choice: None,
             thinking: None,
+            reachability_policy: default_agent_reachability_policy(),
         }
+    }
+
+    #[test]
+    fn default_contact_request_message_introduces_the_local_owner() {
+        let mut host = test_host_config();
+        host.owner = Some("Kordi User 5".to_string());
+
+        assert_eq!(
+            default_contact_request_message(&host),
+            "I am Kordi User 5. I'd like to add you as a Kordi contact.",
+        );
     }
 
     #[test]

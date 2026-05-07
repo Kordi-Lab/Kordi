@@ -44,11 +44,15 @@ fn realtime_delivery_ack_payload(
         .map(str::trim)
         .filter(|value| !value.is_empty())?;
 
-    Some(serde_json::json!({
+    let mut payload = serde_json::json!({
         "from": target.host.node_id,
         "messageType": BRIDGE_MESSAGE_TYPE_DELIVERY_EVENT,
         "payload": { "requestId": request_id, "state": BRIDGE_DELIVERY_STATE_DELIVERED },
-    }))
+    });
+    if let Some(thread) = event_session_thread(event) {
+        payload["payload"]["sessionThread"] = thread.clone();
+    }
+    Some(payload)
 }
 
 fn event_session_thread(event: &ParsedMailboxEvent) -> Option<&Value> {
@@ -421,6 +425,8 @@ mod tests {
                 owner: Some("Me".to_string()),
                 human_id: Some("human-me".to_string()),
                 discovery_mode: "ask".to_string(),
+                human_visibility_policy: "server-approval".to_string(),
+                contact_approval_policy: "approval-required".to_string(),
                 active_agent_id: None,
                 agents: vec![],
                 api_style: "serve".to_string(),
@@ -514,6 +520,17 @@ mod tests {
         assert_eq!(
             payload["payload"]["state"],
             serde_json::json!(BRIDGE_DELIVERY_STATE_DELIVERED)
+        );
+    }
+
+    #[test]
+    fn realtime_delivery_ack_payload_preserves_group_session_thread_for_authorization() {
+        let payload = realtime_delivery_ack_payload(&test_target(), &test_group_event())
+            .expect("group message should be acknowledged");
+
+        assert_eq!(
+            payload["payload"]["sessionThread"]["parentGroupSpaceId"],
+            serde_json::json!("session:group:root")
         );
     }
 

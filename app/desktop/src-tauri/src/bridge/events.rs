@@ -2,12 +2,19 @@ use base64::Engine;
 use serde_json::Value;
 
 use super::constants::{is_agent_like_runtime, BRIDGE_MESSAGE_TYPE_RAW};
+use crate::canonical_sessions::{
+    render_multi_participant_identity_context, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+};
+
 use super::{
     default_display_name, default_owner_name, now_ms, DesktopBridgeHostConfig,
     DesktopBridgeIdentitySnapshot, DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata,
+    DesktopBridgePromptIdentity, DesktopBridgeSessionParticipant,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
+const PAYLOAD_FALLBACK_SELF_IDENTITY_ID: &str = "unknown:bridge-agent-target";
 
 #[derive(Clone)]
 pub(super) struct ParsedMailboxEvent {
@@ -154,6 +161,170 @@ pub(super) fn mailbox_payload_attachments(
     Ok(attachments)
 }
 
+fn clean_payload_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn prompt_identity_to_role(
+    identity: DesktopBridgePromptIdentity,
+    identity_id_override: Option<&str>,
+) -> Option<IdentityContextRole> {
+    let display_name = clean_payload_string(Some(&identity.display_name))?;
+    let kind = clean_payload_string(Some(&identity.kind)).unwrap_or_else(|| "identity".to_string());
+    let identity_id = identity_id_override
+        .map(ToString::to_string)
+        .or_else(|| {
+            identity
+                .identity_id
+                .and_then(|value| clean_payload_string(Some(&value)))
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "unknown:{kind}:{}",
+                display_name.to_ascii_lowercase().replace(' ', "-")
+            )
+        });
+    Some(IdentityContextRole {
+        identity_id,
+        display_name,
+        kind,
+        owner_identity_id: identity
+            .owner_identity_id
+            .and_then(|value| clean_payload_string(Some(&value))),
+        owner_display_name: identity
+            .owner_display_name
+            .and_then(|value| clean_payload_string(Some(&value))),
+        locality: Some("non-local".to_string()),
+    })
+}
+
+fn participant_to_identity_context(
+    participant: DesktopBridgeSessionParticipant,
+) -> Option<IdentityContextParticipant> {
+    let display_name = clean_payload_string(Some(&participant.display_name))?;
+    let kind = participant
+        .kind
+        .and_then(|value| clean_payload_string(Some(&value)))
+        .or_else(|| participant.agent_id.as_ref().map(|_| "agent".to_string()))
+        .or_else(|| participant.human_id.as_ref().map(|_| "human".to_string()))
+        .unwrap_or_else(|| "participant".to_string());
+    let identity_id = participant
+        .identity_id
+        .and_then(|value| clean_payload_string(Some(&value)))
+        .or_else(|| {
+            participant
+                .agent_id
+                .as_ref()
+                .and_then(|id| clean_payload_string(Some(id)).map(|id| format!("agent:{id}")))
+        })
+        .or_else(|| {
+            participant
+                .human_id
+                .as_ref()
+                .and_then(|id| clean_payload_string(Some(id)).map(|id| format!("human:{id}")))
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "unknown:{kind}:{}",
+                display_name.to_ascii_lowercase().replace(' ', "-")
+            )
+        });
+    Some(IdentityContextParticipant {
+        identity_id,
+        display_name,
+        kind,
+        role: participant
+            .role
+            .and_then(|value| clean_payload_string(Some(&value)))
+            .unwrap_or_default(),
+        owner_identity_id: participant
+            .owner_identity_id
+            .and_then(|value| clean_payload_string(Some(&value))),
+        owner_display_name: participant
+            .owner_display_name
+            .and_then(|value| clean_payload_string(Some(&value))),
+        bridge_node_id: participant
+            .bridge_node_id
+            .and_then(|value| clean_payload_string(Some(&value))),
+        human_id: participant
+            .human_id
+            .and_then(|value| clean_payload_string(Some(&value))),
+        agent_id: participant
+            .agent_id
+            .and_then(|value| clean_payload_string(Some(&value))),
+        runtime: participant
+            .runtime
+            .and_then(|value| clean_payload_string(Some(&value))),
+        locality: Some("non-local".to_string()),
+    })
+}
+
+fn payload_identity_context_request(
+    thread: &Value,
+    payload: &Value,
+) -> Option<IdentityContextRequest> {
+    let self_identity = thread
+        .get("selfTarget")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<DesktopBridgePromptIdentity>(value).ok())
+        .and_then(|identity| {
+            prompt_identity_to_role(identity, Some(PAYLOAD_FALLBACK_SELF_IDENTITY_ID))
+        })?;
+    let requester = thread
+        .get("initiator")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<DesktopBridgePromptIdentity>(value).ok())
+        .and_then(|identity| prompt_identity_to_role(identity, None));
+    let participants = thread
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(50)
+                .filter_map(|item| {
+                    serde_json::from_value::<DesktopBridgeSessionParticipant>(item.clone()).ok()
+                })
+                .filter_map(participant_to_identity_context)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let context_policy = payload
+        .get("contextPolicy")
+        .or_else(|| thread.get("contextPolicy"))
+        .and_then(Value::as_str)
+        .and_then(|value| clean_payload_string(Some(value)))
+        .unwrap_or_else(|| "request-window".to_string());
+    Some(IdentityContextRequest {
+        permissions: IdentityContextPermissions {
+            reply_as_identity_id: self_identity.identity_id.clone(),
+            allowed_targets: Vec::new(),
+            reach_out_allowed: false,
+            context_policy,
+            requires_approval: false,
+        },
+        self_identity: self_identity.clone(),
+        requester,
+        target: Some(self_identity),
+        participants,
+        session_id: thread
+            .get("parentSessionId")
+            .and_then(Value::as_str)
+            .and_then(|value| clean_payload_string(Some(value))),
+        session_kind: thread
+            .get("parentSessionKind")
+            .and_then(Value::as_str)
+            .and_then(|value| clean_payload_string(Some(value))),
+        project_name: thread
+            .get("projectName")
+            .and_then(Value::as_str)
+            .and_then(|value| clean_payload_string(Some(value))),
+    })
+}
+
 pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {
     let request = mailbox_payload_text(payload);
     let context = payload
@@ -182,6 +353,17 @@ pub(super) fn mailbox_payload_agent_prompt_text(payload: &Value) -> String {
             request.trim(),
             context,
         ) {
+            if prompt.contains("<multi_participant_identity_context") {
+                return prompt;
+            }
+            if let Some(identity_context) = payload_identity_context_request(thread, payload)
+                .map(|request| render_multi_participant_identity_context(&request))
+            {
+                return prompt.replace(
+                    "\n\nRequest:\n",
+                    &format!("\n\n{identity_context}\nRequest:\n"),
+                );
+            }
             return prompt;
         }
     }
@@ -305,6 +487,74 @@ mod tests {
         .expect("parse event");
 
         assert_eq!(event.sent_at_ms, Some(1_777_883_344_729));
+    }
+
+    #[test]
+    fn mailbox_prompt_uses_session_thread_identity_payload_when_parent_session_is_unavailable() {
+        let _storage =
+            crate::test_support::ScopedKordiStorageRoot::new("mailbox-payload-identity-context");
+        let payload = serde_json::json!({
+            "question": "Can you review this?",
+            "contextPolicy": "session-message",
+            "sessionThread": {
+                "parentSessionId": "shared-session-1",
+                "parentSessionKind": "group",
+                "participants": [
+                    {
+                        "identityId": "human:alice",
+                        "displayName": "Alice",
+                        "kind": "human",
+                        "role": "initiator",
+                        "bridgeNodeId": "alice-node",
+                        "humanId": "alice-human"
+                    },
+                    {
+                        "identityId": "agent:bob-kordi",
+                        "displayName": "Bob's Kordi",
+                        "kind": "agent",
+                        "role": "target",
+                        "ownerIdentityId": "human:bob",
+                        "ownerDisplayName": "Bob",
+                        "bridgeNodeId": "bob-node",
+                        "humanId": "bob-human",
+                        "agentId": "bob-agent",
+                        "runtime": "kordi"
+                    }
+                ],
+                "initiator": {
+                    "identityId": "human:alice",
+                    "displayName": "Alice",
+                    "kind": "human",
+                    "bridgeNodeId": "alice-node",
+                    "humanId": "alice-human"
+                },
+                "selfTarget": {
+                    "identityId": "agent:bob-kordi",
+                    "displayName": "Bob's Kordi",
+                    "kind": "agent",
+                    "ownerIdentityId": "human:bob",
+                    "ownerDisplayName": "Bob",
+                    "bridgeNodeId": "bob-node",
+                    "humanId": "bob-human",
+                    "agentId": "bob-agent",
+                    "runtime": "kordi"
+                },
+                "targetDisplayName": "Bob's Kordi",
+                "targetKind": "bridge-agent",
+                "requestText": "Can you review this?"
+            }
+        });
+
+        let prompt = mailbox_payload_agent_prompt_text(&payload);
+
+        assert!(prompt.contains("<multi_participant_identity_context"));
+        assert!(prompt.contains("Current model/self:"));
+        assert!(prompt.contains("displayName: Bob's Kordi"));
+        assert!(prompt.contains("Requester / initiator:"));
+        assert!(prompt.contains("displayName: Alice"));
+        assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
+        assert!(prompt.contains("replyAs: unknown:bridge-agent-target only"));
+        assert!(prompt.ends_with("Request:\nCan you review this?"));
     }
 }
 
@@ -444,6 +694,7 @@ pub(super) fn outreach_metadata_for_event(
             || value.eq_ignore_ascii_case("session-message")
             || value.eq_ignore_ascii_case("session-invite")
             || value.eq_ignore_ascii_case("session-update")
+            || value.eq_ignore_ascii_case("session-title-update")
     });
     let now = now_ms();
 
@@ -472,6 +723,14 @@ pub(super) fn outreach_metadata_for_event(
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok())
             .unwrap_or_default(),
+        initiator_identity: thread
+            .get("initiator")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
+        self_target_identity: thread
+            .get("selfTarget")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
         parent_turn_id: thread
             .get("parentTurnId")
             .and_then(|value| value.as_str())

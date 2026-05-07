@@ -100,6 +100,12 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
             agent_id: request_target_agent_id.clone(),
             is_default_agent: false,
             discovery_mode: None,
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         }
     } else {
         let current_state = build_current_bridge_state(manager).await;
@@ -181,6 +187,7 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
                 || value.eq_ignore_ascii_case("session-message")
                 || value.eq_ignore_ascii_case("session-invite")
                 || value.eq_ignore_ascii_case("session-update")
+                || value.eq_ignore_ascii_case("session-title-update")
         });
     conversation.outreach = Some(DesktopBridgeOutreachMetadata {
         target_kind: target_kind.clone(),
@@ -190,6 +197,8 @@ pub(super) async fn desktop_bridge_create_outreach_impl(
         parent_group_space_id: request.parent_group_space_id.clone(),
         parent_session_participants: request.parent_session_participants.clone(),
         parent_session_messages: request.parent_session_messages.clone(),
+        initiator_identity: request.initiator_identity.clone(),
+        self_target_identity: request.self_target_identity.clone(),
         parent_turn_id: request.parent_turn_id.clone(),
         parent_message_id: request.parent_message_id.clone(),
         bridge_host_id: request.host_id.clone(),
@@ -274,6 +283,8 @@ mod tests {
             parent_group_space_id: None,
             parent_session_participants: Vec::new(),
             parent_session_messages: Vec::new(),
+            initiator_identity: None,
+            self_target_identity: None,
             parent_turn_id: None,
             parent_message_id: None,
             bridge_request_id: None,
@@ -375,6 +386,12 @@ mod tests {
             agent_id: Some("ka_peer".to_string()),
             is_default_agent: true,
             discovery_mode: None,
+            human_visibility_policy: None,
+            contact_approval_policy: None,
+            agent_reachability_policy: None,
+            is_contact: false,
+            contact_request_status: None,
+            contact_request_direction: None,
         };
 
         assert!(!outreach_target_matches(&peer, "Kordi"));
@@ -407,6 +424,8 @@ mod tests {
             owner: Some("Owner".to_string()),
             human_id: Some("kh_self".to_string()),
             discovery_mode: "open".to_string(),
+            human_visibility_policy: "server-approval".to_string(),
+            contact_approval_policy: "approval-required".to_string(),
             active_agent_id: None,
             agents: Vec::new(),
             api_style: API_STYLE_SERVE.to_string(),

@@ -14,6 +14,7 @@ pub use auth_sources::{
 };
 pub use models::{
     authenticated_model_candidates, available_model_for_provider,
+    model_candidates_for_provider_auth_mode, model_id_allowed_for_active_auth,
     preferred_available_model_for_provider, preferred_startup_provider_and_model,
 };
 pub use oauth_refresh::{
