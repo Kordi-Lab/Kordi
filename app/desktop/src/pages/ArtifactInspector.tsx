@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
 
-import { MarkdownCodeBlock, MarkdownContent } from '@/kordi-app/components';
+import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -56,18 +56,90 @@ function languageFromPath(path: string) {
   if (!extension) return 'text';
   if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) return 'javascript';
   if (['ts', 'tsx'].includes(extension)) return 'typescript';
+  if (['py', 'py3'].includes(extension)) return 'python';
   if (['sh', 'zsh', 'bash'].includes(extension)) return 'bash';
   if (extension === 'rs') return 'rust';
+  if (['css', 'scss'].includes(extension)) return 'css';
+  if (['html', 'htm', 'svg'].includes(extension)) return 'html';
   if (['yaml', 'yml'].includes(extension)) return 'yaml';
-  if (extension === 'md') return 'markdown';
+  if (['md', 'mdx'].includes(extension)) return 'markdown';
+  if (['mmd', 'mermaid'].includes(extension)) return 'mermaid';
   return extension;
 }
 
 function artifactPreviewKind(path: string) {
   const extension = extensionLabel(path).toLowerCase();
   if (extension === 'html' || extension === 'htm') return 'html';
+  if (extension === 'svg') return 'svg';
   if (extension === 'md' || extension === 'mdx') return 'markdown';
+  if (extension === 'mmd' || extension === 'mermaid') return 'mermaid';
+  if (extension === 'json') return 'json';
+  if (extension === 'csv' || extension === 'tsv') return 'table';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'].includes(extension)) return 'image';
   return 'source';
+}
+
+function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
+  return source.split(/\r?\n/).filter((line) => line.trim()).map((line) => {
+    const cells: string[] = [];
+    let current = '';
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"') {
+        if (quoted && line[index + 1] === '"') {
+          current += '"';
+          index += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (character === delimiter && !quoted) {
+        cells.push(current.trim());
+        current = '';
+      } else {
+        current += character;
+      }
+    }
+
+    cells.push(current.trim());
+    return cells;
+  });
+}
+
+function ArtifactDataTable({ source, delimiter }: { source: string; delimiter: ',' | '\t' }) {
+  const rows = parseDelimitedRows(source, delimiter);
+  if (rows.length === 0) return <div className="px-4 py-4 text-[12px] text-slate-400">This table is empty.</div>;
+  const [headers, ...bodyRows] = rows;
+
+  return (
+    <div className="max-h-[32rem] overflow-auto p-3">
+      <div className="overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-control-bg)]/70">
+        <table className="min-w-full border-collapse text-left text-[12px] text-slate-100">
+          <thead className="bg-white/[0.05] text-[10px] uppercase tracking-[0.12em] text-slate-400">
+            <tr>
+              {headers.map((header, index) => <th key={`header-${index}`} className="border-b border-white/8 px-3 py-2 font-medium">{header || `Column ${index + 1}`}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, rowIndex) => (
+              <tr key={`row-${rowIndex}`} className="border-b border-white/6 last:border-b-0">
+                {headers.map((_, cellIndex) => <td key={`cell-${rowIndex}-${cellIndex}`} className="align-top px-3 py-2 text-slate-200">{row[cellIndex] ?? ''}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formattedJsonSource(source: string) {
+  try {
+    return JSON.stringify(JSON.parse(source), null, 2);
+  } catch {
+    return source;
+  }
 }
 
 export function renderArtifactPreview(preview: DesktopArtifactPreview) {
@@ -78,7 +150,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview) {
   const source = preview.lines.map((line) => line.text).join('\n');
   const previewKind = artifactPreviewKind(preview.path);
 
-  if (previewKind === 'html') {
+  if (previewKind === 'html' || previewKind === 'svg') {
     return (
       <div className="bg-[color:var(--app-transcript-bg)] p-3">
         <iframe
@@ -89,6 +161,31 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview) {
         />
       </div>
     );
+  }
+
+  if (previewKind === 'image') {
+    const imageSource = source.trim().startsWith('data:image/') ? source.trim() : preview.path;
+    return (
+      <div className="flex max-h-[32rem] items-center justify-center overflow-auto bg-[color:var(--app-transcript-bg)] p-4">
+        <img src={imageSource} alt={`${fileNameFromPath(preview.path)} preview`} className="max-h-[30rem] max-w-full rounded-[16px] border border-white/10 bg-white object-contain" />
+      </div>
+    );
+  }
+
+  if (previewKind === 'mermaid') {
+    return <div className="p-3"><MermaidDiagram code={source} /></div>;
+  }
+
+  if (previewKind === 'json') {
+    return (
+      <div className="p-3">
+        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass="max-h-[32rem]" wrapLines />
+      </div>
+    );
+  }
+
+  if (previewKind === 'table') {
+    return <ArtifactDataTable source={source} delimiter={extensionLabel(preview.path).toLowerCase() === 'tsv' ? '\t' : ','} />;
   }
 
   if (previewKind === 'markdown') {
@@ -316,7 +413,17 @@ export function ArtifactInspector({
   const previewFileName = previewArtifact ? fileNameFromPath(previewArtifact.path) : '';
   const previewLocation = previewArtifact ? compactArtifactLocation(previewArtifact.path, previewFileName) : '';
   const previewKind = previewArtifact ? artifactPreviewKind(previewArtifact.path) : null;
-  const previewKindLabel = previewKind === 'html' ? 'Preview' : previewKind === 'markdown' ? 'Markdown' : 'Source';
+  const previewKindLabel = previewKind === 'html' || previewKind === 'svg' || previewKind === 'image'
+    ? 'Preview'
+    : previewKind === 'markdown'
+      ? 'Markdown'
+      : previewKind === 'mermaid'
+        ? 'Mermaid'
+        : previewKind === 'table'
+          ? 'Table'
+          : previewKind === 'json'
+            ? 'JSON'
+            : 'Source';
 
   useEffect(() => {
     if (artifacts.length === 0) {

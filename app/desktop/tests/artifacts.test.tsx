@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { DesktopChatToolSnapshot, Message, SessionArtifact } from '../src/kordi-app/types';
 import { extractSessionArtifacts } from '../src/features/chat/artifacts';
+import { MarkdownCodeBlock, MarkdownContent } from '../src/kordi-app/components';
 import { ArtifactInspector, ArtifactPreviewWindow, renderArtifactPreview } from '../src/pages/ArtifactInspector';
 
 function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatToolSnapshot {
@@ -237,6 +238,64 @@ test('artifact inspector renders generated artifacts and related changed files, 
   assert.doesNotMatch(markup, /Remote-only group files/);
   assert.doesNotMatch(markup, /data-artifact-section="memory"/);
   assert.doesNotMatch(markup, /Session lessons/);
+});
+
+test('artifact preview renders csv tables, formatted json, svg, and mermaid files with specialized surfaces', () => {
+  const csvMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'reports/summary.csv',
+    lines: [
+      { number: 1, text: 'Name,Status' },
+      { number: 2, text: 'Kordi,Ready' },
+    ],
+    truncated: false,
+  })));
+  const jsonMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'data/config.json',
+    lines: [{ number: 1, text: '{"name":"Kordi","enabled":true}' }],
+    truncated: false,
+  })));
+  const svgMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'artifacts/diagram.svg',
+    lines: [{ number: 1, text: '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></svg>' }],
+    truncated: false,
+  })));
+  const mermaidMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'docs/flow.mmd',
+    lines: [{ number: 1, text: 'graph TD' }, { number: 2, text: 'A-->B' }],
+    truncated: false,
+  })));
+
+  assert.match(csvMarkup, /<table/);
+  assert.match(csvMarkup, /Kordi/);
+  assert.match(jsonMarkup, /&quot;enabled&quot;/);
+  assert.match(jsonMarkup, /true/);
+  assert.match(svgMarkup, /<iframe/);
+  assert.match(svgMarkup, /diagram\.svg preview/);
+  assert.match(mermaidMarkup, /data-mermaid-diagram="true"/);
+  assert.match(mermaidMarkup, /Mermaid diagram/);
+});
+
+test('markdown code blocks highlight additional file types and render mermaid diagrams', () => {
+  const cssMarkup = renderToStaticMarkup(createElement(MarkdownCodeBlock, {
+    language: 'css',
+    code: '.card { color: oklch(70% 0.12 240); }',
+  }));
+  const pythonMarkup = renderToStaticMarkup(createElement(MarkdownCodeBlock, {
+    language: 'python',
+    code: 'def render():\n    return True',
+  }));
+  const mermaidMarkdown = renderToStaticMarkup(createElement(MarkdownContent, {
+    text: '```mermaid\ngraph TD\nA-->B\n```',
+  }));
+
+  assert.match(cssMarkup, /text-amber-200/);
+  assert.match(cssMarkup, /oklch/);
+  assert.match(pythonMarkup, /text-violet-200/);
+  assert.match(pythonMarkup, /def/);
+  assert.match(mermaidMarkdown, /data-mermaid-diagram="true"/);
+  assert.match(mermaidMarkdown, /Mermaid diagram preview/);
+  assert.match(mermaidMarkdown, />A</);
+  assert.match(mermaidMarkdown, />B</);
 });
 
 test('artifact preview exposes a larger preview window surface', () => {

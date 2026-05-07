@@ -366,7 +366,12 @@ function normalizeCodeLanguage(language?: string) {
   if (!normalized) return 'text';
   if (['js', 'jsx', 'mjs', 'cjs'].includes(normalized)) return 'javascript';
   if (['ts', 'tsx'].includes(normalized)) return 'typescript';
+  if (['py', 'py3'].includes(normalized)) return 'python';
   if (['sh', 'zsh', 'shell'].includes(normalized)) return 'bash';
+  if (['yml'].includes(normalized)) return 'yaml';
+  if (['md', 'mdx'].includes(normalized)) return 'markdown';
+  if (['htm', 'xml', 'svg'].includes(normalized)) return 'html';
+  if (['mmd'].includes(normalized)) return 'mermaid';
   return normalized;
 }
 
@@ -398,9 +403,15 @@ function highlightCodeTokens(line: string, language: string) {
   const patterns: Record<string, RegExp> = {
     json: /("(?:\\.|[^"])*"(?=\s*:)|"(?:\\.|[^"])*"|\btrue\b|\bfalse\b|\bnull\b|-?\b\d+(?:\.\d+)?\b)/g,
     bash: /(#.*$|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\$\{?[A-Za-z_][\w]*\}?|\b(?:if|then|fi|for|in|do|done|case|esac|function|export|sudo|cd|ls|pwd|echo|cat|grep|find|git|npm|pnpm|yarn|cargo)\b|-{1,2}[\w-]+)/g,
+    css: /(\/\*[\s\S]*?\*\/|#[\da-fA-F]{3,8}\b|\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|--[A-Za-z_-][\w-]*|\b(?:color|background|display|grid|flex|position|border|padding|margin|font|width|height|oklch|var|calc|clamp)\b|-?\b\d+(?:\.\d+)?(?:%|px|rem|em|vh|vw)?\b|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')/g,
+    html: /(<!--[\s\S]*?-->|<\/?[A-Za-z][\w:-]*|\b[A-Za-z_:][-A-Za-z0-9_:.]*(?=\=)|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b\d+(?:\.\d+)?\b|\/?>)/g,
+    markdown: /(`[^`]+`|^#{1,6}\s.*$|^>.*$|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|^\s*(?:[-*+] |\d+\. ))/g,
+    mermaid: /(%%.*$|\b(?:graph|flowchart|sequenceDiagram|classDiagram|stateDiagram-v2|erDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|participant|actor|subgraph|end|style|classDef|class|click|linkStyle)\b|-->|---|==>|-.->|\[[^\]]*\]|\{[^}]*\}|\([^)]*\))/g,
+    python: /(#.*$|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:def|class|return|if|elif|else|for|while|in|import|from|as|try|except|finally|with|lambda|True|False|None|async|await|yield|pass|break|continue)\b|\b\d+(?:\.\d+)?\b)/g,
     rust: /(\/\/.*$|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:fn|let|mut|pub|struct|enum|impl|use|mod|async|await|match|if|else|loop|while|for|in|return|Self|self|Result|Option|Some|None|Ok|Err)\b|\b\d+(?:_\d+)*(?:\.\d+)?\b)/g,
     javascript: /(\/\/.*$|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|`(?:\\.|[^`])*`|\b(?:const|let|var|function|return|if|else|for|while|switch|case|break|import|from|export|default|async|await|new|class|extends|try|catch|finally|throw|true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g,
     typescript: /(\/\/.*$|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|`(?:\\.|[^`])*`|\b(?:const|let|var|function|return|if|else|for|while|switch|case|break|import|from|export|default|async|await|new|class|extends|try|catch|finally|throw|interface|type|implements|public|private|protected|readonly|true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g,
+    yaml: /(#.*$|^\s*[-?]\s|[A-Za-z_][\w.-]*(?=\s*:)|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\btrue\b|\bfalse\b|\bnull\b|-?\b\d+(?:\.\d+)?\b)/g,
     text: /(\u0000)/g,
   };
 
@@ -416,13 +427,15 @@ function highlightCodeTokens(line: string, language: string) {
     }
 
     let className = 'text-slate-100';
-    if (/^\/\//.test(matched) || /^#/.test(matched)) {
+    if (/^(\/\/|#|%%|<!--|\/\*)/.test(matched)) {
       className = 'text-slate-500';
     } else if (/^"/.test(matched) || /^'/.test(matched) || /^`/.test(matched)) {
       className = language === 'json' && /:\s*$/.test(line.slice(start + matched.length)) ? 'text-cyan-200' : 'text-emerald-200';
-    } else if (/^\$/.test(matched) || /^-{1,2}/.test(matched)) {
+    } else if (/^(<\/?|\b[A-Za-z_:][-A-Za-z0-9_:.]*(?=\=)|[A-Za-z_][\w.-]*(?=\s*:))/.test(matched)) {
+      className = 'text-cyan-200';
+    } else if (/^(\$|-{1,2}|\.|--|#(?:[A-Za-z_-]|[\da-fA-F]{3,8}\b))/.test(matched)) {
       className = 'text-fuchsia-200';
-    } else if (/^(true|false|null|-?\d)/.test(matched)) {
+    } else if (/^(true|false|null|True|False|None|-?\d)/.test(matched)) {
       className = 'text-amber-200';
     } else {
       className = 'text-violet-200';
@@ -437,6 +450,123 @@ function highlightCodeTokens(line: string, language: string) {
   }
 
   return tokens.length > 0 ? tokens : [{ text: line }];
+}
+
+function mermaidLines(code: string) {
+  return code.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('%%'));
+}
+
+function mermaidNode(raw: string) {
+  const trimmed = raw.trim().replace(/;$/, '');
+  const match = trimmed.match(/^([A-Za-z0-9_.$-]+)(?:\[([^\]]+)\]|\(([^)]+)\)|\{([^}]+)\})?$/);
+  const id = match?.[1] ?? trimmed;
+  const label = (match?.[2] ?? match?.[3] ?? match?.[4] ?? id).replace(/^"|"$/g, '');
+  return { id, label };
+}
+
+function MermaidFlowchart({ lines }: { lines: string[] }) {
+  const direction = lines[0]?.match(/^(?:graph|flowchart)\s+(LR|RL|TD|TB|BT)/i)?.[1]?.toUpperCase() ?? 'TD';
+  const horizontal = direction === 'LR' || direction === 'RL';
+  const nodes = new Map<string, string>();
+  const edges: Array<{ from: string; to: string; dashed: boolean }> = [];
+
+  for (const line of lines.slice(1)) {
+    const edge = line.match(/^(.+?)\s*(-->|---|==>|-.->)\s*(.+)$/);
+    if (!edge) continue;
+    const from = mermaidNode(edge[1]);
+    const to = mermaidNode(edge[3]);
+    nodes.set(from.id, from.label);
+    nodes.set(to.id, to.label);
+    edges.push({ from: from.id, to: to.id, dashed: edge[2].includes('.') });
+  }
+
+  if (nodes.size === 0) return null;
+
+  const entries = [...nodes.entries()];
+  const positions = new Map(entries.map(([id], index) => [id, horizontal ? { x: 86 + index * 150, y: 88 } : { x: 190, y: 58 + index * 96 }]));
+  const width = horizontal ? Math.max(320, entries.length * 150 + 40) : 380;
+  const height = horizontal ? 190 : Math.max(190, entries.length * 96 + 28);
+
+  return (
+    <svg role="img" aria-label="Mermaid diagram preview" viewBox={`0 0 ${width} ${height}`} className="min-h-[12rem] w-full min-w-[22rem] text-slate-950">
+      <defs>
+        <marker id="mermaid-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="currentColor" />
+        </marker>
+      </defs>
+      {edges.map((edge, index) => {
+        const from = positions.get(edge.from) ?? { x: 0, y: 0 };
+        const to = positions.get(edge.to) ?? { x: 0, y: 0 };
+        return <line key={`edge-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="currentColor" strokeWidth="1.6" strokeDasharray={edge.dashed ? '5 5' : undefined} markerEnd="url(#mermaid-arrow)" opacity="0.55" />;
+      })}
+      {entries.map(([id, label]) => {
+        const position = positions.get(id) ?? { x: 0, y: 0 };
+        return (
+          <g key={id}>
+            <rect x={position.x - 56} y={position.y - 22} width="112" height="44" rx="12" fill="white" stroke="currentColor" strokeOpacity="0.18" />
+            <text x={position.x} y={position.y + 4} textAnchor="middle" className="fill-slate-900 text-[12px] font-medium">{label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function MermaidSequence({ lines }: { lines: string[] }) {
+  const messages = lines.slice(1).map((line) => line.match(/^([^:-]+?)(?:-+>>?|-->>?)\s*([^:]+):?\s*(.*)$/)).filter((match): match is RegExpMatchArray => Boolean(match));
+  if (messages.length === 0) return null;
+  const participants = [...new Set(messages.flatMap((message) => [message[1].trim(), message[2].trim()]))];
+  const width = Math.max(360, participants.length * 160);
+  const height = Math.max(220, messages.length * 64 + 96);
+  const xFor = (name: string) => 80 + participants.indexOf(name) * 150;
+
+  return (
+    <svg role="img" aria-label="Mermaid sequence diagram preview" viewBox={`0 0 ${width} ${height}`} className="min-h-[14rem] w-full min-w-[24rem] text-slate-950">
+      <defs><marker id="sequence-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="currentColor" /></marker></defs>
+      {participants.map((participant) => {
+        const x = xFor(participant);
+        return <g key={participant}><rect x={x - 46} y="24" width="92" height="32" rx="10" fill="white" stroke="currentColor" strokeOpacity="0.18" /><text x={x} y="45" textAnchor="middle" className="fill-slate-900 text-[12px] font-medium">{participant}</text><line x1={x} y1="60" x2={x} y2={height - 24} stroke="currentColor" strokeOpacity="0.18" strokeDasharray="4 5" /></g>;
+      })}
+      {messages.map((message, index) => {
+        const y = 96 + index * 56;
+        const from = xFor(message[1].trim());
+        const to = xFor(message[2].trim());
+        return <g key={`message-${index}`}><line x1={from} y1={y} x2={to} y2={y} stroke="currentColor" strokeWidth="1.6" markerEnd="url(#sequence-arrow)" /><text x={(from + to) / 2} y={y - 8} textAnchor="middle" className="fill-slate-700 text-[11px]">{message[3]}</text></g>;
+      })}
+    </svg>
+  );
+}
+
+function MermaidPie({ lines }: { lines: string[] }) {
+  const rows = lines.map((line) => line.match(/^"?([^":]+)"?\s*:\s*(\d+(?:\.\d+)?)$/)).filter((match): match is RegExpMatchArray => Boolean(match));
+  if (rows.length === 0) return null;
+  const max = Math.max(...rows.map((row) => Number(row[2])));
+  return (
+    <div className="space-y-2 p-4 text-slate-900">
+      {rows.map((row) => <div key={row[1]} className="grid grid-cols-[7rem_minmax(0,1fr)_3rem] items-center gap-3 text-[12px]"><div className="truncate font-medium">{row[1]}</div><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-slate-900" style={{ width: `${Math.max(4, (Number(row[2]) / max) * 100)}%` }} /></div><div className="text-right tabular-nums text-slate-600">{row[2]}</div></div>)}
+    </div>
+  );
+}
+
+function MermaidDiagram({ code, className }: { code: string; className?: string }) {
+  const lines = mermaidLines(code);
+  const diagram = lines[0]?.startsWith('sequenceDiagram')
+    ? <MermaidSequence lines={lines} />
+    : lines[0]?.startsWith('pie')
+      ? <MermaidPie lines={lines} />
+      : /^(graph|flowchart)\b/i.test(lines[0] ?? '')
+        ? <MermaidFlowchart lines={lines} />
+        : null;
+
+  return (
+    <div data-mermaid-diagram="true" className={cn('overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)]', className)}>
+      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Mermaid diagram</div>
+        {!diagram ? <div className="truncate text-[10px] text-amber-200">Source preview</div> : null}
+      </div>
+      {diagram ? <div className="overflow-auto bg-white p-3">{diagram}</div> : <div className="p-3"><MarkdownCodeBlock language="mermaid" code={code} maxHeightClass="max-h-[20rem]" /></div>}
+    </div>
+  );
 }
 
 function MarkdownCodeBlock({
@@ -598,7 +728,9 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
           );
         }
         if (block.type === 'code') {
-          return <MarkdownCodeBlock key={`code-${index}`} language={block.language} code={block.code} />;
+          return normalizeCodeLanguage(block.language) === 'mermaid'
+            ? <MermaidDiagram key={`code-${index}`} code={block.code} />
+            : <MarkdownCodeBlock key={`code-${index}`} language={block.language} code={block.code} />;
         }
         if (block.type === 'list') {
           return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} />;
@@ -625,4 +757,4 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
   );
 }
 
-export { MarkdownCodeBlock, MarkdownContent };
+export { MarkdownCodeBlock, MarkdownContent, MermaidDiagram };
