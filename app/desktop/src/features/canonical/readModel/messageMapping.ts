@@ -242,13 +242,20 @@ function bridgeAgentRequestControlForExchange(
   return { conversationId, requestId };
 }
 
+function agentRoleForViewer(target: CanonicalIdentity, profileHumanIdentityId?: string | null) {
+  const profileId = profileHumanIdentityId?.trim();
+  return target.source === 'local' || (Boolean(profileId) && target.ownerIdentityId === profileId)
+    ? 'owned-agent' as const
+    : 'external-agent' as const;
+}
+
 export function processingAgentMessage(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   target: CanonicalIdentity,
   identityById: Map<string, CanonicalIdentity>,
   profileHumanIdentityId?: string | null,
 ): Message {
-  const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
+  const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
@@ -290,7 +297,7 @@ export function cancelledBridgeAgentDelegationMessage(
 ): Message | null {
   if (exchange.initiatorIdentityId !== profileHumanIdentityId) return null;
   if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
-  const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
+  const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
   return {
