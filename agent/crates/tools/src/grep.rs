@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
-use std::path::Path;
-use tokio::process::Command;
+use std::{path::Path, process::Stdio};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::Command,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -11,6 +14,16 @@ use crate::{
 };
 
 const DEFAULT_LIMIT: usize = 100;
+const MAX_MATCH_LINE_COLUMNS: usize = 2_000;
+const MAX_SEARCH_FILE_SIZE: &str = "1M";
+const MAX_SEARCH_STREAM_BYTES: usize = 512 * 1024;
+const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
+    ".git",
+    ".multi-instance-data",
+    ".multi-instance-logs",
+    "node_modules",
+    "target",
+];
 
 pub struct GrepTool;
 
@@ -152,7 +165,16 @@ async fn grep_with_rg(
     cmd.arg("--line-number")
         .arg("--no-heading")
         .arg("--max-count")
-        .arg(limit.to_string());
+        .arg(limit.to_string())
+        .arg("--max-columns")
+        .arg(MAX_MATCH_LINE_COLUMNS.to_string())
+        .arg("--max-filesize")
+        .arg(MAX_SEARCH_FILE_SIZE);
+
+    for excluded_dir in DEFAULT_EXCLUDED_DIRS {
+        cmd.arg("--glob").arg(format!("!{excluded_dir}/**"));
+        cmd.arg("--glob").arg(format!("!**/{excluded_dir}/**"));
+    }
 
     if ignore_case {
         cmd.arg("--ignore-case");
@@ -169,7 +191,7 @@ async fn grep_with_rg(
 
     cmd.arg(pattern).arg(path);
 
-    let output = cmd.output().await?;
+    let output = run_search_command_capped(cmd).await?;
 
     // rg returns exit code 1 for "no matches" — that's not an error
     if !output.status.success() && output.status.code() != Some(1) {
@@ -180,7 +202,7 @@ async fn grep_with_rg(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let results: Vec<String> = stdout
         .lines()
-        .filter(|l| !l.is_empty())
+        .filter(|l| !l.is_empty() && !result_line_has_excluded_dir(l))
         .take(limit)
         .map(|l| l.to_string())
         .collect();
@@ -210,7 +232,7 @@ async fn grep_with_grep_cmd(
 
     cmd.arg(pattern).arg(path);
 
-    let output = cmd.output().await?;
+    let output = run_search_command_capped(cmd).await?;
 
     // grep returns exit code 1 for "no matches"
     if !output.status.success() && output.status.code() != Some(1) {
@@ -221,11 +243,77 @@ async fn grep_with_grep_cmd(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let results: Vec<String> = stdout
         .lines()
-        .filter(|l| !l.is_empty())
+        .filter(|l| !l.is_empty() && !result_line_has_excluded_dir(l))
         .take(limit)
         .map(|l| l.to_string())
         .collect();
     Ok(results)
+}
+
+fn result_line_has_excluded_dir(line: &str) -> bool {
+    DEFAULT_EXCLUDED_DIRS.iter().any(|dir| {
+        line.starts_with(&format!("{dir}/"))
+            || line.starts_with(&format!("./{dir}/"))
+            || line.contains(&format!("/{dir}/"))
+    })
+}
+
+struct SearchCommandOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+async fn run_search_command_capped(
+    mut cmd: Command,
+) -> Result<SearchCommandOutput, Box<dyn std::error::Error + Send + Sync>> {
+    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("search command stdout was not piped"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("search command stderr was not piped"))?;
+
+    let stdout_task = tokio::spawn(read_stream_capped(stdout, MAX_SEARCH_STREAM_BYTES));
+    let stderr_task = tokio::spawn(read_stream_capped(stderr, MAX_SEARCH_STREAM_BYTES));
+    let status = child.wait().await?;
+    let stdout = stdout_task.await??.0;
+    let stderr = stderr_task.await??.0;
+
+    Ok(SearchCommandOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+async fn read_stream_capped<R>(mut reader: R, max_bytes: usize) -> std::io::Result<(Vec<u8>, bool)>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut output = Vec::with_capacity(max_bytes.min(8 * 1024));
+    let mut chunk = [0u8; 8 * 1024];
+    let mut truncated = false;
+
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        let remaining = max_bytes.saturating_sub(output.len());
+        if remaining > 0 {
+            let keep = remaining.min(read);
+            output.extend_from_slice(&chunk[..keep]);
+        }
+        if read > remaining {
+            truncated = true;
+        }
+    }
+
+    Ok((output, truncated))
 }
 
 fn format_results(results: Vec<String>, limit: usize) -> KordiResult<ToolResult> {
@@ -239,4 +327,78 @@ fn format_results(results: Vec<String>, limit: usize) -> KordiResult<ToolResult>
             "truncated": truncated,
         })),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kordi_core::types::ContentBlock;
+    use std::fs;
+
+    fn test_context(cwd: &Path) -> ToolContext {
+        ToolContext {
+            cwd: cwd.to_path_buf(),
+            artifacts_dir: cwd.join("artifacts"),
+            model: None,
+            execution_policy: crate::ExecutionPolicy::Safety,
+            on_output: None,
+            web_search: None,
+            reach_out: None,
+            reflection: None,
+            task_operator: None,
+            execution_mode: crate::ToolExecutionMode::Interactive,
+            request_approval: None,
+        }
+    }
+
+    fn text_content(result: &ToolResult) -> &str {
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        text
+    }
+
+    #[tokio::test]
+    async fn search_stream_reader_keeps_only_the_configured_byte_budget() {
+        let data = vec![b'x'; MAX_SEARCH_STREAM_BYTES + 1_024];
+        let (output, truncated) = read_stream_capped(&data[..], 8 * 1024)
+            .await
+            .expect("stream should read");
+
+        assert_eq!(output.len(), 8 * 1024);
+        assert!(truncated);
+    }
+
+    #[tokio::test]
+    async fn grep_skips_generated_logs_and_build_outputs_by_default() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join(".multi-instance-logs/user3")).expect("logs dir");
+        fs::create_dir_all(root.join("target/debug")).expect("target dir");
+        fs::write(root.join("issue.md"), "issue 317 body\n").expect("issue file");
+        fs::write(
+            root.join(".multi-instance-logs/user3/dev-1486.log"),
+            "building 317/490\n".repeat(500),
+        )
+        .expect("log file");
+        fs::write(
+            root.join("target/debug/build.log"),
+            "issue 317 in target\n".repeat(500),
+        )
+        .expect("target file");
+
+        let result = GrepTool
+            .execute(
+                json!({"pattern": "317|issue 317", "path": ".", "limit": 20}),
+                &test_context(root),
+                CancellationToken::new(),
+            )
+            .await
+            .expect("grep should run");
+        let text = text_content(&result);
+
+        assert!(text.contains("issue.md"));
+        assert!(!text.contains(".multi-instance-logs"));
+        assert!(!text.contains("target/debug"));
+    }
 }

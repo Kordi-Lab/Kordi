@@ -10,7 +10,8 @@ use kordi_hooks::{Event, ToolCallEvent};
 use kordi_provider::{CollectedResponse, CollectedToolCall};
 use kordi_session::store;
 use kordi_tools::{
-    FileQueue, Tool, ToolContext, ToolMetadata, ToolScheduling, execute_reserved_tool_call,
+    FileQueue, Tool, ToolContext, ToolMetadata, ToolScheduling, cap_tool_result_content,
+    execute_reserved_tool_call,
 };
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
@@ -441,6 +442,7 @@ async fn persist_tool_result(
     artifact_path: Option<String>,
     is_error: bool,
 ) -> Result<()> {
+    let (content, details) = cap_tool_result_content(content, details);
     let _ = env.event_tx.send(TurnEvent::ToolResult {
         id: tool_call_id.to_string(),
         name: tool_name.to_string(),

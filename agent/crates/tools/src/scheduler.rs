@@ -1,6 +1,9 @@
 use futures::future::join_all;
-use kordi_core::error::{KordiError, KordiResult};
-use serde_json::Value;
+use kordi_core::{
+    error::{KordiError, KordiResult},
+    types::ContentBlock,
+};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -8,6 +11,8 @@ use tokio::sync::{Mutex, OwnedMutexGuard, OwnedRwLockReadGuard, OwnedRwLockWrite
 use tokio_util::sync::CancellationToken;
 
 use crate::{Tool, ToolContext, ToolResult, ToolScheduling};
+
+const MAX_TOOL_RESULT_TEXT_BYTES: usize = 50 * 1024;
 
 /// Per-file mutation queue to prevent parallel write conflicts while still
 /// allowing unrelated read-only work and unrelated file mutations to overlap.
@@ -108,7 +113,118 @@ pub async fn execute_reserved_tool_call(
     reservation: FileQueueReservation,
 ) -> KordiResult<ToolResult> {
     reservation.hold();
-    tool.execute(args, ctx, cancel).await
+    tool.execute(args, ctx, cancel).await.map(cap_tool_result)
+}
+
+fn cap_tool_result(mut result: ToolResult) -> ToolResult {
+    let (content, details) = cap_tool_result_content(result.content, result.details);
+    result.content = content;
+    result.details = details;
+    result
+}
+
+pub fn cap_tool_result_content(
+    content: Vec<ContentBlock>,
+    details: Option<Value>,
+) -> (Vec<ContentBlock>, Option<Value>) {
+    let mut largest_original_text_bytes = 0usize;
+    let mut truncated_any = false;
+
+    let content = content
+        .into_iter()
+        .map(|block| match block {
+            ContentBlock::Text { text } if text.len() > MAX_TOOL_RESULT_TEXT_BYTES => {
+                largest_original_text_bytes = largest_original_text_bytes.max(text.len());
+                truncated_any = true;
+                ContentBlock::Text {
+                    text: truncate_tool_text(&text, MAX_TOOL_RESULT_TEXT_BYTES),
+                }
+            }
+            other => other,
+        })
+        .collect();
+
+    let details = if truncated_any {
+        Some(mark_truncated_details(
+            details,
+            largest_original_text_bytes,
+            MAX_TOOL_RESULT_TEXT_BYTES,
+        ))
+    } else {
+        details
+    };
+
+    (content, details)
+}
+
+fn mark_truncated_details(
+    details: Option<Value>,
+    original_bytes: usize,
+    max_bytes: usize,
+) -> Value {
+    match details {
+        Some(Value::Object(mut object)) => {
+            object.insert("outputTruncated".to_string(), json!(true));
+            object.insert("originalOutputBytes".to_string(), json!(original_bytes));
+            object.insert("maxOutputBytes".to_string(), json!(max_bytes));
+            Value::Object(object)
+        }
+        Some(other) => json!({
+            "outputTruncated": true,
+            "originalOutputBytes": original_bytes,
+            "maxOutputBytes": max_bytes,
+            "originalDetails": other,
+        }),
+        None => json!({
+            "outputTruncated": true,
+            "originalOutputBytes": original_bytes,
+            "maxOutputBytes": max_bytes,
+        }),
+    }
+}
+
+fn truncate_tool_text(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+
+    let marker = format!(
+        "\n\n[tool output truncated: original {} bytes, capped at {} bytes; middle omitted]\n\n",
+        text.len(),
+        max_bytes,
+    );
+    if marker.len() >= max_bytes {
+        return utf8_prefix(text, max_bytes).to_string();
+    }
+
+    let content_budget = max_bytes - marker.len();
+    let prefix_budget = content_budget / 2;
+    let suffix_budget = content_budget - prefix_budget;
+    let prefix = utf8_prefix(text, prefix_budget);
+    let suffix = utf8_suffix(text, suffix_budget);
+    format!("{prefix}{marker}{suffix}")
+}
+
+fn utf8_prefix(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+fn utf8_suffix(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut start = text.len().saturating_sub(max_bytes);
+    while start < text.len() && !text.is_char_boundary(start) {
+        start += 1;
+    }
+    &text[start..]
 }
 
 /// Execute a single tool call with mutation-aware scheduling.
@@ -258,6 +374,44 @@ mod tests {
         max_active: Arc<AtomicUsize>,
     }
 
+    struct HugeOutputTool;
+
+    #[async_trait]
+    impl Tool for HugeOutputTool {
+        fn name(&self) -> &str {
+            "huge-output"
+        }
+
+        fn description(&self) -> &str {
+            "returns an oversized text payload"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({"type": "object"})
+        }
+
+        async fn execute(
+            &self,
+            _params: Value,
+            _ctx: &ToolContext,
+            _cancel: CancellationToken,
+        ) -> KordiResult<ToolResult> {
+            Ok(ToolResult {
+                content: vec![ContentBlock::Text {
+                    text: format!(
+                        "{}{}{}",
+                        "A".repeat(80 * 1024),
+                        "middle-marker",
+                        "Z".repeat(80 * 1024)
+                    ),
+                }],
+                details: Some(json!({"source": "test"})),
+                is_error: false,
+                artifact_path: None,
+            })
+        }
+    }
+
     #[async_trait]
     impl Tool for MutatingProbeTool {
         fn name(&self) -> &str {
@@ -342,6 +496,52 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|(_, result)| result.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn tool_results_are_capped_before_leaving_scheduler() {
+        let queue = FileQueue::new();
+        let result = execute_tool_call(
+            &HugeOutputTool,
+            json!({}),
+            &test_context(),
+            CancellationToken::new(),
+            &queue,
+        )
+        .await
+        .expect("tool should run");
+
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        assert!(
+            text.len() < 70 * 1024,
+            "tool text should be capped, got {} bytes",
+            text.len()
+        );
+        assert!(text.contains("tool output truncated"));
+        assert!(text.contains("AAAA"), "head should be preserved");
+        assert!(text.contains("ZZZZ"), "tail should be preserved");
+        assert!(
+            !text.contains("middle-marker"),
+            "middle of huge output should be omitted"
+        );
+        assert_eq!(
+            result
+                .details
+                .as_ref()
+                .and_then(|details| details.get("outputTruncated"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            result
+                .details
+                .as_ref()
+                .and_then(|details| details.get("source"))
+                .and_then(Value::as_str),
+            Some("test")
+        );
     }
 
     #[tokio::test]
