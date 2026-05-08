@@ -60,6 +60,7 @@ type ToolWithTurn = TurnWithSequence & {
 
 type MutableSubtask = TaskDashboardSubtask & {
   nameKey?: string | null;
+  parentTaskId?: string | null;
   sequence: number;
 };
 
@@ -215,12 +216,49 @@ function titleFromPlanSteps(args: Record<string, unknown>) {
   return selectedStep ? stringValue(selectedStep.step) : null;
 }
 
+function taskIdFromResultText(text?: string | null) {
+  const value = text?.trim() ?? '';
+  if (!value) return null;
+  const match = /(?:^|[\n;])\s*(?:-\s*)?(?:Task ID|ID):\s*`([^`]+)`/i.exec(value);
+  return match?.[1]?.trim() || null;
+}
+
+function parentTaskIdFromResultText(text?: string | null) {
+  const value = text?.trim() ?? '';
+  if (!value) return null;
+  const match = /(?:^|[\n;])\s*parent:\s*`([^`]+)`/i.exec(value);
+  return match?.[1]?.trim() || null;
+}
+
+function taskIdFromTool(tool: DesktopChatToolSnapshot) {
+  if (tool.name.trim().toLowerCase() !== 'task_operator') return null;
+  const args = safeParseToolArguments(tool.arguments);
+  return taskIdFromResultText(tool.resultText)
+    ?? stringValue(args?.taskId)
+    ?? stringValue(args?.task_id)
+    ?? stringValue(args?.target);
+}
+
+function parentTaskIdFromTool(tool: DesktopChatToolSnapshot) {
+  if (tool.name.trim().toLowerCase() !== 'task_operator') return null;
+  const args = safeParseToolArguments(tool.arguments);
+  return stringValue(args?.parentTaskId)
+    ?? stringValue(args?.parent_task_id)
+    ?? parentTaskIdFromResultText(tool.resultText);
+}
+
 function taskIdFromToolArguments(tools: DesktopChatToolSnapshot[]) {
   for (const tool of tools) {
-    if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
-    const args = safeParseToolArguments(tool.arguments);
-    const taskId = stringValue(args?.taskId) ?? stringValue(args?.task_id);
+    const taskId = taskIdFromTool(tool);
     if (taskId) return taskId;
+  }
+  return null;
+}
+
+function parentTaskIdFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  for (const tool of tools) {
+    const parentTaskId = parentTaskIdFromTool(tool);
+    if (parentTaskId) return parentTaskId;
   }
   return null;
 }
@@ -524,6 +562,54 @@ function resultSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unkno
   };
 }
 
+function durableStatusToSubtaskStatus(status: string | null, tool: DesktopChatToolSnapshot): TaskDashboardStatus {
+  if (tool.isError) return 'failed';
+  if (toolIsStillRunning(tool)) return 'active';
+  switch (status?.trim().toLowerCase()) {
+    case 'closed':
+      return 'closed';
+    case 'completed':
+    case 'done':
+      return 'completed';
+    case 'failed':
+    case 'error':
+      return 'failed';
+    case 'open':
+    case 'planned':
+    default:
+      return 'planned';
+  }
+}
+
+function durableTaskSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unknown>, sequence: number, live: boolean): MutableSubtask | null {
+  const action = stringValue(args.action)?.toLowerCase();
+  if (action !== 'create' && action !== 'close') return null;
+
+  const parentTaskId = parentTaskIdFromTool(tool);
+  if (!parentTaskId) return null;
+
+  const taskId = taskIdFromTool(tool) ?? `task_${sequence}`;
+  const title = stringValue(args.taskTitle) ?? stringValue(args.task_title) ?? taskId;
+  const summary = stringValue(args.summary) ?? '';
+  const status = action === 'close'
+    ? 'closed'
+    : durableStatusToSubtaskStatus(stringValue(args.status), tool);
+
+  return {
+    id: `task:${taskId}`,
+    nameKey: `task-id:${taskId}`,
+    parentTaskId,
+    title: compact(title, 96),
+    summary: compact(summary),
+    status,
+    ...statusMeta(status, 'subtask'),
+    target: null,
+    writeScope: [],
+    live,
+    sequence,
+  };
+}
+
 function subtaskItems({ tool, live, toolSequence }: ToolWithTurn): MutableSubtask[] {
   const toolName = tool.name.trim().toLowerCase();
   if (toolName === 'update_plan') {
@@ -537,6 +623,9 @@ function subtaskItems({ tool, live, toolSequence }: ToolWithTurn): MutableSubtas
 
   const args = safeParseToolArguments(tool.arguments);
   if (!args) return tool.isError ? [failedToolSubtask(tool, toolSequence, live)] : [];
+
+  const durableTask = durableTaskSubtask(tool, args, toolSequence, live);
+  if (durableTask) return [durableTask];
 
   const action = stringValue(args.action);
   if (action === 'manifest') return manifestSubtasks(args, toolSequence, live);
@@ -660,6 +749,12 @@ function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTas
 }
 
 function findExistingSubtaskParent(parents: MutableParentTask[], subtask: MutableSubtask) {
+  const parentTaskId = subtask.parentTaskId?.trim();
+  if (parentTaskId) {
+    const matchedParent = parents.find((parent) => parent.taskId === parentTaskId);
+    if (matchedParent) return matchedParent;
+  }
+
   for (const parent of parents) {
     if (matchingSubtaskKey(parent.subtasksByKey, subtask.target, subtask.nameKey)) return parent;
   }
@@ -712,7 +807,7 @@ function waitingTimeLabel(timeLabel?: string | null) {
 function finalizeParent(parent: MutableParentTask, confirmationSequences: number[]): TaskDashboardItem {
   const subtasks = Array.from(parent.subtasksByKey.values())
     .sort((left, right) => left.sequence - right.sequence)
-    .map(({ nameKey: _nameKey, sequence: _sequence, ...subtask }) => subtask);
+    .map(({ nameKey: _nameKey, parentTaskId: _parentTaskId, sequence: _sequence, ...subtask }) => subtask);
   const status = deriveParentStatus(parent, subtasks, hasHumanConfirmationAfter(parent.sequence, confirmationSequences));
   const meta = statusMeta(status);
   const activeSubtaskCount = subtasks.filter((subtask) => subtask.status === 'active').length;
@@ -774,7 +869,9 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   for (const turnWithSequence of collectTurns(messages, liveTurn)) {
     let currentParent: MutableParentTask | null = null;
-    if (titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0 || turnHasTaskActivity(turnWithSequence.turn)) {
+    const generatedArtifactIds = generatedArtifactIdsFromTurn(turnWithSequence.turn);
+    const createsNestedTask = Boolean(parentTaskIdFromToolArguments(turnWithSequence.turn.tools));
+    if (generatedArtifactIds.length > 0 || (!createsNestedTask && (titleFromToolArguments(turnWithSequence.turn.tools) || turnHasTaskActivity(turnWithSequence.turn)))) {
       currentParent = ensureParent(turnWithSequence);
     }
 
