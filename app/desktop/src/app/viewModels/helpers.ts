@@ -428,13 +428,21 @@ export function dedupeAdjacentAgentTurns(messages: Message[]) {
   return deduped;
 }
 
-export function preferLatestMessages(mappedMessages: Message[], cachedMessages: Message[] | undefined, preserveCachedMessages: boolean) {
+export function preferLatestMessages(
+  mappedMessages: Message[],
+  cachedMessages: Message[] | undefined,
+  preserveCachedMessages: boolean,
+  liveTurn?: DesktopChatTurnSnapshot,
+) {
   const messages = !cachedMessages || !preserveCachedMessages
     ? mappedMessages
     : cachedMessages.length >= mappedMessages.length
       ? cachedMessages
       : mappedMessages;
-  return dedupeAdjacentAgentTurns(messages);
+  const visibleMessages = liveTurn && !liveTurn.completed
+    ? suppressLiveTurnEchoMessages(messages, liveTurn)
+    : messages;
+  return dedupeAdjacentAgentTurns(visibleMessages);
 }
 
 export function buildSessionStatusIndicator({
