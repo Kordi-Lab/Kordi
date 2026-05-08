@@ -135,7 +135,7 @@ test('activeUnreadBridgeConversationsForSession finds unread bridge agent conver
   assert.deepEqual(active.map((item) => item.id), ['bridge:host-1:peer-1']);
 });
 
-test('bridgeConversationIdsToMarkReadOnUserActivity includes sibling bridge threads for an active bridge conversation id', () => {
+test('bridgeConversationIdsToMarkReadOnUserActivity does not clear sibling group threads for an active bridge conversation id', () => {
   const parentSessionId = 'session:bridge:humans:shared-parent';
   const ids = bridgeConversationIdsToMarkReadOnUserActivity([
     conversation({
@@ -176,7 +176,7 @@ test('bridgeConversationIdsToMarkReadOnUserActivity includes sibling bridge thre
     }),
   ], 'bridge:host-1:peer-1:person');
 
-  assert.deepEqual(ids, ['bridge:host-1:peer-1']);
+  assert.deepEqual(ids, []);
 });
 
 test('bridgeConversationIdsToMarkReadOnUserActivity includes unread parent-session bridge threads', () => {
