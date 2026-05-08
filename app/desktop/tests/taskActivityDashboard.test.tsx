@@ -1412,10 +1412,69 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
   assert.match(markup, /<details/);
   assert.match(markup, /data-task-status-icon="checkbox"/);
   assert.doesNotMatch(markup, />▸</);
-  assert.doesNotMatch(markup, />Done</);
+  assert.match(markup, /data-subtask-status-label="true"[^>]*>Done</);
   assert.match(markup, /review code/);
   assert.equal(markup.match(/1 subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
+});
+
+test('task panel renders nested durable subtasks with a circle status and status text', () => {
+  const parentTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-parent-task',
+    sessionId: 'session-group-1',
+    prompt: '@Kordi create a task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created a new task: **New Test Task**',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-parent-task',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ action: 'create', taskId: '', taskTitle: 'New Test Task', status: 'open' }),
+      liveOutput: '',
+      resultText: 'Task created: New Test Task\n\nTasks:\n- ID: `task_parent_123`; title: New Test Task; status: open; summary: New test task.',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const subtaskTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-child-task',
+    sessionId: 'session-group-1',
+    prompt: '@Kordi create a subtask for it',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created a subtask under **New Test Task**.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-child-task',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({ action: 'create', taskId: '', parentTaskId: 'task_parent_123', taskTitle: 'New Test Task Subtask', status: 'open' }),
+      liveOutput: '',
+      resultText: 'Task created: New Test Task Subtask\n\nTasks:\n- ID: `task_child_456`; title: New Test Task Subtask; status: open; parent: `task_parent_123`;',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [assistantTurnMessage(parentTurn), assistantTurnMessage(subtaskTurn)],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+  }));
+
+  assert.match(markup, /data-subtask-status-icon="checkbox"/);
+  assert.match(markup, /data-subtask-status-label="true"[^>]*>Planned</);
+  assert.match(markup, /New Test Task Subtask/);
 });
 
 test('task panel shows running subtasks with a circle and elapsed time only for live tool work', () => {
@@ -1451,8 +1510,8 @@ test('task panel shows running subtasks with a circle and elapsed time only for 
     emptyMessage: 'No tasks',
   }));
 
-  assert.match(markup, /data-subtask-status-icon="circle"/);
-  assert.match(markup, /Running · 0s/);
+  assert.match(markup, /data-subtask-status-icon="checkbox"/);
+  assert.match(markup, /Subagent active · Running · 0s/);
 });
 
 test('task dashboard exposes response and generated artifact links for task rows', () => {
