@@ -459,6 +459,81 @@ test('task dashboard creates and closes durable task_operator task events by tas
   assert.deepEqual(dashboard.tasks[0].involvedParticipantNames, ['Kordi User 2']);
 });
 
+test('task dashboard nests durable task creates with parentTaskId under the existing task', () => {
+  const parentTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-parent-task',
+    sessionId: 'session-group-1',
+    prompt: '@Kordi create a task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created a new task: **New Test Task**',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-parent-task',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({
+        action: 'create',
+        taskId: '',
+        taskTitle: 'New Test Task',
+        status: 'open',
+        involvedParticipants: ['Kordi User 3', 'Kordi User 2'],
+      }),
+      liveOutput: '',
+      resultText: 'Task created: New Test Task\n\nTasks:\n- ID: `task_parent_123`; title: New Test Task; status: open; summary: New test task.',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const subtaskTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-child-task',
+    sessionId: 'session-group-1',
+    prompt: '@Kordi create a subtask for it',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created a subtask under **New Test Task**.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-child-task',
+      name: 'task_operator',
+      status: 'done',
+      arguments: JSON.stringify({
+        action: 'create',
+        taskId: '',
+        parentTaskId: 'task_parent_123',
+        taskTitle: 'New Test Task Subtask',
+        status: 'open',
+        summary: 'Subtask under New Test Task.',
+        involvedParticipants: ['Kordi User 3', 'Kordi User 2'],
+      }),
+      liveOutput: '',
+      resultText: 'Task created: New Test Task Subtask\n\nTasks:\n- ID: `task_child_456`; title: New Test Task Subtask; status: open; parent: `task_parent_123`; summary: Subtask under New Test Task.',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({
+    messages: [assistantTurnMessage(parentTurn), assistantTurnMessage(subtaskTurn)],
+  });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].taskId, 'task_parent_123');
+  assert.equal(dashboard.tasks[0].title, 'New Test Task');
+  assert.equal(dashboard.tasks[0].subtasks.length, 1);
+  assert.equal(dashboard.tasks[0].subtasks[0].id, 'task:task_child_456');
+  assert.equal(dashboard.tasks[0].subtasks[0].title, 'New Test Task Subtask');
+  assert.equal(dashboard.tasks[0].subtasks[0].summary, 'Subtask under New Test Task.');
+});
+
 test('task dashboard merges title-only close events into the existing durable task row', () => {
   const createTurn: DesktopChatTurnSnapshot = {
     id: 'turn-create-title-close',
