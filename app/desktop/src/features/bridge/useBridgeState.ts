@@ -10,6 +10,7 @@ import {
 import {
   BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+  isInboundBridgeMessageDirection,
 } from '@/features/bridge/messages';
 import {
   BRIDGE_READ_ATTENTION_EVENTS,
@@ -171,6 +172,24 @@ function mergeConversationMessages(
   return [...mergedById.values()].sort(compareBridgeConversationMessages);
 }
 
+function bridgeInboundReadKeys(conversation: DesktopBridgeConversation) {
+  return new Set(conversation.messages
+    .filter((message) => isInboundBridgeMessageDirection(message.direction))
+    .map((message) => message.requestId?.trim() || message.id.trim())
+    .filter(Boolean));
+}
+
+function shouldPreserveClearedUnread(
+  current: DesktopBridgeConversation,
+  next: DesktopBridgeConversation,
+) {
+  if (current.unreadCount !== 0 || next.unreadCount <= 0) return false;
+  const currentReadKeys = bridgeInboundReadKeys(current);
+  const nextReadKeys = bridgeInboundReadKeys(next);
+  if (nextReadKeys.size === 0) return false;
+  return [...nextReadKeys].every((key) => currentReadKeys.has(key));
+}
+
 function mergeBridgeConversation(
   current: DesktopBridgeConversation,
   next: DesktopBridgeConversation,
@@ -178,7 +197,7 @@ function mergeBridgeConversation(
   return {
     ...next,
     subtitle: next.subtitle || current.subtitle,
-    unreadCount: next.unreadCount,
+    unreadCount: shouldPreserveClearedUnread(current, next) ? 0 : next.unreadCount,
     updatedAtMs: Math.max(current.updatedAtMs, next.updatedAtMs),
     updatedAtLabel: next.updatedAtMs >= current.updatedAtMs ? next.updatedAtLabel : current.updatedAtLabel,
     awaitingReply: next.awaitingReply,

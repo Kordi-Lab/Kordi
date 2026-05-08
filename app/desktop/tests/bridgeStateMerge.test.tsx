@@ -118,6 +118,47 @@ test('mergeDesktopBridgeState keeps a bridge request before its agent response e
   );
 });
 
+test('mergeDesktopBridgeState keeps locally cleared unread stable when a stale bridge snapshot replays the same request', () => {
+  const request = message({
+    id: 'request',
+    direction: 'inbound',
+    requestId: 'bridge_req_1',
+    text: 'hello',
+    timestampMs: 1_100,
+  });
+
+  const current = bridgeState([conversation([request], { unreadCount: 0 })]);
+  const staleNext = bridgeState([conversation([request], { unreadCount: 1, updatedAtMs: 2_200 })]);
+
+  const merged = mergeDesktopBridgeState(current, staleNext);
+
+  assert.equal(merged?.conversations[0].unreadCount, 0);
+});
+
+test('mergeDesktopBridgeState accepts new unread when a later bridge snapshot includes a new inbound request', () => {
+  const oldRequest = message({
+    id: 'request-1',
+    direction: 'inbound',
+    requestId: 'bridge_req_1',
+    text: 'hello',
+    timestampMs: 1_100,
+  });
+  const newRequest = message({
+    id: 'request-2',
+    direction: 'inbound',
+    requestId: 'bridge_req_2',
+    text: 'are you there?',
+    timestampMs: 1_300,
+  });
+
+  const current = bridgeState([conversation([oldRequest], { unreadCount: 0 })]);
+  const next = bridgeState([conversation([oldRequest, newRequest], { unreadCount: 1, updatedAtMs: 2_400 })]);
+
+  const merged = mergeDesktopBridgeState(current, next);
+
+  assert.equal(merged?.conversations[0].unreadCount, 1);
+});
+
 test('mergeDesktopBridgeState preserves the existing bridge request when a partial response update arrives', () => {
   const request = message({
     id: 'request',
