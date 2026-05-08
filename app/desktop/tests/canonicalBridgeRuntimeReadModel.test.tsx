@@ -378,7 +378,7 @@ test('canonical read model does not duplicate raw bridge processing while local 
   assert.equal(processingMessages[0]?.id?.startsWith('bridge-live-turn:'), false);
 });
 
-test('canonical read model keeps joined mention responses after the request even when bridge timestamps drift', () => {
+test('canonical read model hides joined mention notices while keeping responses after the request', () => {
   const sessionId = 'session:bridge:ordered-inbound-agent-request';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
@@ -423,10 +423,10 @@ test('canonical read model keeps joined mention responses after the request even
   assert.deepEqual(conversation?.messages.map((message) => message.id), [
     'msg:previous',
     'msg:request',
-    'msg:join',
     'msg:response',
   ]);
-  assert.equal(conversation?.messages[3]?.replyToMessageId, 'msg:join');
+  assert.equal(conversation?.messages[2]?.replyToMessageId, 'msg:request');
+  assert.equal(conversation?.messages.some((message) => message.text.includes('joined via @mention')), false);
 });
 
 test('canonical read model shows one processing item for pending inbound local agent requests', () => {

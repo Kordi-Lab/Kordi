@@ -696,6 +696,15 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const senderIdentityIdByMessageId = new Map<string, string>(
       sortedMessages.map((message) => [message.id, message.senderIdentityId]),
     );
+    const visibleReplyTargetByMessageId = new Map<string, string>();
+    for (const message of sortedMessages) {
+      const parentMessageId = message.parentMessageId?.trim();
+      if (!parentMessageId) continue;
+      const content = contentRecord(message.content);
+      if (stringValue(content.kind) === 'delegation-join-event') {
+        visibleReplyTargetByMessageId.set(message.id, parentMessageId);
+      }
+    }
     const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
       if (
         suppressedBridgeUiEchoIds.has(message.id)
@@ -733,7 +742,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         message,
         identityById,
         canonicalState.profile.humanIdentityId,
-        { senderIdentityIdByMessageId },
+        { senderIdentityIdByMessageId, visibleReplyTargetByMessageId },
       );
       if (!mapped) return [];
       const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
