@@ -465,6 +465,121 @@ test('task dashboard creates and closes durable task_operator task events by tas
   assert.deepEqual(dashboard.tasks[0].involvedParticipantNames, ['Kordi User 2']);
 });
 
+test('task dashboard merges title-only close events into the existing durable task row', () => {
+  const createTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-title-close',
+    sessionId: 'session-1',
+    prompt: '@KordiUser3sKordi create a task for issue 317',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-title-close',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"create","taskId":"finish_kordi_issue_317_review","taskTitle":"Finish Kordi Issue 317 Review","involvedParticipants":["Kordi User 2","Kordi User 3\'s Kordi"]}',
+      liveOutput: '',
+      resultText: 'Task created: Finish Kordi Issue 317 Review',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const closeTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-close-title-only',
+    sessionId: 'session-1',
+    prompt: '@KordiUser3sKordi close the task',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Closed the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'close-title-only',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"close","taskTitle":"Finish Kordi Issue 317 Review","query":"Finish Kordi Issue 317 Review","involvedParticipants":["Kordi User 2","Kordi User 3\'s Kordi"]}',
+      liveOutput: '',
+      resultText: 'Task closed: Finish Kordi Issue 317 Review',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({
+    messages: [assistantTurnMessage(createTurn), assistantTurnMessage(closeTurn)],
+  });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].taskId, 'finish_kordi_issue_317_review');
+  assert.equal(dashboard.tasks[0].title, 'Finish Kordi Issue 317 Review');
+  assert.equal(dashboard.tasks[0].status, 'closed');
+});
+
+test('task dashboard does not close a durable task row when a title-only close tool fails', () => {
+  const createTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-create-before-failed-close',
+    sessionId: 'session-1',
+    prompt: '@KordiUser3sKordi create a task for issue 317',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Created the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'create-before-failed-close',
+      name: 'task_operator',
+      status: 'done',
+      arguments: '{"action":"create","taskId":"finish_kordi_issue_317_review","taskTitle":"Finish Kordi Issue 317 Review"}',
+      liveOutput: '',
+      resultText: 'Task created: Finish Kordi Issue 317 Review',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+  const failedCloseTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-failed-close-title-only',
+    sessionId: 'session-1',
+    prompt: '@KordiUser3sKordi close the task',
+    status: 'failed',
+    message: '2 tools failed',
+    assistantText: 'I could not close the task.',
+    thinkingText: '',
+    completed: true,
+    succeeded: false,
+    tools: [{
+      id: 'failed-close-title-only',
+      name: 'task_operator',
+      status: 'error',
+      arguments: '{"action":"close","taskTitle":"Finish Kordi Issue 317 Review","query":"Finish Kordi Issue 317 Review"}',
+      liveOutput: '',
+      resultText: 'Error: close requires taskId or child-agent target',
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: true,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({
+    messages: [assistantTurnMessage(createTurn), assistantTurnMessage(failedCloseTurn)],
+  });
+
+  assert.equal(dashboard.tasks.length, 1);
+  assert.equal(dashboard.tasks[0].title, 'Finish Kordi Issue 317 Review');
+  assert.notEqual(dashboard.tasks[0].status, 'closed');
+});
+
 test('task dashboard uses group-scoped stable task ids from model task id', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'local-turn-id-a',

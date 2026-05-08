@@ -66,6 +66,7 @@ type MutableSubtask = TaskDashboardSubtask & {
 type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | 'activeSubtaskCount'> & {
   sequence: number;
   mergeKey?: string | null;
+  mergeKeys?: string[];
   completed: boolean;
   succeeded: boolean;
   lifecycleStatus: TaskDashboardStatus | null;
@@ -296,7 +297,7 @@ function turnHasTaskActivity(turn: DesktopChatTurnSnapshot) {
 function taskLifecycleStatusFromToolArguments(tools: DesktopChatToolSnapshot[]): TaskDashboardStatus | null {
   let status: TaskDashboardStatus | null = null;
   for (const tool of tools) {
-    if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
+    if (tool.name.trim().toLowerCase() !== 'task_operator' || tool.isError) continue;
     const args = safeParseToolArguments(tool.arguments);
     const action = stringValue(args?.action)?.toLowerCase();
     if (action === 'create') status = 'planned';
@@ -502,8 +503,8 @@ function resultSubtask(tool: DesktopChatToolSnapshot, args: Record<string, unkno
 
   let status: TaskDashboardStatus | null = null;
   if (tool.isError || /task failed/i.test(resultText)) status = 'failed';
-  if (/task completed/i.test(resultText)) status = 'completed';
-  if (action === 'close' || /task agent closed/i.test(resultText)) status = 'closed';
+  else if (/task completed/i.test(resultText)) status = 'completed';
+  else if (action === 'close' || /task agent closed/i.test(resultText)) status = 'closed';
   if (!status && toolIsStillRunning(tool)) status = 'active';
   if (!status) return null;
 
@@ -588,11 +589,16 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
   const involvedParticipantNames = involvedParticipantsFromToolArguments(turn.tools);
   const lifecycleStatus = taskLifecycleStatusFromToolArguments(turn.tools);
   const taskId = taskIdFromToolArguments(turn.tools);
+  const mergeKeys = Array.from(new Set([
+    taskMergeKeyFromId(taskId),
+    taskMergeKeyFromTitle(explicitTitle),
+  ].filter((value): value is string => Boolean(value))));
   return {
     id: stableTaskDashboardId(turn.sessionId, taskId, turn.id),
     title: titleFromTurn(turn, artifactIds, explicitTitle),
     taskId,
-    mergeKey: taskMergeKeyFromId(taskId) ?? taskMergeKeyFromTitle(explicitTitle),
+    mergeKey: mergeKeys[0] ?? null,
+    mergeKeys,
     summary: compact(turn.message || turn.assistantText || ''),
     status,
     ...statusMeta(status),
@@ -625,7 +631,12 @@ function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTas
     ? (incomingIsLater ? incoming.succeeded : existing.succeeded)
     : existing.succeeded || incoming.succeeded;
   existing.live = existing.live || incoming.live || !existing.completed;
+  if (!existing.taskId && incoming.taskId) {
+    existing.id = incoming.id;
+  }
   existing.taskId = incoming.taskId ?? existing.taskId;
+  existing.mergeKeys = Array.from(new Set([...(existing.mergeKeys ?? []), ...(incoming.mergeKeys ?? [])]));
+  existing.mergeKey = existing.mergeKeys[0] ?? existing.mergeKey;
   existing.artifactIds = Array.from(new Set([...existing.artifactIds, ...incoming.artifactIds]));
   existing.involvedParticipantNames = Array.from(new Set([...existing.involvedParticipantNames, ...incoming.involvedParticipantNames]));
   existing.writeScope = Array.from(new Set([...existing.writeScope, ...incoming.writeScope]));
@@ -738,14 +749,20 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
     if (existing) return existing;
 
     const parent = createParentTask(turnWithSequence);
-    if (parent.mergeKey) {
-      const existingByMergeKey = parentsByMergeKey.get(parent.mergeKey);
+    const mergeKeys = parent.mergeKeys?.length ? parent.mergeKeys : parent.mergeKey ? [parent.mergeKey] : [];
+    for (const mergeKey of mergeKeys) {
+      const existingByMergeKey = parentsByMergeKey.get(mergeKey);
       if (existingByMergeKey) {
         mergeParentTask(existingByMergeKey, parent);
+        for (const aliasKey of existingByMergeKey.mergeKeys ?? []) {
+          parentsByMergeKey.set(aliasKey, existingByMergeKey);
+        }
         parentsByTurnId.set(turnWithSequence.turn.id, existingByMergeKey);
         return existingByMergeKey;
       }
-      parentsByMergeKey.set(parent.mergeKey, parent);
+    }
+    for (const mergeKey of mergeKeys) {
+      parentsByMergeKey.set(mergeKey, parent);
     }
 
     parentsByTurnId.set(turnWithSequence.turn.id, parent);
