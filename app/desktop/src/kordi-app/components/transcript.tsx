@@ -194,36 +194,39 @@ function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
   });
 }
 
-function MessageDeliveryGlyph({ status }: { status: string }) {
+function MessageDeliveryGlyph({ status }: { status?: string | null }) {
+  const normalizedStatus = status?.trim().toLowerCase() || 'none';
   const visual = messageDeliveryVisual(status);
-  if (!visual) return null;
-
-  const toneClass = visual.tone === 'blue'
+  const toneClass = visual?.tone === 'blue'
     ? 'text-sky-400'
-    : visual.tone === 'red'
+    : visual?.tone === 'red'
       ? 'text-rose-400'
       : 'text-slate-400';
+  const activeGlyph = visual?.glyph ?? 'none';
+  const glyphClass = (glyph: NonNullable<ReturnType<typeof messageDeliveryVisual>>['glyph']) => cn(
+    'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-100',
+    activeGlyph === glyph ? 'opacity-100' : 'opacity-0',
+    toneClass,
+  );
 
-  if (visual.glyph === 'single-check') {
-    return <Check className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
-  }
-  if (visual.glyph === 'double-check') {
-    return <CheckCheck className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
-  }
-  if (visual.glyph === 'clock') {
-    return <Clock3 className={cn('h-3.5 w-3.5', toneClass)} aria-hidden="true" />;
-  }
-  if (visual.glyph === 'spinner') {
-    return <LoaderCircle className={cn('h-3.5 w-3.5 animate-spin', toneClass)} aria-hidden="true" />;
-  }
-  if (visual.glyph === 'exclamation') {
-    return (
-      <span className={cn('inline-flex h-3.5 w-3.5 items-center justify-center text-[13px] font-semibold leading-none', toneClass)} aria-hidden="true">
+  return (
+    <span
+      className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+      data-message-delivery-status={normalizedStatus}
+      data-message-delivery-glyph={activeGlyph}
+      aria-label={visual?.label}
+      role={visual ? 'img' : undefined}
+      aria-hidden={visual ? undefined : true}
+    >
+      <Check className={glyphClass('single-check')} aria-hidden="true" />
+      <CheckCheck className={glyphClass('double-check')} aria-hidden="true" />
+      <Clock3 className={glyphClass('clock')} aria-hidden="true" />
+      <LoaderCircle className={cn(glyphClass('spinner'), activeGlyph === 'spinner' && 'animate-spin')} aria-hidden="true" />
+      <span className={cn(glyphClass('exclamation'), 'inline-flex items-center justify-center text-[13px] font-semibold leading-none')} aria-hidden="true">
         !
       </span>
-    );
-  }
-  return null;
+    </span>
+  );
 }
 
 function contactRequestFailureCanBeRetried(detail?: string | null) {
@@ -286,6 +289,18 @@ function ContactRequestFailureNotice({
   );
 }
 
+function MessageDeliveryStatusSlot({ status }: { status?: string | null }) {
+  return (
+    <span
+      className="inline-flex h-3.5 w-4 shrink-0 justify-center"
+      data-message-delivery-status={status?.trim().toLowerCase() || 'none'}
+      aria-live="off"
+    >
+      <MessageDeliveryGlyph status={status} />
+    </span>
+  );
+}
+
 function MessageFooter({
   time,
   status,
@@ -299,21 +314,17 @@ function MessageFooter({
   isUser?: boolean;
   compact?: boolean;
 }) {
-  const visual = messageDeliveryVisual(status);
-  const glyph = status ? <MessageDeliveryGlyph status={status} /> : null;
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
   return (
     <div className={cn(
-      'app-message-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
-      compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'mt-1.5 justify-end',
+      'app-message-footer app-message-delivery-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
+      compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'ml-auto mt-1.5 min-w-[4.6rem] justify-end',
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
-      <span className="inline-flex w-4 justify-center" title={visual?.label ?? status ?? undefined}>
-        {glyph}
-      </span>
+      <MessageDeliveryStatusSlot status={status} />
     </div>
   );
 }
@@ -637,14 +648,12 @@ function MessageBubbleView({
                 {renderTextWithMentionPills(msg.text, msg.mentions)}
               </span>
               <span className={cn(
-                'app-message-footer app-message-compact-footer ml-4 inline-flex translate-y-[1px] items-center gap-1 whitespace-nowrap text-[9.5px] leading-none tabular-nums',
-                isOwnHumanMessage ? 'text-black/45' : 'text-slate-500/80',
+                'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
+                isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
               )}>
-                {footerDetail && (!deliveryStatus || (deliveryStatus !== 'read' && deliveryStatus !== 'responded')) ? (
-                  <span>{footerDetail}</span>
-                ) : null}
-                <span>{msg.time}</span>
-                {isOwnHumanMessage && deliveryStatus ? MessageDeliveryGlyph({ status: deliveryStatus }) : null}
+                {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
+                <span className={cn(isOwnHumanMessage && 'inline-block min-w-[2.1rem] text-right')}>{msg.time}</span>
+                {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
               </span>
             </div>
           ) : (

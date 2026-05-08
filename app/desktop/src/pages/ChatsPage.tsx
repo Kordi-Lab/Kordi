@@ -59,6 +59,7 @@ import {
   focusComposerTextarea,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
+import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -572,7 +573,7 @@ export function ChatsPage({
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
             {attributedTranscriptMessages.map((msg, idx) => (
               <MessageBubble
-                key={`${msg.id ?? msg.role}-${msg.time}-${idx}`}
+                key={transcriptMessageRenderKey(msg, idx)}
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onOpenArtifact={onOpenArtifact}

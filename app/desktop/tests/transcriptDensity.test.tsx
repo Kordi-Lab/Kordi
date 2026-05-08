@@ -136,6 +136,53 @@ test('renders failed own message delivery as a compact red exclamation', () => {
   assert.match(markup, /text-rose-400/);
 });
 
+test('sent-message delivery glyph keeps one stable slot so status changes do not refresh the whole popover', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello',
+    time: '00:45',
+    statusChips: ['sent'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-delivery-footer ml-3/);
+  assert.match(markup, /min-w-\[2\.1rem\]/);
+  assert.doesNotMatch(markup, /right-0/);
+  assert.doesNotMatch(markup, /pr-\[3\.75rem\]/);
+  assert.doesNotMatch(markup, /pb-4/);
+  assert.match(markup, /data-message-delivery-status="sent"/);
+  assert.match(markup, /data-message-delivery-glyph="single-check"/);
+  assert.match(markup, /aria-label="Sent"/);
+  assert.match(markup, /opacity-100[^\"]*text-slate-400/);
+  assert.match(markup, /opacity-0[^\"]*text-slate-400/);
+  assert.doesNotMatch(markup, /title="Sent"/);
+});
+
+test('blank outgoing delivery status still renders the stable hidden glyph stack', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello',
+    time: '00:45',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-delivery-footer ml-3/);
+  assert.match(markup, /data-message-delivery-status="none"/);
+  assert.match(markup, /data-message-delivery-glyph="none"/);
+  assert.match(markup, /data-message-delivery-glyph="none" aria-hidden="true"/);
+  assert.doesNotMatch(markup, /aria-label="Sent"/);
+  assert.match(markup, /lucide-check[^\"]*opacity-0/);
+  assert.match(markup, /lucide-check-check[^\"]*opacity-0/);
+});
+
 test('renders contact-gated failed sends as a centered notice instead of changing the message bubble', () => {
   const message: Message = {
     role: 'user',
