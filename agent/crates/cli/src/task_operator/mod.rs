@@ -63,16 +63,19 @@ struct TaskOperatorState {
     registry: Mutex<TaskAgentRegistry>,
     runner: Arc<dyn ChildAgentRunner>,
     cwd: PathBuf,
+    session_id: String,
     store: Option<Arc<Mutex<rusqlite::Connection>>>,
 }
 
 pub(crate) fn build_task_operator_runtime(
     cwd: PathBuf,
+    session_id: String,
     store: Arc<Mutex<rusqlite::Connection>>,
 ) -> TaskOperatorRuntime {
     build_task_operator_runtime_with_runner_and_store(
         Arc::new(SubprocessChildAgentRunner::new()),
         cwd,
+        session_id,
         DEFAULT_MAX_LIVE_TASKS,
         store,
     )
@@ -84,21 +87,35 @@ pub(crate) fn build_task_operator_runtime_with_runner(
     cwd: PathBuf,
     max_live_tasks: usize,
 ) -> TaskOperatorRuntime {
-    build_task_operator_runtime_with_runner_inner(runner, cwd, max_live_tasks, None)
+    build_task_operator_runtime_with_runner_inner(
+        runner,
+        cwd,
+        "test-session".to_string(),
+        max_live_tasks,
+        None,
+    )
 }
 
 pub(crate) fn build_task_operator_runtime_with_runner_and_store(
     runner: Arc<dyn ChildAgentRunner>,
     cwd: PathBuf,
+    session_id: String,
     max_live_tasks: usize,
     store: Arc<Mutex<rusqlite::Connection>>,
 ) -> TaskOperatorRuntime {
-    build_task_operator_runtime_with_runner_inner(runner, cwd, max_live_tasks, Some(store))
+    build_task_operator_runtime_with_runner_inner(
+        runner,
+        cwd,
+        session_id,
+        max_live_tasks,
+        Some(store),
+    )
 }
 
 fn build_task_operator_runtime_with_runner_inner(
     runner: Arc<dyn ChildAgentRunner>,
     cwd: PathBuf,
+    session_id: String,
     max_live_tasks: usize,
     store: Option<Arc<Mutex<rusqlite::Connection>>>,
 ) -> TaskOperatorRuntime {
@@ -106,6 +123,7 @@ fn build_task_operator_runtime_with_runner_inner(
         registry: Mutex::new(TaskAgentRegistry::new(max_live_tasks)),
         runner,
         cwd,
+        session_id,
         store,
     });
     let run: TaskOperatorFn = Arc::new(move |request| {
@@ -126,13 +144,15 @@ impl TaskOperatorState {
         if title.is_empty() {
             bail!("taskTitle cannot be empty for task create")
         }
-        let task_id = request
+        let task_id = match request
             .task_id
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .unwrap_or_else(|| format!("task_{}", uuid::Uuid::new_v4().simple()));
+        {
+            Some(candidate) if self.existing_task_id(candidate).await? => candidate.to_string(),
+            _ => generated_task_id(),
+        };
         let Some(store) = self.store.as_ref() else {
             bail!("task_operator durable task storage is unavailable")
         };
@@ -141,9 +161,12 @@ impl TaskOperatorState {
             kordi_session::tasks::upsert_task(
                 &conn,
                 kordi_session::tasks::NewTask {
+                    session_id: self.session_id.clone(),
                     task_id: task_id.clone(),
+                    parent_task_id: request.parent_task_id.clone(),
                     title: title.to_string(),
                     summary: request.summary.clone(),
+                    status: request.status.clone(),
                     involved_participants: request.involved_participants.clone(),
                 },
             )?
@@ -158,16 +181,23 @@ impl TaskOperatorState {
     }
 
     async fn search(&self, request: TaskSearchRequest) -> Result<TaskOperatorRuntimeResponse> {
-        let query = request.query.trim();
-        if query.is_empty() {
-            bail!("query cannot be empty for task search")
-        }
         let Some(store) = self.store.as_ref() else {
             bail!("task_operator durable task storage is unavailable")
         };
+        let query = request
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let tasks = {
             let conn = store.lock().await;
-            kordi_session::tasks::search_tasks(&conn, query, request.status.as_deref())?
+            kordi_session::tasks::search_tasks(
+                &conn,
+                &self.session_id,
+                query,
+                request.status.as_deref(),
+                request.parent_task_id.as_deref(),
+            )?
         }
         .into_iter()
         .map(task_status_from_stored)
@@ -175,10 +205,22 @@ impl TaskOperatorState {
 
         Ok(TaskOperatorRuntimeResponse {
             status: "searched".to_string(),
-            message: Some(format!("Task search matched {} task(s)", tasks.len())),
+            message: Some(if query.is_some() {
+                format!("Task search matched {} task(s)", tasks.len())
+            } else {
+                format!("Listed {} session task(s)", tasks.len())
+            }),
             target: None,
             tasks,
         })
+    }
+
+    async fn existing_task_id(&self, task_id: &str) -> Result<bool> {
+        let Some(store) = self.store.as_ref() else {
+            return Ok(false);
+        };
+        let conn = store.lock().await;
+        Ok(kordi_session::tasks::get_task(&conn, &self.session_id, task_id)?.is_some())
     }
 
     async fn handle(
@@ -349,9 +391,9 @@ impl TaskOperatorState {
                 .filter(|value| !value.is_empty())
             {
                 Some(task_id) => task_id.to_string(),
-                None => resolve_close_task_id(&conn, &request)?,
+                None => resolve_close_task_id(&conn, &self.session_id, &request)?,
             };
-            kordi_session::tasks::close_task(&conn, &task_id)?
+            kordi_session::tasks::close_task(&conn, &self.session_id, &task_id)?
         };
         Ok(TaskOperatorRuntimeResponse {
             status: "closed".to_string(),
@@ -364,6 +406,7 @@ impl TaskOperatorState {
 
 fn resolve_close_task_id(
     conn: &rusqlite::Connection,
+    session_id: &str,
     request: &TaskCloseRequest,
 ) -> Result<String> {
     let query = request
@@ -373,7 +416,8 @@ fn resolve_close_task_id(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("close requires taskId, taskTitle, query, or child-agent target"))?;
-    let mut matches = kordi_session::tasks::search_tasks(conn, query, Some("open"))?;
+    let mut matches =
+        kordi_session::tasks::search_tasks(conn, session_id, Some(query), Some("open"), None)?;
     if matches.len() > 1 {
         let normalized_query = query.to_lowercase();
         let exact_matches = matches
@@ -420,9 +464,14 @@ fn apply_spawned_status(registry: &mut TaskAgentRegistry, spawned: &SpawnedTask)
     }
 }
 
+fn generated_task_id() -> String {
+    format!("task_{}", uuid::Uuid::new_v4().simple())
+}
+
 fn task_status_from_stored(task: kordi_session::tasks::StoredTask) -> TaskOperatorTaskStatus {
     TaskOperatorTaskStatus {
         path: task.task_id,
+        parent_task_id: task.parent_task_id,
         title: task.title,
         status: task.status,
         summary: task.summary,
@@ -433,6 +482,7 @@ fn task_status_from_stored(task: kordi_session::tasks::StoredTask) -> TaskOperat
 fn task_status_from_metadata(metadata: TaskAgentMetadata) -> TaskOperatorTaskStatus {
     TaskOperatorTaskStatus {
         path: metadata.path.as_str().to_string(),
+        parent_task_id: None,
         title: metadata.title,
         status: metadata.status.as_str().to_string(),
         summary: metadata.summary,
@@ -681,15 +731,18 @@ mod tests {
         let runtime = super::build_task_operator_runtime_with_runner_and_store(
             runner,
             std::path::PathBuf::from("/tmp/project"),
+            "session-a".to_string(),
             4,
             conn.clone(),
         );
 
         (runtime.run)(TaskOperatorRuntimeRequest::Create(
             kordi_tools::task_operator::models::TaskCreateRequest {
-                task_id: Some("finish-kordi-issue-317".to_string()),
+                task_id: None,
+                parent_task_id: None,
                 task_title: "Finish Kordi Issue 317".to_string(),
                 summary: Some("Implement fork flow".to_string()),
+                status: None,
                 involved_participants: vec!["Shuyang".to_string(), "Kordi".to_string()],
             },
         ))
@@ -698,8 +751,9 @@ mod tests {
 
         let search = (runtime.run)(TaskOperatorRuntimeRequest::Search(
             kordi_tools::task_operator::models::TaskSearchRequest {
-                query: "issue 317".to_string(),
+                query: Some("issue 317".to_string()),
                 status: None,
+                parent_task_id: None,
             },
         ))
         .await
@@ -707,14 +761,15 @@ mod tests {
 
         assert_eq!(search.status, "searched");
         assert_eq!(search.tasks.len(), 1);
-        assert_eq!(search.tasks[0].path, "finish-kordi-issue-317");
+        assert!(search.tasks[0].path.starts_with("task_"));
+        let task_id = search.tasks[0].path.clone();
         assert_eq!(search.tasks[0].title, "Finish Kordi Issue 317");
         assert_eq!(search.tasks[0].status, "open");
 
         (runtime.run)(TaskOperatorRuntimeRequest::Close(
             kordi_tools::task_operator::models::TaskCloseRequest {
                 target: None,
-                task_id: Some("finish-kordi-issue-317".to_string()),
+                task_id: Some(task_id),
                 task_title: None,
                 query: None,
             },
@@ -724,14 +779,71 @@ mod tests {
 
         let closed = (runtime.run)(TaskOperatorRuntimeRequest::Search(
             kordi_tools::task_operator::models::TaskSearchRequest {
-                query: "issue 317".to_string(),
+                query: Some("issue 317".to_string()),
                 status: Some("closed".to_string()),
+                parent_task_id: None,
             },
         ))
         .await
         .expect("search closed should read persisted task");
         assert_eq!(closed.tasks.len(), 1);
         assert_eq!(closed.tasks[0].status, "closed");
+    }
+
+    #[tokio::test]
+    async fn task_operator_runtime_search_without_query_lists_only_current_session_tasks() {
+        let conn = Arc::new(TokioMutex::new(Connection::open_in_memory().expect("conn")));
+        {
+            let guard = conn.lock().await;
+            kordi_session::schema::init_schema(&guard).expect("schema");
+            kordi_session::tasks::upsert_task(
+                &guard,
+                kordi_session::tasks::NewTask {
+                    session_id: "session-a".to_string(),
+                    task_id: "task_a".to_string(),
+                    parent_task_id: None,
+                    title: "Current session task".to_string(),
+                    summary: None,
+                    status: Some("open".to_string()),
+                    involved_participants: Vec::new(),
+                },
+            )
+            .expect("task a");
+            kordi_session::tasks::upsert_task(
+                &guard,
+                kordi_session::tasks::NewTask {
+                    session_id: "session-b".to_string(),
+                    task_id: "task_b".to_string(),
+                    parent_task_id: None,
+                    title: "Other session task".to_string(),
+                    summary: None,
+                    status: Some("open".to_string()),
+                    involved_participants: Vec::new(),
+                },
+            )
+            .expect("task b");
+        }
+        let runtime = super::build_task_operator_runtime_with_runner_and_store(
+            Arc::new(FakeRunner::default()),
+            std::path::PathBuf::from("/tmp/project"),
+            "session-a".to_string(),
+            4,
+            conn,
+        );
+
+        let listed = (runtime.run)(TaskOperatorRuntimeRequest::Search(
+            kordi_tools::task_operator::models::TaskSearchRequest {
+                query: None,
+                status: Some("open".to_string()),
+                parent_task_id: None,
+            },
+        ))
+        .await
+        .expect("list current session tasks");
+
+        assert_eq!(listed.message.as_deref(), Some("Listed 1 session task(s)"));
+        assert_eq!(listed.tasks.len(), 1);
+        assert_eq!(listed.tasks[0].path, "task_a");
     }
 
     #[tokio::test]
@@ -745,15 +857,18 @@ mod tests {
         let runtime = super::build_task_operator_runtime_with_runner_and_store(
             runner,
             std::path::PathBuf::from("/tmp/project"),
+            "session-a".to_string(),
             4,
             conn,
         );
 
         (runtime.run)(TaskOperatorRuntimeRequest::Create(
             kordi_tools::task_operator::models::TaskCreateRequest {
-                task_id: Some("finish_kordi_issue_317_review".to_string()),
+                task_id: None,
+                parent_task_id: None,
                 task_title: "Finish Kordi Issue 317 Review".to_string(),
                 summary: Some("Review issue 317".to_string()),
+                status: None,
                 involved_participants: vec![
                     "Kordi User 2".to_string(),
                     "Kordi User 3's Kordi".to_string(),
@@ -775,12 +890,15 @@ mod tests {
         .expect("close should resolve unique task by title/query");
 
         assert_eq!(closed.status, "closed");
-        assert_eq!(
-            closed.target.as_deref(),
-            Some("finish_kordi_issue_317_review")
+        assert!(
+            closed
+                .target
+                .as_deref()
+                .unwrap_or_default()
+                .starts_with("task_")
         );
         assert_eq!(closed.tasks.len(), 1);
-        assert_eq!(closed.tasks[0].path, "finish_kordi_issue_317_review");
+        assert_eq!(closed.tasks[0].path, closed.target.as_deref().unwrap());
         assert_eq!(closed.tasks[0].status, "closed");
     }
 

@@ -65,6 +65,20 @@ pub struct DesktopChatSlashCommand {
     pub value: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopVisibleTaskRecord {
+    pub task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub involved_participants: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatStoredTool {
@@ -538,6 +552,38 @@ impl DesktopRuntimeSession {
 
     pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
         self.setup.tool_ctx.reach_out = runtime;
+    }
+
+    pub fn sync_visible_task_records(
+        &mut self,
+        records: &[DesktopVisibleTaskRecord],
+    ) -> Result<usize> {
+        if records.is_empty() {
+            return Ok(0);
+        }
+        ensure_session_row_created(&mut self.setup)?;
+        let mut count = 0;
+        for record in records {
+            let task_id = record.task_id.trim();
+            let title = record.title.trim();
+            if task_id.is_empty() || title.is_empty() {
+                continue;
+            }
+            kordi_session::tasks::upsert_task(
+                &self.setup.conn,
+                kordi_session::tasks::NewTask {
+                    session_id: self.setup.session_id.clone(),
+                    task_id: task_id.to_string(),
+                    parent_task_id: record.parent_task_id.clone(),
+                    title: title.to_string(),
+                    summary: record.summary.clone(),
+                    status: Some(record.status.clone()),
+                    involved_participants: record.involved_participants.clone(),
+                },
+            )?;
+            count += 1;
+        }
+        Ok(count)
     }
 
     pub fn set_bridge_outreach_prompt_context(&mut self, context: Option<String>) {

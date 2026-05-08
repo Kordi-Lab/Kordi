@@ -59,9 +59,13 @@ pub struct TaskEstimateRequest {
 pub struct TaskCreateRequest {
     #[serde(default)]
     pub task_id: Option<String>,
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
     pub task_title: String,
     #[serde(default)]
     pub summary: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
     #[serde(default)]
     pub involved_participants: Vec<String>,
 }
@@ -69,9 +73,12 @@ pub struct TaskCreateRequest {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSearchRequest {
-    pub query: String,
+    #[serde(default)]
+    pub query: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -150,6 +157,8 @@ pub struct TaskEstimate {
 #[serde(rename_all = "camelCase")]
 pub struct TaskOperatorTaskStatus {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
     pub title: String,
     pub status: String,
     pub summary: Option<String>,
@@ -211,23 +220,26 @@ mod tests {
         let create: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "create",
             "taskId": "task_user_2",
+            "parentTaskId": "task_parent",
             "taskTitle": "Test Task For Kordi User 2",
             "summary": "Verify task visibility across the group.",
+            "status": "waiting",
             "involvedParticipants": ["Kordi User 2"]
         }))
         .expect("create request should deserialize");
         assert!(
-            matches!(create, TaskOperatorRequest::Create(request) if request.task_title == "Test Task For Kordi User 2")
+            matches!(create, TaskOperatorRequest::Create(request) if request.task_title == "Test Task For Kordi User 2" && request.parent_task_id.as_deref() == Some("task_parent") && request.status.as_deref() == Some("waiting"))
         );
 
         let search: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "search",
             "query": "Kordi User 2",
-            "status": "open"
+            "status": "open",
+            "parentTaskId": "task_parent"
         }))
         .expect("search request should deserialize");
         assert!(
-            matches!(search, TaskOperatorRequest::Search(request) if request.query == "Kordi User 2")
+            matches!(search, TaskOperatorRequest::Search(request) if request.query.as_deref() == Some("Kordi User 2") && request.parent_task_id.as_deref() == Some("task_parent"))
         );
 
         let close: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
