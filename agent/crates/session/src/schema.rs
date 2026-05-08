@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 7;
+const CURRENT_VERSION: i32 = 8;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -106,6 +106,37 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status_updated
     ON tasks(status, updated_at DESC);
 "#;
 
+const MIGRATION_V8: &str = r#"
+ALTER TABLE tasks RENAME TO tasks_v7_legacy;
+CREATE TABLE tasks (
+    session_id                 TEXT NOT NULL,
+    task_id                    TEXT NOT NULL,
+    parent_task_id             TEXT,
+    title                      TEXT NOT NULL,
+    summary                    TEXT,
+    status                     TEXT NOT NULL DEFAULT 'open',
+    involved_participants_json TEXT NOT NULL DEFAULT '[]',
+    created_at                 TEXT NOT NULL,
+    updated_at                 TEXT NOT NULL,
+    closed_at                  TEXT,
+    PRIMARY KEY (session_id, task_id)
+);
+INSERT INTO tasks (
+    session_id, task_id, parent_task_id, title, summary, status,
+    involved_participants_json, created_at, updated_at, closed_at
+)
+SELECT '', task_id, NULL, title, summary, status,
+       involved_participants_json, created_at, updated_at, closed_at
+FROM tasks_v7_legacy;
+DROP TABLE tasks_v7_legacy;
+CREATE INDEX IF NOT EXISTS idx_tasks_status_updated
+    ON tasks(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_session_status_updated
+    ON tasks(session_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_session_parent
+    ON tasks(session_id, parent_task_id);
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -143,6 +174,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 7 {
         conn.execute_batch(MIGRATION_V7)?;
         set_version(conn, 7)?;
+    }
+
+    if current < 8 {
+        conn.execute_batch(MIGRATION_V8)?;
+        set_version(conn, 8)?;
     }
 
     Ok(())

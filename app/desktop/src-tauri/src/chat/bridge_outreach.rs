@@ -164,6 +164,11 @@ pub(super) async fn prepare_desktop_session_for_send(
 ) {
     let local_agent_labels = local_agent_mention_labels(runtime, &cwd);
     let local_session_context = if text_mentions_local_agent(user_text, &local_agent_labels) {
+        if let Ok(task_records) =
+            crate::canonical_sessions::local_agent_session_task_records(Some(runtime.session_id()))
+        {
+            let _ = runtime.sync_visible_task_records(&task_records);
+        }
         crate::canonical_sessions::local_agent_session_prompt_context(Some(runtime.session_id()))
             .ok()
             .flatten()

@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{params, Connection};
+use serde_json::Value;
 
 use super::schema::ensure_local_profile;
 use super::{
@@ -196,6 +199,166 @@ fn push_recent_session_messages(lines: &mut Vec<String>, messages: Vec<String>) 
         lines.push(String::new());
         lines.push("Recent session messages:".to_string());
         lines.extend(messages);
+    }
+}
+
+fn string_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn bool_field(value: &Value, key: &str) -> bool {
+    value.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn visible_task_records_from_message_json(
+    content_json: Option<&Value>,
+) -> Result<Vec<kordi_cli::desktop_runtime::DesktopVisibleTaskRecord>, String> {
+    let Some(content_json) = content_json else {
+        return Ok(Vec::new());
+    };
+    let Some(tools) = content_json.get("tools").and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    let mut records = Vec::new();
+    for tool in tools {
+        if !string_field(tool, "name")
+            .is_some_and(|name| name.eq_ignore_ascii_case("task_operator"))
+        {
+            continue;
+        }
+        if bool_field(tool, "isError") {
+            continue;
+        }
+        let Some(arguments) = string_field(tool, "arguments") else {
+            continue;
+        };
+        let Ok(args) = serde_json::from_str::<Value>(&arguments) else {
+            continue;
+        };
+        let Some(action) = string_field(&args, "action").map(|value| value.to_lowercase()) else {
+            continue;
+        };
+        if action != "create" && action != "close" {
+            continue;
+        }
+        let Some(task_id) = string_field(&args, "taskId").or_else(|| string_field(&args, "target"))
+        else {
+            continue;
+        };
+        let title = string_field(&args, "taskTitle")
+            .or_else(|| string_field(content_json, "contentText"))
+            .unwrap_or_else(|| task_id.clone());
+        let involved_participants = args
+            .get("involvedParticipants")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        records.push(kordi_cli::desktop_runtime::DesktopVisibleTaskRecord {
+            task_id,
+            parent_task_id: string_field(&args, "parentTaskId"),
+            title,
+            summary: string_field(&args, "summary"),
+            status: if action == "close" {
+                "closed".to_string()
+            } else {
+                string_field(&args, "status").unwrap_or_else(|| "open".to_string())
+            },
+            involved_participants,
+        });
+    }
+    Ok(records)
+}
+
+pub(crate) fn local_agent_session_task_records(
+    parent_session_id: Option<&str>,
+) -> Result<Vec<kordi_cli::desktop_runtime::DesktopVisibleTaskRecord>, String> {
+    let Some(session_id) = parent_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(Vec::new());
+    };
+    let conn = open_db()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT content_json
+             FROM session_messages
+             WHERE session_id = ?1
+             ORDER BY sequence_num ASC, created_at_ms ASC",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map(params![session_id], |row| row.get::<_, Option<String>>(0))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let mut by_id = BTreeMap::<String, kordi_cli::desktop_runtime::DesktopVisibleTaskRecord>::new();
+    for raw in rows {
+        let Some(raw) = raw else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+            continue;
+        };
+        for mut record in visible_task_records_from_message_json(Some(&value))? {
+            if let Some(existing) = by_id.get(&record.task_id) {
+                if record.parent_task_id.is_none() {
+                    record.parent_task_id = existing.parent_task_id.clone();
+                }
+                if record.summary.is_none() {
+                    record.summary = existing.summary.clone();
+                }
+                if record.involved_participants.is_empty() {
+                    record.involved_participants = existing.involved_participants.clone();
+                }
+                if record.title == record.task_id {
+                    record.title = existing.title.clone();
+                }
+            }
+            by_id.insert(record.task_id.clone(), record);
+        }
+    }
+    Ok(by_id.into_values().collect())
+}
+
+fn push_current_session_tasks(
+    lines: &mut Vec<String>,
+    tasks: &[kordi_cli::desktop_runtime::DesktopVisibleTaskRecord],
+) {
+    let open_tasks = tasks
+        .iter()
+        .filter(|task| !task.status.eq_ignore_ascii_case("closed"))
+        .collect::<Vec<_>>();
+    if open_tasks.is_empty() {
+        return;
+    }
+    lines.push(String::new());
+    lines.push("Current session tasks (use these exact IDs with task_operator):".to_string());
+    for task in open_tasks.iter().take(20) {
+        let parent = task
+            .parent_task_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("; parent `{value}`"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "- ID `{}` — {} — status {}{}",
+            task.task_id, task.title, task.status, parent
+        ));
     }
 }
 
@@ -460,12 +623,54 @@ pub(crate) fn local_agent_session_prompt_context(
         push_concise_participants(&mut lines, &participants);
     }
 
+    let task_records = local_agent_session_task_records(Some(session_id))?;
+    push_current_session_tasks(&mut lines, &task_records);
     push_recent_session_messages(
         &mut lines,
         recent_session_message_lines(&conn, session_id, 16)?,
     );
 
     Ok(Some(lines.join("\n")))
+}
+
+#[cfg(test)]
+mod task_record_tests {
+    use super::visible_task_records_from_message_json;
+
+    #[test]
+    fn visible_task_records_from_message_json_extracts_task_operator_create_and_close() {
+        let create_json = serde_json::json!({
+            "tools": [{
+                "name": "task_operator",
+                "isError": false,
+                "arguments": "{\"action\":\"create\",\"taskId\":\"be_happy_for_all_of_us\",\"taskTitle\":\"Be Happy For All Of Us\",\"summary\":\"Shared reminder\",\"involvedParticipants\":[\"Kordi User 2\"]}"
+            }]
+        });
+        let close_json = serde_json::json!({
+            "tools": [{
+                "name": "task_operator",
+                "isError": false,
+                "arguments": "{\"action\":\"close\",\"taskId\":\"be_happy_for_all_of_us\",\"taskTitle\":\"Be Happy For All Of Us\"}"
+            }]
+        });
+
+        let created =
+            visible_task_records_from_message_json(Some(&create_json)).expect("create records");
+        let closed =
+            visible_task_records_from_message_json(Some(&close_json)).expect("close records");
+
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].task_id, "be_happy_for_all_of_us");
+        assert_eq!(created[0].title, "Be Happy For All Of Us");
+        assert_eq!(created[0].status, "open");
+        assert_eq!(
+            created[0].involved_participants,
+            vec!["Kordi User 2".to_string()]
+        );
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].task_id, "be_happy_for_all_of_us");
+        assert_eq!(closed[0].status, "closed");
+    }
 }
 
 pub(crate) fn bridge_agent_parent_session_prompt(
@@ -536,6 +741,8 @@ pub(crate) fn bridge_agent_parent_session_prompt(
             } else {
                 push_concise_participants(&mut lines, &participants);
             }
+            let task_records = local_agent_session_task_records(Some(session_id))?;
+            push_current_session_tasks(&mut lines, &task_records);
             push_recent_session_messages(
                 &mut lines,
                 recent_session_message_lines(&conn, session_id, 12)?,

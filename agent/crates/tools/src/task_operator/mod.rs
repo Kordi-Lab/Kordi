@@ -27,7 +27,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Operator tool for verifiable Kordi task events and local child task agents. Use create/search/close for durable user-visible task events; include taskTitle and involvedParticipants for shared tasks. Use manifest/estimate/spawn/message/wait/list for multi-step or parallelizable child-agent work. Actions: create records a task event, search records a verifiable task lookup, close records task closure or closes a child-agent path, manifest/estimate are planning-only, spawn starts a local child agent, message sends follow-up, wait observes completion, list reports child-agent status. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
+        "Operator tool for verifiable Kordi task events and local child task agents. Durable tasks are scoped to the current session and use generated opaque IDs returned by this tool. Actions: create a task with {action:'create', taskTitle:'...'}; create a subtask with parentTaskId; list/search current session tasks with {action:'search', status:'open'} or add query; close with {action:'close', taskId:'task_...'}. Use manifest/estimate/spawn/message/wait/list for local child-agent work. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -43,6 +43,10 @@ impl Tool for TaskOperatorTool {
                     "type": "string",
                     "description": "Concise 5-10 words user-facing title for action=create or task close events; optional overall task title when manifesting or spawning subtasks."
                 },
+                "parentTaskId": {
+                    "type": "string",
+                    "description": "Optional parent durable task ID when creating/searching subtasks."
+                },
                 "involvedParticipants": {
                     "type": "array",
                     "items": { "type": "string" },
@@ -50,7 +54,7 @@ impl Tool for TaskOperatorTool {
                 },
                 "taskId": {
                     "type": "string",
-                    "description": "Stable id for action=create or action=close durable task events. Use lowercase letters, digits, dashes, or underscores when generating one."
+                    "description": "Opaque durable task ID returned by task_operator. For action=close, copy an ID from create/search results. New create actions generate an ID when omitted."
                 },
                 "summary": {
                     "type": "string",
@@ -58,11 +62,11 @@ impl Tool for TaskOperatorTool {
                 },
                 "query": {
                     "type": "string",
-                    "description": "Search text for action=search, or fallback match text for action=close when taskId/taskTitle is unavailable."
+                    "description": "Optional search text for action=search, or fallback match text for action=close when taskId/taskTitle is unavailable. Omit query on action=search to list the current session tasks."
                 },
                 "status": {
                     "type": "string",
-                    "description": "Optional task status filter for action=search."
+                    "description": "Optional durable task status for action=create or status filter for action=search. Common values: open, waiting, active, completed, closed."
                 },
                 "tasks": {
                     "type": "array",
@@ -216,19 +220,21 @@ fn handle_create(request: TaskCreateRequest) -> KordiResult<ToolResult> {
 }
 
 fn handle_search(request: TaskSearchRequest) -> KordiResult<ToolResult> {
-    let query = request.query.trim();
-    if query.is_empty() {
-        return Err(KordiError::Tool(
-            "query cannot be empty for task search".to_string(),
-        ));
-    }
+    let query = request
+        .query
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     Ok(text_result(
-        format!("Task search: {query}"),
+        query
+            .map(|query| format!("Task search: {query}"))
+            .unwrap_or_else(|| "Task list requested".to_string()),
         Some(json!({
             "action": "search",
             "status": "searched",
             "query": query,
             "statusFilter": request.status,
+            "parentTaskId": request.parent_task_id,
             "tasks": [],
         })),
     ))
@@ -337,11 +343,19 @@ fn runtime_response_text(response: &TaskOperatorRuntimeResponse) -> String {
 
     if !response.tasks.is_empty() {
         text.push_str("\n\nTasks:");
-        for task in response.tasks.iter().take(20) {
+        for task in response.tasks.iter().take(50) {
             text.push_str(&format!(
                 "\n- ID: `{}`; title: {}; status: {}",
                 task.path, task.title, task.status,
             ));
+            if let Some(parent_task_id) = task
+                .parent_task_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                text.push_str(&format!("; parent: `{parent_task_id}`"));
+            }
             if let Some(summary) = task
                 .summary
                 .as_deref()
@@ -351,8 +365,8 @@ fn runtime_response_text(response: &TaskOperatorRuntimeResponse) -> String {
                 text.push_str(&format!("; summary: {summary}"));
             }
         }
-        if response.tasks.len() > 20 {
-            text.push_str(&format!("\n- … {} more task(s)", response.tasks.len() - 20));
+        if response.tasks.len() > 50 {
+            text.push_str(&format!("\n- … {} more task(s)", response.tasks.len() - 50));
         }
     }
 
@@ -571,7 +585,8 @@ mod tests {
                     message: Some("Task search matched 1 task(s)".to_string()),
                     target: None,
                     tasks: vec![crate::task_operator::models::TaskOperatorTaskStatus {
-                        path: "finish_kordi_issue_317_review".to_string(),
+                        path: "task_123".to_string(),
+                        parent_task_id: Some("task_parent".to_string()),
                         title: "Finish Kordi Issue 317 Review".to_string(),
                         status: "open".to_string(),
                         summary: Some("Review issue 317".to_string()),
@@ -597,8 +612,9 @@ mod tests {
 
         let text = text_content(&result);
         assert!(text.contains("Task search matched 1 task(s)"));
-        assert!(text.contains("ID: `finish_kordi_issue_317_review`"));
+        assert!(text.contains("ID: `task_123`"));
         assert!(text.contains("title: Finish Kordi Issue 317 Review"));
+        assert!(text.contains("parent: `task_parent`"));
     }
 
     #[tokio::test]
