@@ -276,6 +276,7 @@ export function useWorkspaceViewModels({
             mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
             cachedChatSessionMessages[session.id],
             Boolean(desktopLiveTurnsForViewModel[session.id]),
+            desktopLiveTurnsForViewModel[session.id],
           )
         : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
@@ -849,6 +850,7 @@ export function useWorkspaceViewModels({
                   mapDesktopMessages(sessionId, desktopChatState.activeSession.messages),
                   cachedProjectSessionMessages[sessionId],
                   Boolean(desktopLiveTurnsForViewModel[sessionId]),
+                  desktopLiveTurnsForViewModel[sessionId],
                 )
               : cachedProjectSessionMessages[sessionId]
                 ?? (desktopSession

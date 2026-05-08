@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, preferLatestMessages, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
 import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
@@ -448,6 +448,54 @@ test('suppresses all local owned-agent runtime fragments after the triggering us
   assert.deepEqual(
     suppressLiveTurnEchoMessages([olderAssistant, user, thinkingFragment, toolFragment], liveTurn),
     [olderAssistant, user],
+  );
+});
+
+test('preferLatestMessages drops preserved cached live-turn echoes before rendering', () => {
+  const user: Message = {
+    role: 'user',
+    text: 'create a task for issue 317',
+    time: '13:39',
+  };
+  const cachedPartialEcho = agentMessage('My Kordi', turn({
+    id: 'cached-partial-echo',
+    status: 'complete',
+    message: 'Complete',
+    completed: true,
+    assistantText: 'Using the skills workflow first, then I’ll inspect the project/issue context and create a tracked task for you.',
+    tools: [{
+      id: 'tool-gh',
+      name: 'bash',
+      status: 'failed',
+      arguments: '{"command":"gh issue view 317"}',
+      liveOutput: '',
+      resultText: 'failed',
+      detail: null,
+      isError: true,
+    }],
+  }));
+  const mappedMessages: Message[] = [user];
+  const liveTurn = turn({
+    id: 'live-turn-issue-317',
+    status: 'running',
+    message: 'Running',
+    completed: false,
+    assistantText: 'Using the skills workflow first, then I’ll inspect the project/issue context and create a tracked task for you. Created task: Finish Kordi Issue 317',
+    tools: [{
+      id: 'tool-gh',
+      name: 'bash',
+      status: 'failed',
+      arguments: '{"command":"gh issue view 317"}',
+      liveOutput: '',
+      resultText: 'failed',
+      detail: null,
+      isError: true,
+    }],
+  });
+
+  assert.deepEqual(
+    preferLatestMessages(mappedMessages, [user, cachedPartialEcho], true, liveTurn),
+    [user],
   );
 });
 

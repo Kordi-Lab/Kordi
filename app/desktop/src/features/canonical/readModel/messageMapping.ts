@@ -242,13 +242,20 @@ function bridgeAgentRequestControlForExchange(
   return { conversationId, requestId };
 }
 
+function agentRoleForViewer(target: CanonicalIdentity, profileHumanIdentityId?: string | null) {
+  const profileId = profileHumanIdentityId?.trim();
+  return target.source === 'local' || (Boolean(profileId) && target.ownerIdentityId === profileId)
+    ? 'owned-agent' as const
+    : 'external-agent' as const;
+}
+
 export function processingAgentMessage(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   target: CanonicalIdentity,
   identityById: Map<string, CanonicalIdentity>,
   profileHumanIdentityId?: string | null,
 ): Message {
-  const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
+  const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
@@ -290,7 +297,7 @@ export function cancelledBridgeAgentDelegationMessage(
 ): Message | null {
   if (exchange.initiatorIdentityId !== profileHumanIdentityId) return null;
   if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
-  const role = target.source === 'local' ? 'owned-agent' as const : 'external-agent' as const;
+  const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
   return {
@@ -324,6 +331,7 @@ export function cancelledBridgeAgentDelegationMessage(
 
 export type MapCanonicalMessageContext = {
   senderIdentityIdByMessageId?: ReadonlyMap<string, string> | null;
+  visibleReplyTargetByMessageId?: ReadonlyMap<string, string> | null;
 };
 
 export function mapCanonicalMessage(
@@ -333,6 +341,7 @@ export function mapCanonicalMessage(
   context: MapCanonicalMessageContext = {},
 ): Message | null {
   const content = contentRecord(message.content);
+  if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
   const role = canonicalMessageRole(message, identity);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
@@ -344,9 +353,12 @@ export function mapCanonicalMessage(
   const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
   const bridgeRequestId = stringValue(content.requestId)?.trim();
   const parentMessageId = message.parentMessageId?.trim();
+  const visibleParentMessageId = parentMessageId
+    ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
+    : undefined;
   const contentReplyToMessageId = stringValue(content.replyToMessageId)?.trim() || stringValue(content.requestMessageId)?.trim();
   const replyToMessageId = isAgentTurn
-    ? contentReplyToMessageId || (parentMessageId && parentMessageId !== message.id ? parentMessageId : null) || null
+    ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : null;
   const replyAliasIds = [parentMessageId, bridgeRequestId]
     .filter((value): value is string => Boolean(value && value !== message.id));
