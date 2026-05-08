@@ -324,7 +324,7 @@ async fn handle_runtime(
 }
 
 fn runtime_response_text(response: &TaskOperatorRuntimeResponse) -> String {
-    response
+    let mut text = response
         .message
         .clone()
         .or_else(|| {
@@ -333,7 +333,30 @@ fn runtime_response_text(response: &TaskOperatorRuntimeResponse) -> String {
                 .as_ref()
                 .map(|target| format!("Task {target}: {}", response.status))
         })
-        .unwrap_or_else(|| format!("Task operator status: {}", response.status))
+        .unwrap_or_else(|| format!("Task operator status: {}", response.status));
+
+    if !response.tasks.is_empty() {
+        text.push_str("\n\nTasks:");
+        for task in response.tasks.iter().take(20) {
+            text.push_str(&format!(
+                "\n- ID: `{}`; title: {}; status: {}",
+                task.path, task.title, task.status,
+            ));
+            if let Some(summary) = task
+                .summary
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                text.push_str(&format!("; summary: {summary}"));
+            }
+        }
+        if response.tasks.len() > 20 {
+            text.push_str(&format!("\n- … {} more task(s)", response.tasks.len() - 20));
+        }
+    }
+
+    text
 }
 
 fn handle_estimate(request: TaskEstimateRequest, ctx: &ToolContext) -> KordiResult<ToolResult> {
@@ -537,6 +560,45 @@ mod tests {
             seen.lock().unwrap().as_slice(),
             [TaskOperatorRuntimeRequest::Create(request)] if request.task_id.as_deref() == Some("durable-task")
         ));
+    }
+
+    #[tokio::test]
+    async fn task_operator_runtime_search_result_text_exposes_task_ids_to_model() {
+        let run: TaskOperatorFn = Arc::new(move |_request| {
+            Box::pin(async move {
+                Ok(TaskOperatorRuntimeResponse {
+                    status: "searched".to_string(),
+                    message: Some("Task search matched 1 task(s)".to_string()),
+                    target: None,
+                    tasks: vec![crate::task_operator::models::TaskOperatorTaskStatus {
+                        path: "finish_kordi_issue_317_review".to_string(),
+                        title: "Finish Kordi Issue 317 Review".to_string(),
+                        status: "open".to_string(),
+                        summary: Some("Review issue 317".to_string()),
+                        write_scope: Vec::new(),
+                    }],
+                })
+            })
+        });
+        let tool = super::TaskOperatorTool;
+
+        let result = tool
+            .execute(
+                serde_json::json!({
+                    "action": "search",
+                    "query": "Finish Kordi Issue 317 Review",
+                    "status": "open"
+                }),
+                &make_ctx(Some(TaskOperatorRuntime { run })),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("search should be delegated");
+
+        let text = text_content(&result);
+        assert!(text.contains("Task search matched 1 task(s)"));
+        assert!(text.contains("ID: `finish_kordi_issue_317_review`"));
+        assert!(text.contains("title: Finish Kordi Issue 317 Review"));
     }
 
     #[tokio::test]

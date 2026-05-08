@@ -336,19 +336,22 @@ impl TaskOperatorState {
             });
         }
 
-        let task_id = request
-            .task_id
-            .as_deref()
-            .or(request.target.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow!("close requires taskId or child-agent target"))?;
         let Some(store) = self.store.as_ref() else {
             bail!("task_operator durable task storage is unavailable")
         };
         let stored = {
             let conn = store.lock().await;
-            kordi_session::tasks::close_task(&conn, task_id)?
+            let task_id = match request
+                .task_id
+                .as_deref()
+                .or(request.target.as_deref())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                Some(task_id) => task_id.to_string(),
+                None => resolve_close_task_id(&conn, &request)?,
+            };
+            kordi_session::tasks::close_task(&conn, &task_id)?
         };
         Ok(TaskOperatorRuntimeResponse {
             status: "closed".to_string(),
@@ -356,6 +359,50 @@ impl TaskOperatorState {
             target: Some(stored.task_id.clone()),
             tasks: vec![task_status_from_stored(stored)],
         })
+    }
+}
+
+fn resolve_close_task_id(
+    conn: &rusqlite::Connection,
+    request: &TaskCloseRequest,
+) -> Result<String> {
+    let query = request
+        .task_title
+        .as_deref()
+        .or(request.query.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("close requires taskId, taskTitle, query, or child-agent target"))?;
+    let mut matches = kordi_session::tasks::search_tasks(conn, query, Some("open"))?;
+    if matches.len() > 1 {
+        let normalized_query = query.to_lowercase();
+        let exact_matches = matches
+            .iter()
+            .filter(|task| {
+                task.task_id.to_lowercase() == normalized_query
+                    || task.title.to_lowercase() == normalized_query
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if exact_matches.len() == 1 {
+            matches = exact_matches;
+        }
+    }
+
+    match matches.as_slice() {
+        [task] => Ok(task.task_id.clone()),
+        [] => bail!("no open task matched close query `{query}`"),
+        many => {
+            let labels = many
+                .iter()
+                .take(5)
+                .map(|task| format!("{} ({})", task.title, task.task_id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "close query `{query}` matched multiple open tasks; provide taskId. Matches: {labels}"
+            )
+        }
     }
 }
 
@@ -684,6 +731,56 @@ mod tests {
         .await
         .expect("search closed should read persisted task");
         assert_eq!(closed.tasks.len(), 1);
+        assert_eq!(closed.tasks[0].status, "closed");
+    }
+
+    #[tokio::test]
+    async fn task_operator_runtime_closes_unique_user_visible_task_by_title_or_query() {
+        let runner = Arc::new(FakeRunner::default());
+        let conn = Arc::new(TokioMutex::new(Connection::open_in_memory().expect("conn")));
+        {
+            let guard = conn.lock().await;
+            kordi_session::schema::init_schema(&guard).expect("schema");
+        }
+        let runtime = super::build_task_operator_runtime_with_runner_and_store(
+            runner,
+            std::path::PathBuf::from("/tmp/project"),
+            4,
+            conn,
+        );
+
+        (runtime.run)(TaskOperatorRuntimeRequest::Create(
+            kordi_tools::task_operator::models::TaskCreateRequest {
+                task_id: Some("finish_kordi_issue_317_review".to_string()),
+                task_title: "Finish Kordi Issue 317 Review".to_string(),
+                summary: Some("Review issue 317".to_string()),
+                involved_participants: vec![
+                    "Kordi User 2".to_string(),
+                    "Kordi User 3's Kordi".to_string(),
+                ],
+            },
+        ))
+        .await
+        .expect("create should persist");
+
+        let closed = (runtime.run)(TaskOperatorRuntimeRequest::Close(
+            kordi_tools::task_operator::models::TaskCloseRequest {
+                target: None,
+                task_id: None,
+                task_title: Some("Finish Kordi Issue 317 Review".to_string()),
+                query: Some("Finish Kordi Issue 317 Review".to_string()),
+            },
+        ))
+        .await
+        .expect("close should resolve unique task by title/query");
+
+        assert_eq!(closed.status, "closed");
+        assert_eq!(
+            closed.target.as_deref(),
+            Some("finish_kordi_issue_317_review")
+        );
+        assert_eq!(closed.tasks.len(), 1);
+        assert_eq!(closed.tasks[0].path, "finish_kordi_issue_317_review");
         assert_eq!(closed.tasks[0].status, "closed");
     }
 
