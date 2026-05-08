@@ -29,22 +29,6 @@ type TaskActivityDashboardPanelProps = {
   onNavigateToResponse?: (messageId: string) => void;
 };
 
-function statusDotClass(tone: TaskDashboardTone) {
-  switch (tone) {
-    case 'running':
-      return 'bg-[color:var(--app-tool-running-fg)]';
-    case 'success':
-      return 'bg-emerald-400/80';
-    case 'closed':
-      return 'bg-slate-400/70';
-    case 'error':
-      return 'bg-rose-400/80';
-    case 'muted':
-    default:
-      return 'bg-violet-300/70';
-  }
-}
-
 function statusCheckboxClass(tone: TaskDashboardTone) {
   switch (tone) {
     case 'running':
@@ -62,18 +46,15 @@ function statusCheckboxClass(tone: TaskDashboardTone) {
 }
 
 function TaskStatusIcon({ task, nested }: { task: TaskDashboardItem | TaskDashboardSubtask; nested: boolean }) {
-  if (nested) {
-    return <span data-subtask-status-icon="circle" className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', statusDotClass(task.tone))} />;
-  }
-
-  const iconClassName = cn('mt-0.5 h-4 w-4 shrink-0', statusCheckboxClass(task.tone));
+  const iconClassName = cn(nested ? 'mt-0.5 h-3.5 w-3.5 shrink-0' : 'mt-0.5 h-4 w-4 shrink-0', statusCheckboxClass(task.tone));
+  const dataAttribute = nested ? { 'data-subtask-status-icon': 'checkbox' } : { 'data-task-status-icon': 'checkbox' };
   if (task.status === 'completed' || task.status === 'closed') {
-    return <CheckCircle2 data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+    return <CheckCircle2 {...dataAttribute} className={iconClassName} aria-hidden="true" />;
   }
   if (task.status === 'failed') {
-    return <XCircle data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+    return <XCircle {...dataAttribute} className={iconClassName} aria-hidden="true" />;
   }
-  return <Circle data-task-status-icon="checkbox" className={iconClassName} aria-hidden="true" />;
+  return <Circle {...dataAttribute} className={iconClassName} aria-hidden="true" />;
 }
 
 function formatTaskElapsed(elapsedMs: number) {
@@ -282,6 +263,9 @@ function TaskContent({
     ? null
     : task.durationLabel ?? (runningElapsed ? `Running · ${runningElapsed}` : null);
   const timeParts = [task.timeLabel, durationText].filter((part): part is string => Boolean(part));
+  const subtaskStatusParts = nested
+    ? [task.statusLabel, ...timeParts].filter((part): part is string => Boolean(part?.trim()))
+    : [];
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
@@ -291,7 +275,9 @@ function TaskContent({
           <div className="min-w-0">
             <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
             {secondaryText ? <div className="mt-1 app-inspector-text-block">{secondaryText}</div> : null}
-            {timeParts.length > 0 ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{timeParts.join(' · ')}</div> : null}
+            {subtaskStatusParts.length > 0 ? (
+              <div data-subtask-status-label="true" className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskStatusParts.join(' · ')}</div>
+            ) : timeParts.length > 0 ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{timeParts.join(' · ')}</div> : null}
             {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
           </div>
           {!nested && 'responseMessageId' in task ? (
