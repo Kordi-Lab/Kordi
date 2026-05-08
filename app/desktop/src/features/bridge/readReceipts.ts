@@ -31,12 +31,7 @@ export function activeBridgeConversationsForSession(
 ) {
   const normalizedActiveSessionId = activeSessionId.trim();
   if (!normalizedActiveSessionId) return [];
-  const directlyActiveConversations = conversations.filter((conversation) => bridgeConversationMatchesSession(conversation, normalizedActiveSessionId));
-  if (directlyActiveConversations.length === 0) return [];
-  const activeSessionKeys = new Set(directlyActiveConversations.flatMap(bridgeConversationSessionKeys));
-  return conversations.filter((conversation) => (
-    bridgeConversationSessionKeys(conversation).some((sessionId) => activeSessionKeys.has(sessionId))
-  ));
+  return conversations.filter((conversation) => bridgeConversationMatchesSession(conversation, normalizedActiveSessionId));
 }
 
 export function activeBridgeConversationForSession(
