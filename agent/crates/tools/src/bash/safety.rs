@@ -5,6 +5,8 @@ use crate::sandbox::{SandboxBackend, SandboxFailureDetails};
 use crate::support::text_result_with;
 use crate::{ExecutionPolicy, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult};
 
+use super::process::BashOutputOptimization;
+
 #[derive(Clone, Copy)]
 pub(super) struct BashSafetyContext<'a> {
     pub safety: &'a BashSafetyAssessment,
@@ -25,7 +27,7 @@ impl BashSafetyContext<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) struct BashResultDetails<'a> {
     pub command: &'a str,
     pub exit_code: Option<i32>,
@@ -35,6 +37,7 @@ pub(super) struct BashResultDetails<'a> {
     pub safety: BashSafetyContext<'a>,
     pub sandbox_backend: Option<SandboxBackend>,
     pub sandbox_failure: Option<&'a SandboxFailureDetails>,
+    pub output_optimization: BashOutputOptimization,
 }
 
 impl<'a> BashResultDetails<'a> {
@@ -53,6 +56,7 @@ impl<'a> BashResultDetails<'a> {
             safety,
             sandbox_backend,
             sandbox_failure,
+            output_optimization: BashOutputOptimization::disabled(),
         }
     }
 }
@@ -121,6 +125,11 @@ pub(super) fn build_details(details: BashResultDetails<'_>) -> Value {
         ("safety".to_string(), details.safety.to_value()),
     ]);
 
+    value.insert(
+        "outputOptimization".to_string(),
+        output_optimization_detail(&details.output_optimization),
+    );
+
     if let Some(backend) = details.sandbox_backend {
         let mut sandbox = Map::from_iter([
             ("mode".to_string(), Value::from("safety")),
@@ -157,6 +166,23 @@ pub(super) fn render_sandbox_failure_output(
     }
 
     rendered
+}
+
+fn output_optimization_detail(optimization: &BashOutputOptimization) -> Value {
+    let mut detail = Map::from_iter([
+        ("enabled".to_string(), Value::from(optimization.enabled)),
+        ("applied".to_string(), Value::from(optimization.applied)),
+    ]);
+    if let Some(provider) = optimization.provider {
+        detail.insert("provider".to_string(), Value::from(provider));
+    }
+    if let Some(version) = optimization.version.as_deref() {
+        detail.insert("version".to_string(), Value::from(version));
+    }
+    if let Some(reason) = optimization.fallback_reason.as_deref() {
+        detail.insert("fallbackReason".to_string(), Value::from(reason));
+    }
+    Value::Object(detail)
 }
 
 fn approval_denied_result(

@@ -32,8 +32,8 @@ pub use metadata::{ToolDefinition, ToolLayer, ToolMetadata, ToolRiskLevel};
 pub use registry::builtin_tools;
 pub use registry_plan::{ToolRegistryPlan, ToolRegistryPlanEntry};
 pub use scheduler::{
-    FileQueue, FileQueueReservation, execute_reserved_tool_call, execute_tool_call,
-    execute_tool_calls,
+    FileQueue, FileQueueReservation, cap_tool_result_content, execute_reserved_tool_call,
+    execute_tool_call, execute_tool_calls,
 };
 pub use types::{
     ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,

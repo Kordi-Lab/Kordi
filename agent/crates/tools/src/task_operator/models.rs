@@ -17,6 +17,8 @@ pub enum TaskOperatorRequest {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum TaskOperatorRuntimeRequest {
+    Create(TaskCreateRequest),
+    Search(TaskSearchRequest),
     Spawn(TaskSpawnRequest),
     Message(TaskMessageRequest),
     Wait(TaskWaitRequest),
@@ -27,7 +29,8 @@ pub enum TaskOperatorRuntimeRequest {
 impl TaskOperatorRequest {
     pub fn into_runtime_request(self) -> Option<TaskOperatorRuntimeRequest> {
         match self {
-            Self::Create(_) | Self::Search(_) => None,
+            Self::Create(request) => Some(TaskOperatorRuntimeRequest::Create(request)),
+            Self::Search(request) => Some(TaskOperatorRuntimeRequest::Search(request)),
             Self::Spawn(request) => Some(TaskOperatorRuntimeRequest::Spawn(request)),
             Self::Message(request) => Some(TaskOperatorRuntimeRequest::Message(request)),
             Self::Wait(request) => Some(TaskOperatorRuntimeRequest::Wait(request)),
@@ -213,7 +216,9 @@ mod tests {
             "involvedParticipants": ["Kordi User 2"]
         }))
         .expect("create request should deserialize");
-        assert!(matches!(create, TaskOperatorRequest::Create(request) if request.task_title == "Test Task For Kordi User 2"));
+        assert!(
+            matches!(create, TaskOperatorRequest::Create(request) if request.task_title == "Test Task For Kordi User 2")
+        );
 
         let search: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "search",
@@ -221,7 +226,9 @@ mod tests {
             "status": "open"
         }))
         .expect("search request should deserialize");
-        assert!(matches!(search, TaskOperatorRequest::Search(request) if request.query == "Kordi User 2"));
+        assert!(
+            matches!(search, TaskOperatorRequest::Search(request) if request.query == "Kordi User 2")
+        );
 
         let close: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "close",
@@ -229,7 +236,9 @@ mod tests {
             "taskTitle": "Test Task For Kordi User 2"
         }))
         .expect("task close request should deserialize");
-        assert!(matches!(close, TaskOperatorRequest::Close(request) if request.task_id.as_deref() == Some("task_user_2")));
+        assert!(
+            matches!(close, TaskOperatorRequest::Close(request) if request.task_id.as_deref() == Some("task_user_2"))
+        );
     }
 
     #[test]

@@ -55,11 +55,14 @@ fn scoped_lesson_artifact(
     artifacts_dir: &std::path::Path,
     scope: &str,
     scope_id: &str,
-) -> DesktopSessionArtifact {
+) -> Option<DesktopSessionArtifact> {
     let path =
         crate::reflection_runtime::reflection_lesson_artifact_path(artifacts_dir, scope, scope_id);
+    if !path.exists() {
+        return None;
+    }
     let path_text = path.display().to_string();
-    DesktopSessionArtifact {
+    Some(DesktopSessionArtifact {
         id: path_text.clone(),
         path: path_text,
         name: lesson_artifact_name(scope).to_string(),
@@ -67,27 +70,29 @@ fn scoped_lesson_artifact(
         summary: lesson_artifact_summary(scope).to_string(),
         time_label: Some("Pinned".to_string()),
         pinned: true,
-    }
+    })
 }
 
 fn reflection_lesson_artifacts_for_session(
     setup: &SessionRuntimeSetup,
     project_root: Option<&str>,
 ) -> Vec<DesktopSessionArtifact> {
-    let mut artifacts = vec![scoped_lesson_artifact(
+    let mut artifacts = scoped_lesson_artifact(
         &setup.tool_ctx.artifacts_dir,
         "conversation",
         &setup.session_id,
-    )];
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
     if let Some(project_root) = project_root
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        artifacts.push(scoped_lesson_artifact(
-            &setup.tool_ctx.artifacts_dir,
-            "project",
-            project_root,
-        ));
+        if let Some(artifact) =
+            scoped_lesson_artifact(&setup.tool_ctx.artifacts_dir, "project", project_root)
+        {
+            artifacts.push(artifact);
+        }
     }
     artifacts
 }

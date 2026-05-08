@@ -45,7 +45,8 @@ impl Tool for BashTool {
             "type": "object",
             "properties": {
                 "command": { "type": "string", "description": "Bash command to execute" },
-                "timeout": { "type": "number", "description": "Timeout in seconds (optional, no default timeout)" }
+                "timeout": { "type": "number", "description": "Timeout in seconds (optional, no default timeout)" },
+                "raw": { "type": "boolean", "description": "Bypass optional RTK output optimization and return raw command output (default: false)" }
             },
             "required": ["command"]
         })
@@ -84,6 +85,7 @@ impl Tool for BashTool {
             return Err(KordiError::Tool("bash timeout must be > 0".into()));
         }
         let timeout_secs = timeout_raw.map(std::time::Duration::from_secs_f64);
+        let raw_output = params.get("raw").and_then(|v| v.as_bool()).unwrap_or(false);
 
         let safety = classify_bash_command(command);
         let approved = match request_bash_approval(command, ctx, &safety).await {
@@ -105,9 +107,10 @@ impl Tool for BashTool {
         let SpawnedProcess {
             mut child,
             sandbox_backend,
+            output_optimization,
             #[cfg(unix)]
             process_group_id,
-        } = match spawn_bash_process(command, ctx, safety_context) {
+        } = match spawn_bash_process(command, raw_output, ctx, safety_context).await {
             Ok(process) => process,
             Err(result) => return Ok(result),
         };
@@ -280,6 +283,7 @@ impl Tool for BashTool {
                 safety: safety_context,
                 sandbox_backend,
                 sandbox_failure: sandbox_failure.as_ref(),
+                output_optimization,
             })),
             cancelled || exit_code.map(|c| c != 0).unwrap_or(true),
             stored_output.artifact_path,
@@ -291,6 +295,7 @@ impl Tool for BashTool {
 mod tests {
     use super::*;
     use kordi_core::types::ContentBlock;
+    use std::fs;
     use std::path::Path;
     use std::sync::{
         Arc, Mutex,
@@ -298,6 +303,51 @@ mod tests {
     };
 
     static PATH_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    struct EnvRestore {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let original = std::env::var_os(key);
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = std::env::var_os(key);
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.original.as_ref() {
+                Some(value) => unsafe { std::env::set_var(self.key, value) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn write_fake_rtk(bin_dir: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::create_dir_all(bin_dir).expect("bin dir");
+        let path = bin_dir.join("rtk");
+        fs::write(&path, body).expect("fake rtk script");
+        let mut permissions = fs::metadata(&path)
+            .expect("fake rtk metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("fake rtk executable");
+    }
 
     fn make_ctx(dir: &Path) -> ToolContext {
         ToolContext {
@@ -627,6 +677,193 @@ mod tests {
 
         assert_eq!(approval_calls.load(Ordering::SeqCst), 1);
         assert!(result.is_error);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_uses_rtk_when_opted_in_and_available() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        write_fake_rtk(
+            &bin_dir,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "rtk 1.2.3"
+  exit 0
+fi
+echo "RTK_FILTERED:$*"
+"#,
+        );
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let joined_path = format!("{}:{}", bin_dir.display(), original_path.to_string_lossy());
+        let _path = EnvRestore::set("PATH", joined_path);
+        let _rtk = EnvRestore::set("KORDI_BASH_RTK", "1");
+        let tool = BashTool;
+
+        let result = tool
+            .execute(
+                json!({ "command": "printf raw-output" }),
+                &make_ctx(dir.path()),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        assert!(text.contains("RTK_FILTERED:"));
+        assert_ne!(text, "raw-output");
+        let details = result.details.as_ref().expect("details");
+        assert_eq!(details["outputOptimization"]["provider"], "rtk");
+        assert_eq!(details["outputOptimization"]["enabled"], true);
+        assert_eq!(details["outputOptimization"]["applied"], true);
+        assert_eq!(details["outputOptimization"]["version"], "rtk 1.2.3");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_skips_rtk_when_opted_out_even_if_available() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        write_fake_rtk(
+            &bin_dir,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "rtk 1.2.3"
+  exit 0
+fi
+echo "RTK_FILTERED:$*"
+"#,
+        );
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let joined_path = format!("{}:{}", bin_dir.display(), original_path.to_string_lossy());
+        let _path = EnvRestore::set("PATH", joined_path);
+        let _rtk = EnvRestore::remove("KORDI_BASH_RTK");
+        let tool = BashTool;
+
+        let result = tool
+            .execute(
+                json!({ "command": "printf raw-output" }),
+                &make_ctx(dir.path()),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        assert_eq!(text, "raw-output");
+        assert_eq!(
+            result.details.as_ref().expect("details")["outputOptimization"]["enabled"],
+            false
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rtk_detection_reports_missing_rtk_without_breaking_sessions() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
+        let _path = EnvRestore::set("PATH", "");
+
+        let error = process::detect_rtk_version()
+            .await
+            .expect_err("missing rtk should be reported as unavailable");
+
+        assert!(error.contains("rtk not available"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_falls_back_to_raw_when_rtk_detection_fails() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        write_fake_rtk(
+            &bin_dir,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "rtk broken" >&2
+  exit 2
+fi
+echo "RTK_FILTERED:$*"
+"#,
+        );
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let joined_path = format!("{}:{}", bin_dir.display(), original_path.to_string_lossy());
+        let _path = EnvRestore::set("PATH", joined_path);
+        let _rtk = EnvRestore::set("KORDI_BASH_RTK", "1");
+        let tool = BashTool;
+
+        let result = tool
+            .execute(
+                json!({ "command": "printf raw-output" }),
+                &make_ctx(dir.path()),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        assert_eq!(text, "raw-output");
+        let details = result.details.as_ref().expect("details");
+        assert_eq!(details["outputOptimization"]["enabled"], true);
+        assert_eq!(details["outputOptimization"]["applied"], false);
+        assert!(
+            details["outputOptimization"]["fallbackReason"]
+                .as_str()
+                .unwrap()
+                .contains("rtk --version failed")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bash_raw_parameter_bypasses_rtk_for_debugging() {
+        let _path_guard = PATH_ENV_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        write_fake_rtk(
+            &bin_dir,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "rtk 1.2.3"
+  exit 0
+fi
+echo "RTK_FILTERED:$*"
+"#,
+        );
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let joined_path = format!("{}:{}", bin_dir.display(), original_path.to_string_lossy());
+        let _path = EnvRestore::set("PATH", joined_path);
+        let _rtk = EnvRestore::set("KORDI_BASH_RTK", "1");
+        let tool = BashTool;
+
+        let result = tool
+            .execute(
+                json!({ "command": "printf raw-output", "raw": true }),
+                &make_ctx(dir.path()),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text result");
+        };
+        assert_eq!(text, "raw-output");
+        let details = result.details.as_ref().expect("details");
+        assert_eq!(details["outputOptimization"]["enabled"], true);
+        assert_eq!(details["outputOptimization"]["applied"], false);
+        assert_eq!(
+            details["outputOptimization"]["fallbackReason"],
+            "raw output requested"
+        );
     }
 
     #[tokio::test]

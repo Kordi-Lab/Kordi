@@ -7,4 +7,5 @@ pub mod import_export;
 pub mod reflection_lessons;
 pub mod schema;
 pub mod store;
+pub mod tasks;
 pub mod tree;
