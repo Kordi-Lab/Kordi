@@ -227,6 +227,8 @@ function taskIdFromToolArguments(tools: DesktopChatToolSnapshot[]) {
 
 function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
   for (const tool of tools) {
+    const toolName = tool.name.trim().toLowerCase();
+    if (toolName !== 'task_operator' && toolName !== 'update_plan') continue;
     const args = safeParseToolArguments(tool.arguments);
     if (!args) continue;
     const title = stringValue(args.taskTitle) ?? stringValue(args.task_title);
@@ -290,7 +292,7 @@ function turnHasTaskActivity(turn: DesktopChatTurnSnapshot) {
       const args = safeParseToolArguments(tool.arguments);
       return stringValue(args?.action)?.toLowerCase() !== 'search';
     }
-    return name === 'update_plan' || tool.isError;
+    return name === 'update_plan';
   });
 }
 
@@ -772,7 +774,7 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
 
   for (const turnWithSequence of collectTurns(messages, liveTurn)) {
     let currentParent: MutableParentTask | null = null;
-    if ((turnWithSequence.live && !turnWithSequence.turn.completed) || titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0 || turnHasTaskActivity(turnWithSequence.turn)) {
+    if (titleFromToolArguments(turnWithSequence.turn.tools) || generatedArtifactIdsFromTurn(turnWithSequence.turn).length > 0 || turnHasTaskActivity(turnWithSequence.turn)) {
       currentParent = ensureParent(turnWithSequence);
     }
 
@@ -780,7 +782,8 @@ export function buildTaskActivityDashboard({ messages, liveTurn }: DashboardInpu
       clearRecoveredToolFailure(parents, tool);
       const items = subtaskItems({ ...turnWithSequence, tool, toolSequence: toolSequence++ });
       for (const item of items) {
-        const parent = findExistingSubtaskParent(parents, item) ?? currentParent ?? ensureParent(turnWithSequence);
+        const parent = findExistingSubtaskParent(parents, item) ?? currentParent;
+        if (!parent) continue;
         upsertSubtask(parent, item);
         currentParent = parent;
       }

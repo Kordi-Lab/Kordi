@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde_json::Value;
 
 use super::schema::ensure_local_profile;
 use super::{
-    open_db, render_multi_participant_identity_context, select_identity, select_session,
     IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole,
+    IdentityContextRole, open_db, render_multi_participant_identity_context, select_identity,
+    select_session,
 };
 
 fn truncate_context_line(value: &str, max_chars: usize) -> String {
@@ -215,6 +215,23 @@ fn bool_field(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+fn task_id_from_result_text(value: &str) -> Option<String> {
+    for marker in ["ID: `", "Task ID: `"] {
+        let Some(start) = value.find(marker) else {
+            continue;
+        };
+        let after_marker = &value[start + marker.len()..];
+        let Some(end) = after_marker.find('`') else {
+            continue;
+        };
+        let task_id = after_marker[..end].trim();
+        if !task_id.is_empty() {
+            return Some(task_id.to_string());
+        }
+    }
+    None
+}
+
 fn visible_task_records_from_message_json(
     content_json: Option<&Value>,
 ) -> Result<Vec<kordi_cli::desktop_runtime::DesktopVisibleTaskRecord>, String> {
@@ -246,7 +263,11 @@ fn visible_task_records_from_message_json(
         if action != "create" && action != "close" {
             continue;
         }
-        let Some(task_id) = string_field(&args, "taskId").or_else(|| string_field(&args, "target"))
+        let Some(task_id) = string_field(tool, "resultText")
+            .as_deref()
+            .and_then(task_id_from_result_text)
+            .or_else(|| string_field(&args, "taskId"))
+            .or_else(|| string_field(&args, "target"))
         else {
             continue;
         };
@@ -643,7 +664,8 @@ mod task_record_tests {
             "tools": [{
                 "name": "task_operator",
                 "isError": false,
-                "arguments": "{\"action\":\"create\",\"taskId\":\"be_happy_for_all_of_us\",\"taskTitle\":\"Be Happy For All Of Us\",\"summary\":\"Shared reminder\",\"involvedParticipants\":[\"Kordi User 2\"]}"
+                "arguments": "{\"action\":\"create\",\"taskId\":\"be_happy_for_all_of_us\",\"taskTitle\":\"Be Happy For All Of Us\",\"summary\":\"Shared reminder\",\"involvedParticipants\":[\"Kordi User 2\"]}",
+                "resultText": "Task created: Be Happy For All Of Us\n\nTasks:\n- ID: `task_955c84e4f40e4a0a8a479705b8eeb8fe`; title: Be Happy For All Of Us; status: open; summary: Shared reminder"
             }]
         });
         let close_json = serde_json::json!({
@@ -660,7 +682,7 @@ mod task_record_tests {
             visible_task_records_from_message_json(Some(&close_json)).expect("close records");
 
         assert_eq!(created.len(), 1);
-        assert_eq!(created[0].task_id, "be_happy_for_all_of_us");
+        assert_eq!(created[0].task_id, "task_955c84e4f40e4a0a8a479705b8eeb8fe");
         assert_eq!(created[0].title, "Be Happy For All Of Us");
         assert_eq!(created[0].status, "open");
         assert_eq!(
