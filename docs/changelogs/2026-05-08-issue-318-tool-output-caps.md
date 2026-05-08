@@ -8,4 +8,5 @@
 - Removed noisy workflow-policy warnings from normal tool details so task creation/research chains do not report false advisory problems.
 - Only advertise reflection lesson artifacts when the backing files exist, preventing agents from reading missing lesson files.
 - Persist user-visible `task_operator` create/search/close actions into a durable local task table so later model turns can query real task state instead of relying on prior tool text.
-- Added regressions for central scheduler truncation, capped grep stream reads, excluding generated logs/build outputs from grep results, RTK installed/uninstalled/opt-in/off behavior, fallback, raw bypass, missing reflection artifacts, and durable task persistence.
+- Preserve shared Bridge agent `task_operator`/`update_plan` tool metadata on direct-response canonical messages so the task dashboard can show the created task for both participants.
+- Added regressions for central scheduler truncation, capped grep stream reads, excluding generated logs/build outputs from grep results, RTK installed/uninstalled/opt-in/off behavior, fallback, raw bypass, missing reflection artifacts, durable task persistence, and direct Bridge task-tool visibility.

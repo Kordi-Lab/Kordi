@@ -672,6 +672,215 @@ fn inbound_session_message_creates_direct_person_parent_with_first_message_title
 }
 
 #[test]
+fn direct_bridge_agent_response_preserves_task_tools_for_dashboard() {
+    let conn = test_conn();
+    for (id, kind, display_name, owner_identity_id, human_id, agent_id, node_id) in [
+        (
+            "human:local-user2",
+            "human",
+            "Kordi User 2",
+            None,
+            Some("kh_user2"),
+            None,
+            Some("kd_user2"),
+        ),
+        (
+            "human:remote-user3",
+            "human",
+            "Kordi User 3",
+            None,
+            Some("kh_user3"),
+            None,
+            Some("kd_user3"),
+        ),
+        (
+            "agent:remote-user3-kordi",
+            "agent",
+            "Kordi User 3's Kordi",
+            Some("human:remote-user3"),
+            None,
+            Some("ka_user3"),
+            Some("kd_user3"),
+        ),
+    ] {
+        upsert_identity_in_db(
+            &conn,
+            UpsertCanonicalIdentityRequest {
+                id: Some(id.to_string()),
+                kind: kind.to_string(),
+                display_name: display_name.to_string(),
+                owner_identity_id: owner_identity_id.map(ToString::to_string),
+                source: Some("bridge".to_string()),
+                source_host_id: Some("bridge-host".to_string()),
+                bridge_node_id: node_id.map(ToString::to_string),
+                human_id: human_id.map(ToString::to_string),
+                agent_id: agent_id.map(ToString::to_string),
+                avatar_key: None,
+                profile_image_url: None,
+                metadata: None,
+            },
+        )
+        .expect("upsert identity");
+    }
+
+    let parent_session_id = "session:bridge:humans:user2-user3";
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(parent_session_id.to_string()),
+            kind: "direct-person".to_string(),
+            title: Some("Kordi User 3's Kordi".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:local-user2".to_string(),
+            primary_identity_id: Some("agent:remote-user3-kordi".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: Some("human:remote-user3".to_string()),
+            participant_identity_ids: vec!["agent:remote-user3-kordi".to_string()],
+            metadata: Some(serde_json::json!({ "source": "desktop-bridge-conversation" })),
+        },
+    )
+    .expect("open direct agent session");
+
+    let tool = serde_json::json!({
+        "id": "tool-task-operator",
+        "name": "task_operator",
+        "status": "done",
+        "arguments": "{\"action\":\"create\",\"taskId\":\"finish_kordi_issue_317_review\",\"taskTitle\":\"Finish Kordi Issue 317 Review\",\"involvedParticipants\":[\"Kordi User 2\",\"Kordi User 3's Kordi\"]}",
+        "resultText": "Task created: Finish Kordi Issue 317 Review",
+        "isError": false
+    });
+    let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
+        target_kind: "bridge-agent".to_string(),
+        parent_session_id: Some(parent_session_id.to_string()),
+        parent_session_title: Some("Kordi User 3's Kordi".to_string()),
+        parent_session_kind: None,
+        parent_group_space_id: None,
+        parent_session_participants: Vec::new(),
+        parent_session_messages: vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+            role: "assistant".to_string(),
+            sender: Some("Kordi User 3's Kordi".to_string()),
+            text: "Created the task: **Finish Kordi Issue 317 Review**".to_string(),
+            time_label: Some("14:14".to_string()),
+            index: None,
+            tools: vec![tool],
+        }],
+        initiator_identity: None,
+        self_target_identity: None,
+        parent_turn_id: None,
+        parent_message_id: Some("msg:ui:request-task".to_string()),
+        bridge_host_id: "bridge-host".to_string(),
+        bridge_conversation_id: Some("bridge:host:user3-agent".to_string()),
+        bridge_request_id: Some("bridge_req_issue_317_task".to_string()),
+        delivery_state: Some("responded".to_string()),
+        target_node_id: "kd_user3".to_string(),
+        target_human_id: Some("kh_user3".to_string()),
+        target_agent_id: Some("ka_user3".to_string()),
+        target_display_name: "Kordi User 3's Kordi".to_string(),
+        target_owner_name: Some("Kordi User 3".to_string()),
+        target_runtime: Some("kordi-desktop".to_string()),
+        request_text: "create a task for issue 317".to_string(),
+        trigger_text: None,
+        context_text: None,
+        context_policy: Some("recent-window".to_string()),
+        project_id: None,
+        project_name: None,
+        status: "completed".to_string(),
+        created_at_ms: 1_000,
+        updated_at_ms: 2_000,
+        completed_at_ms: Some(2_000),
+        error: None,
+    };
+    let conversation = crate::bridge::DesktopBridgeConversation {
+        id: "bridge:host:user3-agent".to_string(),
+        canonical_session_id: parent_session_id.to_string(),
+        host_id: "bridge-host".to_string(),
+        peer_node_id: "kd_user3".to_string(),
+        peer_display_name: Some("Kordi User 3's Kordi".to_string()),
+        peer_owner_name: Some("Kordi User 3".to_string()),
+        peer_runtime: "kordi-desktop".to_string(),
+        project_id: None,
+        project_name: None,
+        title: "Kordi User 3's Kordi".to_string(),
+        subtitle: String::new(),
+        unread_count: 0,
+        updated_at_ms: 2_001,
+        updated_at_label: "14:14".to_string(),
+        awaiting_reply: false,
+        peer_typing: false,
+        peer_last_heartbeat_label: None,
+        outreach: None,
+        identity: None,
+        messages: Vec::new(),
+    };
+    let messages = vec![
+        crate::bridge::DesktopBridgeConversationMessage {
+            id: "bridge_msg_request".to_string(),
+            direction: "outbound".to_string(),
+            sender: Some("Kordi User 2".to_string()),
+            text: "@KordiUser3sKordi create a task for issue 317".to_string(),
+            time_label: "14:13".to_string(),
+            timestamp_ms: 1_000,
+            request_id: Some("bridge_req_issue_317_task".to_string()),
+            delivery_state: Some("responded".to_string()),
+            outreach: Some(outreach.clone()),
+            attachments: Vec::new(),
+        },
+        crate::bridge::DesktopBridgeConversationMessage {
+            id: "bridge_msg_response".to_string(),
+            direction: "inbound-response".to_string(),
+            sender: Some("Kordi User 3's Kordi".to_string()),
+            text: "Created the task: **Finish Kordi Issue 317 Review**".to_string(),
+            time_label: "14:14".to_string(),
+            timestamp_ms: 2_000,
+            request_id: Some("bridge_req_issue_317_task".to_string()),
+            delivery_state: Some("responded".to_string()),
+            outreach: Some(outreach.clone()),
+            attachments: Vec::new(),
+        },
+    ];
+
+    sync_bridge_outreach_into_parent_session(
+        &conn,
+        &conversation,
+        &messages,
+        &outreach,
+        "human:local-user2",
+        None,
+        Some("human:remote-user3"),
+        "agent:remote-user3-kordi",
+        true,
+    )
+    .expect("sync direct agent task response");
+
+    let synced_tool_name: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.tools[0].name')
+             FROM session_messages
+             WHERE session_id = ?1
+               AND message_kind = 'agent-turn'
+               AND content_text LIKE 'Created the task:%'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("synced task tool name");
+    assert_eq!(synced_tool_name, "task_operator");
+
+    let synced_tool_arguments: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.tools[0].arguments')
+             FROM session_messages
+             WHERE session_id = ?1
+               AND message_kind = 'agent-turn'
+               AND content_text LIKE 'Created the task:%'",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("synced task tool arguments");
+    assert!(synced_tool_arguments.contains("Finish Kordi Issue 317 Review"));
+}
+
+#[test]
 fn attachment_only_session_message_syncs_into_parent_session() {
     let conn = test_conn();
     for (id, display_name, human_id, node_id) in [

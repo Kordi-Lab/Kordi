@@ -27,6 +27,29 @@ use super::relay::{
 };
 use super::tasks::sync_group_agent_task_activity;
 
+fn outreach_agent_task_tools(
+    outreach: &crate::bridge::DesktopBridgeOutreachMetadata,
+) -> Vec<serde_json::Value> {
+    outreach
+        .parent_session_messages
+        .iter()
+        .rev()
+        .find_map(|message| (!message.tools.is_empty()).then(|| message.tools.clone()))
+        .unwrap_or_default()
+}
+
+fn content_has_model_task_tools(tools: &[serde_json::Value]) -> bool {
+    tools.iter().any(|tool| {
+        let name = tool
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase();
+        name == "task_operator" || name == "update_plan"
+    })
+}
+
 pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
     conn: &Connection,
     conversation: &crate::bridge::DesktopBridgeConversation,
@@ -424,6 +447,20 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
         } else {
             message.text.clone()
         };
+        let mut content = serde_json::json!({
+            "direction": message.direction,
+            "sender": message.sender,
+            "timeLabel": message.time_label,
+            "timestampMs": message.timestamp_ms,
+            "deliveryState": message.delivery_state,
+            "bridgeConversationId": conversation.id,
+            "delegatedExchangeId": delegation_id,
+        });
+        let agent_task_tools = outreach_agent_task_tools(outreach);
+        if is_agent_turn && content_has_model_task_tools(&agent_task_tools) {
+            content["tools"] = serde_json::Value::Array(agent_task_tools);
+        }
+
         let canonical_message = message_reconcile::append_or_reconcile_message_from_sync(
             conn,
             AppendCanonicalMessageRequest {
@@ -433,15 +470,7 @@ pub(in crate::canonical_sessions) fn sync_bridge_outreach_into_parent_session(
                 sender_role: sender_role.to_string(),
                 message_kind: if is_agent_turn { "agent-turn" } else { "text" }.to_string(),
                 content_text,
-                content: Some(serde_json::json!({
-                    "direction": message.direction,
-                    "sender": message.sender,
-                    "timeLabel": message.time_label,
-                    "timestampMs": message.timestamp_ms,
-                    "deliveryState": message.delivery_state,
-                    "bridgeConversationId": conversation.id,
-                    "delegatedExchangeId": delegation_id,
-                })),
+                content: Some(content),
                 created_at_ms: Some(message.timestamp_ms),
                 parent_message_id: join_message_id
                     .clone()
