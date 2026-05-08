@@ -96,6 +96,65 @@ test('task response navigation highlights the visible message root when it lands
   }
 });
 
+test('task response navigation scrolls only the transcript container when target is mounted', () => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  let scrolledPageTarget = false;
+  let highlighted = false;
+  const scrollContainer = {
+    current: {
+      clientHeight: 400,
+      scrollHeight: 2000,
+      scrollTop: 200,
+      scrollTo(options: ScrollToOptions) {
+        this.scrollTop = Number(options.top ?? 0);
+      },
+      getBoundingClientRect() {
+        return { top: 100, height: 400 } as DOMRect;
+      },
+    } as HTMLDivElement,
+  };
+  const target = {
+    scrollIntoView() {
+      scrolledPageTarget = true;
+    },
+    getBoundingClientRect() {
+      return { top: 900, height: 100 } as DOMRect;
+    },
+    classList: {
+      add(value: string) {
+        highlighted = value === 'app-transcript-message-highlight';
+      },
+      remove(_value: string) {},
+    },
+  };
+  const fakeDocument = {
+    getElementById(id: string) {
+      return id === transcriptMessageDomId('mounted-message') ? target : null;
+    },
+  } as unknown as Document;
+  const fakeWindow = {
+    setTimeout(_callback: TimerHandler, _timeout?: number) {
+      return 0;
+    },
+  } as unknown as Window & typeof globalThis;
+
+  try {
+    Object.defineProperty(globalThis, 'document', { value: fakeDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: fakeWindow, configurable: true });
+
+    const navigated = navigateToTranscriptMessageOrScrollBottom('mounted-message', scrollContainer);
+
+    assert.equal(navigated, true);
+    assert.equal(scrolledPageTarget, false);
+    assert.equal(scrollContainer.current.scrollTop, 850);
+    assert.equal(highlighted, true);
+  } finally {
+    Object.defineProperty(globalThis, 'document', { value: originalDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
+  }
+});
+
 test('task response navigation still jumps to mounted transcript messages first', () => {
   const originalDocument = globalThis.document;
   const originalWindow = globalThis.window;

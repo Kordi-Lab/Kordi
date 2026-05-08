@@ -9,12 +9,39 @@ export function transcriptMessageDomId(messageId: string) {
   return `app-transcript-message-${messageId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
 }
 
-export function navigateToTranscriptMessage(messageId: string) {
+function scrollElementWithinContainer(target: Element, scrollContainer: HTMLElement) {
+  if (typeof target.getBoundingClientRect !== 'function' || typeof scrollContainer.getBoundingClientRect !== 'function') {
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+  const targetRect = target.getBoundingClientRect();
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const targetTopWithinContainer = targetRect.top - containerRect.top + scrollContainer.scrollTop;
+  const centeredTop = targetTopWithinContainer - ((scrollContainer.clientHeight - targetRect.height) / 2);
+  const maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+  const top = Math.min(Math.max(0, centeredTop), maxTop);
+
+  if (typeof scrollContainer.scrollTo === 'function') {
+    scrollContainer.scrollTo({ top, behavior: 'smooth' });
+  } else {
+    scrollContainer.scrollTop = top;
+  }
+}
+
+export function navigateToTranscriptMessage(
+  messageId: string,
+  scrollRef?: RefObject<HTMLElement | null> | null,
+) {
   if (typeof document === 'undefined') return false;
   const target = document.getElementById(transcriptMessageDomId(messageId));
   if (!target) return false;
   const visibleTarget = target.closest?.('[data-transcript-message-root]') ?? target;
-  visibleTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const scrollContainer = scrollRef?.current;
+  if (scrollContainer) {
+    scrollElementWithinContainer(visibleTarget, scrollContainer);
+  } else {
+    visibleTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
   visibleTarget.classList.add('app-transcript-message-highlight');
   window.setTimeout(() => visibleTarget.classList.remove('app-transcript-message-highlight'), 1500);
   return true;
@@ -35,7 +62,7 @@ export function navigateToTranscriptMessageOrScrollBottom(
   messageId: string,
   scrollRef?: RefObject<HTMLElement | null> | null,
 ) {
-  return navigateToTranscriptMessage(messageId) || scrollTranscriptToBottom(scrollRef);
+  return navigateToTranscriptMessage(messageId, scrollRef) || scrollTranscriptToBottom(scrollRef);
 }
 
 function sourceQuoteText(sourceMessage: MessageSourceReference) {
