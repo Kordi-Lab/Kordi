@@ -141,6 +141,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         )),
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
             cwd.clone(),
+            sibling_conn.clone(),
         )),
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,

@@ -6,8 +6,9 @@ use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use kordi_core::error::KordiError;
 use kordi_tools::task_operator::models::{
-    TaskCloseRequest, TaskListRequest, TaskMessageRequest, TaskOperatorRuntimeRequest,
-    TaskOperatorRuntimeResponse, TaskOperatorTaskStatus, TaskSpawnRequest, TaskWaitRequest,
+    TaskCloseRequest, TaskCreateRequest, TaskListRequest, TaskMessageRequest,
+    TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse, TaskOperatorTaskStatus,
+    TaskSearchRequest, TaskSpawnRequest, TaskWaitRequest,
 };
 use kordi_tools::{TaskOperatorFn, TaskOperatorRuntime};
 use registry::{TaskAgentMetadata, TaskAgentRegistry, TaskAgentStatus};
@@ -62,25 +63,50 @@ struct TaskOperatorState {
     registry: Mutex<TaskAgentRegistry>,
     runner: Arc<dyn ChildAgentRunner>,
     cwd: PathBuf,
+    store: Option<Arc<Mutex<rusqlite::Connection>>>,
 }
 
-pub(crate) fn build_task_operator_runtime(cwd: PathBuf) -> TaskOperatorRuntime {
-    build_task_operator_runtime_with_runner(
+pub(crate) fn build_task_operator_runtime(
+    cwd: PathBuf,
+    store: Arc<Mutex<rusqlite::Connection>>,
+) -> TaskOperatorRuntime {
+    build_task_operator_runtime_with_runner_and_store(
         Arc::new(SubprocessChildAgentRunner::new()),
         cwd,
         DEFAULT_MAX_LIVE_TASKS,
+        store,
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn build_task_operator_runtime_with_runner(
     runner: Arc<dyn ChildAgentRunner>,
     cwd: PathBuf,
     max_live_tasks: usize,
 ) -> TaskOperatorRuntime {
+    build_task_operator_runtime_with_runner_inner(runner, cwd, max_live_tasks, None)
+}
+
+pub(crate) fn build_task_operator_runtime_with_runner_and_store(
+    runner: Arc<dyn ChildAgentRunner>,
+    cwd: PathBuf,
+    max_live_tasks: usize,
+    store: Arc<Mutex<rusqlite::Connection>>,
+) -> TaskOperatorRuntime {
+    build_task_operator_runtime_with_runner_inner(runner, cwd, max_live_tasks, Some(store))
+}
+
+fn build_task_operator_runtime_with_runner_inner(
+    runner: Arc<dyn ChildAgentRunner>,
+    cwd: PathBuf,
+    max_live_tasks: usize,
+    store: Option<Arc<Mutex<rusqlite::Connection>>>,
+) -> TaskOperatorRuntime {
     let state = Arc::new(TaskOperatorState {
         registry: Mutex::new(TaskAgentRegistry::new(max_live_tasks)),
         runner,
         cwd,
+        store,
     });
     let run: TaskOperatorFn = Arc::new(move |request| {
         let state = state.clone();
@@ -95,11 +121,73 @@ pub(crate) fn build_task_operator_runtime_with_runner(
 }
 
 impl TaskOperatorState {
+    async fn create(&self, request: TaskCreateRequest) -> Result<TaskOperatorRuntimeResponse> {
+        let title = request.task_title.trim();
+        if title.is_empty() {
+            bail!("taskTitle cannot be empty for task create")
+        }
+        let task_id = request
+            .task_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("task_{}", uuid::Uuid::new_v4().simple()));
+        let Some(store) = self.store.as_ref() else {
+            bail!("task_operator durable task storage is unavailable")
+        };
+        let stored = {
+            let conn = store.lock().await;
+            kordi_session::tasks::upsert_task(
+                &conn,
+                kordi_session::tasks::NewTask {
+                    task_id: task_id.clone(),
+                    title: title.to_string(),
+                    summary: request.summary.clone(),
+                    involved_participants: request.involved_participants.clone(),
+                },
+            )?
+        };
+
+        Ok(TaskOperatorRuntimeResponse {
+            status: "created".to_string(),
+            message: Some(format!("Task created: {}", stored.title)),
+            target: Some(stored.task_id.clone()),
+            tasks: vec![task_status_from_stored(stored)],
+        })
+    }
+
+    async fn search(&self, request: TaskSearchRequest) -> Result<TaskOperatorRuntimeResponse> {
+        let query = request.query.trim();
+        if query.is_empty() {
+            bail!("query cannot be empty for task search")
+        }
+        let Some(store) = self.store.as_ref() else {
+            bail!("task_operator durable task storage is unavailable")
+        };
+        let tasks = {
+            let conn = store.lock().await;
+            kordi_session::tasks::search_tasks(&conn, query, request.status.as_deref())?
+        }
+        .into_iter()
+        .map(task_status_from_stored)
+        .collect::<Vec<_>>();
+
+        Ok(TaskOperatorRuntimeResponse {
+            status: "searched".to_string(),
+            message: Some(format!("Task search matched {} task(s)", tasks.len())),
+            target: None,
+            tasks,
+        })
+    }
+
     async fn handle(
         &self,
         request: TaskOperatorRuntimeRequest,
     ) -> Result<TaskOperatorRuntimeResponse> {
         match request {
+            TaskOperatorRuntimeRequest::Create(request) => self.create(request).await,
+            TaskOperatorRuntimeRequest::Search(request) => self.search(request).await,
             TaskOperatorRuntimeRequest::Spawn(request) => self.spawn(request).await,
             TaskOperatorRuntimeRequest::Message(request) => self.message(request).await,
             TaskOperatorRuntimeRequest::Wait(request) => self.wait(request).await,
@@ -232,21 +320,41 @@ impl TaskOperatorState {
 
     async fn close(&self, request: TaskCloseRequest) -> Result<TaskOperatorRuntimeResponse> {
         let target = request.target.as_deref().unwrap_or_default().trim();
-        if target.is_empty() {
-            bail!("close target cannot be empty")
+        if target.starts_with('/') {
+            {
+                let registry = self.registry.lock().await;
+                registry.get(target)?;
+            }
+            self.runner.close(target).await?;
+            let mut registry = self.registry.lock().await;
+            registry.close(target)?;
+            return Ok(TaskOperatorRuntimeResponse {
+                status: "closed".to_string(),
+                message: Some(format!("Task agent closed: {target}")),
+                target: Some(target.to_string()),
+                tasks: Vec::new(),
+            });
         }
-        {
-            let registry = self.registry.lock().await;
-            registry.get(target)?;
-        }
-        self.runner.close(target).await?;
-        let mut registry = self.registry.lock().await;
-        registry.close(target)?;
+
+        let task_id = request
+            .task_id
+            .as_deref()
+            .or(request.target.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("close requires taskId or child-agent target"))?;
+        let Some(store) = self.store.as_ref() else {
+            bail!("task_operator durable task storage is unavailable")
+        };
+        let stored = {
+            let conn = store.lock().await;
+            kordi_session::tasks::close_task(&conn, task_id)?
+        };
         Ok(TaskOperatorRuntimeResponse {
             status: "closed".to_string(),
-            message: Some(format!("Task agent closed: {target}")),
-            target: Some(target.to_string()),
-            tasks: Vec::new(),
+            message: Some(format!("Task closed: {}", stored.title)),
+            target: Some(stored.task_id.clone()),
+            tasks: vec![task_status_from_stored(stored)],
         })
     }
 }
@@ -262,6 +370,16 @@ fn apply_spawned_status(registry: &mut TaskAgentRegistry, spawned: &SpawnedTask)
             registry.mark_failed(&spawned.task_path, spawned.summary.clone())
         }
         TaskAgentStatus::Closed => registry.close(&spawned.task_path),
+    }
+}
+
+fn task_status_from_stored(task: kordi_session::tasks::StoredTask) -> TaskOperatorTaskStatus {
+    TaskOperatorTaskStatus {
+        path: task.task_id,
+        title: task.title,
+        status: task.status,
+        summary: task.summary,
+        write_scope: Vec::new(),
     }
 }
 
@@ -464,6 +582,8 @@ mod tests {
     use anyhow::Result;
     use async_trait::async_trait;
     use kordi_tools::task_operator::models::TaskOperatorRuntimeRequest;
+    use rusqlite::Connection;
+    use tokio::sync::Mutex as TokioMutex;
 
     use super::{
         ChildAgentRunner, SpawnRequest, SpawnedTask, WaitOutcome,
@@ -501,6 +621,70 @@ mod tests {
         async fn close(&self, _target: &str) -> Result<()> {
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn task_operator_runtime_persists_user_visible_tasks() {
+        let runner = Arc::new(FakeRunner::default());
+        let conn = Arc::new(TokioMutex::new(Connection::open_in_memory().expect("conn")));
+        {
+            let guard = conn.lock().await;
+            kordi_session::schema::init_schema(&guard).expect("schema");
+        }
+        let runtime = super::build_task_operator_runtime_with_runner_and_store(
+            runner,
+            std::path::PathBuf::from("/tmp/project"),
+            4,
+            conn.clone(),
+        );
+
+        (runtime.run)(TaskOperatorRuntimeRequest::Create(
+            kordi_tools::task_operator::models::TaskCreateRequest {
+                task_id: Some("finish-kordi-issue-317".to_string()),
+                task_title: "Finish Kordi Issue 317".to_string(),
+                summary: Some("Implement fork flow".to_string()),
+                involved_participants: vec!["Shuyang".to_string(), "Kordi".to_string()],
+            },
+        ))
+        .await
+        .expect("create should persist");
+
+        let search = (runtime.run)(TaskOperatorRuntimeRequest::Search(
+            kordi_tools::task_operator::models::TaskSearchRequest {
+                query: "issue 317".to_string(),
+                status: None,
+            },
+        ))
+        .await
+        .expect("search should read persisted task");
+
+        assert_eq!(search.status, "searched");
+        assert_eq!(search.tasks.len(), 1);
+        assert_eq!(search.tasks[0].path, "finish-kordi-issue-317");
+        assert_eq!(search.tasks[0].title, "Finish Kordi Issue 317");
+        assert_eq!(search.tasks[0].status, "open");
+
+        (runtime.run)(TaskOperatorRuntimeRequest::Close(
+            kordi_tools::task_operator::models::TaskCloseRequest {
+                target: None,
+                task_id: Some("finish-kordi-issue-317".to_string()),
+                task_title: None,
+                query: None,
+            },
+        ))
+        .await
+        .expect("close should update persisted task");
+
+        let closed = (runtime.run)(TaskOperatorRuntimeRequest::Search(
+            kordi_tools::task_operator::models::TaskSearchRequest {
+                query: "issue 317".to_string(),
+                status: Some("closed".to_string()),
+            },
+        ))
+        .await
+        .expect("search closed should read persisted task");
+        assert_eq!(closed.tasks.len(), 1);
+        assert_eq!(closed.tasks[0].status, "closed");
     }
 
     #[tokio::test]

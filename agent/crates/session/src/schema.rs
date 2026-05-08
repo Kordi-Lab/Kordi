@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 6;
+const CURRENT_VERSION: i32 = 7;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -90,6 +90,22 @@ CREATE INDEX IF NOT EXISTS idx_reflection_lessons_updated_at
     ON reflection_lessons(updated_at);
 "#;
 
+const MIGRATION_V7: &str = r#"
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id                    TEXT PRIMARY KEY,
+    title                      TEXT NOT NULL,
+    summary                    TEXT,
+    status                     TEXT NOT NULL DEFAULT 'open',
+    involved_participants_json TEXT NOT NULL DEFAULT '[]',
+    created_at                 TEXT NOT NULL,
+    updated_at                 TEXT NOT NULL,
+    closed_at                  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status_updated
+    ON tasks(status, updated_at DESC);
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -122,6 +138,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 6 {
         migrate_reflection_lessons_to_artifact_paths(conn)?;
         set_version(conn, 6)?;
+    }
+
+    if current < 7 {
+        conn.execute_batch(MIGRATION_V7)?;
+        set_version(conn, 7)?;
     }
 
     Ok(())

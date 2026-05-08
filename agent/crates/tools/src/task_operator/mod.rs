@@ -149,8 +149,20 @@ impl Tool for TaskOperatorTool {
             .map_err(|err| KordiError::Tool(format!("Invalid task_operator parameters: {err}")))?;
 
         match request {
-            TaskOperatorRequest::Create(request) => handle_create(request),
-            TaskOperatorRequest::Search(request) => handle_search(request),
+            TaskOperatorRequest::Create(request) => {
+                if ctx.task_operator.is_some() {
+                    handle_runtime(TaskOperatorRuntimeRequest::Create(request), ctx).await
+                } else {
+                    handle_create(request)
+                }
+            }
+            TaskOperatorRequest::Search(request) => {
+                if ctx.task_operator.is_some() {
+                    handle_runtime(TaskOperatorRuntimeRequest::Search(request), ctx).await
+                } else {
+                    handle_search(request)
+                }
+            }
             TaskOperatorRequest::Manifest(request) => handle_manifest(request, ctx),
             TaskOperatorRequest::Estimate(request) => handle_estimate(request, ctx),
             TaskOperatorRequest::Spawn(request) => {
@@ -165,7 +177,7 @@ impl Tool for TaskOperatorTool {
             TaskOperatorRequest::List(request) => {
                 handle_runtime(TaskOperatorRuntimeRequest::List(request), ctx).await
             }
-            TaskOperatorRequest::Close(request) => handle_close(request, ctx).await
+            TaskOperatorRequest::Close(request) => handle_close(request, ctx).await,
         }
     }
 }
@@ -173,7 +185,9 @@ impl Tool for TaskOperatorTool {
 fn handle_create(request: TaskCreateRequest) -> KordiResult<ToolResult> {
     let title = request.task_title.trim();
     if title.is_empty() {
-        return Err(KordiError::Tool("taskTitle cannot be empty for task create".to_string()));
+        return Err(KordiError::Tool(
+            "taskTitle cannot be empty for task create".to_string(),
+        ));
     }
     let task_id = request
         .task_id
@@ -182,7 +196,11 @@ fn handle_create(request: TaskCreateRequest) -> KordiResult<ToolResult> {
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("task_{}", Uuid::new_v4().simple()));
-    let summary = request.summary.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let summary = request
+        .summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     Ok(text_result(
         format!("Task created: {title}"),
@@ -200,7 +218,9 @@ fn handle_create(request: TaskCreateRequest) -> KordiResult<ToolResult> {
 fn handle_search(request: TaskSearchRequest) -> KordiResult<ToolResult> {
     let query = request.query.trim();
     if query.is_empty() {
-        return Err(KordiError::Tool("query cannot be empty for task search".to_string()));
+        return Err(KordiError::Tool(
+            "query cannot be empty for task search".to_string(),
+        ));
     }
     Ok(text_result(
         format!("Task search: {query}"),
@@ -220,7 +240,7 @@ async fn handle_close(request: TaskCloseRequest, ctx: &ToolContext) -> KordiResu
         .as_deref()
         .map(str::trim)
         .filter(|target| target.starts_with('/'));
-    if child_agent_target.is_some() {
+    if child_agent_target.is_some() || ctx.task_operator.is_some() {
         return handle_runtime(TaskOperatorRuntimeRequest::Close(request), ctx).await;
     }
 
@@ -241,7 +261,9 @@ async fn handle_close(request: TaskCloseRequest, ctx: &ToolContext) -> KordiResu
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let label = title.or(task_id).or(query).ok_or_else(|| {
-        KordiError::Tool("task close requires taskId, taskTitle, query, or child-agent target".to_string())
+        KordiError::Tool(
+            "task close requires taskId, taskTitle, query, or child-agent target".to_string(),
+        )
     })?;
 
     Ok(text_result(
@@ -415,9 +437,26 @@ mod tests {
             )
             .await
             .expect("create should not require child-agent runtime");
-        assert_eq!(text_content(&create), "Task created: Test Task For Kordi User 2");
-        assert_eq!(create.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("created"));
-        assert_eq!(create.details.as_ref().and_then(|value| value.get("taskId")).and_then(|value| value.as_str()), Some("task_user_2"));
+        assert_eq!(
+            text_content(&create),
+            "Task created: Test Task For Kordi User 2"
+        );
+        assert_eq!(
+            create
+                .details
+                .as_ref()
+                .and_then(|value| value.get("status"))
+                .and_then(|value| value.as_str()),
+            Some("created")
+        );
+        assert_eq!(
+            create
+                .details
+                .as_ref()
+                .and_then(|value| value.get("taskId"))
+                .and_then(|value| value.as_str()),
+            Some("task_user_2")
+        );
 
         let search = tool
             .execute(
@@ -427,7 +466,14 @@ mod tests {
             )
             .await
             .expect("search should emit a verifiable query event");
-        assert_eq!(search.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("searched"));
+        assert_eq!(
+            search
+                .details
+                .as_ref()
+                .and_then(|value| value.get("status"))
+                .and_then(|value| value.as_str()),
+            Some("searched")
+        );
 
         let close = tool
             .execute(
@@ -441,8 +487,56 @@ mod tests {
             )
             .await
             .expect("close should emit a verifiable task event");
-        assert_eq!(text_content(&close), "Task closed: Test Task For Kordi User 2");
-        assert_eq!(close.details.as_ref().and_then(|value| value.get("status")).and_then(|value| value.as_str()), Some("closed"));
+        assert_eq!(
+            text_content(&close),
+            "Task closed: Test Task For Kordi User 2"
+        );
+        assert_eq!(
+            close
+                .details
+                .as_ref()
+                .and_then(|value| value.get("status"))
+                .and_then(|value| value.as_str()),
+            Some("closed")
+        );
+    }
+
+    #[tokio::test]
+    async fn task_operator_delegates_create_and_search_to_configured_runtime() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_for_runtime = seen.clone();
+        let run: TaskOperatorFn = Arc::new(move |request| {
+            let seen_for_runtime = seen_for_runtime.clone();
+            Box::pin(async move {
+                seen_for_runtime.lock().unwrap().push(request.clone());
+                Ok(TaskOperatorRuntimeResponse {
+                    status: "created".to_string(),
+                    message: Some("Task created: Durable Task".to_string()),
+                    target: Some("durable-task".to_string()),
+                    tasks: Vec::new(),
+                })
+            })
+        });
+        let tool = super::TaskOperatorTool;
+
+        let result = tool
+            .execute(
+                serde_json::json!({
+                    "action": "create",
+                    "taskId": "durable-task",
+                    "taskTitle": "Durable Task"
+                }),
+                &make_ctx(Some(TaskOperatorRuntime { run })),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("create should be delegated");
+
+        assert_eq!(text_content(&result), "Task created: Durable Task");
+        assert!(matches!(
+            seen.lock().unwrap().as_slice(),
+            [TaskOperatorRuntimeRequest::Create(request)] if request.task_id.as_deref() == Some("durable-task")
+        ));
     }
 
     #[tokio::test]

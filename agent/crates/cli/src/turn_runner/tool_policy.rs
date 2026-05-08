@@ -16,6 +16,7 @@ impl ToolPolicyState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ToolPolicyDecision {
     Allow,
+    #[allow(dead_code)]
     AllowWithWarning(String),
     #[allow(dead_code)]
     Deny(String),
@@ -25,19 +26,9 @@ pub(super) fn evaluate_tool_policy(
     state: &ToolPolicyState,
     metadata: &ToolMetadata,
 ) -> ToolPolicyDecision {
-    match metadata.layer {
-        ToolLayer::Observation | ToolLayer::Planning | ToolLayer::Reflection => {
-            ToolPolicyDecision::Allow
-        }
-        ToolLayer::Operator if state.planning_seen => ToolPolicyDecision::Allow,
-        ToolLayer::Operator => ToolPolicyDecision::AllowWithWarning(
-            "operator tool used before a planning step".to_string(),
-        ),
-        ToolLayer::Execution if state.planning_seen => ToolPolicyDecision::Allow,
-        ToolLayer::Execution => ToolPolicyDecision::AllowWithWarning(
-            "execution tool used before a planning or operator step".to_string(),
-        ),
-    }
+    let _ = state;
+    let _ = metadata;
+    ToolPolicyDecision::Allow
 }
 
 pub(super) fn evaluate_reflection_advisory(
@@ -89,13 +80,19 @@ mod tests {
     }
 
     #[test]
-    fn execution_tools_before_planning_are_allowed_with_warning() {
+    fn execution_tools_before_planning_are_allowed_without_workflow_warning() {
         let state = ToolPolicyState::default();
         let metadata = ToolMetadata::execution(ToolRiskLevel::Medium);
         let decision = evaluate_tool_policy(&state, &metadata);
-        assert!(
-            matches!(decision, ToolPolicyDecision::AllowWithWarning(message) if message.contains("planning"))
-        );
+        assert_eq!(decision, ToolPolicyDecision::Allow);
+    }
+
+    #[test]
+    fn operator_tools_before_planning_are_allowed_without_workflow_warning() {
+        let state = ToolPolicyState::default();
+        let metadata = ToolMetadata::new(ToolLayer::Operator, ToolRiskLevel::Medium, false);
+        let decision = evaluate_tool_policy(&state, &metadata);
+        assert_eq!(decision, ToolPolicyDecision::Allow);
     }
 
     #[test]

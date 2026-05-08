@@ -299,10 +299,27 @@ pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
         &project_scope_id,
     );
 
+    let mut artifact_lines = Vec::new();
+    if conversation_path.exists() {
+        artifact_lines.push(format!(
+            "- Conversation scope `{session_id}`: {}",
+            conversation_path.display()
+        ));
+    }
+    if project_path.exists() {
+        artifact_lines.push(format!(
+            "- Project scope `{project_scope_id}`: {}",
+            project_path.display()
+        ));
+    }
+
+    if artifact_lines.is_empty() {
+        return String::new();
+    }
+
     format!(
-        "\n\n## Scoped lesson artifacts\nLesson content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior lessons; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise lesson.\n- Conversation scope `{session_id}`: {}\n- Project scope `{project_scope_id}`: {}",
-        conversation_path.display(),
-        project_path.display(),
+        "\n\n## Scoped lesson artifacts\nLesson content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior lessons; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise lesson.\n{}",
+        artifact_lines.join("\n"),
     )
 }
 
@@ -621,6 +638,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         )),
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
             effective_cwd.clone(),
+            sibling_conn.clone(),
         )),
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
@@ -1028,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_lesson_artifact_prompt_lists_paths_without_lesson_content() {
+    fn scoped_lesson_artifact_prompt_omits_missing_artifacts() {
         let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
             name: "reflection",
             description: "reflection",
@@ -1044,11 +1062,40 @@ mod tests {
             cwd.path(),
         );
 
+        assert_eq!(section, "");
+    }
+
+    #[test]
+    fn scoped_lesson_artifact_prompt_lists_existing_paths_without_lesson_content() {
+        let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+            name: "reflection",
+            description: "reflection",
+            schema: json!({"type": "object"}),
+        })];
+        let artifacts_dir = tempdir().expect("artifacts dir");
+        let cwd = tempdir().expect("cwd");
+
+        let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+            artifacts_dir.path(),
+            "conversation",
+            "session-123",
+        );
+        std::fs::create_dir_all(conversation_path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&conversation_path, "# lessons").expect("lesson file");
+
+        let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+            &tools,
+            artifacts_dir.path(),
+            "session-123",
+            cwd.path(),
+        );
+
         assert!(section.contains("Scoped lesson artifacts"));
         assert!(section.contains("read"));
         assert!(section.contains("reflection"));
         assert!(section.contains("session-123"));
         assert!(section.contains(artifacts_dir.path().to_str().expect("artifact path")));
+        assert!(section.contains(conversation_path.to_str().expect("conversation path")));
         assert!(!section.contains("Do not inject lessons"));
         assert!(section.len() < 900);
     }
