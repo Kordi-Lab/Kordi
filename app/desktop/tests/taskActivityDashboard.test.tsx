@@ -29,14 +29,14 @@ function userMessage(text: string, id = `user:${text.slice(0, 16)}`): Message {
   };
 }
 
-test('right-panel task dashboard shows the whole long-running request, not the current bash command', () => {
+test('right-panel task dashboard does not create a task row for an ordinary live question', () => {
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
     sessionId: 'session-1',
-    prompt: '@Kordi review the open claw code and give me a report',
+    prompt: '@Kordi why did this happen?',
     status: 'tooling',
     message: 'Running tool…',
-    assistantText: 'I will inspect the code and produce a review report.',
+    assistantText: 'I will inspect the context.',
     thinkingText: '',
     completed: false,
     succeeded: false,
@@ -58,12 +58,8 @@ test('right-panel task dashboard shows the whole long-running request, not the c
 
   const dashboard = buildTaskActivityDashboard({ messages: [], liveTurn });
 
-  assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].title, 'review the open claw code and give me a report');
-  assert.equal(dashboard.tasks[0].status, 'active');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
-  assert.equal(dashboard.tasks[0].subtasks.length, 0);
-  assert.equal(dashboard.activeCount, 1);
+  assert.equal(dashboard.tasks.length, 0);
+  assert.equal(dashboard.hasActivity, false);
 });
 
 test('right-panel task dashboard nests subagent tasks under the whole request', () => {
@@ -136,7 +132,7 @@ test('right-panel task dashboard nests subagent tasks under the whole request', 
     liveTurn,
   });
 
-  assert.equal(dashboard.tasks.length, 2);
+  assert.equal(dashboard.tasks.length, 1);
   assert.equal(dashboard.tasks[0].title, 'review the code and give me a report');
   assert.equal(dashboard.tasks[0].statusLabel, 'Needs input');
   assert.equal(dashboard.tasks[0].subtasks.length, 2);
@@ -146,8 +142,6 @@ test('right-panel task dashboard nests subagent tasks under the whole request', 
   assert.equal(dashboard.tasks[0].subtasks[1].statusLabel, 'Done');
   assert.equal(dashboard.tasks[0].subtasks[1].target, '/root/research_docs');
   assert.deepEqual(dashboard.tasks[0].subtasks[1].writeScope, ['docs']);
-  assert.equal(dashboard.tasks[1].title, 'run tests');
-  assert.equal(dashboard.tasks[1].subtasks.length, 0);
 });
 
 test('task dashboard updates nested subagent state when a later task operator result completes the task', () => {
@@ -1005,7 +999,7 @@ test('task dashboard derives a concise task title from plan steps when taskTitle
   assert.equal(dashboard.tasks[0].title, 'Open issue for artifact display');
 });
 
-test('task dashboard keeps completed failed tool turns visible after the live turn finishes', () => {
+test('task dashboard does not create rows for failed non-task tool turns', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-failed-worktree',
     sessionId: 'session-1',
@@ -1034,12 +1028,8 @@ test('task dashboard keeps completed failed tool turns visible after the live tu
 
   const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(completedTurn)] });
 
-  assert.equal(dashboard.tasks.length, 1);
-  assert.equal(dashboard.tasks[0].title, "let’s fix the prolem in a new worktree");
-  assert.equal(dashboard.tasks[0].status, 'active');
-  assert.equal(dashboard.tasks[0].statusLabel, 'Active');
-  assert.equal(dashboard.tasks[0].subtasks.length, 1);
-  assert.equal(dashboard.tasks[0].subtasks[0].status, 'failed');
+  assert.equal(dashboard.tasks.length, 0);
+  assert.equal(dashboard.hasActivity, false);
 });
 
 test('task dashboard keeps completed plan tasks open until human confirmation', () => {
@@ -1140,6 +1130,18 @@ test('task dashboard shows failed tools as subtasks without failing the parent t
     succeeded: false,
     tools: [
       {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Review and implement shortcut', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
+      {
         id: 'read-1',
         name: 'read',
         status: 'error',
@@ -1217,6 +1219,18 @@ test('task dashboard clears a failed tool issue after a later same-tool retry su
     completed: true,
     succeeded: true,
     tools: [
+      {
+        id: 'plan-1',
+        name: 'update_plan',
+        status: 'done',
+        arguments: JSON.stringify({ taskTitle: 'Run project tests', plan: [] }),
+        liveOutput: '',
+        resultText: 'Plan updated',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'planning',
+        isError: false,
+      },
       {
         id: 'bash-failed',
         name: 'bash',
@@ -1501,14 +1515,25 @@ test('task panel lets long task titles wrap instead of truncating them', () => {
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
     sessionId: 'session-1',
-    prompt: '@Kordi review the change log and related blog of open source release notes',
+    prompt: '@Kordi create a task to review the change log and related blog of open source release notes',
     status: 'tooling',
-    message: 'Thinking…',
+    message: 'Creating task…',
     assistantText: '',
     thinkingText: '',
     completed: false,
     succeeded: false,
-    tools: [],
+    tools: [{
+      id: 'task-create-long-title',
+      name: 'task_operator',
+      status: 'running',
+      arguments: '{"action":"create","taskId":"task_long_title","taskTitle":"review the change log and related blog of open source release notes"}',
+      liveOutput: '',
+      resultText: null,
+      detail: null,
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
   };
 
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
