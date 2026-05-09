@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cloud_auth;
 pub mod contacts;
 pub mod discovery;
 pub mod endpoints;
@@ -86,10 +87,16 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
         "agent_reachability_policy",
         "TEXT",
     )?;
+    add_column_if_missing(conn, "registered_nodes", "account_id", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "device_id", "TEXT")?;
 
     migrate_registered_nodes_to_core(conn)?;
     migrate_server_projects_to_core(conn)?;
     remove_legacy_user_state(conn)?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_device\n         ON registered_nodes (account_id, device_id);",
+    )
+    .map_err(ServerInitError::Schema)?;
     Ok(())
 }
 
@@ -155,6 +162,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             human_visibility_policy TEXT,
             contact_approval_policy TEXT,
             agent_reachability_policy TEXT,
+            account_id          TEXT,
+            device_id           TEXT,
             created_at          TEXT NOT NULL
         );
 
@@ -177,6 +186,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             human_visibility_policy,
             contact_approval_policy,
             agent_reachability_policy,
+            account_id,
+            device_id,
             created_at
         )
         SELECT
@@ -195,6 +206,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             revoked_at,
             revocation_reason,
             replacement_node_id,
+            NULL,
+            NULL,
             NULL,
             NULL,
             NULL,
@@ -532,6 +545,92 @@ pub(crate) fn nodes_can_directly_reach(
 mod tests {
     use super::*;
 
+    fn table_exists(conn: &Connection, table: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            rusqlite::params![table],
+            |_| Ok(()),
+        )
+        .is_ok()
+    }
+
+    fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+        let sql = format!("PRAGMA table_info({table})");
+        let mut stmt = conn.prepare(&sql).expect("prepare table info");
+        let exists = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query table info")
+            .filter_map(Result::ok)
+            .any(|name| name == column);
+        exists
+    }
+
+    #[test]
+    fn server_schema_creates_cloud_account_foundation() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-cloud-auth-schema-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        for table in [
+            "cloud_accounts",
+            "cloud_account_identities",
+            "cloud_devices",
+            "cloud_refresh_tokens",
+            "cloud_audit_events",
+        ] {
+            assert!(table_exists(&conn, table), "expected {table} table");
+        }
+
+        for column in ["account_id", "device_id"] {
+            assert!(
+                column_exists(&conn, "registered_nodes", column),
+                "expected registered_nodes.{column} column"
+            );
+        }
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn server_schema_adds_cloud_columns_to_existing_registered_nodes() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-cloud-auth-legacy-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE registered_nodes (
+                node_id TEXT PRIMARY KEY,
+                ed25519_pubkey TEXT NOT NULL,
+                x25519_pubkey TEXT NOT NULL,
+                api_key_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("seed legacy schema");
+
+        init_server_db(&conn).expect("init db should migrate old registered_nodes table");
+
+        assert!(column_exists(&conn, "registered_nodes", "account_id"));
+        assert!(column_exists(&conn, "registered_nodes", "device_id"));
+        assert!(
+            conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_registered_nodes_account_device'",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok(),
+            "expected account/device lookup index"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
     #[test]
     fn server_connections_apply_busy_timeout_for_concurrent_mailbox_writes() {
         let db_path = std::env::temp_dir().join(format!(
@@ -581,6 +680,8 @@ CREATE TABLE IF NOT EXISTS registered_nodes (
     human_visibility_policy TEXT,
     contact_approval_policy TEXT,
     agent_reachability_policy TEXT,
+    account_id          TEXT,
+    device_id           TEXT,
     created_at          TEXT NOT NULL
 );
 
@@ -646,6 +747,62 @@ CREATE TABLE IF NOT EXISTS server_mailbox (
     created_at      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cloud_accounts (
+    account_id      TEXT PRIMARY KEY,
+    display_name    TEXT,
+    primary_email   TEXT,
+    avatar_url      TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cloud_account_identities (
+    identity_id      TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    provider         TEXT NOT NULL,
+    provider_subject TEXT NOT NULL,
+    provider_username TEXT,
+    email            TEXT,
+    email_verified   INTEGER NOT NULL DEFAULT 0,
+    avatar_url       TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    UNIQUE(provider, provider_subject),
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_devices (
+    device_id        TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_name      TEXT,
+    device_public_key TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    last_seen_at     TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_refresh_tokens (
+    token_id         TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_id        TEXT NOT NULL,
+    token_hash       TEXT NOT NULL UNIQUE,
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,
+    FOREIGN KEY(device_id) REFERENCES cloud_devices(device_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_audit_events (
+    event_id         TEXT PRIMARY KEY,
+    account_id       TEXT,
+    device_id        TEXT,
+    event_type       TEXT NOT NULL,
+    metadata_json    TEXT,
+    created_at       TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
     ON server_contacts (node_id, created_at);
 
@@ -657,4 +814,10 @@ CREATE INDEX IF NOT EXISTS idx_server_contact_requests_requester_status
 
 CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
     ON server_mailbox (target_node_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_account_identities_account
+    ON cloud_account_identities (account_id, provider);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_devices_account
+    ON cloud_devices (account_id, revoked_at, last_seen_at);
 "#;
