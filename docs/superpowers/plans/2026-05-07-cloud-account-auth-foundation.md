@@ -43,6 +43,7 @@
 - [x] Add failing tests that upserting a provider identity creates/reuses an account and that registering a device belongs to that account.
 - [x] Run focused tests and confirm failure.
 - [x] Implement `upsert_account_identity` and `register_cloud_device` helpers using explicit SQLite operations.
+- [x] Add account profile update helper for user-set display name and avatar URL.
 - [x] Re-run focused tests and confirm pass.
 
 ### Task 4: Bridge node linking foundation

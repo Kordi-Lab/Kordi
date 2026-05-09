@@ -88,6 +88,20 @@ pub struct AccountIdentityRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CloudAccountProfileUpdate {
+    pub account_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CloudAccountProfileRecord {
+    pub account_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CloudDeviceRegistration {
     pub account_id: String,
     pub device_name: Option<String>,
@@ -168,6 +182,33 @@ pub fn upsert_account_identity(
         identity_id,
         created_account,
     })
+}
+
+pub fn update_cloud_account_profile(
+    conn: &Connection,
+    input: CloudAccountProfileUpdate,
+) -> Result<Option<CloudAccountProfileRecord>, rusqlite::Error> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let changed = conn.execute(
+        "UPDATE cloud_accounts SET display_name = COALESCE(?1, display_name), avatar_url = COALESCE(?2, avatar_url), updated_at = ?3 WHERE account_id = ?4",
+        rusqlite::params![input.display_name, input.avatar_url, now, input.account_id],
+    )?;
+    if changed == 0 {
+        return Ok(None);
+    }
+
+    conn.query_row(
+        "SELECT account_id, display_name, avatar_url FROM cloud_accounts WHERE account_id = ?1",
+        rusqlite::params![input.account_id],
+        |row| {
+            Ok(CloudAccountProfileRecord {
+                account_id: row.get(0)?,
+                display_name: row.get(1)?,
+                avatar_url: row.get(2)?,
+            })
+        },
+    )
+    .optional()
 }
 
 pub fn register_cloud_device(
@@ -278,6 +319,61 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM cloud_accounts", [], |row| row.get(0))
             .unwrap();
         assert_eq!(account_count, 1);
+    }
+
+    #[test]
+    fn update_cloud_account_profile_sets_name_and_avatar() {
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+        super::super::init_server_db(&conn).expect("init db");
+        let account = upsert_account_identity(
+            &conn,
+            AccountIdentityUpsert {
+                provider: OAuthProviderId::GitHub,
+                provider_subject: "profile_user".to_string(),
+                provider_username: Some("profile-user".to_string()),
+                display_name: Some("Old Name".to_string()),
+                email: Some("profile@example.com".to_string()),
+                email_verified: true,
+                avatar_url: Some("https://example.com/old.png".to_string()),
+            },
+        )
+        .expect("upsert identity");
+
+        let profile = update_cloud_account_profile(
+            &conn,
+            CloudAccountProfileUpdate {
+                account_id: account.account_id.clone(),
+                display_name: Some("New Name".to_string()),
+                avatar_url: Some("https://example.com/new.png".to_string()),
+            },
+        )
+        .expect("update profile")
+        .expect("profile should exist");
+
+        assert_eq!(profile.account_id, account.account_id);
+        assert_eq!(profile.display_name.as_deref(), Some("New Name"));
+        assert_eq!(
+            profile.avatar_url.as_deref(),
+            Some("https://example.com/new.png")
+        );
+    }
+
+    #[test]
+    fn update_cloud_account_profile_returns_none_for_unknown_account() {
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+        super::super::init_server_db(&conn).expect("init db");
+
+        let profile = update_cloud_account_profile(
+            &conn,
+            CloudAccountProfileUpdate {
+                account_id: "kca_missing".to_string(),
+                display_name: Some("Nobody".to_string()),
+                avatar_url: Some("https://example.com/nobody.png".to_string()),
+            },
+        )
+        .expect("update profile");
+
+        assert!(profile.is_none());
     }
 
     #[test]
