@@ -311,6 +311,7 @@ export type AssembleKordiShellSlotsArgs = {
   lastBridgePollAtLabel: string | null;
   activeSessionProject: DesktopChatProjectInfo | null;
   activeQueuedDesktopMessages: QueuedDesktopChatMessage[];
+  showCloudLoginGate: boolean;
   showAuthGate: boolean;
   dismissAuthGate: () => void;
   inlineAuthDialog: {
@@ -592,6 +593,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
 >;
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
+  | 'showCloudLoginGate'
   | 'showAuthGate'
   | 'dismissAuthGate'
   | 'setActiveNav'
