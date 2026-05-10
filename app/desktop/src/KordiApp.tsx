@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus, type KordiEdition } from '@/features/cloud/edition';
 import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
+import { CloudContactsPanel } from '@/features/cloud/CloudContactsPanel';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import type { CloudAccount } from '@/features/cloud/authClient';
 
 const AVATAR_URL_PREFIX = 'kordi-pixel-avatar://';
 
@@ -83,7 +85,35 @@ function CloudEditionRoot({
   if (status === 'loading') {
     return <CloudGateLoading />;
   }
-  return <KordiAppShell />;
+  return (
+    <>
+      <KordiAppShell />
+      {account ? <CloudContactsLauncher account={account} /> : null}
+    </>
+  );
+}
+
+function CloudContactsLauncher({ account }: { account: CloudAccount }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Open cloud contacts"
+        className="fixed bottom-5 right-5 z-[150] grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-slate-950/90 text-slate-100 shadow-lg backdrop-blur transition hover:bg-slate-900"
+        title="Cloud contacts"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
+          <circle cx="9" cy="9" r="3.5" />
+          <path strokeLinecap="round" d="M3.5 18.2c.6-2.6 2.7-4.3 5.5-4.3 2 0 3.7.9 4.7 2.3" />
+          <circle cx="17" cy="14" r="2.4" />
+          <path strokeLinecap="round" d="M14.6 19.6c.4-1.7 1.5-2.6 2.9-2.6 1 0 1.9.4 2.5 1.2" />
+        </svg>
+      </button>
+      {open ? <CloudContactsPanel account={account} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
 }
 
 function CloudGateLoading() {

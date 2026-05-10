@@ -29,9 +29,32 @@ export type CloudAuthErrorCode =
   | 'invalid_session'
   | 'rate_limited'
   | 'account_missing'
+  | 'invalid_account_id'
+  | 'invalid_pubkey'
+  | 'self_contact'
   | 'server_error'
   | 'network_error'
   | 'unknown';
+
+export type CloudPublicProfile = {
+  accountId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  isContact: boolean;
+  isSelf: boolean;
+};
+
+export type CloudContactSummary = {
+  accountId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+};
+
+export type RegisterDeviceResult = {
+  nodeId: string;
+  apiKey: string;
+};
 
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
@@ -73,6 +96,9 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'invalid_session' ||
     value === 'rate_limited' ||
     value === 'account_missing' ||
+    value === 'invalid_account_id' ||
+    value === 'invalid_pubkey' ||
+    value === 'self_contact' ||
     value === 'server_error'
   );
 }
@@ -176,6 +202,56 @@ export class CloudAuthClient {
       },
       'Could not sign out.',
     );
+  }
+
+  async registerDevice(
+    token: string,
+    input: { ed25519Pubkey: string; x25519Pubkey: string; displayName?: string },
+  ): Promise<RegisterDeviceResult> {
+    return this.send<RegisterDeviceResult>(
+      '/v1/cloud/auth/register-device',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not register device on bridges.',
+    );
+  }
+
+  async getProfile(token: string, accountId: string): Promise<CloudPublicProfile> {
+    return this.send<CloudPublicProfile>(
+      `/v1/cloud/accounts/${encodeURIComponent(accountId)}/profile`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load profile.',
+    );
+  }
+
+  async addContact(token: string, peerAccountId: string): Promise<void> {
+    await this.send<void>(
+      '/v1/cloud/contacts',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ peerAccountId }),
+      },
+      'Could not add contact.',
+    );
+  }
+
+  async listContacts(token: string): Promise<CloudContactSummary[]> {
+    const response = await this.send<{ contacts: CloudContactSummary[] }>(
+      '/v1/cloud/contacts',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load contacts.',
+    );
+    return response?.contacts ?? [];
   }
 }
 

@@ -97,6 +97,10 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
     add_column_if_missing(conn, "cloud_accounts", "password_hash", "TEXT")?;
     add_column_if_missing(conn, "cloud_accounts", "password_algorithm", "TEXT")?;
     add_column_if_missing(conn, "cloud_accounts", "password_updated_at", "TEXT")?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS cloud_contacts (\n             account_id      TEXT NOT NULL,\n             peer_account_id TEXT NOT NULL,\n             created_at      TEXT NOT NULL,\n             PRIMARY KEY (account_id, peer_account_id),\n             FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,\n             FOREIGN KEY(peer_account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE\n         );\n         CREATE INDEX IF NOT EXISTS idx_cloud_contacts_account ON cloud_contacts (account_id, created_at);",
+    )
+    .map_err(ServerInitError::Schema)?;
 
     migrate_registered_nodes_to_core(conn)?;
     migrate_server_projects_to_core(conn)?;

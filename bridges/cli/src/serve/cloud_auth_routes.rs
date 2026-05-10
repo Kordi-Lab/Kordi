@@ -30,6 +30,25 @@ use super::ServerState;
 
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
+const BRIDGES_NODE_DEFAULT_DISCOVERY: &str = "open";
+const BRIDGES_NODE_DEFAULT_VISIBILITY: &str = "server-open";
+const BRIDGES_NODE_DEFAULT_CONTACT_POLICY: &str = "auto";
+const BRIDGES_NODE_DEFAULT_REACHABILITY: &str = "open";
+
+fn generate_bridges_api_key() -> String {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    format!("bridges_sk_{}", URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn hash_bridges_api_key(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    hex::encode(hasher.finalize())
+}
 
 #[derive(Debug, Clone)]
 pub struct CloudSession {
@@ -79,6 +98,61 @@ pub struct SessionResponse {
 pub struct AuthResponse {
     pub account: AccountResponse,
     pub session: SessionResponse,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterDeviceRequest {
+    #[serde(rename = "ed25519Pubkey")]
+    pub ed25519_pubkey: String,
+    #[serde(rename = "x25519Pubkey")]
+    pub x25519_pubkey: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterDeviceResponse {
+    #[serde(rename = "nodeId")]
+    pub node_id: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicProfileResponse {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
+    #[serde(rename = "isContact")]
+    pub is_contact: bool,
+    #[serde(rename = "isSelf")]
+    pub is_self: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddContactRequest {
+    #[serde(rename = "peerAccountId")]
+    pub peer_account_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContactSummary {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContactsListResponse {
+    pub contacts: Vec<ContactSummary>,
 }
 
 #[derive(Debug, Serialize)]
@@ -191,6 +265,9 @@ pub fn routes_with_config(
     let protected = Router::new()
         .route("/v1/cloud/auth/me", get(me))
         .route("/v1/cloud/auth/logout", post(logout))
+        .route("/v1/cloud/auth/register-device", post(register_device))
+        .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
+        .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -672,6 +749,356 @@ async fn logout(
         serde_json::json!({}),
     );
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn register_device(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<RegisterDeviceRequest>,
+) -> Response {
+    let ed_pubkey = req.ed25519_pubkey.trim();
+    let x_pubkey = req.x25519_pubkey.trim();
+    if ed_pubkey.is_empty() || x_pubkey.is_empty() {
+        return err(
+            "invalid_pubkey",
+            "ed25519 and x25519 public keys are required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    // Derive the bridges node id from the ed25519 pubkey, mirroring the
+    // existing /v1/auth/register flow's derivation rule (sha256[:20] + base58).
+    let ed_pub_bytes = match bs58::decode(ed_pubkey).into_vec() {
+        Ok(bytes) if bytes.len() == 32 => {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            arr
+        }
+        _ => {
+            return err(
+                "invalid_pubkey",
+                "ed25519 public key must be base58-encoded 32 bytes.",
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    let verifying = match ed25519_dalek::VerifyingKey::from_bytes(&ed_pub_bytes) {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "invalid_pubkey",
+                "ed25519 public key is not a valid point.",
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    let node_id = crate::identity::derive_node_id(&verifying);
+
+    let api_key = generate_bridges_api_key();
+    let api_key_hash = hash_bridges_api_key(&api_key);
+    let display_name = req
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(80).collect::<String>());
+
+    let db = match state.open_connection() {
+        Ok(db) => db,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database unavailable.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let now = Utc::now().to_rfc3339();
+    let existing: Option<String> = match db
+        .query_row(
+            "SELECT node_id FROM registered_nodes WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL",
+            rusqlite::params![session.account_id, session.device_id],
+            |row| row.get(0),
+        )
+        .optional()
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let result = if let Some(existing_node_id) = existing.as_ref() {
+        db.execute(
+            "UPDATE registered_nodes SET ed25519_pubkey = ?1, x25519_pubkey = ?2, display_name = ?3, api_key_hash = ?4 WHERE node_id = ?5",
+            rusqlite::params![ed_pubkey, x_pubkey, display_name, api_key_hash, existing_node_id],
+        )
+    } else {
+        db.execute(
+            "INSERT INTO registered_nodes \
+             (node_id, ed25519_pubkey, x25519_pubkey, display_name, runtime, discovery_mode, is_default_agent, api_key_hash, account_id, device_id, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            rusqlite::params![
+                node_id,
+                ed_pubkey,
+                x_pubkey,
+                display_name,
+                "desktop",
+                BRIDGES_NODE_DEFAULT_DISCOVERY,
+                0,
+                api_key_hash,
+                session.account_id,
+                session.device_id,
+                BRIDGES_NODE_DEFAULT_VISIBILITY,
+                BRIDGES_NODE_DEFAULT_CONTACT_POLICY,
+                BRIDGES_NODE_DEFAULT_REACHABILITY,
+                now,
+            ],
+        )
+    };
+
+    if result.is_err() {
+        return err(
+            "server_error",
+            "Could not register device on bridges.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    let resolved_node_id = existing.unwrap_or(node_id);
+    Json(RegisterDeviceResponse {
+        node_id: resolved_node_id,
+        api_key,
+    })
+    .into_response()
+}
+
+async fn get_profile(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(account_id): axum::extract::Path<String>,
+) -> Response {
+    let target = account_id.trim().to_string();
+    if target.is_empty() {
+        return err(
+            "invalid_account_id",
+            "Account id is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let db = match state.open_connection() {
+        Ok(db) => db,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database unavailable.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let row: Option<(String, Option<String>, Option<String>)> = match db
+        .query_row(
+            "SELECT account_id, display_name, avatar_url FROM cloud_accounts WHERE account_id = ?1",
+            rusqlite::params![target],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let Some((account_id, display_name, avatar_url)) = row else {
+        return err(
+            "account_missing",
+            "No account found with that id.",
+            StatusCode::NOT_FOUND,
+        );
+    };
+
+    let is_self = account_id == session.account_id;
+    let is_contact = !is_self
+        && db
+            .query_row(
+                "SELECT 1 FROM cloud_contacts WHERE account_id = ?1 AND peer_account_id = ?2",
+                rusqlite::params![session.account_id, account_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .unwrap_or(None)
+            .is_some();
+
+    Json(PublicProfileResponse {
+        account_id,
+        display_name,
+        avatar_url,
+        is_contact,
+        is_self,
+    })
+    .into_response()
+}
+
+async fn add_contact(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<AddContactRequest>,
+) -> Response {
+    let peer = req.peer_account_id.trim().to_string();
+    if peer.is_empty() {
+        return err(
+            "invalid_account_id",
+            "peerAccountId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    if peer == session.account_id {
+        return err(
+            "self_contact",
+            "You cannot add yourself as a contact.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let db = match state.open_connection() {
+        Ok(db) => db,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database unavailable.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let peer_exists: Option<()> = match db
+        .query_row(
+            "SELECT 1 FROM cloud_accounts WHERE account_id = ?1",
+            rusqlite::params![peer],
+            |_| Ok(()),
+        )
+        .optional()
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+    if peer_exists.is_none() {
+        return err(
+            "account_missing",
+            "No account found with that id.",
+            StatusCode::NOT_FOUND,
+        );
+    }
+
+    let now = Utc::now().to_rfc3339();
+    if db
+        .execute(
+            "INSERT OR IGNORE INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![session.account_id, peer, now],
+        )
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not add contact.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    let _ = write_audit(
+        &db,
+        Some(&session.account_id),
+        Some(&session.device_id),
+        "contact.added",
+        serde_json::json!({"peer": peer}),
+    );
+
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn list_contacts(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    let db = match state.open_connection() {
+        Ok(db) => db,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database unavailable.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let mut stmt = match db.prepare(
+        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at \
+         FROM cloud_contacts c \
+         JOIN cloud_accounts a ON a.account_id = c.peer_account_id \
+         WHERE c.account_id = ?1 \
+         ORDER BY c.created_at ASC",
+    ) {
+        Ok(stmt) => stmt,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let rows = match stmt.query_map(rusqlite::params![session.account_id], |row| {
+        Ok(ContactSummary {
+            account_id: row.get(0)?,
+            display_name: row.get(1)?,
+            avatar_url: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    }) {
+        Ok(rows) => rows,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let mut contacts = Vec::new();
+    for row in rows {
+        match row {
+            Ok(summary) => contacts.push(summary),
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        }
+    }
+
+    Json(ContactsListResponse { contacts }).into_response()
 }
 
 #[cfg(test)]

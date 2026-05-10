@@ -192,7 +192,10 @@ pub fn run() {
             chat::desktop_chat_turn_state,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
-            cloud_session::cloud_session_clear
+            cloud_session::cloud_session_clear,
+            cloud_session::cloud_device_keypair_load_or_create,
+            cloud_session::cloud_bridges_api_key_store,
+            cloud_session::cloud_bridges_api_key_load
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");

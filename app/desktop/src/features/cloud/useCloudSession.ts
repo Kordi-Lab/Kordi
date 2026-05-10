@@ -6,6 +6,7 @@ import {
   defaultCloudAuthClient,
   type CloudAccount,
 } from './authClient';
+import { ensureCloudDeviceRegistered } from './deviceRegistration';
 import {
   clearSession,
   loadSession,
@@ -79,6 +80,14 @@ export function useCloudSession({
         try {
           const me = await authClient.me(stored.token);
           if (!cancelled && mountedRef.current) setAuthenticated(me);
+          // Best-effort device registration on bootstrap. We don't await its
+          // failure path — if the bridges register call fails, the user is
+          // still authenticated; we'll retry next sign-in or app launch.
+          void ensureCloudDeviceRegistered({
+            accountId: me.accountId,
+            sessionToken: stored.token,
+            client: authClient,
+          }).catch(() => {});
         } catch (caught) {
           if (caught instanceof CloudAuthError && caught.status === 401) {
             await clearSession();
@@ -108,6 +117,11 @@ export function useCloudSession({
           expiresAt: result.session.expiresAt,
         });
         setAuthenticated(result.account);
+        void ensureCloudDeviceRegistered({
+          accountId: result.account.accountId,
+          sessionToken: result.session.token,
+          client: authClient,
+        }).catch(() => {});
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
           setError(caught);
