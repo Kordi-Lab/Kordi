@@ -13,6 +13,7 @@ import {
   PanelLeftOpen,
   Send,
   Shield,
+  Split,
   X,
 } from 'lucide-react';
 
@@ -349,6 +350,15 @@ export function ChatsPage({
       }
     : undefined;
 
+  // If the active session is itself a fork, show a backlink at the top
+  // of the transcript so the user can navigate to the source session.
+  const activeForkSourceSessionId = activeConv.forkedFromSessionId?.trim() || null;
+  const activeForkSourceTitle = useMemo(() => {
+    if (!activeForkSourceSessionId) return null;
+    const summary = desktopChatState?.sessions.find((session) => session.id === activeForkSourceSessionId);
+    return summary?.title || 'previous session';
+  }, [activeForkSourceSessionId, desktopChatState?.sessions]);
+
   // Build a per-message lookup of forks anchored at each entry id of
   // the active session, so the transcript can render a "N forks" chip
   // and a popover listing them next to the message they branched from.
@@ -625,6 +635,20 @@ export function ChatsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
+            {activeForkSourceSessionId ? (
+              <div className="flex justify-center pb-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                  disabled={!onSelectSession}
+                  className="app-fork-source-banner inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white/[0.04] disabled:hover:text-slate-300"
+                  title={`Forked from "${activeForkSourceTitle}" — open the source session`}
+                >
+                  <Split className="h-3 w-3" />
+                  <span>Forked from {activeForkSourceTitle}</span>
+                </button>
+              </div>
+            ) : null}
             {attributedTranscriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={transcriptMessageRenderKey(msg, idx)}
