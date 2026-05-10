@@ -230,11 +230,27 @@ function withSourceMessage(message: Message, sourceMessage: MessageSourceReferen
 }
 
 export function shouldInferLatestHumanReplyTarget(
-  conversation: Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipantCount' | 'canonicalParticipants'> | null | undefined,
+  conversation:
+    | Pick<
+        Conversation,
+        | 'type'
+        | 'participantSpaceId'
+        | 'canonicalParticipantCount'
+        | 'canonicalParticipants'
+        | 'forkedFromSessionId'
+      >
+    | null
+    | undefined,
 ) {
   if (!conversation) return false;
   if (conversation.type === 'person' || conversation.type === 'external-agent') return true;
   if (conversation.participantSpaceId?.trim()) return true;
+  // Forked sessions inherit a snapshot of their parent's transcript;
+  // we want each agent reply to attach to the preceding human message
+  // by position so the "N replies ↵" affordance keeps working in the
+  // fork even though there are no explicit reply pointers between
+  // the synthesized entries.
+  if (conversation.forkedFromSessionId?.trim()) return true;
   const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
   return participantCount > 2;
 }
