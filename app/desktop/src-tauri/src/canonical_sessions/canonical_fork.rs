@@ -85,15 +85,24 @@ fn select_source_session_info(
     .map_err(|err| err.to_string())
 }
 
-fn select_source_participants(
+fn select_source_agent_participants(
     conn: &Connection,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
+    // Only agent identities are carried into the fork's participant
+    // list. Including other humans would push the participant-space
+    // classifier into "group" and make the fork render as a brand
+    // new group conversation in the sidebar — we want it to live as
+    // a private continuation that nests under the source via fork
+    // lineage instead. Other humans don't see the private fork
+    // anyway, so dropping them from @-mention targets is correct.
     let mut stmt = conn
         .prepare(
-            "SELECT identity_id FROM session_participants
-             WHERE session_id = ?1 AND state = 'active'
-             ORDER BY added_at_ms ASC",
+            "SELECT sp.identity_id
+             FROM session_participants sp
+             JOIN identities idn ON idn.id = sp.identity_id
+             WHERE sp.session_id = ?1 AND sp.state = 'active' AND idn.kind = 'agent'
+             ORDER BY sp.added_at_ms ASC",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
@@ -143,13 +152,14 @@ pub fn fork_canonical_session_into_local_chat(
     let local_agent =
         local_agent_identity_id_pub(&conn, &local_human, "Kordi", cwd)?;
 
-    // Carry every source participant (other humans, their agents) into
-    // the fork so the user can still @-mention them in the private
-    // continuation; the fork itself stays self-owned (kind=self-agent),
-    // so no bridge invitation fan-out is triggered.
+    // Carry only the source's agent identities into the fork so the
+    // user can still @-mention any agent that was in the group. We
+    // intentionally skip other humans: including them would flip the
+    // participant-space classifier to "group" and render the fork as
+    // a duplicate group entry instead of a private continuation.
     let mut participant_ids = vec![local_agent.clone()];
-    for identity in select_source_participants(&conn, canonical_session_id)? {
-        if identity == local_human || identity == local_agent {
+    for identity in select_source_agent_participants(&conn, canonical_session_id)? {
+        if identity == local_agent {
             continue;
         }
         if !participant_ids.iter().any(|existing| existing == &identity) {
