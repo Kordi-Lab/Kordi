@@ -944,7 +944,6 @@ export function WorkspaceSidebar({
     const forkCount = options.forkCount ?? 0;
     const hasForks = forkCount > 0;
     const depth = Math.min(options.depth ?? 0, 4);
-    const indentPaddingLeft = depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
     return (
       <button
         key={session.id}
@@ -965,7 +964,6 @@ export function WorkspaceSidebar({
           event.stopPropagation();
           setSessionContextMenu(target);
         }}
-        style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
         className={cn(
           'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white',
           isActive && 'app-session-row-active',
@@ -1063,7 +1061,10 @@ export function WorkspaceSidebar({
           onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
         })}
         {forks.length > 0 && expanded ? (
-          <div className="app-session-fork-children mt-px space-y-px">
+          <div
+            className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2"
+            data-session-fork-depth={depth + 1}
+          >
             {forks.map((forkSession) => {
               const forkRow = agentSessionRowsById.get(forkSession.id);
               if (!forkRow) return null;
