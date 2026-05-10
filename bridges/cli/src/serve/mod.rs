@@ -150,6 +150,35 @@ fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> 
         },
     )?;
 
+    apply_migration(
+        conn,
+        2,
+        "registered_nodes api_key_hash partial index for auth middleware",
+        |conn| {
+            // Partial index on the live (non-revoked) rows only — auth_middleware
+            // and the cloud session lookup never care about revoked nodes, so the
+            // index only carries the rows the planner actually needs.
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_registered_nodes_api_key_hash_live\n                 ON registered_nodes (api_key_hash)\n                 WHERE revoked_at IS NULL;",
+            )
+        },
+    )?;
+
+    apply_migration(
+        conn,
+        3,
+        "registered_nodes (account_id, created_at) for primary_node lookup",
+        |conn| {
+            // primary_node_for_account orders by created_at DESC after filtering
+            // on account_id; the existing (account_id, device_id) composite
+            // covers the filter but not the order. Partial again — revoked rows
+            // are skipped by every consumer.
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_created_live\n                 ON registered_nodes (account_id, created_at)\n                 WHERE revoked_at IS NULL;",
+            )
+        },
+    )?;
+
     Ok(())
 }
 
@@ -731,6 +760,87 @@ mod tests {
             |_| Ok(()),
         )
         .is_ok()
+    }
+
+    /// Run EXPLAIN QUERY PLAN against `sql` and return one joined string of
+    /// every plan-step detail. Tests assert the expected index name appears
+    /// in that joined text — the planner picks it for the query.
+    fn explain_plan(conn: &Connection, sql: &str) -> String {
+        let prepared_sql = format!("EXPLAIN QUERY PLAN {sql}");
+        let mut stmt = conn.prepare(&prepared_sql).expect("prepare explain");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(3))
+            .expect("query explain rows");
+        let mut details = Vec::new();
+        for row in rows {
+            details.push(row.expect("explain row"));
+        }
+        details.join(" | ")
+    }
+
+    #[test]
+    fn auth_middleware_lookup_uses_api_key_hash_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-auth-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT node_id FROM registered_nodes WHERE api_key_hash = 'x' AND revoked_at IS NULL",
+        );
+        assert!(
+            plan.contains("idx_registered_nodes_api_key_hash_live"),
+            "expected auth lookup to use partial api_key_hash index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn primary_node_lookup_uses_account_created_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-account-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT node_id FROM registered_nodes WHERE account_id = 'a' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        );
+        assert!(
+            plan.contains("idx_registered_nodes_account_created_live"),
+            "expected primary_node lookup to use account_created partial index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mailbox_poll_uses_covering_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-mailbox-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT message_id, from_node_id, blob, project_id, created_at \
+             FROM server_mailbox WHERE target_node_id = 't' \
+             ORDER BY created_at ASC, message_id ASC LIMIT 100",
+        );
+        assert!(
+            plan.contains("idx_server_mailbox_target_created"),
+            "expected mailbox poll to use a target_created index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
     }
 
     #[test]
