@@ -8,6 +8,7 @@ export type CloudAccount = {
   displayName: string | null;
   primaryEmail: string | null;
   avatarUrl: string | null;
+  nodeId: string | null;
   passwordSet: boolean;
 };
 
@@ -40,6 +41,7 @@ export type CloudPublicProfile = {
   accountId: string;
   displayName: string | null;
   avatarUrl: string | null;
+  nodeId: string | null;
   isContact: boolean;
   isSelf: boolean;
 };
@@ -48,6 +50,7 @@ export type CloudContactSummary = {
   accountId: string;
   displayName: string | null;
   avatarUrl: string | null;
+  nodeId: string | null;
   createdAt: string;
 };
 

@@ -83,6 +83,8 @@ pub struct AccountResponse {
     pub primary_email: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    #[serde(rename = "nodeId")]
+    pub node_id: Option<String>,
     #[serde(rename = "passwordSet")]
     pub password_set: bool,
 }
@@ -126,6 +128,8 @@ pub struct PublicProfileResponse {
     pub display_name: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    #[serde(rename = "nodeId")]
+    pub node_id: Option<String>,
     #[serde(rename = "isContact")]
     pub is_contact: bool,
     #[serde(rename = "isSelf")]
@@ -146,6 +150,8 @@ pub struct ContactSummary {
     pub display_name: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    #[serde(rename = "nodeId")]
+    pub node_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
 }
@@ -202,6 +208,7 @@ fn account_response_row(
     conn: &rusqlite::Connection,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, rusqlite::Error> {
+    let node_id = primary_node_for_account(conn, account_id);
     conn.query_row(
         "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
          FROM cloud_accounts WHERE account_id = ?1",
@@ -213,6 +220,7 @@ fn account_response_row(
                 display_name: row.get(1)?,
                 primary_email: row.get(2)?,
                 avatar_url: row.get(3)?,
+                node_id: node_id.clone(),
                 password_set: password_hash.is_some(),
             })
         },
@@ -490,6 +498,9 @@ async fn signup(
         display_name,
         primary_email: Some(normalized_email),
         avatar_url,
+        // Fresh signup — no bridges device registered yet. The desktop calls
+        // register-device after this, then /me returns the resolved node_id.
+        node_id: None,
         password_set: true,
     };
     let body = AuthResponse {
@@ -681,6 +692,9 @@ async fn login(
             display_name,
             primary_email,
             avatar_url,
+            // Login creates a fresh device row; the bridges node for it
+            // gets created when register-device runs next. /me will see it.
+            node_id: None,
             password_set: true,
         },
         session: SessionResponse {
@@ -870,6 +884,21 @@ async fn register_device(
         );
     }
 
+    // Back-fill bridges links for any cloud contacts this account already has.
+    // Both directions are mirrored so the freshly-registered node also shows up
+    // as a contact for peers who had already added this user.
+    if let Ok(mut stmt) = db.prepare(
+        "SELECT peer_account_id FROM cloud_contacts WHERE account_id = ?1 \
+         UNION \
+         SELECT account_id FROM cloud_contacts WHERE peer_account_id = ?1",
+    ) {
+        if let Ok(rows) = stmt.query_map(rusqlite::params![session.account_id], |row| row.get::<_, String>(0)) {
+            for row in rows.flatten() {
+                mirror_cloud_contact_to_bridges(&db, &session.account_id, &row);
+            }
+        }
+    }
+
     let resolved_node_id = existing.unwrap_or(node_id);
     Json(RegisterDeviceResponse {
         node_id: resolved_node_id,
@@ -941,14 +970,70 @@ async fn get_profile(
             .unwrap_or(None)
             .is_some();
 
+    let node_id: Option<String> = db
+        .query_row(
+            "SELECT node_id FROM registered_nodes \
+             WHERE account_id = ?1 AND revoked_at IS NULL \
+             ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![account_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+
     Json(PublicProfileResponse {
         account_id,
         display_name,
         avatar_url,
+        node_id,
         is_contact,
         is_self,
     })
     .into_response()
+}
+
+fn primary_node_for_account(
+    conn: &rusqlite::Connection,
+    account_id: &str,
+) -> Option<String> {
+    conn.query_row(
+        "SELECT node_id FROM registered_nodes \
+         WHERE account_id = ?1 AND revoked_at IS NULL \
+         ORDER BY created_at DESC LIMIT 1",
+        rusqlite::params![account_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+/// Mirror a cloud account-to-account relationship into the bridges
+/// node-to-node `server_contacts` table when both sides have a registered
+/// device. Best-effort: if either user has not yet registered a device the
+/// cloud relationship still stands; the bridge link will be created on the
+/// next add or registration.
+fn mirror_cloud_contact_to_bridges(
+    conn: &rusqlite::Connection,
+    self_account_id: &str,
+    peer_account_id: &str,
+) {
+    let Some(self_node) = primary_node_for_account(conn, self_account_id) else {
+        return;
+    };
+    let Some(peer_node) = primary_node_for_account(conn, peer_account_id) else {
+        return;
+    };
+    let now = Utc::now().to_rfc3339();
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![self_node, peer_node, now],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![peer_node, self_node, now],
+    );
 }
 
 async fn add_contact(
@@ -1023,6 +1108,10 @@ async fn add_contact(
         );
     }
 
+    // Mirror into bridges server_contacts so existing chat surfaces can
+    // discover the peer immediately if both sides have a registered device.
+    mirror_cloud_contact_to_bridges(&db, &session.account_id, &peer);
+
     let _ = write_audit(
         &db,
         Some(&session.account_id),
@@ -1050,7 +1139,10 @@ async fn list_contacts(
     };
 
     let mut stmt = match db.prepare(
-        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at \
+        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at, \
+                (SELECT n.node_id FROM registered_nodes n \
+                 WHERE n.account_id = a.account_id AND n.revoked_at IS NULL \
+                 ORDER BY n.created_at DESC LIMIT 1) AS node_id \
          FROM cloud_contacts c \
          JOIN cloud_accounts a ON a.account_id = c.peer_account_id \
          WHERE c.account_id = ?1 \
@@ -1072,6 +1164,7 @@ async fn list_contacts(
             display_name: row.get(1)?,
             avatar_url: row.get(2)?,
             created_at: row.get(3)?,
+            node_id: row.get(4)?,
         })
     }) {
         Ok(rows) => rows,
