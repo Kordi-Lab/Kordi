@@ -2,9 +2,11 @@
 // On first login the OS keychain has no device keypair, so we generate one,
 // derive the matching x25519 public key, and ask the cloud server to register
 // us as a bridges node. The bridges api_key returned by that call is stored
-// alongside the session token for subsequent bridges-protocol calls.
+// alongside the session token for subsequent bridges-protocol calls, and the
+// existing desktop bridge layer is told about the resulting host so the chat
+// sidebar / contacts / mailbox flows pick it up.
 
-import { CloudAuthClient, CloudAuthError } from './authClient';
+import { CloudAuthClient, CloudAuthError, type CloudAccount } from './authClient';
 
 export type CloudDeviceKeypair = {
   ed25519Pubkey: string;
@@ -15,6 +17,12 @@ export type EnsureDeviceRegisteredOptions = {
   accountId: string;
   sessionToken: string;
   client?: CloudAuthClient;
+  account?: Pick<CloudAccount, 'displayName' | 'primaryEmail'>;
+  /**
+   * Cloud server origin used as the `coordination` URL for the bridge host
+   * record. Defaults to the same VITE_KORDI_CLOUD_API_BASE the auth client uses.
+   */
+  coordinationUrl?: string;
 };
 
 function isTauriRuntime(): boolean {
@@ -43,6 +51,35 @@ async function persistApiKey(accountId: string, apiKey: string): Promise<void> {
   await invoke('cloud_bridges_api_key_store', { accountId, apiKey });
 }
 
+function defaultCoordinationUrl(): string {
+  if (typeof import.meta !== 'undefined') {
+    const meta = (import.meta as ImportMeta & { env?: { VITE_KORDI_CLOUD_API_BASE?: string } }).env;
+    const value = meta?.VITE_KORDI_CLOUD_API_BASE?.trim();
+    if (value) return value.replace(/\/+$/, '');
+  }
+  return 'http://127.0.0.1:17080';
+}
+
+async function registerCloudBridgeHost(input: {
+  coordination: string;
+  apiKey: string;
+  nodeId: string;
+  accountId: string;
+  displayName: string | null;
+  ownerName: string | null;
+}): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('desktop_bridge_register_cloud_host', {
+    coordination: input.coordination,
+    apiKey: input.apiKey,
+    nodeId: input.nodeId,
+    accountId: input.accountId,
+    displayName: input.displayName,
+    ownerName: input.ownerName,
+  });
+}
+
 export type EnsureDeviceRegisteredResult = {
   /** Bridges node id derived from the device's ed25519 public key. */
   nodeId: string | null;
@@ -59,6 +96,8 @@ export async function ensureCloudDeviceRegistered({
   accountId,
   sessionToken,
   client,
+  account,
+  coordinationUrl,
 }: EnsureDeviceRegisteredOptions): Promise<EnsureDeviceRegisteredResult> {
   if (!isTauriRuntime()) {
     return { nodeId: null, apiKey: null };
@@ -66,13 +105,32 @@ export async function ensureCloudDeviceRegistered({
 
   const keypair = await loadOrCreateKeypair(accountId);
   const authClient = client ?? new CloudAuthClient();
+  const coordination = coordinationUrl ?? defaultCoordinationUrl();
+  const displayName = account?.displayName ?? account?.primaryEmail ?? null;
 
   try {
     const result = await authClient.registerDevice(sessionToken, {
       ed25519Pubkey: keypair.ed25519Pubkey,
       x25519Pubkey: keypair.x25519Pubkey,
+      displayName: displayName ?? undefined,
     });
     await persistApiKey(accountId, result.apiKey);
+    // Register the cloud-issued bridges node as a desktop bridge host so the
+    // existing chat sidebar / contacts / mailbox flows pick it up. Failure
+    // here is not fatal — the cloud API still works; the chat surface just
+    // won't bind until the next attempt.
+    try {
+      await registerCloudBridgeHost({
+        coordination,
+        apiKey: result.apiKey,
+        nodeId: result.nodeId,
+        accountId,
+        displayName,
+        ownerName: displayName,
+      });
+    } catch {
+      // Swallow: persistence already succeeded, this is best-effort wiring.
+    }
     return { nodeId: result.nodeId, apiKey: result.apiKey };
   } catch (caught) {
     // If the network is down, fall back to the cached key so the rest of

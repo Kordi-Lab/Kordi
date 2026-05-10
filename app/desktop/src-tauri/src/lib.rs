@@ -96,6 +96,7 @@ pub fn run() {
             bridge::desktop_save_bridge_host,
             bridge::desktop_remove_bridge_host,
             bridge::desktop_set_active_bridge_host,
+            bridge::desktop_bridge_register_cloud_host,
             bridge::desktop_bridge_set_discovery_mode,
             bridge::desktop_bridge_set_host_privacy_policy,
             bridge::desktop_bridge_set_agent_reachability_policy,

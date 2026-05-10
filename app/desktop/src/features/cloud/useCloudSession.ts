@@ -87,6 +87,7 @@ export function useCloudSession({
             accountId: me.accountId,
             sessionToken: stored.token,
             client: authClient,
+            account: me,
           }).catch(() => {});
         } catch (caught) {
           if (caught instanceof CloudAuthError && caught.status === 401) {
@@ -121,6 +122,7 @@ export function useCloudSession({
           accountId: result.account.accountId,
           sessionToken: result.session.token,
           client: authClient,
+          account: result.account,
         }).catch(() => {});
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
@@ -149,6 +151,12 @@ export function useCloudSession({
           expiresAt: result.session.expiresAt,
         });
         setAuthenticated(result.account);
+        void ensureCloudDeviceRegistered({
+          accountId: result.account.accountId,
+          sessionToken: result.session.token,
+          client: authClient,
+          account: result.account,
+        }).catch(() => {});
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
           setError(caught);
