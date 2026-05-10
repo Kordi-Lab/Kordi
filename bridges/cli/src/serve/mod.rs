@@ -109,6 +109,68 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
         "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_device\n         ON registered_nodes (account_id, device_id);\n         CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_accounts_email_lower\n         ON cloud_accounts(LOWER(primary_email)) WHERE primary_email IS NOT NULL;",
     )
     .map_err(ServerInitError::Schema)?;
+
+    // Schema-version tracked migrations for #332 Phase 1+. Older idempotent
+    // schema above is intentionally left alone — these only add NEW changes
+    // going forward, recorded in `schema_versions` so each migration runs
+    // exactly once per database.
+    apply_versioned_migrations(conn)?;
+    Ok(())
+}
+
+fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_versions (\n             version    INTEGER PRIMARY KEY,\n             applied_at TEXT NOT NULL\n         );",
+    )
+    .map_err(ServerInitError::Schema)?;
+
+    apply_migration(
+        conn,
+        1,
+        "server_mailbox covering index for poll/ack",
+        |conn| {
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created_message\n                 ON server_mailbox (target_node_id, created_at, message_id);",
+            )
+        },
+    )?;
+
+    Ok(())
+}
+
+fn apply_migration<F>(
+    conn: &Connection,
+    version: i64,
+    description: &'static str,
+    runner: F,
+) -> Result<(), ServerInitError>
+where
+    F: FnOnce(&Connection) -> Result<(), rusqlite::Error>,
+{
+    let already: Option<i64> = conn
+        .query_row(
+            "SELECT version FROM schema_versions WHERE version = ?1",
+            rusqlite::params![version],
+            |row| row.get(0),
+        )
+        .ok();
+    if already.is_some() {
+        return Ok(());
+    }
+    runner(conn).map_err(|source| ServerInitError::Migration {
+        version,
+        description,
+        source,
+    })?;
+    conn.execute(
+        "INSERT INTO schema_versions (version, applied_at) VALUES (?1, ?2)",
+        rusqlite::params![version, chrono::Utc::now().to_rfc3339()],
+    )
+    .map_err(|source| ServerInitError::Migration {
+        version,
+        description,
+        source,
+    })?;
     Ok(())
 }
 
@@ -643,6 +705,51 @@ mod tests {
             .is_ok(),
             "expected account/device lookup index"
         );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    fn index_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            rusqlite::params![name],
+            |_| Ok(()),
+        )
+        .is_ok()
+    }
+
+    #[test]
+    fn schema_versions_records_applied_migrations_and_is_idempotent() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-schema-versions-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        // Migration 1 lands the covering mailbox index.
+        assert!(index_exists(&conn, "idx_server_mailbox_target_created_message"));
+
+        // schema_versions has migration 1 recorded exactly once.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_versions WHERE version = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count migrations");
+        assert_eq!(count, 1);
+
+        // Re-running init_server_db is a no-op for already-applied versions.
+        init_server_db(&conn).expect("re-init db");
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_versions WHERE version = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count migrations after re-init");
+        assert_eq!(count_after, 1);
 
         let _ = std::fs::remove_file(db_path);
     }
