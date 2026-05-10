@@ -85,6 +85,27 @@ fn select_source_session_info(
     .map_err(|err| err.to_string())
 }
 
+fn select_source_participants(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT identity_id FROM session_participants
+             WHERE session_id = ?1 AND state = 'active'
+             ORDER BY added_at_ms ASC",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map(params![session_id], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|err| err.to_string())?);
+    }
+    Ok(out)
+}
+
 /// Fork a canonical (group/bridge) session into a new private canonical
 /// session that mirrors the source's transcript up through (and
 /// including) `canonical_message_id`. The clone preserves each
@@ -122,6 +143,20 @@ pub fn fork_canonical_session_into_local_chat(
     let local_agent =
         local_agent_identity_id_pub(&conn, &local_human, "Kordi", cwd)?;
 
+    // Carry every source participant (other humans, their agents) into
+    // the fork so the user can still @-mention them in the private
+    // continuation; the fork itself stays self-owned (kind=self-agent),
+    // so no bridge invitation fan-out is triggered.
+    let mut participant_ids = vec![local_agent.clone()];
+    for identity in select_source_participants(&conn, canonical_session_id)? {
+        if identity == local_human || identity == local_agent {
+            continue;
+        }
+        if !participant_ids.iter().any(|existing| existing == &identity) {
+            participant_ids.push(identity);
+        }
+    }
+
     // Mint a fresh canonical session id distinct from the source so the
     // sidebar and canonical store treat the fork as an independent
     // self-agent conversation.
@@ -147,7 +182,7 @@ pub fn fork_canonical_session_into_local_chat(
         project_id: source_info.as_ref().and_then(|info| info.project_id.clone()),
         project_name: source_info.and_then(|info| info.project_name.clone()),
         relationship_identity_id: None,
-        participant_identity_ids: vec![local_agent.clone()],
+        participant_identity_ids: participant_ids,
         metadata: Some(metadata),
     };
     open_or_create_session_in_db_pub(&conn, request)?;
