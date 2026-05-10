@@ -52,12 +52,17 @@ pub fn router_with_rate_limiter(
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let ws_router = Router::new()
+        .route("/v1/cloud/ws", axum::routing::get(crate::ws::ws_handler))
+        .with_state(state.clone());
+
     Router::new()
         .merge(crate::auth::routes::routes_with_config(
             state.clone(),
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter,
         ))
+        .merge(ws_router)
         .route("/health", axum::routing::get(health))
         .layer(cors)
 }

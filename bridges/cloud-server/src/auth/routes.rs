@@ -875,6 +875,18 @@ async fn add_contact(
     )
     .await;
 
+    // Notify the peer's open WebSocket(s). Fire-and-forget for the same
+    // reasons as signup: the HTTP caller shouldn't pay NATS latency or
+    // fail the request if the bus blips.
+    {
+        let events = state.events().clone();
+        let actor = session.account_id.clone();
+        let peer = peer.clone();
+        tokio::spawn(async move {
+            events.publish_contact_added(&actor, &peer).await;
+        });
+    }
+
     StatusCode::NO_CONTENT.into_response()
 }
 

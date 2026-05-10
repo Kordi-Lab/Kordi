@@ -12,6 +12,7 @@
 use std::time::Duration;
 
 use async_nats::jetstream::{self, Context as JetStreamContext};
+use async_nats::Client as NatsClient;
 use bytes::Bytes;
 use serde::Serialize;
 
@@ -32,10 +33,20 @@ impl std::error::Error for EventBusError {}
 
 /// Publish handle for `kordi.events.>` subjects on the `KORDI_EVENTS` stream.
 ///
-/// Cloning is cheap; the inner `Context` is reference-counted by `async-nats`.
+/// Cloning is cheap; both inner handles are reference-counted by `async-nats`.
 #[derive(Clone)]
 pub struct EventBus {
-    inner: Option<JetStreamContext>,
+    inner: Option<EventBusInner>,
+}
+
+#[derive(Clone)]
+struct EventBusInner {
+    /// JetStream context for durable publishes.
+    js: JetStreamContext,
+    /// Plain NATS client for live subscriptions (the WS gateway uses
+    /// this to receive real-time fanout — JetStream isn't required for
+    /// the read side, plain core subscribes still see published msgs).
+    client: NatsClient,
 }
 
 impl EventBus {
@@ -50,8 +61,10 @@ impl EventBus {
             .connect(url)
             .await
             .map_err(EventBusError::Connect)?;
-        let js = jetstream::new(client);
-        Ok(Self { inner: Some(js) })
+        let js = jetstream::new(client.clone());
+        Ok(Self {
+            inner: Some(EventBusInner { js, client }),
+        })
     }
 
     /// Drop-in fallback when NATS isn't configured. Every publish
@@ -60,15 +73,23 @@ impl EventBus {
         Self { inner: None }
     }
 
+    /// Return the underlying NATS client so callers (e.g. the WS
+    /// gateway) can subscribe directly. `None` when the bus is in the
+    /// no-op fallback. Cloning the [`NatsClient`] is cheap; subscribers
+    /// typically clone once per connection.
+    pub fn nats_client(&self) -> Option<NatsClient> {
+        self.inner.as_ref().map(|inner| inner.client.clone())
+    }
+
     /// Publish `payload` on `subject`. Errors are intentionally swallowed
     /// (logged to stderr) — the HTTP request that triggered this should
     /// not fail just because the bus is briefly unavailable. When we
     /// build the outbox in a later session, this becomes durable.
     async fn publish_raw(&self, subject: String, payload: Bytes) {
-        let Some(js) = self.inner.as_ref() else {
+        let Some(inner) = self.inner.as_ref() else {
             return;
         };
-        match js.publish(subject.clone(), payload).await {
+        match inner.js.publish(subject.clone(), payload).await {
             Ok(ack_future) => {
                 if let Err(err) = ack_future.await {
                     eprintln!("[events] publish ack {subject}: {err}");
@@ -101,6 +122,31 @@ impl EventBus {
         let subject = format!("kordi.events.account.signed_up.{account_id}");
         self.publish_raw(subject, body).await;
     }
+
+    /// Fire `kordi.events.contact.added.<peer_account_id>`. The receiver
+    /// of the notification is the peer (the one being added) — that's
+    /// the account whose open WebSocket should see the event light up,
+    /// matching the verification scenario in the architecture spec.
+    pub async fn publish_contact_added(&self, actor_account_id: &str, peer_account_id: &str) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = ContactAdded {
+            event_type: "contact.added",
+            actor_account_id,
+            peer_account_id,
+            occurred_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize contact.added: {err}");
+                return;
+            }
+        };
+        let subject = format!("kordi.events.contact.added.{peer_account_id}");
+        self.publish_raw(subject, body).await;
+    }
 }
 
 #[derive(Serialize)]
@@ -108,5 +154,13 @@ struct AccountSignedUp<'a> {
     event_type: &'static str,
     account_id: &'a str,
     primary_email: &'a str,
+    occurred_at: String,
+}
+
+#[derive(Serialize)]
+struct ContactAdded<'a> {
+    event_type: &'static str,
+    actor_account_id: &'a str,
+    peer_account_id: &'a str,
     occurred_at: String,
 }

@@ -29,7 +29,8 @@ hex = "0.4"
 bs58 = "0.5"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 curve25519-dalek = "4"
-axum = { version = "0.7", features = [] }
+axum = { version = "0.7", features = ["ws"] }
+futures-util = { version = "0.3", default-features = false }
 tower = { version = "0.4", features = ["limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
 argon2 = "0.5"

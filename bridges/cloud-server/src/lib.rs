@@ -10,5 +10,6 @@ pub mod events;
 pub mod messages;
 pub mod pg;
 pub mod server;
+pub mod ws;
 
 pub use server::{router, run, ServerState};
