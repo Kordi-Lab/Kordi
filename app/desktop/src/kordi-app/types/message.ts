@@ -119,6 +119,11 @@ export type Message = {
   edit?: {
     files: EditFilePreview[];
   };
+  /** True for messages cloned from a canonical fork's source session
+   * (everything before the first post-fork user message). Lets the
+   * transcript draw a "Forked from conversation" divider between the
+   * inherited snapshot and the user's own continuation. */
+  isForkSnapshot?: boolean;
 };
 
 export type SessionStatusIndicator = {

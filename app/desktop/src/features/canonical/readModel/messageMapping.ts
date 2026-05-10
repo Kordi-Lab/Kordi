@@ -450,6 +450,7 @@ export function mapCanonicalMessage(
     // target a specific message in canonical (group/bridge) sessions
     // the same way it targets local session entries.
     entryId: message.id,
+    isForkSnapshot: message.sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
