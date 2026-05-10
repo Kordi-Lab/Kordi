@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use super::{
-    effective_agent_reachability_policy, effective_contact_approval_policy,
+    cloud_auth, effective_agent_reachability_policy, effective_contact_approval_policy,
     effective_human_visibility_policy, normalize_agent_reachability_policy,
     normalize_contact_approval_policy, normalize_human_visibility_policy, ServerState,
 };
@@ -63,6 +63,10 @@ pub struct RegisterReq {
     pub contact_approval_policy: Option<String>,
     #[serde(rename = "agentReachabilityPolicy")]
     pub agent_reachability_policy: Option<String>,
+    #[serde(rename = "accountId")]
+    pub account_id: Option<String>,
+    #[serde(rename = "deviceId")]
+    pub device_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +129,8 @@ struct ValidatedRegisterReq {
     human_visibility_policy: String,
     contact_approval_policy: String,
     agent_reachability_policy: String,
+    account_id: Option<String>,
+    device_id: Option<String>,
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -206,6 +212,8 @@ fn validate_register_req(req: &RegisterReq) -> Result<ValidatedRegisterReq, Stat
         human_visibility_policy,
         contact_approval_policy,
         agent_reachability_policy,
+        account_id: normalize_optional_text(req.account_id.as_deref()),
+        device_id: normalize_optional_text(req.device_id.as_deref()),
     })
 }
 
@@ -249,6 +257,18 @@ async fn register(
         .optional()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    match (&validated.account_id, &validated.device_id) {
+        (Some(account_id), Some(device_id)) => {
+            let belongs = cloud_auth::cloud_device_belongs_to_account(&db, account_id, device_id)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            if !belongs {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+        (None, None) => {}
+        _ => return Err(StatusCode::BAD_REQUEST),
+    }
+
     if let Some((existing_ed25519, existing_x25519, revoked_at)) = existing {
         if revoked_at.is_some() {
             return Err(StatusCode::GONE);
@@ -260,7 +280,7 @@ async fn register(
         }
 
         db.execute(
-            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, runtime = ?3, human_id = ?4, agent_id = ?5, discovery_mode = ?6, is_default_agent = ?7, human_visibility_policy = ?8, contact_approval_policy = ?9, agent_reachability_policy = ?10, api_key_hash = ?11 WHERE node_id = ?12",
+            "UPDATE registered_nodes SET display_name = ?1, owner_name = ?2, runtime = ?3, human_id = ?4, agent_id = ?5, discovery_mode = ?6, is_default_agent = ?7, human_visibility_policy = ?8, contact_approval_policy = ?9, agent_reachability_policy = ?10, account_id = COALESCE(?11, account_id), device_id = COALESCE(?12, device_id), api_key_hash = ?13 WHERE node_id = ?14",
             rusqlite::params![
                 validated.display_name,
                 validated.owner_name,
@@ -272,6 +292,8 @@ async fn register(
                 validated.human_visibility_policy,
                 validated.contact_approval_policy,
                 validated.agent_reachability_policy,
+                validated.account_id,
+                validated.device_id,
                 key_hash,
                 validated.node_id,
             ],
@@ -280,8 +302,8 @@ async fn register(
     } else {
         db.execute(
             "INSERT INTO registered_nodes \
-             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, discovery_mode, is_default_agent, human_visibility_policy, contact_approval_policy, agent_reachability_policy, api_key_hash, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, runtime, human_id, agent_id, discovery_mode, is_default_agent, human_visibility_policy, contact_approval_policy, agent_reachability_policy, account_id, device_id, api_key_hash, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             rusqlite::params![
                 validated.node_id,
                 validated.ed25519_pubkey,
@@ -296,6 +318,8 @@ async fn register(
                 validated.human_visibility_policy,
                 validated.contact_approval_policy,
                 validated.agent_reachability_policy,
+                validated.account_id,
+                validated.device_id,
                 key_hash,
                 now,
             ],
@@ -585,6 +609,8 @@ mod tests {
             human_visibility_policy: None,
             contact_approval_policy: None,
             agent_reachability_policy: None,
+            account_id: None,
+            device_id: None,
         }
     }
 
@@ -595,6 +621,33 @@ mod tests {
             format!("Bearer {}", api_key).parse().unwrap(),
         );
         headers
+    }
+
+    fn seed_cloud_account_and_device(state: &Arc<ServerState>) -> (String, String) {
+        let db = state.open_connection().unwrap();
+        let account = super::super::cloud_auth::upsert_account_identity(
+            &db,
+            super::super::cloud_auth::AccountIdentityUpsert {
+                provider: super::super::cloud_auth::OAuthProviderId::GitHub,
+                provider_subject: "gh_test_user".to_string(),
+                provider_username: Some("test-user".to_string()),
+                display_name: Some("Test User".to_string()),
+                email: Some("test@example.com".to_string()),
+                email_verified: true,
+                avatar_url: None,
+            },
+        )
+        .unwrap();
+        let device = super::super::cloud_auth::register_cloud_device(
+            &db,
+            super::super::cloud_auth::CloudDeviceRegistration {
+                account_id: account.account_id.clone(),
+                device_name: Some("Test device".to_string()),
+                device_public_key: "test-device-public-key".to_string(),
+            },
+        )
+        .unwrap();
+        (account.account_id, device.device_id)
     }
 
     fn seed_project_membership(
@@ -668,6 +721,42 @@ mod tests {
         let signing = SigningKey::generate(&mut OsRng);
         let mut req = register_req_from_signing(&signing);
         req.human_visibility_policy = Some("friends-only".to_string());
+
+        let result = register(State(state), Json(req)).await;
+
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_persists_cloud_account_and_device_link() {
+        let state = test_state();
+        let (account_id, device_id) = seed_cloud_account_and_device(&state);
+        let signing = SigningKey::generate(&mut OsRng);
+        let mut req = register_req_from_signing(&signing);
+        req.account_id = Some(account_id.clone());
+        req.device_id = Some(device_id.clone());
+
+        let registered = register(State(state.clone()), Json(req)).await.unwrap().0;
+        let db = state.open_connection().unwrap();
+        let saved: (Option<String>, Option<String>) = db
+            .query_row(
+                "SELECT account_id, device_id FROM registered_nodes WHERE node_id = ?1",
+                rusqlite::params![registered.node_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(saved.0.as_deref(), Some(account_id.as_str()));
+        assert_eq!(saved.1.as_deref(), Some(device_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn register_rejects_unknown_cloud_account_device_pair() {
+        let state = test_state();
+        let signing = SigningKey::generate(&mut OsRng);
+        let mut req = register_req_from_signing(&signing);
+        req.account_id = Some("kca_missing".to_string());
+        req.device_id = Some("kcd_missing".to_string());
 
         let result = register(State(state), Json(req)).await;
 
