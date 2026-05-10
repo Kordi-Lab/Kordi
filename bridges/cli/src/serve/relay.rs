@@ -167,6 +167,14 @@ const MAX_MAILBOX_PER_NODE: usize = 1000;
 /// Max blob size (64 KB).
 const MAX_BLOB_SIZE: usize = 65536;
 
+/// How long an undelivered mailbox row may live before periodic GC reaps it.
+/// Receivers that have been offline longer than this lose their queue, which
+/// matches Telegram-style retention: users who don't return for a month
+/// shouldn't pin server storage indefinitely.
+pub const MAILBOX_RETENTION_DAYS: i64 = 30;
+/// How often the periodic GC sweep runs.
+pub const MAILBOX_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
 /// Relay a single opaque blob to a target node.
 /// End-to-end confidentiality depends on the sender encrypting the blob body.
 async fn relay_message(
@@ -604,6 +612,21 @@ fn poll_mailbox_entries(
 /// 32_766 on recent ones. 256 is comfortably below both and keeps each
 /// `DELETE` statement small enough to plan and execute quickly.
 const ACK_CHUNK_SIZE: usize = 256;
+
+/// Delete mailbox rows older than `retention_days`, regardless of which
+/// target they belong to. Targets that come back online after a long
+/// absence lose their dead-letter queue rather than pinning storage forever.
+/// Returns the number of rows deleted.
+pub fn gc_mailbox_retention(
+    conn: &Connection,
+    retention_days: i64,
+) -> Result<usize, rusqlite::Error> {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(retention_days.max(1))).to_rfc3339();
+    conn.execute(
+        "DELETE FROM server_mailbox WHERE created_at < ?1",
+        params![cutoff],
+    )
+}
 
 /// Delete the named mailbox entries for `target_node_id` using one chunked
 /// `IN`-clause `DELETE` per 256 ids, instead of one statement per id. The
@@ -1496,6 +1519,40 @@ mod tests {
         assert!(second.is_empty());
         assert_eq!(first[0].blob, "one");
         assert_eq!(first[1].blob, "two");
+    }
+
+    #[test]
+    fn gc_mailbox_retention_only_prunes_rows_older_than_threshold() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        let conn = state.open_connection().unwrap();
+
+        // Helper: insert a row with an explicit created_at timestamp.
+        let insert_aged = |id: &str, days_old: i64| {
+            let aged_at = (chrono::Utc::now() - chrono::Duration::days(days_old)).to_rfc3339();
+            conn.execute(
+                "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+                params![id, "receiver", "sender", "blob", &aged_at],
+            )
+            .expect("insert aged row");
+        };
+
+        insert_aged("ancient-1", 60); // pruned
+        insert_aged("old-1", 31); // pruned (just past 30 day boundary)
+        insert_aged("recent-1", 29); // kept
+        insert_aged("fresh-1", 0); // kept
+
+        let pruned = gc_mailbox_retention(&conn, MAILBOX_RETENTION_DAYS).expect("gc");
+        assert_eq!(pruned, 2, "only the two rows older than 30 days should be pruned");
+
+        let remaining_ids: Vec<String> = conn
+            .prepare("SELECT message_id FROM server_mailbox WHERE target_node_id = 'receiver' ORDER BY created_at")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(remaining_ids, vec!["recent-1".to_string(), "fresh-1".to_string()]);
     }
 
     #[tokio::test]

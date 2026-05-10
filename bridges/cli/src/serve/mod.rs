@@ -430,6 +430,7 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
     drop(conn);
 
     let state = Arc::new(ServerState::new(Path::new(db_path).to_path_buf()));
+    spawn_mailbox_retention_gc(state.clone());
     let app = router(state);
     let addr = format!("0.0.0.0:{}", port);
     println!("Bridges coordination server on {}", addr);
@@ -443,6 +444,70 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
     .await
     .map_err(|e| format!("serve: {}", e))
 }
+
+/// Periodic background sweep that prunes mailbox rows older than
+/// `relay::MAILBOX_RETENTION_DAYS`. Spawned once when `serve::run` boots so
+/// the dead-letter queue can't grow unbounded for offline targets.
+fn spawn_mailbox_retention_gc(state: Arc<ServerState>) {
+    tokio::spawn(async move {
+        // Skip the first tick — give the server a beat to finish booting
+        // before we start contending for the write lock.
+        let mut ticker = tokio::time::interval(relay::MAILBOX_GC_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let runner = match state.db_runner().await {
+                Ok(runner) => runner.clone(),
+                Err(err) => {
+                    eprintln!("[bridges] mailbox GC: db unavailable: {err}");
+                    continue;
+                }
+            };
+            let result = runner
+                .write::<_, usize, MailboxGcError>(|conn| {
+                    Ok(relay::gc_mailbox_retention(conn, relay::MAILBOX_RETENTION_DAYS)?)
+                })
+                .await;
+            match result {
+                Ok(count) if count > 0 => {
+                    println!("[bridges] mailbox GC: pruned {count} stale row(s)");
+                }
+                Ok(_) => {}
+                Err(err) => eprintln!("[bridges] mailbox GC failed: {err}"),
+            }
+        }
+    });
+}
+
+#[derive(Debug)]
+enum MailboxGcError {
+    Db(db_runner::DbRunnerError),
+    Sqlite(rusqlite::Error),
+}
+
+impl From<db_runner::DbRunnerError> for MailboxGcError {
+    fn from(value: db_runner::DbRunnerError) -> Self {
+        Self::Db(value)
+    }
+}
+
+impl From<rusqlite::Error> for MailboxGcError {
+    fn from(value: rusqlite::Error) -> Self {
+        Self::Sqlite(value)
+    }
+}
+
+impl std::fmt::Display for MailboxGcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Db(err) => write!(f, "{err}"),
+            Self::Sqlite(err) => write!(f, "sqlite: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for MailboxGcError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DirectAccessKind {
