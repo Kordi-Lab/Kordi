@@ -64,6 +64,7 @@ fn flush_historical_turn(
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
         tools: turn.tools,
+        entry_id: None,
     });
 }
 
@@ -140,6 +141,7 @@ pub(super) fn load_session_messages(
                         attachments: image_attachments_from_blocks(&user.content),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: Some(row.entry_id.clone()),
                     });
                 }
                 AgentMessage::Assistant(message) => {
@@ -305,6 +307,7 @@ pub(super) fn load_session_messages(
                             attachments: Vec::new(),
                             thinking_text: None,
                             tools: Vec::new(),
+                            entry_id: None,
                         });
                     }
                 }
@@ -321,6 +324,7 @@ pub(super) fn load_session_messages(
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     });
                 }
                 AgentMessage::CompactionSummary(message) => {
@@ -339,6 +343,7 @@ pub(super) fn load_session_messages(
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     });
                 }
             },
@@ -359,6 +364,7 @@ pub(super) fn load_session_messages(
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
+                    entry_id: None,
                 })
             }
             SessionEntry::ThinkingLevelChange {
@@ -380,6 +386,7 @@ pub(super) fn load_session_messages(
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
+                    entry_id: None,
                 })
             }
             SessionEntry::CustomMessage {
@@ -413,6 +420,7 @@ pub(super) fn load_session_messages(
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     });
                 }
             }
@@ -437,6 +445,7 @@ pub(super) fn load_session_messages(
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
+                    entry_id: None,
                 })
             }
             SessionEntry::BranchSummary { summary, base, .. } => {
@@ -452,6 +461,7 @@ pub(super) fn load_session_messages(
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
+                    entry_id: None,
                 })
             }
             SessionEntry::SessionInfo { name, base } => {
@@ -468,6 +478,7 @@ pub(super) fn load_session_messages(
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     });
                 }
             }
@@ -485,6 +496,7 @@ pub(super) fn load_session_messages(
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     });
                 }
             }

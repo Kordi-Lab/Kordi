@@ -658,6 +658,9 @@ export type DesktopChatMessage = {
   tools?: DesktopChatToolSnapshot[];
   turnStartedAtMs?: number | null;
   turnCompletedAtMs?: number | null;
+  /** Stable id of the underlying session entry; only set for messages
+   * that map 1:1 to a SessionEntry (e.g., user messages). */
+  entryId?: string | null;
 };
 
 export type DesktopChatSessionSummary = {
@@ -667,6 +670,8 @@ export type DesktopChatSessionSummary = {
   updatedAtLabel: string;
   messageCount: number;
   draft: boolean;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type DesktopChatProjectGroup = {
@@ -1004,6 +1009,8 @@ export type DesktopChatSessionDetail = {
   project?: DesktopChatProjectInfo | null;
   reflectionLessonArtifacts?: SessionArtifact[];
   messages: DesktopChatMessage[];
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type DesktopChatAgentProfile = {

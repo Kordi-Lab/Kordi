@@ -223,6 +223,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
       : undefined,
     onSendChatMessage: args.handleSendChatMessage,
+    onForkChatMessage: args.handleForkChatMessage,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
   };

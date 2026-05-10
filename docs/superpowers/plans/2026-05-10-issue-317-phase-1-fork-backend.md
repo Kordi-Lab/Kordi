@@ -217,3 +217,25 @@ Tauri (`app/desktop/src-tauri/src/chat/tests.rs`):
 - Phase 5: hidden boundary system message wording, and whether to also
   attach a `CustomMessage` entry at fork creation time so the frontend
   can render a chip without consulting metadata.
+
+## Phase 2 follow-up (landed on this branch)
+
+Phase 2 wires the desktop UI into the Phase 1 surface. Notable choices:
+
+- `DesktopChatMessage` now carries an optional `entry_id` string so the
+  frontend has the stable id needed to call
+  `desktop_chat_fork_session_from_message`. Today only user messages
+  set it; assistant turns aggregate multiple entries and intentionally
+  leave `entry_id` empty so the right-click menu hides Fork on them.
+- `DesktopChatSessionSummary` and `DesktopChatSessionDetail` gained
+  `forkedFromSessionId` / `forkedFromMessageId` so summaries and
+  details ferry the same lineage already in canonical metadata. Phase
+  3 (right panel) consumes them directly.
+- Right-click on a transcript message opens a small `MessageContextMenu`
+  overlay (mirrors the existing `SessionContextMenu` look). It hosts
+  `Fork from here` only — `Forward` will land alongside its own backend.
+- `ChatsPage` rejects fork triggers for drafts and bridge sessions
+  before showing the menu; the Tauri command also enforces these
+  invariants and rejects when a turn is running.
+- On success the page sets the new fork as the active session and
+  refreshes chat state from the command's returned `DesktopChatState`.
