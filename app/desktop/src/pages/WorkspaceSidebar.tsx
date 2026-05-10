@@ -683,6 +683,15 @@ export function WorkspaceSidebar({
     const sessionIdLabel = participantSpaceSessionIdLabel(session);
     const isFork = depth > 0;
     const childForks = globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
+    const hasForks = childForks.length > 0;
+    const expanded = hasForks && isForkListExpanded(session.id);
+    // Mirror the agent-tab tree behavior: when a parent is collapsed,
+    // keep only the active session's path visible (the user shouldn't
+    // lose sight of where they currently are) and hide every other
+    // sibling branch.
+    const visibleChildren = expanded
+      ? childForks
+      : childForks.filter((fork) => activeSessionPathIds.has(fork.id));
     const visualDepth = Math.min(depth, 4);
     const indentPaddingLeft = visualDepth > 0 ? `${0.625 + visualDepth * 0.875}rem` : undefined;
     return (
@@ -713,7 +722,30 @@ export function WorkspaceSidebar({
           )}
         >
           <div className="flex min-w-0 items-start gap-1.5">
-            {isFork ? (
+            {hasForks ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleForkParent(session.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleForkParent(session.id);
+                }}
+                className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                aria-label={expanded ? 'Hide forks' : 'Show forks'}
+                title={expanded ? 'Hide forks' : 'Show forks'}
+              >
+                <ChevronRightIcon
+                  className={cn('h-3 w-3 transition-transform', expanded && 'rotate-90')}
+                />
+              </span>
+            ) : isFork ? (
               <span
                 className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-slate-500"
                 aria-hidden="true"
@@ -723,7 +755,19 @@ export function WorkspaceSidebar({
               </span>
             ) : null}
             <div className="min-w-0 flex-1">
-              <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
+                {hasForks ? (
+                  <span
+                    className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
+                    title={`${childForks.length} fork${childForks.length === 1 ? '' : 's'} of this session`}
+                    aria-label={`${childForks.length} forks`}
+                  >
+                    <Split className="h-2.5 w-2.5" />
+                    <span>{childForks.length}</span>
+                  </span>
+                ) : null}
+              </div>
               {sessionIdLabel ? (
                 <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
               ) : null}
@@ -747,9 +791,9 @@ export function WorkspaceSidebar({
             active={isActive}
           />
         </button>
-        {childForks.length > 0 ? (
+        {visibleChildren.length > 0 ? (
           <div className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2">
-            {childForks.map((fork) => {
+            {visibleChildren.map((fork) => {
               const forkRow = allSidebarSessionRowsById.get(fork.id);
               if (!forkRow) return null;
               return (
