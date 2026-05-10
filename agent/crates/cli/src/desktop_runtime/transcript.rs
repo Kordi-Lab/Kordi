@@ -20,6 +20,10 @@ struct HistoricalTurnBuilder {
     error_message: Option<String>,
     failed: bool,
     timestamp_ms: i64,
+    /// Last entry id observed while building this turn. Used as the
+    /// fork target when the user clicks the aggregated assistant
+    /// bubble — fork-at semantics include this entry in the fork.
+    last_entry_id: Option<String>,
 }
 
 impl HistoricalTurnBuilder {
@@ -64,7 +68,7 @@ fn flush_historical_turn(
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
         tools: turn.tools,
-        entry_id: None,
+        entry_id: turn.last_entry_id,
     });
 }
 
@@ -147,6 +151,7 @@ pub(super) fn load_session_messages(
                 AgentMessage::Assistant(message) => {
                     let turn = current_turn.get_or_insert_with(HistoricalTurnBuilder::default);
                     turn.touch_timestamp(message.timestamp);
+                    turn.last_entry_id = Some(row.entry_id.clone());
 
                     let stop_reason_label = match &message.stop_reason {
                         kordi_core::types::StopReason::Stop => "completed",
@@ -205,6 +210,7 @@ pub(super) fn load_session_messages(
                 AgentMessage::ToolResult(message) => {
                     let turn = current_turn.get_or_insert_with(HistoricalTurnBuilder::default);
                     turn.touch_timestamp(message.timestamp);
+                    turn.last_entry_id = Some(row.entry_id.clone());
                     let tool_index = if let Some(index) =
                         turn.tool_index_by_id.get(&message.tool_call_id).copied()
                     {
@@ -290,6 +296,7 @@ pub(super) fn load_session_messages(
                         error_message: None,
                         failed: false,
                         timestamp_ms: message.timestamp,
+                        last_entry_id: Some(row.entry_id.clone()),
                     });
                     flush_historical_turn(&mut out, &mut current_turn);
                 }

@@ -738,10 +738,11 @@ pub async fn desktop_chat_fork_session_from_message(
     }
 
     let cwd = chat_cwd()?;
-    if session_has_running_turn(&manager, trimmed_session_id).await {
-        return Err("Stop the running task before forking from this message.".to_string());
-    }
 
+    // Forking only reads the source session's already-persisted entries
+    // up through the clicked message; a turn running concurrently on
+    // the source only appends new entries to its leaf, so the two
+    // operations don't conflict and the fork should not be blocked.
     let outcome = kordi_cli::desktop_runtime::fork_session_from_message(
         trimmed_session_id,
         trimmed_entry_id,

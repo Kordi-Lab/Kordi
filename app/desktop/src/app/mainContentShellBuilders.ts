@@ -224,6 +224,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       : undefined,
     onSendChatMessage: args.handleSendChatMessage,
     onForkChatMessage: args.handleForkChatMessage,
+    onSelectSession: args.handleSelectChatSession,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
   };

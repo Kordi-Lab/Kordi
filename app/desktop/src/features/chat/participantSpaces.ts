@@ -294,6 +294,8 @@ function buildSession(conversation: Conversation, updatedAtMs: number): Particip
     participantCount: Math.max(1, conversation.canonicalParticipantCount ?? allDisplayParticipants(conversation).length),
     statusIndicator: conversation.statusIndicator,
     conversation,
+    forkedFromSessionId: conversation.forkedFromSessionId ?? null,
+    forkedFromMessageId: conversation.forkedFromMessageId ?? null,
   };
 }
 

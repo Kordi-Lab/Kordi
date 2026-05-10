@@ -161,6 +161,10 @@ export type Conversation = {
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+  /** Source session this conversation was forked from, if any. */
+  forkedFromSessionId?: string | null;
+  /** Source message entry id this conversation was forked at, if any. */
+  forkedFromMessageId?: string | null;
 };
 
 export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
@@ -182,6 +186,8 @@ export type ParticipantSpaceSessionViewModel = {
   participantCount: number;
   statusIndicator?: SessionStatusIndicator;
   conversation: Conversation;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type ParticipantSpaceViewModel = {

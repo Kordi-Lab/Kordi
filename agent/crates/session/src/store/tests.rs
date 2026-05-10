@@ -85,7 +85,7 @@ fn test_branching() {
 }
 
 #[test]
-fn test_fork_session_from_entry_creates_new_session() {
+fn test_fork_from_assistant_entry_includes_assistant_response() {
     let conn = open_memory().unwrap();
     let sid = create_session(&conn, "/tmp/test").unwrap();
 
@@ -93,39 +93,66 @@ fn test_fork_session_from_entry_creates_new_session() {
     let root_id = root.base().id.clone();
     append_entry(&conn, &sid, &root).unwrap();
 
-    let middle = make_user_entry(Some(root_id.as_str()));
-    let middle_id = middle.base().id.clone();
-    append_entry(&conn, &sid, &middle).unwrap();
+    let user_q = make_user_entry(Some(root_id.as_str()));
+    let user_q_id = user_q.base().id.clone();
+    append_entry(&conn, &sid, &user_q).unwrap();
 
-    let leaf = make_user_entry(Some(middle_id.as_str()));
-    let leaf_id = leaf.base().id.clone();
-    append_entry(&conn, &sid, &leaf).unwrap();
+    let assistant = make_assistant_entry(Some(user_q_id.as_str()));
+    let assistant_id = assistant.base().id.clone();
+    append_entry(&conn, &sid, &assistant).unwrap();
 
-    let forked = fork_session_from_entry(&conn, &sid, leaf_id.as_str(), "/tmp/test").unwrap();
-    assert_ne!(forked.session_id, sid);
-    assert_eq!(forked.branch_leaf_id.as_deref(), Some(middle_id.as_str()));
-    assert_eq!(forked.source_session_id, sid);
-    assert_eq!(forked.source_entry_id, leaf_id.as_str());
+    // Fork-AT semantics: the new session's leaf is the clicked
+    // assistant response itself, and the transcript contains every
+    // ancestor including the assistant response.
+    let forked =
+        fork_session_from_entry(&conn, &sid, assistant_id.as_str(), "/tmp/test").unwrap();
+    assert_eq!(forked.branch_leaf_id.as_deref(), Some(assistant_id.as_str()));
+    assert_eq!(forked.source_entry_id, assistant_id.as_str());
 
     let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
-    assert_eq!(
-        forked_session.parent_session_id.as_deref(),
-        Some(sid.as_str())
-    );
+    assert_eq!(forked_session.leaf_id.as_deref(), Some(assistant_id.as_str()));
     assert_eq!(
         forked_session.parent_session_message_id.as_deref(),
-        Some(leaf_id.as_str())
+        Some(assistant_id.as_str())
     );
-    assert_eq!(forked_session.leaf_id.as_deref(), Some(middle_id.as_str()));
 
     let entries = get_entries(&conn, &forked.session_id).unwrap();
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].entry_id, root_id.as_str());
-    assert_eq!(entries[1].entry_id, middle_id.as_str());
+    let entry_ids: Vec<&str> = entries.iter().map(|row| row.entry_id.as_str()).collect();
+    assert_eq!(
+        entry_ids,
+        vec![root_id.as_str(), user_q_id.as_str(), assistant_id.as_str()]
+    );
 }
 
 #[test]
-fn test_fork_session_from_root_user_message_creates_empty_branch() {
+fn test_fork_from_user_message_includes_clicked_user_message() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let root = make_user_entry(None);
+    let root_id = root.base().id.clone();
+    append_entry(&conn, &sid, &root).unwrap();
+
+    let leaf = make_user_entry(Some(root_id.as_str()));
+    let leaf_id = leaf.base().id.clone();
+    append_entry(&conn, &sid, &leaf).unwrap();
+
+    // Even though the desktop UI only offers Fork on assistant turns,
+    // the backend remains general-purpose: clicking any entry forks-AT
+    // it (everything through the clicked entry, inclusive).
+    let forked = fork_session_from_entry(&conn, &sid, leaf_id.as_str(), "/tmp/test").unwrap();
+    assert_eq!(forked.branch_leaf_id.as_deref(), Some(leaf_id.as_str()));
+
+    let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
+    assert_eq!(forked_session.leaf_id.as_deref(), Some(leaf_id.as_str()));
+
+    let entries = get_entries(&conn, &forked.session_id).unwrap();
+    let entry_ids: Vec<&str> = entries.iter().map(|row| row.entry_id.as_str()).collect();
+    assert_eq!(entry_ids, vec![root_id.as_str(), leaf_id.as_str()]);
+}
+
+#[test]
+fn test_fork_from_root_entry_keeps_only_that_entry() {
     let conn = open_memory().unwrap();
     let sid = create_session(&conn, "/tmp/test").unwrap();
 
@@ -134,43 +161,14 @@ fn test_fork_session_from_root_user_message_creates_empty_branch() {
     append_entry(&conn, &sid, &root).unwrap();
 
     let forked = fork_session_from_entry(&conn, &sid, root_id.as_str(), "/tmp/test").unwrap();
-    assert!(forked.branch_leaf_id.is_none());
-    assert_eq!(forked.source_entry_id, root_id.as_str());
+    assert_eq!(forked.branch_leaf_id.as_deref(), Some(root_id.as_str()));
 
     let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
-    assert!(forked_session.leaf_id.is_none());
-    assert_eq!(
-        forked_session.parent_session_id.as_deref(),
-        Some(sid.as_str())
-    );
-    assert_eq!(
-        forked_session.parent_session_message_id.as_deref(),
-        Some(root_id.as_str())
-    );
-    assert!(get_entries(&conn, &forked.session_id).unwrap().is_empty());
-}
+    assert_eq!(forked_session.leaf_id.as_deref(), Some(root_id.as_str()));
 
-#[test]
-fn test_fork_session_from_assistant_entry_returns_error() {
-    let conn = open_memory().unwrap();
-    let sid = create_session(&conn, "/tmp/test").unwrap();
-
-    let root = make_user_entry(None);
-    let root_id = root.base().id.clone();
-    append_entry(&conn, &sid, &root).unwrap();
-
-    let assistant = make_assistant_entry(Some(root_id.as_str()));
-    let assistant_id = assistant.base().id.clone();
-    append_entry(&conn, &sid, &assistant).unwrap();
-
-    let err =
-        fork_session_from_entry(&conn, &sid, assistant_id.as_str(), "/tmp/test").unwrap_err();
-    assert!(err.to_string().to_lowercase().contains("invalid entry"));
-
-    // Source is unchanged and no orphan child session is left behind.
-    let listed = list_all_sessions(&conn).unwrap();
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].session_id, sid);
+    let entries = get_entries(&conn, &forked.session_id).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entry_id, root_id.as_str());
 }
 
 #[test]

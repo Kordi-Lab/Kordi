@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronUp,
   Clock3,
+  Split,
   LoaderCircle,
   Sparkles,
   SquareArrowOutUpRight,
@@ -378,10 +379,10 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 
-export type MessageContextMenuRequest = {
-  msg: Message;
-  x: number;
-  y: number;
+export type MessageForkSummary = {
+  sessionId: string;
+  title: string;
+  updatedAtLabel?: string;
 };
 
 function MessageBubbleView({
@@ -391,7 +392,9 @@ function MessageBubbleView({
   onNavigateToMessage,
   onOpenArtifact,
   onRequestBridgeContact,
-  onRequestMessageContextMenu,
+  onForkMessage,
+  messageForks,
+  onOpenForkSession,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -401,13 +404,95 @@ function MessageBubbleView({
   onNavigateToMessage?: (messageId: string) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onRequestBridgeContact?: () => Promise<void> | void;
-  onRequestMessageContextMenu?: (request: MessageContextMenuRequest) => void;
+  onForkMessage?: (entryId: string) => void;
+  messageForks?: MessageForkSummary[];
+  onOpenForkSession?: (sessionId: string) => void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
+
+  // Fork is offered on assistant turns only: clicking branches the
+  // conversation into a new session that includes everything through
+  // (and including) the clicked assistant response. The user can then
+  // continue the conversation from there.
+  const isAssistantRoleForFork = msg.role === 'owned-agent' || msg.role === 'external-agent';
+  const canForkMessage = Boolean(onForkMessage && msg.entryId && isAssistantRoleForFork);
+  const forkButton = canForkMessage ? (
+    <button
+      type="button"
+      className="app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (msg.entryId) onForkMessage?.(msg.entryId);
+      }}
+      title="Fork from here — new session continues this thread"
+      aria-label="Fork this conversation from here"
+    >
+      <Split className="h-3.5 w-3.5" />
+    </button>
+  ) : null;
+
+  const [isForkListOpen, setIsForkListOpen] = useState(false);
+  const forks = messageForks ?? [];
+  const forkCount = forks.length;
+  const forkChip = forkCount > 0 ? (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        className="app-message-fork-chip inline-flex h-6 items-center gap-1 rounded-full bg-white/[0.05] px-2 text-[10.5px] font-medium tabular-nums text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setIsForkListOpen((open) => !open);
+        }}
+        title={`${forkCount} fork${forkCount === 1 ? '' : 's'} of this message`}
+        aria-haspopup="menu"
+        aria-expanded={isForkListOpen}
+      >
+        <Split className="h-2.5 w-2.5" />
+        <span>
+          {forkCount} fork{forkCount === 1 ? '' : 's'}
+        </span>
+      </button>
+      {isForkListOpen ? (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onMouseDown={() => setIsForkListOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="app-message-fork-list absolute left-0 top-full z-50 mt-1 w-64 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 shadow-[var(--app-shadow-float)]"
+            role="menu"
+          >
+            {forks.map((fork) => (
+              <button
+                key={fork.sessionId}
+                type="button"
+                className="flex w-full items-baseline justify-between gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[12px] text-slate-100 transition hover:bg-white/[0.06] focus:outline-none focus-visible:bg-white/[0.06]"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setIsForkListOpen(false);
+                  onOpenForkSession?.(fork.sessionId);
+                }}
+                role="menuitem"
+              >
+                <span className="min-w-0 flex-1 truncate" title={fork.title}>{fork.title}</span>
+                {fork.updatedAtLabel ? (
+                  <span className="shrink-0 text-[10px] tabular-nums text-slate-500">{fork.updatedAtLabel}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </span>
+  ) : null;
 
   if (isCompactionSummaryMessage(msg)) {
     return <CompactionSummaryMessage msg={msg} />;
@@ -551,8 +636,12 @@ function MessageBubbleView({
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
-        <div className="app-message-meta">
-          {msg.sender} • {msg.time}
+        <div className="flex w-full items-center gap-1.5">
+          <div className="app-message-meta">
+            {msg.sender} • {msg.time}
+          </div>
+          {forkButton}
+          {forkChip}
         </div>
         <LiveChatTurnCard
           turn={msg.turn}
@@ -599,10 +688,6 @@ function MessageBubbleView({
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
-  const supportsMessageContextMenu = Boolean(
-    onRequestMessageContextMenu && msg.entryId,
-  );
-
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
@@ -615,14 +700,6 @@ function MessageBubbleView({
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
       )}
-      onContextMenu={
-        supportsMessageContextMenu
-          ? (event) => {
-              event.preventDefault();
-              onRequestMessageContextMenu?.({ msg, x: event.clientX, y: event.clientY });
-            }
-          : undefined
-      }
     >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
@@ -709,6 +786,8 @@ function MessageBubbleView({
           </>
         )}
         </div>
+        {forkButton}
+        {forkChip}
       </div>
       {showContactRequestAction && onRequestBridgeContact ? (
         <div className="self-center">
@@ -729,6 +808,7 @@ function MessageBubbleView({
 function messageSnapshotKey(msg: Message) {
   return [
     msg.id ?? '',
+    msg.entryId ?? '',
     msg.role,
     msg.sender ?? '',
     msg.senderType ?? '',
@@ -757,7 +837,9 @@ export const MessageBubble = memo(
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
-    && previous.onRequestMessageContextMenu === next.onRequestMessageContextMenu
+    && previous.onForkMessage === next.onForkMessage
+    && previous.onOpenForkSession === next.onOpenForkSession
+    && previous.messageForks === next.messageForks
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
