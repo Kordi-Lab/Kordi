@@ -704,34 +704,40 @@ export function WorkspaceSidebar({
   const isForkListExpanded = (parentSessionId: string) => !collapsedForkParents.has(parentSessionId);
 
   // If the active session is a fork (or fork-of-a-fork), force every
-  // ancestor's list open so the row is reachable in the hierarchy.
-  const activeSessionAncestorIds = useMemo(() => {
+  // ancestor's list open so the row is reachable in the hierarchy —
+  // but only at the moment the active session changes. Reading session
+  // data through refs keeps the effect from re-firing on unrelated
+  // re-renders (which would otherwise re-open ancestors right after
+  // the user collapsed them).
+  const flatAgentSessionsRef = useRef(flatAgentSessions);
+  flatAgentSessionsRef.current = flatAgentSessions;
+  const agentSessionRowsByIdRef = useRef(agentSessionRowsById);
+  agentSessionRowsByIdRef.current = agentSessionRowsById;
+  useEffect(() => {
+    if (!activeConvId) return;
     const ancestors: string[] = [];
-    let current = flatAgentSessions.find(({ session }) => (
+    let current = flatAgentSessionsRef.current.find(({ session }) => (
       session.id === activeConvId || session.canonicalSessionId === activeConvId
     ))?.session;
     while (current?.forkedFromSessionId) {
       const parentId = current.forkedFromSessionId;
       if (ancestors.includes(parentId)) break; // cycle guard
       ancestors.push(parentId);
-      current = agentSessionRowsById.get(parentId)?.session;
+      current = agentSessionRowsByIdRef.current.get(parentId)?.session;
       if (!current) break;
     }
-    return ancestors;
-  }, [activeConvId, agentSessionRowsById, flatAgentSessions]);
-  useEffect(() => {
-    if (activeSessionAncestorIds.length === 0) return;
-    setCollapsedForkParents((current) => {
+    if (ancestors.length === 0) return;
+    setCollapsedForkParents((existing) => {
       let next: Set<string> | null = null;
-      for (const ancestorId of activeSessionAncestorIds) {
-        if (current.has(ancestorId)) {
-          if (!next) next = new Set(current);
+      for (const ancestorId of ancestors) {
+        if (existing.has(ancestorId)) {
+          if (!next) next = new Set(existing);
           next.delete(ancestorId);
         }
       }
-      return next ?? current;
+      return next ?? existing;
     });
-  }, [activeSessionAncestorIds]);
+  }, [activeConvId]);
 
   // Auto-scroll the active session row into view (parent or fork) so
   // navigating to a deeply nested fork doesn't leave it off-screen.
@@ -745,7 +751,7 @@ export function WorkspaceSidebar({
     );
     if (!row) return;
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [activeConvId, topLevelAgentSessions, collapsedForkParents]);
+  }, [activeConvId]);
 
   const renderAgentSessionRow = (
     { session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
