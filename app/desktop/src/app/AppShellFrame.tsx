@@ -22,7 +22,6 @@ type AppShellFrameProps = {
   sidebar: ReactNode;
   mainContent: ReactNode;
   rightDetailRail?: ReactNode;
-  cloudLoginGate?: ReactNode;
   authGate?: ReactNode;
   inlineAuthDialog?: ReactNode;
   windowResizeHandles?: ReactNode;
@@ -45,7 +44,6 @@ export function AppShellFrame({
   sidebar,
   mainContent,
   rightDetailRail,
-  cloudLoginGate,
   authGate,
   inlineAuthDialog,
   windowResizeHandles,
@@ -170,7 +168,6 @@ export function AppShellFrame({
             </div>
           </section>
         </div>
-        {cloudLoginGate}
         {authGate}
         {inlineAuthDialog}
         {!isNativeShell ? windowResizeHandles : null}

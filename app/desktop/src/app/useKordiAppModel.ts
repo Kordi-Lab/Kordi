@@ -13,7 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { currentKordiEdition, shouldShowCloudLoginGate } from '@/features/cloud/edition';
+import { currentKordiEdition } from '@/features/cloud/edition';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -109,7 +109,9 @@ import {
 export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
-  const cloudSessionStatus = 'signed-out';
+  // The cloud login gate is owned by KordiAppRoot. By the time this hook is
+  // reached the user is past it, so we deliberately don't carry a duplicate
+  // cloudSessionStatus / showCloudLoginGate down through the shell.
   const composerControlsRef = useRef<HTMLDivElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const chatTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
@@ -203,11 +205,6 @@ export function useKordiAppModel() {
     () => authStateSatisfiesStartupGate(desktopAuthState),
     [desktopAuthState],
   );
-
-  const showCloudLoginGate = shouldShowCloudLoginGate({
-    edition: kordiEdition,
-    cloudSessionStatus,
-  });
 
   const {
     inlineAuthDialog,
@@ -1915,7 +1912,6 @@ export function useKordiAppModel() {
     lastBridgePollAtLabel,
     activeSessionProject,
     activeQueuedDesktopMessages,
-    showCloudLoginGate,
     showAuthGate,
     dismissAuthGate,
     inlineAuthDialog,
@@ -1942,7 +1938,6 @@ export function useKordiAppModel() {
     sidebar: shellSlots.sidebar,
     mainContent: shellSlots.mainContent,
     rightDetailRail: shellSlots.rightDetailRail,
-    cloudLoginGate: shellSlots.cloudLoginGate,
     authGate: shellSlots.authGate,
     inlineAuthDialog: shellSlots.inlineAuthDialog,
     windowResizeHandles: shellSlots.windowResizeHandles,

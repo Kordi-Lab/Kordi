@@ -3,16 +3,13 @@ import type { ReactNode } from 'react';
 import AuthPopup from '@/AuthPopup';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
-import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 
 import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {
   const onEnterChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
 
-  const cloudLoginGate = args.showCloudLoginGate ? <CloudLoginPage /> : null;
-
-  const authGate = !cloudLoginGate && args.showAuthGate ? (
+  const authGate = args.showAuthGate ? (
     <div
       className="app-overlay absolute inset-0 z-50 overflow-hidden p-3 backdrop-blur-[12px] sm:p-4"
       style={{ WebkitAppRegion: 'no-drag' as const }}
@@ -73,7 +70,6 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
   );
 
   return {
-    cloudLoginGate,
     authGate,
     inlineAuthDialog,
     windowResizeHandles,

@@ -5,7 +5,6 @@ import { assembleOverlaySlots } from '../src/app/assembleOverlaySlots';
 
 function overlayArgs(overrides: Record<string, unknown> = {}) {
   return {
-    showCloudLoginGate: false,
     showAuthGate: true,
     dismissAuthGate: () => {},
     windowWidth: 1280,
@@ -30,13 +29,6 @@ function overlayArgs(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
-
-test('cloud login gate takes precedence over model provider auth gate', () => {
-  const slots = assembleOverlaySlots(overlayArgs({ showCloudLoginGate: true }) as never);
-
-  assert.notEqual(slots.cloudLoginGate, null);
-  assert.equal(slots.authGate, null);
-});
 
 test('first-run auth gate receives an enter-chat shortcut handler', () => {
   const slots = assembleOverlaySlots(overlayArgs() as never);
