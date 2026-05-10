@@ -37,7 +37,7 @@ password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite
 # at the libsqlite3-sys link layer.
-sqlx-core = { version = "0.8", default-features = false, features = ["migrate"] }
+sqlx-core = { version = "0.8", default-features = false, features = ["migrate", "_rt-tokio"] }
 sqlx-postgres = { version = "0.8", default-features = false, features = ["chrono", "uuid", "migrate"] }
 sqlx-macros = { version = "0.8", default-features = false, features = ["migrate", "postgres"] }
 

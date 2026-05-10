@@ -91,9 +91,11 @@ async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
         }
 
         // Each migration runs in its own transaction so a partial failure
-        // doesn't leave the schema in an inconsistent state.
+        // doesn't leave the schema in an inconsistent state. The migration
+        // body uses the simple-query protocol (no prepare) so multi-statement
+        // SQL is allowed; the version-tracking insert below is parameterised.
         let mut tx = pool.begin().await.map_err(PgPoolError::Migrate)?;
-        query(migration.sql)
+        sqlx_core::raw_sql::raw_sql(migration.sql)
             .execute(&mut *tx)
             .await
             .map_err(PgPoolError::Migrate)?;

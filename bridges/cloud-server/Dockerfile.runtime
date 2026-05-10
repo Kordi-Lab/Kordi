@@ -1,0 +1,28 @@
+# Runtime-only image. Expects a pre-built linux/amd64 binary at
+# `target/release-linux-amd64/kordi-cloud-server` (produced on the VM and
+# copied back via gcloud compute scp). Fast to build because there's no
+# Rust toolchain in the image.
+#
+# Use this for the deploy path when the binary is built natively on the
+# target architecture; reach for `Dockerfile` when you need a fully
+# self-contained build pipeline.
+
+FROM --platform=linux/amd64 debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 kordi \
+    && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-cloud --shell /usr/sbin/nologin kordi \
+    && install -d -o kordi -g kordi /var/lib/kordi-cloud
+
+COPY target/release-linux-amd64/kordi-cloud-server /usr/local/bin/kordi-cloud-server
+
+USER kordi
+WORKDIR /var/lib/kordi-cloud
+
+EXPOSE 17081
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kordi-cloud-server"]
+CMD ["serve", "--port", "17081"]
