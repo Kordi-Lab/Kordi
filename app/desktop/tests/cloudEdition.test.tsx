@@ -85,6 +85,40 @@ test('signup mode offers avatar upload and random avatar controls', () => {
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
 
+test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient swatch', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
+
+  // IdentityAvatar fingerprint: a 64x64 SVG with crisp-edges pixel rects.
+  assert.match(markup, /shape-rendering="crispEdges"/);
+  assert.match(markup, /viewBox="0 0 64 64"/);
+  // The previous gradient-based avatar must be gone.
+  assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.72 0\.16 211\)/);
+  assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
+});
+
+test('disabled social buttons surface a "Coming soon" affordance', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage));
+  // Three social providers, each disabled with a Coming soon hint.
+  const matches = markup.match(/title="Coming soon"/g) ?? [];
+  assert.ok(matches.length >= 3, `expected at least 3 Coming soon hints, got ${matches.length}`);
+  assert.match(markup, /aria-label="Google sign-in coming soon"/);
+  assert.match(markup, /aria-label="GitHub sign-in coming soon"/);
+  assert.match(markup, /aria-label="X sign-in coming soon"/);
+  assert.match(markup, /aria-label="Continue — coming soon"/);
+});
+
+test('signup-mode submit button is the create-account variant with a coming-soon hint', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
+  assert.match(markup, /aria-label="Create account — coming soon"/);
+});
+
+test('login-mode tab pill announces aria-pressed for accessibility', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'login' }));
+  // Log in tab is pressed, Sign up is not.
+  assert.match(markup, /aria-pressed="true"[^>]*>Log in/);
+  assert.match(markup, /aria-pressed="false"[^>]*>Sign up/);
+});
+
 test('cloud login native window uses a compact size instead of the full app frame', async () => {
   const calls: Array<{ method: string; size?: { width: number; height: number }; resizable?: boolean }> = [];
   class FakeLogicalSize {

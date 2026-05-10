@@ -1,6 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { applyCloudLoginWindowSize } from '@/features/cloud/loginWindow';
+import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import {
+  CLOUD_SIGNUP_AVATAR_KEY,
+  randomAvatarSeed,
+  readAvatarPreference,
+  writeAvatarPreference,
+  type AvatarPreference,
+} from '@/features/cloud/avatarPreference';
+import {
+  readLoginModePreference,
+  writeLoginModePreference,
+} from '@/features/cloud/loginModePreference';
+import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
 const SOCIAL_LOGIN_PROVIDERS = [
   { id: 'google', label: 'Google', glyph: 'G' },
@@ -8,12 +21,19 @@ const SOCIAL_LOGIN_PROVIDERS = [
   { id: 'x', label: 'X', glyph: '𝕏' },
 ] as const;
 
-const RANDOM_AVATARS = [
-  'linear-gradient(135deg, oklch(0.72 0.16 211), oklch(0.82 0.16 83))',
-  'linear-gradient(135deg, oklch(0.66 0.26 355), oklch(0.82 0.16 83))',
-  'linear-gradient(135deg, oklch(0.74 0.12 142), oklch(0.72 0.16 211))',
-  'linear-gradient(135deg, oklch(0.76 0.12 39), oklch(0.66 0.26 355))',
-] as const;
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const PASSWORD_MIN_LENGTH = 8;
+const COMING_SOON_HINT = 'Coming soon';
+
+function initialAvatarPreference(initialMode: CloudLoginMode): AvatarPreference {
+  const existing = readAvatarPreference();
+  if (existing) return existing;
+
+  const fresh: AvatarPreference = { kind: 'seed', seed: randomAvatarSeed() };
+  // Only persist if the user is actually entering signup; otherwise keep storage clean.
+  if (initialMode === 'signup') writeAvatarPreference(fresh);
+  return fresh;
+}
 
 function KordiPaintMark() {
   const circleClass = 'absolute h-[62.9326%] w-[59.5238%] rounded-full opacity-[0.93] mix-blend-multiply shadow-[inset_0_3px_8px_rgba(255,255,255,0.16)]';
@@ -36,17 +56,35 @@ function KordiPaintMark() {
   );
 }
 
+type CloudFieldValidation = 'invalid' | 'hint' | undefined;
+
 function CloudField({
   label,
   type,
   autoComplete,
   placeholder,
+  value,
+  onChange,
+  validation,
+  hint,
 }: {
   label: string;
   type: string;
   autoComplete: string;
   placeholder: string;
+  value: string;
+  onChange: (next: string) => void;
+  validation?: CloudFieldValidation;
+  hint?: string;
 }) {
+  const baseInput =
+    'h-14 rounded-full border bg-[oklch(0.99_0.014_82/0.78)] px-5 text-[16px] font-semibold text-[oklch(0.23_0.02_125)] outline-none transition placeholder:text-[oklch(0.57_0.024_82/0.68)] focus:bg-[oklch(0.995_0.01_82)]';
+  const tone =
+    validation === 'invalid'
+      ? 'border-[oklch(0.62_0.20_25/0.65)] focus:border-[oklch(0.62_0.20_25/0.85)] focus:shadow-[0_0_0_3px_oklch(0.62_0.20_25/0.16)]'
+      : validation === 'hint'
+      ? 'border-[oklch(0.74_0.045_82/0.48)] focus:border-[oklch(0.78_0.14_75/0.78)] focus:shadow-[0_0_0_3px_oklch(0.78_0.14_75/0.18)]'
+      : 'border-[oklch(0.74_0.045_82/0.48)] focus:border-[oklch(0.72_0.16_211/0.68)] focus:shadow-[0_0_0_3px_oklch(0.72_0.16_211/0.14)]';
   return (
     <label className="grid gap-1.5 text-[12px] font-semibold text-[oklch(0.39_0.025_82)]">
       {label}
@@ -54,73 +92,133 @@ function CloudField({
         type={type}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        className="h-14 rounded-full border border-[oklch(0.74_0.045_82/0.48)] bg-[oklch(0.99_0.014_82/0.78)] px-5 text-[16px] font-semibold text-[oklch(0.23_0.02_125)] outline-none transition placeholder:text-[oklch(0.57_0.024_82/0.68)] focus:border-[oklch(0.72_0.16_211/0.68)] focus:bg-[oklch(0.995_0.01_82)] focus:shadow-[0_0_0_3px_oklch(0.72_0.16_211/0.14)]"
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        aria-invalid={validation === 'invalid' || undefined}
+        className={`${baseInput} ${tone}`}
       />
+      {hint ? (
+        <span
+          className={`text-[11px] font-medium ${
+            validation === 'invalid' ? 'text-[oklch(0.55_0.18_25)]' : 'text-[oklch(0.49_0.06_75)]'
+          }`}
+        >
+          {hint}
+        </span>
+      ) : null}
     </label>
   );
 }
 
 function AvatarPicker({
-  avatarIndex,
-  avatarPreview,
+  preference,
   onRandomAvatar,
   onAvatarFile,
+  uploadError,
 }: {
-  avatarIndex: number;
-  avatarPreview?: string;
+  preference: AvatarPreference;
   onRandomAvatar: () => void;
   onAvatarFile: (file: File | undefined) => void;
+  uploadError?: string;
 }) {
+  const seed = preference.kind === 'seed' ? preference.seed : 'cloud-signup:upload';
+  const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
+
   return (
-    <div className="flex items-center gap-3 rounded-[18px] border border-[oklch(0.73_0.045_82/0.34)] bg-[oklch(0.94_0.025_82/0.46)] p-3">
-      <div
-        aria-label="Avatar preview"
-        className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full border border-[oklch(0.62_0.05_82/0.30)] text-[18px] font-extrabold text-[oklch(0.985_0.015_82)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45)]"
-        style={avatarPreview ? { backgroundImage: `url(${avatarPreview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: RANDOM_AVATARS[avatarIndex] }}
-      >
-        {avatarPreview ? null : 'K'}
+    <div className="grid gap-2 rounded-[18px] border border-[oklch(0.73_0.045_82/0.34)] bg-[oklch(0.94_0.025_82/0.46)] p-3">
+      <div className="flex items-center gap-3">
+        <IdentityAvatar
+          kind="human"
+          seed={seed}
+          name="Cloud signup avatar"
+          imageUrl={imageUrl}
+          avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
+          className="h-14 w-14 shrink-0 rounded-full border border-[oklch(0.62_0.05_82/0.30)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45)]"
+        />
+        <div className="grid flex-1 grid-cols-2 gap-2">
+          <label className="grid h-9 cursor-pointer place-items-center rounded-[12px] border border-[oklch(0.73_0.045_82/0.46)] bg-[oklch(0.995_0.01_82/0.66)] text-[12px] font-bold text-[oklch(0.29_0.022_125)] transition hover:bg-[oklch(0.995_0.01_82)]">
+            Upload avatar
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                onAvatarFile(file);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={onRandomAvatar}
+            className="h-9 rounded-[12px] border border-[oklch(0.73_0.045_82/0.46)] bg-[oklch(0.995_0.01_82/0.66)] text-[12px] font-bold text-[oklch(0.29_0.022_125)] transition hover:bg-[oklch(0.995_0.01_82)]"
+          >
+            Random avatar
+          </button>
+        </div>
       </div>
-      <div className="grid flex-1 grid-cols-2 gap-2">
-        <label className="grid h-9 cursor-pointer place-items-center rounded-[12px] border border-[oklch(0.73_0.045_82/0.46)] bg-[oklch(0.995_0.01_82/0.66)] text-[12px] font-bold text-[oklch(0.29_0.022_125)] transition hover:bg-[oklch(0.995_0.01_82)]">
-          Upload avatar
-          <input
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(event) => onAvatarFile(event.currentTarget.files?.[0])}
-          />
-        </label>
-        <button
-          type="button"
-          onClick={onRandomAvatar}
-          className="h-9 rounded-[12px] border border-[oklch(0.73_0.045_82/0.46)] bg-[oklch(0.995_0.01_82/0.66)] text-[12px] font-bold text-[oklch(0.29_0.022_125)] transition hover:bg-[oklch(0.995_0.01_82)]"
-        >
-          Random avatar
-        </button>
-      </div>
+      {uploadError ? (
+        <span className="text-[11px] font-medium text-[oklch(0.55_0.18_25)]">{uploadError}</span>
+      ) : null}
     </div>
   );
 }
 
-export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
-  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
-  const [avatarIndex, setAvatarIndex] = useState(0);
-  const [avatarPreview, setAvatarPreview] = useState<string>();
+export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudLoginMode }) {
+  const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
+  const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => initialAvatarPreference(mode));
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [uploadError, setUploadError] = useState<string | undefined>(undefined);
+  const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSignup = mode === 'signup';
 
   useEffect(() => {
     void applyCloudLoginWindowSize(mode);
+    writeLoginModePreference(mode);
   }, [mode]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadErrorTimerRef.current) clearTimeout(uploadErrorTimerRef.current);
+    };
+  }, []);
+
+  function flashUploadError(message: string) {
+    if (uploadErrorTimerRef.current) clearTimeout(uploadErrorTimerRef.current);
+    setUploadError(message);
+    uploadErrorTimerRef.current = setTimeout(() => setUploadError(undefined), 3500);
+  }
+
+  function persistAvatar(next: AvatarPreference): boolean {
+    const ok = writeAvatarPreference(next);
+    if (ok) setAvatarPref(next);
+    return ok;
+  }
 
   function handleAvatarFile(file: File | undefined) {
     if (!file) return;
-    setAvatarPreview(URL.createObjectURL(file));
+    void fileToAvatarDataUrl(file)
+      .then((dataUrl) => {
+        const ok = persistAvatar({ kind: 'upload', dataUrl });
+        if (!ok) flashUploadError('That image is too large. Try one under 200KB.');
+      })
+      .catch((caught: unknown) => {
+        flashUploadError(caught instanceof Error ? caught.message : 'Could not use that image.');
+      });
   }
 
   function randomizeAvatar() {
-    setAvatarPreview(undefined);
-    setAvatarIndex((current) => (current + 1) % RANDOM_AVATARS.length);
+    persistAvatar({ kind: 'seed', seed: randomAvatarSeed() });
   }
+
+  const emailInvalid = email.length > 0 && !EMAIL_PATTERN.test(email);
+  const passwordTooShort = isSignup && password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
+
+  const tabBaseClass = 'relative z-10 rounded-[11px] px-3 py-2 text-[13px] font-bold transition';
+  const tabActiveText = 'text-[oklch(0.22_0.02_125)]';
+  const tabInactiveText = 'text-[oklch(0.45_0.025_82/0.72)] hover:text-[oklch(0.22_0.02_125)]';
 
   return (
     <div
@@ -150,6 +248,8 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: 'login
               key={provider.id}
               type="button"
               disabled
+              title={COMING_SOON_HINT}
+              aria-label={`${provider.label} sign-in coming soon`}
               className="flex h-12 items-center justify-center gap-2 rounded-full border border-[oklch(0.78_0.035_82/0.42)] bg-[oklch(0.995_0.01_82/0.70)] text-[14px] font-bold text-[oklch(0.24_0.018_125)] shadow-[0_8px_22px_oklch(0.40_0.035_82/0.08)] disabled:cursor-not-allowed disabled:opacity-90"
             >
               <span className="text-[12px] font-extrabold">{provider.glyph}</span>
@@ -164,18 +264,25 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: 'login
           <div className="h-px flex-1 bg-[oklch(0.70_0.04_82/0.34)]" />
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-1 rounded-[18px] border border-[oklch(0.73_0.045_82/0.42)] bg-[oklch(0.93_0.028_82/0.68)] p-1">
+        <div className="relative mt-5 grid grid-cols-2 gap-1 rounded-[18px] border border-[oklch(0.73_0.045_82/0.42)] bg-[oklch(0.93_0.028_82/0.68)] p-1">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-[11px] bg-[oklch(0.995_0.01_82)] shadow-[0_7px_18px_oklch(0.42_0.04_82/0.10)] transition-transform duration-200 ease-out"
+            style={{ transform: isSignup ? 'translateX(calc(100% + 0.25rem))' : 'translateX(0)' }}
+          />
           <button
             type="button"
             onClick={() => setMode('login')}
-            className={`rounded-[11px] px-3 py-2 text-[13px] font-bold transition ${!isSignup ? 'bg-[oklch(0.995_0.01_82)] text-[oklch(0.22_0.02_125)] shadow-[0_7px_18px_oklch(0.42_0.04_82/0.10)]' : 'text-[oklch(0.45_0.025_82/0.72)] hover:text-[oklch(0.22_0.02_125)]'}`}
+            aria-pressed={!isSignup}
+            className={`${tabBaseClass} ${!isSignup ? tabActiveText : tabInactiveText}`}
           >
             Log in
           </button>
           <button
             type="button"
             onClick={() => setMode('signup')}
-            className={`rounded-[11px] px-3 py-2 text-[13px] font-bold transition ${isSignup ? 'bg-[oklch(0.995_0.01_82)] text-[oklch(0.22_0.02_125)] shadow-[0_7px_18px_oklch(0.42_0.04_82/0.10)]' : 'text-[oklch(0.45_0.025_82/0.72)] hover:text-[oklch(0.22_0.02_125)]'}`}
+            aria-pressed={isSignup}
+            className={`${tabBaseClass} ${isSignup ? tabActiveText : tabInactiveText}`}
           >
             Sign up
           </button>
@@ -185,24 +292,48 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: 'login
           {isSignup ? (
             <>
               <AvatarPicker
-                avatarIndex={avatarIndex}
-                avatarPreview={avatarPreview}
+                preference={avatarPref}
                 onRandomAvatar={randomizeAvatar}
                 onAvatarFile={handleAvatarFile}
+                uploadError={uploadError}
               />
-              <CloudField label="Name" type="text" autoComplete="name" placeholder="Ada Lovelace" />
+              <CloudField
+                label="Name"
+                type="text"
+                autoComplete="name"
+                placeholder="Ada Lovelace"
+                value=""
+                onChange={() => {
+                  /* preview-only; controlled by future auth slice */
+                }}
+              />
             </>
           ) : null}
-          <CloudField label="Email" type="email" autoComplete="email" placeholder="you@company.com" />
+          <CloudField
+            label="Email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={setEmail}
+            validation={emailInvalid ? 'invalid' : undefined}
+            hint={emailInvalid ? 'Use a full email like name@example.com.' : undefined}
+          />
           <CloudField
             label="Password"
             type="password"
             autoComplete={isSignup ? 'new-password' : 'current-password'}
             placeholder="••••••••"
+            value={password}
+            onChange={setPassword}
+            validation={passwordTooShort ? 'hint' : undefined}
+            hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
           <button
             type="submit"
             disabled
+            title={COMING_SOON_HINT}
+            aria-label={isSignup ? 'Create account — coming soon' : 'Continue — coming soon'}
             className="mt-2 h-14 rounded-full border border-[oklch(0.27_0.02_125/0.12)] bg-[oklch(0.22_0.02_125)] text-[18px] font-semibold tracking-[-0.02em] text-[oklch(0.985_0.015_82)] shadow-[0_16px_32px_oklch(0.25_0.03_125/0.18)] disabled:cursor-not-allowed disabled:opacity-90"
           >
             {isSignup ? 'Create account' : 'Continue'}
