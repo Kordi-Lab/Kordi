@@ -508,10 +508,17 @@ impl DesktopRuntimeSession {
             self.setup.thinking_level = effective_thinking.as_str().to_string();
         }
         refresh_provider_runtime_fields(&mut self.setup);
-        if changed && self.setup.session_created {
+        // Only record a model/thinking-level change as a transcript
+        // entry once the session actually has visible content. Forks
+        // resolve their default model at first activation; recording
+        // that as a "Switched model to ..." chip on every fork creates
+        // noise when nothing the user did caused the switch.
+        let session_has_visible_history = self.setup.session_created
+            && session_has_visible_message_entries(&self.setup.conn, &self.setup.session_id);
+        if changed && session_has_visible_history {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
         }
-        if thinking_changed && self.setup.session_created {
+        if thinking_changed && session_has_visible_history {
             append_thinking_level_change_entry(
                 &self.setup.conn,
                 &self.setup.session_id,
@@ -912,6 +919,23 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     // changes after the session exists should render as inline system chips.
     setup.session_created = true;
     Ok(())
+}
+
+fn session_has_visible_message_entries(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> bool {
+    // A "visible" entry is a User or Assistant message — the things a
+    // person reads as transcript content. ModelChange / ThinkingLevel
+    // / ContextSnapshot etc. are runtime metadata that shouldn't gate
+    // whether the *next* model switch is worth recording.
+    let result: rusqlite::Result<i64> = conn.query_row(
+        "SELECT COUNT(*) FROM entries
+         WHERE session_id = ?1 AND type = 'message'",
+        rusqlite::params![session_id],
+        |row| row.get(0),
+    );
+    matches!(result, Ok(count) if count > 0)
 }
 
 fn append_model_change_entry(
