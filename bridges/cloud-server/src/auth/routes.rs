@@ -253,6 +253,18 @@ pub fn routes_with_config(
         .route("/v1/cloud/auth/logout", post(logout))
         .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
+        .route(
+            "/v1/cloud/attachments/initiate",
+            post(crate::attachments::routes::initiate),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/finalize",
+            post(crate::attachments::routes::finalize),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/download-url",
+            get(crate::attachments::routes::download_url),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,

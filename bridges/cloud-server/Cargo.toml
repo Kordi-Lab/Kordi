@@ -38,6 +38,8 @@ password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 async-nats = "0.37"
 bytes = "1"
 redis = { version = "0.27", default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
+rusty-s3 = "0.7"
+url = "2"
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite
 # at the libsqlite3-sys link layer.

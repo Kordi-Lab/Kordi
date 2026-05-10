@@ -41,11 +41,18 @@ struct EmbeddedMigration {
     sql: &'static str,
 }
 
-const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[EmbeddedMigration {
-    version: 1,
-    description: "initial cloud schema",
-    sql: include_str!("../../migrations/0001_initial.sql"),
-}];
+const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
+    EmbeddedMigration {
+        version: 1,
+        description: "initial cloud schema",
+        sql: include_str!("../../migrations/0001_initial.sql"),
+    },
+    EmbeddedMigration {
+        version: 2,
+        description: "cloud_attachments table",
+        sql: include_str!("../../migrations/0002_attachments.sql"),
+    },
+];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
 /// and apply every embedded migration exactly once. Returns the pool ready

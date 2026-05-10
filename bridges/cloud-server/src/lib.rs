@@ -5,6 +5,7 @@
 //! `bridges/cli` server: separate binary, separate database, separate
 //! deployment surface. Local-edition users never run this code.
 
+pub mod attachments;
 pub mod auth;
 pub mod events;
 pub mod messages;

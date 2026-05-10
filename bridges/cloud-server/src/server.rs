@@ -8,6 +8,7 @@ use axum::Router;
 use sqlx_postgres::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::attachments::S3Config;
 use crate::auth::rate_limit::{
     CloudRateLimitConfig, CloudRateLimiter, RateLimiterError,
 };
@@ -17,11 +18,17 @@ use crate::pg::{init_pool, PgPoolError};
 pub struct ServerState {
     pool: PgPool,
     events: EventBus,
+    s3: Option<S3Config>,
 }
 
 impl ServerState {
     pub fn new(pool: PgPool, events: EventBus) -> Self {
-        Self { pool, events }
+        Self { pool, events, s3: None }
+    }
+
+    pub fn with_s3(mut self, s3: S3Config) -> Self {
+        self.s3 = Some(s3);
+        self
     }
 
     pub fn db_pool(&self) -> &PgPool {
@@ -30,6 +37,10 @@ impl ServerState {
 
     pub fn events(&self) -> &EventBus {
         &self.events
+    }
+
+    pub fn s3(&self) -> Option<&S3Config> {
+        self.s3.as_ref()
     }
 }
 
@@ -131,7 +142,19 @@ pub async fn run(
             CloudRateLimiter::memory(CloudRateLimitConfig::production())
         }
     };
-    let state = Arc::new(ServerState::new(pool, events));
+    let mut state = ServerState::new(pool, events);
+    if let Some(s3) = S3Config::from_env() {
+        println!(
+            "Kordi cloud server attachment store at {} (bucket={})",
+            s3.endpoint, s3.bucket
+        );
+        state = state.with_s3(s3);
+    } else {
+        println!(
+            "Kordi cloud server starting without S3 (attachments disabled — set S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY)"
+        );
+    }
+    let state = Arc::new(state);
     let app = router_with_rate_limiter(state, rate_limiter);
     let addr = format!("0.0.0.0:{port}");
     println!("Kordi cloud server on {addr}");
