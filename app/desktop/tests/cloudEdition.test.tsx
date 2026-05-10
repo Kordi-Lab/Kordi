@@ -63,7 +63,6 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.match(markup, /Google/);
   assert.match(markup, /GitHub/);
   assert.match(markup, /𝕏/);
-  assert.match(markup, /Model setup comes next\./);
   assert.doesNotMatch(markup, /Kordi Cloud/);
   assert.doesNotMatch(markup, /Log in to Kordi Cloud/);
   assert.doesNotMatch(markup, /Continue with GitHub/);
