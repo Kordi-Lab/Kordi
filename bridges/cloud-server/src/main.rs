@@ -1,6 +1,8 @@
 //! Entry point for the Kordi cloud-native collaboration server.
 //!
-//! Run as: `kordi-cloud-server serve --port 17081 --db ./kordi-cloud.db`
+//! Run as:
+//!   DATABASE_URL=postgresql://kordi:<pw>@host:5432/kordi_cloud \
+//!     kordi-cloud-server serve --port 17081
 
 use clap::Parser;
 
@@ -18,12 +20,12 @@ struct Cli {
 enum Commands {
     /// Run the HTTP API.
     Serve {
-        /// TCP port to bind. Defaults to 17081 to stay clear of bridges/cli's 17080.
+        /// TCP port to bind. Defaults to 17081.
         #[arg(long, default_value_t = 17081)]
         port: u16,
-        /// SQLite database path.
-        #[arg(long, default_value = "./kordi-cloud.db")]
-        db: String,
+        /// Postgres connection string. Falls back to the DATABASE_URL env var.
+        #[arg(long)]
+        database_url: Option<String>,
     },
 }
 
@@ -31,8 +33,11 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Serve { port, db } => {
-            kordi_cloud_server::run(port, &db).await?;
+        Commands::Serve { port, database_url } => {
+            let database_url = database_url
+                .or_else(|| std::env::var("DATABASE_URL").ok())
+                .ok_or("DATABASE_URL is required (env var or --database-url flag)")?;
+            kordi_cloud_server::run(port, &database_url).await?;
         }
     }
     Ok(())

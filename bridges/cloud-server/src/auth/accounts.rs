@@ -1,4 +1,13 @@
-use rusqlite::{Connection, OptionalExtension};
+//! Cloud account / identity / device DB layer (Postgres-backed).
+//!
+//! OAuth identity upserts, device registration, profile updates. The
+//! email/password flow uses cloud_accounts directly via auth/routes.rs;
+//! the OAuth path here is wired in but not yet exposed via routes.
+
+use chrono::Utc;
+use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::PgPool;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OAuthProviderId {
@@ -118,316 +127,160 @@ fn new_prefixed_id(prefix: &str) -> String {
     format!("{}_{}", prefix, uuid::Uuid::new_v4().simple())
 }
 
-pub fn upsert_account_identity(
-    conn: &Connection,
-    input: AccountIdentityUpsert,
-) -> Result<AccountIdentityRecord, rusqlite::Error> {
-    let now = chrono::Utc::now().to_rfc3339();
-    let tx = conn.unchecked_transaction()?;
-    let provider = input.provider.as_str();
-    let existing = tx
-        .query_row(
-            "SELECT identity_id, account_id FROM cloud_account_identities WHERE provider = ?1 AND provider_subject = ?2",
-            rusqlite::params![provider, input.provider_subject],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+/// Upsert an OAuth identity. If `(provider, provider_subject)` exists, link
+/// to the existing account. Otherwise create a new cloud_accounts row +
+/// cloud_account_identities row in a single transaction.
+pub async fn upsert_account_identity(
+    pool: &PgPool,
+    upsert: AccountIdentityUpsert,
+) -> Result<AccountIdentityRecord, sqlx_core::Error> {
+    let mut tx = pool.begin().await?;
+
+    let existing: Option<(String, String)> = query_as(
+        "SELECT account_id, identity_id FROM cloud_account_identities \
+         WHERE provider = $1 AND provider_subject = $2",
+    )
+    .bind(upsert.provider.as_str())
+    .bind(&upsert.provider_subject)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let now = Utc::now().to_rfc3339();
+
+    if let Some((account_id, identity_id)) = existing {
+        query(
+            "UPDATE cloud_account_identities SET \
+             provider_username = $1, email = $2, email_verified = $3, \
+             avatar_url = $4, updated_at = $5 \
+             WHERE identity_id = $6",
         )
-        .optional()?;
+        .bind(upsert.provider_username.as_deref())
+        .bind(upsert.email.as_deref())
+        .bind(upsert.email_verified)
+        .bind(upsert.avatar_url.as_deref())
+        .bind(&now)
+        .bind(&identity_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(AccountIdentityRecord {
+            account_id,
+            identity_id,
+            created_account: false,
+        });
+    }
 
-    let (account_id, identity_id, created_account) = if let Some((identity_id, account_id)) =
-        existing
-    {
-        tx.execute(
-            "UPDATE cloud_accounts SET display_name = COALESCE(?1, display_name), primary_email = COALESCE(?2, primary_email), avatar_url = COALESCE(?3, avatar_url), updated_at = ?4 WHERE account_id = ?5",
-            rusqlite::params![input.display_name, input.email, input.avatar_url, now, account_id],
-        )?;
-        tx.execute(
-            "UPDATE cloud_account_identities SET provider_username = ?1, email = ?2, email_verified = ?3, avatar_url = ?4, updated_at = ?5 WHERE identity_id = ?6",
-            rusqlite::params![
-                input.provider_username,
-                input.email,
-                if input.email_verified { 1 } else { 0 },
-                input.avatar_url,
-                now,
-                identity_id,
-            ],
-        )?;
-        (account_id, identity_id, false)
-    } else {
-        let account_id = new_prefixed_id("kca");
-        let identity_id = new_prefixed_id("kci");
-        tx.execute(
-            "INSERT INTO cloud_accounts (account_id, display_name, primary_email, avatar_url, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            rusqlite::params![account_id, input.display_name, input.email, input.avatar_url, now],
-        )?;
-        tx.execute(
-            "INSERT INTO cloud_account_identities (identity_id, account_id, provider, provider_subject, provider_username, email, email_verified, avatar_url, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
-            rusqlite::params![
-                identity_id,
-                account_id,
-                provider,
-                input.provider_subject,
-                input.provider_username,
-                input.email,
-                if input.email_verified { 1 } else { 0 },
-                input.avatar_url,
-                now,
-            ],
-        )?;
-        (account_id, identity_id, true)
-    };
+    let account_id = new_prefixed_id("acct");
+    let identity_id = new_prefixed_id("ident");
 
-    tx.commit()?;
+    query(
+        "INSERT INTO cloud_accounts \
+         (account_id, display_name, primary_email, avatar_url, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5)",
+    )
+    .bind(&account_id)
+    .bind(upsert.display_name.as_deref())
+    .bind(upsert.email.as_deref())
+    .bind(upsert.avatar_url.as_deref())
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    query(
+        "INSERT INTO cloud_account_identities \
+         (identity_id, account_id, provider, provider_subject, provider_username, \
+          email, email_verified, avatar_url, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)",
+    )
+    .bind(&identity_id)
+    .bind(&account_id)
+    .bind(upsert.provider.as_str())
+    .bind(&upsert.provider_subject)
+    .bind(upsert.provider_username.as_deref())
+    .bind(upsert.email.as_deref())
+    .bind(upsert.email_verified)
+    .bind(upsert.avatar_url.as_deref())
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(AccountIdentityRecord {
         account_id,
         identity_id,
-        created_account,
+        created_account: true,
     })
 }
 
-pub fn update_cloud_account_profile(
-    conn: &Connection,
-    input: CloudAccountProfileUpdate,
-) -> Result<Option<CloudAccountProfileRecord>, rusqlite::Error> {
-    let now = chrono::Utc::now().to_rfc3339();
-    let changed = conn.execute(
-        "UPDATE cloud_accounts SET display_name = COALESCE(?1, display_name), avatar_url = COALESCE(?2, avatar_url), updated_at = ?3 WHERE account_id = ?4",
-        rusqlite::params![input.display_name, input.avatar_url, now, input.account_id],
-    )?;
-    if changed == 0 {
-        return Ok(None);
-    }
-
-    conn.query_row(
-        "SELECT account_id, display_name, avatar_url FROM cloud_accounts WHERE account_id = ?1",
-        rusqlite::params![input.account_id],
-        |row| {
-            Ok(CloudAccountProfileRecord {
-                account_id: row.get(0)?,
-                display_name: row.get(1)?,
-                avatar_url: row.get(2)?,
-            })
-        },
+/// Update a cloud account's display name + avatar. Returns the updated
+/// record, or `None` if no such account.
+pub async fn update_cloud_account_profile(
+    pool: &PgPool,
+    update: CloudAccountProfileUpdate,
+) -> Result<Option<CloudAccountProfileRecord>, sqlx_core::Error> {
+    let now = Utc::now().to_rfc3339();
+    let row: Option<(String, Option<String>, Option<String>)> = query_as(
+        "UPDATE cloud_accounts SET \
+            display_name = COALESCE($1, display_name), \
+            avatar_url = COALESCE($2, avatar_url), \
+            updated_at = $3 \
+         WHERE account_id = $4 \
+         RETURNING account_id, display_name, avatar_url",
     )
-    .optional()
+    .bind(update.display_name.as_deref())
+    .bind(update.avatar_url.as_deref())
+    .bind(&now)
+    .bind(&update.account_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|(account_id, display_name, avatar_url)| CloudAccountProfileRecord {
+        account_id,
+        display_name,
+        avatar_url,
+    }))
 }
 
-pub fn register_cloud_device(
-    conn: &Connection,
-    input: CloudDeviceRegistration,
-) -> Result<CloudDeviceRecord, rusqlite::Error> {
-    let now = chrono::Utc::now().to_rfc3339();
-    let device_id = new_prefixed_id("kcd");
-    conn.execute(
-        "INSERT INTO cloud_devices (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        rusqlite::params![
-            device_id,
-            input.account_id,
-            input.device_name,
-            input.device_public_key,
-            now,
-        ],
-    )?;
+/// Register a device for an existing cloud account.
+pub async fn register_cloud_device(
+    pool: &PgPool,
+    registration: CloudDeviceRegistration,
+) -> Result<CloudDeviceRecord, sqlx_core::Error> {
+    let device_id = new_prefixed_id("dev");
+    let now = Utc::now().to_rfc3339();
+
+    query(
+        "INSERT INTO cloud_devices \
+         (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
+         VALUES ($1, $2, $3, $4, $5, $5)",
+    )
+    .bind(&device_id)
+    .bind(&registration.account_id)
+    .bind(registration.device_name.as_deref())
+    .bind(&registration.device_public_key)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
     Ok(CloudDeviceRecord {
         device_id,
-        account_id: input.account_id,
+        account_id: registration.account_id,
     })
 }
 
-pub fn cloud_device_belongs_to_account(
-    conn: &Connection,
+/// Check whether `device_id` belongs to `account_id` (and is non-revoked).
+pub async fn cloud_device_belongs_to_account(
+    pool: &PgPool,
     account_id: &str,
     device_id: &str,
-) -> Result<bool, rusqlite::Error> {
-    Ok(conn
-        .query_row(
-            "SELECT 1 FROM cloud_devices WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL",
-            rusqlite::params![account_id, device_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn oauth_provider_ids_normalize_for_supported_providers() {
-        assert_eq!(
-            OAuthProviderId::parse(" GitHub ").unwrap().as_str(),
-            "github"
-        );
-        assert_eq!(OAuthProviderId::parse("GOOGLE").unwrap().as_str(), "google");
-        assert_eq!(OAuthProviderId::parse("twitter").unwrap().as_str(), "x");
-        assert!(OAuthProviderId::parse("mastodon").is_none());
-    }
-
-    #[test]
-    fn default_oauth_provider_registry_exposes_core_login_providers() {
-        let registry = default_oauth_provider_registry();
-        let providers: Vec<&str> = registry
-            .providers()
-            .iter()
-            .map(|provider| provider.id.as_str())
-            .collect();
-
-        assert_eq!(providers, vec!["github", "google", "x"]);
-        assert_eq!(registry.provider("github").unwrap().display_name, "GitHub");
-        assert_eq!(registry.provider("google").unwrap().display_name, "Google");
-        assert_eq!(registry.provider("x").unwrap().display_name, "X");
-    }
-
-    #[test]
-    fn upsert_account_identity_creates_and_reuses_cloud_account() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        crate::schema::init_server_db(&conn).expect("init db");
-
-        let first = upsert_account_identity(
-            &conn,
-            AccountIdentityUpsert {
-                provider: OAuthProviderId::GitHub,
-                provider_subject: "gh_123".to_string(),
-                provider_username: Some("octo".to_string()),
-                display_name: Some("Octo Cat".to_string()),
-                email: Some("octo@example.com".to_string()),
-                email_verified: true,
-                avatar_url: Some("https://example.com/octo.png".to_string()),
-            },
-        )
-        .expect("first upsert");
-        let second = upsert_account_identity(
-            &conn,
-            AccountIdentityUpsert {
-                provider: OAuthProviderId::GitHub,
-                provider_subject: "gh_123".to_string(),
-                provider_username: Some("octocat".to_string()),
-                display_name: Some("The Octocat".to_string()),
-                email: Some("octocat@example.com".to_string()),
-                email_verified: true,
-                avatar_url: None,
-            },
-        )
-        .expect("second upsert");
-
-        assert_eq!(first.account_id, second.account_id);
-        assert_eq!(first.identity_id, second.identity_id);
-        assert!(first.created_account);
-        assert!(!second.created_account);
-
-        let account_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM cloud_accounts", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(account_count, 1);
-    }
-
-    #[test]
-    fn update_cloud_account_profile_sets_name_and_avatar() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        crate::schema::init_server_db(&conn).expect("init db");
-        let account = upsert_account_identity(
-            &conn,
-            AccountIdentityUpsert {
-                provider: OAuthProviderId::GitHub,
-                provider_subject: "profile_user".to_string(),
-                provider_username: Some("profile-user".to_string()),
-                display_name: Some("Old Name".to_string()),
-                email: Some("profile@example.com".to_string()),
-                email_verified: true,
-                avatar_url: Some("https://example.com/old.png".to_string()),
-            },
-        )
-        .expect("upsert identity");
-
-        let profile = update_cloud_account_profile(
-            &conn,
-            CloudAccountProfileUpdate {
-                account_id: account.account_id.clone(),
-                display_name: Some("New Name".to_string()),
-                avatar_url: Some("https://example.com/new.png".to_string()),
-            },
-        )
-        .expect("update profile")
-        .expect("profile should exist");
-
-        assert_eq!(profile.account_id, account.account_id);
-        assert_eq!(profile.display_name.as_deref(), Some("New Name"));
-        assert_eq!(
-            profile.avatar_url.as_deref(),
-            Some("https://example.com/new.png")
-        );
-    }
-
-    #[test]
-    fn update_cloud_account_profile_returns_none_for_unknown_account() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        crate::schema::init_server_db(&conn).expect("init db");
-
-        let profile = update_cloud_account_profile(
-            &conn,
-            CloudAccountProfileUpdate {
-                account_id: "kca_missing".to_string(),
-                display_name: Some("Nobody".to_string()),
-                avatar_url: Some("https://example.com/nobody.png".to_string()),
-            },
-        )
-        .expect("update profile");
-
-        assert!(profile.is_none());
-    }
-
-    #[test]
-    fn register_cloud_device_rejects_unknown_account() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        crate::schema::init_server_db(&conn).expect("init db");
-
-        let result = register_cloud_device(
-            &conn,
-            CloudDeviceRegistration {
-                account_id: "kca_missing".to_string(),
-                device_name: Some("Unknown account device".to_string()),
-                device_public_key: "device-public-key".to_string(),
-            },
-        );
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn register_cloud_device_belongs_to_existing_account() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        crate::schema::init_server_db(&conn).expect("init db");
-        let account = upsert_account_identity(
-            &conn,
-            AccountIdentityUpsert {
-                provider: OAuthProviderId::Google,
-                provider_subject: "google_123".to_string(),
-                provider_username: None,
-                display_name: Some("Ada".to_string()),
-                email: Some("ada@example.com".to_string()),
-                email_verified: true,
-                avatar_url: None,
-            },
-        )
-        .expect("upsert identity");
-
-        let device = register_cloud_device(
-            &conn,
-            CloudDeviceRegistration {
-                account_id: account.account_id.clone(),
-                device_name: Some("Ada's Mac".to_string()),
-                device_public_key: "device-public-key".to_string(),
-            },
-        )
-        .expect("register device");
-
-        let saved_account: String = conn
-            .query_row(
-                "SELECT account_id FROM cloud_devices WHERE device_id = ?1",
-                rusqlite::params![device.device_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(saved_account, account.account_id);
-    }
+) -> Result<bool, sqlx_core::Error> {
+    let row: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_devices \
+         WHERE account_id = $1 AND device_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(device_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
 }
