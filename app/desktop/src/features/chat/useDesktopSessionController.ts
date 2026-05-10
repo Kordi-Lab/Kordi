@@ -6,6 +6,7 @@ import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver
 import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
+  forkDesktopChatSessionFromMessage,
   markDesktopBridgeConversationRead,
   prepareDesktopChatDraftSession,
   renameDesktopChatSession,
@@ -179,10 +180,35 @@ export function useDesktopSessionController({
     }
   }, [activeConvId, activeConversationIsBridge, desktopChatState, desktopSessionRenameDraft, isNativeShell, setActiveConvId, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
 
+  const handleForkChatMessage = useCallback(async (sessionId: string, messageEntryId: string) => {
+    if (!isNativeShell) return;
+    if (!sessionId || !messageEntryId) return;
+    shouldAutoFollowChatRef.current = true;
+    try {
+      setDesktopChatError(null);
+      const result = await forkDesktopChatSessionFromMessage(sessionId, messageEntryId);
+      setDesktopChatState(result.state);
+      setActiveConvId(result.forkedSessionId);
+      setChatComposerAttachments([]);
+      setPendingUserChatMessage(null);
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to fork session');
+    }
+  }, [
+    isNativeShell,
+    setActiveConvId,
+    setChatComposerAttachments,
+    setDesktopChatError,
+    setDesktopChatState,
+    setPendingUserChatMessage,
+    shouldAutoFollowChatRef,
+  ]);
+
   return {
     handleSelectChatSession,
     handleCreateChatSession,
     handleSelectProjectSession,
     handleRenameDesktopSession,
+    handleForkChatMessage,
   };
 }

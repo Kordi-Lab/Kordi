@@ -184,6 +184,7 @@ pub fn run() {
             chat::desktop_chat_archive_session,
             chat::desktop_chat_delete_session_forever,
             chat::desktop_chat_move_session_to_project,
+            chat::desktop_chat_fork_session_from_message,
             chat::desktop_chat_send_message,
             chat::desktop_chat_start_message,
             chat::desktop_chat_run_skill_command,

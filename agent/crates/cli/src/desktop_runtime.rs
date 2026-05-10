@@ -149,6 +149,11 @@ pub struct DesktopChatMessage {
     pub thinking_text: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<DesktopChatStoredTool>,
+    /// Stable id of the underlying session entry. Present for messages
+    /// that map 1:1 to a `SessionEntry` (e.g., user messages); `None`
+    /// for synthesized rows like assistant turn aggregations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -160,6 +165,10 @@ pub struct DesktopChatSessionSummary {
     pub updated_at_label: String,
     pub message_count: usize,
     pub draft: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_message_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -239,6 +248,10 @@ pub struct DesktopChatSessionDetail {
     pub project: Option<DesktopChatProjectInfo>,
     pub reflection_lesson_artifacts: Vec<DesktopSessionArtifact>,
     pub messages: Vec<DesktopChatMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_message_id: Option<String>,
 }
 
 pub struct DesktopRuntimeSession {
@@ -495,10 +508,17 @@ impl DesktopRuntimeSession {
             self.setup.thinking_level = effective_thinking.as_str().to_string();
         }
         refresh_provider_runtime_fields(&mut self.setup);
-        if changed && self.setup.session_created {
+        // Only record a model/thinking-level change as a transcript
+        // entry once the session actually has visible content. Forks
+        // resolve their default model at first activation; recording
+        // that as a "Switched model to ..." chip on every fork creates
+        // noise when nothing the user did caused the switch.
+        let session_has_visible_history = self.setup.session_created
+            && session_has_visible_message_entries(&self.setup.conn, &self.setup.session_id);
+        if changed && session_has_visible_history {
             append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
         }
-        if thinking_changed && self.setup.session_created {
+        if thinking_changed && session_has_visible_history {
             append_thinking_level_change_entry(
                 &self.setup.conn,
                 &self.setup.session_id,
@@ -786,6 +806,44 @@ pub fn session_exists(session_id: &str) -> Result<bool> {
     Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopForkSessionOutcome {
+    pub session_id: String,
+    pub source_session_id: String,
+    pub source_entry_id: String,
+    pub selected_text: String,
+    pub branch_leaf_id: Option<String>,
+    pub cwd: String,
+}
+
+pub fn fork_session_from_message(
+    source_session_id: &str,
+    source_entry_id: &str,
+) -> Result<DesktopForkSessionOutcome> {
+    let conn = open_sessions_db()?;
+    let Some(source_row) = kordi_session::store::get_session(&conn, source_session_id)? else {
+        bail!("Session not found: {source_session_id}");
+    };
+    if source_row.session_scope != "chat" && source_row.session_scope != "project" {
+        bail!("Only local chat sessions can be forked");
+    }
+    let result = kordi_session::store::fork_session_from_entry(
+        &conn,
+        source_session_id,
+        source_entry_id,
+        &source_row.cwd,
+    )?;
+    Ok(DesktopForkSessionOutcome {
+        session_id: result.session_id,
+        source_session_id: result.source_session_id,
+        source_entry_id: result.source_entry_id,
+        selected_text: result.selected_text,
+        branch_leaf_id: result.branch_leaf_id,
+        cwd: source_row.cwd,
+    })
+}
+
 pub fn hide_session(session_id: &str) -> Result<()> {
     let conn = open_sessions_db()?;
     let Some(row) = kordi_session::store::get_session(&conn, session_id)? else {
@@ -861,6 +919,23 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     // changes after the session exists should render as inline system chips.
     setup.session_created = true;
     Ok(())
+}
+
+fn session_has_visible_message_entries(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> bool {
+    // A "visible" entry is a User or Assistant message — the things a
+    // person reads as transcript content. ModelChange / ThinkingLevel
+    // / ContextSnapshot etc. are runtime metadata that shouldn't gate
+    // whether the *next* model switch is worth recording.
+    let result: rusqlite::Result<i64> = conn.query_row(
+        "SELECT COUNT(*) FROM entries
+         WHERE session_id = ?1 AND type = 'message'",
+        rusqlite::params![session_id],
+        |row| row.get(0),
+    );
+    matches!(result, Ok(count) if count > 0)
 }
 
 fn append_model_change_entry(

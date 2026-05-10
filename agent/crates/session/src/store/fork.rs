@@ -4,8 +4,8 @@ use rusqlite::Connection;
 use std::collections::HashSet;
 
 use super::{
-    ForkSessionResult, append_entry, create_session_with_parent, get_entries, get_entry,
-    parse_entry, set_leaf,
+    ForkSessionResult, append_entry, create_session_with_parent_and_message, get_entries,
+    get_entry, parse_entry, set_leaf,
 };
 
 pub(super) fn copy_branch_to_session(
@@ -85,38 +85,28 @@ pub(super) fn fork_session_from_entry(
     entry_id: &str,
     cwd: &str,
 ) -> Result<ForkSessionResult> {
+    // Fork-AT semantics: the new session contains every entry on the
+    // path from root → clicked entry, *including* the clicked entry.
+    // The clicked entry becomes the new session's leaf so the user can
+    // continue the conversation immediately from where they branched.
     let row = get_entry(conn, source_session_id, entry_id)?
         .ok_or_else(|| anyhow::anyhow!("Entry not found: {entry_id}"))?;
-    let entry = parse_entry(&row)?;
-    let selected_text = match entry {
-        SessionEntry::Message {
-            message: kordi_core::types::AgentMessage::User(user),
-            ..
-        } => user
-            .content
-            .iter()
-            .filter_map(|block| match block {
-                kordi_core::types::ContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => anyhow::bail!("Invalid entry ID for forking"),
-    };
 
-    let new_session_id = create_session_with_parent(conn, cwd, Some(source_session_id))?;
-    if let Some(branch_leaf_id) = row.parent_id.clone() {
-        copy_branch_to_session(conn, source_session_id, &new_session_id, &branch_leaf_id)?;
-        Ok(ForkSessionResult {
-            session_id: new_session_id,
-            selected_text,
-            branch_leaf_id: Some(branch_leaf_id),
-        })
-    } else {
-        Ok(ForkSessionResult {
-            session_id: new_session_id,
-            selected_text,
-            branch_leaf_id: None,
-        })
-    }
+    let new_session_id = create_session_with_parent_and_message(
+        conn,
+        cwd,
+        Some(source_session_id),
+        Some(entry_id),
+    )?;
+    copy_branch_to_session(conn, source_session_id, &new_session_id, entry_id)?;
+
+    let _ = row; // existence verified above; payload no longer needed
+
+    Ok(ForkSessionResult {
+        session_id: new_session_id,
+        selected_text: String::new(),
+        branch_leaf_id: Some(entry_id.to_string()),
+        source_session_id: source_session_id.to_string(),
+        source_entry_id: entry_id.to_string(),
+    })
 }

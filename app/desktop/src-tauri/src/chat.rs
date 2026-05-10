@@ -697,6 +697,84 @@ pub async fn desktop_chat_move_session_to_project(
     build_chat_state(&manager, &cwd, target.id).await
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatForkSessionResult {
+    pub state: DesktopChatState,
+    pub forked_session_id: String,
+    pub source_session_id: String,
+    pub source_message_id: String,
+    pub selected_text: String,
+}
+
+#[tauri::command]
+pub async fn desktop_chat_fork_session_from_message(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+    message_entry_id: String,
+) -> Result<DesktopChatForkSessionResult, String> {
+    let trimmed_session_id = session_id.trim();
+    let trimmed_entry_id = message_entry_id.trim();
+    if trimmed_session_id.is_empty() {
+        return Err("Source session id is required".to_string());
+    }
+    if trimmed_entry_id.is_empty() {
+        return Err("Source message id is required".to_string());
+    }
+    if trimmed_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        return Err("Save the draft session before forking from it.".to_string());
+    }
+
+    let cwd = chat_cwd()?;
+    let is_canonical_session = trimmed_session_id.starts_with("session:");
+    let is_local_session = !is_canonical_session && session_exists_globally(trimmed_session_id)?;
+    if !is_canonical_session && !is_local_session {
+        return Err(format!("Session not found: {trimmed_session_id}"));
+    }
+
+    // Local sessions read from the kordi_session store; canonical
+    // sessions (group / bridge / direct-agent) are translated from
+    // canonical messages into a fresh local snapshot. Both produce a
+    // local fork the user continues from.
+    let outcome = if is_canonical_session {
+        crate::canonical_sessions::fork_canonical_session_into_local_chat(
+            trimmed_session_id,
+            trimmed_entry_id,
+            &cwd.display().to_string(),
+        )?
+    } else {
+        kordi_cli::desktop_runtime::fork_session_from_message(
+            trimmed_session_id,
+            trimmed_entry_id,
+        )
+        .map_err(|err| err.to_string())?
+    };
+
+    let runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
+        std::path::PathBuf::from(&outcome.cwd),
+        &outcome.session_id,
+    )
+    .await
+    .map_err(|err| err.to_string())?;
+
+    {
+        let mut sessions = manager.sessions.lock().await;
+        sessions.insert(
+            outcome.session_id.clone(),
+            Arc::new(tokio::sync::Mutex::new(runtime)),
+        );
+    }
+
+    let state = build_chat_state(&manager, &cwd, outcome.session_id.clone()).await?;
+    Ok(DesktopChatForkSessionResult {
+        state,
+        forked_session_id: outcome.session_id,
+        source_session_id: outcome.source_session_id,
+        source_message_id: outcome.source_entry_id,
+        selected_text: outcome.selected_text,
+    })
+}
+
 #[tauri::command]
 pub async fn desktop_chat_send_message(
     manager: State<'_, DesktopChatManager>,

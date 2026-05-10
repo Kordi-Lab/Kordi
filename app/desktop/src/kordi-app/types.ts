@@ -160,6 +160,10 @@ export type Conversation = {
   outreach?: DesktopBridgeOutreachMetadata | null;
   identity?: DesktopBridgeIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
+  /** Source session this conversation was forked from, if any. */
+  forkedFromSessionId?: string | null;
+  /** Source message entry id this conversation was forked at, if any. */
+  forkedFromMessageId?: string | null;
 };
 
 export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
@@ -181,6 +185,8 @@ export type ParticipantSpaceSessionViewModel = {
   participantCount: number;
   statusIndicator?: SessionStatusIndicator;
   conversation: Conversation;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type ParticipantSpaceViewModel = {
@@ -655,6 +661,9 @@ export type DesktopChatMessage = {
   tools?: DesktopChatToolSnapshot[];
   turnStartedAtMs?: number | null;
   turnCompletedAtMs?: number | null;
+  /** Stable id of the underlying session entry; only set for messages
+   * that map 1:1 to a SessionEntry (e.g., user messages). */
+  entryId?: string | null;
 };
 
 export type DesktopChatSessionSummary = {
@@ -664,6 +673,8 @@ export type DesktopChatSessionSummary = {
   updatedAtLabel: string;
   messageCount: number;
   draft: boolean;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type DesktopChatProjectGroup = {
@@ -997,6 +1008,8 @@ export type DesktopChatSessionDetail = {
   project?: DesktopChatProjectInfo | null;
   reflectionLessonArtifacts?: SessionArtifact[];
   messages: DesktopChatMessage[];
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 export type DesktopChatAgentProfile = {
