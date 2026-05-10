@@ -179,6 +179,26 @@ fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> 
         },
     )?;
 
+    apply_migration(
+        conn,
+        4,
+        "server_mailbox client_message_id idempotency key + partial unique index",
+        |conn| {
+            // Add the column first; ADD COLUMN has its own implicit IF NOT
+            // EXISTS via apply_migration's once-per-version guard. Then the
+            // partial unique index — partial because legacy rows that pre-date
+            // this column have NULL client_message_id and must stay
+            // independent under unique semantics.
+            let _ = conn.execute(
+                "ALTER TABLE server_mailbox ADD COLUMN client_message_id TEXT",
+                [],
+            );
+            conn.execute_batch(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_server_mailbox_target_client_msg\n                 ON server_mailbox (target_node_id, client_message_id)\n                 WHERE client_message_id IS NOT NULL;",
+            )
+        },
+    )?;
+
     Ok(())
 }
 

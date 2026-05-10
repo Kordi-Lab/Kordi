@@ -31,12 +31,25 @@ pub struct RelayReq {
     /// Optional direct-access intent for host/agent reachability policy.
     #[serde(rename = "targetKind", default)]
     pub target_kind: Option<String>,
+    /// Optional client-side idempotency key. Repeating the same
+    /// (targetNodeId, clientMessageId) pair returns the original message id
+    /// instead of producing a second mailbox row.
+    #[serde(rename = "clientMessageId", default)]
+    pub client_message_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RelayResp {
     pub delivered: bool,
     pub message: String,
+    /// Server-side message id assigned to this send. When `clientMessageId`
+    /// produces an idempotent retry, this is the id of the original send.
+    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Whether the request was a duplicate of an earlier send keyed by
+    /// `clientMessageId`. Clients can use this to suppress local retry UI.
+    #[serde(rename = "duplicate", default)]
+    pub duplicate: bool,
 }
 
 /// Broadcast request: sends an opaque encrypted blob to all project members.
@@ -221,16 +234,29 @@ async fn relay_message(
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let delivered = enqueue_mailbox_entry(&mut db, &target_node_id, &entry)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if !delivered {
-        return Err(StatusCode::TOO_MANY_REQUESTS);
-    }
+    let outcome = enqueue_mailbox_entry(
+        &mut db,
+        &target_node_id,
+        &entry,
+        req.client_message_id.as_deref(),
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(RelayResp {
-        delivered: true,
-        message: format!("queued for {}", target_node_id),
-    }))
+    match outcome {
+        EnqueueOutcome::QuotaExceeded => Err(StatusCode::TOO_MANY_REQUESTS),
+        EnqueueOutcome::Inserted { message_id } => Ok(Json(RelayResp {
+            delivered: true,
+            message: format!("queued for {}", target_node_id),
+            message_id: Some(message_id),
+            duplicate: false,
+        })),
+        EnqueueOutcome::Duplicate { message_id } => Ok(Json(RelayResp {
+            delivered: true,
+            message: format!("duplicate of earlier send to {}", target_node_id),
+            message_id: Some(message_id),
+            duplicate: true,
+        })),
+    }
 }
 
 /// Broadcast per-peer message blobs to all specified project members.
@@ -401,9 +427,9 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                         project_id: None,
                         timestamp: chrono::Utc::now().to_rfc3339(),
                     };
-                    match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry) {
-                        Ok(true) => {}
-                        Ok(false) => {
+                    match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry, None) {
+                        Ok(EnqueueOutcome::Inserted { .. }) | Ok(EnqueueOutcome::Duplicate { .. }) => {}
+                        Ok(EnqueueOutcome::QuotaExceeded) => {
                             if let Some(ack) =
                                 maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
                             {
@@ -489,34 +515,69 @@ fn direct_access_kind_from_payload_bytes(payload: &[u8]) -> DirectAccessKind {
     direct_access_kind_from_target_kind(message_type)
 }
 
+/// Result of an attempted mailbox enqueue. Idempotent retries that match an
+/// earlier `(target_node_id, client_message_id)` pair return `Duplicate`
+/// with the original `message_id` so the caller can echo it back verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnqueueOutcome {
+    /// Fresh row was inserted.
+    Inserted { message_id: String },
+    /// `client_message_id` matched an earlier row for this target; no new
+    /// row was created.
+    Duplicate { message_id: String },
+    /// Per-target quota exceeded.
+    QuotaExceeded,
+}
+
 fn enqueue_mailbox_entry(
     conn: &mut Connection,
     target_node_id: &str,
     entry: &MailboxEntry,
-) -> Result<bool, rusqlite::Error> {
+    client_message_id: Option<&str>,
+) -> Result<EnqueueOutcome, rusqlite::Error> {
     let tx = conn.transaction()?;
+
+    // Idempotency check first: if a row with the same client key already
+    // exists for this target, return its message_id without consuming quota.
+    if let Some(client_id) = client_message_id {
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT message_id FROM server_mailbox \
+                 WHERE target_node_id = ?1 AND client_message_id = ?2",
+                params![target_node_id, client_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(message_id) = existing {
+            tx.commit()?;
+            return Ok(EnqueueOutcome::Duplicate { message_id });
+        }
+    }
+
     let queue_len: i64 = tx.query_row(
         "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = ?1",
         params![target_node_id],
         |row| row.get(0),
     )?;
     if queue_len >= MAX_MAILBOX_PER_NODE as i64 {
-        return Ok(false);
+        return Ok(EnqueueOutcome::QuotaExceeded);
     }
 
+    let new_id = Uuid::new_v4().to_string();
     tx.execute(
-        "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at, client_message_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
-            Uuid::new_v4().to_string(),
+            new_id,
             target_node_id,
             entry.from,
             entry.blob,
             entry.project_id,
             entry.timestamp,
+            client_message_id,
         ],
     )?;
     tx.commit()?;
-    Ok(true)
+    Ok(EnqueueOutcome::Inserted { message_id: new_id })
 }
 
 fn enqueue_broadcast_entries(
@@ -770,7 +831,8 @@ mod tests {
             project_id: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
-        assert!(enqueue_mailbox_entry(&mut conn, to, &entry).unwrap());
+        let outcome = enqueue_mailbox_entry(&mut conn, to, &entry, None).unwrap();
+        assert!(matches!(outcome, EnqueueOutcome::Inserted { .. }));
     }
 
     fn seed_contact(state: &ServerState, left: &str, right: &str) {
@@ -1175,6 +1237,7 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1221,6 +1284,7 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1254,6 +1318,7 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1286,6 +1351,7 @@ mod tests {
                 blob: "group session message".to_string(),
                 project_id: None,
                 target_kind: Some("session-participant".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1332,6 +1398,7 @@ mod tests {
                 blob: "invite".to_string(),
                 project_id: None,
                 target_kind: Some("person-invite".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1383,6 +1450,7 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1398,6 +1466,7 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1439,6 +1508,7 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
+                client_message_id: None,
             }),
         )
         .await
@@ -1460,6 +1530,7 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: Some("proj_1".to_string()),
                 target_kind: None,
+                client_message_id: None,
             }),
         )
         .await
@@ -1497,6 +1568,7 @@ mod tests {
                     blob: blob.to_string(),
                     project_id: None,
                     target_kind: None,
+                client_message_id: None,
                 }),
             )
             .await
@@ -1519,6 +1591,107 @@ mod tests {
         assert!(second.is_empty());
         assert_eq!(first[0].blob, "one");
         assert_eq!(first[1].blob, "two");
+    }
+
+    #[test]
+    fn enqueue_with_same_client_message_id_returns_original_message() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        let mut conn = state.open_connection().unwrap();
+        let entry = MailboxEntry {
+            from: "sender".to_string(),
+            blob: "first-payload".to_string(),
+            project_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        let first =
+            enqueue_mailbox_entry(&mut conn, "receiver", &entry, Some("client-key-1")).unwrap();
+        let inserted_id = match first {
+            EnqueueOutcome::Inserted { ref message_id } => message_id.clone(),
+            _ => panic!("first send should produce a fresh row, got {first:?}"),
+        };
+
+        // Retry with the same key but a different blob — should NOT update or
+        // duplicate; original row stays intact.
+        let entry_retry = MailboxEntry {
+            from: "sender".to_string(),
+            blob: "second-payload".to_string(),
+            project_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        let second =
+            enqueue_mailbox_entry(&mut conn, "receiver", &entry_retry, Some("client-key-1"))
+                .unwrap();
+        match second {
+            EnqueueOutcome::Duplicate { ref message_id } => {
+                assert_eq!(message_id, &inserted_id, "duplicate must echo original id");
+            }
+            _ => panic!("retry with same client_message_id must be Duplicate, got {second:?}"),
+        }
+
+        // Exactly one row remains and it carries the original payload.
+        let rows: Vec<(String, String)> = conn
+            .prepare("SELECT message_id, blob FROM server_mailbox WHERE target_node_id = 'receiver'")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, inserted_id);
+        assert_eq!(rows[0].1, "first-payload");
+    }
+
+    #[test]
+    fn enqueue_with_different_client_message_ids_produces_separate_rows() {
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        let mut conn = state.open_connection().unwrap();
+        let make_entry = |blob: &str| MailboxEntry {
+            from: "sender".to_string(),
+            blob: blob.to_string(),
+            project_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        let first = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("a"), Some("k1"))
+            .unwrap();
+        let second = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("b"), Some("k2"))
+            .unwrap();
+        assert!(matches!(first, EnqueueOutcome::Inserted { .. }));
+        assert!(matches!(second, EnqueueOutcome::Inserted { .. }));
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = 'receiver'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn enqueue_without_client_message_id_does_not_dedupe() {
+        // Legacy behaviour: clients that don't pass a key keep at-least-once
+        // semantics. Two sends produce two rows even with identical payload.
+        let db_path = test_db_path();
+        let state = test_state_for_path(&db_path);
+        let mut conn = state.open_connection().unwrap();
+        let entry = MailboxEntry {
+            from: "sender".to_string(),
+            blob: "same-blob".to_string(),
+            project_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        enqueue_mailbox_entry(&mut conn, "receiver", &entry, None).unwrap();
+        enqueue_mailbox_entry(&mut conn, "receiver", &entry, None).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = 'receiver'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
     }
 
     #[test]
