@@ -8,8 +8,8 @@ use super::models::{
     AppendCanonicalMessageRequest, CanonicalSessionMessage, OpenCanonicalSessionRequest,
 };
 use super::{
-    append_message_in_db_pub, local_agent_identity_id_pub, local_profile_human_identity_id_pub,
-    open_db, open_or_create_session_in_db_pub,
+    append_message_in_db, local_agent_identity_id, local_profile_human_identity_id, open_db,
+    open_or_create_session_in_db,
 };
 
 /// Read every message persisted on a canonical group/bridge session,
@@ -148,18 +148,17 @@ pub fn fork_canonical_session_into_local_chat(
         .and_then(|info| info.title.clone())
         .filter(|value| !value.trim().is_empty());
 
-    let local_human = local_profile_human_identity_id_pub(&conn, "You")?;
-    let local_agent =
-        local_agent_identity_id_pub(&conn, &local_human, "Kordi", cwd)?;
+    let local_human_id = local_profile_human_identity_id(&conn, "You")?;
+    let local_agent_id = local_agent_identity_id(&conn, &local_human_id, "Kordi", cwd)?;
 
     // Carry only the source's agent identities into the fork so the
     // user can still @-mention any agent that was in the group. We
     // intentionally skip other humans: including them would flip the
     // participant-space classifier to "group" and render the fork as
     // a duplicate group entry instead of a private continuation.
-    let mut participant_ids = vec![local_agent.clone()];
+    let mut participant_ids = vec![local_agent_id.clone()];
     for identity in select_source_agent_participants(&conn, canonical_session_id)? {
-        if identity == local_agent {
+        if identity == local_agent_id {
             continue;
         }
         if !participant_ids.iter().any(|existing| existing == &identity) {
@@ -187,15 +186,15 @@ pub fn fork_canonical_session_into_local_chat(
         kind: "self-agent".to_string(),
         title: source_title.clone(),
         status: Some("active".to_string()),
-        created_by_identity_id: local_human.clone(),
-        primary_identity_id: Some(local_agent.clone()),
+        created_by_identity_id: local_human_id.clone(),
+        primary_identity_id: Some(local_agent_id.clone()),
         project_id: source_info.as_ref().and_then(|info| info.project_id.clone()),
         project_name: source_info.and_then(|info| info.project_name.clone()),
         relationship_identity_id: None,
         participant_identity_ids: participant_ids,
         metadata: Some(metadata),
     };
-    open_or_create_session_in_db_pub(&conn, request)?;
+    open_or_create_session_in_db(&conn, request)?;
 
     // Clone each source message under the new session id, mapping
     // parent_message_id through fresh ids so the reply graph stays
@@ -230,7 +229,7 @@ pub fn fork_canonical_session_into_local_chat(
                 canonical_session_id, source_msg.id
             )),
         };
-        let inserted = append_message_in_db_pub(&conn, request)?;
+        let inserted = append_message_in_db(&conn, request)?;
         id_map.insert(source_msg.id.clone(), inserted.id.clone());
         last_message_id = Some(inserted.id);
     }
