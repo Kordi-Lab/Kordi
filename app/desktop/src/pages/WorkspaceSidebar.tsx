@@ -703,41 +703,27 @@ export function WorkspaceSidebar({
   };
   const isForkListExpanded = (parentSessionId: string) => !collapsedForkParents.has(parentSessionId);
 
-  // If the active session is a fork (or fork-of-a-fork), force every
-  // ancestor's list open so the row is reachable in the hierarchy —
-  // but only at the moment the active session changes. Reading session
-  // data through refs keeps the effect from re-firing on unrelated
-  // re-renders (which would otherwise re-open ancestors right after
-  // the user collapsed them).
-  const flatAgentSessionsRef = useRef(flatAgentSessions);
-  flatAgentSessionsRef.current = flatAgentSessions;
-  const agentSessionRowsByIdRef = useRef(agentSessionRowsById);
-  agentSessionRowsByIdRef.current = agentSessionRowsById;
-  useEffect(() => {
-    if (!activeConvId) return;
-    const ancestors: string[] = [];
-    let current = flatAgentSessionsRef.current.find(({ session }) => (
-      session.id === activeConvId || session.canonicalSessionId === activeConvId
-    ))?.session;
-    while (current?.forkedFromSessionId) {
-      const parentId = current.forkedFromSessionId;
-      if (ancestors.includes(parentId)) break; // cycle guard
-      ancestors.push(parentId);
-      current = agentSessionRowsByIdRef.current.get(parentId)?.session;
-      if (!current) break;
+  // The full ancestor chain of the active session, including itself.
+  // Used to keep the active session always visible even when the user
+  // collapses an ancestor: collapsing then only hides the *sibling*
+  // sub-trees, never the active path.
+  const activeSessionPathIds = useMemo(() => {
+    const path = new Set<string>();
+    if (!activeConvId) return path;
+    let cursor: string | null = activeConvId;
+    while (cursor) {
+      if (path.has(cursor)) break;
+      path.add(cursor);
+      const parent: string | null = agentSessionRowsById.get(cursor)?.session.forkedFromSessionId ?? null;
+      cursor = parent && parent.trim() ? parent : null;
     }
-    if (ancestors.length === 0) return;
-    setCollapsedForkParents((existing) => {
-      let next: Set<string> | null = null;
-      for (const ancestorId of ancestors) {
-        if (existing.has(ancestorId)) {
-          if (!next) next = new Set(existing);
-          next.delete(ancestorId);
-        }
-      }
-      return next ?? existing;
-    });
-  }, [activeConvId]);
+    return path;
+  }, [activeConvId, agentSessionRowsById]);
+
+  // No auto-expand effect needed: the recursive renderer always keeps
+  // the active session's path visible even when an ancestor is
+  // collapsed, so the user retains full control over collapse state
+  // for sibling branches.
 
   // Auto-scroll the active session row into view (parent or fork) so
   // navigating to a deeply nested fork doesn't leave it off-screen.
@@ -883,6 +869,11 @@ export function WorkspaceSidebar({
     nextSeen.add(row.session.id);
     const forks = agentForkLineage.forksByParentSessionId.get(row.session.id) ?? [];
     const expanded = forks.length === 0 ? false : isForkListExpanded(row.session.id);
+    // Even when collapsed, keep showing fork branches that lead to the
+    // active session so the user never loses sight of where they are.
+    const childrenToRender = expanded
+      ? forks
+      : forks.filter((fork) => activeSessionPathIds.has(fork.id));
     return (
       <div key={row.session.id} className="app-session-row-group">
         {renderAgentSessionRow(row, {
@@ -892,12 +883,12 @@ export function WorkspaceSidebar({
           expanded,
           onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
         })}
-        {forks.length > 0 && expanded ? (
+        {childrenToRender.length > 0 ? (
           <div
             className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2"
             data-session-fork-depth={depth + 1}
           >
-            {forks.map((forkSession) => {
+            {childrenToRender.map((forkSession) => {
               const forkRow = agentSessionRowsById.get(forkSession.id);
               if (!forkRow) return null;
               return renderAgentSessionTreeNode(forkRow, depth + 1, nextSeen);
