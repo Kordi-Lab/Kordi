@@ -6,6 +6,9 @@ import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus,
 import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
+import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+
+const AVATAR_URL_PREFIX = 'kordi-pixel-avatar://';
 
 export type KordiAppRootProps = {
   edition?: KordiEdition;
@@ -16,7 +19,7 @@ export type KordiAppRootProps = {
    */
   cloudSessionStatus?: CloudSessionStatus;
   /** Optional injected hook result for testing without a real Tauri/fetch env. */
-  cloudSession?: Pick<UseCloudSessionResult, 'status' | 'signIn' | 'signUp'>;
+  cloudSession?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp'>;
 };
 
 export function KordiAppRoot({
@@ -47,7 +50,7 @@ function CloudEditionRoot({
   cloudSessionOverride,
 }: {
   cloudSessionStatusOverride?: CloudSessionStatus;
-  cloudSessionOverride?: Pick<UseCloudSessionResult, 'status' | 'signIn' | 'signUp'>;
+  cloudSessionOverride?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp'>;
 }) {
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
@@ -55,6 +58,19 @@ function CloudEditionRoot({
   });
   const session = cloudSessionOverride ?? liveSession;
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
+  const account = session.account ?? null;
+
+  // Mirror the cloud account's avatar choice into the local profile slot so
+  // the desktop shell renders the user's chosen pixel character (bottom-left
+  // of the chat workspace, transcript "you" rows, etc.) instead of a fresh
+  // generic seed. Display name sync lives in a follow-up.
+  useEffect(() => {
+    if (status !== 'authenticated' || !account?.avatarUrl) return;
+    if (!account.avatarUrl.startsWith(AVATAR_URL_PREFIX)) return;
+    const seed = account.avatarUrl.slice(AVATAR_URL_PREFIX.length).trim();
+    if (!seed) return;
+    setLocalProfileAvatarSeed(seed);
+  }, [status, account?.avatarUrl]);
 
   if (shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: status })) {
     return (
