@@ -48,6 +48,8 @@ type CanonicalConversationLike = {
   statusIndicator?: Conversation['statusIndicator'];
   updatedAtLabel?: string;
   unread?: number;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
   name: string;
   subtitle: string;
   participants: string[];
@@ -350,6 +352,25 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const unread = Math.max(scopedUnread, sessionUnreadCount(session));
       const taskActivities = this.taskActivities(sessionId);
 
+      // Surface fork lineage stored in canonical metadata so cloned
+      // canonical fork sessions render the same Forked-from pill +
+      // sidebar nesting as native local forks.
+      const canonicalMetadata = sessionViewMetadata(session);
+      const canonicalForkMetadata =
+        canonicalMetadata && typeof canonicalMetadata === 'object'
+          ? (canonicalMetadata as Record<string, unknown>).fork
+          : undefined;
+      const canonicalForkRecord =
+        canonicalForkMetadata && typeof canonicalForkMetadata === 'object'
+          ? canonicalForkMetadata as Record<string, unknown>
+          : undefined;
+      const canonicalForkedFromSessionId = typeof canonicalForkRecord?.forkedFromSessionId === 'string'
+        ? (canonicalForkRecord.forkedFromSessionId as string).trim() || null
+        : null;
+      const canonicalForkedFromMessageId = typeof canonicalForkRecord?.forkedFromMessageId === 'string'
+        ? (canonicalForkRecord.forkedFromMessageId as string).trim() || null
+        : null;
+
       return {
         ...conversation,
         canonicalSessionId: sessionId,
@@ -363,7 +384,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
-        metadata: sessionViewMetadata(session),
+        metadata: canonicalMetadata,
         directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Direct chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
@@ -375,6 +396,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalDelegatedExchangeCount: taskActivities.length,
         canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
         canonicalPresenceSummary: indexes.presenceSummaryBySessionId.get(sessionId),
+        forkedFromSessionId: canonicalForkedFromSessionId ?? conversation.forkedFromSessionId ?? null,
+        forkedFromMessageId: canonicalForkedFromMessageId ?? conversation.forkedFromMessageId ?? null,
       };
     },
     buildChatConversations(conversations, buildSubtitle) {

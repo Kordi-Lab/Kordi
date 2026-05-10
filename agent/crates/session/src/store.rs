@@ -96,6 +96,22 @@ pub fn create_session_with_id_and_parent(
     writes::create_session_with_id_and_parent(conn, session_id, cwd, parent_session_id, None)
 }
 
+pub fn create_session_with_id_parent_and_message(
+    conn: &Connection,
+    session_id: &str,
+    cwd: &str,
+    parent_session_id: Option<&str>,
+    parent_session_message_id: Option<&str>,
+) -> Result<()> {
+    writes::create_session_with_id_and_parent(
+        conn,
+        session_id,
+        cwd,
+        parent_session_id,
+        parent_session_message_id,
+    )
+}
+
 pub fn append_entry(
     conn: &Connection,
     session_id: &str,
