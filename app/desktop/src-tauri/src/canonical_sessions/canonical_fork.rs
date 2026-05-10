@@ -57,9 +57,15 @@ fn list_canonical_messages(
 }
 
 fn classify_role(message: &CanonicalSessionMessage) -> CanonicalRole {
+    // Canonical session messages use a wider role vocabulary than the
+    // participant table: `user` for the local human, `person` for
+    // other humans, `owned-agent` / `external-agent` for agents, and
+    // `system` for delegation/processing notices we want to drop.
     match message.sender_role.as_str() {
-        "self" | "person" => CanonicalRole::Human,
-        "delegate" | "agent" => CanonicalRole::Agent,
+        "user" | "self" | "person" | "human" => CanonicalRole::Human,
+        "owned-agent" | "external-agent" | "agent" | "delegate" | "assistant" => {
+            CanonicalRole::Agent
+        }
         _ => CanonicalRole::Skip,
     }
 }
