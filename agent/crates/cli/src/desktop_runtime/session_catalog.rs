@@ -131,6 +131,8 @@ fn session_summary_from_row(
         updated_at_label,
         message_count: row.entry_count.max(0) as usize,
         draft: false,
+        forked_from_session_id: row.parent_session_id,
+        forked_from_message_id: row.parent_session_message_id,
     })
 }
 
@@ -446,6 +448,7 @@ mod tests {
             leaf_id: None,
             entry_count: 0,
             parent_session_id: None,
+            parent_session_message_id: None,
             session_scope: "project".to_string(),
             project_root: Some("/tmp/project".to_string()),
         };

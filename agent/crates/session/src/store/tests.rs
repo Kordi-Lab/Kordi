@@ -22,6 +22,27 @@ fn make_user_entry_at(parent: Option<&str>, timestamp: chrono::DateTime<Utc>) ->
     }
 }
 
+fn make_assistant_entry(parent: Option<&str>) -> SessionEntry {
+    SessionEntry::Message {
+        base: EntryBase {
+            id: EntryId::generate(),
+            parent_id: parent.map(|s| EntryId(s.to_string())),
+            timestamp: Utc::now(),
+        },
+        message: AgentMessage::Assistant(AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "ok".to_string(),
+            }],
+            provider: "test".into(),
+            model: "test".into(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    }
+}
+
 #[test]
 fn test_create_and_append() {
     let conn = open_memory().unwrap();
@@ -83,11 +104,17 @@ fn test_fork_session_from_entry_creates_new_session() {
     let forked = fork_session_from_entry(&conn, &sid, leaf_id.as_str(), "/tmp/test").unwrap();
     assert_ne!(forked.session_id, sid);
     assert_eq!(forked.branch_leaf_id.as_deref(), Some(middle_id.as_str()));
+    assert_eq!(forked.source_session_id, sid);
+    assert_eq!(forked.source_entry_id, leaf_id.as_str());
 
     let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
     assert_eq!(
         forked_session.parent_session_id.as_deref(),
         Some(sid.as_str())
+    );
+    assert_eq!(
+        forked_session.parent_session_message_id.as_deref(),
+        Some(leaf_id.as_str())
     );
     assert_eq!(forked_session.leaf_id.as_deref(), Some(middle_id.as_str()));
 
@@ -95,6 +122,92 @@ fn test_fork_session_from_entry_creates_new_session() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].entry_id, root_id.as_str());
     assert_eq!(entries[1].entry_id, middle_id.as_str());
+}
+
+#[test]
+fn test_fork_session_from_root_user_message_creates_empty_branch() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let root = make_user_entry(None);
+    let root_id = root.base().id.clone();
+    append_entry(&conn, &sid, &root).unwrap();
+
+    let forked = fork_session_from_entry(&conn, &sid, root_id.as_str(), "/tmp/test").unwrap();
+    assert!(forked.branch_leaf_id.is_none());
+    assert_eq!(forked.source_entry_id, root_id.as_str());
+
+    let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
+    assert!(forked_session.leaf_id.is_none());
+    assert_eq!(
+        forked_session.parent_session_id.as_deref(),
+        Some(sid.as_str())
+    );
+    assert_eq!(
+        forked_session.parent_session_message_id.as_deref(),
+        Some(root_id.as_str())
+    );
+    assert!(get_entries(&conn, &forked.session_id).unwrap().is_empty());
+}
+
+#[test]
+fn test_fork_session_from_assistant_entry_returns_error() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let root = make_user_entry(None);
+    let root_id = root.base().id.clone();
+    append_entry(&conn, &sid, &root).unwrap();
+
+    let assistant = make_assistant_entry(Some(root_id.as_str()));
+    let assistant_id = assistant.base().id.clone();
+    append_entry(&conn, &sid, &assistant).unwrap();
+
+    let err =
+        fork_session_from_entry(&conn, &sid, assistant_id.as_str(), "/tmp/test").unwrap_err();
+    assert!(err.to_string().to_lowercase().contains("invalid entry"));
+
+    // Source is unchanged and no orphan child session is left behind.
+    let listed = list_all_sessions(&conn).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].session_id, sid);
+}
+
+#[test]
+fn test_fork_session_from_unknown_entry_returns_error() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let err = fork_session_from_entry(&conn, &sid, "missing-entry", "/tmp/test").unwrap_err();
+    assert!(err.to_string().to_lowercase().contains("not found"));
+}
+
+#[test]
+fn test_fork_session_does_not_mutate_source_session() {
+    let conn = open_memory().unwrap();
+    let sid = create_session(&conn, "/tmp/test").unwrap();
+
+    let root = make_user_entry(None);
+    let root_id = root.base().id.clone();
+    append_entry(&conn, &sid, &root).unwrap();
+
+    let middle = make_user_entry(Some(root_id.as_str()));
+    let middle_id = middle.base().id.clone();
+    append_entry(&conn, &sid, &middle).unwrap();
+
+    let before_entries = get_entries(&conn, &sid).unwrap();
+    let before_session = get_session(&conn, &sid).unwrap().unwrap();
+
+    let _ = fork_session_from_entry(&conn, &sid, middle_id.as_str(), "/tmp/test").unwrap();
+
+    let after_entries = get_entries(&conn, &sid).unwrap();
+    let after_session = get_session(&conn, &sid).unwrap().unwrap();
+
+    assert_eq!(after_entries, before_entries);
+    assert_eq!(after_session.leaf_id, before_session.leaf_id);
+    assert_eq!(after_session.entry_count, before_session.entry_count);
+    assert!(after_session.parent_session_id.is_none());
+    assert!(after_session.parent_session_message_id.is_none());
 }
 
 #[test]

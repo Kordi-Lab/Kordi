@@ -112,6 +112,8 @@ mod tests {
                 updated_at_label: "Now".to_string(),
                 message_count: 2,
                 draft: false,
+                forked_from_session_id: None,
+                forked_from_message_id: None,
             }],
             projects: Vec::new(),
             active_session: DesktopChatSessionDetail {
@@ -139,6 +141,8 @@ mod tests {
                 },
                 project: None,
                 reflection_lesson_artifacts: Vec::new(),
+                forked_from_session_id: None,
+                forked_from_message_id: None,
                 messages: vec![
                     DesktopChatMessage {
                         role: "user".to_string(),
@@ -229,6 +233,8 @@ mod tests {
             },
             project: None,
             reflection_lesson_artifacts: Vec::new(),
+            forked_from_session_id: None,
+            forked_from_message_id: None,
             messages: vec![
                 DesktopChatMessage {
                     role: "user".to_string(),

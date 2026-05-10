@@ -242,6 +242,8 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
             updated_at_label: "Now".to_string(),
             message_count: 1,
             draft: false,
+            forked_from_session_id: None,
+            forked_from_message_id: None,
         }],
         projects: Vec::new(),
         active_session: kordi_cli::desktop_runtime::DesktopChatSessionDetail {
@@ -275,6 +277,8 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 shared_sources: Vec::new(),
             }),
             reflection_lesson_artifacts: Vec::new(),
+            forked_from_session_id: None,
+            forked_from_message_id: None,
             messages: vec![kordi_cli::desktop_runtime::DesktopChatMessage {
                 role: "user".to_string(),
                 sender: Some("You".to_string()),
@@ -319,6 +323,8 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         updated_at_label: "Draft".to_string(),
         message_count: 0,
         draft: true,
+        forked_from_session_id: None,
+        forked_from_message_id: None,
     };
     let blank_detail = kordi_cli::desktop_runtime::DesktopChatSessionDetail {
         id: "draft:local-chat".to_string(),
@@ -345,6 +351,8 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         },
         project: None,
         reflection_lesson_artifacts: Vec::new(),
+        forked_from_session_id: None,
+        forked_from_message_id: None,
         messages: Vec::new(),
     };
 
