@@ -66,7 +66,6 @@ import {
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { cn } from '@/lib/utils';
 
@@ -342,17 +341,16 @@ export function ChatsPage({
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
-  // Forking only works on local chat/project sessions; group sessions
-  // live in the canonical store across multiple bridge participants
-  // and bridge sessions live remotely, so excluding them up-front
-  // avoids surfacing an icon that would always error on click.
+  // Forking is supported for local sessions and canonical group /
+  // bridge sessions (the backend snapshots canonical messages into a
+  // fresh local fork so the user can continue privately). The local
+  // draft and ephemeral bridge transports are still excluded because
+  // they have no persistent backing to read from.
   const activeConversationIsForkable = Boolean(
     onForkChatMessage
       && activeConv.id
       && activeConv.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
-      && !activeConv.id.startsWith('bridge:')
-      && !activeConv.id.startsWith('session:group:')
-      && !isCanonicalBridgeSessionId(activeConv.id),
+      && !activeConv.id.startsWith('bridge:'),
   );
   const handleForkMessage = activeConversationIsForkable && onForkChatMessage
     ? (entryId: string) => {

@@ -733,21 +733,31 @@ pub async fn desktop_chat_fork_session_from_message(
     if trimmed_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
         return Err("Save the draft session before forking from it.".to_string());
     }
-    if !session_exists_globally(trimmed_session_id)? {
-        return Err("Only local chat sessions can be forked.".to_string());
-    }
 
     let cwd = chat_cwd()?;
+    let is_canonical_session = trimmed_session_id.starts_with("session:");
+    let is_local_session = !is_canonical_session && session_exists_globally(trimmed_session_id)?;
+    if !is_canonical_session && !is_local_session {
+        return Err(format!("Session not found: {trimmed_session_id}"));
+    }
 
-    // Forking only reads the source session's already-persisted entries
-    // up through the clicked message; a turn running concurrently on
-    // the source only appends new entries to its leaf, so the two
-    // operations don't conflict and the fork should not be blocked.
-    let outcome = kordi_cli::desktop_runtime::fork_session_from_message(
-        trimmed_session_id,
-        trimmed_entry_id,
-    )
-    .map_err(|err| err.to_string())?;
+    // Local sessions read from the kordi_session store; canonical
+    // sessions (group / bridge / direct-agent) are translated from
+    // canonical messages into a fresh local snapshot. Both produce a
+    // local fork the user continues from.
+    let outcome = if is_canonical_session {
+        crate::canonical_sessions::fork_canonical_session_into_local_chat(
+            trimmed_session_id,
+            trimmed_entry_id,
+            &cwd.display().to_string(),
+        )?
+    } else {
+        kordi_cli::desktop_runtime::fork_session_from_message(
+            trimmed_session_id,
+            trimmed_entry_id,
+        )
+        .map_err(|err| err.to_string())?
+    };
 
     let runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
         std::path::PathBuf::from(&outcome.cwd),
