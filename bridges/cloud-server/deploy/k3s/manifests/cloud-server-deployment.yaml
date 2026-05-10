@@ -1,0 +1,92 @@
+# DRAFT — do NOT apply this in session 1.
+#
+# Lands cleanly in session 5 of the rollout (after Postgres + sqlx port).
+# At that point DATABASE_URL is added; for now this manifest still references
+# the SQLite-mounted PVC. Deployment is documented but not yet a target you
+# should `kubectl apply -f` until the cloud-server can talk to Postgres.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kordi-cloud-server
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-server
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kordi-cloud-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kordi-cloud-server
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: server
+          image: kordi-cloud-server:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - "serve"
+            - "--port"
+            - "17081"
+            - "--db"
+            - "/var/lib/kordi-cloud/kordi-cloud.db"
+          ports:
+            - name: http
+              containerPort: 17081
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kordi-cloud
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kordi-cloud-server-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kordi-cloud-server-data
+  namespace: kordi-cloud
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kordi-cloud-server
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: kordi-cloud-server
+  ports:
+    - name: http
+      port: 17081
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
