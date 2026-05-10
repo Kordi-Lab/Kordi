@@ -591,6 +591,19 @@ export function ChatsPage({
                 <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
               <TypeBadge type={activeConv.type} compact />
+              {activeForkSourceSessionId ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                  disabled={!onSelectSession}
+                  className="app-fork-source-pill inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 text-[10.5px] font-medium text-slate-300 transition hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  title={`Forked from "${activeForkSourceTitle}" — open the source session`}
+                  data-kordi-window-drag="false"
+                >
+                  <Split className="h-2.5 w-2.5" />
+                  <span className="max-w-[12rem] truncate">Forked from {activeForkSourceTitle}</span>
+                </button>
+              ) : null}
             </div>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
               {activeSessionSubtitle ? (
@@ -635,20 +648,6 @@ export function ChatsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {activeForkSourceSessionId ? (
-              <div className="flex justify-center pb-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                  disabled={!onSelectSession}
-                  className="app-fork-source-banner inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white/[0.04] disabled:hover:text-slate-300"
-                  title={`Forked from "${activeForkSourceTitle}" — open the source session`}
-                >
-                  <Split className="h-3 w-3" />
-                  <span>Forked from {activeForkSourceTitle}</span>
-                </button>
-              </div>
-            ) : null}
             {attributedTranscriptMessages.map((msg, idx) => (
               <MessageBubble
                 key={transcriptMessageRenderKey(msg, idx)}
