@@ -1,0 +1,15 @@
+{
+  "name": "kordi-website",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1430",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 1431",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "vite": "^8.0.4"
+  }
+}
