@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import {
@@ -8,6 +8,7 @@ import {
   writeAvatarPreference,
   type AvatarPreference,
 } from '@/features/cloud/avatarPreference';
+import { CloudAuthError } from '@/features/cloud/authClient';
 import {
   readLoginModePreference,
   writeLoginModePreference,
@@ -73,6 +74,30 @@ const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PASSWORD_MIN_LENGTH = 8;
 const COMING_SOON_HINT = 'Coming soon';
+
+function messageForError(error: CloudAuthError): string {
+  switch (error.code) {
+    case 'invalid_email':
+      return 'That email address looks malformed.';
+    case 'weak_password':
+      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+    case 'email_in_use':
+      return 'An account with that email already exists. Try signing in instead.';
+    case 'invalid_credentials':
+      return 'Email or password is incorrect.';
+    case 'rate_limited':
+      return 'Too many attempts. Wait a moment, then try again.';
+    case 'invalid_session':
+    case 'account_missing':
+      return 'Your session expired. Please sign in again.';
+    case 'network_error':
+      return 'Could not reach the cloud server. Check your connection and try again.';
+    case 'server_error':
+      return 'The server hit an unexpected error. Please try again.';
+    default:
+      return error.message || 'Something went wrong.';
+  }
+}
 
 function initialAvatarPreference(initialMode: CloudLoginMode): AvatarPreference {
   const existing = readAvatarPreference();
@@ -213,11 +238,34 @@ function AvatarPicker({
   );
 }
 
-export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudLoginMode }) {
+export type CloudLoginPageProps = {
+  initialMode?: CloudLoginMode;
+  onSignIn?: (email: string, password: string) => Promise<void>;
+  onSignUp?: (input: {
+    email: string;
+    password: string;
+    displayName?: string;
+    avatarSeed?: string;
+  }) => Promise<void>;
+};
+
+const noopSignIn = async () => {
+  /* preview-only fallback for tests / browser */
+};
+const noopSignUp = noopSignIn;
+
+export function CloudLoginPage({
+  initialMode = 'login',
+  onSignIn = noopSignIn,
+  onSignUp = noopSignUp,
+}: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => initialAvatarPreference(mode));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | undefined>(undefined);
   const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSignup = mode === 'signup';
@@ -263,6 +311,51 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudL
 
   const emailInvalid = email.length > 0 && !EMAIL_PATTERN.test(email);
   const passwordTooShort = isSignup && password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
+  const canSubmit = useMemo(() => {
+    if (submitting) return false;
+    if (!EMAIL_PATTERN.test(email)) return false;
+    if (password.length < PASSWORD_MIN_LENGTH) return false;
+    return true;
+  }, [email, password, submitting]);
+
+  const submitLabel = isSignup
+    ? submitting
+      ? 'Creating account…'
+      : 'Create account'
+    : submitting
+      ? 'Signing in…'
+      : 'Continue';
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      if (isSignup) {
+        const trimmedName = displayName.trim();
+        const seed = avatarPref.kind === 'seed' ? avatarPref.seed : undefined;
+        await onSignUp({
+          email,
+          password,
+          displayName: trimmedName.length > 0 ? trimmedName : undefined,
+          avatarSeed: seed,
+        });
+      } else {
+        await onSignIn(email, password);
+      }
+    } catch (caught) {
+      if (caught instanceof CloudAuthError) {
+        setSubmitError(messageForError(caught));
+      } else if (caught instanceof Error) {
+        setSubmitError(caught.message);
+      } else {
+        setSubmitError('Something went wrong. Try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const tabBaseClass = `relative z-10 rounded-full px-3 py-1.5 ${TYPE_TAB} transition`;
   const tabActiveText = INK;
@@ -338,7 +431,7 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudL
           </button>
         </div>
 
-        <form className="mt-5 grid gap-3.5" onSubmit={(event) => event.preventDefault()}>
+        <form className="mt-5 grid gap-3.5" onSubmit={handleSubmit}>
           {isSignup ? (
             <>
               <AvatarPicker
@@ -352,10 +445,8 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudL
                 type="text"
                 autoComplete="name"
                 placeholder="Ada Lovelace"
-                value=""
-                onChange={() => {
-                  /* preview-only; controlled by future auth slice */
-                }}
+                value={displayName}
+                onChange={setDisplayName}
               />
             </>
           ) : null}
@@ -379,14 +470,22 @@ export function CloudLoginPage({ initialMode = 'login' }: { initialMode?: CloudL
             validation={passwordTooShort ? 'hint' : undefined}
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
+          {submitError ? (
+            <div
+              role="alert"
+              className={`rounded-[14px] border border-[oklch(0.62_0.20_25/0.30)] bg-[oklch(0.97_0.04_25/0.55)] px-4 py-2.5 ${TYPE_HINT} normal-case tracking-normal text-[oklch(0.42_0.18_25)]`}
+            >
+              {submitError}
+            </div>
+          ) : null}
           <button
             type="submit"
-            disabled
-            title={COMING_SOON_HINT}
-            aria-label={isSignup ? 'Create account — coming soon' : 'Continue — coming soon'}
-            className={`mt-1 h-12 rounded-full border border-[oklch(0.27_0.02_125/0.10)] bg-[oklch(0.22_0.02_125)] ${TYPE_ACTION} text-[oklch(0.985_0.015_82)] shadow-[0_10px_24px_oklch(0.25_0.03_125/0.18)] disabled:cursor-not-allowed disabled:opacity-90`}
+            disabled={!canSubmit}
+            aria-busy={submitting || undefined}
+            aria-label={isSignup ? 'Create account' : 'Sign in'}
+            className={`mt-1 h-12 rounded-full border border-[oklch(0.27_0.02_125/0.10)] bg-[oklch(0.22_0.02_125)] ${TYPE_ACTION} text-[oklch(0.985_0.015_82)] shadow-[0_10px_24px_oklch(0.25_0.03_125/0.18)] transition disabled:cursor-not-allowed disabled:opacity-70`}
           >
-            {isSignup ? 'Create account' : 'Continue'}
+            {submitLabel}
           </button>
         </form>
       </main>

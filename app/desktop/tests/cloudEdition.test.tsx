@@ -95,16 +95,16 @@ test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
 });
 
-test('disabled social buttons surface a "Coming soon" affordance', () => {
+test('disabled social buttons surface a per-provider coming-soon affordance', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
   assert.match(markup, /title="Google — coming soon"/);
   assert.match(markup, /title="GitHub — coming soon"/);
   assert.match(markup, /title="X — coming soon"/);
-  assert.match(markup, /title="Coming soon"/); // submit button keeps plain copy
   assert.match(markup, /aria-label="Google sign-in coming soon"/);
   assert.match(markup, /aria-label="GitHub sign-in coming soon"/);
   assert.match(markup, /aria-label="X sign-in coming soon"/);
-  assert.match(markup, /aria-label="Continue — coming soon"/);
+  // The submit button is a real, validatable control now — no placeholder copy.
+  assert.match(markup, /aria-label="Sign in"/);
 });
 
 test('social buttons render icon marks and no provider text label', () => {
@@ -120,9 +120,10 @@ test('social buttons render icon marks and no provider text label', () => {
   assert.doesNotMatch(markup, /<button[^>]*data-provider="github"[^>]*>[^<]*GitHub/);
 });
 
-test('signup-mode submit button is the create-account variant with a coming-soon hint', () => {
+test('signup-mode submit button is the create-account variant', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
-  assert.match(markup, /aria-label="Create account — coming soon"/);
+  assert.match(markup, /aria-label="Create account"/);
+  assert.match(markup, />Create account<\/button>/);
 });
 
 test('login-mode tab pill announces aria-pressed for accessibility', () => {

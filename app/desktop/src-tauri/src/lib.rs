@@ -3,6 +3,7 @@ mod auth;
 mod bridge;
 mod canonical_sessions;
 mod chat;
+mod cloud_session;
 mod project;
 #[cfg(test)]
 mod test_support;
@@ -188,7 +189,10 @@ pub fn run() {
             chat::desktop_chat_start_message,
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
-            chat::desktop_chat_turn_state
+            chat::desktop_chat_turn_state,
+            cloud_session::cloud_session_store,
+            cloud_session::cloud_session_load,
+            cloud_session::cloud_session_clear
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");

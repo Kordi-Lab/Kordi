@@ -1,5 +1,9 @@
 pub mod auth;
 pub mod cloud_auth;
+pub mod cloud_auth_routes;
+pub mod cloud_password;
+pub mod cloud_rate_limit;
+pub mod cloud_session;
 pub mod contacts;
 pub mod discovery;
 pub mod endpoints;
@@ -90,11 +94,15 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
     add_column_if_missing(conn, "registered_nodes", "account_id", "TEXT")?;
     add_column_if_missing(conn, "registered_nodes", "device_id", "TEXT")?;
 
+    add_column_if_missing(conn, "cloud_accounts", "password_hash", "TEXT")?;
+    add_column_if_missing(conn, "cloud_accounts", "password_algorithm", "TEXT")?;
+    add_column_if_missing(conn, "cloud_accounts", "password_updated_at", "TEXT")?;
+
     migrate_registered_nodes_to_core(conn)?;
     migrate_server_projects_to_core(conn)?;
     remove_legacy_user_state(conn)?;
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_device\n         ON registered_nodes (account_id, device_id);",
+        "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_device\n         ON registered_nodes (account_id, device_id);\n         CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_accounts_email_lower\n         ON cloud_accounts(LOWER(primary_email)) WHERE primary_email IS NOT NULL;",
     )
     .map_err(ServerInitError::Schema)?;
     Ok(())
@@ -288,6 +296,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
 
     Router::new()
         .merge(auth::routes(state.clone()))
+        .merge(cloud_auth_routes::routes(state.clone()))
         .merge(contacts::routes(state.clone()))
         .merge(discovery::routes(state.clone()))
         .merge(keys::routes(state.clone()))
@@ -317,9 +326,12 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|e| format!("bind: {}", e))?;
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| format!("serve: {}", e))
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| format!("serve: {}", e))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

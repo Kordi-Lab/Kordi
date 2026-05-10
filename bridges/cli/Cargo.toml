@@ -31,3 +31,9 @@ async-trait = "0.1"
 snow = "0.9"
 tower-http = { version = "0.5", features = ["cors"] }
 tower = { version = "0.4", features = ["limit"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
