@@ -26,7 +26,39 @@ use super::cloud_session::{
     bump_expiry, hash_session_token, issue_session, lookup_session, revoke_session,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
+use super::db_runner::DbRunnerError;
 use super::ServerState;
+
+/// Internal outcome for the login closure that runs inside the single-writer
+/// runner. The handler converts this into a `Response` after the blocking
+/// section completes, so all rate-limit bookkeeping happens on the async
+/// side where the limiter lives.
+enum LoginOutcome {
+    Authenticated {
+        account: AccountResponse,
+        session_token: String,
+        session_expires_at: chrono::DateTime<chrono::Utc>,
+    },
+    AccountMissingOrNoPassword {
+        account_id: Option<String>,
+    },
+    WrongPassword {
+        account_id: String,
+    },
+    PasswordVerifyError,
+    DbError,
+}
+
+#[derive(Debug)]
+enum LoginRunnerError {
+    Db(DbRunnerError),
+}
+
+impl From<DbRunnerError> for LoginRunnerError {
+    fn from(value: DbRunnerError) -> Self {
+        Self::Db(value)
+    }
+}
 
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
@@ -535,8 +567,8 @@ async fn login(
         return limited_response(retry_after);
     }
 
-    let mut db = match state.open_connection() {
-        Ok(db) => db,
+    let runner = match state.db_runner().await {
+        Ok(runner) => runner.clone(),
         Err(_) => {
             return err(
                 "server_error",
@@ -546,163 +578,175 @@ async fn login(
         }
     };
 
-    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> =
-        match db
-            .query_row(
-                "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
-                 FROM cloud_accounts WHERE LOWER(primary_email) = ?1",
-                rusqlite::params![normalized_email],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                    ))
-                },
-            )
-            .optional()
-        {
-            Ok(value) => value,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Database error.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
+    // Move the entire DB + password-verify body into the single-writer
+    // runner. Password verification (argon2) is CPU-bound; doing it inside
+    // spawn_blocking keeps it off the async executor.
+    let plaintext_password = req.password.clone();
+    let email_for_query = normalized_email.clone();
+    let peer_ip_str = peer_ip.map(|ip| ip.to_string());
+    let outcome = match runner
+        .write::<_, LoginOutcome, LoginRunnerError>(move |conn| {
+            let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> =
+                match conn
+                    .query_row(
+                        "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
+                         FROM cloud_accounts WHERE LOWER(primary_email) = ?1",
+                        rusqlite::params![email_for_query],
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                {
+                    Ok(value) => value,
+                    Err(_) => return Ok(LoginOutcome::DbError),
+                };
+
+            let Some((account_id, display_name, primary_email, avatar_url, password_hash)) = row else {
+                return Ok(LoginOutcome::AccountMissingOrNoPassword { account_id: None });
+            };
+            let Some(password_hash) = password_hash else {
+                return Ok(LoginOutcome::AccountMissingOrNoPassword {
+                    account_id: Some(account_id),
+                });
+            };
+
+            let verified = match verify_password(&password_hash, &plaintext_password) {
+                Ok(value) => value,
+                Err(_) => return Ok(LoginOutcome::PasswordVerifyError),
+            };
+            if !verified {
+                let _ = write_audit(
+                    conn,
+                    Some(&account_id),
+                    None,
+                    "auth.login.failure",
+                    serde_json::json!({"ip": peer_ip_str}),
+                );
+                return Ok(LoginOutcome::WrongPassword { account_id });
             }
-        };
 
-    let Some((account_id, display_name, primary_email, avatar_url, password_hash)) = row else {
-        rate_limiter.record_email_failure(&normalized_email);
-        return err(
-            "invalid_credentials",
-            "Email or password is incorrect.",
-            StatusCode::UNAUTHORIZED,
-        );
-    };
-    let Some(password_hash) = password_hash else {
-        // Account exists (e.g. via OAuth) but has no password set.
-        rate_limiter.record_email_failure(&normalized_email);
-        return err(
-            "invalid_credentials",
-            "Email or password is incorrect.",
-            StatusCode::UNAUTHORIZED,
-        );
-    };
+            let now = Utc::now().to_rfc3339();
+            let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
+            let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
 
-    let verified = match verify_password(&password_hash, &req.password) {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not verify password.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    if !verified {
-        rate_limiter.record_email_failure(&normalized_email);
-        let conn_for_audit = state.open_connection().ok();
-        if let Some(c) = conn_for_audit.as_ref() {
+            let tx = match conn.transaction() {
+                Ok(tx) => tx,
+                Err(_) => return Ok(LoginOutcome::DbError),
+            };
+
+            if tx
+                .execute(
+                    "INSERT INTO cloud_devices \
+                     (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                    rusqlite::params![
+                        device_id,
+                        account_id,
+                        SIGNUP_DEFAULT_DEVICE_NAME,
+                        device_public_key,
+                        now,
+                    ],
+                )
+                .is_err()
+            {
+                return Ok(LoginOutcome::DbError);
+            }
+
+            let issued = match issue_session(&tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS) {
+                Ok(value) => value,
+                Err(_) => return Ok(LoginOutcome::DbError),
+            };
+
             let _ = write_audit(
-                c,
+                &tx,
                 Some(&account_id),
-                None,
-                "auth.login.failure",
-                serde_json::json!({"ip": peer_ip.map(|ip| ip.to_string())}),
+                Some(&device_id),
+                "auth.login.success",
+                serde_json::json!({"ip": peer_ip_str}),
             );
-        }
-        return err(
-            "invalid_credentials",
-            "Email or password is incorrect.",
-            StatusCode::UNAUTHORIZED,
-        );
-    }
-    rate_limiter.clear_email_failures(&normalized_email);
 
-    let now = Utc::now().to_rfc3339();
-    let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
-    let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
+            if tx.commit().is_err() {
+                return Ok(LoginOutcome::DbError);
+            }
 
-    let tx = match db.transaction() {
-        Ok(tx) => tx,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not start transaction.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
-    if tx
-        .execute(
-            "INSERT INTO cloud_devices \
-             (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            rusqlite::params![
-                device_id,
-                account_id,
-                SIGNUP_DEFAULT_DEVICE_NAME,
-                device_public_key,
-                now,
-            ],
-        )
-        .is_err()
+            Ok(LoginOutcome::Authenticated {
+                account: AccountResponse {
+                    account_id,
+                    display_name,
+                    primary_email,
+                    avatar_url,
+                    // Login creates a fresh device row; the bridges node for
+                    // it gets created when register-device runs next. /me
+                    // will see it.
+                    node_id: None,
+                    password_set: true,
+                },
+                session_token: issued.plaintext_token,
+                session_expires_at: issued.expires_at,
+            })
+        })
+        .await
     {
-        return err(
-            "server_error",
-            "Could not register device.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    let issued = match issue_session(&tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS) {
-        Ok(value) => value,
+        Ok(outcome) => outcome,
         Err(_) => {
             return err(
                 "server_error",
-                "Could not issue session.",
+                "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
     };
 
-    let _ = write_audit(
-        &tx,
-        Some(&account_id),
-        Some(&device_id),
-        "auth.login.success",
-        serde_json::json!({"ip": peer_ip.map(|ip| ip.to_string())}),
-    );
-
-    if tx.commit().is_err() {
-        return err(
+    match outcome {
+        LoginOutcome::AccountMissingOrNoPassword { .. } => {
+            rate_limiter.record_email_failure(&normalized_email);
+            err(
+                "invalid_credentials",
+                "Email or password is incorrect.",
+                StatusCode::UNAUTHORIZED,
+            )
+        }
+        LoginOutcome::WrongPassword { .. } => {
+            rate_limiter.record_email_failure(&normalized_email);
+            err(
+                "invalid_credentials",
+                "Email or password is incorrect.",
+                StatusCode::UNAUTHORIZED,
+            )
+        }
+        LoginOutcome::PasswordVerifyError => err(
             "server_error",
-            "Could not commit login.",
+            "Could not verify password.",
             StatusCode::INTERNAL_SERVER_ERROR,
-        );
+        ),
+        LoginOutcome::DbError => err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+        LoginOutcome::Authenticated {
+            account,
+            session_token,
+            session_expires_at,
+        } => {
+            rate_limiter.clear_email_failures(&normalized_email);
+            let body = AuthResponse {
+                account,
+                session: SessionResponse {
+                    token: session_token,
+                    expires_at: session_expires_at.to_rfc3339(),
+                },
+            };
+            (StatusCode::OK, Json(body)).into_response()
+        }
     }
-
-    let body = AuthResponse {
-        account: AccountResponse {
-            account_id,
-            display_name,
-            primary_email,
-            avatar_url,
-            // Login creates a fresh device row; the bridges node for it
-            // gets created when register-device runs next. /me will see it.
-            node_id: None,
-            password_set: true,
-        },
-        session: SessionResponse {
-            token: issued.plaintext_token,
-            expires_at: issued.expires_at.to_rfc3339(),
-        },
-    };
-    (StatusCode::OK, Json(body)).into_response()
 }
 
 async fn me(

@@ -5,6 +5,7 @@ pub mod cloud_password;
 pub mod cloud_rate_limit;
 pub mod cloud_session;
 pub mod contacts;
+pub mod db_runner;
 pub mod discovery;
 pub mod endpoints;
 pub mod invites;
@@ -29,6 +30,10 @@ use crate::error::ServerInitError;
 pub struct ServerState {
     pub db_path: PathBuf,
     pub derp_clients: Mutex<HashMap<String, mpsc::UnboundedSender<Message>>>,
+    /// Single-writer SQLite runner used by every cloud-edition handler.
+    /// Lazily initialised on first access so existing tests that construct
+    /// `ServerState` directly (without going through `run`) still work.
+    pub db_runner: tokio::sync::OnceCell<db_runner::DbRunner>,
 }
 
 impl ServerState {
@@ -36,6 +41,7 @@ impl ServerState {
         Self {
             db_path,
             derp_clients: Mutex::new(HashMap::new()),
+            db_runner: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -44,9 +50,18 @@ impl ServerState {
         configure_server_connection(&conn)?;
         Ok(conn)
     }
+
+    /// Get-or-initialise the shared single-writer runner. The first caller
+    /// pays the connection-open cost; subsequent callers reuse the same
+    /// `DbRunner`.
+    pub async fn db_runner(&self) -> Result<&db_runner::DbRunner, db_runner::DbRunnerError> {
+        self.db_runner
+            .get_or_try_init(|| async { db_runner::DbRunner::new(self.db_path.clone()) })
+            .await
+    }
 }
 
-fn configure_server_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(crate) fn configure_server_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.busy_timeout(Duration::from_secs(5))?;
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;\n         PRAGMA journal_mode = WAL;\n         PRAGMA synchronous = NORMAL;",
