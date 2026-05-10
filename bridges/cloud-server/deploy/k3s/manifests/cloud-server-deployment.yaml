@@ -1,10 +1,24 @@
-# DRAFT — do NOT apply this in session 1.
+# Deployment for kordi-cloud-server in the kordi-cloud namespace.
 #
-# Lands cleanly in session 5 of the rollout (after Postgres + sqlx port).
-# At that point DATABASE_URL is added; for now this manifest still references
-# the SQLite-mounted PVC. Deployment is documented but not yet a target you
-# should `kubectl apply -f` until the cloud-server can talk to Postgres.
+# Reads DATABASE_URL from the postgres-credentials Secret. The Secret was
+# created in session 3 with key 'password'; we wire the full connection
+# string here using a non-secret hostname + a secret password.
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: kordi-cloud-server
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: kordi-cloud-server
+  ports:
+    - name: http
+      port: 17081
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +32,11 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: kordi-cloud-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
@@ -27,17 +46,29 @@ spec:
       containers:
         - name: server
           image: kordi-cloud-server:dev
+          # The local containerd image gets imported via
+          #   sudo k3s ctr images import kordi-cloud-server.tar
+          # so we never reach out to a registry.
           imagePullPolicy: IfNotPresent
           args:
             - "serve"
             - "--port"
             - "17081"
-            - "--db"
-            - "/var/lib/kordi-cloud/kordi-cloud.db"
           ports:
             - name: http
               containerPort: 17081
               protocol: TCP
+          env:
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: DATABASE_URL
+              # We assemble the URL inline rather than storing the full
+              # string in a Secret so the hostname can change with the
+              # cluster Service without rotating secrets.
+              value: "postgresql://kordi:$(PG_PASSWORD)@postgres.kordi-cloud.svc.cluster.local:5432/kordi_cloud"
           readinessProbe:
             httpGet:
               path: /health
@@ -57,36 +88,3 @@ spec:
             limits:
               cpu: "1"
               memory: "512Mi"
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/kordi-cloud
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: kordi-cloud-server-data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: kordi-cloud-server-data
-  namespace: kordi-cloud
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 5Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: kordi-cloud-server
-  namespace: kordi-cloud
-spec:
-  selector:
-    app.kubernetes.io/name: kordi-cloud-server
-  ports:
-    - name: http
-      port: 17081
-      targetPort: http
-      protocol: TCP
-  type: ClusterIP
