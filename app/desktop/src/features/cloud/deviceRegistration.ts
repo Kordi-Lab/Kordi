@@ -57,7 +57,7 @@ function defaultCoordinationUrl(): string {
     const value = meta?.VITE_KORDI_CLOUD_API_BASE?.trim();
     if (value) return value.replace(/\/+$/, '');
   }
-  return 'http://127.0.0.1:17080';
+  return 'http://127.0.0.1:17081';
 }
 
 async function registerCloudBridgeHost(input: {
@@ -103,43 +103,19 @@ export async function ensureCloudDeviceRegistered({
     return { nodeId: null, apiKey: null };
   }
 
-  const keypair = await loadOrCreateKeypair(accountId);
-  const authClient = client ?? new CloudAuthClient();
-  const coordination = coordinationUrl ?? defaultCoordinationUrl();
-  const displayName = account?.displayName ?? account?.primaryEmail ?? null;
+  // Pre-generate the device keypair — even though there's no live route to
+  // register it against right now, having the secret in the keychain means
+  // the future bridges/cli registration flow can pick it up without
+  // re-prompting the user. Cheap to compute and zero cost while idle.
+  const _keypair = await loadOrCreateKeypair(accountId);
+  void client;
+  void account;
+  void coordinationUrl;
+  void sessionToken;
 
-  try {
-    const result = await authClient.registerDevice(sessionToken, {
-      ed25519Pubkey: keypair.ed25519Pubkey,
-      x25519Pubkey: keypair.x25519Pubkey,
-      displayName: displayName ?? undefined,
-    });
-    await persistApiKey(accountId, result.apiKey);
-    // Register the cloud-issued bridges node as a desktop bridge host so the
-    // existing chat sidebar / contacts / mailbox flows pick it up. Failure
-    // here is not fatal — the cloud API still works; the chat surface just
-    // won't bind until the next attempt.
-    try {
-      await registerCloudBridgeHost({
-        coordination,
-        apiKey: result.apiKey,
-        nodeId: result.nodeId,
-        accountId,
-        displayName,
-        ownerName: displayName,
-      });
-    } catch {
-      // Swallow: persistence already succeeded, this is best-effort wiring.
-    }
-    return { nodeId: result.nodeId, apiKey: result.apiKey };
-  } catch (caught) {
-    // If the network is down, fall back to the cached key so the rest of
-    // the app can keep functioning offline. Re-throw auth errors so the UI
-    // can show them.
-    if (caught instanceof CloudAuthError && caught.code === 'network_error') {
-      const cached = await loadStoredApiKey(accountId);
-      return { nodeId: null, apiKey: cached };
-    }
-    throw caught;
-  }
+  // The cloud-server crate intentionally does NOT expose /v1/cloud/auth/register-device
+  // — that flow belongs to bridges/cli. Until the desktop's bridges binding
+  // is rebuilt against bridges/cli with real cloud-issued credentials, this
+  // helper is a no-op past keypair generation.
+  return { nodeId: null, apiKey: null };
 }

@@ -1,7 +1,10 @@
 // Cloud-edition auth HTTP client. Talks to bridges/cli's /v1/cloud/auth/* routes.
 // Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:17080';
+// Cloud-server default port. The local-first bridges/cli still listens on
+// 17080; the new kordi-cloud-server crate listens on 17081 so both can run
+// side-by-side during development.
+const DEFAULT_BASE_URL = 'http://127.0.0.1:17081';
 
 export type CloudAccount = {
   accountId: string;

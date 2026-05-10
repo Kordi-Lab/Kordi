@@ -180,7 +180,7 @@ mod tests {
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open in-memory db");
-        super::super::init_server_db(&conn).expect("init server db");
+        crate::schema::init_server_db(&conn).expect("init server db");
         conn
     }
 

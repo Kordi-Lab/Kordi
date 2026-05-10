@@ -1,8 +1,9 @@
 //! HTTP routes for the Cloud Edition email/password auth slice.
 //!
-//! Layered on top of `cloud_auth` (DB), `cloud_password` (hashing/policy),
-//! `cloud_session` (token lifecycle), and `cloud_rate_limit` (in-memory
-//! abuse mitigation). Mounted into the main router under `/v1/cloud/auth/*`.
+//! Mounted under `/v1/cloud/auth/*`, `/v1/cloud/accounts/:id/profile`, and
+//! `/v1/cloud/contacts`. Layered on top of `auth::accounts` (DB),
+//! `auth::password` (hashing/policy), `auth::session` (token lifecycle),
+//! and `auth::rate_limit` (in-memory abuse mitigation).
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -17,17 +18,17 @@ use chrono::Utc;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
-use super::cloud_password::{
+use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password,
     EmailFormatError, PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
-use super::cloud_rate_limit::{CloudRateLimiter, RateLimitDecision};
-use super::cloud_session::{
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::auth::session::{
     bump_expiry, hash_session_token, issue_session, lookup_session, revoke_session,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
-use super::db_runner::DbRunnerError;
-use super::ServerState;
+use crate::db_runner::DbRunnerError;
+use crate::server::ServerState;
 
 /// Internal outcome for the login closure that runs inside the single-writer
 /// runner. The handler converts this into a `Response` after the blocking
@@ -62,25 +63,6 @@ impl From<DbRunnerError> for LoginRunnerError {
 
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
-const BRIDGES_NODE_DEFAULT_DISCOVERY: &str = "open";
-const BRIDGES_NODE_DEFAULT_VISIBILITY: &str = "server-open";
-const BRIDGES_NODE_DEFAULT_CONTACT_POLICY: &str = "auto";
-const BRIDGES_NODE_DEFAULT_REACHABILITY: &str = "open";
-
-fn generate_bridges_api_key() -> String {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-    use rand::RngCore;
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    format!("bridges_sk_{}", URL_SAFE_NO_PAD.encode(bytes))
-}
-
-fn hash_bridges_api_key(key: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(key.as_bytes());
-    hex::encode(hasher.finalize())
-}
 
 #[derive(Debug, Clone)]
 pub struct CloudSession {
@@ -132,24 +114,6 @@ pub struct SessionResponse {
 pub struct AuthResponse {
     pub account: AccountResponse,
     pub session: SessionResponse,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterDeviceRequest {
-    #[serde(rename = "ed25519Pubkey")]
-    pub ed25519_pubkey: String,
-    #[serde(rename = "x25519Pubkey")]
-    pub x25519_pubkey: String,
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RegisterDeviceResponse {
-    #[serde(rename = "nodeId")]
-    pub node_id: String,
-    #[serde(rename = "apiKey")]
-    pub api_key: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -240,7 +204,10 @@ fn account_response_row(
     conn: &rusqlite::Connection,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, rusqlite::Error> {
-    let node_id = primary_node_for_account(conn, account_id);
+    // Bridges-node lookup belonged to the local-first server and has been
+    // removed from the cloud server. The desktop pairs cloud accounts with
+    // bridges nodes via a separate flow against `bridges/cli`.
+    let node_id: Option<String> = None;
     conn.query_row(
         "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
          FROM cloud_accounts WHERE account_id = ?1",
@@ -305,7 +272,6 @@ pub fn routes_with_config(
     let protected = Router::new()
         .route("/v1/cloud/auth/me", get(me))
         .route("/v1/cloud/auth/logout", post(logout))
-        .route("/v1/cloud/auth/register-device", post(register_device))
         .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
         .layer(axum::middleware::from_fn_with_state(
@@ -809,147 +775,6 @@ async fn logout(
     StatusCode::NO_CONTENT.into_response()
 }
 
-async fn register_device(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Json(req): Json<RegisterDeviceRequest>,
-) -> Response {
-    let ed_pubkey = req.ed25519_pubkey.trim();
-    let x_pubkey = req.x25519_pubkey.trim();
-    if ed_pubkey.is_empty() || x_pubkey.is_empty() {
-        return err(
-            "invalid_pubkey",
-            "ed25519 and x25519 public keys are required.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
-
-    // Derive the bridges node id from the ed25519 pubkey, mirroring the
-    // existing /v1/auth/register flow's derivation rule (sha256[:20] + base58).
-    let ed_pub_bytes = match bs58::decode(ed_pubkey).into_vec() {
-        Ok(bytes) if bytes.len() == 32 => {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes);
-            arr
-        }
-        _ => {
-            return err(
-                "invalid_pubkey",
-                "ed25519 public key must be base58-encoded 32 bytes.",
-                StatusCode::BAD_REQUEST,
-            )
-        }
-    };
-    let verifying = match ed25519_dalek::VerifyingKey::from_bytes(&ed_pub_bytes) {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "invalid_pubkey",
-                "ed25519 public key is not a valid point.",
-                StatusCode::BAD_REQUEST,
-            )
-        }
-    };
-    let node_id = crate::identity::derive_node_id(&verifying);
-
-    let api_key = generate_bridges_api_key();
-    let api_key_hash = hash_bridges_api_key(&api_key);
-    let display_name = req
-        .display_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(80).collect::<String>());
-
-    let db = match state.open_connection() {
-        Ok(db) => db,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database unavailable.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
-    let now = Utc::now().to_rfc3339();
-    let existing: Option<String> = match db
-        .query_row(
-            "SELECT node_id FROM registered_nodes WHERE account_id = ?1 AND device_id = ?2 AND revoked_at IS NULL",
-            rusqlite::params![session.account_id, session.device_id],
-            |row| row.get(0),
-        )
-        .optional()
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
-    let result = if let Some(existing_node_id) = existing.as_ref() {
-        db.execute(
-            "UPDATE registered_nodes SET ed25519_pubkey = ?1, x25519_pubkey = ?2, display_name = ?3, api_key_hash = ?4 WHERE node_id = ?5",
-            rusqlite::params![ed_pubkey, x_pubkey, display_name, api_key_hash, existing_node_id],
-        )
-    } else {
-        db.execute(
-            "INSERT INTO registered_nodes \
-             (node_id, ed25519_pubkey, x25519_pubkey, display_name, runtime, discovery_mode, is_default_agent, api_key_hash, account_id, device_id, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            rusqlite::params![
-                node_id,
-                ed_pubkey,
-                x_pubkey,
-                display_name,
-                "desktop",
-                BRIDGES_NODE_DEFAULT_DISCOVERY,
-                0,
-                api_key_hash,
-                session.account_id,
-                session.device_id,
-                BRIDGES_NODE_DEFAULT_VISIBILITY,
-                BRIDGES_NODE_DEFAULT_CONTACT_POLICY,
-                BRIDGES_NODE_DEFAULT_REACHABILITY,
-                now,
-            ],
-        )
-    };
-
-    if result.is_err() {
-        return err(
-            "server_error",
-            "Could not register device on bridges.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    // Back-fill bridges links for any cloud contacts this account already has.
-    // Both directions are mirrored so the freshly-registered node also shows up
-    // as a contact for peers who had already added this user.
-    if let Ok(mut stmt) = db.prepare(
-        "SELECT peer_account_id FROM cloud_contacts WHERE account_id = ?1 \
-         UNION \
-         SELECT account_id FROM cloud_contacts WHERE peer_account_id = ?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![session.account_id], |row| row.get::<_, String>(0)) {
-            for row in rows.flatten() {
-                mirror_cloud_contact_to_bridges(&db, &session.account_id, &row);
-            }
-        }
-    }
-
-    let resolved_node_id = existing.unwrap_or(node_id);
-    Json(RegisterDeviceResponse {
-        node_id: resolved_node_id,
-        api_key,
-    })
-    .into_response()
-}
 
 async fn get_profile(
     State(state): State<Arc<ServerState>>,
@@ -1014,17 +839,11 @@ async fn get_profile(
             .unwrap_or(None)
             .is_some();
 
-    let node_id: Option<String> = db
-        .query_row(
-            "SELECT node_id FROM registered_nodes \
-             WHERE account_id = ?1 AND revoked_at IS NULL \
-             ORDER BY created_at DESC LIMIT 1",
-            rusqlite::params![account_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten();
+    // bridges-node lookup belonged to bridges/cli; this server doesn't
+    // own the registered_nodes table. The desktop pairs cloud accounts with
+    // bridges nodes through a separate bridges/cli flow.
+    let _ = &db;
+    let node_id: Option<String> = None;
 
     Json(PublicProfileResponse {
         account_id,
@@ -1035,49 +854,6 @@ async fn get_profile(
         is_self,
     })
     .into_response()
-}
-
-fn primary_node_for_account(
-    conn: &rusqlite::Connection,
-    account_id: &str,
-) -> Option<String> {
-    conn.query_row(
-        "SELECT node_id FROM registered_nodes \
-         WHERE account_id = ?1 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-        rusqlite::params![account_id],
-        |row| row.get::<_, String>(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
-}
-
-/// Mirror a cloud account-to-account relationship into the bridges
-/// node-to-node `server_contacts` table when both sides have a registered
-/// device. Best-effort: if either user has not yet registered a device the
-/// cloud relationship still stands; the bridge link will be created on the
-/// next add or registration.
-fn mirror_cloud_contact_to_bridges(
-    conn: &rusqlite::Connection,
-    self_account_id: &str,
-    peer_account_id: &str,
-) {
-    let Some(self_node) = primary_node_for_account(conn, self_account_id) else {
-        return;
-    };
-    let Some(peer_node) = primary_node_for_account(conn, peer_account_id) else {
-        return;
-    };
-    let now = Utc::now().to_rfc3339();
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
-        rusqlite::params![self_node, peer_node, now],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO server_contacts (node_id, contact_node_id, created_at) VALUES (?1, ?2, ?3)",
-        rusqlite::params![peer_node, self_node, now],
-    );
 }
 
 async fn add_contact(
@@ -1152,9 +928,7 @@ async fn add_contact(
         );
     }
 
-    // Mirror into bridges server_contacts so existing chat surfaces can
-    // discover the peer immediately if both sides have a registered device.
-    mirror_cloud_contact_to_bridges(&db, &session.account_id, &peer);
+    // (bridges-node mirroring removed; that flow lives on bridges/cli now.)
 
     let _ = write_audit(
         &db,
@@ -1183,10 +957,9 @@ async fn list_contacts(
     };
 
     let mut stmt = match db.prepare(
-        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at, \
-                (SELECT n.node_id FROM registered_nodes n \
-                 WHERE n.account_id = a.account_id AND n.revoked_at IS NULL \
-                 ORDER BY n.created_at DESC LIMIT 1) AS node_id \
+        // bridges-node id is no longer carried in this response; the desktop
+        // pairs cloud contacts with bridges nodes via bridges/cli separately.
+        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at, NULL AS node_id \
          FROM cloud_contacts c \
          JOIN cloud_accounts a ON a.account_id = c.peer_account_id \
          WHERE c.account_id = ?1 \
@@ -1251,13 +1024,13 @@ mod tests {
         let db_path =
             std::env::temp_dir().join(format!("cloud-auth-test-{}.db", uuid::Uuid::new_v4()));
         let conn = rusqlite::Connection::open(&db_path).expect("open test db");
-        super::super::init_server_db(&conn).expect("init schema");
+        crate::schema::init_server_db(&conn).expect("init schema");
         drop(conn);
         Arc::new(ServerState::new(db_path))
     }
 
     fn fast_test_router(state: Arc<ServerState>) -> Router {
-        let limiter = CloudRateLimiter::new(super::super::cloud_rate_limit::CloudRateLimitConfig {
+        let limiter = CloudRateLimiter::new(crate::auth::rate_limit::CloudRateLimitConfig {
             per_ip_limit: 1000,
             per_ip_window: std::time::Duration::from_secs(60),
             per_email_failure_limit: 5,
@@ -1542,7 +1315,7 @@ mod tests {
     #[tokio::test]
     async fn login_rate_limit_locks_email_after_failures() {
         let state = test_state_with_init();
-        let limiter_config = super::super::cloud_rate_limit::CloudRateLimitConfig {
+        let limiter_config = crate::auth::rate_limit::CloudRateLimitConfig {
             per_ip_limit: 1000,
             per_ip_window: std::time::Duration::from_secs(60),
             per_email_failure_limit: 3,

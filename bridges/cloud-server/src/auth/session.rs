@@ -174,14 +174,14 @@ fn parse_rfc3339(value: String) -> DateTime<Utc> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::serve::cloud_auth::{
+    use crate::auth::accounts::{
         register_cloud_device, upsert_account_identity, AccountIdentityUpsert,
         CloudDeviceRegistration, OAuthProviderId,
     };
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open in-memory db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
         conn
     }
 

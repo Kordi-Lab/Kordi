@@ -1,12 +1,6 @@
 pub mod auth;
-pub mod cloud_auth;
-pub mod cloud_auth_routes;
-pub mod cloud_password;
-pub mod cloud_rate_limit;
-pub mod cloud_session;
 pub mod contacts;
 pub mod db_runner;
-pub mod message_log;
 pub mod discovery;
 pub mod endpoints;
 pub mod invites;
@@ -200,22 +194,9 @@ fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> 
         },
     )?;
 
-    apply_migration(
-        conn,
-        5,
-        "server_messages + server_message_recipients tables for fanout-friendly delivery",
-        |conn| {
-            // Telegram-style split: one immutable row per send in
-            // server_messages, plus one row per recipient with delivery and
-            // read cursors in server_message_recipients. Lets broadcast
-            // fanout write 1 message + N tiny recipient rows instead of N
-            // full-copy mailbox rows. CASCADE on the FK so retention GC of
-            // a message also reaps its recipient rows.
-            conn.execute_batch(
-                "CREATE TABLE IF NOT EXISTS server_messages (\n                     message_id        TEXT PRIMARY KEY,\n                     sender_node_id    TEXT NOT NULL,\n                     project_id        TEXT,\n                     payload_blob      TEXT,\n                     client_message_id TEXT,\n                     created_at        TEXT NOT NULL\n                 );\n                 CREATE INDEX IF NOT EXISTS idx_server_messages_sender_created\n                     ON server_messages(sender_node_id, created_at);\n                 CREATE UNIQUE INDEX IF NOT EXISTS idx_server_messages_client_msg\n                     ON server_messages(sender_node_id, client_message_id)\n                     WHERE client_message_id IS NOT NULL;\n                 CREATE TABLE IF NOT EXISTS server_message_recipients (\n                     message_id        TEXT NOT NULL,\n                     recipient_node_id TEXT NOT NULL,\n                     ciphertext_blob   TEXT,\n                     delivered_at      TEXT,\n                     read_at           TEXT,\n                     PRIMARY KEY (message_id, recipient_node_id),\n                     FOREIGN KEY (message_id) REFERENCES server_messages(message_id) ON DELETE CASCADE\n                 );\n                 CREATE INDEX IF NOT EXISTS idx_server_message_recipients_recipient\n                     ON server_message_recipients(recipient_node_id, delivered_at);",
-            )
-        },
-    )?;
+    // server_messages / server_message_recipients are owned by the
+    // kordi-cloud-server crate now and live in its own SQLite database.
+
 
     Ok(())
 }
@@ -444,7 +425,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
 
     Router::new()
         .merge(auth::routes(state.clone()))
-        .merge(cloud_auth_routes::routes(state.clone()))
+        // Cloud-edition auth routes live in the kordi-cloud-server crate now.
         .merge(contacts::routes(state.clone()))
         .merge(discovery::routes(state.clone()))
         .merge(keys::routes(state.clone()))

@@ -2507,6 +2507,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-cloud-server"
+version = "0.0.1"
+dependencies = [
+ "argon2",
+ "axum",
+ "base64 0.22.1",
+ "bs58",
+ "chrono",
+ "clap",
+ "curve25519-dalek",
+ "ed25519-dalek",
+ "hex",
+ "http-body-util",
+ "password-hash",
+ "rand 0.8.6",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tower 0.4.13",
+ "tower 0.5.3",
+ "tower-http 0.5.2",
+ "uuid",
+]
+
+[[package]]
 name = "kordi-core"
 version = "0.0.18"
 dependencies = [

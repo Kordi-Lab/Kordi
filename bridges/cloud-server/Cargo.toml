@@ -1,0 +1,41 @@
+[package]
+name = "kordi-cloud-server"
+version = "0.0.1"
+edition = "2021"
+description = "Kordi cloud-native collaboration server (cloud accounts, sessions, message log)"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "kordi-cloud-server"
+path = "src/main.rs"
+
+[lib]
+name = "kordi_cloud_server"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+rusqlite.workspace = true
+sha2.workspace = true
+rand.workspace = true
+base64.workspace = true
+clap.workspace = true
+hex = "0.4"
+bs58 = "0.5"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+curve25519-dalek = "4"
+axum = { version = "0.7", features = [] }
+tower = { version = "0.4", features = ["limit"] }
+tower-http = { version = "0.5", features = ["cors"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

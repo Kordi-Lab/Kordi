@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use super::{
-    cloud_auth, effective_agent_reachability_policy, effective_contact_approval_policy,
+    effective_agent_reachability_policy, effective_contact_approval_policy,
     effective_human_visibility_policy, normalize_agent_reachability_policy,
     normalize_contact_approval_policy, normalize_human_visibility_policy, ServerState,
 };
@@ -257,16 +257,12 @@ async fn register(
         .optional()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    match (&validated.account_id, &validated.device_id) {
-        (Some(account_id), Some(device_id)) => {
-            let belongs = cloud_auth::cloud_device_belongs_to_account(&db, account_id, device_id)
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            if !belongs {
-                return Err(StatusCode::BAD_REQUEST);
-            }
-        }
-        (None, None) => {}
-        _ => return Err(StatusCode::BAD_REQUEST),
+    // account_id + device_id are stored as opaque metadata on the registered
+    // node. Cross-checking them against a cloud account moved to the
+    // kordi-cloud-server crate; this server treats them as caller-provided
+    // identifiers and round-trips them.
+    if validated.account_id.is_some() ^ validated.device_id.is_some() {
+        return Err(StatusCode::BAD_REQUEST);
     }
 
     if let Some((existing_ed25519, existing_x25519, revoked_at)) = existing {
@@ -623,33 +619,6 @@ mod tests {
         headers
     }
 
-    fn seed_cloud_account_and_device(state: &Arc<ServerState>) -> (String, String) {
-        let db = state.open_connection().unwrap();
-        let account = super::super::cloud_auth::upsert_account_identity(
-            &db,
-            super::super::cloud_auth::AccountIdentityUpsert {
-                provider: super::super::cloud_auth::OAuthProviderId::GitHub,
-                provider_subject: "gh_test_user".to_string(),
-                provider_username: Some("test-user".to_string()),
-                display_name: Some("Test User".to_string()),
-                email: Some("test@example.com".to_string()),
-                email_verified: true,
-                avatar_url: None,
-            },
-        )
-        .unwrap();
-        let device = super::super::cloud_auth::register_cloud_device(
-            &db,
-            super::super::cloud_auth::CloudDeviceRegistration {
-                account_id: account.account_id.clone(),
-                device_name: Some("Test device".to_string()),
-                device_public_key: "test-device-public-key".to_string(),
-            },
-        )
-        .unwrap();
-        (account.account_id, device.device_id)
-    }
-
     fn seed_project_membership(
         state: &Arc<ServerState>,
         project_id: &str,
@@ -728,13 +697,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_persists_cloud_account_and_device_link() {
+    async fn register_round_trips_account_id_and_device_id_metadata() {
+        // Cloud-account/device validation moved to the kordi-cloud-server
+        // crate. bridges/cli now treats account_id/device_id as opaque
+        // caller-supplied metadata that round-trips through the database.
         let state = test_state();
-        let (account_id, device_id) = seed_cloud_account_and_device(&state);
         let signing = SigningKey::generate(&mut OsRng);
         let mut req = register_req_from_signing(&signing);
-        req.account_id = Some(account_id.clone());
-        req.device_id = Some(device_id.clone());
+        req.account_id = Some("acct_opaque".to_string());
+        req.device_id = Some("dev_opaque".to_string());
 
         let registered = register(State(state.clone()), Json(req)).await.unwrap().0;
         let db = state.open_connection().unwrap();
@@ -746,21 +717,8 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(saved.0.as_deref(), Some(account_id.as_str()));
-        assert_eq!(saved.1.as_deref(), Some(device_id.as_str()));
-    }
-
-    #[tokio::test]
-    async fn register_rejects_unknown_cloud_account_device_pair() {
-        let state = test_state();
-        let signing = SigningKey::generate(&mut OsRng);
-        let mut req = register_req_from_signing(&signing);
-        req.account_id = Some("kca_missing".to_string());
-        req.device_id = Some("kcd_missing".to_string());
-
-        let result = register(State(state), Json(req)).await;
-
-        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+        assert_eq!(saved.0.as_deref(), Some("acct_opaque"));
+        assert_eq!(saved.1.as_deref(), Some("dev_opaque"));
     }
 
     #[tokio::test]

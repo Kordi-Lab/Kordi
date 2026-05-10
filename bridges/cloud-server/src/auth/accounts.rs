@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn upsert_account_identity_creates_and_reuses_cloud_account() {
         let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
 
         let first = upsert_account_identity(
             &conn,
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn update_cloud_account_profile_sets_name_and_avatar() {
         let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
         let account = upsert_account_identity(
             &conn,
             AccountIdentityUpsert {
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn update_cloud_account_profile_returns_none_for_unknown_account() {
         let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
 
         let profile = update_cloud_account_profile(
             &conn,
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn register_cloud_device_rejects_unknown_account() {
         let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
 
         let result = register_cloud_device(
             &conn,
@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn register_cloud_device_belongs_to_existing_account() {
         let conn = rusqlite::Connection::open_in_memory().expect("open db");
-        super::super::init_server_db(&conn).expect("init db");
+        crate::schema::init_server_db(&conn).expect("init db");
         let account = upsert_account_identity(
             &conn,
             AccountIdentityUpsert {
