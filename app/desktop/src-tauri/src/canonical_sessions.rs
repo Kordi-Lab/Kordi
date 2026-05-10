@@ -272,37 +272,7 @@ fn preserve_manual_session_title_metadata(
     Ok(Some(Value::Object(next_metadata)))
 }
 
-pub(super) fn open_or_create_session_in_db_pub(
-    conn: &Connection,
-    request: OpenCanonicalSessionRequest,
-) -> Result<CanonicalSession, String> {
-    open_or_create_session_in_db(conn, request)
-}
-
-pub(super) fn append_message_in_db_pub(
-    conn: &Connection,
-    request: AppendCanonicalMessageRequest,
-) -> Result<CanonicalSessionMessage, String> {
-    append_message_in_db(conn, request)
-}
-
-pub(super) fn local_profile_human_identity_id_pub(
-    conn: &Connection,
-    display_name: &str,
-) -> Result<String, String> {
-    local_profile_human_identity_id(conn, display_name)
-}
-
-pub(super) fn local_agent_identity_id_pub(
-    conn: &Connection,
-    human_identity_id: &str,
-    display_name: &str,
-    workspace_root: &str,
-) -> Result<String, String> {
-    local_agent_identity_id(conn, human_identity_id, display_name, workspace_root)
-}
-
-fn open_or_create_session_in_db(
+pub(super) fn open_or_create_session_in_db(
     conn: &Connection,
     request: OpenCanonicalSessionRequest,
 ) -> Result<CanonicalSession, String> {
@@ -432,7 +402,7 @@ fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession
     .map_err(|err| err.to_string())
 }
 
-fn append_message_in_db(
+pub(super) fn append_message_in_db(
     conn: &Connection,
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
@@ -812,7 +782,7 @@ fn update_local_profile_identities(
     Ok(())
 }
 
-fn local_profile_human_identity_id(
+pub(super) fn local_profile_human_identity_id(
     conn: &Connection,
     display_name: &str,
 ) -> Result<String, String> {
@@ -948,7 +918,7 @@ fn reassign_stale_local_agent_identities(
     Ok(())
 }
 
-fn local_agent_identity_id(
+pub(super) fn local_agent_identity_id(
     conn: &Connection,
     human_identity_id: &str,
     agent_label: &str,
