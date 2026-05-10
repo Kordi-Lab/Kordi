@@ -288,6 +288,7 @@ mod tests {
             attachments: Vec::new(),
             thinking_text: None,
             tools,
+            entry_id: None,
         }
     }
 

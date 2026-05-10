@@ -47,6 +47,7 @@ export function mapDesktopMessagesForTranscript(
 
     return [{
       id: desktopTranscriptMessageId(sessionId, message, index),
+      entryId: message.entryId ?? null,
       role:
         message.role === 'assistant'
           ? ('owned-agent' as const)

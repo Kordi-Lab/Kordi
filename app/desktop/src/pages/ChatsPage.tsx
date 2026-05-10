@@ -60,6 +60,9 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { MessageContextMenu, type MessageContextMenuTarget } from './SessionActionOverlays';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -246,6 +249,7 @@ type ChatsPageProps = {
   onStopDesktopChatTurn: () => void;
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -306,6 +310,7 @@ export function ChatsPage({
   onStopDesktopChatTurn,
   onStopBridgeAgentRequest,
   onRequestBridgeContact,
+  onForkChatMessage,
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
@@ -322,8 +327,39 @@ export function ChatsPage({
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
+  const [messageContextMenu, setMessageContextMenu] = useState<MessageContextMenuTarget | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
+  const activeConversationIsForkable = Boolean(
+    onForkChatMessage
+      && activeConv.id
+      && activeConv.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
+      && !activeConv.id.startsWith('bridge:')
+      && !isCanonicalBridgeSessionId(activeConv.id),
+  );
+  const handleRequestMessageContextMenu = activeConversationIsForkable
+    ? (request: { msg: Message; x: number; y: number }) => {
+        const entryId = request.msg.entryId;
+        if (!entryId) return;
+        const preview = request.msg.text.trim().split(/\s+/).slice(0, 8).join(' ');
+        setMessageContextMenu({
+          sessionId: activeConv.id,
+          messageEntryId: entryId,
+          messagePreview: preview.length > 60 ? `${preview.slice(0, 60)}…` : preview,
+          canFork: true,
+          x: request.x,
+          y: request.y,
+        });
+      }
+    : undefined;
+  const handleForkFromMenu = async (target: { sessionId: string; messageEntryId: string }) => {
+    if (!onForkChatMessage) return;
+    try {
+      await onForkChatMessage(target.sessionId, target.messageEntryId);
+    } catch {
+      // Surface error via the page's error rail (handled by caller).
+    }
+  };
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
@@ -579,6 +615,7 @@ export function ChatsPage({
                 onOpenArtifact={onOpenArtifact}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onRequestBridgeContact={onRequestBridgeContact}
+                onRequestMessageContextMenu={handleRequestMessageContextMenu}
                 isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                 isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />
@@ -898,6 +935,16 @@ export function ChatsPage({
           </div>
         </div>
       </div>
+      {messageContextMenu ? (
+        <MessageContextMenu
+          target={messageContextMenu}
+          onClose={() => setMessageContextMenu(null)}
+          onFork={(target) => {
+            setMessageContextMenu(null);
+            void handleForkFromMenu(target);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

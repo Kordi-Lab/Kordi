@@ -378,6 +378,12 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 
+export type MessageContextMenuRequest = {
+  msg: Message;
+  x: number;
+  y: number;
+};
+
 function MessageBubbleView({
   msg,
   onOpenSource,
@@ -385,6 +391,7 @@ function MessageBubbleView({
   onNavigateToMessage,
   onOpenArtifact,
   onRequestBridgeContact,
+  onRequestMessageContextMenu,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -394,6 +401,7 @@ function MessageBubbleView({
   onNavigateToMessage?: (messageId: string) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onRequestBridgeContact?: () => Promise<void> | void;
+  onRequestMessageContextMenu?: (request: MessageContextMenuRequest) => void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
@@ -591,6 +599,10 @@ function MessageBubbleView({
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
+  const supportsMessageContextMenu = Boolean(
+    onRequestMessageContextMenu && msg.entryId,
+  );
+
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
@@ -603,6 +615,14 @@ function MessageBubbleView({
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
       )}
+      onContextMenu={
+        supportsMessageContextMenu
+          ? (event) => {
+              event.preventDefault();
+              onRequestMessageContextMenu?.({ msg, x: event.clientX, y: event.clientY });
+            }
+          : undefined
+      }
     >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
@@ -737,6 +757,7 @@ export const MessageBubble = memo(
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
+    && previous.onRequestMessageContextMenu === next.onRequestMessageContextMenu
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),

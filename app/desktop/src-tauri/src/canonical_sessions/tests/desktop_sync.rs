@@ -290,6 +290,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 tools: Vec::new(),
                 attachments: Vec::new(),
                 failed: false,
+                entry_id: None,
             }],
         },
         local_agent: kordi_cli::desktop_runtime::DesktopChatAgentProfile {
@@ -373,6 +374,7 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(should_skip_shared_local_agent_runtime_prompt(
@@ -408,6 +410,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
     let model_notice = kordi_cli::desktop_runtime::DesktopChatMessage {
         role: "system".to_string(),
@@ -420,6 +423,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
     let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
         role: "assistant".to_string(),
@@ -432,6 +436,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     let user_id = sync_desktop_chat_message(
@@ -534,6 +539,7 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
@@ -611,6 +617,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
@@ -690,6 +697,7 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(
