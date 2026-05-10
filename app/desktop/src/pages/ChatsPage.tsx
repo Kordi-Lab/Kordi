@@ -341,11 +341,16 @@ export function ChatsPage({
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
+  // Forking only works on local chat/project sessions; group sessions
+  // live in the canonical store across multiple bridge participants
+  // and bridge sessions live remotely, so excluding them up-front
+  // avoids surfacing an icon that would always error on click.
   const activeConversationIsForkable = Boolean(
     onForkChatMessage
       && activeConv.id
       && activeConv.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
       && !activeConv.id.startsWith('bridge:')
+      && !activeConv.id.startsWith('session:group:')
       && !isCanonicalBridgeSessionId(activeConv.id),
   );
   const handleForkMessage = activeConversationIsForkable && onForkChatMessage
