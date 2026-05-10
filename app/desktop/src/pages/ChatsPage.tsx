@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -351,6 +351,7 @@ export function ChatsPage({
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
   const activeForkSourceSessionId = activeConv.forkedFromSessionId?.trim() || null;
+  const activeForkSourceMessageId = activeConv.forkedFromMessageId?.trim() || null;
   const activeForkSourceTitle = useMemo(() => {
     if (!activeForkSourceSessionId) return null;
     const summary = desktopChatState?.sessions.find((session) => session.id === activeForkSourceSessionId);
@@ -427,6 +428,23 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  // Index of the last message that came from the fork's snapshot
+  // (everything inherited from the source up through the anchor). The
+  // divider goes after this message so any continuation the user
+  // sends in the fork shows up below it.
+  const forkSnapshotBoundaryIndex = useMemo(() => {
+    if (!activeForkSourceSessionId) return -1;
+    let lastSnapshotIdx = -1;
+    for (let index = 0; index < attributedTranscriptMessages.length; index += 1) {
+      const message = attributedTranscriptMessages[index];
+      const isAnchor = activeForkSourceMessageId
+        && message.entryId === activeForkSourceMessageId;
+      if (message.isForkSnapshot || isAnchor) {
+        lastSnapshotIdx = index;
+      }
+    }
+    return lastSnapshotIdx;
+  }, [activeForkSourceSessionId, activeForkSourceMessageId, attributedTranscriptMessages]);
   const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
   const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
 
@@ -647,19 +665,36 @@ export function ChatsPage({
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
             {attributedTranscriptMessages.map((msg, idx) => (
-              <MessageBubble
-                key={transcriptMessageRenderKey(msg, idx)}
-                msg={msg}
-                onOpenSource={onOpenSource}
-                onOpenArtifact={onOpenArtifact}
-                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                onRequestBridgeContact={onRequestBridgeContact}
-                onForkMessage={handleForkMessage}
-                messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
-                onOpenForkSession={onSelectSession}
-                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
-                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
-              />
+              <Fragment key={transcriptMessageRenderKey(msg, idx)}>
+                <MessageBubble
+                  msg={msg}
+                  onOpenSource={onOpenSource}
+                  onOpenArtifact={onOpenArtifact}
+                  onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                  onRequestBridgeContact={onRequestBridgeContact}
+                  onForkMessage={handleForkMessage}
+                  messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
+                  onOpenForkSession={onSelectSession}
+                  isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
+                  isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
+                />
+                {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
+                  <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
+                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                    <button
+                      type="button"
+                      onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                      disabled={!onSelectSession}
+                      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
+                    >
+                      <Split className="h-3 w-3" />
+                      <span>Forked from conversation</span>
+                    </button>
+                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                  </div>
+                ) : null}
+              </Fragment>
             ))}
             {shouldRenderLiveTurn && attributedActiveTranscriptLiveTurn ? (
               <LiveChatTurnMessage
