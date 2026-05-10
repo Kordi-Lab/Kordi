@@ -1,0 +1,34 @@
+[Unit]
+Description=Kordi cloud-native collaboration server
+Documentation=https://github.com/Kordi-AI/Kordi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shu_yang
+Group=shu_yang
+WorkingDirectory=/home/shu_yang/kordi-cloud-server-data
+ExecStart=/home/shu_yang/kordi-cloud-server-deploy/target/release/kordi-cloud-server serve --port 17081 --db /home/shu_yang/kordi-cloud-server-data/kordi-cloud.db
+Restart=on-failure
+RestartSec=5
+# stdout/stderr go to journald — `journalctl -u kordi-cloud-server -f`
+StandardOutput=journal
+StandardError=journal
+
+# Hardening within the limits of running as the deploying user.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/shu_yang/kordi-cloud-server-data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
