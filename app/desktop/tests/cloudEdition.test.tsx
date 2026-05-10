@@ -62,7 +62,7 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.match(markup, /Continue/);
   assert.match(markup, /Google/);
   assert.match(markup, /GitHub/);
-  assert.match(markup, /𝕏/);
+  assert.match(markup, /data-provider="x"/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
   assert.doesNotMatch(markup, /Log in to Kordi Cloud/);
   assert.doesNotMatch(markup, /Continue with GitHub/);
@@ -97,13 +97,27 @@ test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient
 
 test('disabled social buttons surface a "Coming soon" affordance', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
-  // Three social providers, each disabled with a Coming soon hint.
-  const matches = markup.match(/title="Coming soon"/g) ?? [];
-  assert.ok(matches.length >= 3, `expected at least 3 Coming soon hints, got ${matches.length}`);
+  assert.match(markup, /title="Google — coming soon"/);
+  assert.match(markup, /title="GitHub — coming soon"/);
+  assert.match(markup, /title="X — coming soon"/);
+  assert.match(markup, /title="Coming soon"/); // submit button keeps plain copy
   assert.match(markup, /aria-label="Google sign-in coming soon"/);
   assert.match(markup, /aria-label="GitHub sign-in coming soon"/);
   assert.match(markup, /aria-label="X sign-in coming soon"/);
   assert.match(markup, /aria-label="Continue — coming soon"/);
+});
+
+test('social buttons render icon marks and no provider text label', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage));
+  // Buttons exist for each provider with their data attribute.
+  assert.match(markup, /data-provider="google"[\s\S]*?<svg/);
+  assert.match(markup, /data-provider="github"[\s\S]*?<svg/);
+  assert.match(markup, /data-provider="x"[\s\S]*?<svg/);
+  // The Google brand fingerprint (a known fill colour from the canonical 4-color G).
+  assert.match(markup, /fill="#FFC107"/);
+  // The visible provider names should NOT appear inside the social buttons themselves.
+  assert.doesNotMatch(markup, /<button[^>]*data-provider="google"[^>]*>[^<]*Google/);
+  assert.doesNotMatch(markup, /<button[^>]*data-provider="github"[^>]*>[^<]*GitHub/);
 });
 
 test('signup-mode submit button is the create-account variant with a coming-soon hint', () => {
