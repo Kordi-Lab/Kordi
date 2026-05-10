@@ -877,23 +877,35 @@ export function WorkspaceSidebar({
   };
   const isForkListExpanded = (parentSessionId: string) => !collapsedForkParents.has(parentSessionId);
 
-  // If the active session is a fork, force its parent's list open so
-  // the user sees where they are in the hierarchy.
-  const activeSessionParentId = useMemo(() => {
-    const activeRow = flatAgentSessions.find(({ session }) => (
+  // If the active session is a fork (or fork-of-a-fork), force every
+  // ancestor's list open so the row is reachable in the hierarchy.
+  const activeSessionAncestorIds = useMemo(() => {
+    const ancestors: string[] = [];
+    let current = flatAgentSessions.find(({ session }) => (
       session.id === activeConvId || session.canonicalSessionId === activeConvId
-    ));
-    return activeRow?.session.forkedFromSessionId ?? null;
-  }, [activeConvId, flatAgentSessions]);
+    ))?.session;
+    while (current?.forkedFromSessionId) {
+      const parentId = current.forkedFromSessionId;
+      if (ancestors.includes(parentId)) break; // cycle guard
+      ancestors.push(parentId);
+      current = agentSessionRowsById.get(parentId)?.session;
+      if (!current) break;
+    }
+    return ancestors;
+  }, [activeConvId, agentSessionRowsById, flatAgentSessions]);
   useEffect(() => {
-    if (!activeSessionParentId) return;
+    if (activeSessionAncestorIds.length === 0) return;
     setCollapsedForkParents((current) => {
-      if (!current.has(activeSessionParentId)) return current;
-      const next = new Set(current);
-      next.delete(activeSessionParentId);
-      return next;
+      let next: Set<string> | null = null;
+      for (const ancestorId of activeSessionAncestorIds) {
+        if (current.has(ancestorId)) {
+          if (!next) next = new Set(current);
+          next.delete(ancestorId);
+        }
+      }
+      return next ?? current;
     });
-  }, [activeSessionParentId]);
+  }, [activeSessionAncestorIds]);
 
   // Auto-scroll the active session row into view (parent or fork) so
   // navigating to a deeply nested fork doesn't leave it off-screen.
@@ -911,7 +923,13 @@ export function WorkspaceSidebar({
 
   const renderAgentSessionRow = (
     { session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
-    options: { isFork?: boolean; forkCount?: number; expanded?: boolean; onToggleExpanded?: () => void } = {},
+    options: {
+      isFork?: boolean;
+      depth?: number;
+      forkCount?: number;
+      expanded?: boolean;
+      onToggleExpanded?: () => void;
+    } = {},
   ) => {
     const conversation = session.conversation;
     const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
@@ -925,6 +943,8 @@ export function WorkspaceSidebar({
     const subtitleLine = agentName ? `${agentName} · ${sessionPreviewLine}` : sessionPreviewLine;
     const forkCount = options.forkCount ?? 0;
     const hasForks = forkCount > 0;
+    const depth = Math.min(options.depth ?? 0, 4);
+    const indentPaddingLeft = depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
     return (
       <button
         key={session.id}
@@ -936,6 +956,7 @@ export function WorkspaceSidebar({
         data-session-message-count={sessionMessageCount}
         data-session-updated-at={rowTimeLabel}
         data-session-fork-of={options.isFork ? session.forkedFromSessionId ?? '' : undefined}
+        data-session-fork-depth={depth || undefined}
         onClick={() => onSelectChatSession(session.id)}
         onContextMenu={(event) => {
           const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
@@ -944,10 +965,11 @@ export function WorkspaceSidebar({
           event.stopPropagation();
           setSessionContextMenu(target);
         }}
+        style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
         className={cn(
           'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white',
           isActive && 'app-session-row-active',
-          options.isFork && 'app-session-row-fork pl-6',
+          options.isFork && 'app-session-row-fork',
         )}
       >
         <div className="min-w-0 flex-1">
@@ -1018,6 +1040,41 @@ export function WorkspaceSidebar({
     );
   };
 
+  // Render a single session row plus, recursively, every fork that
+  // descends from it. The seen set guards against pathological cycles
+  // that could otherwise stack-overflow if data is corrupt.
+  const renderAgentSessionTreeNode = (
+    row: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
+    depth: number,
+    seen: Set<string>,
+  ): React.ReactNode => {
+    if (seen.has(row.session.id)) return null;
+    const nextSeen = new Set(seen);
+    nextSeen.add(row.session.id);
+    const forks = agentForkLineage.forksByParentSessionId.get(row.session.id) ?? [];
+    const expanded = forks.length === 0 ? false : isForkListExpanded(row.session.id);
+    return (
+      <div key={row.session.id} className="app-session-row-group">
+        {renderAgentSessionRow(row, {
+          isFork: depth > 0,
+          depth,
+          forkCount: forks.length,
+          expanded,
+          onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
+        })}
+        {forks.length > 0 && expanded ? (
+          <div className="app-session-fork-children mt-px space-y-px">
+            {forks.map((forkSession) => {
+              const forkRow = agentSessionRowsById.get(forkSession.id);
+              if (!forkRow) return null;
+              return renderAgentSessionTreeNode(forkRow, depth + 1, nextSeen);
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderAgentSessionList = (
     rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>,
     emptyMessage: string,
@@ -1042,28 +1099,7 @@ export function WorkspaceSidebar({
             <span>New session</span>
           </button>
         </div>
-        {rows.length > 0 ? rows.map((row) => {
-          const forks = agentForkLineage.forksByParentSessionId.get(row.session.id) ?? [];
-          const expanded = forks.length === 0 ? false : isForkListExpanded(row.session.id);
-          return (
-            <div key={row.session.id} className="app-session-row-group">
-              {renderAgentSessionRow(row, {
-                forkCount: forks.length,
-                expanded,
-                onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
-              })}
-              {forks.length > 0 && expanded ? (
-                <div className="app-session-fork-children mt-px space-y-px">
-                  {forks.map((forkSession) => {
-                    const forkRow = agentSessionRowsById.get(forkSession.id);
-                    if (!forkRow) return null;
-                    return renderAgentSessionRow(forkRow, { isFork: true });
-                  })}
-                </div>
-              ) : null}
-            </div>
-          );
-        }) : (
+        {rows.length > 0 ? rows.map((row) => renderAgentSessionTreeNode(row, 0, new Set())) : (
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
             {emptyMessage}
           </div>
