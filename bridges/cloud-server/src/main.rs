@@ -26,6 +26,10 @@ enum Commands {
         /// Postgres connection string. Falls back to the DATABASE_URL env var.
         #[arg(long)]
         database_url: Option<String>,
+        /// NATS connection string for event publishing. Falls back to
+        /// the NATS_URL env var. When unset, events are no-ops.
+        #[arg(long)]
+        nats_url: Option<String>,
     },
 }
 
@@ -33,11 +37,16 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Serve { port, database_url } => {
+        Commands::Serve {
+            port,
+            database_url,
+            nats_url,
+        } => {
             let database_url = database_url
                 .or_else(|| std::env::var("DATABASE_URL").ok())
                 .ok_or("DATABASE_URL is required (env var or --database-url flag)")?;
-            kordi_cloud_server::run(port, &database_url).await?;
+            let nats_url = nats_url.or_else(|| std::env::var("NATS_URL").ok());
+            kordi_cloud_server::run(port, &database_url, nats_url.as_deref()).await?;
         }
     }
     Ok(())

@@ -479,6 +479,18 @@ async fn signup(
         );
     }
 
+    // Fire-and-forget event publish. We don't want NATS hiccups to slow
+    // down or fail signup; the bus is a no-op when NATS isn't wired.
+    // Durable delivery via an outbox lands when sync workers need it.
+    {
+        let events = state.events().clone();
+        let account_id = account_id.clone();
+        let primary_email = normalized_email.clone();
+        tokio::spawn(async move {
+            events.publish_signup(&account_id, &primary_email).await;
+        });
+    }
+
     let account = AccountResponse {
         account_id,
         display_name,

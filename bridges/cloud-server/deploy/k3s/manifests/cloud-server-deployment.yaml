@@ -69,6 +69,11 @@ spec:
               # string in a Secret so the hostname can change with the
               # cluster Service without rotating secrets.
               value: "postgresql://kordi:$(PG_PASSWORD)@postgres.kordi-cloud.svc.cluster.local:5432/kordi_cloud"
+            - name: NATS_URL
+              # In-cluster NATS reachable via the headless Service. When
+              # NATS is unavailable the bus fails open (no-op publishes),
+              # so this is best-effort wiring, not a hard dependency.
+              value: "nats://nats.kordi-cloud.svc.cluster.local:4222"
           readinessProbe:
             httpGet:
               path: /health

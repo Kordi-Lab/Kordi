@@ -34,6 +34,8 @@ tower = { version = "0.4", features = ["limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
+async-nats = "0.37"
+bytes = "1"
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite
 # at the libsqlite3-sys link layer.

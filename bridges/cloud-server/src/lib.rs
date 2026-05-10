@@ -6,6 +6,7 @@
 //! deployment surface. Local-edition users never run this code.
 
 pub mod auth;
+pub mod events;
 pub mod messages;
 pub mod pg;
 pub mod server;

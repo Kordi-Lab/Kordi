@@ -21,6 +21,7 @@ use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
 use kordi_cloud_server::auth::routes::routes_with_config;
+use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::ServerState;
 use serde_json::json;
@@ -119,7 +120,7 @@ async fn pool_init_runs_migrations() {
 async fn signup_happy_path_returns_session_and_persists_account() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("signup-happy");
-    let state = Arc::new(ServerState::new(pool.clone()));
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
 
     let response = router
@@ -153,7 +154,7 @@ async fn signup_happy_path_returns_session_and_persists_account() {
 async fn signup_duplicate_email_returns_409() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("dupe-email");
-    let state = Arc::new(ServerState::new(pool));
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
     let router = fast_router(state);
 
     let _ = router
@@ -174,7 +175,7 @@ async fn signup_duplicate_email_returns_409() {
 async fn login_with_correct_password_returns_session_and_me_works() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("login");
-    let state = Arc::new(ServerState::new(pool));
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
     let router = fast_router(state);
 
     // signup
@@ -211,7 +212,7 @@ async fn login_with_correct_password_returns_session_and_me_works() {
 async fn login_with_wrong_password_returns_401() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("wrong-pass");
-    let state = Arc::new(ServerState::new(pool));
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
     let router = fast_router(state);
 
     let _ = router
@@ -236,7 +237,7 @@ async fn login_with_wrong_password_returns_401() {
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");
-    let state = Arc::new(ServerState::new(pool));
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
     let router = fast_router(state);
 
     let signup_resp = router
