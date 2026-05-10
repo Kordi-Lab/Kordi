@@ -5,6 +5,7 @@ use uuid::Uuid;
 mod bridge_identities;
 mod bridge_routing;
 mod bridge_sync;
+mod canonical_fork;
 mod commands;
 mod core;
 mod desktop_sync;
@@ -44,6 +45,7 @@ pub(crate) use self::core::canonical_bridge_session_id;
 use self::core::{
     canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
 };
+pub(crate) use self::canonical_fork::fork_canonical_session_into_local_chat;
 pub(crate) use self::desktop_sync::sync_desktop_chat_state;
 #[cfg(test)]
 use self::desktop_sync::{
