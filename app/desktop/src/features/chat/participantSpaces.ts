@@ -140,6 +140,16 @@ function selfParticipant(participants: ConversationParticipant[]) {
 }
 
 function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
+  // A fork of a canonical (group/contact) session is always a private
+  // continuation — even if its stored participant list inherited
+  // multiple humans from the source, we never want it to render as a
+  // separate group conversation in the sidebar. Defensive override
+  // covers historical forks created before the participant filter
+  // landed too.
+  const forkParent = conversation.forkedFromSessionId?.trim() ?? '';
+  if (forkParent.startsWith('session:')) {
+    return 'self';
+  }
   const humanCount = nonSelfHumans(nonSelf).length;
   if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';
