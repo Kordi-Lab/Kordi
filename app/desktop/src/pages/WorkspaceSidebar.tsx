@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
@@ -18,6 +18,8 @@ import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/component
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
+import { buildForkLineage } from '@/features/chat/forkLineage';
+import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
@@ -673,7 +675,70 @@ export function WorkspaceSidebar({
     .sort((left, right) => right.session.updatedAtMs - left.session.updatedAtMs
       || left.session.title.localeCompare(right.session.title));
 
-  const renderAgentSessionRow = ({ session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }) => {
+  // Group forks under their source session in the sidebar so the list
+  // is hierarchical instead of a flat repetition of "# hi" rows.
+  const agentForkLineage = useMemo(
+    () => buildForkLineage(flatAgentSessions.map(({ session }) => session)),
+    [flatAgentSessions],
+  );
+  const topLevelAgentSessions = useMemo(
+    () => flatAgentSessions.filter(({ session }) => !agentForkLineage.forkSessionIds.has(session.id)),
+    [agentForkLineage, flatAgentSessions],
+  );
+  const agentSessionRowsById = useMemo(
+    () => new Map(flatAgentSessions.map((row) => [row.session.id, row])),
+    [flatAgentSessions],
+  );
+
+  // Track which parent rows have their fork list expanded. Default to
+  // expanded so the user immediately sees children; toggling collapses.
+  const [collapsedForkParents, setCollapsedForkParents] = useState<Set<string>>(new Set());
+  const toggleForkParent = (parentSessionId: string) => {
+    setCollapsedForkParents((current) => {
+      const next = new Set(current);
+      if (next.has(parentSessionId)) next.delete(parentSessionId);
+      else next.add(parentSessionId);
+      return next;
+    });
+  };
+  const isForkListExpanded = (parentSessionId: string) => !collapsedForkParents.has(parentSessionId);
+
+  // If the active session is a fork, force its parent's list open so
+  // the user sees where they are in the hierarchy.
+  const activeSessionParentId = useMemo(() => {
+    const activeRow = flatAgentSessions.find(({ session }) => (
+      session.id === activeConvId || session.canonicalSessionId === activeConvId
+    ));
+    return activeRow?.session.forkedFromSessionId ?? null;
+  }, [activeConvId, flatAgentSessions]);
+  useEffect(() => {
+    if (!activeSessionParentId) return;
+    setCollapsedForkParents((current) => {
+      if (!current.has(activeSessionParentId)) return current;
+      const next = new Set(current);
+      next.delete(activeSessionParentId);
+      return next;
+    });
+  }, [activeSessionParentId]);
+
+  // Auto-scroll the active session row into view (parent or fork) so
+  // navigating to a deeply nested fork doesn't leave it off-screen.
+  const agentScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!activeConvId) return;
+    const container = agentScrollContainerRef.current;
+    if (!container) return;
+    const row = container.querySelector<HTMLElement>(
+      `[data-agent-session-row="${activeConvId.replace(/"/g, '\\"')}"]`,
+    );
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeConvId, topLevelAgentSessions, collapsedForkParents]);
+
+  const renderAgentSessionRow = (
+    { session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
+    options: { isFork?: boolean; forkCount?: number; expanded?: boolean; onToggleExpanded?: () => void } = {},
+  ) => {
     const conversation = session.conversation;
     const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
     const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
@@ -684,15 +749,19 @@ export function WorkspaceSidebar({
     const agentIdentity = primaryAgentForConversation(conversation);
     const agentName = agentIdentity?.name ?? space.title;
     const subtitleLine = agentName ? `${agentName} · ${sessionPreviewLine}` : sessionPreviewLine;
+    const forkCount = options.forkCount ?? 0;
+    const hasForks = forkCount > 0;
     return (
       <button
         key={session.id}
         type="button"
         data-testid="agent-session-row"
+        data-agent-session-row={session.id}
         data-session-preview={sessionPreview}
         data-session-preview-line={sessionPreviewLine}
         data-session-message-count={sessionMessageCount}
         data-session-updated-at={rowTimeLabel}
+        data-session-fork-of={options.isFork ? session.forkedFromSessionId ?? '' : undefined}
         onClick={() => onSelectChatSession(session.id)}
         onContextMenu={(event) => {
           const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
@@ -701,12 +770,58 @@ export function WorkspaceSidebar({
           event.stopPropagation();
           setSessionContextMenu(target);
         }}
-        className={cn('app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
+        className={cn(
+          'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white',
+          isActive && 'app-session-row-active',
+          options.isFork && 'app-session-row-fork pl-6',
+        )}
       >
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-center gap-1.5">
+            {hasForks && options.onToggleExpanded ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  options.onToggleExpanded?.();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  options.onToggleExpanded?.();
+                }}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                aria-label={options.expanded ? 'Hide forks' : 'Show forks'}
+                title={options.expanded ? 'Hide forks' : 'Show forks'}
+              >
+                <ChevronRightIcon
+                  className={cn('h-3 w-3 transition-transform', options.expanded && 'rotate-90')}
+                />
+              </span>
+            ) : options.isFork ? (
+              <span
+                className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-slate-500"
+                aria-hidden="true"
+                title="Forked session"
+              >
+                <Split className="h-3 w-3" />
+              </span>
+            ) : null}
             <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
             <div className="inline-flex shrink-0 items-center gap-1.5">
+              {hasForks ? (
+                <span
+                  className="inline-flex h-4 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
+                  title={`${forkCount} fork${forkCount === 1 ? '' : 's'} of this session`}
+                  aria-label={`${forkCount} forks`}
+                >
+                  <Split className="h-2.5 w-2.5" />
+                  <span>{forkCount}</span>
+                </span>
+              ) : null}
               <SidebarUnreadBadge count={session.unread} scope="agent-session" />
               <SidebarSessionStatusIndicator indicator={session.statusIndicator} />
               <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums tracking-[0.03em] text-slate-400', isActive && 'app-session-meta-time-active')}>
@@ -729,8 +844,15 @@ export function WorkspaceSidebar({
     );
   };
 
-  const renderAgentSessionList = (rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>, emptyMessage: string) => (
-    <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="agent-sessions-flat">
+  const renderAgentSessionList = (
+    rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>,
+    emptyMessage: string,
+  ) => (
+    <ScrollArea
+      ref={agentScrollContainerRef}
+      className="app-workspace-session-scroll min-h-0 flex-1"
+      data-chat-sidebar-mode="agent-sessions-flat"
+    >
       <div className="w-full space-y-0.5">
         <div className="mb-1 flex justify-center px-1">
           <button
@@ -746,7 +868,28 @@ export function WorkspaceSidebar({
             <span>New session</span>
           </button>
         </div>
-        {rows.length > 0 ? rows.map(renderAgentSessionRow) : (
+        {rows.length > 0 ? rows.map((row) => {
+          const forks = agentForkLineage.forksByParentSessionId.get(row.session.id) ?? [];
+          const expanded = forks.length === 0 ? false : isForkListExpanded(row.session.id);
+          return (
+            <div key={row.session.id} className="app-session-row-group">
+              {renderAgentSessionRow(row, {
+                forkCount: forks.length,
+                expanded,
+                onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
+              })}
+              {forks.length > 0 && expanded ? (
+                <div className="app-session-fork-children mt-px space-y-px">
+                  {forks.map((forkSession) => {
+                    const forkRow = agentSessionRowsById.get(forkSession.id);
+                    if (!forkRow) return null;
+                    return renderAgentSessionRow(forkRow, { isFork: true });
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        }) : (
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
             {emptyMessage}
           </div>
@@ -909,7 +1052,7 @@ export function WorkspaceSidebar({
 
                   {chatChannel === 'contact'
                     ? renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')
-                    : renderAgentSessionList(flatAgentSessions, 'No agent conversations yet. Start one to see it here.')}
+                    : renderAgentSessionList(topLevelAgentSessions, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
 

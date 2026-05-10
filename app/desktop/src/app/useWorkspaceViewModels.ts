@@ -262,6 +262,8 @@ export function useWorkspaceViewModels({
           updatedAtLabel: desktopChatState.activeSession.updatedAtLabel,
           messageCount: desktopChatState.activeSession.messageCount,
           draft: desktopChatState.activeSession.draft,
+          forkedFromSessionId: desktopChatState.activeSession.forkedFromSessionId ?? null,
+          forkedFromMessageId: desktopChatState.activeSession.forkedFromMessageId ?? null,
         }
       : null;
     const sessionSummaries = activeSessionSummary
@@ -316,6 +318,8 @@ export function useWorkspaceViewModels({
         bridgeTarget: undefined,
         avatarSeed: localAgentAvatarSeed,
         outreachThreads,
+        forkedFromSessionId: session.forkedFromSessionId ?? null,
+        forkedFromMessageId: session.forkedFromMessageId ?? null,
         _updatedAtMs: undefined as number | undefined,
       };
     });

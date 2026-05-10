@@ -2,53 +2,6 @@ import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-export type MessageContextMenuTarget = {
-  sessionId: string;
-  messageEntryId: string;
-  messagePreview: string;
-  canFork: boolean;
-  x: number;
-  y: number;
-};
-
-type MessageContextMenuProps = {
-  target: MessageContextMenuTarget;
-  onClose: () => void;
-  onFork: (target: { sessionId: string; messageEntryId: string }) => void;
-};
-
-export function MessageContextMenu({ target, onClose, onFork }: MessageContextMenuProps) {
-  return (
-    <div className="fixed inset-0 z-50" onMouseDown={onClose}>
-      <div
-        className="app-modal-panel absolute w-[220px] rounded-[20px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 shadow-[var(--app-shadow-float)]"
-        style={{
-          left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
-          top: Math.max(12, Math.min(target.y, window.innerHeight - 160)),
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          disabled={!target.canFork}
-          className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-          onClick={() => {
-            if (!target.canFork) return;
-            onClose();
-            onFork({ sessionId: target.sessionId, messageEntryId: target.messageEntryId });
-          }}
-          title={target.canFork ? 'Open this thread in a new private session up to this message' : 'This message cannot be forked'}
-        >
-          <span className="block">Fork from here</span>
-          <span className="mt-0.5 block truncate text-[11px] text-slate-400">
-            {target.messagePreview || 'New private session'}
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export type SessionContextMenuTarget = {
   sessionId: string;
   sessionName: string;

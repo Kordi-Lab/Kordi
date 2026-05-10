@@ -101,12 +101,70 @@ pub(super) fn repair_session_title_from_history(
     if row.entry_count <= 0 {
         return Ok(None);
     }
+
+    // Forked sessions inherit history from their source; deriving the
+    // title from the inherited messages would just duplicate the
+    // parent's name. Pick the first user message added AFTER the fork
+    // anchor instead so each fork is named after what made it distinct.
+    if row.parent_session_message_id.is_some() {
+        if let Some(title) = first_post_fork_user_title(conn, row)? {
+            kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
+            return Ok(Some(title));
+        }
+        // Don't persist a placeholder so the title auto-upgrades the
+        // moment the user sends their first message in this fork.
+        return Ok(Some("New fork".to_string()));
+    }
+
     let Some(title) = session_title_from_messages(&load_session_messages(conn, &row.session_id)?)
     else {
         return Ok(None);
     };
     kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
     Ok(Some(title))
+}
+
+fn first_post_fork_user_title(
+    conn: &rusqlite::Connection,
+    row: &kordi_session::store::SessionRow,
+) -> Result<Option<String>> {
+    let Some(anchor) = row.parent_session_message_id.as_deref() else {
+        return Ok(None);
+    };
+    let entries = kordi_session::store::get_entries(conn, &row.session_id)?;
+    let Some(anchor_seq) = entries
+        .iter()
+        .find(|entry| entry.entry_id == anchor)
+        .map(|entry| entry.seq)
+    else {
+        return Ok(None);
+    };
+    for entry_row in entries
+        .iter()
+        .filter(|entry| entry.seq > anchor_seq && entry.entry_type == "message")
+    {
+        let entry = kordi_session::store::parse_entry(entry_row)?;
+        let kordi_core::types::SessionEntry::Message {
+            message: kordi_core::types::AgentMessage::User(user),
+            ..
+        } = entry
+        else {
+            continue;
+        };
+        let text = user
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                kordi_core::types::ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Some(title) = session_title_from_seed(&text) {
+            return Ok(Some(title));
+        }
+    }
+    Ok(None)
 }
 
 fn session_summary_from_row(

@@ -62,7 +62,7 @@ import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionCon
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
-import { MessageContextMenu, type MessageContextMenuTarget } from './SessionActionOverlays';
+import { buildForkLineage } from '@/features/chat/forkLineage';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -250,6 +250,7 @@ type ChatsPageProps = {
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
+  onSelectSession?: (sessionId: string) => void;
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -311,6 +312,7 @@ export function ChatsPage({
   onStopBridgeAgentRequest,
   onRequestBridgeContact,
   onForkChatMessage,
+  onSelectSession,
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
@@ -327,7 +329,6 @@ export function ChatsPage({
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
-  const [messageContextMenu, setMessageContextMenu] = useState<MessageContextMenuTarget | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeConversationIsForkable = Boolean(
@@ -337,29 +338,41 @@ export function ChatsPage({
       && !activeConv.id.startsWith('bridge:')
       && !isCanonicalBridgeSessionId(activeConv.id),
   );
-  const handleRequestMessageContextMenu = activeConversationIsForkable
-    ? (request: { msg: Message; x: number; y: number }) => {
-        const entryId = request.msg.entryId;
-        if (!entryId) return;
-        const preview = request.msg.text.trim().split(/\s+/).slice(0, 8).join(' ');
-        setMessageContextMenu({
-          sessionId: activeConv.id,
-          messageEntryId: entryId,
-          messagePreview: preview.length > 60 ? `${preview.slice(0, 60)}…` : preview,
-          canFork: true,
-          x: request.x,
-          y: request.y,
-        });
+  const handleForkMessage = activeConversationIsForkable && onForkChatMessage
+    ? (entryId: string) => {
+        void onForkChatMessage(activeConv.id, entryId);
       }
     : undefined;
-  const handleForkFromMenu = async (target: { sessionId: string; messageEntryId: string }) => {
-    if (!onForkChatMessage) return;
-    try {
-      await onForkChatMessage(target.sessionId, target.messageEntryId);
-    } catch {
-      // Surface error via the page's error rail (handled by caller).
+
+  // Build a per-message lookup of forks anchored at each entry id of
+  // the active session, so the transcript can render a "N forks" chip
+  // and a popover listing them next to the message they branched from.
+  const messageForksByEntryId = useMemo(() => {
+    const summaries = desktopChatState?.sessions ?? [];
+    const lineage = buildForkLineage(
+      summaries.map((summary) => ({
+        id: summary.id,
+        forkedFromSessionId: summary.forkedFromSessionId ?? null,
+        forkedFromMessageId: summary.forkedFromMessageId ?? null,
+      })),
+    );
+    const forksAtMessage = lineage.forksByParentMessageIdBySession.get(activeConv.id);
+    if (!forksAtMessage) return new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
+    const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+    const result = new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
+    for (const [messageId, forks] of forksAtMessage) {
+      const entries = forks
+        .map((fork) => summaryById.get(fork.id))
+        .filter((summary): summary is NonNullable<typeof summary> => Boolean(summary))
+        .map((summary) => ({
+          sessionId: summary.id,
+          title: summary.title || 'Untitled fork',
+          updatedAtLabel: summary.updatedAtLabel,
+        }));
+      if (entries.length > 0) result.set(messageId, entries);
     }
-  };
+    return result;
+  }, [activeConv.id, desktopChatState?.sessions]);
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
@@ -615,7 +628,9 @@ export function ChatsPage({
                 onOpenArtifact={onOpenArtifact}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onRequestBridgeContact={onRequestBridgeContact}
-                onRequestMessageContextMenu={handleRequestMessageContextMenu}
+                onForkMessage={handleForkMessage}
+                messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
+                onOpenForkSession={onSelectSession}
                 isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                 isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
               />
@@ -935,16 +950,6 @@ export function ChatsPage({
           </div>
         </div>
       </div>
-      {messageContextMenu ? (
-        <MessageContextMenu
-          target={messageContextMenu}
-          onClose={() => setMessageContextMenu(null)}
-          onFork={(target) => {
-            setMessageContextMenu(null);
-            void handleForkFromMenu(target);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
