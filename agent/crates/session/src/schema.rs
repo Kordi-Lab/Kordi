@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 8;
+const CURRENT_VERSION: i32 = 9;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -137,6 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_session_parent
     ON tasks(session_id, parent_task_id);
 "#;
 
+const MIGRATION_V9: &str = r#"
+ALTER TABLE sessions ADD COLUMN parent_session_message_id TEXT;
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -179,6 +183,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 8 {
         conn.execute_batch(MIGRATION_V8)?;
         set_version(conn, 8)?;
+    }
+
+    if current < 9 {
+        conn.execute_batch(MIGRATION_V9)?;
+        set_version(conn, 9)?;
     }
 
     Ok(())
@@ -272,6 +281,7 @@ mod tests {
             .collect::<std::result::Result<Vec<_>, _>>()
             .unwrap();
         assert!(columns.contains(&"parent_session_id".to_string()));
+        assert!(columns.contains(&"parent_session_message_id".to_string()));
         assert!(columns.contains(&"session_scope".to_string()));
         assert!(columns.contains(&"project_root".to_string()));
 

@@ -4,8 +4,8 @@ use rusqlite::Connection;
 use std::collections::HashSet;
 
 use super::{
-    ForkSessionResult, append_entry, create_session_with_parent, get_entries, get_entry,
-    parse_entry, set_leaf,
+    ForkSessionResult, append_entry, create_session_with_parent_and_message, get_entries,
+    get_entry, parse_entry, set_leaf,
 };
 
 pub(super) fn copy_branch_to_session(
@@ -104,19 +104,21 @@ pub(super) fn fork_session_from_entry(
         _ => anyhow::bail!("Invalid entry ID for forking"),
     };
 
-    let new_session_id = create_session_with_parent(conn, cwd, Some(source_session_id))?;
-    if let Some(branch_leaf_id) = row.parent_id.clone() {
-        copy_branch_to_session(conn, source_session_id, &new_session_id, &branch_leaf_id)?;
-        Ok(ForkSessionResult {
-            session_id: new_session_id,
-            selected_text,
-            branch_leaf_id: Some(branch_leaf_id),
-        })
-    } else {
-        Ok(ForkSessionResult {
-            session_id: new_session_id,
-            selected_text,
-            branch_leaf_id: None,
-        })
+    let new_session_id = create_session_with_parent_and_message(
+        conn,
+        cwd,
+        Some(source_session_id),
+        Some(entry_id),
+    )?;
+    let branch_leaf_id = row.parent_id.clone();
+    if let Some(ref leaf) = branch_leaf_id {
+        copy_branch_to_session(conn, source_session_id, &new_session_id, leaf)?;
     }
+    Ok(ForkSessionResult {
+        session_id: new_session_id,
+        selected_text,
+        branch_leaf_id,
+        source_session_id: source_session_id.to_string(),
+        source_entry_id: entry_id.to_string(),
+    })
 }

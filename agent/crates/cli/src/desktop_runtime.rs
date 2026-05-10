@@ -160,6 +160,10 @@ pub struct DesktopChatSessionSummary {
     pub updated_at_label: String,
     pub message_count: usize,
     pub draft: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_message_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -239,6 +243,10 @@ pub struct DesktopChatSessionDetail {
     pub project: Option<DesktopChatProjectInfo>,
     pub reflection_lesson_artifacts: Vec<DesktopSessionArtifact>,
     pub messages: Vec<DesktopChatMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_message_id: Option<String>,
 }
 
 pub struct DesktopRuntimeSession {
@@ -784,6 +792,44 @@ fn strip_bridge_outreach_prompt_context(prompt: &str) -> String {
 pub fn session_exists(session_id: &str) -> Result<bool> {
     let conn = open_sessions_db()?;
     Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopForkSessionOutcome {
+    pub session_id: String,
+    pub source_session_id: String,
+    pub source_entry_id: String,
+    pub selected_text: String,
+    pub branch_leaf_id: Option<String>,
+    pub cwd: String,
+}
+
+pub fn fork_session_from_message(
+    source_session_id: &str,
+    source_entry_id: &str,
+) -> Result<DesktopForkSessionOutcome> {
+    let conn = open_sessions_db()?;
+    let Some(source_row) = kordi_session::store::get_session(&conn, source_session_id)? else {
+        bail!("Session not found: {source_session_id}");
+    };
+    if source_row.session_scope != "chat" && source_row.session_scope != "project" {
+        bail!("Only local chat sessions can be forked");
+    }
+    let result = kordi_session::store::fork_session_from_entry(
+        &conn,
+        source_session_id,
+        source_entry_id,
+        &source_row.cwd,
+    )?;
+    Ok(DesktopForkSessionOutcome {
+        session_id: result.session_id,
+        source_session_id: result.source_session_id,
+        source_entry_id: result.source_entry_id,
+        selected_text: result.selected_text,
+        branch_leaf_id: result.branch_leaf_id,
+        cwd: source_row.cwd,
+    })
 }
 
 pub fn hide_session(session_id: &str) -> Result<()> {
