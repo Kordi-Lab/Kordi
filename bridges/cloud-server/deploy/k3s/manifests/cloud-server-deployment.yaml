@@ -28,7 +28,10 @@ metadata:
     app.kubernetes.io/name: kordi-cloud-server
     app.kubernetes.io/component: api
 spec:
-  replicas: 1
+  # Bumped to 2 for session 6 — cross-replica rate limiter requires
+  # multiple pods to be a meaningful test. Drop back to 1 if you want
+  # single-replica behaviour while keeping the manifest layout.
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: kordi-cloud-server
@@ -74,6 +77,17 @@ spec:
               # NATS is unavailable the bus fails open (no-op publishes),
               # so this is best-effort wiring, not a hard dependency.
               value: "nats://nats.kordi-cloud.svc.cluster.local:4222"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-credentials
+                  key: password
+            - name: REDIS_URL
+              # Cross-replica rate-limit counters. The cluster Service
+              # 'redis' is headless; the per-pod stable name resolves
+              # via cluster DNS so two cloud-server pods see the same
+              # backend. Redis password is interpolated via $().
+              value: "redis://default:$(REDIS_PASSWORD)@redis.kordi-cloud.svc.cluster.local:6379/0"
           readinessProbe:
             httpGet:
               path: /health

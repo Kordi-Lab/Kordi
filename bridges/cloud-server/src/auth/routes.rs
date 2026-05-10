@@ -311,7 +311,7 @@ async fn signup(
     Json(req): Json<SignupRequest>,
 ) -> Response {
     let peer_ip = ip_from_extension(connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip) {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
         return limited_response(retry_after);
     }
 
@@ -516,7 +516,7 @@ async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Response {
     let peer_ip = ip_from_extension(connect_info.as_ref());
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip) {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
         return limited_response(retry_after);
     }
 
@@ -526,7 +526,7 @@ async fn login(
     };
 
     if let RateLimitDecision::Limited { retry_after } =
-        rate_limiter.check_email_lockout(&normalized_email)
+        rate_limiter.check_email_lockout(&normalized_email).await
     {
         return limited_response(retry_after);
     }
@@ -553,7 +553,7 @@ async fn login(
         };
 
     let Some((account_id, display_name, primary_email, avatar_url, password_hash)) = row else {
-        rate_limiter.record_email_failure(&normalized_email);
+        rate_limiter.record_email_failure(&normalized_email).await;
         return err(
             "invalid_credentials",
             "Email or password is incorrect.",
@@ -561,7 +561,7 @@ async fn login(
         );
     };
     let Some(password_hash) = password_hash else {
-        rate_limiter.record_email_failure(&normalized_email);
+        rate_limiter.record_email_failure(&normalized_email).await;
         return err(
             "invalid_credentials",
             "Email or password is incorrect.",
@@ -586,7 +586,7 @@ async fn login(
         }
     };
     if !verified {
-        rate_limiter.record_email_failure(&normalized_email);
+        rate_limiter.record_email_failure(&normalized_email).await;
         let _ = write_audit(
             pool,
             Some(&account_id),
@@ -601,7 +601,7 @@ async fn login(
             StatusCode::UNAUTHORIZED,
         );
     }
-    rate_limiter.clear_email_failures(&normalized_email);
+    rate_limiter.clear_email_failures(&normalized_email).await;
 
     let now = Utc::now().to_rfc3339();
     let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());

@@ -36,6 +36,7 @@ argon2 = "0.5"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 async-nats = "0.37"
 bytes = "1"
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite
 # at the libsqlite3-sys link layer.

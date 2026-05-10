@@ -39,7 +39,7 @@ async fn try_pool() -> Option<sqlx_postgres::PgPool> {
 }
 
 fn fast_router(state: Arc<ServerState>) -> axum::Router {
-    let limiter = CloudRateLimiter::new(CloudRateLimitConfig {
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig {
         per_ip_limit: 10_000,
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
