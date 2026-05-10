@@ -9,6 +9,7 @@ pub mod auth;
 pub mod db_runner;
 pub mod error;
 pub mod messages;
+pub mod pg;
 pub mod schema;
 pub mod server;
 

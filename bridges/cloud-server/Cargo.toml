@@ -35,6 +35,12 @@ tower = { version = "0.4", features = ["limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
+# Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
+# up in the workspace dep graph and conflict with bridges/cli's rusqlite
+# at the libsqlite3-sys link layer.
+sqlx-core = { version = "0.8", default-features = false, features = ["migrate"] }
+sqlx-postgres = { version = "0.8", default-features = false, features = ["chrono", "uuid", "migrate"] }
+sqlx-macros = { version = "0.8", default-features = false, features = ["migrate", "postgres"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
