@@ -269,6 +269,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     },
     overlay: {
+      showCloudLoginGate: args.showCloudLoginGate,
       showAuthGate: args.showAuthGate,
       dismissAuthGate: args.dismissAuthGate,
       setActiveNav: args.setActiveNav,
