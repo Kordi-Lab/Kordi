@@ -1,11 +1,12 @@
 # Runtime-only image. Expects a pre-built linux/amd64 binary at
-# `target/release-linux-amd64/kordi-cloud-server` (produced on the VM and
-# copied back via gcloud compute scp). Fast to build because there's no
-# Rust toolchain in the image.
+# `target/release/kordi-cloud-server`, built on the VM via `cargo build
+# --release -p kordi-cloud-server`. We assemble the OCI image on the VM
+# itself with `buildah bud`, so this Dockerfile doesn't need a Docker
+# daemon and the workspace target/ directory doesn't have to round-trip
+# through gcloud compute scp.
 #
-# Use this for the deploy path when the binary is built natively on the
-# target architecture; reach for `Dockerfile` when you need a fully
-# self-contained build pipeline.
+# Build context is the workspace root so COPY can reach
+# `target/release/kordi-cloud-server` directly.
 
 FROM --platform=linux/amd64 debian:bookworm-slim AS runtime
 
@@ -17,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-cloud --shell /usr/sbin/nologin kordi \
     && install -d -o kordi -g kordi /var/lib/kordi-cloud
 
-COPY target/release-linux-amd64/kordi-cloud-server /usr/local/bin/kordi-cloud-server
+COPY target/release/kordi-cloud-server /usr/local/bin/kordi-cloud-server
 
 USER kordi
 WORKDIR /var/lib/kordi-cloud
