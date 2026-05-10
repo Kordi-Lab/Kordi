@@ -141,12 +141,14 @@ export const conversations: Conversation[] = [
         sender: 'Me',
         text: 'Summarize today’s open follow-ups from the Bridges draft review.',
         time: '08:34',
+        entryId: 'preview-msg-summarize-followups',
       },
       {
         role: 'owned-agent',
         sender: 'My Core Agent',
         text: 'Open items: tighten the settings scale, make panel resizing smoother, extend project session logic, and prepare a clearer reply for Bob.',
         time: '08:34',
+        entryId: 'preview-msg-open-items',
       },
       {
         role: 'user',
@@ -184,6 +186,7 @@ export const conversations: Conversation[] = [
         sender: 'My Core Agent',
         text: 'Sure. Revised version: “The shell is much cleaner now. We’re finishing resize polish and then moving into the project/session workflow details.”',
         time: '08:37',
+        entryId: 'preview-msg-warmer-update',
       },
       {
         role: 'user',
@@ -347,6 +350,121 @@ export const conversations: Conversation[] = [
     participants: ['Me', 'My Core Agent', "Listing Agent"],
     messages: [
       { role: 'external-agent', sender: 'Listing Agent', text: 'The landlord accepted a virtual tour before document submission.', time: 'Wed' },
+    ],
+  },
+  {
+    // Preview-only fork of `my-agent` anchored at the "warmer update"
+    // assistant message. Demonstrates the sidebar nesting + chevron
+    // toggle, the title-bar "Forked from" pill, and the inline
+    // "Forked from conversation" divider in the transcript.
+    id: 'my-agent-fork-warmer',
+    name: 'try a calmer rewrite',
+    type: 'owned-agent',
+    subtitle: 'Forked from Follow-up Draft and Reminder',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Core Agent'],
+    forkedFromSessionId: 'my-agent',
+    forkedFromMessageId: 'preview-msg-warmer-update',
+    messages: [
+      {
+        role: 'user',
+        sender: 'Me',
+        text: 'Can you make the update to Bob a bit warmer and more concise?',
+        time: '08:37',
+        entryId: 'preview-fork-warmer-snapshot-q',
+        isForkSnapshot: true,
+      },
+      {
+        role: 'owned-agent',
+        sender: 'My Core Agent',
+        text: 'Sure. Revised version: “The shell is much cleaner now. We’re finishing resize polish and then moving into the project/session workflow details.”',
+        time: '08:37',
+        entryId: 'preview-msg-warmer-update',
+        isForkSnapshot: true,
+      },
+      {
+        role: 'user',
+        sender: 'Me',
+        text: 'Try a calmer rewrite — same content, less corporate.',
+        time: '09:02',
+        entryId: 'preview-fork-warmer-postfork-q',
+      },
+      {
+        role: 'owned-agent',
+        sender: 'My Core Agent',
+        text: 'Calmer take: things are settling. Resize polish is wrapping up; next stop is the project / session flow.',
+        time: '09:02',
+        entryId: 'preview-fork-warmer-postfork-a',
+      },
+    ],
+  },
+  {
+    // Fork-of-a-fork to verify recursive sidebar nesting + tree
+    // guides at depth ≥ 2.
+    id: 'my-agent-fork-warmer-shorter',
+    name: 'shorter still',
+    type: 'owned-agent',
+    subtitle: 'Forked from try a calmer rewrite',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Core Agent'],
+    forkedFromSessionId: 'my-agent-fork-warmer',
+    forkedFromMessageId: 'preview-fork-warmer-postfork-a',
+    messages: [
+      {
+        role: 'user',
+        sender: 'Me',
+        text: 'Try a calmer rewrite — same content, less corporate.',
+        time: '09:02',
+        entryId: 'preview-fork-warmer-postfork-q',
+        isForkSnapshot: true,
+      },
+      {
+        role: 'owned-agent',
+        sender: 'My Core Agent',
+        text: 'Calmer take: things are settling. Resize polish is wrapping up; next stop is the project / session flow.',
+        time: '09:02',
+        entryId: 'preview-fork-warmer-postfork-a',
+        isForkSnapshot: true,
+      },
+    ],
+  },
+  {
+    // Sibling fork off the same parent at a different anchor — shows
+    // multi-fork count chip on the parent row.
+    id: 'my-agent-fork-followups',
+    name: 'redo the followup list',
+    type: 'owned-agent',
+    subtitle: 'Forked from Follow-up Draft and Reminder',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Core Agent'],
+    forkedFromSessionId: 'my-agent',
+    forkedFromMessageId: 'preview-msg-open-items',
+    messages: [
+      {
+        role: 'user',
+        sender: 'Me',
+        text: 'Summarize today’s open follow-ups from the Bridges draft review.',
+        time: '08:34',
+        entryId: 'preview-msg-summarize-followups',
+        isForkSnapshot: true,
+      },
+      {
+        role: 'owned-agent',
+        sender: 'My Core Agent',
+        text: 'Open items: tighten the settings scale, make panel resizing smoother, extend project session logic, and prepare a clearer reply for Bob.',
+        time: '08:34',
+        entryId: 'preview-msg-open-items',
+        isForkSnapshot: true,
+      },
     ],
   },
   {
