@@ -204,7 +204,7 @@ function AvatarPicker({
   const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
 
   return (
-    <div className="grid justify-items-center gap-1.5 pt-[18px]">
+    <div className="grid h-12 w-20 justify-items-center gap-1.5">
       <div className="relative h-14 w-14">
         <button
           type="button"
@@ -472,7 +472,7 @@ export function CloudLoginPage({
 
         <form className="mt-5 grid gap-3.5" onSubmit={handleSubmit}>
           {isSignup ? (
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
                 onRandomAvatar={randomizeAvatar}
