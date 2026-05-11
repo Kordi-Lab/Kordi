@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { CloudContactsAdapter } from '../src/features/cloud/CloudContactsAdapter';
+import { CloudContactsAdapter, resolveCloudActiveContact } from '../src/features/cloud/CloudContactsAdapter';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Contact } from '../src/kordi-app/types';
@@ -40,7 +40,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
   };
 }
 
-test('CloudContactsAdapter hides Cloud self agent rows and does not show local-agent detail copy', () => {
+test('resolveCloudActiveContact maps stale Cloud self selection to the visible Cloud contact', () => {
   const cloudContact = cloudContactToContact({
     accountId: 'acct_peer',
     displayName: 'Peer',
@@ -48,7 +48,32 @@ test('CloudContactsAdapter hides Cloud self agent rows and does not show local-a
     nodeId: null,
     createdAt: '2026-05-11T00:00:00Z',
   });
+  const staleSelfContact = contact({
+    id: 'bridge-self:cloud',
+    name: 'Me',
+    classType: 'my-agents',
+    entityType: 'My agent',
+    subtitle: 'Direct local chat',
+    detail: 'Chat directly with my local Kordi agent. Bridge host: kordi.cloud • acct_me',
+    bridgeHostId: 'cloud',
+    bridgePeerNodeId: 'acct_me',
+    bridgePeerRuntime: 'kordi-desktop',
+  });
 
+  const resolved = resolveCloudActiveContact({
+    account,
+    activeContactId: 'bridge-self:cloud',
+    parentActiveContact: staleSelfContact,
+    cloudContacts: [cloudContact],
+    visibleCloudContacts: [cloudContact],
+  });
+
+  assert.equal(resolved?.id, cloudContact.id);
+  assert.equal(resolved?.name, 'Peer');
+  assert.equal(resolved?.bridgePeerNodeId, 'acct_peer');
+});
+
+test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail copy', () => {
   const markup = renderToStaticMarkup(createElement(CloudContactsAdapter, {
     account,
     contactsPageProps: {
@@ -64,27 +89,16 @@ test('CloudContactsAdapter hides Cloud self agent rows and does not show local-a
           bridgePeerNodeId: 'acct_me',
           bridgePeerRuntime: 'kordi-desktop',
         })] },
-        { id: 'other-users', label: 'Other users', items: [cloudContact] },
       ],
       contactSearch: '',
       onContactSearchChange: () => {},
       expandedContactGroups: { 'my-agents': true, 'other-users': true },
       onToggleGroup: () => {},
-      activeContactId: 'bridge-self:cloud',
-      activeContact: contact({
-        id: 'bridge-self:cloud',
-        name: 'Me',
-        classType: 'my-agents',
-        entityType: 'My agent',
-        subtitle: 'Direct local chat',
-        detail: 'Chat directly with my local Kordi agent. Bridge host: kordi.cloud • acct_me',
-        bridgeHostId: 'cloud',
-        bridgePeerNodeId: 'acct_me',
-        bridgePeerRuntime: 'kordi-desktop',
-      }),
+      activeContactId: '',
+      activeContact: contact({ id: 'cloud:acct_peer' }),
       activeContactRequestId: '',
       activeContactRequest: undefined,
-      contactOverlayMode: 'contact',
+      contactOverlayMode: null,
       onCloseOverlay: () => {},
       getStatusBadgeClass: () => '',
       addableContacts: [],

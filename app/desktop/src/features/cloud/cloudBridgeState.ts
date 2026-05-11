@@ -13,11 +13,17 @@ import type {
   DesktopBridgePeer,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
+  UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
 import type { CloudAccount, CloudMessage } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
-import { isCloudGroupControlMessage } from './cloudGroupMessages';
+import {
+  cloudGroupIdentityRequest,
+  cloudGroupParticipantFromContact,
+  cloudGroupSelfParticipant,
+  isCloudGroupControlMessage,
+} from './cloudGroupMessages';
 import {
   cloudMessageMentionsFirstPersonAgent,
   cloudMessageMentionsLocalAgent,
@@ -91,6 +97,31 @@ export function cloudContactToPersonPeer(contact: Contact): DesktopBridgePeer {
     profileImageUrl: contact.profileImageUrl,
     avatarSeed: contact.avatarSeed ?? accountId,
   };
+}
+
+export function cloudContactsToCanonicalIdentityRequests({
+  account,
+  contacts,
+  localHumanIdentityId,
+}: {
+  account: CloudAccount;
+  contacts: Contact[];
+  localHumanIdentityId: string;
+}): UpsertCanonicalIdentityRequest[] {
+  const participants = [
+    cloudGroupSelfParticipant(account, 'self'),
+    ...contacts
+      .map((contact) => cloudGroupParticipantFromContact(contact, 'person'))
+      .filter((participant): participant is NonNullable<typeof participant> => Boolean(participant)),
+  ];
+  const seen = new Set<string>();
+  const requests: UpsertCanonicalIdentityRequest[] = [];
+  for (const participant of participants) {
+    if (seen.has(participant.accountId)) continue;
+    seen.add(participant.accountId);
+    requests.push(cloudGroupIdentityRequest(participant, account, localHumanIdentityId));
+  }
+  return requests;
 }
 
 export function cloudContactToAgentPeer(contact: Contact): DesktopBridgePeer {
