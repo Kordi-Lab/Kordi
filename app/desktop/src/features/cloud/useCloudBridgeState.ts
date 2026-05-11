@@ -331,8 +331,9 @@ export function useCloudBridgeState({
     if (envelope.kind !== 'group-message' || !envelope.message) return;
     const senderHumanIdentityId = identityIdByAccount.get(envelope.message.senderAccountId);
     if (!senderHumanIdentityId) return;
-    const messageAlreadyExists = (nextState?.messages ?? canonicalSessionState.messages)
-      .some((candidate) => candidate.id === envelope.message?.id);
+    const messageAlreadyExists = [canonicalSessionState, nextState]
+      .filter((state): state is CanonicalSessionState => Boolean(state))
+      .some((state) => state.messages.some((candidate) => candidate.id === envelope.message?.id));
     if (messageAlreadyExists) return;
 
     const senderIsAgent = envelope.message.senderKind === 'agent';
