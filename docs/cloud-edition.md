@@ -45,7 +45,7 @@ curl http://127.0.0.1:17081/health
 
 ## Social login and Cloud profiles
 
-Cloud Edition supports email/password plus OAuth sign-in for Google and GitHub. The desktop login page calls `/v1/cloud/auth/oauth/:provider/start`, redirects the webview to the provider, and the cloud server callback redirects back to the desktop URL with a short-lived Cloud session in the URL fragment. The desktop consumes the fragment, stores the session, and clears the URL.
+Cloud Edition supports email/password plus OAuth sign-in for Google and GitHub. The desktop login page calls `/v1/cloud/auth/oauth/:provider/start` and opens the provider in the user's default browser. In the native desktop shell, Kordi uses a short-lived localhost loopback callback so the provider never renders inside the compact app webview; the browser callback hands the Cloud session back to the desktop app and then tells the user to return to Kordi. Browser preview builds still consume the OAuth fragment directly from the page URL.
 
 Required server environment variables:
 

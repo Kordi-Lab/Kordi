@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  openDesktopExternalUrl,
+  prepareDesktopCloudOAuthLoopback,
+  waitForDesktopCloudOAuthLoopback,
+} from '@/lib/desktop';
+
+import {
   CloudAuthClient,
   CloudAuthError,
   defaultCloudAuthClient,
@@ -212,15 +218,53 @@ export function useCloudSession({
 
   const signInWithProvider = useCallback(
     async (provider: CloudOAuthProvider) => {
-      const redirectAfter = typeof window !== 'undefined'
-        ? `${window.location.origin}${window.location.pathname}`
-        : 'http://127.0.0.1/';
-      const result = await authClient.startOAuth(provider, redirectAfter);
-      if (typeof window !== 'undefined') {
-        window.location.assign(result.authUrl);
+      try {
+        const loopback = await prepareDesktopCloudOAuthLoopback();
+        if (loopback) {
+          const result = await authClient.startOAuth(provider, loopback.redirectUrl);
+          await openDesktopExternalUrl(result.authUrl);
+          const fragment = await waitForDesktopCloudOAuthLoopback(loopback.requestId);
+          const oauthResult = parseCloudOAuthHashResult(fragment);
+          if (!oauthResult) {
+            throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
+          }
+          await saveSession({
+            token: oauthResult.session.token,
+            accountId: oauthResult.account.accountId,
+            expiresAt: oauthResult.session.expiresAt,
+          });
+          setAuthenticated(oauthResult.account);
+          void ensureCloudDeviceRegistered({
+            accountId: oauthResult.account.accountId,
+            sessionToken: oauthResult.session.token,
+            client: authClient,
+            account: oauthResult.account,
+          }).catch(() => {});
+          return;
+        }
+
+        const redirectAfter = typeof window !== 'undefined'
+          ? `${window.location.origin}${window.location.pathname}`
+          : 'http://127.0.0.1/';
+        const result = await authClient.startOAuth(provider, redirectAfter);
+        if (typeof window !== 'undefined') {
+          window.location.assign(result.authUrl);
+        }
+      } catch (caught) {
+        if (caught instanceof CloudAuthError) {
+          setError(caught);
+          throw caught;
+        }
+        const wrapped = new CloudAuthError(
+          'unknown',
+          caught instanceof Error ? caught.message : 'OAuth sign-in failed.',
+          0,
+        );
+        setError(wrapped);
+        throw wrapped;
       }
     },
-    [authClient],
+    [authClient, setAuthenticated],
   );
 
   const updateProfile = useCallback(

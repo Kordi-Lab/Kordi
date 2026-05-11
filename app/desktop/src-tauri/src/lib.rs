@@ -3,6 +3,7 @@ mod auth;
 mod bridge;
 mod canonical_sessions;
 mod chat;
+mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
 #[cfg(test)]
@@ -61,6 +62,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
@@ -191,6 +193,8 @@ pub fn run() {
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state,
+            cloud_oauth_loopback::cloud_oauth_loopback_prepare,
+            cloud_oauth_loopback::cloud_oauth_loopback_wait,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,
