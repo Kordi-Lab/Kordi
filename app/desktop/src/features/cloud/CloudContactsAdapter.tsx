@@ -11,7 +11,7 @@
 import { useMemo } from 'react';
 import type { ComponentProps } from 'react';
 
-import { isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL, cloudContactToContact, isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
 import type { CloudAccount } from './authClient';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
@@ -53,10 +53,10 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     );
     // Cloud contacts should be one row per human account. Do not merge the
     // Bridge-derived person/agent rows from the local view model, otherwise the
-    // Contacts page shows the same person twice and also exposes "other
-    // people's agents" as separate contacts.
+    // Contacts page shows the same person twice and also exposes local/remote
+    // agent runtime rows ("My agent", "other users' agents") as contacts.
     const groups = contactsPageProps.filteredGroupedContacts
-      .filter((group) => group.id !== 'other-users-agents')
+      .filter((group) => group.id !== 'my-agents' && group.id !== 'other-users-agents')
       .map((group) =>
         group.id === 'other-users'
           ? { ...group, items: dedupeContactsByCloudAccount(cloudMatches) }
@@ -105,8 +105,11 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       const found = cloud.contacts.find((contact) => contact.id === id);
       if (found) return found;
     }
+    if (isCloudSelfAgentContact(contactsPageProps.activeContact)) {
+      return cloudAccountToSelfContact(account);
+    }
     return contactsPageProps.activeContact;
-  }, [contactsPageProps.activeContactId, contactsPageProps.activeContact, cloud.contacts]);
+  }, [contactsPageProps.activeContactId, contactsPageProps.activeContact, account, cloud.contacts]);
 
   const activeContactRequest = useMemo(() => {
     const id = contactsPageProps.activeContactRequestId;
@@ -131,6 +134,27 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onMessageContact={contactsPageProps.onMessageContact}
     />
   );
+}
+
+function isCloudSelfAgentContact(contact: Contact | undefined): boolean {
+  return contact?.classType === 'my-agents' && contact.bridgeHostId === CLOUD_HOST_SENTINEL;
+}
+
+function cloudAccountToSelfContact(account: CloudAccount): Contact {
+  const contact = cloudContactToContact({
+    accountId: account.accountId,
+    displayName: account.displayName || account.primaryEmail || account.accountId,
+    avatarUrl: account.avatarUrl,
+    nodeId: account.nodeId,
+    createdAt: '',
+  });
+  return {
+    ...contact,
+    name: account.displayName || account.primaryEmail || account.accountId,
+    subtitle: account.primaryEmail || account.accountId,
+    detail: `Signed in to Kordi Cloud as ${account.accountId}.`,
+    owner: 'Me',
+  };
 }
 
 function dedupeContactsByCloudAccount(items: Contact[]): Contact[] {
