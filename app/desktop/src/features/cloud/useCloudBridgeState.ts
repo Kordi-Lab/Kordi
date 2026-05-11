@@ -538,7 +538,7 @@ export function useCloudBridgeState({
   }, [account, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState) return;
     for (const messages of Object.values(messagesByPeer)) {
       for (const message of messages) {
         const envelope = parseCloudGroupControl(message.body);
@@ -553,7 +553,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, applyCloudGroupControl, messagesByPeer]);
+  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account) return;
