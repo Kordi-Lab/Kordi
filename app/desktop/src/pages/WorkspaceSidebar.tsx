@@ -180,6 +180,11 @@ type WorkspaceSidebarProps = {
   onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
   onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
   onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
+  /** Optional account lookup. When provided, the Add-contacts surface
+   * inside the chat-create dialog switches to a search-first UX. */
+  onLookupContact?: (idOrEmail: string) => Promise<import('@/pages/ChatCreateDialog').AddContactLookupResult | null>;
+  /** Override the placeholder text shown in the Add-contacts input. */
+  addContactPlaceholder?: string;
   onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
   onRenameChatSession: (sessionId: string, title: string) => void;
@@ -377,6 +382,8 @@ export function WorkspaceSidebar({
   onStartChatWithAgent,
   onCreateChatGroup,
   onAddContactByNodeId,
+  onLookupContact,
+  addContactPlaceholder,
   onCreateChatSessionInParticipantSpace,
   onRenameChatGroup,
   onRenameChatSession,
@@ -1217,6 +1224,8 @@ export function WorkspaceSidebar({
         onStartAgent={onStartChatWithAgent}
         onCreateGroup={onCreateChatGroup}
         onAddContact={onAddContactByNodeId}
+        onLookupContact={onLookupContact}
+        addContactPlaceholder={addContactPlaceholder}
         anchorRect={chatCreateAnchor}
       />
 

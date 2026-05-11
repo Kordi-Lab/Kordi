@@ -1,7 +1,12 @@
+import { useMemo } from 'react';
+
 import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
 
 import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
+import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import { loadSession } from '@/features/cloud/session';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 
@@ -21,6 +26,45 @@ function SidebarSlot({ args }: { args: SidebarShellArgs }) {
   // and this slot's bootstrap can't trip a "Set up a Bridge host"
   // error on cloud users.
   const isCloud = edition === 'cloud';
+
+  // Cloud-mode profile lookup for the search-first Add-contacts UX in
+  // the chat-create dialog. Stable across renders so the dialog
+  // doesn't reset its internal state on every keystroke.
+  const cloudAuthClient = useMemo(() => defaultCloudAuthClient(), []);
+  const onLookupContact = useMemo<
+    ((idOrEmail: string) => Promise<AddContactLookupResult | null>) | undefined
+  >(() => {
+    if (!isCloud) return undefined;
+    return async (rawId: string) => {
+      const trimmed = rawId.trim();
+      if (!trimmed) return null;
+      if (!trimmed.startsWith('acct_')) {
+        throw new Error('Cloud account IDs start with "acct_".');
+      }
+      const session = await loadSession();
+      if (!session?.token) {
+        throw new Error('Cloud session not ready yet.');
+      }
+      try {
+        const profile = await cloudAuthClient.getProfile(session.token, trimmed);
+        return {
+          accountId: profile.accountId,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+          isContact: profile.isContact,
+          isSelf: profile.isSelf,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Lookup failed.';
+        // 404 from the server surfaces as a thrown error; surface a
+        // friendlier message instead of cascading the raw HTTP text.
+        if (/not[\s_-]?found|404|account_missing/i.test(message)) {
+          return null;
+        }
+        throw err;
+      }
+    };
+  }, [isCloud, cloudAuthClient]);
 
   const onAddContactByNodeId = async (rawId: string) => {
     if (isCloud) {
@@ -75,6 +119,8 @@ function SidebarSlot({ args }: { args: SidebarShellArgs }) {
       }}
       onCreateChatGroup={args.handleCreateChatGroup}
       onAddContactByNodeId={onAddContactByNodeId}
+      onLookupContact={onLookupContact}
+      addContactPlaceholder={isCloud ? 'Account ID, e.g. acct_…' : undefined}
       onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
       onRenameChatGroup={args.handleRenameChatGroup}
       onRenameChatSession={(sessionId, title) => {
@@ -110,7 +156,9 @@ function SidebarSlot({ args }: { args: SidebarShellArgs }) {
       groupedContacts={args.groupedContacts}
       displayedContacts={isCloud ? cloud.contacts : args.displayedContacts}
       addableContacts={isCloud ? [] : args.addableContacts}
-      contactRequestCount={isCloud ? cloud.requests.length : (args.contactRequests?.length ?? 0)}
+      contactRequestCount={isCloud
+        ? cloud.requests.filter((req) => req.direction === 'incoming').length
+        : (args.contactRequests?.length ?? 0)}
       setActiveContactGroup={args.setActiveContactGroup}
       setActiveContactId={args.setActiveContactId}
       displayedAgents={args.displayedAgents}

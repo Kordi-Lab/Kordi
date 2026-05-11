@@ -33,6 +33,15 @@ type CloudContactsAdapterProps = {
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
 
+  // Inbox only shows incoming requests — outgoing ones are the
+  // sender's own actions and surfacing them in the inbox with
+  // Accept/Reject would be wrong. They'll re-appear as accepted
+  // contacts (or vanish on rejection) on the next refresh.
+  const inboxRequests = useMemo(
+    () => cloud.requests.filter((req) => req.direction === 'incoming'),
+    [cloud.requests],
+  );
+
   const filteredGroupedContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
     const cloudMatches = (
@@ -110,7 +119,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       {...contactsPageProps}
       filteredGroupedContacts={filteredGroupedContacts}
       addableContacts={[]}
-      contactRequests={cloud.requests}
+      contactRequests={inboxRequests}
       activeContact={activeContact}
       activeContactRequest={activeContactRequest}
       onAcceptRequest={onAcceptRequest}
