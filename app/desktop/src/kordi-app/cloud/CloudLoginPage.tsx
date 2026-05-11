@@ -172,24 +172,15 @@ function CloudField({
   );
 }
 
-function UploadAvatarIcon() {
+function DiceAvatarIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 16V7" />
-      <path d="m8.5 10.5 3.5-3.5 3.5 3.5" />
-      <path d="M5 17.5v.75A2.75 2.75 0 0 0 7.75 21h8.5A2.75 2.75 0 0 0 19 18.25v-.75" />
-    </svg>
-  );
-}
-
-function RandomAvatarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 3h5v5" />
-      <path d="M4 20 21 3" />
-      <path d="M21 16v5h-5" />
-      <path d="M15 15l6 6" />
-      <path d="M4 4l5 5" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="3.5" />
+      <path d="M8.5 8.5h.01" />
+      <path d="M15.5 8.5h.01" />
+      <path d="M12 12h.01" />
+      <path d="M8.5 15.5h.01" />
+      <path d="M15.5 15.5h.01" />
     </svg>
   );
 }
@@ -209,42 +200,49 @@ function AvatarPicker({
   const seed = preference.kind === 'seed' ? preference.seed : 'cloud-signup:upload';
   const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
 
-  const buttonClass = `flex h-10 w-10 items-center justify-center rounded-full ${INK_MUTED} transition hover:scale-105 hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]`;
-
   return (
-    <div className={`grid gap-3 rounded-[20px] border ${BORDER_INNER} ${PAPER_SUNK} p-3.5`}>
-      <div className="flex items-center gap-3.5">
-        <IdentityAvatar
-          kind="human"
-          seed={seed}
-          name="Cloud signup avatar"
-          imageUrl={imageUrl}
-          avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
-          className="h-12 w-12 shrink-0 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45)]"
-        />
-        <div className="ml-auto flex items-center justify-center gap-4">
-          <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass} title="Upload avatar" aria-label="Upload avatar">
-            <UploadAvatarIcon />
-          </button>
-          <button type="button" onClick={onRandomAvatar} className={buttonClass} title="Random avatar" aria-label="Random avatar">
-            <RandomAvatarIcon />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="sr-only"
-            aria-label="Upload avatar"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = '';
-              onAvatarFile(file);
-            }}
+    <div className="grid justify-items-center gap-1.5 pt-[18px]">
+      <div className="relative h-14 w-14">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          title="Upload avatar"
+          aria-label="Upload avatar"
+          className="block h-14 w-14 rounded-full transition hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]"
+        >
+          <IdentityAvatar
+            kind="human"
+            seed={seed}
+            name="Cloud signup avatar"
+            imageUrl={imageUrl}
+            avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
+            className="h-14 w-14 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]"
           />
-        </div>
+        </button>
+        <button
+          type="button"
+          onClick={onRandomAvatar}
+          title="Random avatar"
+          aria-label="Random avatar"
+          className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border ${BORDER_INNER} ${PAPER_RAISED} ${INK_MUTED} shadow-[0_3px_8px_oklch(0.32_0.04_82/0.14)] transition hover:scale-105 hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]`}
+        >
+          <DiceAvatarIcon />
+        </button>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="sr-only"
+        aria-label="Upload avatar"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          onAvatarFile(file);
+        }}
+      />
       {uploadError ? (
-        <span className={`${TYPE_HINT} normal-case tracking-normal text-[oklch(0.55_0.18_25)]`}>{uploadError}</span>
+        <span className={`${TYPE_HINT} max-w-20 text-center normal-case tracking-normal text-[oklch(0.55_0.18_25)]`}>{uploadError}</span>
       ) : null}
     </div>
   );
@@ -468,7 +466,7 @@ export function CloudLoginPage({
 
         <form className="mt-5 grid gap-3.5" onSubmit={handleSubmit}>
           {isSignup ? (
-            <>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
                 onRandomAvatar={randomizeAvatar}
@@ -483,7 +481,7 @@ export function CloudLoginPage({
                 value={displayName}
                 onChange={setDisplayName}
               />
-            </>
+            </div>
           ) : null}
           <CloudField
             label="Email"
