@@ -116,6 +116,8 @@ Recommended endpoint shape:
 - `GET /v1/sessions`
 - `POST /v1/sessions`
 - `GET /v1/sessions/:session_id`
+- `GET /v1/sessions/:session_id/forks`
+- `POST /v1/sessions/:session_id/forks`
 - `POST /v1/sessions/:session_id/turns`
 - `POST /v1/approvals/:approval_id`
 - `GET /v1/projects`
@@ -170,6 +172,8 @@ state model.
 ### Phase 2: session detail and turns
 
 - implement `GET /v1/sessions/:id`
+- implement `GET /v1/sessions/:id/forks`
+- implement `POST /v1/sessions/:id/forks`
 - implement `POST /v1/sessions/:id/turns`
 - stream assistant output and runtime state over SSE
 - surface tool approval requests as protocol events

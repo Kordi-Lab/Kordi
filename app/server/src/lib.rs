@@ -11,9 +11,10 @@ use kordi_core::settings::Settings;
 use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};
 use kordi_protocol::{
     APP_PROTOCOL_VERSION, BootstrapSnapshot, ClientKind, ClientMetadata, FeatureFlags,
-    ModelSelector, ServerMetadata, ServiceSnapshot, ServiceState, ServiceStatusSummary,
-    SessionSource, SessionStatus, SessionSummary, SessionsPage, SubmitTurnAccepted,
-    SubmitTurnRequest, ThinkingLevel, WorkspaceSummary,
+    ForkSessionRequest, ForkSessionResponse, ModelSelector, ServerMetadata, ServiceSnapshot,
+    ServiceState, ServiceStatusSummary, SessionDetail, SessionForksPage, SessionSource,
+    SessionStatus, SessionSummary, SessionsPage, SubmitTurnAccepted, SubmitTurnRequest,
+    ThinkingLevel, TimelineEntry, TimelineEntryKind, TimelineRole, TimelineState, WorkspaceSummary,
 };
 use kordi_session::store;
 use serde::Deserialize;
@@ -301,6 +302,11 @@ impl AppServer {
         Router::new()
             .route("/v1/bootstrap", get(handle_bootstrap))
             .route("/v1/sessions", get(handle_sessions))
+            .route("/v1/sessions/:session_id", get(handle_session_detail))
+            .route(
+                "/v1/sessions/:session_id/forks",
+                get(handle_session_forks).post(handle_fork_session),
+            )
             .route("/v1/sessions/:session_id/turns", post(handle_submit_turn))
             .with_state(self.state.clone())
     }
@@ -351,6 +357,36 @@ async fn handle_sessions(
     let active_turns = active_turn_sessions(&state).await;
     let page = load_sessions_page(&state, limit, &active_turns).map_err(AppError::internal)?;
     Ok(Json(page))
+}
+
+async fn handle_session_detail(
+    State(state): State<Arc<AppState>>,
+    AxumPath(session_id): AxumPath<String>,
+) -> AppResult<Json<SessionDetail>> {
+    let active_turns = active_turn_sessions(&state).await;
+    let detail = load_session_detail(&state, &session_id, &active_turns)
+        .map_err(|error| map_session_load_error(error, &session_id))?;
+    Ok(Json(detail))
+}
+
+async fn handle_session_forks(
+    State(state): State<Arc<AppState>>,
+    AxumPath(session_id): AxumPath<String>,
+) -> AppResult<Json<SessionForksPage>> {
+    let active_turns = active_turn_sessions(&state).await;
+    let page = load_session_forks(&state, &session_id, &active_turns)
+        .map_err(|error| map_session_load_error(error, &session_id))?;
+    Ok(Json(page))
+}
+
+async fn handle_fork_session(
+    State(state): State<Arc<AppState>>,
+    AxumPath(session_id): AxumPath<String>,
+    Json(request): Json<ForkSessionRequest>,
+) -> AppResult<(StatusCode, Json<ForkSessionResponse>)> {
+    let response = fork_session(&state, &session_id, request)
+        .map_err(|error| map_fork_error(error, &session_id))?;
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 async fn handle_submit_turn(
@@ -469,41 +505,294 @@ fn load_sessions_page(
     let rows = store::list_sessions(&conn, &cwd)
         .with_context(|| format!("listing sessions for {}", cwd))?;
 
+    let fork_counts = fork_counts_by_parent(&rows);
     let items = rows
-        .into_iter()
+        .iter()
         .take(limit)
-        .map(|row| {
-            let status = if active_turns.contains(&row.session_id) {
-                SessionStatus::Running
-            } else {
-                SessionStatus::Idle
-            };
-            let preview = session_preview(&conn, &row.session_id, row.leaf_id.as_deref())?;
-            let title = row
-                .name
-                .clone()
-                .or_else(|| preview.clone())
-                .unwrap_or_else(|| fallback_session_title(&row.session_id));
-
-            Ok(SessionSummary {
-                session_id: row.session_id,
-                title,
-                source: SessionSource::Local,
-                status,
-                updated_at: row.updated_at,
-                cwd: Some(row.cwd),
-                project_id: None,
-                peer_id: None,
-                last_message_preview: preview,
-                unread_count: 0,
-            })
-        })
+        .map(|row| session_summary_from_row(&conn, row, active_turns, &fork_counts))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(SessionsPage {
         items,
         next_cursor: None,
     })
+}
+
+fn fork_counts_by_parent(rows: &[store::SessionRow]) -> HashMap<String, u32> {
+    let mut counts = HashMap::new();
+    for row in rows {
+        if let Some(parent_id) = row
+            .parent_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            *counts.entry(parent_id.to_string()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn session_summary_from_row(
+    conn: &rusqlite::Connection,
+    row: &store::SessionRow,
+    active_turns: &HashSet<String>,
+    fork_counts: &HashMap<String, u32>,
+) -> Result<SessionSummary> {
+    let status = if active_turns.contains(&row.session_id) {
+        SessionStatus::Running
+    } else {
+        SessionStatus::Idle
+    };
+    let preview = session_preview(conn, &row.session_id, row.leaf_id.as_deref())?;
+    let title = row
+        .name
+        .clone()
+        .or_else(|| preview.clone())
+        .unwrap_or_else(|| fallback_session_title(&row.session_id));
+
+    Ok(SessionSummary {
+        session_id: row.session_id.clone(),
+        title,
+        source: SessionSource::Local,
+        status,
+        updated_at: row.updated_at.clone(),
+        cwd: Some(row.cwd.clone()),
+        project_id: None,
+        peer_id: None,
+        parent_session_id: row.parent_session_id.clone(),
+        parent_session_message_id: row.parent_session_message_id.clone(),
+        fork_count: fork_counts.get(&row.session_id).copied().unwrap_or(0),
+        last_message_preview: preview,
+        unread_count: 0,
+    })
+}
+
+fn load_session_detail(
+    state: &AppState,
+    session_id: &str,
+    active_turns: &HashSet<String>,
+) -> Result<SessionDetail> {
+    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
+        format!(
+            "opening Kordi session store at {}",
+            state.sessions_db_path.display()
+        )
+    })?;
+    let cwd = state.cwd.display().to_string();
+    let Some(row) = store::get_session(&conn, session_id)? else {
+        anyhow::bail!("session {session_id} was not found for workspace {cwd}");
+    };
+    if row.cwd != cwd {
+        anyhow::bail!("session {session_id} does not belong to workspace {cwd}");
+    }
+    let rows = store::list_sessions(&conn, &cwd)?;
+    let fork_counts = fork_counts_by_parent(&rows);
+    let session = session_summary_from_row(&conn, &row, active_turns, &fork_counts)?;
+    let entries = store::get_entries(&conn, session_id)?
+        .iter()
+        .map(|entry| timeline_entry_from_row(entry))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(SessionDetail {
+        session,
+        entries,
+        has_more: false,
+        next_cursor: None,
+    })
+}
+
+fn load_session_forks(
+    state: &AppState,
+    session_id: &str,
+    active_turns: &HashSet<String>,
+) -> Result<SessionForksPage> {
+    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
+        format!(
+            "opening Kordi session store at {}",
+            state.sessions_db_path.display()
+        )
+    })?;
+    let cwd = state.cwd.display().to_string();
+    let rows = store::list_sessions(&conn, &cwd)?;
+    if !rows.iter().any(|row| row.session_id == session_id) {
+        anyhow::bail!("session {session_id} was not found for workspace {cwd}");
+    }
+    let fork_counts = fork_counts_by_parent(&rows);
+    let items = rows
+        .iter()
+        .filter(|row| row.parent_session_id.as_deref() == Some(session_id))
+        .map(|row| session_summary_from_row(&conn, row, active_turns, &fork_counts))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(SessionForksPage {
+        items,
+        next_cursor: None,
+    })
+}
+
+fn fork_session(
+    state: &AppState,
+    source_session_id: &str,
+    request: ForkSessionRequest,
+) -> Result<ForkSessionResponse> {
+    let source_entry_id = request.source_entry_id.trim();
+    if source_entry_id.is_empty() {
+        anyhow::bail!("source_entry_id must not be empty");
+    }
+    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
+        format!(
+            "opening Kordi session store at {}",
+            state.sessions_db_path.display()
+        )
+    })?;
+    let cwd = state.cwd.display().to_string();
+    let Some(source_session) = store::get_session(&conn, source_session_id)? else {
+        anyhow::bail!("session {source_session_id} was not found for workspace {cwd}");
+    };
+    if source_session.cwd != cwd {
+        anyhow::bail!("session {source_session_id} does not belong to workspace {cwd}");
+    }
+    let forked = store::fork_session_from_entry(&conn, source_session_id, source_entry_id, &cwd)?;
+    if let Some(title) = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        store::set_session_name(&conn, &forked.session_id, Some(title))?;
+    }
+    let rows = store::list_sessions(&conn, &cwd)?;
+    let fork_counts = fork_counts_by_parent(&rows);
+    let fork_row = rows
+        .iter()
+        .find(|row| row.session_id == forked.session_id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "fork session {} was not found after creation",
+                forked.session_id
+            )
+        })?;
+    let session = session_summary_from_row(&conn, fork_row, &HashSet::new(), &fork_counts)?;
+    Ok(ForkSessionResponse {
+        session,
+        source_session_id: forked.source_session_id,
+        source_entry_id: forked.source_entry_id,
+    })
+}
+
+fn map_session_load_error(error: anyhow::Error, session_id: &str) -> AppError {
+    let message = error.to_string();
+    let normalized = message.to_lowercase();
+    if normalized.contains("was not found") || normalized.contains("does not belong") {
+        return AppError::not_found(format!("Unable to load session {session_id}: {message}"));
+    }
+    AppError::internal(message)
+}
+
+fn map_fork_error(error: anyhow::Error, session_id: &str) -> AppError {
+    let message = error.to_string();
+    let normalized = message.to_lowercase();
+    if normalized.contains("source_entry_id must not be empty") {
+        return AppError::bad_request(message);
+    }
+    if normalized.contains("invalid entry id")
+        || normalized.contains("invalid entry id for forking")
+        || normalized.contains("entry not found")
+        || normalized.contains("was not found")
+    {
+        return AppError::not_found(format!("Unable to fork session {session_id}: {message}"));
+    }
+    AppError::internal(message)
+}
+
+fn timeline_entry_from_row(row: &store::EntryRow) -> Result<TimelineEntry> {
+    let parsed = store::parse_entry(row)?;
+    let (role, text, detail, state) = timeline_fields_from_entry(&parsed);
+    Ok(TimelineEntry {
+        session_id: row.session_id.clone(),
+        entry_id: row.entry_id.clone(),
+        parent_entry_id: row.parent_id.clone(),
+        created_at: row.timestamp.clone(),
+        kind: TimelineEntryKind::Message,
+        role,
+        text,
+        detail,
+        state,
+        data: None,
+    })
+}
+
+fn timeline_fields_from_entry(
+    entry: &SessionEntry,
+) -> (
+    TimelineRole,
+    Option<String>,
+    Option<String>,
+    Option<TimelineState>,
+) {
+    match entry {
+        SessionEntry::Message { message, .. } => match message {
+            AgentMessage::User(msg) => (
+                TimelineRole::User,
+                first_content_text(&msg.content),
+                None,
+                Some(TimelineState::Complete),
+            ),
+            AgentMessage::Assistant(msg) => (
+                TimelineRole::Assistant,
+                first_assistant_text(&msg.content),
+                None,
+                Some(TimelineState::Complete),
+            ),
+            AgentMessage::ToolResult(msg) => (
+                TimelineRole::Tool,
+                first_content_text(&msg.content),
+                Some(if msg.is_error {
+                    format!("Tool {} failed", msg.tool_name)
+                } else {
+                    format!("Tool {} completed", msg.tool_name)
+                }),
+                Some(if msg.is_error {
+                    TimelineState::Error
+                } else {
+                    TimelineState::Complete
+                }),
+            ),
+            AgentMessage::BashExecution(msg) => (
+                TimelineRole::Tool,
+                Some(msg.command.clone()),
+                Some("Bash execution".to_string()),
+                Some(if msg.cancelled {
+                    TimelineState::Error
+                } else {
+                    TimelineState::Complete
+                }),
+            ),
+            AgentMessage::Custom(msg) => (
+                TimelineRole::System,
+                first_content_text(&msg.content),
+                Some(format!("Custom message: {}", msg.custom_type)),
+                Some(TimelineState::Complete),
+            ),
+            AgentMessage::BranchSummary(msg) => (
+                TimelineRole::System,
+                Some(msg.summary.clone()),
+                Some("Branch summary".to_string()),
+                Some(TimelineState::Complete),
+            ),
+            AgentMessage::CompactionSummary(msg) => (
+                TimelineRole::System,
+                Some(msg.summary.clone()),
+                Some("Compaction summary".to_string()),
+                Some(TimelineState::Complete),
+            ),
+        },
+        _ => (
+            TimelineRole::System,
+            entry_preview(entry),
+            None,
+            Some(TimelineState::Complete),
+        ),
+    }
 }
 
 fn validate_turn_request(
@@ -1095,6 +1384,175 @@ mod tests {
                 .unwrap_or_default()
                 .contains("preview")
         );
+    }
+
+    #[tokio::test]
+    async fn session_detail_exposes_entries_and_lineage() {
+        let temp = TempDir::new().expect("tempdir");
+        let cwd = std::fs::canonicalize(temp.path()).expect("canonical cwd");
+        let db_path = temp.path().join("sessions.db");
+        let conn = store::open_db(&db_path).expect("open db");
+        let cwd_str = cwd.display().to_string();
+        let source_session_id = create_session_with_message(&conn, &cwd_str, "Source", "fork me");
+        let source_entry_id = store::get_entries(&conn, &source_session_id)
+            .expect("entries")
+            .first()
+            .expect("entry")
+            .entry_id
+            .clone();
+        let forked =
+            store::fork_session_from_entry(&conn, &source_session_id, &source_entry_id, &cwd_str)
+                .expect("fork session");
+
+        let app = test_server(
+            cwd,
+            db_path,
+            Ok(sample_bridges_status()),
+            FakeTurnExecutor::default(),
+        );
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/sessions/{}", forked.session_id))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let detail: SessionDetail = serde_json::from_slice(
+            &to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body"),
+        )
+        .expect("detail json");
+
+        assert_eq!(detail.session.session_id, forked.session_id);
+        assert_eq!(
+            detail.session.parent_session_id.as_deref(),
+            Some(source_session_id.as_str())
+        );
+        assert_eq!(
+            detail.session.parent_session_message_id.as_deref(),
+            Some(source_entry_id.as_str())
+        );
+        assert_eq!(detail.entries.len(), 1);
+        assert_eq!(detail.entries[0].entry_id, source_entry_id);
+    }
+
+    #[tokio::test]
+    async fn fork_endpoint_creates_fork_and_lists_it_under_source() {
+        let temp = TempDir::new().expect("tempdir");
+        let cwd = std::fs::canonicalize(temp.path()).expect("canonical cwd");
+        let db_path = temp.path().join("sessions.db");
+        let conn = store::open_db(&db_path).expect("open db");
+        let cwd_str = cwd.display().to_string();
+        let source_session_id =
+            create_session_with_message(&conn, &cwd_str, "Source", "make a fork");
+        let source_entry_id = store::get_entries(&conn, &source_session_id)
+            .expect("entries")
+            .first()
+            .expect("entry")
+            .entry_id
+            .clone();
+
+        let app = test_server(
+            cwd,
+            db_path,
+            Ok(sample_bridges_status()),
+            FakeTurnExecutor::default(),
+        );
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/sessions/{source_session_id}/forks"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "source_entry_id": source_entry_id,
+                            "title": "Forked task",
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let forked: ForkSessionResponse = serde_json::from_slice(
+            &to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body"),
+        )
+        .expect("fork json");
+        assert_ne!(forked.session.session_id, source_session_id);
+        assert_eq!(forked.session.title, "Forked task");
+        assert_eq!(
+            forked.session.parent_session_id.as_deref(),
+            Some(source_session_id.as_str())
+        );
+        assert_eq!(
+            forked.session.parent_session_message_id.as_deref(),
+            Some(source_entry_id.as_str())
+        );
+
+        let list_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/sessions/{source_session_id}/forks"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let forks: SessionForksPage = serde_json::from_slice(
+            &to_bytes(list_response.into_body(), usize::MAX)
+                .await
+                .expect("body"),
+        )
+        .expect("fork list json");
+        assert_eq!(forks.items.len(), 1);
+        assert_eq!(forks.items[0].session_id, forked.session.session_id);
+    }
+
+    #[tokio::test]
+    async fn fork_endpoint_rejects_unknown_source_entry() {
+        let temp = TempDir::new().expect("tempdir");
+        let cwd = std::fs::canonicalize(temp.path()).expect("canonical cwd");
+        let db_path = temp.path().join("sessions.db");
+        let conn = store::open_db(&db_path).expect("open db");
+        let cwd_str = cwd.display().to_string();
+        let source_session_id = create_session_with_message(&conn, &cwd_str, "Source", "ready");
+
+        let app = test_server(
+            cwd,
+            db_path,
+            Ok(sample_bridges_status()),
+            FakeTurnExecutor::default(),
+        );
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/sessions/{source_session_id}/forks"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "source_entry_id": "missing-entry" }).to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
