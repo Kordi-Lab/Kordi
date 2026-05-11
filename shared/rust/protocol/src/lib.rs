@@ -206,12 +206,43 @@ pub struct SessionSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub peer_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub fork_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_message_preview: Option<String>,
     pub unread_count: u32,
 }
 
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionsPage {
+    pub items: Vec<SessionSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForkSessionRequest {
+    pub source_entry_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForkSessionResponse {
+    pub session: SessionSummary,
+    pub source_session_id: String,
+    pub source_entry_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionForksPage {
     pub items: Vec<SessionSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,

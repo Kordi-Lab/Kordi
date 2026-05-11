@@ -78,11 +78,30 @@ export type SessionSummary = {
   cwd?: string;
   project_id?: string;
   peer_id?: string;
+  parent_session_id?: string;
+  parent_session_message_id?: string;
+  fork_count?: number;
   last_message_preview?: string;
   unread_count: number;
 };
 
 export type SessionsPage = {
+  items: SessionSummary[];
+  next_cursor?: string;
+};
+
+export type ForkSessionRequest = {
+  source_entry_id: string;
+  title?: string;
+};
+
+export type ForkSessionResponse = {
+  session: SessionSummary;
+  source_session_id: string;
+  source_entry_id: string;
+};
+
+export type SessionForksPage = {
   items: SessionSummary[];
   next_cursor?: string;
 };
