@@ -16,10 +16,17 @@ function SidebarSlot({ args }: { args: SidebarShellArgs }) {
   const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
   const cloud = useCloudContacts(edition === 'cloud' ? cloudSession.account : null);
 
-  const isCloud = edition === 'cloud' && cloudSession.account !== null;
+  // Bridge path is unreachable in cloud edition — gate purely on
+  // edition so a race between the parent shell's session bootstrap
+  // and this slot's bootstrap can't trip a "Set up a Bridge host"
+  // error on cloud users.
+  const isCloud = edition === 'cloud';
 
   const onAddContactByNodeId = async (rawId: string) => {
     if (isCloud) {
+      if (!cloudSession.account) {
+        throw new Error('Cloud session not ready yet — try again in a moment.');
+      }
       const trimmed = rawId.trim();
       if (!trimmed) return;
       if (!trimmed.startsWith('acct_')) {

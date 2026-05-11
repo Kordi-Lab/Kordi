@@ -54,7 +54,13 @@ function ContactsRoute({ contactsPageProps }: { contactsPageProps: ComponentProp
   const edition = currentKordiEdition();
   // Hooks must run on every render; gate the cloud branch on the result.
   const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
-  if (edition === 'cloud' && cloudSession.account) {
+  if (edition === 'cloud') {
+    if (!cloudSession.account) {
+      // Bootstrapping the cloud session — render an empty placeholder
+      // shell instead of falling back to the local ContactsPage, which
+      // would show local Bridge-flavoured data and confuse cloud users.
+      return <ContactsPage {...contactsPageProps} filteredGroupedContacts={[]} contactRequests={[]} addableContacts={[]} />;
+    }
     return <CloudContactsAdapter account={cloudSession.account} contactsPageProps={contactsPageProps} />;
   }
   return <ContactsPage {...contactsPageProps} />;
