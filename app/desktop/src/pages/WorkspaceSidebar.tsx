@@ -100,11 +100,12 @@ function sessionActionIdForConversation(conversation: ConversationItem) {
   return sessionId;
 }
 
-function canMoveConversationToProject(conversation: ConversationItem, sessionId: string) {
-  return conversation.type === 'owned-agent'
-    && sessionId === conversation.id.trim()
-    && LOCAL_RUNTIME_SESSION_ID_PATTERN.test(sessionId)
-    && !sessionId.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+function canMoveConversationToProject(_conversation: ConversationItem, _sessionId: string) {
+  // main-cloud does not surface the Projects workspace, so the
+  // session context menu must not offer "Move to project…" either.
+  // Forcing this to false also keeps the MoveSessionDialog
+  // unreachable from any session row.
+  return false;
 }
 
 export function sessionContextMenuTargetForConversation(
