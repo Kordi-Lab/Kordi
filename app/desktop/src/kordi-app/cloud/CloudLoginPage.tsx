@@ -392,7 +392,7 @@ export function CloudLoginPage({
             {isSignup ? 'Create your account' : 'Welcome to Kordi'}
           </h1>
           <p className={`mt-2 ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}>
-            {isSignup ? 'Sign up to sync your Kordi workspace.' : 'Sign in to your Kordi workspace.'}
+            {isSignup ? 'Sign up to sync your Kordi workspace.' : 'building next-generation super collaboration'}
           </p>
         </div>
 
