@@ -203,6 +203,51 @@ pub enum ContactRequestEventKind {
     Rejected,
 }
 
+impl EventBus {
+    /// Fire `kordi.events.message.arrived.<recipient_account_id>` with
+    /// the minimum payload needed for a chat client to render the new
+    /// message without a follow-up HTTP fetch.
+    pub async fn publish_message_arrived(
+        &self,
+        message_id: &str,
+        from_account_id: &str,
+        to_account_id: &str,
+        body: &str,
+        created_at: &str,
+    ) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = MessageArrivedEvent {
+            event_type: "message.arrived",
+            message_id,
+            from_account_id,
+            to_account_id,
+            body,
+            created_at,
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize message.arrived: {err}");
+                return;
+            }
+        };
+        let subject = format!("kordi.events.message.arrived.{to_account_id}");
+        self.publish_raw(subject, body).await;
+    }
+}
+
+#[derive(Serialize)]
+struct MessageArrivedEvent<'a> {
+    event_type: &'static str,
+    message_id: &'a str,
+    from_account_id: &'a str,
+    to_account_id: &'a str,
+    body: &'a str,
+    created_at: &'a str,
+}
+
 #[derive(Serialize)]
 struct AccountSignedUp<'a> {
     event_type: &'static str,

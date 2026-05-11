@@ -72,6 +72,19 @@ export type CloudContactRequest = {
   counterpart: CloudContactSummary | null;
 };
 
+export type CloudMessageDirection = 'incoming' | 'outgoing';
+
+export type CloudMessage = {
+  messageId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  body: string;
+  createdAt: string;
+  deliveredAt: string | null;
+  readAt: string | null;
+  direction: CloudMessageDirection;
+};
+
 export type RegisterDeviceResult = {
   nodeId: string;
   apiKey: string;
@@ -327,6 +340,38 @@ export class CloudAuthClient {
       },
       'Could not reject contact request.',
     );
+  }
+
+  async sendMessage(token: string, peerAccountId: string, body: string): Promise<CloudMessage> {
+    const response = await this.send<{ message: CloudMessage }>(
+      '/v1/cloud/messages',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ peerAccountId, body }),
+      },
+      'Could not send message.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.message;
+  }
+
+  async listMessages(
+    token: string,
+    peerAccountId: string,
+    limit?: number,
+  ): Promise<CloudMessage[]> {
+    const params = new URLSearchParams({ peerAccountId });
+    if (limit !== undefined) params.set('limit', String(limit));
+    const response = await this.send<{ messages: CloudMessage[] }>(
+      `/v1/cloud/messages?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load messages.',
+    );
+    return response?.messages ?? [];
   }
 }
 

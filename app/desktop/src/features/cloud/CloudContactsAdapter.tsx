@@ -8,10 +8,11 @@
 // raw cloud-aware contact list for the ChatCreateDialog so the "+"
 // menu's "Add contacts" surface can route through cloud too.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
 
 import { useCloudContacts } from './useCloudContacts';
+import { CloudPeerChatPanel } from './CloudPeerChatPanel';
 import type { CloudAccount } from './authClient';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
@@ -32,6 +33,7 @@ type CloudContactsAdapterProps = {
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
+  const [activeChatContact, setActiveChatContact] = useState<Contact | null>(null);
 
   // Inbox only shows incoming requests — outgoing ones are the
   // sender's own actions and surfacing them in the inbox with
@@ -114,18 +116,40 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     return contactsPageProps.activeContactRequest;
   }, [contactsPageProps.activeContactRequestId, contactsPageProps.activeContactRequest, cloud.requests]);
 
+  // Clicking "Message" on a cloud contact opens the cloud peer chat
+  // panel (a self-contained surface). For non-cloud contacts (e.g.
+  // local bridge agents that somehow ended up in this view) fall back
+  // to whatever the parent provided.
+  const onMessageContact = (contact: Contact) => {
+    if (contact.id.startsWith('cloud:')) {
+      setActiveChatContact(contact);
+      return;
+    }
+    contactsPageProps.onMessageContact?.(contact);
+  };
+
   return (
-    <ContactsPage
-      {...contactsPageProps}
-      filteredGroupedContacts={filteredGroupedContacts}
-      addableContacts={[]}
-      contactRequests={inboxRequests}
-      activeContact={activeContact}
-      activeContactRequest={activeContactRequest}
-      onAcceptRequest={onAcceptRequest}
-      onRejectRequest={onRejectRequest}
-      onAddContactByNodeId={onAddContactByNodeId}
-    />
+    <>
+      <ContactsPage
+        {...contactsPageProps}
+        filteredGroupedContacts={filteredGroupedContacts}
+        addableContacts={[]}
+        contactRequests={inboxRequests}
+        activeContact={activeContact}
+        activeContactRequest={activeContactRequest}
+        onAcceptRequest={onAcceptRequest}
+        onRejectRequest={onRejectRequest}
+        onAddContactByNodeId={onAddContactByNodeId}
+        onMessageContact={onMessageContact}
+      />
+      {activeChatContact ? (
+        <CloudPeerChatPanel
+          account={account}
+          contact={activeChatContact}
+          onClose={() => setActiveChatContact(null)}
+        />
+      ) : null}
+    </>
   );
 }
 

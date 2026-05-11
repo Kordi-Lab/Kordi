@@ -166,6 +166,51 @@ pub struct ContactRequestResponse {
     pub request: ContactRequestSummary,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    #[serde(rename = "peerAccountId")]
+    pub peer_account_id: String,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MessageSummary {
+    #[serde(rename = "messageId")]
+    pub message_id: String,
+    #[serde(rename = "fromAccountId")]
+    pub from_account_id: String,
+    #[serde(rename = "toAccountId")]
+    pub to_account_id: String,
+    pub body: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "deliveredAt")]
+    pub delivered_at: Option<String>,
+    #[serde(rename = "readAt")]
+    pub read_at: Option<String>,
+    /// Direction relative to the caller — "outgoing" if the caller sent
+    /// the message, "incoming" otherwise. Saves the client a comparison.
+    pub direction: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageListResponse {
+    pub messages: Vec<MessageSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageResponse {
+    pub message: MessageSummary,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessagesQuery {
+    #[serde(rename = "peerAccountId")]
+    pub peer_account_id: String,
+    /// Optional cap, default 200, max 500.
+    pub limit: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorBody {
     #[serde(rename = "errorCode")]
@@ -303,6 +348,10 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/contacts/requests/:request_id/reject",
             post(reject_contact_request),
+        )
+        .route(
+            "/v1/cloud/messages",
+            get(list_messages).post(send_message),
         )
         .route(
             "/v1/cloud/attachments/initiate",
@@ -1497,6 +1546,33 @@ async fn finalize_request_acceptance(
         }
     }
 
+    // Auto-hello: the acceptor (to_id) greets the original requester
+    // (from_id) so a freshly accepted contact pair has at least one
+    // message in their conversation history. We capture the id +
+    // body so we can fire a message.arrived NATS event after commit.
+    let hello_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let hello_body = "👋 Hi! Thanks for adding me — happy to connect.";
+    if query(
+        "INSERT INTO cloud_messages \
+         (message_id, from_account_id, to_account_id, body, created_at) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&hello_id)
+    .bind(to_id)
+    .bind(from_id)
+    .bind(hello_body)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record hello message.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
     if tx.commit().await.is_err() {
         return err(
             "server_error",
@@ -1516,12 +1592,16 @@ async fn finalize_request_acceptance(
 
     // Fire the lifecycle events: one accept-notification to the
     // original requester, plus contact.added on both sides so any
-    // open WS on either account refreshes its contacts list.
+    // open WS on either account refreshes its contacts list, plus
+    // the auto-hello message.arrived so the chat surface lights up.
     {
         let events = state.events().clone();
         let request_id = request_id.to_string();
         let from = from_id.to_string();
         let to = to_id.to_string();
+        let hello_id = hello_id.clone();
+        let hello_body = hello_body.to_string();
+        let now = now.clone();
         tokio::spawn(async move {
             events
                 .publish_contact_request_event(
@@ -1533,6 +1613,12 @@ async fn finalize_request_acceptance(
                 .await;
             events.publish_contact_added(&from, &to).await;
             events.publish_contact_added(&to, &from).await;
+            // Hello message: from = acceptor (to_id in request terms),
+            // recipient = requester (from_id). The recipient is the
+            // one who needs the live WS frame.
+            events
+                .publish_message_arrived(&hello_id, &to, &from, &hello_body, &now)
+                .await;
         });
     }
 
@@ -1573,4 +1659,195 @@ fn account_to_summary(account: AccountResponse) -> ContactSummary {
         node_id: account.node_id,
         created_at: String::new(),
     }
+}
+
+// ---------- Cloud messages (1:1 peer chat) ----------
+
+const MESSAGE_BODY_MAX_CHARS: usize = 4_000;
+const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
+const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
+
+/// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
+/// already has in their contacts. Body is plain UTF-8 for now; E2EE
+/// is a later session (it'll migrate writes to `server_messages`).
+async fn send_message(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<SendMessageRequest>,
+) -> Response {
+    let peer = req.peer_account_id.trim().to_string();
+    if peer.is_empty() {
+        return err(
+            "invalid_account_id",
+            "peerAccountId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    if peer == session.account_id {
+        return err(
+            "self_message",
+            "You cannot message yourself.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let body = req.body.trim();
+    if body.is_empty() {
+        return err(
+            "empty_message",
+            "Message body is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let body = body.chars().take(MESSAGE_BODY_MAX_CHARS).collect::<String>();
+
+    let pool = state.db_pool();
+
+    // Both directions of the contact must exist. The peer must have
+    // accepted you OR you must have accepted them — we enforce mutual
+    // acceptance so an attacker who guesses an account id can't DM a
+    // stranger. (Single-row check is fine because finalize_request_acceptance
+    // always inserts both rows in the same tx.)
+    let mutual: Option<(i32,)> = match query_as(
+        "SELECT 1 FROM cloud_contacts \
+         WHERE account_id = $1 AND peer_account_id = $2",
+    )
+    .bind(&session.account_id)
+    .bind(&peer)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+    if mutual.is_none() {
+        return err(
+            "not_a_contact",
+            "You can only message accepted contacts.",
+            StatusCode::FORBIDDEN,
+        );
+    }
+
+    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let now = Utc::now().to_rfc3339();
+    if query(
+        "INSERT INTO cloud_messages \
+         (message_id, from_account_id, to_account_id, body, created_at) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&message_id)
+    .bind(&session.account_id)
+    .bind(&peer)
+    .bind(&body)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record message.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    // Live fanout to the recipient's open WS.
+    {
+        let events = state.events().clone();
+        let message_id = message_id.clone();
+        let from = session.account_id.clone();
+        let to = peer.clone();
+        let body_clone = body.clone();
+        let created_at = now.clone();
+        tokio::spawn(async move {
+            events
+                .publish_message_arrived(&message_id, &from, &to, &body_clone, &created_at)
+                .await;
+        });
+    }
+
+    let summary = MessageSummary {
+        message_id,
+        from_account_id: session.account_id.clone(),
+        to_account_id: peer,
+        body,
+        created_at: now,
+        delivered_at: None,
+        read_at: None,
+        direction: "outgoing".into(),
+    };
+    (StatusCode::CREATED, Json(MessageResponse { message: summary })).into_response()
+}
+
+/// `GET /v1/cloud/messages?peerAccountId=...&limit=...` — list the
+/// caller's conversation with a single peer, oldest first.
+async fn list_messages(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Query(q): axum::extract::Query<MessagesQuery>,
+) -> Response {
+    let peer = q.peer_account_id.trim().to_string();
+    if peer.is_empty() {
+        return err(
+            "invalid_account_id",
+            "peerAccountId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let limit = q
+        .limit
+        .unwrap_or(MESSAGE_LIST_DEFAULT_LIMIT)
+        .clamp(1, MESSAGE_LIST_MAX_LIMIT);
+
+    let pool = state.db_pool();
+
+    let rows: Vec<(String, String, String, String, String, Option<String>, Option<String>)> = match query_as(
+        "SELECT message_id, from_account_id, to_account_id, body, created_at, \
+                delivered_at, read_at \
+         FROM cloud_messages \
+         WHERE (from_account_id = $1 AND to_account_id = $2) \
+            OR (from_account_id = $2 AND to_account_id = $1) \
+         ORDER BY created_at ASC \
+         LIMIT $3",
+    )
+    .bind(&session.account_id)
+    .bind(&peer)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let me = &session.account_id;
+    let messages: Vec<MessageSummary> = rows
+        .into_iter()
+        .map(|(message_id, from_id, to_id, body, created_at, delivered_at, read_at)| {
+            let direction = if from_id == *me { "outgoing" } else { "incoming" };
+            MessageSummary {
+                message_id,
+                from_account_id: from_id,
+                to_account_id: to_id,
+                body,
+                created_at,
+                delivered_at,
+                read_at,
+                direction: direction.into(),
+            }
+        })
+        .collect();
+
+    Json(MessageListResponse { messages }).into_response()
 }
