@@ -41,7 +41,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
       activeSourcePreview={args.activeSourcePreview}
       onCloseSourcePreview={() => args.setActiveSourcePreview(null)}
     >
-      {args.activeNav === 'projects' ? (
+      {args.activeNav === 'projects' && !isCloudEdition ? (
         <ProjectDetailPanel
           isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}

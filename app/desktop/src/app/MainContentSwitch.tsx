@@ -39,6 +39,12 @@ export function MainContentSwitch({
     case 'settings':
       return <SettingsPage {...settingsPageProps} />;
     case 'projects':
+      // Cloud edition does not surface the Projects workspace; fall
+      // through to chats so a stale activeNav from a prior local
+      // session can't strand the user on an empty page.
+      if (currentKordiEdition() === 'cloud') {
+        return <ChatsPage {...chatsPageProps} />;
+      }
       return <ProjectsPage {...projectsPageProps} />;
     case 'chats':
     default:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
+import { currentKordiEdition } from '@/features/cloud/edition';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
@@ -783,6 +784,15 @@ export function WorkspaceSidebar({
     </ScrollArea>
   );
 
+  // Cloud edition does not surface the Projects workspace; hide it
+  // from the primary navigation so the route is unreachable.
+  const visibleNavItems = useMemo(
+    () => (currentKordiEdition() === 'cloud'
+      ? navItems.filter((item) => item.id !== 'projects')
+      : navItems),
+    [],
+  );
+
   return (
     <>
       <aside className={cn('app-side-shell app-workspace-sidebar overflow-hidden', isSingleWorkspacePage ? 'rounded-none' : 'rounded-bl-[22px] rounded-r-none')}>
@@ -804,7 +814,7 @@ export function WorkspaceSidebar({
               </div>
             )}
             <div className="flex w-full flex-col items-center gap-2.5">
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = activeNav === item.id;
                 return (
