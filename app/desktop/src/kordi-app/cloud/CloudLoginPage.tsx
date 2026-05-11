@@ -18,7 +18,7 @@ import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
-const TYPE_LABEL = 'text-[11px] font-semibold uppercase tracking-[0.10em]';
+const TYPE_LABEL = 'text-[12px] font-medium tracking-[-0.005em]';
 const TYPE_INPUT = 'text-[15px] font-medium tracking-[-0.005em]';
 const TYPE_ACTION = 'text-[13px] font-semibold tracking-[-0.005em]';
 const TYPE_TAB = 'text-[13px] font-semibold tracking-[-0.005em]';
@@ -123,6 +123,7 @@ type CloudFieldValidation = 'invalid' | 'hint' | undefined;
 
 function CloudField({
   label,
+  ariaLabel,
   type,
   autoComplete,
   placeholder,
@@ -131,7 +132,8 @@ function CloudField({
   validation,
   hint,
 }: {
-  label: string;
+  label?: string;
+  ariaLabel?: string;
   type: string;
   autoComplete: string;
   placeholder: string;
@@ -149,13 +151,14 @@ function CloudField({
       : `${BORDER_SOFT} ${FOCUS_RING}`;
   return (
     <label className={`grid gap-1.5 ${TYPE_LABEL} ${INK_MUTED}`}>
-      {label}
+      {label ? <span>{label}</span> : null}
       <input
         type={type}
         autoComplete={autoComplete}
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
+        aria-label={ariaLabel ?? label}
         aria-invalid={validation === 'invalid' || undefined}
         className={`${baseInput} ${tone}`}
       />
@@ -275,6 +278,7 @@ export function CloudLoginPage({
   const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => initialAvatarPreference(mode));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
@@ -324,12 +328,14 @@ export function CloudLoginPage({
 
   const emailInvalid = email.length > 0 && !EMAIL_PATTERN.test(email);
   const passwordTooShort = isSignup && password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
+  const passwordMismatch = isSignup && confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit = useMemo(() => {
     if (submitting) return false;
     if (!EMAIL_PATTERN.test(email)) return false;
     if (password.length < PASSWORD_MIN_LENGTH) return false;
+    if (isSignup && password !== confirmPassword) return false;
     return true;
-  }, [email, password, submitting]);
+  }, [confirmPassword, email, isSignup, password, submitting]);
 
   const submitLabel = isSignup
     ? submitting
@@ -474,10 +480,10 @@ export function CloudLoginPage({
                 uploadError={uploadError}
               />
               <CloudField
-                label="Name"
+                ariaLabel="Display name"
                 type="text"
                 autoComplete="name"
-                placeholder="Ada Lovelace"
+                placeholder="Display name"
                 value={displayName}
                 onChange={setDisplayName}
               />
@@ -503,6 +509,18 @@ export function CloudLoginPage({
             validation={passwordTooShort ? 'hint' : undefined}
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
+          {isSignup ? (
+            <CloudField
+              label="Confirm Password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              validation={passwordMismatch ? 'invalid' : undefined}
+              hint={passwordMismatch ? 'Passwords do not match.' : undefined}
+            />
+          ) : null}
           {submitError ? (
             <div
               role="alert"

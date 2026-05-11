@@ -79,7 +79,9 @@ test('signup mode offers avatar upload and random avatar controls', () => {
   assert.match(markup, /Create account/);
   assert.match(markup, /Upload avatar/);
   assert.match(markup, /Random avatar/);
-  assert.match(markup, /Name/);
+  assert.match(markup, /Display name/);
+  assert.match(markup, /Confirm Password/);
+  assert.doesNotMatch(markup, />Name</);
   assert.match(markup, /Create account/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
