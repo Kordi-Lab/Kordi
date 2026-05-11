@@ -204,14 +204,14 @@ function AvatarPicker({
   const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
 
   return (
-    <div className="grid h-12 w-20 justify-items-center gap-1.5">
-      <div className="relative h-14 w-14">
+    <div className="grid h-12 w-20 place-items-center">
+      <div className="relative h-12 w-12">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           title="Upload avatar"
           aria-label="Upload avatar"
-          className="block h-14 w-14 rounded-full transition hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]"
+          className="block h-12 w-12 rounded-full transition hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]"
         >
           <IdentityAvatar
             kind="human"
@@ -219,7 +219,7 @@ function AvatarPicker({
             name="Cloud signup avatar"
             imageUrl={imageUrl}
             avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
-            className="h-14 w-14 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]"
+            className="h-12 w-12 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]"
           />
         </button>
         <button
