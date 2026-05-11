@@ -396,7 +396,7 @@ export function CloudLoginPage({
           </p>
         </div>
 
-        <div className="mt-7 grid grid-cols-3 gap-2">
+        <div className="mt-7 flex items-center justify-center gap-6">
           {SOCIAL_LOGIN_PROVIDERS.map((provider) => (
             <button
               key={provider.id}
@@ -406,7 +406,7 @@ export function CloudLoginPage({
               aria-label={`Continue with ${provider.label}`}
               data-provider={provider.id}
               onClick={() => void handleSocialSignIn(provider.id)}
-              className={`flex h-11 items-center justify-center rounded-full border ${BORDER_SOFT} ${PAPER_RAISED} ${INK} shadow-[0_4px_12px_oklch(0.40_0.035_82/0.06)] transition hover:bg-[oklch(0.998_0.008_82)] disabled:cursor-wait disabled:opacity-70`}
+              className={`flex h-10 w-10 items-center justify-center rounded-full ${INK} transition duration-150 hover:scale-105 hover:text-[oklch(0.16_0.02_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.42)] disabled:cursor-wait disabled:opacity-55`}
             >
               <provider.Mark />
               {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
