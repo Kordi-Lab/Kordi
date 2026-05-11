@@ -57,6 +57,21 @@ export type CloudContactSummary = {
   createdAt: string;
 };
 
+export type CloudContactRequestDirection = 'incoming' | 'outgoing';
+export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected';
+
+export type CloudContactRequest = {
+  requestId: string;
+  fromAccountId: string;
+  toAccountId: string;
+  status: CloudContactRequestStatus;
+  direction: CloudContactRequestDirection;
+  message: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  counterpart: CloudContactSummary | null;
+};
+
 export type RegisterDeviceResult = {
   nodeId: string;
   apiKey: string;
@@ -258,6 +273,60 @@ export class CloudAuthClient {
       'Could not load contacts.',
     );
     return response?.contacts ?? [];
+  }
+
+  async sendContactRequest(
+    token: string,
+    peerAccountId: string,
+    message?: string,
+  ): Promise<CloudContactRequest> {
+    const response = await this.send<{ request: CloudContactRequest }>(
+      '/v1/cloud/contacts/requests',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ peerAccountId, message }),
+      },
+      'Could not send contact request.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.request;
+  }
+
+  async listContactRequests(token: string): Promise<CloudContactRequest[]> {
+    const response = await this.send<{ requests: CloudContactRequest[] }>(
+      '/v1/cloud/contacts/requests',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load contact requests.',
+    );
+    return response?.requests ?? [];
+  }
+
+  async acceptContactRequest(token: string, requestId: string): Promise<CloudContactRequest> {
+    const response = await this.send<{ request: CloudContactRequest }>(
+      `/v1/cloud/contacts/requests/${encodeURIComponent(requestId)}/accept`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not accept contact request.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.request;
+  }
+
+  async rejectContactRequest(token: string, requestId: string): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/contacts/requests/${encodeURIComponent(requestId)}/reject`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not reject contact request.',
+    );
   }
 }
 

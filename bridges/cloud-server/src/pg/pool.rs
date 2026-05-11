@@ -52,6 +52,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud_attachments table",
         sql: include_str!("../../migrations/0002_attachments.sql"),
     },
+    EmbeddedMigration {
+        version: 3,
+        description: "cloud_contact_requests + approval flow",
+        sql: include_str!("../../migrations/0003_contact_requests.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

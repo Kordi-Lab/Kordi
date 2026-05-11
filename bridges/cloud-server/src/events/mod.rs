@@ -147,6 +147,60 @@ impl EventBus {
         let subject = format!("kordi.events.contact.added.{peer_account_id}");
         self.publish_raw(subject, body).await;
     }
+
+    /// Fire `kordi.events.contact.request.<event>.<recipient_account_id>`.
+    /// For `created`, the recipient is the one being asked. For
+    /// `accepted`/`rejected`, the recipient is the original requester
+    /// (so their UI can flip "pending" → "accepted"/"rejected").
+    pub async fn publish_contact_request_event(
+        &self,
+        event_kind: ContactRequestEventKind,
+        request_id: &str,
+        from_account_id: &str,
+        to_account_id: &str,
+    ) {
+        if self.inner.is_none() {
+            return;
+        }
+        let recipient = match event_kind {
+            ContactRequestEventKind::Created => to_account_id,
+            ContactRequestEventKind::Accepted | ContactRequestEventKind::Rejected => from_account_id,
+        };
+        let payload = ContactRequestEvent {
+            event_type: match event_kind {
+                ContactRequestEventKind::Created => "contact.request.created",
+                ContactRequestEventKind::Accepted => "contact.request.accepted",
+                ContactRequestEventKind::Rejected => "contact.request.rejected",
+            },
+            request_id,
+            from_account_id,
+            to_account_id,
+            occurred_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize contact.request: {err}");
+                return;
+            }
+        };
+        let subject = format!(
+            "kordi.events.contact.{}.{recipient}",
+            match event_kind {
+                ContactRequestEventKind::Created => "request.created",
+                ContactRequestEventKind::Accepted => "request.accepted",
+                ContactRequestEventKind::Rejected => "request.rejected",
+            }
+        );
+        self.publish_raw(subject, body).await;
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum ContactRequestEventKind {
+    Created,
+    Accepted,
+    Rejected,
 }
 
 #[derive(Serialize)]
@@ -162,5 +216,14 @@ struct ContactAdded<'a> {
     event_type: &'static str,
     actor_account_id: &'a str,
     peer_account_id: &'a str,
+    occurred_at: String,
+}
+
+#[derive(Serialize)]
+struct ContactRequestEvent<'a> {
+    event_type: &'static str,
+    request_id: &'a str,
+    from_account_id: &'a str,
+    to_account_id: &'a str,
     occurred_at: String,
 }

@@ -1,8 +1,39 @@
 import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
 
 import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
+import { currentKordiEdition } from '@/features/cloud/edition';
+import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import { useCloudSession } from '@/features/cloud/useCloudSession';
 
 export function assembleSidebarSlot(args: SidebarShellArgs) {
+  return <SidebarSlot args={args} />;
+}
+
+function SidebarSlot({ args }: { args: SidebarShellArgs }) {
+  // Hooks must run on every render; the cloud branch only takes effect
+  // when the desktop is launched in cloud edition.
+  const edition = currentKordiEdition();
+  const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
+  const cloud = useCloudContacts(edition === 'cloud' ? cloudSession.account : null);
+
+  const isCloud = edition === 'cloud' && cloudSession.account !== null;
+
+  const onAddContactByNodeId = async (rawId: string) => {
+    if (isCloud) {
+      const trimmed = rawId.trim();
+      if (!trimmed) return;
+      if (!trimmed.startsWith('acct_')) {
+        throw new Error('Cloud account IDs start with "acct_".');
+      }
+      await cloud.sendRequest(trimmed);
+      return;
+    }
+    if (!args.activeBridgeHost?.id) {
+      throw new Error('Set up a Bridge host before adding contacts.');
+    }
+    await args.handleAddBridgeContact(args.activeBridgeHost.id, rawId);
+  };
+
   return (
     <WorkspaceSidebar
       isNativeShell={args.isNativeShell}
@@ -36,12 +67,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         await args.handleStartChatWithAgent(agent);
       }}
       onCreateChatGroup={args.handleCreateChatGroup}
-      onAddContactByNodeId={async (nodeId) => {
-        if (!args.activeBridgeHost?.id) {
-          throw new Error('Set up a Bridge host before adding contacts.');
-        }
-        await args.handleAddBridgeContact(args.activeBridgeHost.id, nodeId);
-      }}
+      onAddContactByNodeId={onAddContactByNodeId}
       onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
       onRenameChatGroup={args.handleRenameChatGroup}
       onRenameChatSession={(sessionId, title) => {
@@ -75,9 +101,9 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         void args.handleSelectProjectSession(projectId, sessionId);
       }}
       groupedContacts={args.groupedContacts}
-      displayedContacts={args.displayedContacts}
-      addableContacts={args.addableContacts}
-      contactRequestCount={args.contactRequests?.length ?? 0}
+      displayedContacts={isCloud ? cloud.contacts : args.displayedContacts}
+      addableContacts={isCloud ? [] : args.addableContacts}
+      contactRequestCount={isCloud ? cloud.requests.length : (args.contactRequests?.length ?? 0)}
       setActiveContactGroup={args.setActiveContactGroup}
       setActiveContactId={args.setActiveContactId}
       displayedAgents={args.displayedAgents}
