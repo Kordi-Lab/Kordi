@@ -21,6 +21,7 @@ import {
 } from './authClient';
 import {
   buildCloudDesktopBridgeState,
+  cloudContactsToCanonicalIdentityRequests,
   cloudPeerAccountIdFromConversationId,
   mergeCloudBridgeState,
 } from './cloudBridgeState';
@@ -155,6 +156,26 @@ export function useCloudBridgeState({
       .filter((value): value is string => Boolean(value)),
     [contacts.contacts],
   );
+  const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
+
+  useEffect(() => {
+    if (!account || !localHumanIdentityId || !setCanonicalSessionState) return;
+    let cancelled = false;
+    void (async () => {
+      for (const request of cloudContactsToCanonicalIdentityRequests({
+        account,
+        contacts: contacts.contacts,
+        localHumanIdentityId,
+      })) {
+        if (cancelled) return;
+        const nextState = await upsertCanonicalIdentity(request);
+        if (!cancelled) setCanonicalSessionState(nextState);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
     if (!account || contactPeerIds.length === 0) {

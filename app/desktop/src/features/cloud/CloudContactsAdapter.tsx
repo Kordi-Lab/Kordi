@@ -42,15 +42,17 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     [cloud.requests],
   );
 
-  const filteredGroupedContacts = useMemo(() => {
+  const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
-    const cloudMatches = (
-      search
-        ? cloud.contacts.filter((contact) =>
-            (contact.name + ' ' + contact.subtitle + ' ' + (contact.bridgePeerNodeId ?? '')).toLowerCase().includes(search),
-          )
-        : cloud.contacts
-    );
+    const matches = search
+      ? cloud.contacts.filter((contact) =>
+          (contact.name + ' ' + contact.subtitle + ' ' + (contact.bridgePeerNodeId ?? '')).toLowerCase().includes(search),
+        )
+      : cloud.contacts;
+    return dedupeContactsByCloudAccount(matches);
+  }, [contactsPageProps.contactSearch, cloud.contacts]);
+
+  const filteredGroupedContacts = useMemo(() => {
     // Cloud contacts should be one row per human account. Do not merge the
     // Bridge-derived person/agent rows from the local view model, otherwise the
     // Contacts page shows the same person twice and also exposes local/remote
@@ -59,19 +61,19 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       .filter((group) => group.id !== 'my-agents' && group.id !== 'other-users-agents')
       .map((group) =>
         group.id === 'other-users'
-          ? { ...group, items: dedupeContactsByCloudAccount(cloudMatches) }
+          ? { ...group, items: visibleCloudContacts }
           : group,
       );
     const hasOtherUsers = groups.some((group) => group.id === 'other-users');
-    if (!hasOtherUsers && cloudMatches.length > 0) {
+    if (!hasOtherUsers && visibleCloudContacts.length > 0) {
       groups.push({
         id: 'other-users' as ContactClass,
         label: 'Other users',
-        items: dedupeContactsByCloudAccount(cloudMatches),
+        items: visibleCloudContacts,
       });
     }
     return groups;
-  }, [contactsPageProps.contactSearch, contactsPageProps.filteredGroupedContacts, cloud.contacts]);
+  }, [contactsPageProps.filteredGroupedContacts, visibleCloudContacts]);
 
   const onAcceptRequest = async (request: ContactRequest) => {
     const requestId = request.bridgeRequestId;
@@ -99,17 +101,14 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
   // requests). Override activeContact / activeContactRequest with
   // resolved-from-cloud values so the detail card matches the row the
   // user clicked.
-  const activeContact = useMemo(() => {
-    const id = contactsPageProps.activeContactId;
-    if (id?.startsWith('cloud:')) {
-      const found = cloud.contacts.find((contact) => contact.id === id);
-      if (found) return found;
-    }
-    if (isCloudSelfAgentContact(contactsPageProps.activeContact)) {
-      return cloudAccountToSelfContact(account);
-    }
-    return contactsPageProps.activeContact;
-  }, [contactsPageProps.activeContactId, contactsPageProps.activeContact, account, cloud.contacts]);
+  const activeContact = useMemo(() => resolveCloudActiveContact({
+    account,
+    activeContactId: contactsPageProps.activeContactId,
+    parentActiveContact: contactsPageProps.activeContact,
+    cloudContacts: cloud.contacts,
+    visibleCloudContacts,
+  }) ?? contactsPageProps.activeContact ?? cloudAccountToSelfContact(account), [contactsPageProps.activeContactId, contactsPageProps.activeContact, account, cloud.contacts, visibleCloudContacts]);
+  const activeContactId = activeContact?.id ?? contactsPageProps.activeContactId;
 
   const activeContactRequest = useMemo(() => {
     const id = contactsPageProps.activeContactRequestId;
@@ -126,6 +125,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       filteredGroupedContacts={filteredGroupedContacts}
       addableContacts={[]}
       contactRequests={inboxRequests}
+      activeContactId={activeContactId}
       activeContact={activeContact}
       activeContactRequest={activeContactRequest}
       onAcceptRequest={onAcceptRequest}
@@ -134,6 +134,40 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onMessageContact={contactsPageProps.onMessageContact}
     />
   );
+}
+
+export function resolveCloudActiveContact({
+  account,
+  activeContactId,
+  parentActiveContact,
+  cloudContacts,
+  visibleCloudContacts,
+}: {
+  account: CloudAccount;
+  activeContactId: string;
+  parentActiveContact: Contact | undefined;
+  cloudContacts: Contact[];
+  visibleCloudContacts: Contact[];
+}): Contact | undefined {
+  const directCloudMatch = cloudContacts.find((contact) => contact.id === activeContactId);
+  if (directCloudMatch) return directCloudMatch;
+
+  const parentCloudAccountId = cloudAccountIdForContact(parentActiveContact);
+  if (parentCloudAccountId && parentCloudAccountId !== account.accountId) {
+    const parentCloudMatch = cloudContacts.find((contact) => cloudAccountIdForContact(contact) === parentCloudAccountId);
+    if (parentCloudMatch) return parentCloudMatch;
+  }
+
+  if (isCloudSelfAgentContact(parentActiveContact)) {
+    return visibleCloudContacts[0] ?? cloudContacts[0] ?? cloudAccountToSelfContact(account);
+  }
+
+  return parentActiveContact;
+}
+
+function cloudAccountIdForContact(contact: Contact | undefined): string | null {
+  if (!contact) return null;
+  return (contact.bridgeHumanId || contact.bridgePeerNodeId || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length) : '')).trim() || null;
 }
 
 function isCloudSelfAgentContact(contact: Contact | undefined): boolean {

@@ -5,6 +5,7 @@ import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClien
 import {
   buildCloudDesktopBridgeState,
   cloudBridgeConversationId,
+  cloudContactsToCanonicalIdentityRequests,
   cloudMessageToBridgeMessage,
   cloudPeerAccountIdFromConversationId,
   isCloudBridgeConversationId,
@@ -47,6 +48,56 @@ test('cloud bridge conversation ids use normal bridge ids with cloud host sentin
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer'), 'acct_peer');
   assert.equal(isCloudBridgeConversationId('bridge:local:node:person'), false);
+});
+
+test('cloud contact identity requests preserve account ids, display names, and shared avatar seeds', () => {
+  const requests = cloudContactsToCanonicalIdentityRequests({
+    account: {
+      ...account,
+      avatarUrl: 'kordi-pixel-avatar://cloud-signup:me-seed',
+    },
+    contacts: [cloudContactToContact({
+      accountId: 'acct_peer',
+      displayName: 'Peer Person',
+      avatarUrl: 'kordi-pixel-avatar://cloud-signup:peer-seed',
+      nodeId: 'node_peer',
+      createdAt: '2026-05-11T00:00:00Z',
+    })],
+    localHumanIdentityId: 'human:local',
+  });
+
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests.map((request) => ({
+    id: request.id,
+    displayName: request.displayName,
+    source: request.source,
+    sourceHostId: request.sourceHostId,
+    bridgeNodeId: request.bridgeNodeId,
+    humanId: request.humanId,
+    avatarKey: request.avatarKey,
+    profileImageUrl: request.profileImageUrl,
+  })), [
+    {
+      id: 'human:local',
+      displayName: 'Me Cloud',
+      source: 'local',
+      sourceHostId: null,
+      bridgeNodeId: null,
+      humanId: 'acct_me',
+      avatarKey: 'cloud-signup:me-seed',
+      profileImageUrl: null,
+    },
+    {
+      id: 'human:acct_peer',
+      displayName: 'Peer Person',
+      source: 'bridge',
+      sourceHostId: 'cloud',
+      bridgeNodeId: 'acct_peer',
+      humanId: 'acct_peer',
+      avatarKey: 'cloud-signup:peer-seed',
+      profileImageUrl: null,
+    },
+  ]);
 });
 
 test('cloud contacts and messages become normal desktop bridge state', () => {
