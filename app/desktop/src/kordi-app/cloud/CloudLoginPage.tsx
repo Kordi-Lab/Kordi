@@ -172,6 +172,28 @@ function CloudField({
   );
 }
 
+function UploadAvatarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 16V7" />
+      <path d="m8.5 10.5 3.5-3.5 3.5 3.5" />
+      <path d="M5 17.5v.75A2.75 2.75 0 0 0 7.75 21h8.5A2.75 2.75 0 0 0 19 18.25v-.75" />
+    </svg>
+  );
+}
+
+function RandomAvatarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 3h5v5" />
+      <path d="M4 20 21 3" />
+      <path d="M21 16v5h-5" />
+      <path d="M15 15l6 6" />
+      <path d="M4 4l5 5" />
+    </svg>
+  );
+}
+
 function AvatarPicker({
   preference,
   onRandomAvatar,
@@ -187,7 +209,7 @@ function AvatarPicker({
   const seed = preference.kind === 'seed' ? preference.seed : 'cloud-signup:upload';
   const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
 
-  const buttonClass = `h-10 rounded-full border ${BORDER_INNER} ${PAPER_RAISED} ${TYPE_ACTION} ${INK} transition hover:bg-[oklch(0.998_0.008_82)] hover:border-[oklch(0.70_0.045_82/0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]`;
+  const buttonClass = `flex h-10 w-10 items-center justify-center rounded-full ${INK_MUTED} transition hover:scale-105 hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]`;
 
   return (
     <div className={`grid gap-3 rounded-[20px] border ${BORDER_INNER} ${PAPER_SUNK} p-3.5`}>
@@ -200,12 +222,12 @@ function AvatarPicker({
           avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
           className="h-12 w-12 shrink-0 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45)]"
         />
-        <div className="grid flex-1 grid-cols-2 gap-2">
-          <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass}>
-            Upload avatar
+        <div className="ml-auto flex items-center justify-center gap-4">
+          <button type="button" onClick={() => fileInputRef.current?.click()} className={buttonClass} title="Upload avatar" aria-label="Upload avatar">
+            <UploadAvatarIcon />
           </button>
-          <button type="button" onClick={onRandomAvatar} className={buttonClass}>
-            Random avatar
+          <button type="button" onClick={onRandomAvatar} className={buttonClass} title="Random avatar" aria-label="Random avatar">
+            <RandomAvatarIcon />
           </button>
           <input
             ref={fileInputRef}
