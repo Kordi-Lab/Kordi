@@ -114,7 +114,13 @@ async fn handle_loopback_connection(
 
     if first.starts_with("GET ") {
         let html = completion_page_html(request_id);
-        let _ = write_response(&mut stream, "200 OK", "text/html; charset=utf-8", html.as_bytes()).await;
+        let _ = write_response(
+            &mut stream,
+            "200 OK",
+            "text/html; charset=utf-8",
+            html.as_bytes(),
+        )
+        .await;
         return false;
     }
 
@@ -132,7 +138,13 @@ async fn handle_loopback_connection(
         return true;
     }
 
-    let _ = write_response(&mut stream, "404 Not Found", "text/plain; charset=utf-8", b"Not found").await;
+    let _ = write_response(
+        &mut stream,
+        "404 Not Found",
+        "text/plain; charset=utf-8",
+        b"Not found",
+    )
+    .await;
     false
 }
 
@@ -159,24 +171,64 @@ fn completion_page_html(request_id: &str) -> String {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Kordi sign-in complete</title>
-  <style>
-    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f7f3ea; color: #171717; }}
-    main {{ width: min(420px, calc(100vw - 48px)); border: 1px solid rgba(40, 33, 20, .12); border-radius: 24px; background: rgba(255,255,255,.76); box-shadow: 0 24px 80px rgba(54, 44, 24, .14); padding: 32px; text-align: center; }}
-    h1 {{ margin: 0 0 8px; font-size: 24px; letter-spacing: -.02em; }}
-    p {{ margin: 0; color: rgba(23,23,23,.64); line-height: 1.5; }}
-  </style>
+  <style>{style}</style>
 </head>
 <body>
   <main>
     <h1>Signing you in to Kordi…</h1>
     <p>You can close this browser tab after Kordi opens.</p>
   </main>
-  <script>
-    fetch('/complete/{request_id}', {{ method: 'POST', headers: {{ 'content-type': 'text/plain' }}, body: window.location.hash || '' }})
-      .then(() => {{ document.querySelector('h1').textContent = 'Kordi sign-in complete'; document.querySelector('p').textContent = 'Return to the Kordi desktop app.'; }})
-      .catch(() => {{ document.querySelector('h1').textContent = 'Could not finish sign-in'; document.querySelector('p').textContent = 'Return to Kordi and try again.'; }});
-  </script>
+  <script>{script}</script>
 </body>
-</html>"#
+</html>"#,
+        style = completion_page_css(),
+        script = completion_page_script(request_id),
+    )
+}
+
+fn completion_page_css() -> &'static str {
+    r#"
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f7f3ea;
+      color: #171717;
+    }
+    main {
+      width: min(420px, calc(100vw - 48px));
+      border: 1px solid rgba(40, 33, 20, .12);
+      border-radius: 24px;
+      background: rgba(255,255,255,.76);
+      box-shadow: 0 24px 80px rgba(54, 44, 24, .14);
+      padding: 32px;
+      text-align: center;
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.02em; }
+    p { margin: 0; color: rgba(23,23,23,.64); line-height: 1.5; }
+    "#
+}
+
+fn completion_page_script(request_id: &str) -> String {
+    format!(
+        r#"
+    const title = document.querySelector('h1');
+    const body = document.querySelector('p');
+    fetch('/complete/{request_id}', {{
+      method: 'POST',
+      headers: {{ 'content-type': 'text/plain' }},
+      body: window.location.hash || '',
+    }})
+      .then(() => {{
+        title.textContent = 'Kordi sign-in complete';
+        body.textContent = 'Return to the Kordi desktop app.';
+      }})
+      .catch(() => {{
+        title.textContent = 'Could not finish sign-in';
+        body.textContent = 'Return to Kordi and try again.';
+      }});
+    "#
     )
 }

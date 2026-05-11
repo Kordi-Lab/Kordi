@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import {
@@ -16,6 +16,8 @@ import {
 import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
+import { GitHubMark, GoogleMark, KordiPaintMark } from './CloudLoginMarks';
+
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
 const TYPE_LABEL = 'text-[12px] font-medium tracking-[-0.005em]';
@@ -25,6 +27,20 @@ const TYPE_TAB = 'text-[13px] font-semibold tracking-[-0.005em]';
 const TYPE_HINT = 'text-[12px] font-medium tracking-[-0.005em]';
 const TYPE_DIVIDER = 'text-[10px] font-semibold uppercase tracking-[0.18em]';
 const TYPE_TITLEBAR = 'text-[12px] font-semibold tracking-[0.02em]';
+
+const LOGIN_BACKGROUND_STYLE = {
+  backgroundImage: [
+    'radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.10), transparent 28%)',
+    'radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.08), transparent 26%)',
+    'radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.12), transparent 30%)',
+    'linear-gradient(90deg, oklch(0.39 0.035 82 / 0.030) 1px, transparent 1px)',
+    'linear-gradient(0deg, oklch(0.39 0.035 82 / 0.022) 1px, transparent 1px)',
+  ].join(','),
+  backgroundSize: 'auto, auto, auto, 14px 14px, 16px 16px',
+} as const;
+const LOGIN_TEXTURE_STYLE = {
+  backgroundImage: 'repeating-linear-gradient(7deg, oklch(0.35 0.03 82 / 0.05) 0 1px, transparent 1px 9px)',
+} as const;
 
 // Color tokens — paper, ink, borders, focus.
 const INK = 'text-[oklch(0.22_0.02_125)]';
@@ -36,27 +52,22 @@ const PAPER_INPUT = 'bg-[oklch(0.99_0.014_82/0.78)]';
 const BORDER_SOFT = 'border-[oklch(0.74_0.045_82/0.42)]';
 const BORDER_INNER = 'border-[oklch(0.78_0.035_82/0.34)]';
 const FOCUS_RING = 'focus:border-[oklch(0.72_0.16_211/0.68)] focus:shadow-[0_0_0_3px_oklch(0.72_0.16_211/0.14)]';
+const INPUT_BASE_CLASS = [
+  'h-12 rounded-full border px-5 outline-none transition',
+  'placeholder:text-[oklch(0.57_0.024_82/0.62)] focus:bg-[oklch(0.995_0.01_82)]',
+].join(' ');
+const INPUT_ERROR_CLASS = [
+  'border-[oklch(0.62_0.20_25/0.55)]',
+  'focus:border-[oklch(0.62_0.20_25/0.78)]',
+  'focus:shadow-[0_0_0_3px_oklch(0.62_0.20_25/0.14)]',
+].join(' ');
+const INPUT_HINT_CLASS = [
+  'focus:border-[oklch(0.78_0.14_75/0.78)]',
+  'focus:shadow-[0_0_0_3px_oklch(0.78_0.14_75/0.16)]',
+].join(' ');
+const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]';
 
-function GoogleMark() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false" className="h-[22px] w-[22px]">
-      <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
-      <path fill="#FF3D00" d="m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
-      <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
-      <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
-    </svg>
-  );
-}
-
-function GitHubMark() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="currentColor" className="h-[22px] w-[22px]">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-    </svg>
-  );
-}
-
-type SocialProvider = { id: 'google' | 'github'; label: string; Mark: () => ReactElement };
+type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
 const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
   { id: 'google', label: 'Google', Mark: GoogleMark },
   { id: 'github', label: 'GitHub', Mark: GitHubMark },
@@ -98,27 +109,6 @@ function initialAvatarPreference(initialMode: CloudLoginMode): AvatarPreference 
   return fresh;
 }
 
-function KordiPaintMark() {
-  const circleClass = 'absolute h-[62.9326%] w-[59.5238%] rounded-full opacity-[0.93] mix-blend-multiply shadow-[inset_0_3px_8px_rgba(255,255,255,0.16)]';
-
-  return (
-    <span
-      aria-hidden="true"
-      className="kordi-paint-mark relative inline-block h-[42px] w-[71px] shrink-0 drop-shadow-[0_10px_18px_rgba(65,47,24,0.10)]"
-    >
-      <span
-        className={`${circleClass} left-[20.2381%] top-0 bg-[radial-gradient(circle_at_34%_24%,rgba(255,255,255,0.18),transparent_30%),oklch(0.66_0.26_355)]`}
-      />
-      <span
-        className={`${circleClass} left-0 top-[37.0673%] bg-[radial-gradient(circle_at_30%_24%,rgba(255,255,255,0.16),transparent_31%),oklch(0.72_0.16_211)]`}
-      />
-      <span
-        className={`${circleClass} left-[40.4762%] top-[37.0673%] bg-[radial-gradient(circle_at_32%_24%,rgba(255,255,255,0.18),transparent_30%),oklch(0.82_0.16_83)]`}
-      />
-    </span>
-  );
-}
-
 type CloudFieldValidation = 'invalid' | 'hint' | undefined;
 
 function CloudField({
@@ -142,12 +132,12 @@ function CloudField({
   validation?: CloudFieldValidation;
   hint?: string;
 }) {
-  const baseInput = `h-12 rounded-full border ${PAPER_INPUT} px-5 ${TYPE_INPUT} ${INK} outline-none transition placeholder:text-[oklch(0.57_0.024_82/0.62)] focus:bg-[oklch(0.995_0.01_82)]`;
+  const baseInput = `${INPUT_BASE_CLASS} ${PAPER_INPUT} ${TYPE_INPUT} ${INK}`;
   const tone =
     validation === 'invalid'
-      ? 'border-[oklch(0.62_0.20_25/0.55)] focus:border-[oklch(0.62_0.20_25/0.78)] focus:shadow-[0_0_0_3px_oklch(0.62_0.20_25/0.14)]'
+      ? INPUT_ERROR_CLASS
       : validation === 'hint'
-      ? `${BORDER_SOFT} focus:border-[oklch(0.78_0.14_75/0.78)] focus:shadow-[0_0_0_3px_oklch(0.78_0.14_75/0.16)]`
+      ? `${BORDER_SOFT} ${INPUT_HINT_CLASS}`
       : `${BORDER_SOFT} ${FOCUS_RING}`;
   return (
     <label className={`grid gap-1.5 ${TYPE_LABEL} ${INK_MUTED}`}>
@@ -177,7 +167,17 @@ function CloudField({
 
 function DiceAvatarIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="4" y="4" width="16" height="16" rx="3.5" />
       <path d="M8.5 8.5h.01" />
       <path d="M15.5 8.5h.01" />
@@ -211,7 +211,7 @@ function AvatarPicker({
           onClick={() => fileInputRef.current?.click()}
           title="Upload avatar"
           aria-label="Upload avatar"
-          className="block h-12 w-12 rounded-full transition hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]"
+          className={`block h-12 w-12 rounded-full transition hover:scale-[1.03] focus-visible:outline-none ${SMALL_FOCUS_RING}`}
         >
           <IdentityAvatar
             kind="human"
@@ -219,7 +219,10 @@ function AvatarPicker({
             name="Cloud signup avatar"
             imageUrl={imageUrl}
             avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
-            className="h-12 w-12 rounded-full border border-[oklch(0.62_0.05_82/0.28)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]"
+            className={[
+              'h-12 w-12 rounded-full border border-[oklch(0.62_0.05_82/0.28)]',
+              'shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]',
+            ].join(' ')}
           />
         </button>
         <button
@@ -227,7 +230,15 @@ function AvatarPicker({
           onClick={onRandomAvatar}
           title="Random avatar"
           aria-label="Random avatar"
-          className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border ${BORDER_INNER} ${PAPER_RAISED} ${INK_MUTED} shadow-[0_3px_8px_oklch(0.32_0.04_82/0.14)] transition hover:scale-105 hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]`}
+          className={[
+            'absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border',
+            'shadow-[0_3px_8px_oklch(0.32_0.04_82/0.14)] transition hover:scale-105',
+            'hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none',
+            BORDER_INNER,
+            PAPER_RAISED,
+            INK_MUTED,
+            SMALL_FOCUS_RING,
+          ].join(' ')}
         >
           <DiceAvatarIcon />
         </button>
@@ -403,8 +414,8 @@ export function CloudLoginPage({
       className={`fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-[oklch(0.955_0.026_82)] p-5 ${INK}`}
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_10%,oklch(0.72_0.16_211/0.10),transparent_28%),radial-gradient(circle_at_84%_14%,oklch(0.66_0.26_355/0.08),transparent_26%),radial-gradient(circle_at_74%_82%,oklch(0.82_0.16_83/0.12),transparent_30%),linear-gradient(90deg,oklch(0.39_0.035_82/0.030)_1px,transparent_1px),linear-gradient(0deg,oklch(0.39_0.035_82/0.022)_1px,transparent_1px)] bg-[length:auto,auto,auto,14px_14px,16px_16px]" />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.18] mix-blend-multiply [background-image:repeating-linear-gradient(7deg,oklch(0.35_0.03_82/0.05)_0_1px,transparent_1px_9px)]" />
+      <div className="pointer-events-none absolute inset-0" style={LOGIN_BACKGROUND_STYLE} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.18] mix-blend-multiply" style={LOGIN_TEXTURE_STYLE} />
 
       <div className="absolute left-0 right-0 top-0 h-12" style={{ WebkitAppRegion: 'drag' as const }} />
       <div className={`pointer-events-none absolute left-0 right-0 top-3 text-center ${TYPE_TITLEBAR} ${INK_SUBTLE}`}>
@@ -432,7 +443,13 @@ export function CloudLoginPage({
               aria-label={`Continue with ${provider.label}`}
               data-provider={provider.id}
               onClick={() => void handleSocialSignIn(provider.id)}
-              className={`flex h-10 w-10 items-center justify-center rounded-full ${INK} transition duration-150 hover:scale-105 hover:text-[oklch(0.16_0.02_125)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.42)] disabled:cursor-wait disabled:opacity-55`}
+              className={[
+                'flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
+                'hover:scale-105 hover:text-[oklch(0.16_0.02_125)] focus-visible:outline-none',
+                'focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.42)]',
+                'disabled:cursor-wait disabled:opacity-55',
+                INK,
+              ].join(' ')}
             >
               <provider.Mark />
               {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
@@ -449,7 +466,11 @@ export function CloudLoginPage({
         <div className={`relative mt-5 grid grid-cols-2 gap-1 rounded-full border ${BORDER_INNER} ${PAPER_SUNK} p-1`}>
           <span
             aria-hidden="true"
-            className={`pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full ${PAPER_RAISED} shadow-[0_4px_12px_oklch(0.42_0.04_82/0.10)] transition-transform duration-200 ease-out`}
+            className={[
+              'pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full',
+              'shadow-[0_4px_12px_oklch(0.42_0.04_82/0.10)] transition-transform duration-200 ease-out',
+              PAPER_RAISED,
+            ].join(' ')}
             style={{ transform: isSignup ? 'translateX(calc(100% + 0.25rem))' : 'translateX(0)' }}
           />
           <button
@@ -524,7 +545,12 @@ export function CloudLoginPage({
           {submitError ? (
             <div
               role="alert"
-              className={`rounded-[14px] border border-[oklch(0.62_0.20_25/0.30)] bg-[oklch(0.97_0.04_25/0.55)] px-4 py-2.5 ${TYPE_HINT} normal-case tracking-normal text-[oklch(0.42_0.18_25)]`}
+              className={[
+                'rounded-[14px] border border-[oklch(0.62_0.20_25/0.30)]',
+                'bg-[oklch(0.97_0.04_25/0.55)] px-4 py-2.5 normal-case tracking-normal',
+                'text-[oklch(0.42_0.18_25)]',
+                TYPE_HINT,
+              ].join(' ')}
             >
               {submitError}
             </div>
@@ -534,7 +560,13 @@ export function CloudLoginPage({
             disabled={!canSubmit}
             aria-busy={submitting || undefined}
             aria-label={isSignup ? 'Create account' : 'Sign in'}
-            className={`mt-1 h-12 rounded-full border border-[oklch(0.27_0.02_125/0.10)] bg-[oklch(0.22_0.02_125)] ${TYPE_ACTION} text-[oklch(0.985_0.015_82)] shadow-[0_10px_24px_oklch(0.25_0.03_125/0.18)] transition disabled:cursor-not-allowed disabled:opacity-70`}
+            className={[
+              'mt-1 h-12 rounded-full border border-[oklch(0.27_0.02_125/0.10)]',
+              'bg-[oklch(0.22_0.02_125)] text-[oklch(0.985_0.015_82)]',
+              'shadow-[0_10px_24px_oklch(0.25_0.03_125/0.18)] transition',
+              'disabled:cursor-not-allowed disabled:opacity-70',
+              TYPE_ACTION,
+            ].join(' ')}
           >
             {submitLabel}
           </button>

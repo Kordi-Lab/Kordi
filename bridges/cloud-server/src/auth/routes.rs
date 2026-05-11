@@ -8,8 +8,6 @@
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
 use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
@@ -18,20 +16,23 @@ use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::auth::oauth::{
+    clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
+    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
+    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
+};
 use crate::auth::password::{
-    hash_password, validate_email, validate_password_strength, verify_password,
-    EmailFormatError, PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
+    hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
+    PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::session::{
-    bump_expiry, issue_session, lookup_session, revoke_session,
-    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
+    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
+    SESSION_TOKEN_PREFIX,
 };
 use crate::server::ServerState;
 
@@ -279,11 +280,19 @@ fn limited_response(retry_after: std::time::Duration) -> Response {
 }
 
 fn map_password_policy(err_value: PasswordPolicyError) -> Response {
-    err("weak_password", err_value.to_string(), StatusCode::BAD_REQUEST)
+    err(
+        "weak_password",
+        err_value.to_string(),
+        StatusCode::BAD_REQUEST,
+    )
 }
 
 fn map_email_format(err_value: EmailFormatError) -> Response {
-    err("invalid_email", err_value.to_string(), StatusCode::BAD_REQUEST)
+    err(
+        "invalid_email",
+        err_value.to_string(),
+        StatusCode::BAD_REQUEST,
+    )
 }
 
 fn ip_from_extension(ip: Option<&ConnectInfo<SocketAddr>>) -> Option<IpAddr> {
@@ -301,14 +310,19 @@ async fn account_response_row(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
-    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> =
-        query_as(
-            "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
+    let row: Option<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = query_as(
+        "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE account_id = $1",
-        )
-        .bind(account_id)
-        .fetch_optional(pool)
-        .await?;
+    )
+    .bind(account_id)
+    .fetch_optional(pool)
+    .await?;
 
     Ok(row.map(
         |(account_id, display_name, primary_email, avatar_url, password_hash)| AccountResponse {
@@ -348,255 +362,6 @@ async fn write_audit(
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OAuthProvider {
-    Google,
-    Github,
-}
-
-impl OAuthProvider {
-    fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "google" => Some(Self::Google),
-            "github" => Some(Self::Github),
-            _ => None,
-        }
-    }
-
-    fn id(self) -> &'static str {
-        match self {
-            Self::Google => "google",
-            Self::Github => "github",
-        }
-    }
-
-    fn env_prefix(self) -> &'static str {
-        match self {
-            Self::Google => "GOOGLE",
-            Self::Github => "GITHUB",
-        }
-    }
-
-    fn auth_url(self) -> &'static str {
-        match self {
-            Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
-            Self::Github => "https://github.com/login/oauth/authorize",
-        }
-    }
-
-    fn token_url(self) -> &'static str {
-        match self {
-            Self::Google => "https://oauth2.googleapis.com/token",
-            Self::Github => "https://github.com/login/oauth/access_token",
-        }
-    }
-
-    fn scope(self) -> &'static str {
-        match self {
-            Self::Google => "openid email profile",
-            Self::Github => "read:user user:email",
-        }
-    }
-}
-
-struct OAuthConfig {
-    provider: OAuthProvider,
-    client_id: String,
-    client_secret: String,
-    redirect_uri: String,
-}
-
-fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, String> {
-    let prefix = provider.env_prefix();
-    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID"))
-        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_ID"))?;
-    let client_secret = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET"))
-        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_SECRET"))?;
-    let public_base = std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
-        .unwrap_or_else(|_| "https://kordi.cloud".to_string())
-        .trim_end_matches('/')
-        .to_string();
-    Ok(OAuthConfig {
-        provider,
-        client_id,
-        client_secret,
-        redirect_uri: format!("{public_base}/v1/cloud/auth/oauth/{}/callback", provider.id()),
-    })
-}
-
-fn is_allowed_oauth_redirect(target: &str) -> bool {
-    let trimmed = target.trim();
-    if trimmed.is_empty() || trimmed.len() > 2048 {
-        return false;
-    }
-    if let Ok(allowlist) = std::env::var("KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST") {
-        if allowlist
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .any(|prefix| trimmed.starts_with(prefix))
-        {
-            return true;
-        }
-    }
-    let Ok(url) = url::Url::parse(trimmed) else { return false };
-    match url.scheme() {
-        "http" => matches!(url.host_str(), Some("127.0.0.1") | Some("localhost")),
-        "https" => matches!(url.host_str(), Some("kordi.cloud")),
-        "tauri" => true,
-        _ => false,
-    }
-}
-
-fn random_url_token(prefix: &str) -> String {
-    format!("{prefix}_{}", uuid::Uuid::new_v4().simple())
-}
-
-fn pkce_challenge(verifier: &str) -> String {
-    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
-}
-
-fn encode_oauth_fragment(body: &AuthResponse) -> String {
-    URL_SAFE_NO_PAD.encode(serde_json::to_vec(body).unwrap_or_default())
-}
-
-fn redirect_with_oauth_error(redirect_after: &str, message: &str) -> Response {
-    let mut url = redirect_after.to_string();
-    let separator = if url.contains('#') { '&' } else { '#' };
-    url.push(separator);
-    url.push_str("kordi_cloud_oauth_error=");
-    url.push_str(&url::form_urlencoded::byte_serialize(message.as_bytes()).collect::<String>());
-    Redirect::to(&url).into_response()
-}
-
-fn clean_profile_display_name(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(80).collect::<String>())
-}
-
-fn clean_profile_avatar_url(avatar_seed: Option<&str>, avatar_url: Option<&str>) -> Option<String> {
-    if let Some(seed) = avatar_seed.map(str::trim).filter(|value| !value.is_empty()) {
-        return Some(format!("{}{}", AVATAR_SEED_PREFIX, seed.chars().take(160).collect::<String>()));
-    }
-    avatar_url
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(4096).collect::<String>())
-}
-
-#[derive(Debug, Clone)]
-struct OAuthProfile {
-    provider_subject: String,
-    username: Option<String>,
-    display_name: Option<String>,
-    email: Option<String>,
-    email_verified: bool,
-    avatar_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
-}
-
-async fn exchange_oauth_code(
-    client: &reqwest::Client,
-    config: &OAuthConfig,
-    code: &str,
-    code_verifier: Option<&str>,
-) -> Result<String, reqwest::Error> {
-    let mut form = vec![
-        ("client_id", config.client_id.as_str()),
-        ("code", code),
-        ("redirect_uri", config.redirect_uri.as_str()),
-        ("grant_type", "authorization_code"),
-    ];
-    form.push(("client_secret", config.client_secret.as_str()));
-    if let Some(verifier) = code_verifier {
-        form.push(("code_verifier", verifier));
-    }
-    let token = client
-        .post(config.provider.token_url())
-        .header("accept", "application/json")
-        .form(&form)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<OAuthTokenResponse>()
-        .await?;
-    Ok(token.access_token)
-}
-
-async fn fetch_oauth_profile(
-    client: &reqwest::Client,
-    provider: OAuthProvider,
-    access_token: &str,
-) -> Result<OAuthProfile, reqwest::Error> {
-    match provider {
-        OAuthProvider::Google => {
-            let value = client
-                .get("https://openidconnect.googleapis.com/v1/userinfo")
-                .bearer_auth(access_token)
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<Value>()
-                .await?;
-            Ok(OAuthProfile {
-                provider_subject: value["sub"].as_str().unwrap_or_default().to_string(),
-                username: value["email"].as_str().map(str::to_string),
-                display_name: value["name"].as_str().map(str::to_string),
-                email: value["email"].as_str().map(str::to_string),
-                email_verified: value["email_verified"].as_bool().unwrap_or(false),
-                avatar_url: value["picture"].as_str().map(str::to_string),
-            })
-        }
-        OAuthProvider::Github => {
-            let value = client
-                .get("https://api.github.com/user")
-                .bearer_auth(access_token)
-                .header("user-agent", "kordi-cloud")
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<Value>()
-                .await?;
-            let mut email = value["email"].as_str().map(str::to_string);
-            let mut verified = email.is_some();
-            if email.is_none() {
-                let emails = client
-                    .get("https://api.github.com/user/emails")
-                    .bearer_auth(access_token)
-                    .header("user-agent", "kordi-cloud")
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<Value>()
-                    .await?;
-                if let Some(items) = emails.as_array() {
-                    for item in items {
-                        if item["primary"].as_bool().unwrap_or(false) && item["verified"].as_bool().unwrap_or(false) {
-                            email = item["email"].as_str().map(str::to_string);
-                            verified = email.is_some();
-                            break;
-                        }
-                    }
-                }
-            }
-            Ok(OAuthProfile {
-                provider_subject: value["id"].to_string().trim_matches('"').to_string(),
-                username: value["login"].as_str().map(str::to_string),
-                display_name: value["name"].as_str().or_else(|| value["login"].as_str()).map(str::to_string),
-                email,
-                email_verified: verified,
-                avatar_url: value["avatar_url"].as_str().map(str::to_string),
-            })
-        }
-    }
-}
-
 pub fn routes(state: Arc<ServerState>) -> Router {
     routes_with_config(
         state,
@@ -617,7 +382,10 @@ pub fn routes_with_config(
         .route("/v1/cloud/auth/signup", post(signup))
         .route("/v1/cloud/auth/login", post(login))
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
-        .route("/v1/cloud/auth/oauth/:provider/callback", get(oauth_callback))
+        .route(
+            "/v1/cloud/auth/oauth/:provider/callback",
+            get(oauth_callback),
+        )
         .layer(Extension(rate_limiter.clone()))
         .layer(Extension(hasher_config.clone()))
         .with_state(state.clone());
@@ -639,10 +407,7 @@ pub fn routes_with_config(
             "/v1/cloud/contacts/requests/:request_id/reject",
             post(reject_contact_request),
         )
-        .route(
-            "/v1/cloud/messages",
-            get(list_messages).post(send_message),
-        )
+        .route("/v1/cloud/messages", get(list_messages).post(send_message))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
         .route(
             "/v1/cloud/attachments/initiate",
@@ -712,14 +477,28 @@ async fn oauth_start(
     Query(start_query): Query<OAuthStartQuery>,
 ) -> Response {
     let Some(provider) = OAuthProvider::parse(&provider) else {
-        return err("unknown_provider", "Unknown OAuth provider.", StatusCode::BAD_REQUEST);
+        return err(
+            "unknown_provider",
+            "Unknown OAuth provider.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     if !is_allowed_oauth_redirect(&start_query.redirect_after) {
-        return err("invalid_redirect", "OAuth redirect target is not allowed.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_redirect",
+            "OAuth redirect target is not allowed.",
+            StatusCode::BAD_REQUEST,
+        );
     }
     let config = match oauth_config(provider) {
         Ok(config) => config,
-        Err(message) => return err("oauth_not_configured", message, StatusCode::SERVICE_UNAVAILABLE),
+        Err(message) => {
+            return err(
+                "oauth_not_configured",
+                message,
+                StatusCode::SERVICE_UNAVAILABLE,
+            )
+        }
     };
 
     let state_id = random_url_token("oauth_state");
@@ -744,7 +523,8 @@ async fn oauth_start(
     }
 
     let mut auth_url = url::Url::parse(provider.auth_url()).expect("valid OAuth provider auth url");
-    auth_url.query_pairs_mut()
+    auth_url
+        .query_pairs_mut()
         .append_pair("client_id", &config.client_id)
         .append_pair("redirect_uri", &config.redirect_uri)
         .append_pair("response_type", "code")
@@ -753,10 +533,15 @@ async fn oauth_start(
         .append_pair("code_challenge", &pkce_challenge(&code_verifier))
         .append_pair("code_challenge_method", "S256");
     if provider == OAuthProvider::Google {
-        auth_url.query_pairs_mut().append_pair("access_type", "online");
+        auth_url
+            .query_pairs_mut()
+            .append_pair("access_type", "online");
     }
 
-    Json(OAuthStartResponse { auth_url: auth_url.to_string() }).into_response()
+    Json(OAuthStartResponse {
+        auth_url: auth_url.to_string(),
+    })
+    .into_response()
 }
 
 async fn oauth_callback(
@@ -765,10 +550,23 @@ async fn oauth_callback(
     Query(query_params): Query<OAuthCallbackQuery>,
 ) -> Response {
     let Some(provider) = OAuthProvider::parse(&provider_path) else {
-        return err("unknown_provider", "Unknown OAuth provider.", StatusCode::BAD_REQUEST);
+        return err(
+            "unknown_provider",
+            "Unknown OAuth provider.",
+            StatusCode::BAD_REQUEST,
+        );
     };
-    let Some(state_id) = query_params.state.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
-        return err("invalid_oauth_state", "Missing OAuth state.", StatusCode::BAD_REQUEST);
+    let Some(state_id) = query_params
+        .state
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return err(
+            "invalid_oauth_state",
+            "Missing OAuth state.",
+            StatusCode::BAD_REQUEST,
+        );
     };
 
     let pool = state.db_pool();
@@ -783,18 +581,34 @@ async fn oauth_callback(
         Err(_) => return err("server_error", "Could not load OAuth state.", StatusCode::INTERNAL_SERVER_ERROR),
     };
     let Some((stored_provider, redirect_after, code_verifier, expires_at)) = state_row else {
-        return err("invalid_oauth_state", "OAuth state expired or was already used.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_oauth_state",
+            "OAuth state expired or was already used.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     if stored_provider != provider.id() || !is_allowed_oauth_redirect(&redirect_after) {
-        return err("invalid_oauth_state", "OAuth state is invalid.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_oauth_state",
+            "OAuth state is invalid.",
+            StatusCode::BAD_REQUEST,
+        );
     }
-    if chrono::DateTime::parse_from_rfc3339(&expires_at).map(|value| value < Utc::now()).unwrap_or(true) {
+    if chrono::DateTime::parse_from_rfc3339(&expires_at)
+        .map(|value| value < Utc::now())
+        .unwrap_or(true)
+    {
         return redirect_with_oauth_error(&redirect_after, "OAuth state expired.");
     }
     if let Some(provider_error) = query_params.error.as_deref() {
         return redirect_with_oauth_error(&redirect_after, provider_error);
     }
-    let Some(code) = query_params.code.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(code) = query_params
+        .code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return redirect_with_oauth_error(&redirect_after, "Missing OAuth code.");
     };
     let config = match oauth_config(provider) {
@@ -802,10 +616,13 @@ async fn oauth_callback(
         Err(message) => return redirect_with_oauth_error(&redirect_after, &message),
     };
     let http = reqwest::Client::new();
-    let access_token = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
-        Ok(token) => token,
-        Err(_) => return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code."),
-    };
+    let access_token =
+        match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
+            Ok(token) => token,
+            Err(_) => {
+                return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.")
+            }
+        };
     let profile = match fetch_oauth_profile(&http, provider, &access_token).await {
         Ok(profile) if !profile.provider_subject.trim().is_empty() => profile,
         _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
@@ -830,7 +647,10 @@ async fn complete_oauth_login(
     profile: OAuthProfile,
 ) -> Result<AuthResponse, sqlx_core::Error> {
     let now = Utc::now().to_rfc3339();
-    let normalized_email = profile.email.as_deref().and_then(|email| validate_email(email).ok());
+    let normalized_email = profile
+        .email
+        .as_deref()
+        .and_then(|email| validate_email(email).ok());
     let existing_identity: Option<(String,)> = query_as(
         "SELECT account_id FROM cloud_account_identities WHERE provider = $1 AND provider_subject = $2",
     )
@@ -838,23 +658,25 @@ async fn complete_oauth_login(
     .bind(&profile.provider_subject)
     .fetch_optional(pool)
     .await?;
-    let linked_email_account: Option<(String,)> = if existing_identity.is_none() && profile.email_verified {
-        if let Some(email) = normalized_email.as_deref() {
-            query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
-                .bind(email)
-                .fetch_optional(pool)
-                .await?
+    let linked_email_account: Option<(String,)> =
+        if existing_identity.is_none() && profile.email_verified {
+            if let Some(email) = normalized_email.as_deref() {
+                query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
+                    .bind(email)
+                    .fetch_optional(pool)
+                    .await?
+            } else {
+                None
+            }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
     let account_id = existing_identity
         .or(linked_email_account)
         .map(|row| row.0)
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
-    let display_name = clean_profile_display_name(profile.display_name.as_deref()).or_else(|| profile.username.clone());
+    let display_name = clean_profile_display_name(profile.display_name.as_deref())
+        .or_else(|| profile.username.clone());
     let avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
 
     let mut tx = pool.begin().await?;
@@ -878,11 +700,16 @@ async fn complete_oauth_login(
     let identity_id = format!("oauth_{}_{}", provider.id(), uuid::Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_account_identities \
-         (identity_id, account_id, provider, provider_subject, provider_username, email, email_verified, avatar_url, created_at, updated_at) \
+         (identity_id, account_id, provider, provider_subject, provider_username, \
+          email, email_verified, avatar_url, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) \
          ON CONFLICT (provider, provider_subject) DO UPDATE SET \
-           account_id = excluded.account_id, provider_username = excluded.provider_username, email = excluded.email, \
-           email_verified = excluded.email_verified, avatar_url = excluded.avatar_url, updated_at = excluded.updated_at",
+           account_id = excluded.account_id, \
+           provider_username = excluded.provider_username, \
+           email = excluded.email, \
+           email_verified = excluded.email_verified, \
+           avatar_url = excluded.avatar_url, \
+           updated_at = excluded.updated_at",
     )
     .bind(&identity_id)
     .bind(&account_id)
@@ -909,15 +736,25 @@ async fn complete_oauth_login(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
-    let issued = issue_session(&mut *tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS)
-        .await
-        .map_err(|_| sqlx_core::Error::Protocol("Could not issue OAuth session.".into()))?;
+    let issued = issue_session(
+        &mut *tx,
+        &account_id,
+        &device_id,
+        DEFAULT_SESSION_LIFETIME_DAYS,
+    )
+    .await
+    .map_err(|_| sqlx_core::Error::Protocol("Could not issue OAuth session.".into()))?;
     tx.commit().await?;
 
-    let account = account_response_row(pool, &account_id).await?.ok_or(sqlx_core::Error::RowNotFound)?;
+    let account = account_response_row(pool, &account_id)
+        .await?
+        .ok_or(sqlx_core::Error::RowNotFound)?;
     Ok(AuthResponse {
         account,
-        session: SessionResponse { token: issued.plaintext_token, expires_at: issued.expires_at.to_rfc3339() },
+        session: SessionResponse {
+            token: issued.plaintext_token,
+            expires_at: issued.expires_at.to_rfc3339(),
+        },
     })
 }
 
@@ -927,10 +764,15 @@ async fn update_me(
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
-    let avatar_url = clean_profile_avatar_url(req.avatar_seed.as_deref(), req.avatar_url.as_deref());
+    let avatar_url =
+        clean_profile_avatar_url(req.avatar_seed.as_deref(), req.avatar_url.as_deref());
     let now = Utc::now().to_rfc3339();
     if query(
-        "UPDATE cloud_accounts SET display_name = COALESCE($1, display_name), avatar_url = COALESCE($2, avatar_url), updated_at = $3 WHERE account_id = $4",
+        "UPDATE cloud_accounts \
+         SET display_name = COALESCE($1, display_name), \
+             avatar_url = COALESCE($2, avatar_url), \
+             updated_at = $3 \
+         WHERE account_id = $4",
     )
     .bind(display_name.as_deref())
     .bind(avatar_url.as_deref())
@@ -940,12 +782,24 @@ async fn update_me(
     .await
     .is_err()
     {
-        return err("server_error", "Could not update profile.", StatusCode::INTERNAL_SERVER_ERROR);
+        return err(
+            "server_error",
+            "Could not update profile.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
     match account_response_row(state.db_pool(), &session.account_id).await {
         Ok(Some(account)) => Json(account).into_response(),
-        Ok(None) => err("account_missing", "Account no longer exists.", StatusCode::NOT_FOUND),
-        Err(_) => err("server_error", "Could not fetch account.", StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(None) => err(
+            "account_missing",
+            "Account no longer exists.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(_) => err(
+            "server_error",
+            "Could not fetch account.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
     }
 }
 
@@ -988,22 +842,21 @@ async fn signup(
     // Email uniqueness precheck — cleaner error code than mapping a UNIQUE
     // violation. The partial unique index on LOWER(primary_email) is the
     // ground-truth backstop.
-    let existing: Option<(String,)> = match query_as(
-        "SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1",
-    )
-    .bind(&normalized_email)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
+    let existing: Option<(String,)> =
+        match query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
+            .bind(&normalized_email)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        };
     if existing.is_some() {
         return err(
             "email_in_use",
@@ -1090,7 +943,14 @@ async fn signup(
         );
     }
 
-    let issued = match issue_session(&mut *tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS).await {
+    let issued = match issue_session(
+        &mut *tx,
+        &account_id,
+        &device_id,
+        DEFAULT_SESSION_LIFETIME_DAYS,
+    )
+    .await
+    {
         Ok(value) => value,
         Err(_) => {
             return err(
@@ -1179,24 +1039,29 @@ async fn login(
 
     let pool = state.db_pool();
 
-    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> =
-        match query_as(
-            "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
+    let row: Option<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = match query_as(
+        "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE LOWER(primary_email) = $1",
-        )
-        .bind(&normalized_email)
-        .fetch_optional(pool)
-        .await
-        {
-            Ok(value) => value,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Database error.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
-            }
-        };
+    )
+    .bind(&normalized_email)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
 
     let Some((account_id, display_name, primary_email, avatar_url, password_hash)) = row else {
         rate_limiter.record_email_failure(&normalized_email).await;
@@ -1285,7 +1150,14 @@ async fn login(
         );
     }
 
-    let issued = match issue_session(&mut *tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS).await {
+    let issued = match issue_session(
+        &mut *tx,
+        &account_id,
+        &device_id,
+        DEFAULT_SESSION_LIFETIME_DAYS,
+    )
+    .await
+    {
         Ok(value) => value,
         Err(_) => {
             return err(
@@ -1424,14 +1296,13 @@ async fn get_profile(
     let is_contact = if is_self {
         false
     } else {
-        let contact_row: Option<(i32,)> = query_as(
-            "SELECT 1 FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2",
-        )
-        .bind(&session.account_id)
-        .bind(&account_id)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None);
+        let contact_row: Option<(i32,)> =
+            query_as("SELECT 1 FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
+                .bind(&session.account_id)
+                .bind(&account_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
         contact_row.is_some()
     };
 
@@ -1469,22 +1340,21 @@ async fn add_contact(
 
     let pool = state.db_pool();
 
-    let peer_exists: Option<(i32,)> = match query_as(
-        "SELECT 1 FROM cloud_accounts WHERE account_id = $1",
-    )
-    .bind(&peer)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
+    let peer_exists: Option<(i32,)> =
+        match query_as("SELECT 1 FROM cloud_accounts WHERE account_id = $1")
+            .bind(&peer)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        };
     if peer_exists.is_none() {
         return err(
             "account_missing",
@@ -1565,13 +1435,15 @@ async fn list_contacts(
 
     let contacts = rows
         .into_iter()
-        .map(|(account_id, display_name, avatar_url, created_at)| ContactSummary {
-            account_id,
-            display_name,
-            avatar_url,
-            node_id: None,
-            created_at,
-        })
+        .map(
+            |(account_id, display_name, avatar_url, created_at)| ContactSummary {
+                account_id,
+                display_name,
+                avatar_url,
+                node_id: None,
+                created_at,
+            },
+        )
         .collect();
 
     Json(ContactsListResponse { contacts }).into_response()
@@ -1728,7 +1600,11 @@ async fn send_contact_request(
             decided_at: None,
             counterpart: Some(account_to_summary(peer_account)),
         };
-        return (StatusCode::OK, Json(ContactRequestResponse { request: summary })).into_response();
+        return (
+            StatusCode::OK,
+            Json(ContactRequestResponse { request: summary }),
+        )
+            .into_response();
     }
 
     // Insert a fresh request.
@@ -1793,7 +1669,11 @@ async fn send_contact_request(
         decided_at: None,
         counterpart: Some(account_to_summary(peer_account)),
     };
-    (StatusCode::CREATED, Json(ContactRequestResponse { request: summary })).into_response()
+    (
+        StatusCode::CREATED,
+        Json(ContactRequestResponse { request: summary }),
+    )
+        .into_response()
 }
 
 /// `GET /v1/cloud/contacts/requests` — list pending requests touching
@@ -2164,7 +2044,11 @@ async fn finalize_request_acceptance(
     } else {
         from_id.to_string()
     };
-    let direction = if from_id == session.account_id { "outgoing" } else { "incoming" };
+    let direction = if from_id == session.account_id {
+        "outgoing"
+    } else {
+        "incoming"
+    };
     let counterpart = account_response_row(pool, &counterpart_id)
         .await
         .ok()
@@ -2182,7 +2066,11 @@ async fn finalize_request_acceptance(
         decided_at: Some(now),
         counterpart,
     };
-    (StatusCode::OK, Json(ContactRequestResponse { request: summary })).into_response()
+    (
+        StatusCode::OK,
+        Json(ContactRequestResponse { request: summary }),
+    )
+        .into_response()
 }
 
 fn account_to_summary(account: AccountResponse) -> ContactSummary {
@@ -2212,7 +2100,9 @@ mod cloud_message_policy_tests {
 
     #[test]
     fn cloud_group_control_messages_do_not_require_direct_contacts() {
-        assert!(!cloud_message_requires_accepted_contact("kordi-cloud-group:abc"));
+        assert!(!cloud_message_requires_accepted_contact(
+            "kordi-cloud-group:abc"
+        ));
         assert!(cloud_message_requires_accepted_contact("hello"));
     }
 }
@@ -2248,7 +2138,10 @@ async fn send_message(
             StatusCode::BAD_REQUEST,
         );
     }
-    let body = body.chars().take(MESSAGE_BODY_MAX_CHARS).collect::<String>();
+    let body = body
+        .chars()
+        .take(MESSAGE_BODY_MAX_CHARS)
+        .collect::<String>();
 
     let pool = state.db_pool();
 
@@ -2331,7 +2224,11 @@ async fn send_message(
         read_at: None,
         direction: "outgoing".into(),
     };
-    (StatusCode::CREATED, Json(MessageResponse { message: summary })).into_response()
+    (
+        StatusCode::CREATED,
+        Json(MessageResponse { message: summary }),
+    )
+        .into_response()
 }
 
 /// `POST /v1/cloud/messages/read` — mark all messages from a peer to
@@ -2416,7 +2313,15 @@ async fn list_messages(
 
     let pool = state.db_pool();
 
-    let rows: Vec<(String, String, String, String, String, Option<String>, Option<String>)> = match query_as(
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = match query_as(
         "SELECT message_id, from_account_id, to_account_id, body, created_at, \
                 delivered_at, read_at \
          FROM cloud_messages \
@@ -2444,19 +2349,25 @@ async fn list_messages(
     let me = &session.account_id;
     let messages: Vec<MessageSummary> = rows
         .into_iter()
-        .map(|(message_id, from_id, to_id, body, created_at, delivered_at, read_at)| {
-            let direction = if from_id == *me { "outgoing" } else { "incoming" };
-            MessageSummary {
-                message_id,
-                from_account_id: from_id,
-                to_account_id: to_id,
-                body,
-                created_at,
-                delivered_at,
-                read_at,
-                direction: direction.into(),
-            }
-        })
+        .map(
+            |(message_id, from_id, to_id, body, created_at, delivered_at, read_at)| {
+                let direction = if from_id == *me {
+                    "outgoing"
+                } else {
+                    "incoming"
+                };
+                MessageSummary {
+                    message_id,
+                    from_account_id: from_id,
+                    to_account_id: to_id,
+                    body,
+                    created_at,
+                    delivered_at,
+                    read_at,
+                    direction: direction.into(),
+                }
+            },
+        )
         .collect();
 
     Json(MessageListResponse { messages }).into_response()

@@ -10,7 +10,12 @@ import {
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
 } from '@/lib/desktop';
-import type { CanonicalSessionState, DesktopBridgeSessionParticipant, DesktopBridgeState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import type {
+  CanonicalSessionState,
+  DesktopBridgeSessionParticipant,
+  DesktopBridgeState,
+  DesktopChatTurnSnapshot,
+} from '@/kordi-app/types';
 
 import {
   CloudAuthClient,
@@ -451,7 +456,9 @@ export function useCloudBridgeState({
             senderDisplayName: `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`,
           },
         });
-        const sent = await Promise.allSettled(targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody)));
+        const sent = await Promise.allSettled(
+          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody)),
+        );
         sent.forEach((result) => {
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
@@ -463,7 +470,16 @@ export function useCloudBridgeState({
         console.warn('[cloud-group-agent-mention] local agent response failed', error);
       });
     }
-  }, [account, activeConversationId, canonicalSessionState, client, incrementLocalSessionUnread, mergeMessage, refreshCloudBridgeMessages, setCanonicalSessionState]);
+  }, [
+    account,
+    activeConversationId,
+    canonicalSessionState,
+    client,
+    incrementLocalSessionUnread,
+    mergeMessage,
+    refreshCloudBridgeMessages,
+    setCanonicalSessionState,
+  ]);
 
   useEffect(() => {
     if (!account) return;
@@ -587,7 +603,9 @@ export function useCloudBridgeState({
       for (const message of messages) {
         if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
         if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-        if (!cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: message.fromAccountId === account.accountId })) continue;
+        if (!cloudMessageMentionsLocalAgent(message.body, account, {
+          allowFirstPerson: message.fromAccountId === account.accountId,
+        })) continue;
         if (!isRecentCloudAgentMention(message.createdAt)) continue;
         if (processedCloudAgentMentionIdsRef.current.has(message.messageId)) continue;
         const alreadyAnswered = messages.some((candidate) => (
@@ -603,7 +621,9 @@ export function useCloudBridgeState({
         void (async () => {
           const session = await loadSession();
           if (!session?.token) throw new Error('Not signed in.');
-          const contact = contacts.contacts.find((candidate) => (candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')) === peerId);
+          const contact = contacts.contacts.find((candidate) => (
+            candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
+          ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
           const prompt = buildCloudAgentPromptWithSharedContext({
             messages,
@@ -728,7 +748,15 @@ export function useCloudBridgeState({
       localAgentTurnsByRequestId,
     });
     return mergeCloudBridgeState(generated, cloudBridgeOverride);
-  }, [account, activeConversationId, cloudBridgeOverride, contacts.contacts, localAgentTurnsByRequestId, messagesByPeer, readInboundMessageIdsByPeer]);
+  }, [
+    account,
+    activeConversationId,
+    cloudBridgeOverride,
+    contacts.contacts,
+    localAgentTurnsByRequestId,
+    messagesByPeer,
+    readInboundMessageIdsByPeer,
+  ]);
 
   useEffect(() => {
     cloudBridgeStateRef.current = cloudBridgeState;

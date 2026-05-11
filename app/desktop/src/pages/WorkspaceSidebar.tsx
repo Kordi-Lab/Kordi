@@ -19,7 +19,16 @@ import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
-import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type {
+  Agent,
+  ChatChannel,
+  Contact,
+  ContactClass,
+  ConversationType,
+  NavId,
+  ParticipantSpaceViewModel,
+  SessionStatusIndicator,
+} from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { randomAvatarSeed } from '@/features/cloud/avatarPreference';
@@ -82,7 +91,9 @@ function participantSpaceSessionMessageCount(session: ParticipantSpaceItem['sess
   if (typeof canonicalCount === 'number' && Number.isFinite(canonicalCount)) {
     return Math.max(0, canonicalCount);
   }
-  const visibleMessages = session.conversation.messages.filter((message) => message.role !== 'system' && message.text.trim().length > 0).length;
+  const visibleMessages = session.conversation.messages
+    .filter((message) => message.role !== 'system' && message.text.trim().length > 0)
+    .length;
   return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
 }
 
@@ -910,7 +921,13 @@ export function WorkspaceSidebar({
         </div>
 
         {isProfileCardOpen ? (
-          <div className="fixed bottom-4 left-[calc(var(--app-left-rail-width,5.5rem)+0.75rem)] z-[160] w-[21.25rem] rounded-[18px] border border-white/10 bg-[#0d1016]/95 px-4 py-3 text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.46)] backdrop-blur-xl">
+          <div
+            className={cn(
+              'fixed bottom-4 left-[calc(var(--app-left-rail-width,5.5rem)+0.75rem)] z-[160]',
+              'w-[21.25rem] rounded-[18px] border border-white/10 bg-[#0d1016]/95 px-4 py-3',
+              'text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.46)] backdrop-blur-xl',
+            )}
+          >
             <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium text-slate-100">
               <span>Profile</span>
               {cloudAccount && onUpdateCloudProfile ? (
@@ -935,7 +952,10 @@ export function WorkspaceSidebar({
                     <input
                       value={cloudProfileNameDraft}
                       onChange={(event) => setCloudProfileNameDraft(event.currentTarget.value)}
-                      className="h-9 rounded-[10px] border border-white/10 bg-white/[0.04] px-3 text-[12px] text-slate-100 outline-none focus:border-sky-300/60"
+                      className={cn(
+                        'h-9 rounded-[10px] border border-white/10 bg-white/[0.04] px-3',
+                        'text-[12px] text-slate-100 outline-none focus:border-sky-300/60',
+                      )}
                     />
                   </label>
                   <div className="flex items-center gap-2">
@@ -946,10 +966,21 @@ export function WorkspaceSidebar({
                       imageUrl={cloudProfileAvatarUrlDraft || undefined}
                       className="h-9 w-9 border border-white/10"
                     />
-                    <button type="button" className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10" onClick={() => cloudProfileFileRef.current?.click()}>
+                    <button
+                      type="button"
+                      className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10"
+                      onClick={() => cloudProfileFileRef.current?.click()}
+                    >
                       Upload
                     </button>
-                    <button type="button" className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10" onClick={() => { setCloudProfileAvatarSeedDraft(randomAvatarSeed()); setCloudProfileAvatarUrlDraft(''); }}>
+                    <button
+                      type="button"
+                      className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10"
+                      onClick={() => {
+                        setCloudProfileAvatarSeedDraft(randomAvatarSeed());
+                        setCloudProfileAvatarUrlDraft('');
+                      }}
+                    >
                       Random
                     </button>
                     <input
@@ -965,13 +996,22 @@ export function WorkspaceSidebar({
                     />
                   </div>
                   {cloudProfileError ? <div className="text-[11px] text-red-300">{cloudProfileError}</div> : null}
-                  <Button type="button" size="sm" className="h-8 rounded-[10px]" disabled={cloudProfileSaving} onClick={() => void saveCloudProfile()}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 rounded-[10px]"
+                    disabled={cloudProfileSaving}
+                    onClick={() => void saveCloudProfile()}
+                  >
                     {cloudProfileSaving ? 'Saving…' : 'Save profile'}
                   </Button>
                 </div>
               ) : null}
               {profileRows.length > 0 ? profileRows.map((row) => (
-                <div key={row.label} className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
+                <div
+                  key={row.label}
+                  className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]"
+                >
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium text-slate-100">{row.label}</div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
@@ -979,7 +1019,10 @@ export function WorkspaceSidebar({
                   {row.copyable ? (
                     <button
                       type="button"
-                      className="shrink-0 rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
+                      className={cn(
+                        'shrink-0 rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200',
+                        'transition hover:bg-white/10 hover:text-white',
+                      )}
                       aria-label={`Copy ${row.label}`}
                       onClick={() => {
                         void navigator.clipboard?.writeText(row.value);
