@@ -63,13 +63,15 @@ test('cloud group sessions with the same people collapse into one group space ev
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id).sort(), ['session:group:one', 'session:group:two']);
 });
 
-test('group participant avatar stack uses the first three human participants in conversation order', () => {
+test('group participant avatar stack is stable and uses the first three human participants', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');
   const carol = participant('acct_c', 'seed-c', 'Carol');
   const dana = participant('acct_d', 'seed-d', 'Dana');
 
-  const space = buildParticipantSpaces([groupConversation([alice, bob, carol, dana])])[0];
+  const first = buildParticipantSpaces([groupConversation([alice, bob, carol, dana])])[0];
+  const second = buildParticipantSpaces([groupConversation([dana, carol, bob, alice])])[0];
 
-  assert.deepEqual(space?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
 });

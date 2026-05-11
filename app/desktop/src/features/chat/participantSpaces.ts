@@ -304,13 +304,23 @@ function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationPartic
   return primaryParticipantForKind(kind, participants)?.name || safePreviewText(latestSession?.conversation.name) || 'Chat';
 }
 
+function avatarParticipantStableKey(participant: ConversationParticipant) {
+  return cleanOptionalText(participant.humanId)
+    || cleanOptionalText(participant.bridgeNodeId)
+    || cleanOptionalText(participant.id)
+    || cleanOptionalText(participant.name);
+}
+
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
   if (kind === 'self') {
     const primary = selfParticipant(participants) ?? participants.find((participant) => participant.kind === 'human') ?? participants[0];
     return primary ? [primary] : [];
   }
   if (kind === 'group') {
-    return participants.filter((participant) => participant.kind === 'human').slice(0, 3);
+    return participants
+      .filter((participant) => participant.kind === 'human')
+      .sort((left, right) => avatarParticipantStableKey(left).localeCompare(avatarParticipantStableKey(right)))
+      .slice(0, 3);
   }
   const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];
