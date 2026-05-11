@@ -40,6 +40,8 @@ import {
   cloudGroupIdentityRequest,
   cloudGroupMessageReadPeerIds,
   cloudGroupParticipantsForBridgeSessionParticipants,
+  cloudGroupPeerIdsFromContactsAndRequests,
+  cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
@@ -156,6 +158,16 @@ export function useCloudBridgeState({
       .filter((value): value is string => Boolean(value)),
     [contacts.contacts],
   );
+  const bootstrapPeerIds = useMemo(
+    () => account
+      ? cloudGroupPeerIdsFromContactsAndRequests({
+        accountId: account.accountId,
+        contactPeerIds,
+        requests: contacts.requests,
+      })
+      : contactPeerIds,
+    [account, contactPeerIds, contacts.requests],
+  );
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
 
   useEffect(() => {
@@ -178,22 +190,38 @@ export function useCloudBridgeState({
   }, [account, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
-    if (!account || contactPeerIds.length === 0) {
+    if (!account || bootstrapPeerIds.length === 0) {
       setMessagesByPeer({});
       return;
     }
     const session = await loadSession();
     if (!session?.token) return;
-    const entries = await Promise.all(contactPeerIds.map(async (peerId) => {
-      try {
-        return [peerId, await client.listMessages(session.token, peerId)] as const;
-      } catch {
-        return [peerId, messagesByPeerRef.current[peerId] ?? []] as const;
-      }
-    }));
+
+    const byPeer: Record<string, CloudMessage[]> = {};
+    let peerIds = [...bootstrapPeerIds];
+    for (let pass = 0; pass < 3; pass += 1) {
+      const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
+      if (missingPeerIds.length === 0) break;
+      const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
+        try {
+          return [peerId, await client.listMessages(session.token, peerId)] as const;
+        } catch {
+          return [peerId, messagesByPeerRef.current[peerId] ?? []] as const;
+        }
+      }));
+      for (const [peerId, messages] of entries) byPeer[peerId] = messages;
+      const expandedPeerIds = cloudGroupPeerIdsFromMessages({
+        accountId: account.accountId,
+        contactPeerIds: peerIds,
+        messages: Object.values(byPeer).flat(),
+      });
+      if (expandedPeerIds.length === peerIds.length) break;
+      peerIds = expandedPeerIds;
+    }
+
     if (cancelledRef.current) return;
-    setMessagesByPeer(Object.fromEntries(entries));
-  }, [account, client, contactPeerIds]);
+    setMessagesByPeer(byPeer);
+  }, [account, bootstrapPeerIds, client]);
 
   useEffect(() => {
     if (!account) {

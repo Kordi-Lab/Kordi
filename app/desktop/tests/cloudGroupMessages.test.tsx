@@ -7,6 +7,8 @@ import {
   cloudGroupDeliveryStateFromMessages,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageSessionId,
+  cloudGroupPeerIdsFromContactsAndRequests,
+  cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
   cloudGroupTargetAccountIds,
   encodeCloudGroupControl,
@@ -90,6 +92,38 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:03Z', direction: 'outgoing' },
     ],
   }), 'read');
+});
+
+test('cloud group peer discovery expands beyond direct contacts from existing controls', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-invite',
+    groupId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_b',
+    actor: { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_c', displayName: 'Carol', avatarUrl: null, role: 'person' },
+    ],
+  });
+
+  assert.deepEqual(cloudGroupPeerIdsFromMessages({
+    accountId: 'acct_me',
+    contactPeerIds: ['acct_b'],
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_b', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), ['acct_b', 'acct_c']);
+});
+
+test('cloud group peer discovery can bootstrap from contact request counterparts', () => {
+  assert.deepEqual(cloudGroupPeerIdsFromContactsAndRequests({
+    accountId: 'acct_me',
+    contactPeerIds: ['acct_b'],
+    contacts: [{ accountId: 'acct_c' }],
+    requests: [{ requesterNodeId: 'acct_d', targetNodeId: 'acct_me' }],
+  }), ['acct_b', 'acct_c', 'acct_d']);
 });
 
 test('cloud group read helper marks inbound controls read when their group session is open', () => {

@@ -6,7 +6,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
-import type { CloudAccount, CloudMessage } from './authClient';
+import type { CloudAccount, CloudContactSummary, CloudMessage } from './authClient';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
@@ -244,6 +244,49 @@ export function shouldCountCloudGroupMessageUnread(input: {
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
   if (!active) return true;
   return active !== sessionId && active !== spaceId && active !== `group:${spaceId}`;
+}
+
+export function cloudGroupPeerIdsFromMessages(input: {
+  accountId: string;
+  contactPeerIds: string[];
+  messages: CloudMessage[];
+}): string[] {
+  const accountId = cleanText(input.accountId);
+  const peerIds = new Set(input.contactPeerIds.map(cleanText).filter(Boolean));
+  if (!accountId) return [...peerIds];
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId && message.toAccountId !== accountId) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (!envelope) continue;
+    for (const participant of envelope.participants) {
+      const participantId = cleanText(participant.accountId);
+      if (participantId && participantId !== accountId) peerIds.add(participantId);
+    }
+    const actorId = cleanText(envelope.actor.accountId);
+    if (actorId && actorId !== accountId) peerIds.add(actorId);
+  }
+  return [...peerIds].sort();
+}
+
+export function cloudGroupPeerIdsFromContactsAndRequests(input: {
+  accountId: string;
+  contactPeerIds: string[];
+  contacts?: Array<Pick<CloudContactSummary, 'accountId'>>;
+  requests?: Array<{ requesterNodeId?: string | null; targetNodeId?: string | null }>;
+}): string[] {
+  const accountId = cleanText(input.accountId);
+  const peerIds = new Set(input.contactPeerIds.map(cleanText).filter(Boolean));
+  for (const contact of input.contacts ?? []) {
+    const peerId = cleanText(contact.accountId);
+    if (peerId && peerId !== accountId) peerIds.add(peerId);
+  }
+  for (const request of input.requests ?? []) {
+    const requesterId = cleanText(request.requesterNodeId);
+    const targetId = cleanText(request.targetNodeId);
+    const peerId = requesterId === accountId ? targetId : requesterId;
+    if (peerId && peerId !== accountId) peerIds.add(peerId);
+  }
+  return [...peerIds].sort();
 }
 
 export function cloudGroupMessageReadPeerIds(input: {
