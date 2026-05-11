@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Add Google, GitHub, and X OAuth login plus editable Cloud profile support on `main-cloud`.
+**Goal:** Add Google and GitHub OAuth login plus editable Cloud profile support on `main-cloud`.
 
 **Architecture:** The cloud server owns OAuth provider config, state storage, code exchange, account linking/creation, profile persistence, and session issuance. The desktop Cloud login page starts OAuth by requesting an auth URL and then lets the provider/server redirect back with an auth result in the URL fragment; the session hook consumes that result. The existing profile popover becomes an editable Cloud profile surface that PATCHes display name/avatar changes to the server and refreshes canonical Cloud identities through existing sync.
 
@@ -19,7 +19,7 @@
 
 - [x] Add OAuth state table with `state_id`, `provider`, `redirect_after`, `code_verifier`, timestamps.
 - [x] Add `reqwest` dependency using rustls/json.
-- [x] Add provider enum/config helpers for Google, GitHub, and X.
+- [x] Add provider enum/config helpers for Google and GitHub.
 - [x] Add profile patch request validation helpers.
 - [x] Add protected `PATCH /v1/cloud/auth/me` returning `AccountResponse`.
 
@@ -46,7 +46,7 @@
 - [x] Add Cloud OAuth provider types and `startOAuth()`/`updateProfile()` methods.
 - [x] Add URL-fragment auth result parser.
 - [x] `useCloudSession` consumes OAuth fragments, saves token, and exposes `signInWithProvider()` / `updateProfile()`.
-- [x] Enable Google/GitHub/X buttons and remove coming-soon disabled copy.
+- [x] Enable Google/GitHub buttons and remove coming-soon disabled copy.
 
 ### Task 4: Editable Cloud profile UI
 

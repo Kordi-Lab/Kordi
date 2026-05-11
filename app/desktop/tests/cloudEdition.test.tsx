@@ -62,7 +62,7 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.match(markup, /Continue/);
   assert.match(markup, /Google/);
   assert.match(markup, /GitHub/);
-  assert.match(markup, /data-provider="x"/);
+  assert.doesNotMatch(markup, /data-provider="x"/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
   assert.doesNotMatch(markup, /Log in to Kordi Cloud/);
   assert.match(markup, /Continue with GitHub/);
@@ -99,10 +99,10 @@ test('social buttons surface provider sign-in affordances', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { onSocialSignIn: async () => {} }));
   assert.match(markup, /title="Continue with Google"/);
   assert.match(markup, /title="Continue with GitHub"/);
-  assert.match(markup, /title="Continue with X"/);
+  assert.doesNotMatch(markup, /title="Continue with X"/);
   assert.match(markup, /aria-label="Continue with Google"/);
   assert.match(markup, /aria-label="Continue with GitHub"/);
-  assert.match(markup, /aria-label="Continue with X"/);
+  assert.doesNotMatch(markup, /aria-label="Continue with X"/);
   assert.doesNotMatch(markup, /coming soon/i);
   assert.match(markup, /aria-label="Sign in"/);
 });
@@ -112,7 +112,7 @@ test('social buttons render icon marks and no provider text label', () => {
   // Buttons exist for each provider with their data attribute.
   assert.match(markup, /data-provider="google"[\s\S]*?<svg/);
   assert.match(markup, /data-provider="github"[\s\S]*?<svg/);
-  assert.match(markup, /data-provider="x"[\s\S]*?<svg/);
+  assert.doesNotMatch(markup, /data-provider="x"/);
   // The Google brand fingerprint (a known fill colour from the canonical 4-color G).
   assert.match(markup, /fill="#FFC107"/);
   // The visible provider names should NOT appear inside the social buttons themselves.

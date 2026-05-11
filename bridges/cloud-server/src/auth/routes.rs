@@ -352,7 +352,6 @@ async fn write_audit(
 enum OAuthProvider {
     Google,
     Github,
-    X,
 }
 
 impl OAuthProvider {
@@ -360,7 +359,6 @@ impl OAuthProvider {
         match value.trim().to_ascii_lowercase().as_str() {
             "google" => Some(Self::Google),
             "github" => Some(Self::Github),
-            "x" | "twitter" => Some(Self::X),
             _ => None,
         }
     }
@@ -369,7 +367,6 @@ impl OAuthProvider {
         match self {
             Self::Google => "google",
             Self::Github => "github",
-            Self::X => "x",
         }
     }
 
@@ -377,7 +374,6 @@ impl OAuthProvider {
         match self {
             Self::Google => "GOOGLE",
             Self::Github => "GITHUB",
-            Self::X => "X",
         }
     }
 
@@ -385,7 +381,6 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
             Self::Github => "https://github.com/login/oauth/authorize",
-            Self::X => "https://twitter.com/i/oauth2/authorize",
         }
     }
 
@@ -393,7 +388,6 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://oauth2.googleapis.com/token",
             Self::Github => "https://github.com/login/oauth/access_token",
-            Self::X => "https://api.twitter.com/2/oauth2/token",
         }
     }
 
@@ -401,7 +395,6 @@ impl OAuthProvider {
         match self {
             Self::Google => "openid email profile",
             Self::Github => "read:user user:email",
-            Self::X => "users.read tweet.read offline.access",
         }
     }
 }
@@ -520,22 +513,19 @@ async fn exchange_oauth_code(
         ("redirect_uri", config.redirect_uri.as_str()),
         ("grant_type", "authorization_code"),
     ];
-    if config.provider != OAuthProvider::X {
-        form.push(("client_secret", config.client_secret.as_str()));
-    }
+    form.push(("client_secret", config.client_secret.as_str()));
     if let Some(verifier) = code_verifier {
         form.push(("code_verifier", verifier));
     }
-    let request = client
+    let token = client
         .post(config.provider.token_url())
         .header("accept", "application/json")
-        .form(&form);
-    let request = if config.provider == OAuthProvider::X {
-        request.basic_auth(&config.client_id, Some(&config.client_secret))
-    } else {
-        request
-    };
-    let token = request.send().await?.error_for_status()?.json::<OAuthTokenResponse>().await?;
+        .form(&form)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<OAuthTokenResponse>()
+        .await?;
     Ok(token.access_token)
 }
 
@@ -602,25 +592,6 @@ async fn fetch_oauth_profile(
                 email,
                 email_verified: verified,
                 avatar_url: value["avatar_url"].as_str().map(str::to_string),
-            })
-        }
-        OAuthProvider::X => {
-            let value = client
-                .get("https://api.twitter.com/2/users/me?user.fields=profile_image_url")
-                .bearer_auth(access_token)
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<Value>()
-                .await?;
-            let data = &value["data"];
-            Ok(OAuthProfile {
-                provider_subject: data["id"].as_str().unwrap_or_default().to_string(),
-                username: data["username"].as_str().map(str::to_string),
-                display_name: data["name"].as_str().or_else(|| data["username"].as_str()).map(str::to_string),
-                email: None,
-                email_verified: false,
-                avatar_url: data["profile_image_url"].as_str().map(str::to_string),
             })
         }
     }

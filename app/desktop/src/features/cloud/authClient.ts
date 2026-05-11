@@ -25,7 +25,7 @@ export type CloudAuthResult = {
   session: CloudSession;
 };
 
-export type CloudOAuthProvider = 'google' | 'github' | 'x';
+export type CloudOAuthProvider = 'google' | 'github';
 
 export type CloudOAuthStartResponse = {
   authUrl: string;
