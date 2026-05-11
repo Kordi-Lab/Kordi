@@ -150,7 +150,7 @@ test('cloud login native window uses a compact size instead of the full app fram
     }),
   };
 
-  assert.deepEqual(cloudLoginWindowSizeForMode('login'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
+  assert.deepEqual(cloudLoginWindowSizeForMode('login'), { width: 760, height: 900, minWidth: 620, minHeight: 640 });
   assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 900, minWidth: 620, minHeight: 640 });
   assert.equal(isTauriRuntime({ __TAURI_INTERNALS__: {} } as typeof globalThis), true);
   assert.equal(isTauriRuntime({} as typeof globalThis), false);

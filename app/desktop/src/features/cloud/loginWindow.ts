@@ -2,7 +2,7 @@ export type CloudLoginMode = 'login' | 'signup';
 
 export const CLOUD_LOGIN_WINDOW_SIZE = {
   width: 760,
-  loginHeight: 760,
+  loginHeight: 900,
   signupHeight: 900,
   minWidth: 620,
   minHeight: 640,
