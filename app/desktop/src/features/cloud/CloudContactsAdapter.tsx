@@ -82,12 +82,37 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     await cloud.sendRequest(trimmed);
   };
 
+  // When the active selection is a cloud row, the parent pipeline has
+  // no idea what it points at (it only knows about local contacts and
+  // requests). Override activeContact / activeContactRequest with
+  // resolved-from-cloud values so the detail card matches the row the
+  // user clicked.
+  const activeContact = useMemo(() => {
+    const id = contactsPageProps.activeContactId;
+    if (id?.startsWith('cloud:')) {
+      const found = cloud.contacts.find((contact) => contact.id === id);
+      if (found) return found;
+    }
+    return contactsPageProps.activeContact;
+  }, [contactsPageProps.activeContactId, contactsPageProps.activeContact, cloud.contacts]);
+
+  const activeContactRequest = useMemo(() => {
+    const id = contactsPageProps.activeContactRequestId;
+    if (id?.startsWith('cloud:')) {
+      const found = cloud.requests.find((req) => req.id === id);
+      if (found) return found;
+    }
+    return contactsPageProps.activeContactRequest;
+  }, [contactsPageProps.activeContactRequestId, contactsPageProps.activeContactRequest, cloud.requests]);
+
   return (
     <ContactsPage
       {...contactsPageProps}
       filteredGroupedContacts={filteredGroupedContacts}
       addableContacts={[]}
       contactRequests={cloud.requests}
+      activeContact={activeContact}
+      activeContactRequest={activeContactRequest}
       onAcceptRequest={onAcceptRequest}
       onRejectRequest={onRejectRequest}
       onAddContactByNodeId={onAddContactByNodeId}

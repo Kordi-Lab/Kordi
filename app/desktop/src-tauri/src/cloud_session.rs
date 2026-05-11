@@ -15,6 +15,19 @@ const KEYCHAIN_USERNAME: &str = "default";
 const KEYCHAIN_DEVICE_KEY_SERVICE: &str = "com.kordi.cloud-device-key";
 const KEYCHAIN_BRIDGES_API_KEY_SERVICE: &str = "com.kordi.cloud-bridges-api-key";
 
+/// Suffix the keychain service name with the running instance id when
+/// `APP_INSTANCE_ID` is set (the multi-instance launcher sets it to
+/// `user1`, `user2`, etc.). Without this, every Tauri window on the
+/// same machine shares one keychain entry, so signing up in window 2
+/// silently overwrites window 1's session and both windows end up as
+/// the same account — which broke side-by-side multi-user testing.
+fn scoped_service(base: &str) -> String {
+    match std::env::var("APP_INSTANCE_ID") {
+        Ok(value) if !value.trim().is_empty() => format!("{base}.{}", value.trim()),
+        _ => base.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudSessionEntry {
     pub token: String,
@@ -25,12 +38,12 @@ pub struct CloudSessionEntry {
 }
 
 fn entry() -> Result<Entry, String> {
-    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+    Entry::new(&scoped_service(KEYCHAIN_SERVICE), KEYCHAIN_USERNAME)
         .map_err(|err| format!("keychain_unavailable: {err}"))
 }
 
 fn entry_for(service: &str, account_id: &str) -> Result<Entry, String> {
-    Entry::new(service, account_id)
+    Entry::new(&scoped_service(service), account_id)
         .map_err(|err| format!("keychain_unavailable: {err}"))
 }
 
