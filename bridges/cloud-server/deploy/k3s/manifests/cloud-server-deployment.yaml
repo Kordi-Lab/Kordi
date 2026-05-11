@@ -109,6 +109,30 @@ spec:
                 secretKeyRef:
                   name: minio-credentials
                   key: secret-key
+            - name: KORDI_OAUTH_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-oauth
+                  key: KORDI_OAUTH_GITHUB_CLIENT_ID
+            - name: KORDI_OAUTH_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-oauth
+                  key: KORDI_OAUTH_GITHUB_CLIENT_SECRET
+            - name: KORDI_OAUTH_GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-oauth
+                  key: KORDI_OAUTH_GOOGLE_CLIENT_ID
+            - name: KORDI_OAUTH_GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-oauth
+                  key: KORDI_OAUTH_GOOGLE_CLIENT_SECRET
+            - name: KORDI_CLOUD_PUBLIC_BASE_URL
+              value: "https://korde-product-cloud.35.188.85.31.sslip.io"
+            - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
+              value: "http://127.0.0.1:,http://localhost:,https://korde-product-cloud.35.188.85.31.sslip.io"
           readinessProbe:
             httpGet:
               path: /health
