@@ -1,6 +1,8 @@
 import {
   adminIdentityIdsFromMetadata,
   buildChatGroupBridgeUpdateParticipants,
+  buildChatGroupBridgeUpdateTargets,
+  type ChatGroupBridgeUpdateTarget,
 } from '@/features/chat/chatCreateFlows';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type {
@@ -287,6 +289,42 @@ export function canonicalIdentityDisplayName(state: CanonicalSessionState | null
   const id = identityId?.trim();
   if (!state || !id) return null;
   return state.identities.find((identity) => identity.id === id)?.displayName?.trim() || null;
+}
+
+function cloudTargetAccountIds(targets: ChatGroupBridgeUpdateTarget[], cloudHostId: string) {
+  return [...new Set(targets
+    .filter((target) => target.hostId === cloudHostId)
+    .map((target) => target.nodeId.trim())
+    .filter(Boolean))];
+}
+
+export function groupSessionTitleRenameSyncPlan(
+  state: CanonicalSessionState,
+  sessionId: string,
+  title: string,
+  actorIdentityId: string,
+  cloudHostId = 'cloud',
+) {
+  const participants = canonicalGroupParticipantsForSession(state, sessionId);
+  const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
+  const updateParticipants = buildChatGroupBridgeUpdateParticipants({
+    participants,
+    adminIdentityIds: activeGroupAdminIds(state, sessionId),
+  });
+  const currentMetadata = sessionMetadataRecord(state, sessionId);
+  const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
+  const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
+  const noticeText = sessionRenameNoticeText(actorName, title, 'session');
+
+  return {
+    participants,
+    updateParticipants,
+    parentGroupSpaceId,
+    actorName,
+    noticeText,
+    cloudTargetAccountIds: cloudTargetAccountIds(targets, cloudHostId),
+    bridgeTargets: targets.filter((target) => target.hostId !== cloudHostId),
+  };
 }
 
 function nonGenericGroupInviteTitle(value?: string | null) {

@@ -104,6 +104,7 @@ import {
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
+  groupSessionTitleRenameSyncPlan,
   isNativeDesktopShell,
   mergeCanonicalStatePreservingBridgeUiMessages,
   metadataGroupSpaceId,
@@ -828,23 +829,25 @@ export function useKordiAppModel() {
     title: string,
     actorIdentityId: string,
   ) => {
-    const participants = canonicalGroupParticipantsForSession(state, sessionId);
-    const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
-    if (targets.length === 0) return;
-    const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
-    const noticeText = sessionRenameNoticeText(actorName, title, 'session');
-    const updateParticipants = buildChatGroupBridgeUpdateParticipants({
-      participants,
-      adminIdentityIds: activeGroupAdminIds(state, sessionId),
-    });
-    const currentMetadata = sessionMetadataRecord(state, sessionId);
-    const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
-    for (const target of targets) {
+    const plan = groupSessionTitleRenameSyncPlan(state, sessionId, title, actorIdentityId, CLOUD_HOST_SENTINEL);
+    if (plan.cloudTargetAccountIds.length === 0 && plan.bridgeTargets.length === 0) return;
+    if (plan.cloudTargetAccountIds.length > 0) {
+      if (!cloudSession.account) throw new Error('Cloud session is not ready.');
+      await sendCloudGroupControl({
+        targetAccountIds: plan.cloudTargetAccountIds,
+        kind: 'group-session-title-update',
+        groupId: sessionId,
+        groupSpaceId: plan.parentGroupSpaceId,
+        groupTitle: title,
+        participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, plan.updateParticipants),
+      });
+    }
+    for (const target of plan.bridgeTargets) {
       const bridgeState = await createDesktopBridgeOutreach({
         hostId: target.hostId,
         targetNodeId: target.nodeId,
         targetKind: 'bridge-person',
-        requestText: noticeText,
+        requestText: plan.noticeText,
         targetDisplayName: target.displayName,
         targetOwnerName: target.ownerName,
         targetRuntime: 'person',
@@ -856,8 +859,8 @@ export function useKordiAppModel() {
         parentSessionId: sessionId,
         parentSessionTitle: title,
         parentSessionKind: 'group',
-        parentGroupSpaceId,
-        parentSessionParticipants: updateParticipants,
+        parentGroupSpaceId: plan.parentGroupSpaceId,
+        parentSessionParticipants: plan.updateParticipants,
         parentSessionMessages: [],
         parentTurnId: null,
         parentMessageId: null,
@@ -866,7 +869,7 @@ export function useKordiAppModel() {
       });
       setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
     }
-  }, [setDesktopBridgeState]);
+  }, [cloudSession.account, sendCloudGroupControl, setDesktopBridgeState]);
 
   const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
     if (!isNativeShell || !sessionId.trim()) return;

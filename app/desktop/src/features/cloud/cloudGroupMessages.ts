@@ -12,7 +12,7 @@ import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 
-export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update';
+export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'group-session-title-update';
 
 export type CloudGroupParticipant = {
   accountId: string;
@@ -97,7 +97,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update'].includes(parsed.kind ?? '')) return null;
+    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'group-session-title-update'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
     if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;

@@ -9,6 +9,7 @@ import {
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
+  groupSessionTitleRenameSyncPlan,
   mergeCanonicalStatePreservingBridgeUiMessages,
   removeSessionFromCanonicalState,
   sessionRenameNoticeText,
@@ -240,6 +241,40 @@ test('group rename metadata changes the group name without overwriting manual se
       extra: 'kept',
     },
   );
+});
+
+test('group session title rename sync plan routes Cloud peers through Cloud control messages', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:acct_me' },
+    identities: [
+      { id: 'human:acct_me', kind: 'human', displayName: 'Me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', avatarKey: 'acct_me' },
+      { id: 'human:acct_cloud', kind: 'human', displayName: 'Cloud Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_cloud', humanId: 'acct_cloud', avatarKey: 'acct_cloud' },
+      { id: 'human:bridge_peer', kind: 'human', displayName: 'Bridge Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_bridge', humanId: 'kh_bridge', avatarKey: 'kh_bridge' },
+    ],
+    sessions: [{
+      id: 'session:group:child',
+      kind: 'group',
+      title: 'Renamed session',
+      metadata: { groupSpaceId: 'session:group:root', adminIdentityIds: ['human:acct_me'] },
+    }],
+    participants: [
+      { sessionId: 'session:group:child', identityId: 'human:acct_me', role: 'admin', state: 'active' },
+      { sessionId: 'session:group:child', identityId: 'human:acct_cloud', role: 'person', state: 'active' },
+      { sessionId: 'session:group:child', identityId: 'human:bridge_peer', role: 'person', state: 'active' },
+    ],
+  } as CanonicalSessionState;
+
+  const plan = groupSessionTitleRenameSyncPlan(state, 'session:group:child', 'Renamed session', 'human:acct_me');
+
+  assert.deepEqual(plan.cloudTargetAccountIds, ['acct_cloud']);
+  assert.deepEqual(plan.bridgeTargets.map((target) => target.hostId), ['host-1']);
+  assert.equal(plan.parentGroupSpaceId, 'session:group:root');
+  assert.equal(plan.noticeText, 'Me changed the session name to Renamed session');
+  assert.deepEqual(plan.updateParticipants.map((participant) => [participant.identityId, participant.role]), [
+    ['human:acct_me', 'admin'],
+    ['human:acct_cloud', 'person'],
+    ['human:bridge_peer', 'person'],
+  ]);
 });
 
 test('session rename notice text names the actor, scope, and new title', () => {

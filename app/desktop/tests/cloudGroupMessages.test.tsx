@@ -40,6 +40,26 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.text, 'hello group');
 });
 
+test('cloud group session title updates carry child session title and group space routing', () => {
+  const parsed = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-session-title-update',
+    groupId: 'session:group:child-session',
+    groupSpaceId: 'session:group:original-space',
+    groupTitle: 'Renamed session',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+  }));
+
+  assert.equal(parsed?.kind, 'group-session-title-update');
+  assert.equal(parsed?.groupId, 'session:group:child-session');
+  assert.equal(parsed?.groupSpaceId, 'session:group:original-space');
+  assert.equal(parsed?.groupTitle, 'Renamed session');
+});
+
 test('cloud group messages carry concrete session id separately from shared group space id', () => {
   assert.equal(cloudGroupMessageSessionId({
     activeConvCanonicalSessionId: 'session:group:child-session',

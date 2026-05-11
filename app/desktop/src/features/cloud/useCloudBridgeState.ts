@@ -6,6 +6,7 @@ import {
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   openOrCreateCanonicalSession,
+  renameCanonicalSession,
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -247,13 +248,25 @@ export function useCloudBridgeState({
     const participantIdentityIds = [...identityIdByAccount.entries()]
       .filter(([accountId, identityId]) => accountId !== envelope.createdByAccountId && identityId !== createdByIdentityId)
       .map(([, identityId]) => identityId);
-    const groupTitle = envelope.groupTitle?.trim() || 'Cloud group';
+    const isSessionTitleUpdate = envelope.kind === 'group-session-title-update';
+    const titleFromEnvelope = envelope.groupTitle?.trim();
+    const existingSession = canonicalSessionState.sessions.find((session) => session.id === envelope.groupId);
+    const existingMetadata = objectContent(existingSession?.metadata);
+    const existingGroupTitle = typeof existingMetadata.customName === 'string' && existingMetadata.customName.trim()
+      ? existingMetadata.customName.trim()
+      : null;
+    const groupTitle = isSessionTitleUpdate
+      ? existingGroupTitle || 'Cloud group'
+      : titleFromEnvelope || 'Cloud group';
+    const sessionTitle = isSessionTitleUpdate
+      ? titleFromEnvelope || existingSession?.title?.trim() || 'New session'
+      : 'New session';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
     nextState = await openOrCreateCanonicalSession({
       id: envelope.groupId,
       kind: 'group',
-      title: 'New session',
+      title: sessionTitle,
       status: 'active',
       createdByIdentityId,
       primaryIdentityId: null,
@@ -273,6 +286,35 @@ export function useCloudBridgeState({
       },
     });
     setCanonicalSessionState(nextState);
+
+    if (isSessionTitleUpdate && titleFromEnvelope) {
+      const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
+      nextState = await renameCanonicalSession({
+        sessionId: envelope.groupId,
+        title: titleFromEnvelope,
+        requestedByIdentityId: null,
+      });
+      setCanonicalSessionState(nextState);
+      nextState = await appendCanonicalMessage({
+        sessionId: envelope.groupId,
+        senderIdentityId: actorIdentityId,
+        senderRole: 'system',
+        messageKind: 'status',
+        contentText: `${envelope.actor.displayName.trim() || 'Someone'} changed the session name to ${titleFromEnvelope}`,
+        content: {
+          kind: 'session-title-update',
+          scope: 'session',
+          title: titleFromEnvelope,
+          actorDisplayName: envelope.actor.displayName.trim() || 'Someone',
+        },
+        createdAtMs: Date.parse(cloudMessage.createdAt) || Date.now(),
+        status: 'complete',
+        sourceTransport: 'cloud-group-session-title-update',
+        sourceEventId: `cloud-group-session-title-update:${cloudMessage.messageId}`,
+      });
+      setCanonicalSessionState(nextState);
+      return;
+    }
 
     if (envelope.kind === 'group-title-update' || envelope.kind === 'group-update' || envelope.kind === 'group-invite') {
       nextState = await updateCanonicalSessionMetadata({
