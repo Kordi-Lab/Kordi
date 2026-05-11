@@ -4,7 +4,10 @@ import {
   CloudAuthClient,
   CloudAuthError,
   defaultCloudAuthClient,
+  parseCloudOAuthHashResult,
   type CloudAccount,
+  type CloudOAuthProvider,
+  type CloudProfileUpdateInput,
 } from './authClient';
 import { ensureCloudDeviceRegistered } from './deviceRegistration';
 import {
@@ -27,6 +30,8 @@ export type UseCloudSessionResult = {
     displayName?: string;
     avatarSeed?: string;
   }): Promise<void>;
+  signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
+  updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
   signOut(): Promise<void>;
   clearError(): void;
 };
@@ -62,6 +67,16 @@ export function useCloudSession({
   }, []);
 
   useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    const handleProfileUpdated = (event: Event) => {
+      const next = (event as CustomEvent<CloudAccount>).detail;
+      if (next?.accountId) setAuthenticated(next);
+    };
+    window.addEventListener('kordi-cloud-profile-updated', handleProfileUpdated);
+    return () => window.removeEventListener('kordi-cloud-profile-updated', handleProfileUpdated);
+  }, [enabled, setAuthenticated]);
+
+  useEffect(() => {
     mountedRef.current = true;
     if (!enabled) {
       return () => {
@@ -72,6 +87,27 @@ export function useCloudSession({
 
     async function bootstrap() {
       try {
+        const oauthResult = typeof window !== 'undefined' ? parseCloudOAuthHashResult(window.location.hash) : null;
+        if (oauthResult) {
+          await saveSession({
+            token: oauthResult.session.token,
+            accountId: oauthResult.account.accountId,
+            expiresAt: oauthResult.session.expiresAt,
+          });
+          if (typeof window !== 'undefined') {
+            const cleanUrl = `${window.location.pathname}${window.location.search}`;
+            window.history.replaceState(null, document.title, cleanUrl || '/');
+          }
+          if (!cancelled && mountedRef.current) setAuthenticated(oauthResult.account);
+          void ensureCloudDeviceRegistered({
+            accountId: oauthResult.account.accountId,
+            sessionToken: oauthResult.session.token,
+            client: authClient,
+            account: oauthResult.account,
+          }).catch(() => {});
+          return;
+        }
+
         const stored = await loadSession();
         if (!stored) {
           if (!cancelled && mountedRef.current) setStatus('signed-out');
@@ -174,6 +210,51 @@ export function useCloudSession({
     [authClient, setAuthenticated],
   );
 
+  const signInWithProvider = useCallback(
+    async (provider: CloudOAuthProvider) => {
+      const redirectAfter = typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname}`
+        : 'http://127.0.0.1/';
+      const result = await authClient.startOAuth(provider, redirectAfter);
+      if (typeof window !== 'undefined') {
+        window.location.assign(result.authUrl);
+      }
+    },
+    [authClient],
+  );
+
+  const updateProfile = useCallback(
+    async (input: CloudProfileUpdateInput) => {
+      const stored = await loadSession();
+      if (!stored?.token) {
+        const missing = new CloudAuthError('invalid_session', 'Not signed in.', 401);
+        setError(missing);
+        throw missing;
+      }
+      try {
+        const next = await authClient.updateProfile(stored.token, input);
+        setAuthenticated(next);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('kordi-cloud-profile-updated', { detail: next }));
+        }
+        return next;
+      } catch (caught) {
+        if (caught instanceof CloudAuthError) {
+          setError(caught);
+          throw caught;
+        }
+        const wrapped = new CloudAuthError(
+          'unknown',
+          caught instanceof Error ? caught.message : 'Profile update failed.',
+          0,
+        );
+        setError(wrapped);
+        throw wrapped;
+      }
+    },
+    [authClient, setAuthenticated],
+  );
+
   const signOut = useCallback(async () => {
     try {
       const stored = await loadSession();
@@ -198,6 +279,8 @@ export function useCloudSession({
     error,
     signIn,
     signUp,
+    signInWithProvider,
+    updateProfile,
     signOut,
     clearError,
   };

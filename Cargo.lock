@@ -2694,6 +2694,7 @@ dependencies = [
  "password-hash",
  "rand 0.8.6",
  "redis",
+ "reqwest 0.12.28",
  "rusty-s3",
  "serde",
  "serde_json",

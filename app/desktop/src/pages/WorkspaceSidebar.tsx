@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
@@ -15,12 +15,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
+import { randomAvatarSeed } from '@/features/cloud/avatarPreference';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -219,6 +221,7 @@ type WorkspaceSidebarProps = {
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
+  onUpdateCloudProfile?: (input: { displayName?: string; avatarSeed?: string; avatarUrl?: string }) => Promise<void>;
   isBridgePolling: boolean;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
@@ -429,6 +432,7 @@ export function WorkspaceSidebar({
   activeBridgeHost,
   localProfileAvatarSeed,
   cloudAccount,
+  onUpdateCloudProfile,
   isBridgePolling,
   onRefreshBridge,
   onCopyBridgeHostUrl,
@@ -457,6 +461,13 @@ export function WorkspaceSidebar({
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
+  const [isEditingCloudProfile, setIsEditingCloudProfile] = useState(false);
+  const [cloudProfileNameDraft, setCloudProfileNameDraft] = useState('');
+  const [cloudProfileAvatarSeedDraft, setCloudProfileAvatarSeedDraft] = useState('');
+  const [cloudProfileAvatarUrlDraft, setCloudProfileAvatarUrlDraft] = useState('');
+  const [cloudProfileSaving, setCloudProfileSaving] = useState(false);
+  const [cloudProfileError, setCloudProfileError] = useState('');
+  const cloudProfileFileRef = useRef<HTMLInputElement | null>(null);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
@@ -469,6 +480,42 @@ export function WorkspaceSidebar({
     ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
   const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
+
+  useEffect(() => {
+    if (!cloudAccount) return;
+    setCloudProfileNameDraft(cloudAccount.displayName?.trim() || '');
+    setCloudProfileAvatarSeedDraft(cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl));
+    setCloudProfileAvatarUrlDraft(cloudAvatarImageUrl(cloudAccount.avatarUrl) || '');
+    setCloudProfileError('');
+  }, [cloudAccount]);
+
+  const saveCloudProfile = async () => {
+    if (!cloudAccount || !onUpdateCloudProfile || cloudProfileSaving) return;
+    setCloudProfileSaving(true);
+    setCloudProfileError('');
+    try {
+      await onUpdateCloudProfile({
+        displayName: cloudProfileNameDraft.trim(),
+        avatarSeed: cloudProfileAvatarUrlDraft.trim() ? undefined : cloudProfileAvatarSeedDraft.trim(),
+        avatarUrl: cloudProfileAvatarUrlDraft.trim() || undefined,
+      });
+      setIsEditingCloudProfile(false);
+    } catch (caught) {
+      setCloudProfileError(caught instanceof Error ? caught.message : 'Could not update profile.');
+    } finally {
+      setCloudProfileSaving(false);
+    }
+  };
+
+  const handleCloudProfileAvatarFile = (file: File | undefined) => {
+    if (!file) return;
+    void fileToAvatarDataUrl(file)
+      .then((dataUrl) => {
+        setCloudProfileAvatarUrlDraft(dataUrl);
+        setCloudProfileAvatarSeedDraft('');
+      })
+      .catch((caught) => setCloudProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
+  };
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
   ))?.id ?? null;
@@ -864,12 +911,65 @@ export function WorkspaceSidebar({
 
         {isProfileCardOpen ? (
           <div className="fixed bottom-4 left-[calc(var(--app-left-rail-width,5.5rem)+0.75rem)] z-[160] w-[21.25rem] rounded-[18px] border border-white/10 bg-[#0d1016]/95 px-4 py-3 text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.46)] backdrop-blur-xl">
-            <div className="mb-3 text-[12px] font-medium text-slate-100">Profile</div>
+            <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium text-slate-100">
+              <span>Profile</span>
+              {cloudAccount && onUpdateCloudProfile ? (
+                <button
+                  type="button"
+                  className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => setIsEditingCloudProfile((editing) => !editing)}
+                >
+                  {isEditingCloudProfile ? 'Cancel' : 'Edit'}
+                </button>
+              ) : null}
+            </div>
             <div className="grid gap-1 text-[12px]">
               <div className="rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
                 <div className="truncate font-medium text-slate-100">{profileDisplayName}</div>
                 <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Cloud account' : 'Local profile'}</div>
               </div>
+              {cloudAccount && isEditingCloudProfile ? (
+                <div className="grid gap-2 rounded-[12px] px-3 py-2.5">
+                  <label className="grid gap-1 text-[11px] font-medium text-slate-300">
+                    Display name
+                    <input
+                      value={cloudProfileNameDraft}
+                      onChange={(event) => setCloudProfileNameDraft(event.currentTarget.value)}
+                      className="h-9 rounded-[10px] border border-white/10 bg-white/[0.04] px-3 text-[12px] text-slate-100 outline-none focus:border-sky-300/60"
+                    />
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <IdentityAvatar
+                      kind="human"
+                      seed={cloudProfileAvatarSeedDraft || profileAvatarSeed}
+                      name={cloudProfileNameDraft || profileDisplayName}
+                      imageUrl={cloudProfileAvatarUrlDraft || undefined}
+                      className="h-9 w-9 border border-white/10"
+                    />
+                    <button type="button" className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10" onClick={() => cloudProfileFileRef.current?.click()}>
+                      Upload
+                    </button>
+                    <button type="button" className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10" onClick={() => { setCloudProfileAvatarSeedDraft(randomAvatarSeed()); setCloudProfileAvatarUrlDraft(''); }}>
+                      Random
+                    </button>
+                    <input
+                      ref={cloudProfileFileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="sr-only"
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = '';
+                        handleCloudProfileAvatarFile(file);
+                      }}
+                    />
+                  </div>
+                  {cloudProfileError ? <div className="text-[11px] text-red-300">{cloudProfileError}</div> : null}
+                  <Button type="button" size="sm" className="h-8 rounded-[10px]" disabled={cloudProfileSaving} onClick={() => void saveCloudProfile()}>
+                    {cloudProfileSaving ? 'Saving…' : 'Save profile'}
+                  </Button>
+                </div>
+              ) : null}
               {profileRows.length > 0 ? profileRows.map((row) => (
                 <div key={row.label} className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
                   <div className="min-w-0 flex-1">

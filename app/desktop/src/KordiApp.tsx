@@ -19,7 +19,7 @@ export type KordiAppRootProps = {
    */
   cloudSessionStatus?: CloudSessionStatus;
   /** Optional injected hook result for testing without a real Tauri/fetch env. */
-  cloudSession?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp'>;
+  cloudSession?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'>;
 };
 
 export function KordiAppRoot({
@@ -50,7 +50,7 @@ function CloudEditionRoot({
   cloudSessionOverride,
 }: {
   cloudSessionStatusOverride?: CloudSessionStatus;
-  cloudSessionOverride?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp'>;
+  cloudSessionOverride?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'>;
 }) {
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
@@ -77,6 +77,7 @@ function CloudEditionRoot({
       <CloudLoginPage
         onSignIn={session.signIn}
         onSignUp={session.signUp}
+        onSocialSignIn={session.signInWithProvider}
       />
     );
   }

@@ -8,14 +8,18 @@
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, Request, State};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -55,6 +59,35 @@ pub struct SignupRequest {
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthStartQuery {
+    #[serde(rename = "redirectAfter")]
+    pub redirect_after: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthCallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OAuthStartResponse {
+    #[serde(rename = "authUrl")]
+    pub auth_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "avatarSeed")]
+    pub avatar_seed: Option<String>,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -315,6 +348,284 @@ async fn write_audit(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OAuthProvider {
+    Google,
+    Github,
+    X,
+}
+
+impl OAuthProvider {
+    fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "google" => Some(Self::Google),
+            "github" => Some(Self::Github),
+            "x" | "twitter" => Some(Self::X),
+            _ => None,
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Google => "google",
+            Self::Github => "github",
+            Self::X => "x",
+        }
+    }
+
+    fn env_prefix(self) -> &'static str {
+        match self {
+            Self::Google => "GOOGLE",
+            Self::Github => "GITHUB",
+            Self::X => "X",
+        }
+    }
+
+    fn auth_url(self) -> &'static str {
+        match self {
+            Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
+            Self::Github => "https://github.com/login/oauth/authorize",
+            Self::X => "https://twitter.com/i/oauth2/authorize",
+        }
+    }
+
+    fn token_url(self) -> &'static str {
+        match self {
+            Self::Google => "https://oauth2.googleapis.com/token",
+            Self::Github => "https://github.com/login/oauth/access_token",
+            Self::X => "https://api.twitter.com/2/oauth2/token",
+        }
+    }
+
+    fn scope(self) -> &'static str {
+        match self {
+            Self::Google => "openid email profile",
+            Self::Github => "read:user user:email",
+            Self::X => "users.read tweet.read offline.access",
+        }
+    }
+}
+
+struct OAuthConfig {
+    provider: OAuthProvider,
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
+}
+
+fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, String> {
+    let prefix = provider.env_prefix();
+    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID"))
+        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_ID"))?;
+    let client_secret = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET"))
+        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_SECRET"))?;
+    let public_base = std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
+        .unwrap_or_else(|_| "https://kordi.cloud".to_string())
+        .trim_end_matches('/')
+        .to_string();
+    Ok(OAuthConfig {
+        provider,
+        client_id,
+        client_secret,
+        redirect_uri: format!("{public_base}/v1/cloud/auth/oauth/{}/callback", provider.id()),
+    })
+}
+
+fn is_allowed_oauth_redirect(target: &str) -> bool {
+    let trimmed = target.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 {
+        return false;
+    }
+    if let Ok(allowlist) = std::env::var("KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST") {
+        if allowlist
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .any(|prefix| trimmed.starts_with(prefix))
+        {
+            return true;
+        }
+    }
+    let Ok(url) = url::Url::parse(trimmed) else { return false };
+    match url.scheme() {
+        "http" => matches!(url.host_str(), Some("127.0.0.1") | Some("localhost")),
+        "https" => matches!(url.host_str(), Some("kordi.cloud")),
+        "tauri" => true,
+        _ => false,
+    }
+}
+
+fn random_url_token(prefix: &str) -> String {
+    format!("{prefix}_{}", uuid::Uuid::new_v4().simple())
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn encode_oauth_fragment(body: &AuthResponse) -> String {
+    URL_SAFE_NO_PAD.encode(serde_json::to_vec(body).unwrap_or_default())
+}
+
+fn redirect_with_oauth_error(redirect_after: &str, message: &str) -> Response {
+    let mut url = redirect_after.to_string();
+    let separator = if url.contains('#') { '&' } else { '#' };
+    url.push(separator);
+    url.push_str("kordi_cloud_oauth_error=");
+    url.push_str(&url::form_urlencoded::byte_serialize(message.as_bytes()).collect::<String>());
+    Redirect::to(&url).into_response()
+}
+
+fn clean_profile_display_name(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(80).collect::<String>())
+}
+
+fn clean_profile_avatar_url(avatar_seed: Option<&str>, avatar_url: Option<&str>) -> Option<String> {
+    if let Some(seed) = avatar_seed.map(str::trim).filter(|value| !value.is_empty()) {
+        return Some(format!("{}{}", AVATAR_SEED_PREFIX, seed.chars().take(160).collect::<String>()));
+    }
+    avatar_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(4096).collect::<String>())
+}
+
+#[derive(Debug, Clone)]
+struct OAuthProfile {
+    provider_subject: String,
+    username: Option<String>,
+    display_name: Option<String>,
+    email: Option<String>,
+    email_verified: bool,
+    avatar_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthTokenResponse {
+    access_token: String,
+}
+
+async fn exchange_oauth_code(
+    client: &reqwest::Client,
+    config: &OAuthConfig,
+    code: &str,
+    code_verifier: Option<&str>,
+) -> Result<String, reqwest::Error> {
+    let mut form = vec![
+        ("client_id", config.client_id.as_str()),
+        ("code", code),
+        ("redirect_uri", config.redirect_uri.as_str()),
+        ("grant_type", "authorization_code"),
+    ];
+    if config.provider != OAuthProvider::X {
+        form.push(("client_secret", config.client_secret.as_str()));
+    }
+    if let Some(verifier) = code_verifier {
+        form.push(("code_verifier", verifier));
+    }
+    let request = client
+        .post(config.provider.token_url())
+        .header("accept", "application/json")
+        .form(&form);
+    let request = if config.provider == OAuthProvider::X {
+        request.basic_auth(&config.client_id, Some(&config.client_secret))
+    } else {
+        request
+    };
+    let token = request.send().await?.error_for_status()?.json::<OAuthTokenResponse>().await?;
+    Ok(token.access_token)
+}
+
+async fn fetch_oauth_profile(
+    client: &reqwest::Client,
+    provider: OAuthProvider,
+    access_token: &str,
+) -> Result<OAuthProfile, reqwest::Error> {
+    match provider {
+        OAuthProvider::Google => {
+            let value = client
+                .get("https://openidconnect.googleapis.com/v1/userinfo")
+                .bearer_auth(access_token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Value>()
+                .await?;
+            Ok(OAuthProfile {
+                provider_subject: value["sub"].as_str().unwrap_or_default().to_string(),
+                username: value["email"].as_str().map(str::to_string),
+                display_name: value["name"].as_str().map(str::to_string),
+                email: value["email"].as_str().map(str::to_string),
+                email_verified: value["email_verified"].as_bool().unwrap_or(false),
+                avatar_url: value["picture"].as_str().map(str::to_string),
+            })
+        }
+        OAuthProvider::Github => {
+            let value = client
+                .get("https://api.github.com/user")
+                .bearer_auth(access_token)
+                .header("user-agent", "kordi-cloud")
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Value>()
+                .await?;
+            let mut email = value["email"].as_str().map(str::to_string);
+            let mut verified = email.is_some();
+            if email.is_none() {
+                let emails = client
+                    .get("https://api.github.com/user/emails")
+                    .bearer_auth(access_token)
+                    .header("user-agent", "kordi-cloud")
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<Value>()
+                    .await?;
+                if let Some(items) = emails.as_array() {
+                    for item in items {
+                        if item["primary"].as_bool().unwrap_or(false) && item["verified"].as_bool().unwrap_or(false) {
+                            email = item["email"].as_str().map(str::to_string);
+                            verified = email.is_some();
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(OAuthProfile {
+                provider_subject: value["id"].to_string().trim_matches('"').to_string(),
+                username: value["login"].as_str().map(str::to_string),
+                display_name: value["name"].as_str().or_else(|| value["login"].as_str()).map(str::to_string),
+                email,
+                email_verified: verified,
+                avatar_url: value["avatar_url"].as_str().map(str::to_string),
+            })
+        }
+        OAuthProvider::X => {
+            let value = client
+                .get("https://api.twitter.com/2/users/me?user.fields=profile_image_url")
+                .bearer_auth(access_token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Value>()
+                .await?;
+            let data = &value["data"];
+            Ok(OAuthProfile {
+                provider_subject: data["id"].as_str().unwrap_or_default().to_string(),
+                username: data["username"].as_str().map(str::to_string),
+                display_name: data["name"].as_str().or_else(|| data["username"].as_str()).map(str::to_string),
+                email: None,
+                email_verified: false,
+                avatar_url: data["profile_image_url"].as_str().map(str::to_string),
+            })
+        }
+    }
+}
+
 pub fn routes(state: Arc<ServerState>) -> Router {
     routes_with_config(
         state,
@@ -334,12 +645,14 @@ pub fn routes_with_config(
     let public = Router::new()
         .route("/v1/cloud/auth/signup", post(signup))
         .route("/v1/cloud/auth/login", post(login))
+        .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
+        .route("/v1/cloud/auth/oauth/:provider/callback", get(oauth_callback))
         .layer(Extension(rate_limiter.clone()))
         .layer(Extension(hasher_config.clone()))
         .with_state(state.clone());
 
     let protected = Router::new()
-        .route("/v1/cloud/auth/me", get(me))
+        .route("/v1/cloud/auth/me", get(me).patch(update_me))
         .route("/v1/cloud/auth/logout", post(logout))
         .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
@@ -419,6 +732,249 @@ pub async fn cloud_session_middleware(
             "Could not validate session.",
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
+    }
+}
+
+async fn oauth_start(
+    State(state): State<Arc<ServerState>>,
+    axum::extract::Path(provider): axum::extract::Path<String>,
+    Query(start_query): Query<OAuthStartQuery>,
+) -> Response {
+    let Some(provider) = OAuthProvider::parse(&provider) else {
+        return err("unknown_provider", "Unknown OAuth provider.", StatusCode::BAD_REQUEST);
+    };
+    if !is_allowed_oauth_redirect(&start_query.redirect_after) {
+        return err("invalid_redirect", "OAuth redirect target is not allowed.", StatusCode::BAD_REQUEST);
+    }
+    let config = match oauth_config(provider) {
+        Ok(config) => config,
+        Err(message) => return err("oauth_not_configured", message, StatusCode::SERVICE_UNAVAILABLE),
+    };
+
+    let state_id = random_url_token("oauth_state");
+    let code_verifier = random_url_token("oauth_verifier");
+    let now = Utc::now();
+    let expires = now + ChronoDuration::minutes(10);
+    if query(
+        "INSERT INTO cloud_oauth_states (state_id, provider, redirect_after, code_verifier, created_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&state_id)
+    .bind(provider.id())
+    .bind(start_query.redirect_after.trim())
+    .bind(&code_verifier)
+    .bind(now.to_rfc3339())
+    .bind(expires.to_rfc3339())
+    .execute(state.db_pool())
+    .await
+    .is_err()
+    {
+        return err("server_error", "Could not create OAuth state.", StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    let mut auth_url = url::Url::parse(provider.auth_url()).expect("valid OAuth provider auth url");
+    auth_url.query_pairs_mut()
+        .append_pair("client_id", &config.client_id)
+        .append_pair("redirect_uri", &config.redirect_uri)
+        .append_pair("response_type", "code")
+        .append_pair("scope", provider.scope())
+        .append_pair("state", &state_id)
+        .append_pair("code_challenge", &pkce_challenge(&code_verifier))
+        .append_pair("code_challenge_method", "S256");
+    if provider == OAuthProvider::Google {
+        auth_url.query_pairs_mut().append_pair("access_type", "online");
+    }
+
+    Json(OAuthStartResponse { auth_url: auth_url.to_string() }).into_response()
+}
+
+async fn oauth_callback(
+    State(state): State<Arc<ServerState>>,
+    axum::extract::Path(provider_path): axum::extract::Path<String>,
+    Query(query_params): Query<OAuthCallbackQuery>,
+) -> Response {
+    let Some(provider) = OAuthProvider::parse(&provider_path) else {
+        return err("unknown_provider", "Unknown OAuth provider.", StatusCode::BAD_REQUEST);
+    };
+    let Some(state_id) = query_params.state.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+        return err("invalid_oauth_state", "Missing OAuth state.", StatusCode::BAD_REQUEST);
+    };
+
+    let pool = state.db_pool();
+    let state_row: Option<(String, String, Option<String>, String)> = match query_as(
+        "DELETE FROM cloud_oauth_states WHERE state_id = $1 RETURNING provider, redirect_after, code_verifier, expires_at",
+    )
+    .bind(state_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return err("server_error", "Could not load OAuth state.", StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    let Some((stored_provider, redirect_after, code_verifier, expires_at)) = state_row else {
+        return err("invalid_oauth_state", "OAuth state expired or was already used.", StatusCode::BAD_REQUEST);
+    };
+    if stored_provider != provider.id() || !is_allowed_oauth_redirect(&redirect_after) {
+        return err("invalid_oauth_state", "OAuth state is invalid.", StatusCode::BAD_REQUEST);
+    }
+    if chrono::DateTime::parse_from_rfc3339(&expires_at).map(|value| value < Utc::now()).unwrap_or(true) {
+        return redirect_with_oauth_error(&redirect_after, "OAuth state expired.");
+    }
+    if let Some(provider_error) = query_params.error.as_deref() {
+        return redirect_with_oauth_error(&redirect_after, provider_error);
+    }
+    let Some(code) = query_params.code.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+        return redirect_with_oauth_error(&redirect_after, "Missing OAuth code.");
+    };
+    let config = match oauth_config(provider) {
+        Ok(config) => config,
+        Err(message) => return redirect_with_oauth_error(&redirect_after, &message),
+    };
+    let http = reqwest::Client::new();
+    let access_token = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
+        Ok(token) => token,
+        Err(_) => return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code."),
+    };
+    let profile = match fetch_oauth_profile(&http, provider, &access_token).await {
+        Ok(profile) if !profile.provider_subject.trim().is_empty() => profile,
+        _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
+    };
+
+    match complete_oauth_login(pool, provider, profile).await {
+        Ok(body) => {
+            let mut url = redirect_after;
+            let separator = if url.contains('#') { '&' } else { '#' };
+            url.push(separator);
+            url.push_str("kordi_cloud_oauth=");
+            url.push_str(&encode_oauth_fragment(&body));
+            Redirect::to(&url).into_response()
+        }
+        Err(_) => redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login."),
+    }
+}
+
+async fn complete_oauth_login(
+    pool: &PgPool,
+    provider: OAuthProvider,
+    profile: OAuthProfile,
+) -> Result<AuthResponse, sqlx_core::Error> {
+    let now = Utc::now().to_rfc3339();
+    let normalized_email = profile.email.as_deref().and_then(|email| validate_email(email).ok());
+    let existing_identity: Option<(String,)> = query_as(
+        "SELECT account_id FROM cloud_account_identities WHERE provider = $1 AND provider_subject = $2",
+    )
+    .bind(provider.id())
+    .bind(&profile.provider_subject)
+    .fetch_optional(pool)
+    .await?;
+    let linked_email_account: Option<(String,)> = if existing_identity.is_none() && profile.email_verified {
+        if let Some(email) = normalized_email.as_deref() {
+            query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
+                .bind(email)
+                .fetch_optional(pool)
+                .await?
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let account_id = existing_identity
+        .or(linked_email_account)
+        .map(|row| row.0)
+        .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
+    let display_name = clean_profile_display_name(profile.display_name.as_deref()).or_else(|| profile.username.clone());
+    let avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+
+    let mut tx = pool.begin().await?;
+    query(
+        "INSERT INTO cloud_accounts (account_id, display_name, primary_email, avatar_url, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5) \
+         ON CONFLICT (account_id) DO UPDATE SET \
+           display_name = COALESCE(cloud_accounts.display_name, excluded.display_name), \
+           primary_email = COALESCE(cloud_accounts.primary_email, excluded.primary_email), \
+           avatar_url = COALESCE(cloud_accounts.avatar_url, excluded.avatar_url), \
+           updated_at = excluded.updated_at",
+    )
+    .bind(&account_id)
+    .bind(display_name.as_deref())
+    .bind(normalized_email.as_deref())
+    .bind(avatar_url.as_deref())
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    let identity_id = format!("oauth_{}_{}", provider.id(), uuid::Uuid::new_v4().simple());
+    query(
+        "INSERT INTO cloud_account_identities \
+         (identity_id, account_id, provider, provider_subject, provider_username, email, email_verified, avatar_url, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) \
+         ON CONFLICT (provider, provider_subject) DO UPDATE SET \
+           account_id = excluded.account_id, provider_username = excluded.provider_username, email = excluded.email, \
+           email_verified = excluded.email_verified, avatar_url = excluded.avatar_url, updated_at = excluded.updated_at",
+    )
+    .bind(&identity_id)
+    .bind(&account_id)
+    .bind(provider.id())
+    .bind(&profile.provider_subject)
+    .bind(profile.username.as_deref())
+    .bind(normalized_email.as_deref())
+    .bind(profile.email_verified)
+    .bind(avatar_url.as_deref())
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+
+    let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
+    let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
+    query(
+        "INSERT INTO cloud_devices (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
+         VALUES ($1, $2, $3, $4, $5, $5)",
+    )
+    .bind(&device_id)
+    .bind(&account_id)
+    .bind(format!("oauth-{}-device", provider.id()))
+    .bind(&device_public_key)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+    let issued = issue_session(&mut *tx, &account_id, &device_id, DEFAULT_SESSION_LIFETIME_DAYS)
+        .await
+        .map_err(|_| sqlx_core::Error::Protocol("Could not issue OAuth session.".into()))?;
+    tx.commit().await?;
+
+    let account = account_response_row(pool, &account_id).await?.ok_or(sqlx_core::Error::RowNotFound)?;
+    Ok(AuthResponse {
+        account,
+        session: SessionResponse { token: issued.plaintext_token, expires_at: issued.expires_at.to_rfc3339() },
+    })
+}
+
+async fn update_me(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Response {
+    let display_name = clean_profile_display_name(req.display_name.as_deref());
+    let avatar_url = clean_profile_avatar_url(req.avatar_seed.as_deref(), req.avatar_url.as_deref());
+    let now = Utc::now().to_rfc3339();
+    if query(
+        "UPDATE cloud_accounts SET display_name = COALESCE($1, display_name), avatar_url = COALESCE($2, avatar_url), updated_at = $3 WHERE account_id = $4",
+    )
+    .bind(display_name.as_deref())
+    .bind(avatar_url.as_deref())
+    .bind(&now)
+    .bind(&session.account_id)
+    .execute(state.db_pool())
+    .await
+    .is_err()
+    {
+        return err("server_error", "Could not update profile.", StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    match account_response_row(state.db_pool(), &session.account_id).await {
+        Ok(Some(account)) => Json(account).into_response(),
+        Ok(None) => err("account_missing", "Account no longer exists.", StatusCode::NOT_FOUND),
+        Err(_) => err("server_error", "Could not fetch account.", StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 

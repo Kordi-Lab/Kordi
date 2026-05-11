@@ -62,6 +62,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud_messages table",
         sql: include_str!("../../migrations/0004_cloud_messages.sql"),
     },
+    EmbeddedMigration {
+        version: 5,
+        description: "cloud OAuth state table",
+        sql: include_str!("../../migrations/0005_oauth_states.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

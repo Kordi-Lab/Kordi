@@ -43,6 +43,32 @@ curl http://127.0.0.1:17081/health
 # {"ok":true,"server":"kordi-cloud"}
 ```
 
+## Social login and Cloud profiles
+
+Cloud Edition supports email/password plus OAuth sign-in for Google, GitHub, and X/Twitter. The desktop login page calls `/v1/cloud/auth/oauth/:provider/start`, redirects the webview to the provider, and the cloud server callback redirects back to the desktop URL with a short-lived Cloud session in the URL fragment. The desktop consumes the fragment, stores the session, and clears the URL.
+
+Required server environment variables:
+
+```bash
+KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.cloud
+KORDI_OAUTH_GOOGLE_CLIENT_ID=...
+KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
+KORDI_OAUTH_GITHUB_CLIENT_ID=...
+KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
+KORDI_OAUTH_X_CLIENT_ID=...
+KORDI_OAUTH_X_CLIENT_SECRET=...
+# Optional comma-separated redirect targets for dev/custom shells.
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,tauri://
+```
+
+Register these callback URLs with the providers:
+
+- `https://kordi.cloud/v1/cloud/auth/oauth/google/callback`
+- `https://kordi.cloud/v1/cloud/auth/oauth/github/callback`
+- `https://kordi.cloud/v1/cloud/auth/oauth/x/callback`
+
+First OAuth login creates or links a Cloud account. Provider name/avatar initialize the Cloud profile when the account has no profile values yet. Users can edit display name and avatar from the bottom-left Cloud profile popover; profile updates persist through `PATCH /v1/cloud/auth/me` and then flow into Contacts, chat participants, and group avatar identity sync.
+
 ## Cloud contacts and direct chat
 
 Cloud contacts are rendered as normal Bridge-shaped peers:

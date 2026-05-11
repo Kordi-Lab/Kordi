@@ -8,7 +8,7 @@ import {
   writeAvatarPreference,
   type AvatarPreference,
 } from '@/features/cloud/avatarPreference';
-import { CloudAuthError } from '@/features/cloud/authClient';
+import { CloudAuthError, type CloudOAuthProvider } from '@/features/cloud/authClient';
 import {
   readLoginModePreference,
   writeLoginModePreference,
@@ -73,7 +73,6 @@ const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PASSWORD_MIN_LENGTH = 8;
-const COMING_SOON_HINT = 'Coming soon';
 
 function messageForError(error: CloudAuthError): string {
   switch (error.code) {
@@ -247,6 +246,7 @@ export type CloudLoginPageProps = {
     displayName?: string;
     avatarSeed?: string;
   }) => Promise<void>;
+  onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
 };
 
 const noopSignIn = async () => {
@@ -258,6 +258,7 @@ export function CloudLoginPage({
   initialMode = 'login',
   onSignIn = noopSignIn,
   onSignUp = noopSignUp,
+  onSocialSignIn,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => initialAvatarPreference(mode));
@@ -265,6 +266,7 @@ export function CloudLoginPage({
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | undefined>(undefined);
   const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -325,6 +327,24 @@ export function CloudLoginPage({
     : submitting
       ? 'Signing in…'
       : 'Continue';
+
+  async function handleSocialSignIn(provider: CloudOAuthProvider) {
+    if (!onSocialSignIn || socialProvider) return;
+    setSocialProvider(provider);
+    setSubmitError(null);
+    try {
+      await onSocialSignIn(provider);
+    } catch (caught) {
+      if (caught instanceof CloudAuthError) {
+        setSubmitError(messageForError(caught));
+      } else if (caught instanceof Error) {
+        setSubmitError(caught.message);
+      } else {
+        setSubmitError('Could not start social sign-in.');
+      }
+      setSocialProvider(null);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -390,13 +410,15 @@ export function CloudLoginPage({
             <button
               key={provider.id}
               type="button"
-              disabled
-              title={`${provider.label} — ${COMING_SOON_HINT.toLowerCase()}`}
-              aria-label={`${provider.label} sign-in coming soon`}
+              disabled={!onSocialSignIn || Boolean(socialProvider)}
+              title={`Continue with ${provider.label}`}
+              aria-label={`Continue with ${provider.label}`}
               data-provider={provider.id}
-              className={`flex h-11 items-center justify-center rounded-full border ${BORDER_SOFT} ${PAPER_RAISED} ${INK} shadow-[0_4px_12px_oklch(0.40_0.035_82/0.06)] transition disabled:cursor-not-allowed disabled:opacity-85`}
+              onClick={() => void handleSocialSignIn(provider.id)}
+              className={`flex h-11 items-center justify-center rounded-full border ${BORDER_SOFT} ${PAPER_RAISED} ${INK} shadow-[0_4px_12px_oklch(0.40_0.035_82/0.06)] transition hover:bg-[oklch(0.998_0.008_82)] disabled:cursor-wait disabled:opacity-70`}
             >
               <provider.Mark />
+              {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
             </button>
           ))}
         </div>

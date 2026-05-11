@@ -83,6 +83,25 @@ curl http://127.0.0.1:17081/health
 # {"ok":true,"server":"kordi-cloud"}
 ```
 
+Cloud social login requires these Deployment environment variables/secrets before Google, GitHub, or X buttons can complete sign-in:
+
+```bash
+KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.cloud
+KORDI_OAUTH_GOOGLE_CLIENT_ID=...
+KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
+KORDI_OAUTH_GITHUB_CLIENT_ID=...
+KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
+KORDI_OAUTH_X_CLIENT_ID=...
+KORDI_OAUTH_X_CLIENT_SECRET=...
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,tauri://
+```
+
+Provider callback URLs must be registered as:
+
+- `https://kordi.cloud/v1/cloud/auth/oauth/google/callback`
+- `https://kordi.cloud/v1/cloud/auth/oauth/github/callback`
+- `https://kordi.cloud/v1/cloud/auth/oauth/x/callback`
+
 The runtime image uses `debian:bookworm-slim` + tini + the release binary + a non-root `kordi` user. The deployment script tags the image as `docker.io/library/kordi-cloud-server:<tag>`, imports it into k3s containerd, updates the Deployment image, waits for rollout, and verifies `/health` inside the cluster.
 
 ## Coexistence with the existing systemd deploy

@@ -65,7 +65,7 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.match(markup, /data-provider="x"/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
   assert.doesNotMatch(markup, /Log in to Kordi Cloud/);
-  assert.doesNotMatch(markup, /Continue with GitHub/);
+  assert.match(markup, /Continue with GitHub/);
   assert.doesNotMatch(markup, /Your Kordi account comes first/);
   assert.doesNotMatch(markup, /After account login/);
   assert.doesNotMatch(markup, /Model provider credentials stay local by default/);
@@ -95,15 +95,15 @@ test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
 });
 
-test('disabled social buttons surface a per-provider coming-soon affordance', () => {
-  const markup = renderToStaticMarkup(createElement(CloudLoginPage));
-  assert.match(markup, /title="Google — coming soon"/);
-  assert.match(markup, /title="GitHub — coming soon"/);
-  assert.match(markup, /title="X — coming soon"/);
-  assert.match(markup, /aria-label="Google sign-in coming soon"/);
-  assert.match(markup, /aria-label="GitHub sign-in coming soon"/);
-  assert.match(markup, /aria-label="X sign-in coming soon"/);
-  // The submit button is a real, validatable control now — no placeholder copy.
+test('social buttons surface provider sign-in affordances', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, { onSocialSignIn: async () => {} }));
+  assert.match(markup, /title="Continue with Google"/);
+  assert.match(markup, /title="Continue with GitHub"/);
+  assert.match(markup, /title="Continue with X"/);
+  assert.match(markup, /aria-label="Continue with Google"/);
+  assert.match(markup, /aria-label="Continue with GitHub"/);
+  assert.match(markup, /aria-label="Continue with X"/);
+  assert.doesNotMatch(markup, /coming soon/i);
   assert.match(markup, /aria-label="Sign in"/);
 });
 
