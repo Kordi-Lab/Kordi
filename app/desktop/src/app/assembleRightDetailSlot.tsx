@@ -1,7 +1,6 @@
 import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
-import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { currentKordiEdition } from '@/features/cloud/edition';
@@ -11,7 +10,6 @@ import type { DetailTab } from '@/kordi-app/types';
 
 export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const activeChatSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
-  const activeProjectSessionId = args.activeProjectSession.id;
   const navigateToResponse = (messageId: string) => {
     navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
   };
@@ -41,35 +39,11 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
       activeSourcePreview={args.activeSourcePreview}
       onCloseSourcePreview={() => args.setActiveSourcePreview(null)}
     >
-      {args.activeNav === 'projects' && !isCloudEdition ? (
-        <ProjectDetailPanel
-          isNativeShell={args.isNativeShell}
-          activeDetailTab={args.activeDetailTab}
-          activeProject={args.activeProject}
-          activeProjectSession={args.activeProjectSession}
-          activeProjectLastMessage={args.activeProjectLastMessage}
-          activeLiveTurn={args.desktopLiveTurn?.sessionId === activeProjectSessionId ? args.desktopLiveTurn : null}
-          activeProjectBridgeHost={args.activeProjectBridgeHost}
-          activeProjectBridgeProject={args.activeProjectBridgeProject}
-          isProjectBridgeBusy={args.isProjectBridgeBusy}
-          bridgeInvite={args.bridgeInvite}
-          onCreateProjectBridgeInvite={() => {
-            void args.handleCreateProjectBridgeInvite();
-          }}
-          onOpenBridgeHosts={() => args.setActiveNav('bridge')}
-          onSetTasksTab={() => args.setActiveDetailTab('tasks')}
-          getStatusBadgeClass={args.getStatusBadgeClass}
-          artifacts={args.activeProjectArtifacts}
-          activeArtifactId={args.activeArtifactId}
-          onSelectArtifact={args.setActiveArtifactId}
-          onOpenArtifact={(artifactId) => {
-            args.setActiveArtifactId(artifactId);
-            args.setActiveDetailTab('artifacts');
-          }}
-          onNavigateToResponse={navigateToResponse}
-        />
-      ) : (
-        <ChatDetailPanel
+      {/* main-cloud drops the Projects workspace — the right rail
+          always renders chat detail; activeNav can no longer become
+          'projects' once the sidebar entry and MainContentSwitch
+          case are gone. */}
+      <ChatDetailPanel
           isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}
           activeConv={args.activeConv}
@@ -97,7 +71,6 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveConvId(conversationId);
           }}
         />
-      )}
     </RightDetailRail>
   );
 }
