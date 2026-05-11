@@ -5,6 +5,7 @@ import { CLOUD_PIXEL_AVATAR_URL_PREFIX } from '../src/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupControlMessagesForAccount,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageSessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
@@ -124,6 +125,56 @@ test('cloud group peer discovery can bootstrap from contact request counterparts
     contacts: [{ accountId: 'acct_c' }],
     requests: [{ requesterNodeId: 'acct_d', targetNodeId: 'acct_me' }],
   }), ['acct_b', 'acct_c', 'acct_d']);
+});
+
+test('cloud group replay includes self-authored controls after local reset', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:self-authored',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: { id: 'msg:ui:self', senderAccountId: 'acct_me', text: 'hello from me', createdAtMs: 1 },
+  });
+
+  const replay = cloudGroupControlMessagesForAccount({
+    accountId: 'acct_me',
+    messages: [
+      { messageId: 'cloud_self', fromAccountId: 'acct_me', toAccountId: 'acct_peer', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+    ],
+  });
+
+  assert.deepEqual(replay.map((message) => message.messageId), ['cloud_self']);
+});
+
+test('cloud group replay deduplicates fanout rows for the same canonical message', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:fanout',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'A', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'B', avatarUrl: null, role: 'person' },
+    ],
+    message: { id: 'msg:ui:fanout', senderAccountId: 'acct_me', text: 'hello both', createdAtMs: 1 },
+  });
+
+  const replay = cloudGroupControlMessagesForAccount({
+    accountId: 'acct_me',
+    messages: [
+      { messageId: 'cloud_to_a', fromAccountId: 'acct_me', toAccountId: 'acct_a', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+      { messageId: 'cloud_to_b', fromAccountId: 'acct_me', toAccountId: 'acct_b', body, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+    ],
+  });
+
+  assert.deepEqual(replay.map((message) => message.messageId), ['cloud_to_a']);
 });
 
 test('cloud group read helper marks inbound controls read when their group session is open', () => {

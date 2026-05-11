@@ -437,10 +437,8 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
     ?? activeHost?.agents[0]
     ?? null;
   const ownerName = activeHost?.ownerName?.trim();
-  const hostDisplayName = activeHost?.displayName?.trim();
   const agentLabel = activeAgent?.label?.trim();
   return [
-    hostDisplayName,
     agentLabel,
     scopedAgentLabel(ownerName, 'Kordi', true),
     scopedAgentLabel(ownerName, agentLabel || 'Kordi', true),

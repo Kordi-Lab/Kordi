@@ -36,6 +36,8 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
+  cloudGroupControlMessagesForAccount,
+  cloudGroupControlReplayKey,
   cloudGroupDeliveryStateFromMessages,
   cloudGroupIdentityRequest,
   cloudGroupMessageReadPeerIds,
@@ -249,7 +251,6 @@ export function useCloudBridgeState({
 
   const applyCloudGroupControl = useCallback(async (cloudMessage: CloudMessage, envelope: CloudGroupControlEnvelope) => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) return;
-    if (cloudMessage.fromAccountId === account.accountId) return;
     const localHumanIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
     if (!localHumanIdentityId) return;
 
@@ -325,6 +326,10 @@ export function useCloudBridgeState({
     if (envelope.kind !== 'group-message' || !envelope.message) return;
     const senderHumanIdentityId = identityIdByAccount.get(envelope.message.senderAccountId);
     if (!senderHumanIdentityId) return;
+    const messageAlreadyExists = (nextState?.messages ?? canonicalSessionState.messages)
+      .some((candidate) => candidate.id === envelope.message?.id);
+    if (messageAlreadyExists) return;
+
     const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
     if (senderIsAgent) {
@@ -539,19 +544,21 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState) return;
-    for (const messages of Object.values(messagesByPeer)) {
-      for (const message of messages) {
-        const envelope = parseCloudGroupControl(message.body);
-        if (!envelope) continue;
-        if (message.fromAccountId === account.accountId) continue;
-        if (processedCloudGroupControlIdsRef.current.has(message.messageId)) continue;
-        processedCloudGroupControlIdsRef.current.add(message.messageId);
-        void applyCloudGroupControl(message, envelope).catch((error) => {
-          processedCloudGroupControlIdsRef.current.delete(message.messageId);
-          // eslint-disable-next-line no-console
-          console.warn('[cloud-group] sync failed', error);
-        });
-      }
+    const replayMessages = cloudGroupControlMessagesForAccount({
+      accountId: account.accountId,
+      messages: Object.values(messagesByPeer).flat(),
+    });
+    for (const message of replayMessages) {
+      const envelope = parseCloudGroupControl(message.body);
+      if (!envelope) continue;
+      const replayKey = cloudGroupControlReplayKey(message) ?? message.messageId;
+      if (processedCloudGroupControlIdsRef.current.has(replayKey)) continue;
+      processedCloudGroupControlIdsRef.current.add(replayKey);
+      void applyCloudGroupControl(message, envelope).catch((error) => {
+        processedCloudGroupControlIdsRef.current.delete(replayKey);
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-group] sync failed', error);
+      });
     }
   }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, messagesByPeer, setCanonicalSessionState]);
 

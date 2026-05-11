@@ -268,6 +268,33 @@ export function cloudGroupPeerIdsFromMessages(input: {
   return [...peerIds].sort();
 }
 
+export function cloudGroupControlReplayKey(message: CloudMessage): string | null {
+  const envelope = parseCloudGroupControl(message.body);
+  if (!envelope) return null;
+  if (envelope.kind === 'group-message' && envelope.message?.id) {
+    return `${envelope.kind}:${envelope.groupId}:${envelope.message.id}`;
+  }
+  return `${envelope.kind}:${envelope.groupId}:${message.body}`;
+}
+
+export function cloudGroupControlMessagesForAccount(input: {
+  accountId: string;
+  messages: CloudMessage[];
+}): CloudMessage[] {
+  const accountId = cleanText(input.accountId);
+  if (!accountId) return [];
+  const seen = new Set<string>();
+  const result: CloudMessage[] = [];
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId && message.toAccountId !== accountId) continue;
+    const replayKey = cloudGroupControlReplayKey(message);
+    if (!replayKey || seen.has(replayKey)) continue;
+    seen.add(replayKey);
+    result.push(message);
+  }
+  return result;
+}
+
 export function cloudGroupPeerIdsFromContactsAndRequests(input: {
   accountId: string;
   contactPeerIds: string[];
