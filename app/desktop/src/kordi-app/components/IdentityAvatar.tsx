@@ -319,15 +319,15 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
       data-avatar-kind={kind}
     >
       {kind === 'agent' ? (
-        <AgentIdenticonAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
+        <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
       ) : (
-        <PixelHumanAvatar seed={normalizedSeed} className={cn('h-full w-full', generatedClassName)} />
+        <PixelHumanAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
       )}
       {resolvedImageUrl ? (
         <img
           src={resolvedImageUrl}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 block h-full w-full object-cover"
           draggable={false}
           onError={(event) => {
             event.currentTarget.style.display = 'none';

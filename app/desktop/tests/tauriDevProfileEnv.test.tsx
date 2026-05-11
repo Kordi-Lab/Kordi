@@ -17,6 +17,17 @@ test('buildBeforeDevCommand forwards Cloud Edition env into the Vite dev server 
   assert.match(command, /npm run dev:web -- --host 127\.0\.0\.1 --port 1492 --strictPort$/);
 });
 
+test('buildBeforeDevCommand forwards explicit Cloud API base into the Vite dev server command', () => {
+  const command = buildBeforeDevCommand({
+    title: 'Kordi Cloud',
+    host: '127.0.0.1',
+    port: 1482,
+    env: { VITE_KORDI_CLOUD_API_BASE: 'http://127.0.0.1:17081' },
+  });
+
+  assert.match(command, / VITE_KORDI_CLOUD_API_BASE='http:\/\/127\.0\.0\.1:17081' /);
+});
+
 test('buildBeforeDevCommand lets an explicit Vite edition override the runtime edition', () => {
   const command = buildBeforeDevCommand({
     title: 'Kordi',

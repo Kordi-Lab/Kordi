@@ -655,6 +655,36 @@ test('buildBridgeMentionCandidates does not expose node id duplicates when frien
   assert.equal(candidates.some((candidate) => candidate.displayLabel === 'kd_remote_node_123'), false);
 });
 
+test('buildBridgeMentionCandidates does not duplicate a person from their paired agent peer', () => {
+  const bridgeState = bridgeStateWithPeers([
+    peer({
+      nodeId: 'acct_alice',
+      displayName: 'Alice',
+      ownerName: 'Alice',
+      runtime: 'person',
+      humanId: 'acct_alice',
+      agentId: null,
+      isDefaultAgent: false,
+    }),
+    peer({
+      nodeId: 'cloud-agent:acct_alice',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'acct_alice',
+      agentId: 'cloud-agent:acct_alice',
+      isDefaultAgent: true,
+    }),
+  ]);
+
+  const candidates = buildBridgeMentionCandidates(bridgeState);
+
+  assert.deepEqual(
+    candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
+  );
+});
+
 test('buildBridgeMentionCandidates falls back to node id when no friendly labels exist', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({

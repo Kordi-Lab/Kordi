@@ -65,6 +65,16 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
 
+  const incrementUnreadForSession = useCallback((sessionId?: string | null, count = 1) => {
+    const normalizedSessionId = sessionId?.trim();
+    const increment = Math.max(0, Math.floor(count));
+    if (!normalizedSessionId || increment <= 0) return;
+    setLocalSessionUnreadCounts((current) => ({
+      ...current,
+      [normalizedSessionId]: (current[normalizedSessionId] ?? 0) + increment,
+    }));
+  }, []);
+
   const clearUnreadForSession = useCallback((sessionId?: string | null) => {
     if (!sessionId) return;
     setLocalSessionUnreadCounts((current) => (
@@ -377,10 +387,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (!mappedMessage) return;
 
     if (isBackgroundSession) {
-      setLocalSessionUnreadCounts((current) => ({
-        ...current,
-        [turn.sessionId]: (current[turn.sessionId] ?? 0) + 1,
-      }));
+      incrementUnreadForSession(turn.sessionId);
       notifyBackgroundSessionCompletion(turn);
     } else {
       clearUnreadForSession(turn.sessionId);
@@ -400,7 +407,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         [turn.sessionId]: [...current[turn.sessionId], mappedMessage],
       };
     });
-  }, [clearUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
+  }, [clearUnreadForSession, incrementUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(
     async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {
@@ -506,6 +513,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setCachedProjectSessionMessages,
     localSessionUnreadCounts,
     setLocalSessionUnreadCounts,
+    incrementUnreadForSession,
     setVisibleLocalSessionId,
     refreshDesktopChat,
     mergeCompletedDesktopTurn,

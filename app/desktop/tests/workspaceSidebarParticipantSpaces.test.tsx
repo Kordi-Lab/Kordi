@@ -303,6 +303,20 @@ test('direct remote-human to my-agent Bridge reachouts route to the Agent page, 
   })), false);
 });
 
+test('Cloud self-agent reachouts stay in the contact chat rail instead of routing away to the Agent page', () => {
+  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+    id: 'bridge:cloud:acct-peer:person',
+    canonicalSessionId: 'session:bridge:bridge:cloud:acct-peer:person',
+    hostId: 'cloud',
+    outreach: {
+      ...bridgeConversation().outreach!,
+      bridgeHostId: 'cloud',
+      bridgeConversationId: 'bridge:cloud:acct-peer:person',
+      targetAgentId: 'agent-local',
+    },
+  })), false);
+});
+
 test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () => {
   const caughtUpConversations = [
     conversation({ id: 'chat-1', name: 'Alice', unread: 0 }),

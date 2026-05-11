@@ -198,7 +198,8 @@ fn bridge_agent_prompt_includes_inline_identity_frame_for_parent_session() {
     assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
     assert!(prompt.contains("- identityId: human:alice"));
     assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
-    assert!(prompt.contains("If the request asks you to create, manage, persist, search, or close a task"));
+    assert!(prompt
+        .contains("If the request asks you to create, manage, persist, search, or close a task"));
     assert!(prompt.contains("use task_operator"));
     assert!(prompt.contains("action=create"));
     assert!(prompt.contains("action=search"));

@@ -15,6 +15,7 @@ import {
   type CloudContactRequest,
   type CloudContactSummary,
 } from './authClient';
+import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { loadSession } from './session';
 
 export type UseCloudContactsResult = {
@@ -135,7 +136,19 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
   };
 }
 
-const CLOUD_HOST_SENTINEL = 'cloud';
+export const CLOUD_HOST_SENTINEL = 'cloud';
+
+export function isCloudContact(contact: Contact): boolean {
+  return contact.id.startsWith('cloud:')
+    || contact.bridgeHostId === CLOUD_HOST_SENTINEL
+    || contact.discoverableOn.includes(CLOUD_HOST_SENTINEL);
+}
+
+export function shouldOpenCloudPeerChat(_edition: 'local' | 'cloud', _contact: Contact): boolean {
+  // Deprecated: cloud contacts now route through the existing Bridge-shaped
+  // chat/session UI instead of the old standalone CloudPeerChatPanel.
+  return false;
+}
 
 export function cloudContactToContact(row: CloudContactSummary): Contact {
   const name = row.displayName ?? row.accountId;
@@ -153,11 +166,17 @@ export function cloudContactToContact(row: CloudContactSummary): Contact {
     owner: name,
     bridgeHostId: CLOUD_HOST_SENTINEL,
     bridgePeerNodeId: row.accountId,
+    bridgePeerRuntime: 'person',
+    bridgeHumanId: row.accountId,
     bridgeContactStatus: 'accepted',
     bridgeContactRequestDirection: 'outgoing',
-    avatarSeed: row.accountId,
-    profileImageUrl: row.avatarUrl,
+    avatarSeed: cloudAvatarSeedForAccount(row.accountId, row.avatarUrl),
+    profileImageUrl: cloudAvatarImageUrl(row.avatarUrl),
   };
+}
+
+export function isPendingIncomingCloudContactRequest(request: Pick<ContactRequest, 'direction' | 'status'>): boolean {
+  return request.direction === 'incoming' && request.status === 'pending';
 }
 
 export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
@@ -174,8 +193,8 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     title,
     detail: row.message ?? counterpartId,
     time: row.createdAt,
-    profileImageUrl: row.counterpart?.avatarUrl ?? null,
-    avatarSeed: counterpartId,
+    profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
+    avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
     source: 'bridge',
     bridgeHostId: CLOUD_HOST_SENTINEL,
     bridgeRequestId: row.requestId,

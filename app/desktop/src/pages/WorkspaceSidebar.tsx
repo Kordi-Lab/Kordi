@@ -19,6 +19,8 @@ import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type { Agent, ChatChannel, Contact, ContactClass, ConversationType, NavId, ParticipantSpaceViewModel, SessionStatusIndicator } from '@/kordi-app/types';
+import type { CloudAccount } from '@/features/cloud/authClient';
+import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -216,11 +218,22 @@ type WorkspaceSidebarProps = {
   displayedAgents: AgentItem[];
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
+  cloudAccount?: CloudAccount | null;
   isBridgePolling: boolean;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
 };
+
+export type CloudProfileRow = { label: string; value: string; copyable?: boolean };
+
+export function buildCloudProfileRows(account: CloudAccount | null | undefined): CloudProfileRow[] {
+  if (!account) return [];
+  return [
+    account.primaryEmail?.trim() ? { label: 'Email', value: account.primaryEmail.trim() } : null,
+    { label: 'Account ID', value: account.accountId, copyable: true },
+  ].filter((row): row is CloudProfileRow => Boolean(row));
+}
 
 const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = {
   running: 'app-session-status-light-running',
@@ -415,6 +428,7 @@ export function WorkspaceSidebar({
   displayedAgents,
   activeBridgeHost,
   localProfileAvatarSeed,
+  cloudAccount,
   isBridgePolling,
   onRefreshBridge,
   onCopyBridgeHostUrl,
@@ -442,12 +456,19 @@ export function WorkspaceSidebar({
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
+  const profileRows = buildCloudProfileRows(cloudAccount);
+  const profileDisplayName = cloudAccount?.displayName?.trim() || cloudAccount?.primaryEmail?.trim() || 'Local profile';
+  const profileAvatarSeed = cloudAccount
+    ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
+    : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
+  const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
   ))?.id ?? null;
@@ -823,14 +844,59 @@ export function WorkspaceSidebar({
             <Button size="icon" className="h-9 w-9 rounded-[14px]" onClick={openChatCreateDialog} aria-label="Start a chat">
               <Plus className="h-4 w-4" />
             </Button>
-            <IdentityAvatar
-              kind="human"
-              seed={localProfileAvatarSeed || currentLocalProfileAvatarSeed}
-              name="Local profile"
-              className="h-9 w-9 border border-white/10"
-            />
+            <button
+              type="button"
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70"
+              onClick={() => setIsProfileCardOpen((open) => !open)}
+              aria-label="Open profile"
+              aria-expanded={isProfileCardOpen}
+            >
+              <IdentityAvatar
+                kind="human"
+                seed={profileAvatarSeed}
+                name={profileDisplayName}
+                imageUrl={profileImageUrl}
+                className="h-9 w-9 border border-white/10"
+              />
+            </button>
           </div>
         </div>
+
+        {isProfileCardOpen ? (
+          <div className="fixed bottom-4 left-[calc(var(--app-left-rail-width,5.5rem)+0.75rem)] z-[160] w-[21.25rem] rounded-[18px] border border-white/10 bg-[#0d1016]/95 px-4 py-3 text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.46)] backdrop-blur-xl">
+            <div className="mb-3 text-[12px] font-medium text-slate-100">Profile</div>
+            <div className="grid gap-1 text-[12px]">
+              <div className="rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
+                <div className="truncate font-medium text-slate-100">{profileDisplayName}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Cloud account' : 'Local profile'}</div>
+              </div>
+              {profileRows.length > 0 ? profileRows.map((row) => (
+                <div key={row.label} className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-slate-100">{row.label}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
+                  </div>
+                  {row.copyable ? (
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
+                      aria-label={`Copy ${row.label}`}
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(row.value);
+                      }}
+                    >
+                      Copy
+                    </button>
+                  ) : null}
+                </div>
+              )) : (
+                <div className="rounded-[12px] px-3 py-2.5 text-[12px] text-slate-400">
+                  Profile details are stored locally.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {showSessionRail && !collapseChatSessions && (
           <div

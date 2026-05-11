@@ -101,6 +101,7 @@ Use `shared/rust/protocol` and `shared/typescript/protocol` for types or contrac
 ## Documentation map
 
 - [docs/development.md](docs/development.md) — root command map and day-to-day development entrypoints
+- [docs/cloud-edition.md](docs/cloud-edition.md) — hosted Cloud Edition architecture, launch, sync, and deployment notes
 - [docs/architecture.md](docs/architecture.md) — structural view of the app, server, agent, and bridges layers
 - [docs/app-server.md](docs/app-server.md) — app-facing local server contract and integration plan
 - [docs/release.md](docs/release.md) — packaging and release responsibilities by layer

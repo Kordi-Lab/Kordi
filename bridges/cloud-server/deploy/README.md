@@ -61,8 +61,9 @@ in the GCP firewall — by default it's blocked from outside).
 
 ## Repointing the desktop
 
-The desktop's `VITE_KORDI_CLOUD_API_BASE` defaults to `http://127.0.0.1:17081`
-(the local dev port). To talk to the deployed server:
+Cloud Edition defaults to the public cloud API origin, not a localhost Bridge.
+Set `VITE_KORDI_CLOUD_API_BASE` when you need to point a dev build at a
+specific deployed server:
 
 ```bash
 VITE_KORDI_EDITION=cloud \

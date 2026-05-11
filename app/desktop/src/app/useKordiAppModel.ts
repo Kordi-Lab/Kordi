@@ -13,7 +13,20 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
+import { cloudAvatarSeedFromUrl } from '@/features/cloud/avatar';
+import {
+  cloudGroupIdentityRequest,
+  cloudGroupParticipantsForBridgeSessionParticipants,
+  cloudGroupParticipantsForContacts,
+  cloudGroupSelfParticipant,
+  cloudGroupTargetAccountIds,
+  nonCloudGroupTargets,
+} from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import { useCloudSession } from '@/features/cloud/useCloudSession';
+import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
+import { cloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -32,6 +45,7 @@ import {
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupInviteText,
   buildChatCreateGroupMetadata,
+  buildChatCreatePeopleContactLookup,
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
   CHAT_GROUP_INVITE_CONTEXT_POLICY,
@@ -109,6 +123,7 @@ import {
 export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
+  const cloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' });
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
   // cloudSessionStatus / showCloudLoginGate down through the shell.
@@ -170,6 +185,7 @@ export function useKordiAppModel() {
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
+    incrementUnreadForSession,
     setVisibleLocalSessionId,
     refreshDesktopChat,
     watchDesktopLiveTurn,
@@ -275,7 +291,7 @@ export function useKordiAppModel() {
   });
 
   const {
-    desktopBridgeState,
+    desktopBridgeState: baseDesktopBridgeState,
     setDesktopBridgeState,
     bridgeSettingsDraft,
     setBridgeSettingsDraft,
@@ -315,6 +331,21 @@ export function useKordiAppModel() {
     shouldAutoFollowChatRef,
   });
 
+  const {
+    setCloudBridgeState,
+    mergedBridgeState: desktopBridgeState,
+    sendCloudBridgeMessage,
+    sendCloudGroupControl,
+    cancelCloudBridgeAgentRequest,
+  } = useCloudBridgeState({
+    account: kordiEdition === 'cloud' ? cloudSession.account : null,
+    baseBridgeState: baseDesktopBridgeState,
+    activeConversationId: activeConvId,
+    canonicalSessionState,
+    setCanonicalSessionState,
+    incrementLocalSessionUnread: incrementUnreadForSession,
+  });
+
   const avatarBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
     ?? desktopBridgeState?.hosts[0]
     ?? null;
@@ -324,7 +355,9 @@ export function useKordiAppModel() {
     ?? avatarBridgeHost?.agents.find((agent) => agent.isDefault)
     ?? avatarBridgeHost?.agents[0]
     ?? null;
-  const localProfileAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+  const cloudProfileAvatarSeed = kordiEdition === 'cloud' ? cloudAvatarSeedFromUrl(cloudSession.account?.avatarUrl) : null;
+  const localProfileAvatarSeed = cloudProfileAvatarSeed
+    || canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.humanId?.trim()
     || canonicalSessionState?.profile.id?.trim()
     || null;
@@ -437,7 +470,8 @@ export function useKordiAppModel() {
     desktopBridgeState,
     desktopChatState,
     activeConvMentionScope,
-  }), [activeConvMentionScope, desktopBridgeState, desktopChatState, isNativeShell]);
+    conversations: chatConversations,
+  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
@@ -679,6 +713,10 @@ export function useKordiAppModel() {
     setQueuedDesktopMessagesBySession,
     setDesktopLiveTurnsBySession,
     setDesktopBridgeState,
+    setCloudBridgeState,
+    sendCloudBridgeMessage,
+    sendCloudGroupControl,
+    cancelCloudBridgeAgentRequest,
     watchDesktopLiveTurn,
     shouldAutoFollowChatRef,
     setActiveConvId,
@@ -988,9 +1026,10 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
-  const peopleContactById = useMemo(() => new Map(
-    buildChatCreatePersonOptions(displayedContacts).map((option) => [option.id, option.contact]),
-  ), [displayedContacts]);
+  const peopleContactById = useMemo(
+    () => buildChatCreatePeopleContactLookup(displayedContacts),
+    [displayedContacts],
+  );
 
   const selectNewChatSession = useCallback((sessionId: string) => {
     setActiveNav('chats');
@@ -1008,6 +1047,10 @@ export function useKordiAppModel() {
 
   const handleStartChatWithPerson = useCallback(async (contact: Contact) => {
     setDesktopChatError(null);
+    if (contact.bridgeHostId === CLOUD_HOST_SENTINEL && contact.bridgePeerNodeId) {
+      selectNewChatSession(cloudBridgeConversationId(contact.bridgePeerNodeId, 'person'));
+      return;
+    }
     if (contact.bridgeHostId && contact.bridgePeerNodeId) {
       await handleStartBridgePersonSession({
         hostId: contact.bridgeHostId,
@@ -1104,6 +1147,11 @@ export function useKordiAppModel() {
       return;
     }
 
+    if (agent.bridgeHostId === CLOUD_HOST_SENTINEL && agent.bridgePeerNodeId) {
+      selectNewChatSession(cloudBridgeConversationId(agent.bridgePeerNodeId, agent.bridgePeerRuntime ?? 'kordi-desktop'));
+      return;
+    }
+
     if (!isNativeShell) return;
     const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId) {
@@ -1148,6 +1196,14 @@ export function useKordiAppModel() {
     const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
     if (!creatorIdentityId || !currentCanonicalState) {
       throw new Error('Local profile identity is not ready yet.');
+    }
+    if (cloudSession.account) {
+      const identityState = await upsertCanonicalIdentity(cloudGroupIdentityRequest(
+        cloudGroupSelfParticipant(cloudSession.account, 'admin'),
+        cloudSession.account,
+        creatorIdentityId,
+      ));
+      setCanonicalSessionState(identityState);
     }
     const contacts = uniqueStrings(request.contactIds)
       .map((contactId) => peopleContactById.get(contactId))
@@ -1207,14 +1263,30 @@ export function useKordiAppModel() {
       humanId: creatorIdentity?.humanId?.trim() || activeBridgeHost?.humanId?.trim() || null,
     };
     const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
+    const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
+    const bridgeInviteTargets = nonCloudGroupTargets(inviteTargets);
     const inviteParticipants = buildChatCreateGroupBridgeInviteParticipants({
       creator: creatorInviteIdentity,
       contacts,
     });
-    if (inviteTargets.length > 0) {
+    if (cloudInviteTargetAccountIds.length > 0 && cloudSession.account) {
+      try {
+        await sendCloudGroupControl({
+          targetAccountIds: cloudInviteTargetAccountIds,
+          kind: 'group-invite',
+          groupId: sessionId,
+          groupSpaceId: sessionId,
+          groupTitle: groupDisplayName,
+          participants: cloudGroupParticipantsForContacts(cloudSession.account, contacts),
+        });
+      } catch (error) {
+        setDesktopChatError(`Group created, but Cloud invites failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (bridgeInviteTargets.length > 0) {
       const inviteText = buildChatCreateGroupInviteText(groupDisplayName);
       try {
-        for (const target of inviteTargets) {
+        for (const target of bridgeInviteTargets) {
           const inviteState = await createDesktopBridgeOutreach({
             hostId: target.hostId,
             targetNodeId: target.nodeId,
@@ -1249,9 +1321,11 @@ export function useKordiAppModel() {
   }, [
     activeBridgeHost,
     canonicalSessionState,
+    cloudSession.account,
     isNativeShell,
     peopleContactById,
     selectNewChatSession,
+    sendCloudGroupControl,
     setDesktopBridgeState,
     setDesktopChatError,
   ]);
@@ -1339,9 +1413,21 @@ export function useKordiAppModel() {
           const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId: creatorIdentityId, participants });
           if (targets.length > 0) {
             const syncContext = canonicalGroupSessionSyncContextForSession(nextState, sessionId, groupSpaceId ?? sessionId);
+            const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
+            const bridgeTargets = nonCloudGroupTargets(targets);
+            if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
+              await sendCloudGroupControl({
+                targetAccountIds: cloudTargetAccountIds,
+                kind: 'group-update',
+                groupId: sessionId,
+                groupSpaceId: syncContext.parentGroupSpaceId || sessionId,
+                groupTitle: syncContext.parentSessionTitle,
+                participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, syncContext.parentSessionParticipants),
+              });
+            }
             const actorName = canonicalIdentityDisplayName(nextState, creatorIdentityId) ?? 'Someone';
             const requestText = `${actorName} created a new group session`;
-            for (const target of targets) {
+            for (const target of bridgeTargets) {
               const bridgeState = await createDesktopBridgeOutreach({
                 hostId: target.hostId,
                 targetNodeId: target.nodeId,
@@ -1407,9 +1493,11 @@ export function useKordiAppModel() {
     }
   }, [
     canonicalSessionState,
+    cloudSession.account,
     handleCreateChatSession,
     isNativeShell,
     selectNewChatSession,
+    sendCloudGroupControl,
     setDesktopBridgeState,
     setDesktopChatError,
   ]);
@@ -1454,7 +1542,19 @@ export function useKordiAppModel() {
           adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
         });
         const noticeText = sessionRenameNoticeText(canonicalIdentityDisplayName(nextState, actorIdentityId), title, 'group');
-        for (const target of targets) {
+        const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
+        const bridgeTargets = nonCloudGroupTargets(targets);
+        if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
+          await sendCloudGroupControl({
+            targetAccountIds: cloudTargetAccountIds,
+            kind: 'group-title-update',
+            groupId,
+            groupSpaceId: groupId,
+            groupTitle: title,
+            participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
+          });
+        }
+        for (const target of bridgeTargets) {
           const bridgeState = await createDesktopBridgeOutreach({
             hostId: target.hostId,
             targetNodeId: target.nodeId,
@@ -1484,7 +1584,7 @@ export function useKordiAppModel() {
     } catch (error) {
       setDesktopChatError(`Group renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [appendRenameNotice, canonicalSessionState, isNativeShell, setDesktopBridgeState, setDesktopChatError]);
+  }, [appendRenameNotice, canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopBridgeState, setDesktopChatError]);
 
   const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;
@@ -1542,7 +1642,30 @@ export function useKordiAppModel() {
     setCanonicalSessionState(nextState);
 
     const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
-    if (inviteTargets.length > 0) {
+    const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
+    const bridgeInviteTargets = nonCloudGroupTargets(inviteTargets);
+    if (cloudInviteTargetAccountIds.length > 0 && cloudSession.account) {
+      try {
+        for (const sessionId of groupSessionIds) {
+          const inviteContext = canonicalGroupInviteContextForSession(
+            nextState,
+            sessionId,
+            fallbackGroupSpaceId,
+          );
+          await sendCloudGroupControl({
+            targetAccountIds: cloudInviteTargetAccountIds,
+            kind: 'group-invite',
+            groupId: sessionId,
+            groupSpaceId: inviteContext.parentGroupSpaceId || sessionId,
+            groupTitle: inviteContext.parentSessionTitle,
+            participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, inviteContext.parentSessionParticipants),
+          });
+        }
+      } catch (error) {
+        setDesktopChatError(`Group members added, but Cloud invites failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (bridgeInviteTargets.length > 0) {
       try {
         for (const sessionId of groupSessionIds) {
           const inviteContext = canonicalGroupInviteContextForSession(
@@ -1551,7 +1674,7 @@ export function useKordiAppModel() {
             fallbackGroupSpaceId,
           );
           const inviteText = buildChatCreateGroupInviteText(inviteContext.parentSessionTitle);
-          for (const target of inviteTargets) {
+          for (const target of bridgeInviteTargets) {
             const inviteState = await createDesktopBridgeOutreach({
               hostId: target.hostId,
               targetNodeId: target.nodeId,
@@ -1585,8 +1708,10 @@ export function useKordiAppModel() {
     }
   }, [
     canonicalSessionState,
+    cloudSession.account,
     isNativeShell,
     peopleContactById,
+    sendCloudGroupControl,
     setDesktopBridgeState,
     setDesktopChatError,
   ]);

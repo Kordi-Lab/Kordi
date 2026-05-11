@@ -709,6 +709,7 @@ export type DesktopBridgePeer = {
   contactRequestStatus?: string | null;
   contactRequestDirection?: string | null;
   profileImageUrl?: string | null;
+  avatarSeed?: string | null;
 };
 
 export type DesktopBridgeProject = {
@@ -782,6 +783,7 @@ export type DesktopBridgeConversationMessage = {
   detail?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   attachments?: MessageAttachment[];
+  localTurn?: DesktopChatTurnSnapshot | null;
 };
 
 export type DesktopBridgeSessionThreadMessage = {
@@ -851,6 +853,7 @@ export type DesktopBridgeOutreachMetadata = {
   updatedAtMs: number;
   completedAtMs?: number | null;
   error?: string | null;
+  localTurn?: DesktopChatTurnSnapshot | null;
 };
 
 export type DesktopBridgeIdentitySnapshot = {

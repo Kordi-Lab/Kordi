@@ -108,6 +108,72 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(totalChannelSpaces, viewModels?.participantSpaces.length);
 });
 
+test('workspace view model hides cloud-agent runtime sessions from local chat UI', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: {
+        cwd: '/tmp',
+        activeSessionId: 'cloud-agent:acct_me:acct_peer',
+        sessions: [
+          { id: 'cloud-agent:acct_me:acct_peer', title: 'Cloud agent runtime', subtitle: 'hidden', updatedAtLabel: '12:00', messageCount: 1, draft: false },
+          { id: 'local-visible', title: 'Visible local chat', subtitle: 'shown', updatedAtLabel: '12:01', messageCount: 1, draft: false },
+        ],
+        projects: [],
+        activeSession: {
+          id: 'cloud-agent:acct_me:acct_peer',
+          title: 'Cloud agent runtime',
+          subtitle: 'hidden',
+          provider: 'openai',
+          providerLabel: 'OpenAI',
+          model: 'gpt',
+          modelLabel: 'GPT',
+          thinking: 'default',
+          thinkingLabel: 'Default',
+          thinkingLevels: [],
+          updatedAtLabel: '12:00',
+          messageCount: 1,
+          draft: false,
+          contextWindowText: '',
+          contextWindowStatus: { contextWindow: 0, usedTokens: 0, percentUsed: 0, status: 'ok' },
+          project: null,
+          messages: [{ role: 'user', text: 'internal prompt', timeLabel: '12:00', timestampMs: 1 }],
+        },
+        localAgent: { label: 'Kordi', systemPrompt: '', loadedSkills: [], loadedTools: [], loadedPlugins: [], identityFiles: [], defaultProvider: 'openai', defaultModel: 'gpt', workspaceRoot: '/tmp', lastActivities: [] },
+        modelOptions: [],
+        slashCommands: [],
+      } as never,
+      desktopBridgeState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'my-agent',
+      activeProjectId: '',
+      activeProjectSessionId: '',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: (_sessionId, messages) => messages.map((message) => ({ role: message.role === 'assistant' ? 'owned-agent' : 'user', text: message.text, time: message.timeLabel })),
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id.startsWith('cloud-agent:')), false);
+  assert.equal(viewModels?.activeConv.id, 'local-visible');
+});
+
 test('workspace view model exposes visible non-contact Bridge people for Add contacts only', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
   function Probe() {

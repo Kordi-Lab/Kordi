@@ -325,6 +325,9 @@ export function useBridgeOrchestration({
     setActiveNav('chats');
     setActiveConvId(conversationId);
     setDesktopChatError(null);
+    if (hostId === 'cloud') {
+      return;
+    }
     setDesktopBridgeState((current) => upsertOptimisticBridgeConversation(current, optimisticBridgeConversation({
       hostId,
       peerNodeId,

@@ -8,11 +8,10 @@
 // raw cloud-aware contact list for the ChatCreateDialog so the "+"
 // menu's "Add contacts" surface can route through cloud too.
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ComponentProps } from 'react';
 
-import { useCloudContacts } from './useCloudContacts';
-import { CloudPeerChatPanel } from './CloudPeerChatPanel';
+import { isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
 import type { CloudAccount } from './authClient';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
@@ -33,14 +32,13 @@ type CloudContactsAdapterProps = {
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
-  const [activeChatContact, setActiveChatContact] = useState<Contact | null>(null);
 
   // Inbox only shows incoming requests — outgoing ones are the
   // sender's own actions and surfacing them in the inbox with
   // Accept/Reject would be wrong. They'll re-appear as accepted
   // contacts (or vanish on rejection) on the next refresh.
   const inboxRequests = useMemo(
-    () => cloud.requests.filter((req) => req.direction === 'incoming'),
+    () => cloud.requests.filter(isPendingIncomingCloudContactRequest),
     [cloud.requests],
   );
 
@@ -53,20 +51,23 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
           )
         : cloud.contacts
     );
-    // Merge: existing local groups + a synthetic "other-users" group for cloud.
-    // We splice cloud rows into the existing other-users group when one is
-    // already present, otherwise add it.
-    const groups = contactsPageProps.filteredGroupedContacts.map((group) =>
-      group.id === 'other-users'
-        ? { ...group, items: dedupeContacts([...group.items, ...cloudMatches]) }
-        : group,
-    );
+    // Cloud contacts should be one row per human account. Do not merge the
+    // Bridge-derived person/agent rows from the local view model, otherwise the
+    // Contacts page shows the same person twice and also exposes "other
+    // people's agents" as separate contacts.
+    const groups = contactsPageProps.filteredGroupedContacts
+      .filter((group) => group.id !== 'other-users-agents')
+      .map((group) =>
+        group.id === 'other-users'
+          ? { ...group, items: dedupeContactsByCloudAccount(cloudMatches) }
+          : group,
+      );
     const hasOtherUsers = groups.some((group) => group.id === 'other-users');
     if (!hasOtherUsers && cloudMatches.length > 0) {
       groups.push({
         id: 'other-users' as ContactClass,
         label: 'Other users',
-        items: cloudMatches,
+        items: dedupeContactsByCloudAccount(cloudMatches),
       });
     }
     return groups;
@@ -116,49 +117,29 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     return contactsPageProps.activeContactRequest;
   }, [contactsPageProps.activeContactRequestId, contactsPageProps.activeContactRequest, cloud.requests]);
 
-  // Clicking "Message" on a cloud contact opens the cloud peer chat
-  // panel (a self-contained surface). For non-cloud contacts (e.g.
-  // local bridge agents that somehow ended up in this view) fall back
-  // to whatever the parent provided.
-  const onMessageContact = (contact: Contact) => {
-    if (contact.id.startsWith('cloud:')) {
-      setActiveChatContact(contact);
-      return;
-    }
-    contactsPageProps.onMessageContact?.(contact);
-  };
-
   return (
-    <>
-      <ContactsPage
-        {...contactsPageProps}
-        filteredGroupedContacts={filteredGroupedContacts}
-        addableContacts={[]}
-        contactRequests={inboxRequests}
-        activeContact={activeContact}
-        activeContactRequest={activeContactRequest}
-        onAcceptRequest={onAcceptRequest}
-        onRejectRequest={onRejectRequest}
-        onAddContactByNodeId={onAddContactByNodeId}
-        onMessageContact={onMessageContact}
-      />
-      {activeChatContact ? (
-        <CloudPeerChatPanel
-          account={account}
-          contact={activeChatContact}
-          onClose={() => setActiveChatContact(null)}
-        />
-      ) : null}
-    </>
+    <ContactsPage
+      {...contactsPageProps}
+      filteredGroupedContacts={filteredGroupedContacts}
+      addableContacts={[]}
+      contactRequests={inboxRequests}
+      activeContact={activeContact}
+      activeContactRequest={activeContactRequest}
+      onAcceptRequest={onAcceptRequest}
+      onRejectRequest={onRejectRequest}
+      onAddContactByNodeId={onAddContactByNodeId}
+      onMessageContact={contactsPageProps.onMessageContact}
+    />
   );
 }
 
-function dedupeContacts(items: Contact[]): Contact[] {
+function dedupeContactsByCloudAccount(items: Contact[]): Contact[] {
   const seen = new Set<string>();
   const out: Contact[] = [];
   for (const item of items) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
+    const key = item.bridgePeerNodeId || item.bridgeHumanId || item.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push(item);
   }
   return out;

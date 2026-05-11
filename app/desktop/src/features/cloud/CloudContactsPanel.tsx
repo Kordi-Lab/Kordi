@@ -10,15 +10,10 @@ import {
 } from './authClient';
 import { loadSession } from './session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-
-const AVATAR_URL_PREFIX = 'kordi-pixel-avatar://';
+import { cloudAvatarSeedForAccount } from './avatar';
 
 function avatarSeedFor(profile: { accountId: string; avatarUrl: string | null }): string {
-  if (profile.avatarUrl?.startsWith(AVATAR_URL_PREFIX)) {
-    const seed = profile.avatarUrl.slice(AVATAR_URL_PREFIX.length).trim();
-    if (seed) return seed;
-  }
-  return profile.accountId;
+  return cloudAvatarSeedForAccount(profile.accountId, profile.avatarUrl);
 }
 
 type Props = {

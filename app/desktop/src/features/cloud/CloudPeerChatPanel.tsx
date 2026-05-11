@@ -18,6 +18,7 @@ import type { Contact } from '@/kordi-app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { useCloudConversation } from './useCloudConversation';
 import type { CloudAccount } from './authClient';
 
@@ -46,7 +47,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
   }, []);
 
   const peerLabel = contact.name?.trim() || peerAccountId || 'Cloud peer';
-  const avatarSeed = contact.avatarSeed ?? peerAccountId ?? contact.id;
+  const avatarSeed = contact.avatarSeed ?? cloudAvatarSeedForAccount(peerAccountId ?? contact.id, contact.profileImageUrl);
 
   const submit = async () => {
     const body = draft.trim();
@@ -72,7 +73,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
               kind="human"
               seed={avatarSeed}
               name={peerLabel}
-              imageUrl={contact.profileImageUrl ?? null}
+              imageUrl={cloudAvatarImageUrl(contact.profileImageUrl)}
               avatarKey={`cloud-chat:${peerAccountId ?? contact.id}`}
               className="h-9 w-9 shrink-0 overflow-hidden rounded-full"
             />

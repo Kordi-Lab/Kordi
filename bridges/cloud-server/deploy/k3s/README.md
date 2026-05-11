@@ -58,19 +58,32 @@ gcloud compute ssh shu_yang@takotako --zone us-central1-c \
 
 Stops there for session 2. Sessions 3+ are separate PRs.
 
-## Building the Docker image
+## Building and deploying the Docker image
+
+For the current single-node k3s development deployment, build the release binary on the VM and import a local OCI image into k3s containerd:
 
 ```bash
-# from the repo root, on any machine with docker
-docker build -t kordi-cloud-server:dev -f bridges/cloud-server/Dockerfile .
+# from your laptop
+bash bridges/cloud-server/deploy/sync-and-build.sh
+
+KORDI_CLOUD_IMAGE_TAG=dev-$(date +%Y%m%d-%H%M%S) \
+  bash bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh
 ```
 
-The image is multi-stage: `rust:1.83-slim-bookworm` for the build, `debian:bookworm-slim` + tini + the binary + a non-root `kordi` user for runtime. Final image is around 80–100 MB.
+Known deployed image with Cloud group-control support:
 
-In session 5 we either:
+```text
+docker.io/library/kordi-cloud-server:dev-20260511-group-controls
+```
 
-- **Push to the VM's local image cache via SSH + `docker save / docker load`**, or
-- **Stand up a private registry inside the cluster** (a deferred operational decision).
+Health check through the local hosted tunnel:
+
+```bash
+curl http://127.0.0.1:17081/health
+# {"ok":true,"server":"kordi-cloud"}
+```
+
+The runtime image uses `debian:bookworm-slim` + tini + the release binary + a non-root `kordi` user. The deployment script tags the image as `docker.io/library/kordi-cloud-server:<tag>`, imports it into k3s containerd, updates the Deployment image, waits for rollout, and verifies `/health` inside the cluster.
 
 ## Coexistence with the existing systemd deploy
 

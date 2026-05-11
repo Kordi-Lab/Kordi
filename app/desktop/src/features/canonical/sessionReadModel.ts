@@ -8,6 +8,7 @@ import type {
 } from '@/kordi-app/types';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { formatDesktopClockTime } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
@@ -290,7 +291,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
 
   const indexes = buildCanonicalIndexes(canonicalState);
   const chatSessions = canonicalState.sessions
-    .filter((session) => session.kind !== 'project' && session.status !== 'archived')
+    .filter((session) => session.kind !== 'project' && session.status !== 'archived' && !isCloudAgentRuntimeSessionId(session.id))
     .sort((left, right) => sessionChatActivityAtMs(right) - sessionChatActivityAtMs(left));
 
   return {

@@ -1,3 +1,4 @@
+import { currentKordiEdition } from '@/features/cloud/edition';
 import { formatDesktopClockTime } from '@/lib/time';
 
 const SHARED_LOCAL_SLASH_COMMANDS = new Set([
@@ -52,7 +53,22 @@ const DESKTOP_SLASH_HELP_LINES = [
   'Skill, prompt, and extension slash commands also appear in the command menu.',
 ].join('\n');
 
+const CLOUD_SLASH_HELP_LINES = [
+  'Available commands:',
+  '',
+  '/name      Rename current session',
+  '/session   Show session info tab',
+  '/new       Start a new session',
+  '/reload    Refresh runtime-backed desktop state',
+  '/skill     Manage loaded skills',
+  '',
+  'Type @ to reach Cloud contacts or their Kordi agents.',
+].join('\n');
+
+const CLOUD_HIDDEN_LOCAL_SLASH_COMMANDS = new Set(['/fork', '/tree']);
+
 export function isSharedLocalSlashCommand(command: string) {
+  if (currentKordiEdition() === 'cloud' && CLOUD_HIDDEN_LOCAL_SLASH_COMMANDS.has(command)) return false;
   return SHARED_LOCAL_SLASH_COMMANDS.has(command);
 }
 
@@ -61,7 +77,7 @@ export function desktopHotkeyHelpText() {
 }
 
 export function desktopSlashHelpText() {
-  return DESKTOP_SLASH_HELP_LINES;
+  return currentKordiEdition() === 'cloud' ? CLOUD_SLASH_HELP_LINES : DESKTOP_SLASH_HELP_LINES;
 }
 
 export function formatDesktopEventTime() {

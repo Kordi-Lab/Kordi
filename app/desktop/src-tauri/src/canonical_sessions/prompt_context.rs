@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde_json::Value;
 
 use super::schema::ensure_local_profile;
 use super::{
+    open_db, render_multi_participant_identity_context, select_identity, select_session,
     IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole, open_db, render_multi_participant_identity_context, select_identity,
-    select_session,
+    IdentityContextRole,
 };
 
 fn truncate_context_line(value: &str, max_chars: usize) -> String {

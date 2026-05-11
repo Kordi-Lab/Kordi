@@ -5,18 +5,19 @@
 //   pnpm --dir app/desktop tauri:dev:multi:cloud
 //   pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2
 //
-// Does three things you'd otherwise do by hand:
-//   1. Opens an SSH tunnel from laptop:17081 -> takotako:17082 ->
-//      kubectl port-forward svc/kordi-cloud-server in the cluster, so
-//      `authClient.ts`'s default 127.0.0.1:17081 hits the real cluster.
-//   2. Exports VITE_KORDI_EDITION=cloud / KORDI_EDITION=cloud so the
+// Does two things you'd otherwise do by hand:
+//   1. Exports VITE_KORDI_EDITION=cloud / KORDI_EDITION=cloud so the
 //      launched Tauri instances boot in cloud mode (otherwise they
 //      default to the local edition and the login gate doesn't show).
-//   3. Spawns the existing multi-instance launcher with the rest of
+//   2. Spawns the existing multi-instance launcher with the rest of
 //      the user-supplied args forwarded as-is.
 //
-// The SSH tunnel is reused if one is already listening on 17081 —
-// safe to re-run without leaking processes. Override targets via env:
+// Cloud Edition defaults to the public cloud API, not a localhost Bridge.
+// Override the API origin via:
+//   VITE_KORDI_CLOUD_API_BASE=https://your-cloud-api.example.com
+//
+// For tunnel-based development only, opt in explicitly:
+//   KORDI_CLOUD_USE_LOCAL_TUNNEL=1
 //   KORDI_CLOUD_SSH_TARGET=user@host
 //   KORDI_CLOUD_SSH_ZONE=zone
 //   KORDI_CLOUD_VM_PORT=17082
@@ -85,16 +86,21 @@ function ensureTunnel() {
     process.exit(1);
 }
 
-ensureTunnel();
+if (process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1') {
+    ensureTunnel();
+}
 
+const DEFAULT_CLOUD_API_BASE = 'https://kordi.cloud';
+const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? DEFAULT_CLOUD_API_BASE;
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,
     VITE_KORDI_EDITION: 'cloud',
     KORDI_EDITION: 'cloud',
+    VITE_KORDI_CLOUD_API_BASE: cloudApiBase,
 };
 
-console.log('[kordi] Launching tauri:dev:multi with VITE_KORDI_EDITION=cloud');
+console.log(`[kordi] Launching tauri:dev:multi with Cloud Edition API ${cloudApiBase}`);
 const child = spawn('pnpm', ['tauri:dev:multi', '--', ...forwardedArgs], {
     cwd: appDir,
     env,

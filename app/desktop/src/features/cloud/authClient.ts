@@ -1,10 +1,10 @@
-// Cloud-edition auth HTTP client. Talks to bridges/cli's /v1/cloud/auth/* routes.
+// Cloud-edition auth HTTP client. Talks to the cloud server's /v1/cloud/* routes.
 // Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
 
-// Cloud-server default port. The local-first bridges/cli still listens on
-// 17080; the new kordi-cloud-server crate listens on 17081 so both can run
-// side-by-side during development.
-const DEFAULT_BASE_URL = 'http://127.0.0.1:17081';
+// Production Cloud Edition must not silently fall back to a localhost Bridge.
+// Local tunnels/dev servers remain available by explicitly setting
+// VITE_KORDI_CLOUD_API_BASE.
+export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.cloud';
 
 export type CloudAccount = {
   accountId: string;
@@ -102,16 +102,27 @@ export class CloudAuthError extends Error {
   }
 }
 
-function readBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): string {
+function cleanBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
+
+export function cloudApiBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): string {
   const fromEnv = env?.VITE_KORDI_CLOUD_API_BASE;
-  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim().replace(/\/+$/, '');
+  if (fromEnv && fromEnv.trim().length > 0) return cleanBaseUrl(fromEnv);
   if (typeof import.meta !== 'undefined') {
     const meta = (import.meta as ImportMeta & { env?: { VITE_KORDI_CLOUD_API_BASE?: string } }).env;
     if (meta?.VITE_KORDI_CLOUD_API_BASE && meta.VITE_KORDI_CLOUD_API_BASE.trim().length > 0) {
-      return meta.VITE_KORDI_CLOUD_API_BASE.trim().replace(/\/+$/, '');
+      return cleanBaseUrl(meta.VITE_KORDI_CLOUD_API_BASE);
     }
   }
-  return DEFAULT_BASE_URL;
+  return DEFAULT_CLOUD_API_BASE_URL;
+}
+
+export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): string {
+  const url = new URL('/v1/cloud/ws', baseUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('token', token);
+  return url.toString();
 }
 
 export type CloudAuthClientOptions = {
@@ -161,7 +172,7 @@ export class CloudAuthClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: CloudAuthClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? readBaseUrl();
+    this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
@@ -354,6 +365,18 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return response.message;
+  }
+
+  async markMessagesRead(token: string, peerAccountId: string): Promise<void> {
+    await this.send<void>(
+      '/v1/cloud/messages/read',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ peerAccountId }),
+      },
+      'Could not mark messages read.',
+    );
   }
 
   async listMessages(

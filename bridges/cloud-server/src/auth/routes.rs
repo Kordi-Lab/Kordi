@@ -173,6 +173,12 @@ pub struct SendMessageRequest {
     pub body: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MarkMessagesReadRequest {
+    #[serde(rename = "peerAccountId")]
+    pub peer_account_id: String,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct MessageSummary {
     #[serde(rename = "messageId")]
@@ -353,6 +359,7 @@ pub fn routes_with_config(
             "/v1/cloud/messages",
             get(list_messages).post(send_message),
         )
+        .route("/v1/cloud/messages/read", post(mark_messages_read))
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
@@ -1666,6 +1673,22 @@ fn account_to_summary(account: AccountResponse) -> ContactSummary {
 const MESSAGE_BODY_MAX_CHARS: usize = 4_000;
 const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
 const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
+const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
+
+fn cloud_message_requires_accepted_contact(body: &str) -> bool {
+    !body.trim_start().starts_with(CLOUD_GROUP_CONTROL_PREFIX)
+}
+
+#[cfg(test)]
+mod cloud_message_policy_tests {
+    use super::cloud_message_requires_accepted_contact;
+
+    #[test]
+    fn cloud_group_control_messages_do_not_require_direct_contacts() {
+        assert!(!cloud_message_requires_accepted_contact("kordi-cloud-group:abc"));
+        assert!(cloud_message_requires_accepted_contact("hello"));
+    }
+}
 
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
 /// already has in their contacts. Body is plain UTF-8 for now; E2EE
@@ -1725,7 +1748,7 @@ async fn send_message(
             )
         }
     };
-    if mutual.is_none() {
+    if mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
         return err(
             "not_a_contact",
             "You can only message accepted contacts.",
@@ -1737,8 +1760,8 @@ async fn send_message(
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at) \
-         VALUES ($1, $2, $3, $4, $5)",
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at) \
+         VALUES ($1, $2, $3, $4, $5, $5)",
     )
     .bind(&message_id)
     .bind(&session.account_id)
@@ -1776,12 +1799,72 @@ async fn send_message(
         from_account_id: session.account_id.clone(),
         to_account_id: peer,
         body,
-        created_at: now,
-        delivered_at: None,
+        created_at: now.clone(),
+        delivered_at: Some(now),
         read_at: None,
         direction: "outgoing".into(),
     };
     (StatusCode::CREATED, Json(MessageResponse { message: summary })).into_response()
+}
+
+/// `POST /v1/cloud/messages/read` — mark all messages from a peer to
+/// the caller as read. This lets sender-side polling render WhatsApp-style
+/// blue double-checks once the recipient has opened the conversation.
+async fn mark_messages_read(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<MarkMessagesReadRequest>,
+) -> Response {
+    let peer = req.peer_account_id.trim().to_string();
+    if peer.is_empty() {
+        return err(
+            "invalid_account_id",
+            "peerAccountId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    if peer == session.account_id {
+        return err(
+            "self_message",
+            "You cannot mark self messages read.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let pool = state.db_pool();
+    let update_result = query(
+        "UPDATE cloud_messages \
+         SET read_at = COALESCE(read_at, $1), \
+             delivered_at = COALESCE(delivered_at, $1) \
+         WHERE from_account_id = $2 AND to_account_id = $3 AND read_at IS NULL",
+    )
+    .bind(&now)
+    .bind(&peer)
+    .bind(&session.account_id)
+    .execute(pool)
+    .await;
+    let Ok(update_result) = update_result else {
+        return err(
+            "server_error",
+            "Could not mark messages read.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    };
+
+    if update_result.rows_affected() > 0 {
+        let events = state.events().clone();
+        let reader = session.account_id.clone();
+        let sender = peer.clone();
+        let occurred_at = now.clone();
+        tokio::spawn(async move {
+            events
+                .publish_message_read(&reader, &sender, &occurred_at)
+                .await;
+        });
+    }
+
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// `GET /v1/cloud/messages?peerAccountId=...&limit=...` — list the

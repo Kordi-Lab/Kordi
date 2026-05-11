@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CloudAuthClient,
+  cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
@@ -101,9 +102,7 @@ export function useCloudConversation(
     const open = async () => {
       const session = await loadSession();
       if (!session?.token || cancelled) return;
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${proto}://127.0.0.1:17081/v1/cloud/ws?token=${encodeURIComponent(session.token)}`;
-      ws = new WebSocket(url);
+      ws = new WebSocket(cloudWebSocketUrl(session.token));
       ws.onmessage = (event) => {
         try {
           const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');

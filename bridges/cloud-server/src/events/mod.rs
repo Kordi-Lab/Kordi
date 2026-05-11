@@ -236,6 +236,34 @@ impl EventBus {
         let subject = format!("kordi.events.message.arrived.{to_account_id}");
         self.publish_raw(subject, body).await;
     }
+
+    /// Fire `kordi.events.message.read.<sender_account_id>` so the sender's
+    /// open WebSocket can refresh and turn delivered checks blue promptly.
+    pub async fn publish_message_read(
+        &self,
+        reader_account_id: &str,
+        sender_account_id: &str,
+        occurred_at: &str,
+    ) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = MessageReadEvent {
+            event_type: "message.read",
+            reader_account_id,
+            sender_account_id,
+            occurred_at,
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize message.read: {err}");
+                return;
+            }
+        };
+        let subject = format!("kordi.events.message.read.{sender_account_id}");
+        self.publish_raw(subject, body).await;
+    }
 }
 
 #[derive(Serialize)]
@@ -246,6 +274,14 @@ struct MessageArrivedEvent<'a> {
     to_account_id: &'a str,
     body: &'a str,
     created_at: &'a str,
+}
+
+#[derive(Serialize)]
+struct MessageReadEvent<'a> {
+    event_type: &'static str,
+    reader_account_id: &'a str,
+    sender_account_id: &'a str,
+    occurred_at: &'a str,
 }
 
 #[derive(Serialize)]

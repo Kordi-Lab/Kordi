@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
 export function Avatar({ className, ...props }) {
-  return <div className={cn('relative flex shrink-0 overflow-hidden rounded-full', className)} {...props} />
+  return <div className={cn('relative flex shrink-0 items-center justify-center overflow-hidden rounded-full', className)} {...props} />
 }
 
 export function AvatarFallback({ className, ...props }) {

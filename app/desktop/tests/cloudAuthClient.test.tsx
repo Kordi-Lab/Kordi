@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import {
   CloudAuthClient,
   CloudAuthError,
+  cloudApiBaseUrl,
+  cloudWebSocketUrl,
 } from '../src/features/cloud/authClient';
 
 type FetchCall = { url: string; init: RequestInit | undefined };
@@ -124,6 +126,22 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
+test('cloud API defaults to the public cloud origin, not localhost', () => {
+  assert.equal(cloudApiBaseUrl({}), 'https://kordi.cloud');
+  assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
+});
+
+test('cloud WebSocket URL derives from the cloud API origin', () => {
+  assert.equal(
+    cloudWebSocketUrl('kordi_cs_token', 'https://kordi.cloud'),
+    'wss://kordi.cloud/v1/cloud/ws?token=kordi_cs_token',
+  );
+  assert.equal(
+    cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),
+    'ws://127.0.0.1:17081/v1/cloud/ws?token=token+with+space',
+  );
+});
+
 test('network failures surface as CloudAuthError with code network_error', async () => {
   const fetchImpl: typeof fetch = () => Promise.reject(new TypeError('Failed to fetch'));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
@@ -136,6 +154,21 @@ test('network failures surface as CloudAuthError with code network_error', async
       return true;
     },
   );
+});
+
+test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.markMessagesRead('kordi_cs_xyz', 'acct_peer');
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/messages/read');
+  assert.equal(calls[0].init?.method, 'POST');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.equal(headers['content-type'], 'application/json');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
 });
 
 test('unknown server error codes degrade to "unknown"', async () => {

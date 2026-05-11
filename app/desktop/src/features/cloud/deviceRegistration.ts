@@ -6,7 +6,7 @@
 // existing desktop bridge layer is told about the resulting host so the chat
 // sidebar / contacts / mailbox flows pick it up.
 
-import { CloudAuthClient, CloudAuthError, type CloudAccount } from './authClient';
+import { CloudAuthClient, CloudAuthError, cloudApiBaseUrl, type CloudAccount } from './authClient';
 
 export type CloudDeviceKeypair = {
   ed25519Pubkey: string;
@@ -52,12 +52,7 @@ async function persistApiKey(accountId: string, apiKey: string): Promise<void> {
 }
 
 function defaultCoordinationUrl(): string {
-  if (typeof import.meta !== 'undefined') {
-    const meta = (import.meta as ImportMeta & { env?: { VITE_KORDI_CLOUD_API_BASE?: string } }).env;
-    const value = meta?.VITE_KORDI_CLOUD_API_BASE?.trim();
-    if (value) return value.replace(/\/+$/, '');
-  }
-  return 'http://127.0.0.1:17081';
+  return cloudApiBaseUrl();
 }
 
 async function registerCloudBridgeHost(input: {

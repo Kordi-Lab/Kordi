@@ -95,7 +95,7 @@ function isSelfLabel(name: string) {
   return ['me', 'you'].includes(name.trim().toLowerCase());
 }
 
-function fallbackParticipants(conversation: Conversation) {
+function fallbackParticipants(conversation: Conversation): ConversationParticipant[] {
   const firstNonSelfName = conversation.participants.find((name) => !isSelfLabel(name));
   return conversation.participants.map((name) => {
     const self = isSelfLabel(name);
@@ -122,7 +122,7 @@ function nonSelfParticipants(conversation: Conversation) {
   return fallbackParticipants(conversation).filter((participant) => !isSelfParticipant(participant));
 }
 
-function allDisplayParticipants(conversation: Conversation) {
+function allDisplayParticipants(conversation: Conversation): ConversationParticipant[] {
   const canonical = conversation.canonicalParticipants ?? [];
   return canonical.length > 0 ? canonical : fallbackParticipants(conversation);
 }
@@ -207,9 +207,24 @@ function genericBridgeGroupContinuation(conversation: Conversation) {
   return Boolean(ownSessionId && explicitGroupId === ownSessionId);
 }
 
+function cloudGroupParticipantKey(conversation: Conversation) {
+  const humans = allDisplayParticipants(conversation).filter((participant) => participant.kind === 'human');
+  if (humans.length < 2) return '';
+  if (!humans.every((participant) => participant.bridgeHostId === 'cloud' || cleanOptionalText(participant.humanId).startsWith('acct_') || cleanOptionalText(participant.bridgeNodeId).startsWith('acct_'))) {
+    return '';
+  }
+  return humans
+    .map((participant) => cleanOptionalText(participant.humanId) || cleanOptionalText(participant.bridgeNodeId) || cleanOptionalText(participant.id))
+    .filter(Boolean)
+    .sort()
+    .join('+');
+}
+
 function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
   if (kind === 'self') return 'self:local';
   if (kind === 'group') {
+    const cloudParticipantKey = cloudGroupParticipantKey(conversation);
+    if (cloudParticipantKey) return `group:cloud:${cloudParticipantKey}`;
     const explicit = groupSpaceIdForConversation(conversation);
     if (explicit) return `group:${explicit}`;
     const participantKey = nonSelfParticipants(conversation)
@@ -289,13 +304,22 @@ function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationPartic
   return primaryParticipantForKind(kind, participants)?.name || safePreviewText(latestSession?.conversation.name) || 'Chat';
 }
 
+function avatarParticipantStableKey(participant: ConversationParticipant) {
+  return cleanOptionalText(participant.humanId)
+    || cleanOptionalText(participant.bridgeNodeId)
+    || cleanOptionalText(participant.id)
+    || cleanOptionalText(participant.name);
+}
+
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
   if (kind === 'self') {
     const primary = selfParticipant(participants) ?? participants.find((participant) => participant.kind === 'human') ?? participants[0];
     return primary ? [primary] : [];
   }
   if (kind === 'group') {
-    return participants.filter((participant) => participant.kind === 'human');
+    return participants
+      .filter((participant) => participant.kind === 'human')
+      .sort((left, right) => avatarParticipantStableKey(left).localeCompare(avatarParticipantStableKey(right)));
   }
   const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];
