@@ -143,11 +143,9 @@ export function cloudMessageMentionsNamedAgent(text: string, ownerOrAgentName: s
   const owner = ownerOrAgentName?.trim();
   if (!owner) return false;
   const normalizedOwner = normalizedCloudAgentMention(owner.replace(/'s\s+Kordi$/i, '').replace(/Kordi$/i, ''));
-  const normalizedFull = normalizedCloudAgentMention(owner);
   return cloudMessageMentionsAnyAgentKey(text, new Set([
     `${normalizedOwner}kordi`,
     `${normalizedOwner}skordi`,
-    normalizedFull,
   ].filter(Boolean)));
 }
 

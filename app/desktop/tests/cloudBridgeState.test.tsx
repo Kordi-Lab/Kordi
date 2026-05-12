@@ -393,6 +393,27 @@ test('active cloud agent conversations do not remove the contact conversation', 
   assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer'), true);
 });
 
+test('cloud human mentions do not start cloud-agent processing UI', () => {
+  const humanMention: CloudMessage = {
+    ...message,
+    messageId: 'msg_human_mention',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPerson hi',
+    direction: 'outgoing',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [humanMention] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  assert.equal(state.conversations[0].outreach, null);
+  assert.equal(state.conversations[0].messages[0].direction, 'outbound');
+});
+
 test('cloud incoming local-agent mentions expose synced processing UI', () => {
   const request: CloudMessage = {
     ...message,

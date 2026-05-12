@@ -52,6 +52,7 @@ test('cloud first-person agent mentions are sender-owned, not recipient-owned', 
 });
 
 test('cloud named agent mention matching recognizes remote Kordi labels', () => {
+  assert.equal(cloudMessageMentionsNamedAgent('@PeerPerson who are you?', 'Peer Person'), false);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonKordi who are you?', 'Peer Person'), true);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonsKordi who are you?', 'Peer Person'), true);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonsKordi who are you?', "Peer Person's Kordi"), true);
