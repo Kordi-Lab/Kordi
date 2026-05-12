@@ -240,7 +240,7 @@ export function mapBridgeConversationToViewModel(
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
   const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
-  const remoteHumanProfileImageUrl = cloudAvatarImageUrl(peer?.profileImageUrl);
+  const remoteHumanProfileImageUrl = cloudAvatarImageUrl(peer?.profileImageUrl ?? null) ?? peer?.profileImageUrl ?? null;
   const participantAvatarSeeds: Record<string, string> = {
     You: localHumanAvatarSeed,
     [localHumanLabel]: localHumanAvatarSeed,

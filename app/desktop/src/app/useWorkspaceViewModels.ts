@@ -510,7 +510,7 @@ export function useWorkspaceViewModels({
             bridgeContactStatus,
             bridgeContactRequestDirection,
             avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId),
-            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl) ?? peer.profileImageUrl ?? null,
           });
         }
 
@@ -539,7 +539,7 @@ export function useWorkspaceViewModels({
             bridgeContactStatus,
             bridgeContactRequestDirection,
             avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl) ?? peer.profileImageUrl ?? null,
           });
         }
       }
@@ -608,7 +608,7 @@ export function useWorkspaceViewModels({
           bridgeContactStatus: status,
           bridgeContactRequestDirection: direction,
           avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-          profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+          profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl) ?? peer.profileImageUrl ?? null,
         });
       }
     }
