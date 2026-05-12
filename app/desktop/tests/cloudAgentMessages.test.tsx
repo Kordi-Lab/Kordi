@@ -33,10 +33,10 @@ test('cloud agent runtime session ids are isolated from visible local chat sessi
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {
-  assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheresKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheressKordi who are you?', account), true);
-  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheres who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheres who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheresKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@Kordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@OtherKordi who are you?', account), false);

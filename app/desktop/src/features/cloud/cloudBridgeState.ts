@@ -5,6 +5,7 @@ import {
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/bridge/messages';
 import type {
+  CanonicalSessionState,
   Contact,
   DesktopBridgeConversation,
   DesktopBridgeConversationMessage,
@@ -239,6 +240,61 @@ export function buildCloudBridgeHost(account: CloudAccount, contacts: Contact[])
     contactRequests: [],
     lastError: null,
   };
+}
+
+function metadataAccountId(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const accountId = (value as Record<string, unknown>).accountId;
+  return typeof accountId === 'string' ? accountId.trim() : '';
+}
+
+export function cloudGroupParticipantContacts(input: {
+  account: CloudAccount;
+  canonicalSessionState: CanonicalSessionState | null | undefined;
+  existingPeerIds: Iterable<string>;
+}): Contact[] {
+  const state = input.canonicalSessionState;
+  if (!state) return [];
+  const existingPeerIds = new Set([...input.existingPeerIds].map((peerId) => peerId.trim()).filter(Boolean));
+  const groupSessionIds = new Set(state.sessions
+    .filter((session) => session.kind === 'group')
+    .map((session) => session.id));
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  const contacts: Contact[] = [];
+  const seen = new Set<string>();
+
+  for (const participant of state.participants) {
+    if (!groupSessionIds.has(participant.sessionId) || participant.state === 'left') continue;
+    const identity = identityById.get(participant.identityId);
+    if (!identity || identity.kind !== 'human') continue;
+    const accountId = (identity.humanId || identity.bridgeNodeId || metadataAccountId(identity.metadata)).trim();
+    if (!accountId || accountId === input.account.accountId || existingPeerIds.has(accountId) || seen.has(accountId)) continue;
+    if (identity.sourceHostId !== CLOUD_HOST_SENTINEL && !accountId.startsWith('acct_')) continue;
+    seen.add(accountId);
+    contacts.push({
+      id: `cloud:${accountId}`,
+      name: identity.displayName || accountId,
+      initials: (identity.displayName || accountId).slice(0, 2).toUpperCase(),
+      classType: 'other-users',
+      entityType: 'user',
+      subtitle: accountId,
+      bridges: [CLOUD_HOST_SENTINEL],
+      status: 'online',
+      discoverableOn: [CLOUD_HOST_SENTINEL],
+      detail: accountId,
+      owner: identity.displayName || accountId,
+      bridgeHostId: CLOUD_HOST_SENTINEL,
+      bridgePeerNodeId: accountId,
+      bridgePeerRuntime: CLOUD_PERSON_RUNTIME,
+      bridgeHumanId: accountId,
+      bridgeContactStatus: 'group-member',
+      bridgeContactRequestDirection: null,
+      avatarSeed: identity.avatarKey || accountId,
+      profileImageUrl: identity.profileImageUrl ?? null,
+    });
+  }
+
+  return contacts;
 }
 
 export function buildCloudBridgeConversation({

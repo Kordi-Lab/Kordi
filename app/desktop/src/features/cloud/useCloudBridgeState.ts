@@ -27,6 +27,7 @@ import {
 import {
   buildCloudDesktopBridgeState,
   cloudContactsToCanonicalIdentityRequests,
+  cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
   mergeCloudBridgeState,
 } from './cloudBridgeState';
@@ -79,6 +80,32 @@ function wait(ms: number): Promise<void> {
 function isRecentCloudAgentMention(createdAt: string): boolean {
   const createdAtMs = Date.parse(createdAt);
   return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= CLOUD_AGENT_MENTION_WINDOW_MS;
+}
+
+function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((message, index) => {
+    const other = right[index];
+    return Boolean(other)
+      && message.messageId === other.messageId
+      && message.fromAccountId === other.fromAccountId
+      && message.toAccountId === other.toAccountId
+      && message.body === other.body
+      && message.createdAt === other.createdAt
+      && message.deliveredAt === other.deliveredAt
+      && message.readAt === other.readAt
+      && message.direction === other.direction;
+  });
+}
+
+function cloudMessagesByPeerEqual(
+  left: Record<string, CloudMessage[]>,
+  right: Record<string, CloudMessage[]>,
+): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key, index) => key === rightKeys[index] && cloudMessageListsEqual(left[key], right[key]));
 }
 
 async function waitForCloudAgentTurn(
@@ -159,11 +186,31 @@ export function useCloudBridgeState({
     messagesByPeerRef.current = messagesByPeer;
   }, [messagesByPeer]);
 
-  const contactPeerIds = useMemo(
+  const acceptedContactPeerIds = useMemo(
     () => contacts.contacts
       .map((contact) => contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, ''))
       .filter((value): value is string => Boolean(value)),
     [contacts.contacts],
+  );
+  const groupParticipantContacts = useMemo(
+    () => account
+      ? cloudGroupParticipantContacts({
+        account,
+        canonicalSessionState,
+        existingPeerIds: acceptedContactPeerIds,
+      })
+      : [],
+    [account, acceptedContactPeerIds, canonicalSessionState],
+  );
+  const cloudBridgeContacts = useMemo(
+    () => [...contacts.contacts, ...groupParticipantContacts],
+    [contacts.contacts, groupParticipantContacts],
+  );
+  const contactPeerIds = useMemo(
+    () => cloudBridgeContacts
+      .map((contact) => contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, ''))
+      .filter((value): value is string => Boolean(value)),
+    [cloudBridgeContacts],
   );
   const bootstrapPeerIds = useMemo(
     () => account
@@ -197,15 +244,17 @@ export function useCloudBridgeState({
   }, [account, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
-    if (!account || bootstrapPeerIds.length === 0) {
-      setMessagesByPeer({});
+    const retainedPeerIds = Object.keys(messagesByPeerRef.current);
+    const initialPeerIds = [...new Set([...bootstrapPeerIds, ...retainedPeerIds])];
+    if (!account || initialPeerIds.length === 0) {
+      setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
     const session = await loadSession();
     if (!session?.token) return;
 
     const byPeer: Record<string, CloudMessage[]> = {};
-    let peerIds = [...bootstrapPeerIds];
+    let peerIds = initialPeerIds;
     for (let pass = 0; pass < 3; pass += 1) {
       const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
       if (missingPeerIds.length === 0) break;
@@ -227,7 +276,7 @@ export function useCloudBridgeState({
     }
 
     if (cancelledRef.current) return;
-    setMessagesByPeer(byPeer);
+    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, byPeer) ? current : byPeer));
   }, [account, bootstrapPeerIds, client]);
 
   useEffect(() => {
@@ -258,6 +307,12 @@ export function useCloudBridgeState({
     if (!account || !canonicalSessionState || !setCanonicalSessionState) return;
     const localHumanIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
     if (!localHumanIdentityId) return;
+
+    if (envelope.kind === 'group-message' && envelope.message) {
+      const optimisticMessageExists = canonicalSessionState.messages
+        .some((candidate) => candidate.id === envelope.message?.id);
+      if (optimisticMessageExists) return;
+    }
 
     const participantByAccount = new Map<string, CloudGroupParticipant>();
     for (const participant of [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')]) {
@@ -622,7 +677,7 @@ export function useCloudBridgeState({
         void (async () => {
           const session = await loadSession();
           if (!session?.token) throw new Error('Not signed in.');
-          const contact = contacts.contacts.find((candidate) => (
+          const contact = cloudBridgeContacts.find((candidate) => (
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
@@ -671,7 +726,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, contacts.contacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, client, cloudBridgeContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -742,7 +797,7 @@ export function useCloudBridgeState({
     if (!account) return null;
     const generated = buildCloudDesktopBridgeState({
       account,
-      contacts: contacts.contacts,
+      contacts: cloudBridgeContacts,
       messagesByPeer,
       readInboundMessageIdsByPeer,
       activeConversationId,
@@ -753,7 +808,7 @@ export function useCloudBridgeState({
     account,
     activeConversationId,
     cloudBridgeOverride,
-    contacts.contacts,
+    cloudBridgeContacts,
     localAgentTurnsByRequestId,
     messagesByPeer,
     readInboundMessageIdsByPeer,
