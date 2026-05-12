@@ -538,6 +538,65 @@ fn renaming_group_session_preserves_group_name_as_separate_metadata() {
 }
 
 #[test]
+fn opening_existing_manual_group_session_preserves_session_title_and_group_name() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:manual-preserve".to_string()),
+            kind: "group".to_string(),
+            title: Some("Original thread".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "customName": "Original group",
+                "groupId": "group-space:manual-preserve",
+                "groupSpaceId": "group-space:manual-preserve"
+            })),
+        },
+    )
+    .expect("create group");
+    rename_session_in_db(&conn, &group.id, "Manual session title").expect("manual session rename");
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(group.id.clone()),
+            kind: "group".to_string(),
+            title: Some("New session".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "customName": null,
+                "groupId": "group-space:manual-preserve",
+                "groupSpaceId": "group-space:manual-preserve"
+            })),
+        },
+    )
+    .expect("refresh group shell");
+
+    let refreshed = select_session(&conn, &group.id)
+        .expect("select refreshed")
+        .expect("session exists");
+    assert_eq!(refreshed.title, "Manual session title");
+    let metadata = refreshed.metadata.expect("metadata preserved");
+    assert_eq!(metadata["customName"], "Original group");
+    assert_eq!(metadata["sessionTitleSource"], "manual");
+}
+
+#[test]
 fn canonical_group_session_title_rename_does_not_require_group_admin() {
     let _storage =
         crate::test_support::ScopedKordiStorageRoot::new("group-session-title-non-admin");

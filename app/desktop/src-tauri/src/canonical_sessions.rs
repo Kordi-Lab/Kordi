@@ -205,7 +205,12 @@ fn preserve_string_metadata_key(
     existing: &Map<String, Value>,
     key: &str,
 ) {
-    if target.get(key).is_some() {
+    if target
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
         return;
     }
     if let Some(value) = existing
@@ -282,7 +287,13 @@ fn open_or_create_session_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| stable_session_id(&request));
-    let title = default_session_title(conn, &request)?;
+    let default_title = default_session_title(conn, &request)?;
+    let title = match select_session(conn, &id)? {
+        Some(existing_session) if metadata_has_manual_title(&existing_session.metadata) => {
+            existing_session.title
+        }
+        _ => default_title,
+    };
     let status = validate_status(request.status, "active");
     let metadata_value = preserve_manual_session_title_metadata(conn, &id, request.metadata)?;
     let metadata = json_to_db(&metadata_value)?;
