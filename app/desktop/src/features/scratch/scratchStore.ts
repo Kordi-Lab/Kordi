@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
+import { kvDelete, kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
 
 const EMPTY: readonly ScratchMetadata[] = Object.freeze([]);
@@ -121,6 +121,19 @@ export function setActiveScratchId(sessionId: string, scratchId: string | null) 
   if (!sessionId) return;
   activeScratchBySession.set(sessionId, scratchId);
   notify();
+}
+
+export function deleteScratch(sessionId: string, scratchId: string) {
+  if (!sessionId || !scratchId) return;
+  const list = scratchListBySession.get(sessionId);
+  if (!list || !list.some((s) => s.id === scratchId)) return;
+  scratchListBySession.set(sessionId, list.filter((s) => s.id !== scratchId));
+  if (activeScratchBySession.get(sessionId) === scratchId) {
+    activeScratchBySession.set(sessionId, null);
+  }
+  notify();
+  persistList(sessionId);
+  void kvDelete(scratchStorageKey(sessionId, scratchId));
 }
 
 export function duplicateScratch(sessionId: string, scratchId: string): ScratchMetadata | null {
