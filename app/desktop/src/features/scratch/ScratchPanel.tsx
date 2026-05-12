@@ -1,11 +1,12 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowLeft, Brush, FileText, HelpCircle, MoreHorizontal, Pencil, Plus } from 'lucide-react';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 import { DocEditor } from './DocEditor';
 import {
   createScratch,
   formatRelativeTime,
+  renameScratch,
   setActiveScratchId,
   useActiveScratchId,
   useScratchList,
@@ -42,7 +43,49 @@ export function ScratchPanel({ sessionId }: Props) {
   return <ScratchEditorView sessionId={sessionId} active={active} />;
 }
 
+function InlineRenameInput({
+  initial,
+  onCommit,
+  onCancel,
+  className,
+}: {
+  initial: string;
+  onCommit: (next: string) => void;
+  onCancel: () => void;
+  className?: string;
+}) {
+  const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, []);
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onCommit(value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      onBlur={() => onCommit(value)}
+      onClick={(e) => e.stopPropagation()}
+      className={className}
+    />
+  );
+}
+
 function ScratchListView({ sessionId, scratches }: { sessionId: string; scratches: readonly ScratchMetadata[] }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const handleCreate = (kind: ScratchKind) => {
     if (!sessionId) return;
     createScratch(sessionId, kind);
@@ -51,6 +94,11 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
   const handleSelect = (id: string) => {
     if (!sessionId) return;
     setActiveScratchId(sessionId, id);
+  };
+
+  const commitRename = (id: string, name: string) => {
+    renameScratch(sessionId, id, name);
+    setEditingId(null);
   };
 
   return (
@@ -76,6 +124,22 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
           <ul className="flex flex-col gap-1">
             {scratches.map((scratch) => {
               const KindIcon = scratch.kind === 'canvas' ? Brush : FileText;
+              const isEditing = editingId === scratch.id;
+              if (isEditing) {
+                return (
+                  <li key={scratch.id}>
+                    <div className="flex w-full items-center gap-2 rounded-md px-2 py-2">
+                      <KindIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <InlineRenameInput
+                        initial={scratch.name}
+                        onCommit={(name) => commitRename(scratch.id, name)}
+                        onCancel={() => setEditingId(null)}
+                        className="min-w-0 flex-1 rounded-sm border border-white/15 bg-black/40 px-1 py-0.5 text-[13px] text-white outline-none focus:border-white/40"
+                      />
+                    </div>
+                  </li>
+                );
+              }
               return (
                 <li key={scratch.id}>
                   <button
@@ -84,7 +148,16 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                     className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition hover:bg-white/5"
                   >
                     <KindIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-200">{scratch.name}</span>
+                    <span
+                      className="min-w-0 flex-1 truncate text-[13px] text-slate-200"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setEditingId(scratch.id);
+                      }}
+                      title="Double-click to rename"
+                    >
+                      {scratch.name}
+                    </span>
                     <span className="shrink-0 text-[11px] text-slate-500">
                       edited {formatRelativeTime(scratch.updatedAt)}
                     </span>
@@ -122,6 +195,7 @@ function NewScratchButton({
 }
 
 function ScratchEditorView({ sessionId, active }: { sessionId: string; active: ScratchMetadata }) {
+  const [editingName, setEditingName] = useState(false);
   const KindIcon = active.kind === 'canvas' ? Brush : FileText;
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -136,14 +210,32 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>
         <KindIcon className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white">{active.name}</span>
+        {editingName ? (
+          <InlineRenameInput
+            initial={active.name}
+            onCommit={(name) => {
+              renameScratch(sessionId, active.id, name);
+              setEditingName(false);
+            }}
+            onCancel={() => setEditingName(false)}
+            className="min-w-0 flex-1 rounded-sm border border-white/15 bg-black/40 px-1 py-0.5 text-[13px] font-semibold text-white outline-none focus:border-white/40"
+          />
+        ) : (
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white"
+            onDoubleClick={() => setEditingName(true)}
+            title="Double-click to rename"
+          >
+            {active.name}
+          </span>
+        )}
         {active.kind === 'doc' ? <MarkdownCheatSheetButton /> : null}
         <button
           type="button"
-          disabled
-          className="grid h-7 w-7 place-items-center rounded-md text-slate-500 opacity-40"
-          title="Rename (PR-04)"
-          aria-label="Rename (PR-04)"
+          onClick={() => setEditingName(true)}
+          className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-white/5 hover:text-white"
+          title="Rename"
+          aria-label="Rename"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
