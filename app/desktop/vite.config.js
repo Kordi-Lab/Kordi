@@ -22,6 +22,7 @@ export default defineConfig({
           minSize: 20_000,
           groups: [
             { name: 'editor-vendor', test: /[\\/]node_modules[\\/](@tiptap|tiptap-markdown|prosemirror-.+)[\\/]/ },
+            { name: 'canvas-vendor', test: /[\\/]node_modules[\\/](tldraw|@tldraw|hotkeys-js|core-js)[\\/]/ },
             { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
             { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
             { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },
