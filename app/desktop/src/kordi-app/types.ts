@@ -762,6 +762,7 @@ export type DesktopBridgeHost = {
   discoveryMode: string;
   humanVisibilityPolicy?: string | null;
   contactApprovalPolicy?: string | null;
+  profileImageUrl?: string | null;
   activeAgentId?: string | null;
   agents: DesktopBridgeAgent[];
   visiblePeers: DesktopBridgePeer[];

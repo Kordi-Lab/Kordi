@@ -215,6 +215,7 @@ export function buildCloudBridgeHost(account: CloudAccount, contacts: Contact[])
     discoveryMode: 'contacts',
     humanVisibilityPolicy: 'server-approval',
     contactApprovalPolicy: 'approval-required',
+    profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
     activeAgentId: 'cloud-local-agent',
     agents: [{
       id: 'cloud-local-agent',
