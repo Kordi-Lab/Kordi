@@ -195,6 +195,12 @@ export function cloudMessageToBridgeMessage(
   };
 }
 
+function cloudAgentSyntheticResponseDirection(account: CloudAccount, targetAccountId: string) {
+  return targetAccountId === account.accountId
+    ? BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
+    : BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
+}
+
 function cloudAgentProcessingBridgeMessage({
   account,
   request,
@@ -207,12 +213,9 @@ function cloudAgentProcessingBridgeMessage({
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
 }): DesktopBridgeConversationMessage {
   const timestampMs = (Date.parse(request.createdAt) || Date.now()) + 1;
-  const targetIsLocalAccount = targetAccountId === account.accountId;
   return {
     id: `cloud-agent-processing:${request.messageId}`,
-    direction: targetIsLocalAccount
-      ? BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
-      : BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: null,
     text: 'processing...',
     timeLabel: formatCloudBridgeTime(timestampMs),
@@ -222,6 +225,38 @@ function cloudAgentProcessingBridgeMessage({
     detail: undefined,
     attachments: [],
     localTurn: localAgentTurnsByRequestId[request.messageId] ?? null,
+  };
+}
+
+function cloudAgentCancelledBridgeMessage({
+  account,
+  request,
+  cancel,
+  targetAccountId,
+}: {
+  account: CloudAccount;
+  request: CloudMessage;
+  cancel: CloudMessage;
+  targetAccountId: string;
+}): DesktopBridgeConversationMessage {
+  const timestampMs = Date.parse(cancel.createdAt) || (Date.parse(request.createdAt) || Date.now()) + 1;
+  const cancelledBy = cancel.fromAccountId === request.fromAccountId
+    ? 'sender'
+    : cancel.fromAccountId === targetAccountId
+      ? 'agent owner'
+      : 'participant';
+  return {
+    id: `cloud-agent-cancelled:${request.messageId}:${cancel.messageId}`,
+    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
+    sender: null,
+    text: `Request canceled by ${cancelledBy}.`,
+    timeLabel: formatCloudBridgeTime(timestampMs),
+    timestampMs,
+    requestId: request.messageId,
+    deliveryState: 'cancelled',
+    detail: undefined,
+    attachments: [],
+    localTurn: null,
   };
 }
 
@@ -348,9 +383,15 @@ export function buildCloudBridgeConversation({
   const peerAccountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
   const isPerson = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME;
   const title = isPerson ? cloudPeerDisplayName(contact) : cloudAgentDisplayName(contact);
-  const cancelledRequestIds = new Set(messages
-    .map((message) => parseCloudAgentCancel(message.body)?.requestId)
-    .filter((value): value is string => Boolean(value)));
+  const cancelMessageByRequestId = new Map<string, CloudMessage>();
+  for (const message of messages) {
+    const cancel = parseCloudAgentCancel(message.body);
+    const requestId = cancel?.requestId.trim();
+    if (requestId && !cancelMessageByRequestId.has(requestId)) {
+      cancelMessageByRequestId.set(requestId, message);
+    }
+  }
+  const cancelledRequestIds = new Set(cancelMessageByRequestId.keys());
   const requestTargetAccountIds = new Map<string, string>();
   for (const message of messages) {
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
@@ -373,16 +414,27 @@ export function buildCloudBridgeConversation({
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
     return Boolean(requestTargetAccountIds.get(message.messageId));
   });
-  const answeredRequestIds = new Set(messages
+  const responseRequestIds = new Set(messages
     .map((message) => parseCloudAgentResponse(message.body)?.requestId)
     .filter((value): value is string => Boolean(value)));
+  const answeredRequestIds = new Set(responseRequestIds);
   for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
   const pendingAgentRequests = agentRequests.filter((message) => !answeredRequestIds.has(message.messageId));
   const pendingAgentRequestIds = new Set(pendingAgentRequests.map((message) => message.messageId));
   const bridgeMessages = visibleCloudMessages.flatMap((message) => {
     const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId });
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
-    if (!targetAccountId || !pendingAgentRequestIds.has(message.messageId)) return [mapped];
+    if (!targetAccountId) return [mapped];
+    const cancel = cancelMessageByRequestId.get(message.messageId);
+    if (cancel && !responseRequestIds.has(message.messageId)) {
+      return [mapped, cloudAgentCancelledBridgeMessage({
+        account,
+        request: message,
+        cancel,
+        targetAccountId,
+      })];
+    }
+    if (!pendingAgentRequestIds.has(message.messageId)) return [mapped];
     return [mapped, cloudAgentProcessingBridgeMessage({
       account,
       request: message,

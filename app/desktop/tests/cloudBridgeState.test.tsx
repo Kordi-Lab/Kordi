@@ -565,7 +565,7 @@ test('cloud outgoing remote-agent mentions expose localhost-style pending outrea
   assert.equal(answeredState.conversations[0].outreach, null);
 });
 
-test('cloud agent cancel controls are hidden and clear pending processing', () => {
+test('cloud agent cancel controls are hidden and show who cancelled the request', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_cancel_request',
@@ -589,9 +589,14 @@ test('cloud agent cancel controls are hidden and clear pending processing', () =
     activeConversationId: 'bridge:cloud:acct_peer:person',
   });
 
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+
   assert.equal(state.conversations[0].awaitingReply, false);
-  assert.equal(state.conversations[0].messages.length, 1);
+  assert.equal(state.conversations[0].messages.length, 2);
   assert.equal(state.conversations[0].messages[0].deliveryState, 'cancelled');
+  assert.equal(state.conversations[0].messages[1].deliveryState, 'cancelled');
+  assert.equal(view.messages[1]?.turn?.status, 'cancelled');
+  assert.equal(view.messages[1]?.turn?.assistantText, 'Request canceled by sender.');
 });
 
 test('cloud outgoing messages render as read when the peer read timestamp is present', () => {
