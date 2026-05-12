@@ -23,6 +23,7 @@ import {
   localOwnedBridgeAgentsForModelRouting,
   routingSelectionForBridgeAgent,
 } from '@/features/bridge/agentModelRouting';
+import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -34,6 +35,7 @@ import {
   LiveChatTurnMessage,
   MessageBubble,
   TypeBadge,
+  fallbackComposerThinkingValue,
   type ComposerAuthOption,
   type ComposerMentionOption,
   type ComposerModelOption,
@@ -346,7 +348,9 @@ export function ChatsPage({
     ?? bridgeRoutingAgents[0]
     ?? null;
   const selectedBridgeRoutingKey = selectedBridgeRoutingAgentBase
-    ? `${selectedBridgeRoutingAgentBase.hostId}:${selectedBridgeRoutingAgentBase.id}`
+    ? isCloudBridgeHostId(selectedBridgeRoutingAgentBase.hostId)
+      ? `${selectedBridgeRoutingAgentBase.hostId}:${activeConv.canonicalSessionId ?? activeConv.id}:${selectedBridgeRoutingAgentBase.id}`
+      : `${selectedBridgeRoutingAgentBase.hostId}:${selectedBridgeRoutingAgentBase.id}`
     : null;
   const selectedBridgeRoutingAgent = selectedBridgeRoutingAgentBase
     ? {
@@ -383,6 +387,11 @@ export function ChatsPage({
     if (openComposerSelector?.scope === 'chat' && openComposerSelector.type === type) {
       toggleComposerSelector('chat', type);
     }
+  };
+
+  const defaultThinkingForBridgeModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
+    const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
+    return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
   };
 
   const updateBridgeAgentRouting = ({
@@ -852,7 +861,7 @@ export function ChatsPage({
                           fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
                           fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
                           fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                          thinking: selectedBridgeRoutingAgent.thinking ?? null,
+                          thinking: defaultThinkingForBridgeModel(value, selectedBridgeRoutingAgent.thinking),
                           selectorType: 'model',
                         });
                       } else if (type === 'thinking') {
@@ -881,7 +890,7 @@ export function ChatsPage({
                         fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
                         fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
                         fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                        thinking: selectedBridgeRoutingAgent.thinking ?? null,
+                        thinking: defaultThinkingForBridgeModel(nextModel, selectedBridgeRoutingAgent.thinking),
                         selectorType: 'provider',
                       });
                     }}

@@ -16,6 +16,11 @@ import {
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from '../src/features/cloud/cloudAgentMessages';
+import {
+  cloudAgentRuntimeRouteForSession,
+  cloudAgentRuntimeSessionId,
+} from '../src/features/cloud/cloudAgentRuntime';
+import { buildCloudBridgeHost } from '../src/features/cloud/cloudBridgeState';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 
 const account: CloudAccount = {
@@ -30,6 +35,45 @@ const account: CloudAccount = {
 test('cloud agent runtime session ids are isolated from visible local chat sessions', () => {
   assert.equal(isCloudAgentRuntimeSessionId(`${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`), true);
   assert.equal(isCloudAgentRuntimeSessionId('session-local'), false);
+});
+
+test('cloud agent runtime ids map current cloud conversations to local runtime sessions', () => {
+  assert.equal(
+    cloudAgentRuntimeSessionId('acct_me', 'bridge:cloud:acct_peer:person'),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`,
+  );
+  assert.equal(
+    cloudAgentRuntimeSessionId('acct_me', 'session:bridge:bridge:cloud:acct_peer:person'),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`,
+  );
+  assert.equal(
+    cloudAgentRuntimeSessionId('acct_me', 'session:direct-person:acct_me:acct_peer'),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`,
+  );
+  assert.equal(
+    cloudAgentRuntimeSessionId('acct_me', 'session:group:cloud-room'),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:group:cloud-room`,
+  );
+});
+
+test('cloud agent runtime route is reflected on the synthetic local cloud agent only for this session', () => {
+  const runtimeSessionId = cloudAgentRuntimeSessionId('acct_me', 'session:group:cloud-room');
+  const route = cloudAgentRuntimeRouteForSession({
+    [runtimeSessionId ?? '']: {
+      model: 'anthropic/claude-opus-4-7',
+      authProvider: 'anthropic',
+      authChoice: 'work',
+      thinking: 'high',
+    },
+  }, runtimeSessionId);
+  const host = buildCloudBridgeHost(account, [], route);
+  const agent = host.agents[0];
+
+  assert.equal(agent?.defaultModel, 'anthropic/claude-opus-4-7');
+  assert.equal(agent?.defaultAuthProvider, 'anthropic');
+  assert.equal(agent?.defaultAuthChoice, 'work');
+  assert.equal(agent?.thinking, 'high');
+  assert.equal(buildCloudBridgeHost(account, []).agents[0]?.defaultModel, null);
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {

@@ -17,6 +17,8 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
+
 import type { CloudAccount, CloudMessage } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
 import {
@@ -264,7 +266,11 @@ function isDirectCloudContact(contact: Contact): boolean {
   return contact.bridgeContactStatus?.trim().toLowerCase() !== 'group-member';
 }
 
-export function buildCloudBridgeHost(account: CloudAccount, contacts: Contact[]): DesktopBridgeHost {
+export function buildCloudBridgeHost(
+  account: CloudAccount,
+  contacts: Contact[],
+  localAgentRuntimeRoute: DesktopChatMessageRoute | null = null,
+): DesktopBridgeHost {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Cloud user';
   const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => [
     cloudContactToPersonPeer(contact),
@@ -294,13 +300,13 @@ export function buildCloudBridgeHost(account: CloudAccount, contacts: Contact[])
       isDefault: true,
       isActive: true,
       registered: true,
-      defaultModel: null,
-      defaultAuthProvider: null,
-      defaultAuthChoice: null,
+      defaultModel: localAgentRuntimeRoute?.model ?? null,
+      defaultAuthProvider: localAgentRuntimeRoute?.authProvider ?? null,
+      defaultAuthChoice: localAgentRuntimeRoute?.authChoice ?? null,
       fallbackModel: null,
       fallbackAuthProvider: null,
       fallbackAuthChoice: null,
-      thinking: null,
+      thinking: localAgentRuntimeRoute?.thinking ?? null,
       reachabilityPolicy: 'contacts',
       profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
     }],
@@ -548,6 +554,7 @@ export function buildCloudDesktopBridgeState({
   readInboundMessageIdsByPeer = {},
   activeConversationId,
   localAgentTurnsByRequestId = {},
+  localAgentRuntimeRoute = null,
 }: {
   account: CloudAccount;
   contacts: Contact[];
@@ -555,9 +562,10 @@ export function buildCloudDesktopBridgeState({
   readInboundMessageIdsByPeer?: Record<string, Set<string>>;
   activeConversationId?: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
+  localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
 }): DesktopBridgeState {
   const directContacts = contacts.filter(isDirectCloudContact);
-  const host = buildCloudBridgeHost(account, directContacts);
+  const host = buildCloudBridgeHost(account, directContacts, localAgentRuntimeRoute);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
   const conversations = directContacts
     .flatMap((contact) => {
