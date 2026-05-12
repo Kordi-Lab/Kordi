@@ -708,7 +708,13 @@ function FoldableAssistantAnswer({
       cancelled && 'app-live-assistant-answer-cancelled text-rose-300',
     )}>
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
-        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
+        <MarkdownContent
+          text={text}
+          className={cn(
+            'app-live-assistant-answer-markdown',
+            cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
+          )}
+        />
         {shouldFold && folded ? (
           <button
             type="button"
