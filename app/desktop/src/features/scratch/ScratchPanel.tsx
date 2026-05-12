@@ -1,9 +1,10 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowLeft, Brush, Copy, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Brush, ChevronRight, Copy, Download, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DocEditor } from './DocEditor';
+import type { TiptapNode } from './download/tiptapToPdfmake';
 import {
   createScratch,
   deleteScratch,
@@ -14,7 +15,47 @@ import {
   useActiveScratchId,
   useScratchList,
 } from './scratchStore';
+import { kvGet, scratchStorageKey } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
+
+type DownloadHandlers = {
+  markdown: () => Promise<void>;
+  pdf: () => Promise<void>;
+  docx: () => Promise<void>;
+};
+
+const EMPTY_DOC: TiptapNode = { type: 'doc', content: [] };
+
+function buildDocDownloadHandlers(sessionId: string, scratchId: string, scratchName: string): DownloadHandlers {
+  const loadJson = async (): Promise<TiptapNode> => {
+    const stored = await kvGet<TiptapNode>(scratchStorageKey(sessionId, scratchId));
+    return stored && typeof stored === 'object' ? stored : EMPTY_DOC;
+  };
+  return {
+    markdown: async () => {
+      const [{ exportScratchMarkdown, renderJsonToMarkdown }, json] = await Promise.all([
+        import('./download/exportMarkdown'),
+        loadJson(),
+      ]);
+      const md = renderJsonToMarkdown(json);
+      exportScratchMarkdown(md, scratchName);
+    },
+    pdf: async () => {
+      const [{ exportScratchPdf }, json] = await Promise.all([
+        import('./download/exportPdf'),
+        loadJson(),
+      ]);
+      await exportScratchPdf(json, scratchName);
+    },
+    docx: async () => {
+      const [{ exportScratchDocx }, json] = await Promise.all([
+        import('./download/exportDocx'),
+        loadJson(),
+      ]);
+      await exportScratchDocx(json, scratchName);
+    },
+  };
+}
 
 const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-200 outline-none transition data-[highlighted]:bg-white/10 data-[highlighted]:text-white';
 const MENU_ITEM_DESTRUCTIVE_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-red-300 outline-none transition data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200';
@@ -71,11 +112,13 @@ function ScratchActionsMenu({
   onRename,
   onDuplicate,
   onDelete,
+  onDownload,
 }: {
   scratchName: string;
   onRename: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onDownload?: DownloadHandlers;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   return (
@@ -108,6 +151,36 @@ function ScratchActionsMenu({
               <Copy className="h-3.5 w-3.5 opacity-70" />
               <span>Duplicate</span>
             </DropdownMenu.Item>
+            {onDownload ? (
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className={`${MENU_ITEM_CLASS} data-[state=open]:bg-white/10 data-[state=open]:text-white`}>
+                  <Download className="h-3.5 w-3.5 opacity-70" />
+                  <span className="flex-1">Download</span>
+                  <ChevronRight className="h-3 w-3 opacity-60" aria-hidden />
+                </DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent
+                    sideOffset={4}
+                    alignOffset={-4}
+                    collisionPadding={8}
+                    className="z-50 min-w-[180px] rounded-xl border border-[color:var(--app-divider)] bg-zinc-900 p-1.5 text-[13px] text-slate-200 shadow-2xl"
+                  >
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.markdown()}>
+                      <span className="flex-1">Markdown</span>
+                      <span className="font-mono text-[11px] text-slate-500">.md</span>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.pdf()}>
+                      <span className="flex-1">PDF</span>
+                      <span className="font-mono text-[11px] text-slate-500">.pdf</span>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.docx()}>
+                      <span className="flex-1">Word</span>
+                      <span className="font-mono text-[11px] text-slate-500">.docx</span>
+                    </DropdownMenu.Item>
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            ) : null}
             <DropdownMenu.Separator className="my-1 h-px bg-white/10" />
             <DropdownMenu.Item className={MENU_ITEM_DESTRUCTIVE_CLASS} onSelect={() => setConfirmOpen(true)}>
               <Trash2 className="h-3.5 w-3.5 opacity-80" />
@@ -288,6 +361,11 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                       onDelete={() => {
                         deleteScratch(sessionId, scratch.id);
                       }}
+                      onDownload={
+                        scratch.kind === 'doc'
+                          ? buildDocDownloadHandlers(sessionId, scratch.id, scratch.name)
+                          : undefined
+                      }
                     />
                   </div>
                 </li>
@@ -325,6 +403,12 @@ function NewScratchButton({
 function ScratchEditorView({ sessionId, active }: { sessionId: string; active: ScratchMetadata }) {
   const [editingName, setEditingName] = useState(false);
   const KindIcon = active.kind === 'canvas' ? Brush : FileText;
+
+  const downloadHandlers = useMemo<DownloadHandlers | undefined>(
+    () => (active.kind === 'doc' ? buildDocDownloadHandlers(sessionId, active.id, active.name) : undefined),
+    [active.kind, active.id, active.name, sessionId],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[color:var(--app-divider)] pb-2">
@@ -376,6 +460,7 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
           onDelete={() => {
             deleteScratch(sessionId, active.id);
           }}
+          onDownload={downloadHandlers}
         />
       </div>
       {active.kind === 'doc' ? (
