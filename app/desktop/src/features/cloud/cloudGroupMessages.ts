@@ -521,6 +521,35 @@ export function cloudGroupMessageReadPeerIds(input: {
   return [...peerIds].sort();
 }
 
+export function cloudGroupUnreadCountsBySessionId(input: {
+  accountId: string;
+  activeConversationId?: string | null;
+  messages: CloudMessage[];
+}): Record<string, number> {
+  const accountId = cleanText(input.accountId);
+  if (!accountId) return {};
+  const counts: Record<string, number> = {};
+  const seenGroupMessageIds = new Set<string>();
+  for (const message of input.messages) {
+    if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (!envelope || envelope.kind !== 'group-message') continue;
+    if (!shouldCountCloudGroupMessageUnread({
+      activeConversationId: input.activeConversationId,
+      groupId: envelope.groupId,
+      groupSpaceId: envelope.groupSpaceId,
+    })) continue;
+    const sessionId = cleanText(envelope.groupId);
+    if (!sessionId) continue;
+    const groupMessageId = cleanText(envelope.message?.id) || cleanText(message.messageId);
+    const unreadKey = `${sessionId}:${groupMessageId}`;
+    if (seenGroupMessageIds.has(unreadKey)) continue;
+    seenGroupMessageIds.add(unreadKey);
+    counts[sessionId] = (counts[sessionId] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export type CloudGroupDeliveryState = 'delivered' | 'read';
 
 export function cloudGroupDeliveryStateFromMessages(input: {

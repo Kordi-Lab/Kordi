@@ -10,6 +10,7 @@ import {
   cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageSessionId,
+  cloudGroupUnreadCountsBySessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
@@ -400,6 +401,68 @@ test('cloud group unread helper counts only hidden sessions', () => {
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:child', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:space', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), true);
+});
+
+test('cloud group unread count helper deduplicates inbound unread controls per hidden session', () => {
+  const groupMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:child',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg:one',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'Unread group hello',
+      createdAt: '2026-05-11T00:00:00Z',
+    },
+  });
+  const secondGroupMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:other',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg:two',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'Another unread group hello',
+      createdAt: '2026-05-11T00:00:01Z',
+    },
+  });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:outside',
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_1_duplicate', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_read', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: secondGroupMessage, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: '2026-05-11T00:00:02Z', direction: 'incoming' },
+      { messageId: 'cloud_outgoing', fromAccountId: 'acct_me', toAccountId: 'acct_peer', body: groupMessage, createdAt: '2026-05-11T00:00:03Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+    ],
+  }), { 'session:group:child': 1 });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:group:space',
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), {});
 });
 
 test('cloud group send helpers treat partial recipient success as a send success', () => {

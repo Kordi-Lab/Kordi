@@ -58,6 +58,7 @@ import {
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
   cloudGroupTitleUpdateNoticeRequest,
+  cloudGroupUnreadCountsBySessionId,
   cloudSessionTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
@@ -750,6 +751,44 @@ export function useCloudBridgeState({
       return changed ? { ...current, messages } : current;
     });
   }, [account, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
+    if (!account || !setCanonicalSessionState) return;
+    const unreadBySessionId = cloudGroupUnreadCountsBySessionId({
+      accountId: account.accountId,
+      activeConversationId,
+      messages: Object.values(messagesByPeer).flat(),
+    });
+    setCanonicalSessionState((current) => {
+      if (!current) return current;
+      let changed = false;
+      const sessions = current.sessions.map((session) => {
+        const metadata = objectContent(session.metadata);
+        const existingUnread = typeof metadata.cloudUnreadCount === 'number' && Number.isFinite(metadata.cloudUnreadCount)
+          ? Math.max(0, Math.floor(metadata.cloudUnreadCount))
+          : 0;
+        const nextUnread = unreadBySessionId[session.id] ?? 0;
+        if (existingUnread === nextUnread) return session;
+        changed = true;
+        if (nextUnread > 0) {
+          return {
+            ...session,
+            metadata: {
+              ...metadata,
+              cloudUnreadCount: nextUnread,
+            },
+          };
+        }
+        const restMetadata = { ...metadata };
+        delete restMetadata.cloudUnreadCount;
+        return {
+          ...session,
+          metadata: restMetadata,
+        };
+      });
+      return changed ? { ...current, sessions } : current;
+    });
+  }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState) return;

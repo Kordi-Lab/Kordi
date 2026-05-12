@@ -1102,3 +1102,54 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
   assert.equal(viewModels?.chatConversations.find((conversation) => conversation.canonicalSessionId === olderSessionId)?.unread, 1);
   assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id === bridgeConversationId), false);
 });
+
+test('canonical read model exposes transient Cloud group unread counts on synthetic sessions', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', humanId: 'acct_peer', bridgeNodeId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: 'session:group:cloud-child',
+      kind: 'group',
+      title: 'Cloud child',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      projectId: null,
+      projectName: null,
+      metadata: { source: 'cloud-group', groupSpaceId: 'session:group:cloud-space', customName: 'Cloud group', cloudUnreadCount: 2 },
+      createdAtMs: 1,
+      updatedAtMs: 3,
+      lastMessageAtMs: 3,
+    }],
+    participants: [
+      { sessionId: 'session:group:cloud-child', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId: 'session:group:cloud-child', identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:peer', sessionId: 'session:group:cloud-child', senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: 'Unread hello', content: { sender: 'Peer', timeLabel: '10:00' }, status: 'sent', sequenceNum: 1, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud_1' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const conversation = conversations.find((item) => item.canonicalSessionId === 'session:group:cloud-child');
+  const participantSpaces = buildParticipantSpaces(conversations);
+
+  assert.equal(conversation?.unread, 2);
+  assert.equal(participantSpaces.find((space) => space.id === 'group:session:group:cloud-space')?.unread, 2);
+});

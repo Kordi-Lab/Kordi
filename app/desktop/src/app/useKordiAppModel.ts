@@ -1386,6 +1386,7 @@ export function useKordiAppModel() {
         const groupSourceMetadata = { ...sourceMetadata };
         delete groupSourceMetadata.titleSource;
         delete groupSourceMetadata.sessionTitleSource;
+        delete groupSourceMetadata.cloudUnreadCount;
         const participantNames = members.map((member) => member.name);
         const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
         const nextState = await openOrCreateCanonicalSession({
