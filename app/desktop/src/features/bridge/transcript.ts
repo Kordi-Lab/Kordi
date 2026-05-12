@@ -272,6 +272,11 @@ export function mapBridgeConversationToViewModel(
     [remoteHumanLabel]: remoteHumanAvatarSeed,
     [remoteAgentLabel]: remoteAgentAvatarSeed,
   };
+  const participantProfileImageUrls: Record<string, string | null> = {
+    You: localHumanProfileImageUrl,
+    [localHumanLabel]: localHumanProfileImageUrl,
+    [remoteHumanLabel]: remoteHumanProfileImageUrl,
+  };
   const bridgeViewMessageId = (message: DesktopBridgeConversationMessage) => `bridge-message:${conversation.id}:${message.id}`;
   const requestMessageIdByRequestId = new Map<string, string>();
   for (const message of conversation.messages) {
@@ -518,6 +523,7 @@ export function mapBridgeConversationToViewModel(
     avatarSeed: conversationAvatarSeed,
     profileImageUrl: isAgent ? null : remoteHumanProfileImageUrl,
     participantAvatarSeeds,
+    participantProfileImageUrls,
     bridgeTarget,
     bridgeUnreadByParentSessionId: bridgeUnreadByParentSessionId(conversation),
     messages,

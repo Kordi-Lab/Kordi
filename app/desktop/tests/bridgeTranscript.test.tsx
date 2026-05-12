@@ -92,6 +92,8 @@ test('bridge transcript maps local and remote human profile images onto message 
 
   assert.equal(view.messages[0]?.senderProfileImageUrl, 'https://images.test/me.png');
   assert.equal(view.messages[1]?.senderProfileImageUrl, 'https://images.test/peer.png');
+  assert.equal(view.participantProfileImageUrls?.Me, 'https://images.test/me.png');
+  assert.equal(view.participantProfileImageUrls?.Shenzhe, 'https://images.test/peer.png');
 });
 
 test('bridge transcript keeps implicit direct person session messages as typed', () => {

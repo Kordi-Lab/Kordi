@@ -153,6 +153,7 @@ export type Conversation = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
+  participantProfileImageUrls?: Record<string, string | null>;
   participantSpaceId?: string | null;
   metadata?: unknown;
   bridgeTarget?: ConversationBridgeTarget | null;
