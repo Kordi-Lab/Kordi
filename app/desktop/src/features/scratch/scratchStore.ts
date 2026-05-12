@@ -123,6 +123,21 @@ export function setActiveScratchId(sessionId: string, scratchId: string | null) 
   notify();
 }
 
+export function renameScratch(sessionId: string, scratchId: string, name: string) {
+  if (!sessionId || !scratchId) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const list = scratchListBySession.get(sessionId);
+  if (!list) return;
+  const idx = list.findIndex((s) => s.id === scratchId);
+  if (idx < 0 || list[idx].name === trimmed) return;
+  const next = list.slice();
+  next[idx] = { ...list[idx], name: trimmed };
+  scratchListBySession.set(sessionId, next);
+  notify();
+  persistList(sessionId);
+}
+
 export function touchScratch(sessionId: string, scratchId: string) {
   if (!sessionId || !scratchId) return;
   const list = scratchListBySession.get(sessionId);
