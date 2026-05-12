@@ -6,9 +6,6 @@ import { BridgeConfigPage } from '@/pages/BridgeConfigPage';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
-import { CloudContactsAdapter } from '@/features/cloud/CloudContactsAdapter';
-import { useCloudSession } from '@/features/cloud/useCloudSession';
-import { currentKordiEdition } from '@/features/cloud/edition';
 
 type MainContentSwitchProps = {
   activeNav: NavId;
@@ -31,7 +28,7 @@ export function MainContentSwitch({
 }: MainContentSwitchProps) {
   switch (activeNav) {
     case 'contacts':
-      return <ContactsRoute contactsPageProps={contactsPageProps} />;
+      return <ContactsPage {...contactsPageProps} />;
     case 'agents':
       return <AgentsPage {...agentsPageProps} />;
     case 'bridge':
@@ -44,24 +41,4 @@ export function MainContentSwitch({
     default:
       return <ChatsPage {...chatsPageProps} />;
   }
-}
-
-// Cloud-aware wrapper for the contacts route. In local edition this is
-// a pass-through; in cloud edition it overlays the cloud contact graph
-// (contacts + request inbox + send/accept/reject) on top of the
-// existing ContactsPage shell.
-function ContactsRoute({ contactsPageProps }: { contactsPageProps: ComponentProps<typeof ContactsPage> }) {
-  const edition = currentKordiEdition();
-  // Hooks must run on every render; gate the cloud branch on the result.
-  const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
-  if (edition === 'cloud') {
-    if (!cloudSession.account) {
-      // Bootstrapping the cloud session — render an empty placeholder
-      // shell instead of falling back to the local ContactsPage, which
-      // would show local Bridge-flavoured data and confuse cloud users.
-      return <ContactsPage {...contactsPageProps} filteredGroupedContacts={[]} contactRequests={[]} addableContacts={[]} />;
-    }
-    return <CloudContactsAdapter account={cloudSession.account} contactsPageProps={contactsPageProps} />;
-  }
-  return <ContactsPage {...contactsPageProps} />;
 }

@@ -325,25 +325,6 @@ function agentCanBeMentionedDirectly(peer: DesktopBridgeState['hosts'][number]['
   return peerIsApprovedBridgeContact(peer) || (peer.sharedProjects?.length ?? 0) > 0;
 }
 
-function peerPersonDedupeKeys(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
-  return [peer.humanId, peer.ownerName, peer.displayName, peer.nodeId]
-    .map(normalizedOwnerKey)
-    .filter(Boolean);
-}
-
-function hostHasExplicitPersonPeerForAgent(
-  host: DesktopBridgeState['hosts'][number],
-  agentPeer: DesktopBridgeState['hosts'][number]['visiblePeers'][number],
-) {
-  const agentKeys = new Set(peerPersonDedupeKeys(agentPeer));
-  if (agentKeys.size === 0) return false;
-  return host.visiblePeers.some((peer) => (
-    peer !== agentPeer
-    && !isBridgeAgentRuntime(peer.runtime)
-    && peerPersonDedupeKeys(peer).some((key) => agentKeys.has(key))
-  ));
-}
-
 export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
   if (!bridgeState) return [];
 
@@ -374,7 +355,7 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
       const hasAgentLabel = agentIsReachable && Boolean(peer.displayName?.trim());
       const hasPersonLabel = Boolean(peer.ownerName?.trim() || (!isAgent && peer.displayName?.trim()));
 
-      if (isAgent && peer.humanId?.trim() && (agentIsReachable || peer.isDefaultAgent) && !hostHasExplicitPersonPeerForAgent(host, peer)) {
+      if (isAgent && peer.humanId?.trim() && (agentIsReachable || peer.isDefaultAgent)) {
         pushLabel(peer.ownerName, 'bridge-person');
       }
       if (!isAgent || agentIsReachable) {
@@ -437,8 +418,10 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
     ?? activeHost?.agents[0]
     ?? null;
   const ownerName = activeHost?.ownerName?.trim();
+  const hostDisplayName = activeHost?.displayName?.trim();
   const agentLabel = activeAgent?.label?.trim();
   return [
+    hostDisplayName,
     agentLabel,
     scopedAgentLabel(ownerName, 'Kordi', true),
     scopedAgentLabel(ownerName, agentLabel || 'Kordi', true),

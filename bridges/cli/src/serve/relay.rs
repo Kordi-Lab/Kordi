@@ -31,25 +31,12 @@ pub struct RelayReq {
     /// Optional direct-access intent for host/agent reachability policy.
     #[serde(rename = "targetKind", default)]
     pub target_kind: Option<String>,
-    /// Optional client-side idempotency key. Repeating the same
-    /// (targetNodeId, clientMessageId) pair returns the original message id
-    /// instead of producing a second mailbox row.
-    #[serde(rename = "clientMessageId", default)]
-    pub client_message_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RelayResp {
     pub delivered: bool,
     pub message: String,
-    /// Server-side message id assigned to this send. When `clientMessageId`
-    /// produces an idempotent retry, this is the id of the original send.
-    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// Whether the request was a duplicate of an earlier send keyed by
-    /// `clientMessageId`. Clients can use this to suppress local retry UI.
-    #[serde(rename = "duplicate", default)]
-    pub duplicate: bool,
 }
 
 /// Broadcast request: sends an opaque encrypted blob to all project members.
@@ -180,14 +167,6 @@ const MAX_MAILBOX_PER_NODE: usize = 1000;
 /// Max blob size (64 KB).
 const MAX_BLOB_SIZE: usize = 65536;
 
-/// How long an undelivered mailbox row may live before periodic GC reaps it.
-/// Receivers that have been offline longer than this lose their queue, which
-/// matches Telegram-style retention: users who don't return for a month
-/// shouldn't pin server storage indefinitely.
-pub const MAILBOX_RETENTION_DAYS: i64 = 30;
-/// How often the periodic GC sweep runs.
-pub const MAILBOX_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-
 /// Relay a single opaque blob to a target node.
 /// End-to-end confidentiality depends on the sender encrypting the blob body.
 async fn relay_message(
@@ -234,29 +213,16 @@ async fn relay_message(
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let outcome = enqueue_mailbox_entry(
-        &mut db,
-        &target_node_id,
-        &entry,
-        req.client_message_id.as_deref(),
-    )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    match outcome {
-        EnqueueOutcome::QuotaExceeded => Err(StatusCode::TOO_MANY_REQUESTS),
-        EnqueueOutcome::Inserted { message_id } => Ok(Json(RelayResp {
-            delivered: true,
-            message: format!("queued for {}", target_node_id),
-            message_id: Some(message_id),
-            duplicate: false,
-        })),
-        EnqueueOutcome::Duplicate { message_id } => Ok(Json(RelayResp {
-            delivered: true,
-            message: format!("duplicate of earlier send to {}", target_node_id),
-            message_id: Some(message_id),
-            duplicate: true,
-        })),
+    let delivered = enqueue_mailbox_entry(&mut db, &target_node_id, &entry)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !delivered {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+
+    Ok(Json(RelayResp {
+        delivered: true,
+        message: format!("queued for {}", target_node_id),
+    }))
 }
 
 /// Broadcast per-peer message blobs to all specified project members.
@@ -427,9 +393,9 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                         project_id: None,
                         timestamp: chrono::Utc::now().to_rfc3339(),
                     };
-                    match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry, None) {
-                        Ok(EnqueueOutcome::Inserted { .. }) | Ok(EnqueueOutcome::Duplicate { .. }) => {}
-                        Ok(EnqueueOutcome::QuotaExceeded) => {
+                    match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry) {
+                        Ok(true) => {}
+                        Ok(false) => {
                             if let Some(ack) =
                                 maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
                             {
@@ -515,69 +481,34 @@ fn direct_access_kind_from_payload_bytes(payload: &[u8]) -> DirectAccessKind {
     direct_access_kind_from_target_kind(message_type)
 }
 
-/// Result of an attempted mailbox enqueue. Idempotent retries that match an
-/// earlier `(target_node_id, client_message_id)` pair return `Duplicate`
-/// with the original `message_id` so the caller can echo it back verbatim.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EnqueueOutcome {
-    /// Fresh row was inserted.
-    Inserted { message_id: String },
-    /// `client_message_id` matched an earlier row for this target; no new
-    /// row was created.
-    Duplicate { message_id: String },
-    /// Per-target quota exceeded.
-    QuotaExceeded,
-}
-
 fn enqueue_mailbox_entry(
     conn: &mut Connection,
     target_node_id: &str,
     entry: &MailboxEntry,
-    client_message_id: Option<&str>,
-) -> Result<EnqueueOutcome, rusqlite::Error> {
+) -> Result<bool, rusqlite::Error> {
     let tx = conn.transaction()?;
-
-    // Idempotency check first: if a row with the same client key already
-    // exists for this target, return its message_id without consuming quota.
-    if let Some(client_id) = client_message_id {
-        let existing: Option<String> = tx
-            .query_row(
-                "SELECT message_id FROM server_mailbox \
-                 WHERE target_node_id = ?1 AND client_message_id = ?2",
-                params![target_node_id, client_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(message_id) = existing {
-            tx.commit()?;
-            return Ok(EnqueueOutcome::Duplicate { message_id });
-        }
-    }
-
     let queue_len: i64 = tx.query_row(
         "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = ?1",
         params![target_node_id],
         |row| row.get(0),
     )?;
     if queue_len >= MAX_MAILBOX_PER_NODE as i64 {
-        return Ok(EnqueueOutcome::QuotaExceeded);
+        return Ok(false);
     }
 
-    let new_id = Uuid::new_v4().to_string();
     tx.execute(
-        "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at, client_message_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
-            new_id,
+            Uuid::new_v4().to_string(),
             target_node_id,
             entry.from,
             entry.blob,
             entry.project_id,
             entry.timestamp,
-            client_message_id,
         ],
     )?;
     tx.commit()?;
-    Ok(EnqueueOutcome::Inserted { message_id: new_id })
+    Ok(true)
 }
 
 fn enqueue_broadcast_entries(
@@ -669,30 +600,6 @@ fn poll_mailbox_entries(
     Ok(entries)
 }
 
-/// SQLite's default `SQLITE_MAX_VARIABLE_NUMBER` is 999 on older builds and
-/// 32_766 on recent ones. 256 is comfortably below both and keeps each
-/// `DELETE` statement small enough to plan and execute quickly.
-const ACK_CHUNK_SIZE: usize = 256;
-
-/// Delete mailbox rows older than `retention_days`, regardless of which
-/// target they belong to. Targets that come back online after a long
-/// absence lose their dead-letter queue rather than pinning storage forever.
-/// Returns the number of rows deleted.
-pub fn gc_mailbox_retention(
-    conn: &Connection,
-    retention_days: i64,
-) -> Result<usize, rusqlite::Error> {
-    let cutoff = (chrono::Utc::now() - chrono::Duration::days(retention_days.max(1))).to_rfc3339();
-    conn.execute(
-        "DELETE FROM server_mailbox WHERE created_at < ?1",
-        params![cutoff],
-    )
-}
-
-/// Delete the named mailbox entries for `target_node_id` using one chunked
-/// `IN`-clause `DELETE` per 256 ids, instead of one statement per id. The
-/// new `idx_server_mailbox_target_created_message` covering index lets the
-/// planner satisfy these without a row visit.
 fn ack_mailbox_entries(
     conn: &mut Connection,
     target_node_id: &str,
@@ -703,9 +610,12 @@ fn ack_mailbox_entries(
     }
 
     let tx = conn.transaction()?;
-    let mut acked = 0usize;
-    for chunk in message_ids.chunks(ACK_CHUNK_SIZE) {
-        acked += delete_mailbox_chunk(&tx, target_node_id, chunk)?;
+    let mut acked = 0;
+    for message_id in message_ids {
+        acked += tx.execute(
+            "DELETE FROM server_mailbox WHERE target_node_id = ?1 AND message_id = ?2",
+            params![target_node_id, message_id],
+        )?;
     }
     tx.commit()?;
     Ok(acked)
@@ -716,7 +626,7 @@ fn drain_mailbox_entries(
     target_node_id: &str,
 ) -> Result<Vec<MailboxEntry>, rusqlite::Error> {
     let tx = conn.transaction()?;
-    let drained: Vec<(String, MailboxEntry)> = {
+    let drained = {
         let mut stmt = tx.prepare(
             "SELECT message_id, from_node_id, blob, project_id, created_at \
              FROM server_mailbox WHERE target_node_id = ?1 \
@@ -741,66 +651,15 @@ fn drain_mailbox_entries(
         drained
     };
 
-    if !drained.is_empty() {
-        // Same chunking strategy as ack: one DELETE per 256 ids using the
-        // covering mailbox index, instead of N statements.
-        let ids: Vec<&str> = drained.iter().map(|(id, _)| id.as_str()).collect();
-        for chunk in ids.chunks(ACK_CHUNK_SIZE) {
-            // Convert the slice of &str into the format `delete_mailbox_chunk`
-            // expects: a slice of String references via dyn ToSql.
-            delete_mailbox_chunk_str(&tx, target_node_id, chunk)?;
-        }
+    for (message_id, _) in &drained {
+        tx.execute(
+            "DELETE FROM server_mailbox WHERE message_id = ?1",
+            params![message_id],
+        )?;
     }
 
     tx.commit()?;
     Ok(drained.into_iter().map(|(_, entry)| entry).collect())
-}
-
-fn delete_mailbox_chunk(
-    tx: &rusqlite::Transaction<'_>,
-    target_node_id: &str,
-    chunk: &[String],
-) -> Result<usize, rusqlite::Error> {
-    let placeholders = build_chunk_placeholders(chunk.len());
-    let sql = format!(
-        "DELETE FROM server_mailbox WHERE target_node_id = ?1 AND message_id IN ({placeholders})"
-    );
-    let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk.len() + 1);
-    bound.push(&target_node_id);
-    for id in chunk {
-        bound.push(id);
-    }
-    tx.execute(&sql, &bound[..])
-}
-
-fn delete_mailbox_chunk_str(
-    tx: &rusqlite::Transaction<'_>,
-    target_node_id: &str,
-    chunk: &[&str],
-) -> Result<usize, rusqlite::Error> {
-    let placeholders = build_chunk_placeholders(chunk.len());
-    let sql = format!(
-        "DELETE FROM server_mailbox WHERE target_node_id = ?1 AND message_id IN ({placeholders})"
-    );
-    let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk.len() + 1);
-    bound.push(&target_node_id);
-    for id in chunk {
-        bound.push(id);
-    }
-    tx.execute(&sql, &bound[..])
-}
-
-fn build_chunk_placeholders(count: usize) -> String {
-    // Placeholders start at ?2 because ?1 is the target_node_id.
-    let mut out = String::with_capacity(count * 5);
-    for i in 0..count {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        out.push('?');
-        out.push_str(&(i + 2).to_string());
-    }
-    out
 }
 
 #[cfg(test)]
@@ -831,8 +690,7 @@ mod tests {
             project_id: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
-        let outcome = enqueue_mailbox_entry(&mut conn, to, &entry, None).unwrap();
-        assert!(matches!(outcome, EnqueueOutcome::Inserted { .. }));
+        assert!(enqueue_mailbox_entry(&mut conn, to, &entry).unwrap());
     }
 
     fn seed_contact(state: &ServerState, left: &str, right: &str) {
@@ -1237,7 +1095,6 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1284,7 +1141,6 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1318,7 +1174,6 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: None,
                 target_kind: Some("person".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1351,7 +1206,6 @@ mod tests {
                 blob: "group session message".to_string(),
                 project_id: None,
                 target_kind: Some("session-participant".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1398,7 +1252,6 @@ mod tests {
                 blob: "invite".to_string(),
                 project_id: None,
                 target_kind: Some("person-invite".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1450,7 +1303,6 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1466,7 +1318,6 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1508,7 +1359,6 @@ mod tests {
                 blob: "ask".to_string(),
                 project_id: None,
                 target_kind: Some("agent".to_string()),
-                client_message_id: None,
             }),
         )
         .await
@@ -1530,7 +1380,6 @@ mod tests {
                 blob: "hello".to_string(),
                 project_id: Some("proj_1".to_string()),
                 target_kind: None,
-                client_message_id: None,
             }),
         )
         .await
@@ -1568,7 +1417,6 @@ mod tests {
                     blob: blob.to_string(),
                     project_id: None,
                     target_kind: None,
-                client_message_id: None,
                 }),
             )
             .await
@@ -1591,207 +1439,5 @@ mod tests {
         assert!(second.is_empty());
         assert_eq!(first[0].blob, "one");
         assert_eq!(first[1].blob, "two");
-    }
-
-    #[test]
-    fn enqueue_with_same_client_message_id_returns_original_message() {
-        let db_path = test_db_path();
-        let state = test_state_for_path(&db_path);
-        let mut conn = state.open_connection().unwrap();
-        let entry = MailboxEntry {
-            from: "sender".to_string(),
-            blob: "first-payload".to_string(),
-            project_id: None,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        };
-        let first =
-            enqueue_mailbox_entry(&mut conn, "receiver", &entry, Some("client-key-1")).unwrap();
-        let inserted_id = match first {
-            EnqueueOutcome::Inserted { ref message_id } => message_id.clone(),
-            _ => panic!("first send should produce a fresh row, got {first:?}"),
-        };
-
-        // Retry with the same key but a different blob — should NOT update or
-        // duplicate; original row stays intact.
-        let entry_retry = MailboxEntry {
-            from: "sender".to_string(),
-            blob: "second-payload".to_string(),
-            project_id: None,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        };
-        let second =
-            enqueue_mailbox_entry(&mut conn, "receiver", &entry_retry, Some("client-key-1"))
-                .unwrap();
-        match second {
-            EnqueueOutcome::Duplicate { ref message_id } => {
-                assert_eq!(message_id, &inserted_id, "duplicate must echo original id");
-            }
-            _ => panic!("retry with same client_message_id must be Duplicate, got {second:?}"),
-        }
-
-        // Exactly one row remains and it carries the original payload.
-        let rows: Vec<(String, String)> = conn
-            .prepare("SELECT message_id, blob FROM server_mailbox WHERE target_node_id = 'receiver'")
-            .unwrap()
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .map(|r| r.unwrap())
-            .collect();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, inserted_id);
-        assert_eq!(rows[0].1, "first-payload");
-    }
-
-    #[test]
-    fn enqueue_with_different_client_message_ids_produces_separate_rows() {
-        let db_path = test_db_path();
-        let state = test_state_for_path(&db_path);
-        let mut conn = state.open_connection().unwrap();
-        let make_entry = |blob: &str| MailboxEntry {
-            from: "sender".to_string(),
-            blob: blob.to_string(),
-            project_id: None,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        };
-        let first = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("a"), Some("k1"))
-            .unwrap();
-        let second = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("b"), Some("k2"))
-            .unwrap();
-        assert!(matches!(first, EnqueueOutcome::Inserted { .. }));
-        assert!(matches!(second, EnqueueOutcome::Inserted { .. }));
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = 'receiver'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 2);
-    }
-
-    #[test]
-    fn enqueue_without_client_message_id_does_not_dedupe() {
-        // Legacy behaviour: clients that don't pass a key keep at-least-once
-        // semantics. Two sends produce two rows even with identical payload.
-        let db_path = test_db_path();
-        let state = test_state_for_path(&db_path);
-        let mut conn = state.open_connection().unwrap();
-        let entry = MailboxEntry {
-            from: "sender".to_string(),
-            blob: "same-blob".to_string(),
-            project_id: None,
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        };
-        enqueue_mailbox_entry(&mut conn, "receiver", &entry, None).unwrap();
-        enqueue_mailbox_entry(&mut conn, "receiver", &entry, None).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = 'receiver'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 2);
-    }
-
-    #[test]
-    fn gc_mailbox_retention_only_prunes_rows_older_than_threshold() {
-        let db_path = test_db_path();
-        let state = test_state_for_path(&db_path);
-        let conn = state.open_connection().unwrap();
-
-        // Helper: insert a row with an explicit created_at timestamp.
-        let insert_aged = |id: &str, days_old: i64| {
-            let aged_at = (chrono::Utc::now() - chrono::Duration::days(days_old)).to_rfc3339();
-            conn.execute(
-                "INSERT INTO server_mailbox (message_id, target_node_id, from_node_id, blob, project_id, created_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
-                params![id, "receiver", "sender", "blob", &aged_at],
-            )
-            .expect("insert aged row");
-        };
-
-        insert_aged("ancient-1", 60); // pruned
-        insert_aged("old-1", 31); // pruned (just past 30 day boundary)
-        insert_aged("recent-1", 29); // kept
-        insert_aged("fresh-1", 0); // kept
-
-        let pruned = gc_mailbox_retention(&conn, MAILBOX_RETENTION_DAYS).expect("gc");
-        assert_eq!(pruned, 2, "only the two rows older than 30 days should be pruned");
-
-        let remaining_ids: Vec<String> = conn
-            .prepare("SELECT message_id FROM server_mailbox WHERE target_node_id = 'receiver' ORDER BY created_at")
-            .unwrap()
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .map(|row| row.unwrap())
-            .collect();
-        assert_eq!(remaining_ids, vec!["recent-1".to_string(), "fresh-1".to_string()]);
-    }
-
-    #[tokio::test]
-    async fn ack_chunks_more_than_three_chunks_of_message_ids() {
-        // Exercises the chunked IN-clause DELETE — well above ACK_CHUNK_SIZE
-        // (256) so the code path runs three chunks. Stays under
-        // MAX_MAILBOX_PER_NODE (1000) to keep enqueue acceptance.
-        let db_path = test_db_path();
-        let state = test_state_for_path(&db_path);
-        let total = 768usize;
-        for index in 0..total {
-            seed_mailbox_entry(&state, "sender", "receiver", &format!("blob-{index}"));
-        }
-
-        let mut all_ids: Vec<String> = Vec::with_capacity(total);
-        let mut after: Option<String> = None;
-        loop {
-            let page = poll_mailbox_v2(
-                State(state.clone()),
-                Extension(AuthNode("receiver".to_string())),
-                Json(MailboxPollReq {
-                    limit: Some(500),
-                    after: after.clone(),
-                }),
-            )
-            .await
-            .expect("poll page")
-            .0;
-            if page.entries.is_empty() {
-                break;
-            }
-            after = page.entries.last().map(|entry| entry.message_id.clone());
-            all_ids.extend(page.entries.into_iter().map(|entry| entry.message_id));
-        }
-        assert_eq!(all_ids.len(), total);
-
-        ack_mailbox_v2(
-            State(state.clone()),
-            Extension(AuthNode("receiver".to_string())),
-            Json(MailboxAckReq { message_ids: all_ids }),
-        )
-        .await
-        .expect("ack many");
-
-        let after_ack = poll_mailbox_v2(
-            State(state.clone()),
-            Extension(AuthNode("receiver".to_string())),
-            Json(MailboxPollReq {
-                limit: Some(2000),
-                after: None,
-            }),
-        )
-        .await
-        .expect("poll after ack")
-        .0;
-        assert_eq!(after_ack.entries.len(), 0, "every chunked id was acked");
-
-        // Sanity-check the DB itself — the table should be empty for this target.
-        let conn = state.open_connection().unwrap();
-        let remaining: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM server_mailbox WHERE target_node_id = ?1",
-                params!["receiver"],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(remaining, 0);
     }
 }

@@ -102,23 +102,11 @@ export function isApprovedBridgeContact(contact: Contact) {
   const peerNodeId = cleanText(contact.bridgePeerNodeId);
   if (!peerNodeId) return true;
   const status = cleanText(contact.bridgeContactStatus).toLowerCase();
-  return status === 'contact' || status === 'approved' || status === 'accepted';
+  return status === 'contact' || status === 'approved';
 }
 
 export function buildChatCreateGroupPersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
   return buildChatCreatePersonOptions(contacts).filter((option) => isApprovedBridgeContact(option.contact));
-}
-
-export function buildChatCreatePeopleContactLookup(contacts: Contact[]): Map<string, Contact> {
-  const lookup = new Map<string, Contact>();
-  for (const option of buildChatCreatePersonOptions(contacts)) {
-    lookup.set(option.id, option.contact);
-    const cloudAccountId = option.contact.bridgeHostId === 'cloud'
-      ? cleanText(option.contact.bridgePeerNodeId) || cleanText(option.contact.bridgeHumanId)
-      : '';
-    if (cloudAccountId) lookup.set(`cloud:${cloudAccountId}`, option.contact);
-  }
-  return lookup;
 }
 
 export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOption[] {

@@ -1,4 +1,3 @@
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { formatDesktopClockTime } from '@/lib/time';
 
 const SHARED_LOCAL_SLASH_COMMANDS = new Set([
@@ -53,22 +52,7 @@ const DESKTOP_SLASH_HELP_LINES = [
   'Skill, prompt, and extension slash commands also appear in the command menu.',
 ].join('\n');
 
-const CLOUD_SLASH_HELP_LINES = [
-  'Available commands:',
-  '',
-  '/name      Rename current session',
-  '/session   Show session info tab',
-  '/new       Start a new session',
-  '/reload    Refresh runtime-backed desktop state',
-  '/skill     Manage loaded skills',
-  '',
-  'Type @ to reach Cloud contacts or their Kordi agents.',
-].join('\n');
-
-const CLOUD_HIDDEN_LOCAL_SLASH_COMMANDS = new Set(['/fork', '/tree']);
-
 export function isSharedLocalSlashCommand(command: string) {
-  if (currentKordiEdition() === 'cloud' && CLOUD_HIDDEN_LOCAL_SLASH_COMMANDS.has(command)) return false;
   return SHARED_LOCAL_SLASH_COMMANDS.has(command);
 }
 
@@ -77,7 +61,7 @@ export function desktopHotkeyHelpText() {
 }
 
 export function desktopSlashHelpText() {
-  return currentKordiEdition() === 'cloud' ? CLOUD_SLASH_HELP_LINES : DESKTOP_SLASH_HELP_LINES;
+  return DESKTOP_SLASH_HELP_LINES;
 }
 
 export function formatDesktopEventTime() {
@@ -123,41 +107,6 @@ export function focusComposerTextarea(selector: string) {
     const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;
     textarea?.focus();
   });
-}
-
-type NativeComposerFocusDeps = {
-  focusNativeWindow?: () => void | Promise<void>;
-  requestAnimationFrame?: (callback: FrameRequestCallback) => number;
-  querySelector?: (selector: string) => Element | null | { focus?: () => void };
-};
-
-async function focusCurrentNativeWindow() {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  await getCurrentWindow().setFocus();
-}
-
-export function focusComposerTextareaForNativeInput(
-  selector: string,
-  isNativeShell: boolean,
-  deps: NativeComposerFocusDeps = {},
-) {
-  const requestAnimationFrame = deps.requestAnimationFrame ?? window.requestAnimationFrame.bind(window);
-  const querySelector = deps.querySelector ?? document.querySelector.bind(document);
-  const focusTextarea = () => {
-    const textarea = querySelector(selector) as (HTMLTextAreaElement | { focus?: () => void } | null);
-    textarea?.focus?.();
-  };
-
-  if (!isNativeShell) {
-    requestAnimationFrame(() => focusTextarea());
-    return;
-  }
-
-  void Promise.resolve(deps.focusNativeWindow ? deps.focusNativeWindow() : focusCurrentNativeWindow())
-    .catch(() => undefined)
-    .finally(() => {
-      requestAnimationFrame(() => focusTextarea());
-    });
 }
 
 export function resizeComposerTextarea(selector: string, value?: string) {

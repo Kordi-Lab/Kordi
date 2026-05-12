@@ -7,7 +7,6 @@ import type {
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
-import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 
@@ -386,19 +385,14 @@ export function mapCanonicalMessage(
     && Boolean(trimmedProfileIdentityId)
     && Boolean(initiatorIdentityId)
     && initiatorIdentityId === trimmedProfileIdentityId;
-  const cloudGroupAgentRequestConversationId = message.sourceTransport === 'cloud-group-agent'
-    ? (bridgeConversationId || cloudGroupAgentConversationId(message.sessionId))
-    : null;
   const pendingBridgeAgentRequest = isAgentTurn
     && !completed
     && deliveryState === 'processing'
+    && message.sourceTransport?.startsWith('desktop-bridge')
+    && bridgeConversationId
     && bridgeRequestId
     && (viewerOwnsAgent || viewerIsInitiator)
-    ? message.sourceTransport?.startsWith('desktop-bridge') && bridgeConversationId
-      ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
-      : cloudGroupAgentRequestConversationId
-        ? { conversationId: cloudGroupAgentRequestConversationId, requestId: bridgeRequestId }
-        : undefined
+    ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
     : undefined;
   const tools = toolsWithEventTaskTarget(canonicalTools(content.tools), content);
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);

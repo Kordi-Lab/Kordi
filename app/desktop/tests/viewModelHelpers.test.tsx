@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, buildConversationPreview, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, preferLatestMessages, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, preferLatestMessages, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
 import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
@@ -116,30 +116,6 @@ test('bridgeContactRequestsForContactsPage exposes pending incoming approvals on
   assert.equal(requests[0].detail, 'Please add me');
   assert.equal(requests[0].bridgeHostId, 'host-1');
   assert.equal(requests[0].bridgeRequestId, 'req-in');
-});
-
-test('buildConversationPreview uses the latest agent turn response when message text is empty', () => {
-  const messages: Message[] = [{
-    id: 'turn:assistant:1',
-    role: 'owned-agent',
-    sender: 'My Kordi',
-    text: '',
-    time: '7:22 PM',
-    turn: {
-      id: 'turn-1',
-      sessionId: 'session-1',
-      prompt: 'how are you',
-      status: 'completed',
-      message: '',
-      assistantText: 'I’m not sure yet, but I can help check.',
-      thinkingText: '',
-      tools: [],
-      completed: true,
-      succeeded: true,
-    },
-  }];
-
-  assert.equal(buildConversationPreview(messages, 'Shu Yang'), 'I’m not sure yet, but I can help check.');
 });
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {

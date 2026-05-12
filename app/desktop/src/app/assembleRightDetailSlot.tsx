@@ -4,7 +4,6 @@ import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
-import { currentKordiEdition } from '@/features/cloud/edition';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
 import type { DetailTab } from '@/kordi-app/types';
@@ -15,8 +14,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const navigateToResponse = (messageId: string) => {
     navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
   };
-  const isCloudEdition = currentKordiEdition() === 'cloud';
-  const allDetailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
+  const detailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
     ? [
         { id: 'info', label: 'Info', icon: Info },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
@@ -28,7 +26,6 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
         { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
       ];
-  const detailTabs = allDetailTabs.filter((tab) => !(isCloudEdition && tab.id === 'tasks'));
 
   return (
     <RightDetailRail

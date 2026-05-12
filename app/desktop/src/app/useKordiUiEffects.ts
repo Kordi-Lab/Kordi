@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
-import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
@@ -96,14 +95,8 @@ export function useKordiUiEffects({
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSessionId) return;
-    if (isCloudAgentRuntimeSessionId(desktopChatState.activeSessionId)) return;
     setActiveConvId((current) => (!current || current === 'my-agent' ? desktopChatState.activeSessionId : current));
   }, [desktopChatState?.activeSessionId, isNativeShell, setActiveConvId]);
-
-  useEffect(() => {
-    if (!isNativeShell || !isCloudAgentRuntimeSessionId(activeConvId)) return;
-    setActiveConvId('draft:local-chat');
-  }, [activeConvId, isNativeShell, setActiveConvId]);
 
   useEffect(() => {
     if (displayedContacts.length === 0) return;

@@ -606,14 +606,12 @@ fn relay_processing_response_timeout_due(
     message: &crate::bridge::DesktopBridgeConversationMessage,
     sync_now_ms: i64,
 ) -> bool {
-    matches!(
-        message.direction.as_str(),
-        "inbound-response" | "outbound-response"
-    ) && message
-        .delivery_state
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|state| state.eq_ignore_ascii_case("processing"))
+    matches!(message.direction.as_str(), "inbound-response" | "outbound-response")
+        && message
+            .delivery_state
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|state| state.eq_ignore_ascii_case("processing"))
         && is_processing_placeholder_text(&message.text)
         && sync_now_ms.saturating_sub(message.timestamp_ms)
             >= BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS

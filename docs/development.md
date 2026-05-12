@@ -45,26 +45,6 @@ This command:
 
 Use this when you only want the desktop shell and sidecars, without separately starting the app server through the root `dev` command.
 
-### Start Cloud Edition
-
-Production Cloud Edition defaults to `https://kordi.cloud`:
-
-```bash
-VITE_KORDI_EDITION=cloud \
-KORDI_EDITION=cloud \
-pnpm --dir app/desktop tauri:dev
-```
-
-For hosted tunnel testing against `takotako`:
-
-```bash
-KORDI_CLOUD_USE_LOCAL_TUNNEL=1 \
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
-pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2,user3
-```
-
-See [`cloud-edition.md`](cloud-edition.md) for Cloud auth, contacts, groups, agent mentions, avatar, and deployment notes.
-
 ### Start the web-only preview
 
 ```bash

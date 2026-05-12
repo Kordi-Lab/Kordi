@@ -250,8 +250,7 @@ function isBridgeAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
 
 function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
   return (message.sourceTransport === 'desktop-bridge-session-relay'
-    || message.sourceTransport === 'desktop-bridge-parent'
-    || message.sourceTransport === 'cloud-group-agent')
+    || message.sourceTransport === 'desktop-bridge-parent')
     && isBridgeAgentProcessingPlaceholder(message);
 }
 
@@ -434,40 +433,6 @@ function rawBridgeProcessingPlaceholderCoveredByPendingDelegation(
   const content = contentRecord(message.content);
   const delegatedExchangeId = message.delegatedExchangeId?.trim() || stringValue(content.delegatedExchangeId)?.trim();
   return Boolean(delegatedExchangeId && pendingDelegationIds.has(delegatedExchangeId));
-}
-
-function duplicateCloudGroupAgentResponseIds(messages: CanonicalSessionMessage[]) {
-  const duplicateIds = new Set<string>();
-  const responsesByRequest = new Map<string, CanonicalSessionMessage[]>();
-
-  for (const message of messages) {
-    if (message.messageKind !== 'agent-turn') continue;
-    if (message.senderRole !== 'owned-agent' && message.senderRole !== 'external-agent') continue;
-    if (message.sourceTransport !== 'cloud-group' && message.sourceTransport !== 'cloud-group-agent') continue;
-    if (isProcessingPlaceholderText(message.contentText)) continue;
-    const status = message.status.trim().toLowerCase();
-    if (['draft', 'sending', 'processing'].includes(status)) continue;
-    const content = contentRecord(message.content);
-    const requestId = stringValue(content.requestId)?.trim()
-      || stringValue(content.replyToMessageId)?.trim()
-      || message.parentMessageId?.trim()
-      || null;
-    if (!requestId) continue;
-    const key = [message.sessionId, message.senderIdentityId, requestId].join('\u0000');
-    responsesByRequest.set(key, [...(responsesByRequest.get(key) ?? []), message]);
-  }
-
-  for (const responses of responsesByRequest.values()) {
-    if (responses.length <= 1) continue;
-    const sorted = [...responses].sort((left, right) => (
-      right.createdAtMs - left.createdAtMs
-      || right.sequenceNum - left.sequenceNum
-      || right.id.localeCompare(left.id)
-    ));
-    for (const duplicate of sorted.slice(1)) duplicateIds.add(duplicate.id);
-  }
-
-  return duplicateIds;
 }
 
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
@@ -718,7 +683,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
-    const suppressedCloudGroupAgentResponseDuplicateIds = duplicateCloudGroupAgentResponseIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
       sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
@@ -747,7 +711,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedLocalRuntimeEchoIds.has(message.id)
         || suppressedLocalRuntimeDuplicateIds.has(message.id)
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
-        || suppressedCloudGroupAgentResponseDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
         || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)

@@ -4,9 +4,7 @@ use kordi_cli::turn_runner::TurnEvent;
 
 use super::{DesktopChatManager, DesktopChatToolSnapshot, DesktopChatTurnSnapshot};
 
-fn stored_tool_is_model_task_tool(
-    tool: &kordi_cli::desktop_runtime::DesktopChatStoredTool,
-) -> bool {
+fn stored_tool_is_model_task_tool(tool: &kordi_cli::desktop_runtime::DesktopChatStoredTool) -> bool {
     let name = tool.name.trim().to_lowercase();
     name == "task_operator" || name == "update_plan" || tool.is_error
 }
@@ -31,12 +29,7 @@ pub(super) fn desktop_task_tools_from_messages(
         if message.role != "assistant" {
             continue;
         }
-        for tool in message
-            .tools
-            .iter()
-            .filter(|tool| stored_tool_is_model_task_tool(tool))
-            .rev()
-        {
+        for tool in message.tools.iter().filter(|tool| stored_tool_is_model_task_tool(tool)).rev() {
             tools.push(DesktopChatToolSnapshot {
                 id: tool.id.clone(),
                 name: tool.name.clone(),

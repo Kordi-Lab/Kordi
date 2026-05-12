@@ -654,8 +654,7 @@ pub(in crate::bridge) fn append_conversation_message_to_storage_with_timestamp(
             if let Some(delivery_state) = delivery_state {
                 message.delivery_state = Some(delivery_state);
             }
-            if should_replace_message_outreach(message.outreach.as_ref(), message_outreach.as_ref())
-            {
+            if should_replace_message_outreach(message.outreach.as_ref(), message_outreach.as_ref()) {
                 message.outreach = message_outreach.clone();
             }
             if !attachments.is_empty() {
@@ -1084,10 +1083,7 @@ mod tests {
             "arguments": "{\"action\":\"create\",\"taskTitle\":\"Pay The Bill\"}"
         })]);
 
-        assert!(should_replace_message_outreach(
-            Some(&existing),
-            Some(&incoming)
-        ));
+        assert!(should_replace_message_outreach(Some(&existing), Some(&incoming)));
     }
 
     #[test]
@@ -1095,9 +1091,6 @@ mod tests {
         let existing = test_outreach_with_tools(Vec::new());
         let incoming = test_outreach_with_tools(Vec::new());
 
-        assert!(!should_replace_message_outreach(
-            Some(&existing),
-            Some(&incoming)
-        ));
+        assert!(!should_replace_message_outreach(Some(&existing), Some(&incoming)));
     }
 }

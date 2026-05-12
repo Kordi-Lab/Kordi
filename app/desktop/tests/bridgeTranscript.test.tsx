@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import type { DesktopBridgeConversation, DesktopBridgeHost } from '../src/kordi-app/types';
 
-function host(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
+function host(): DesktopBridgeHost {
   return {
     id: 'host-1',
     registered: true,
@@ -22,7 +22,6 @@ function host(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
     visiblePeers: [],
     visiblePeerCount: 0,
     projects: [],
-    ...overrides,
   };
 }
 
@@ -51,50 +50,6 @@ function conversation(overrides: Partial<DesktopBridgeConversation> = {}): Deskt
     ...overrides,
   };
 }
-
-test('bridge transcript maps local and remote human profile images onto message avatars', () => {
-  const view = mapBridgeConversationToViewModel(conversation({
-    messages: [
-      {
-        id: 'msg-outbound',
-        direction: 'outbound',
-        sender: 'Me',
-        text: 'hello',
-        timeLabel: '09:56',
-        timestampMs: 1,
-      },
-      {
-        id: 'msg-inbound',
-        direction: 'inbound',
-        sender: 'Shenzhe',
-        text: 'hi',
-        timeLabel: '09:57',
-        timestampMs: 2,
-      },
-    ],
-  }), host({
-    profileImageUrl: 'https://images.test/me.png',
-    visiblePeers: [{
-      nodeId: 'node-peer',
-      displayName: 'Shenzhe',
-      runtime: 'person',
-      endpoint: 'https://bridge.test',
-      ownerName: 'Shenzhe',
-      createdAt: null,
-      sharedProjects: [],
-      humanId: 'human-peer',
-      agentId: null,
-      profileImageUrl: 'https://images.test/peer.png',
-      avatarSeed: 'peer-seed',
-    }],
-    visiblePeerCount: 1,
-  }), 'My Kordi');
-
-  assert.equal(view.messages[0]?.senderProfileImageUrl, 'https://images.test/me.png');
-  assert.equal(view.messages[1]?.senderProfileImageUrl, 'https://images.test/peer.png');
-  assert.equal(view.participantProfileImageUrls?.Me, 'https://images.test/me.png');
-  assert.equal(view.participantProfileImageUrls?.Shenzhe, 'https://images.test/peer.png');
-});
 
 test('bridge transcript keeps implicit direct person session messages as typed', () => {
   const requestId = 'bridge_req_direct';
