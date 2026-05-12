@@ -3,7 +3,10 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowLeft, Brush, ChevronRight, Copy, Download, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { CanvasEditorHandle } from './CanvasEditor';
 import { DocEditor } from './DocEditor';
+import { ExportCanvasDialog } from './ExportCanvasDialog';
+import type { CanvasExportOptions } from './download/exportCanvas';
 import type { TiptapNode } from './download/tiptapToPdfmake';
 import {
   createScratch,
@@ -18,11 +21,17 @@ import {
 import { kvGet, scratchStorageKey } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
 
-type DownloadHandlers = {
-  markdown: () => Promise<void>;
-  pdf: () => Promise<void>;
-  docx: () => Promise<void>;
-};
+type DownloadHandlers =
+  | {
+      kind: 'doc';
+      markdown: () => Promise<void>;
+      pdf: () => Promise<void>;
+      docx: () => Promise<void>;
+    }
+  | {
+      kind: 'canvas';
+      openDialog: () => void;
+    };
 
 const EMPTY_DOC: TiptapNode = { type: 'doc', content: [] };
 
@@ -32,6 +41,7 @@ function buildDocDownloadHandlers(sessionId: string, scratchId: string, scratchN
     return stored && typeof stored === 'object' ? stored : EMPTY_DOC;
   };
   return {
+    kind: 'doc',
     markdown: async () => {
       const [{ exportScratchMarkdown, renderJsonToMarkdown }, json] = await Promise.all([
         import('./download/exportMarkdown'),
@@ -151,7 +161,7 @@ function ScratchActionsMenu({
               <Copy className="h-3.5 w-3.5 opacity-70" />
               <span>Duplicate</span>
             </DropdownMenu.Item>
-            {onDownload ? (
+            {onDownload?.kind === 'doc' ? (
               <DropdownMenu.Sub>
                 <DropdownMenu.SubTrigger className={`${MENU_ITEM_CLASS} data-[state=open]:bg-white/10 data-[state=open]:text-white`}>
                   <Download className="h-3.5 w-3.5 opacity-70" />
@@ -180,6 +190,12 @@ function ScratchActionsMenu({
                   </DropdownMenu.SubContent>
                 </DropdownMenu.Portal>
               </DropdownMenu.Sub>
+            ) : null}
+            {onDownload?.kind === 'canvas' ? (
+              <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onDownload.openDialog}>
+                <Download className="h-3.5 w-3.5 opacity-70" />
+                <span className="flex-1">Download…</span>
+              </DropdownMenu.Item>
             ) : null}
             <DropdownMenu.Separator className="my-1 h-px bg-white/10" />
             <DropdownMenu.Item className={MENU_ITEM_DESTRUCTIVE_CLASS} onSelect={() => setConfirmOpen(true)}>
@@ -402,12 +418,22 @@ function NewScratchButton({
 
 function ScratchEditorView({ sessionId, active }: { sessionId: string; active: ScratchMetadata }) {
   const [editingName, setEditingName] = useState(false);
+  const [canvasExportOpen, setCanvasExportOpen] = useState(false);
+  const canvasRef = useRef<CanvasEditorHandle>(null);
   const KindIcon = active.kind === 'canvas' ? Brush : FileText;
 
-  const downloadHandlers = useMemo<DownloadHandlers | undefined>(
-    () => (active.kind === 'doc' ? buildDocDownloadHandlers(sessionId, active.id, active.name) : undefined),
-    [active.kind, active.id, active.name, sessionId],
-  );
+  const downloadHandlers = useMemo<DownloadHandlers | undefined>(() => {
+    if (active.kind === 'doc') return buildDocDownloadHandlers(sessionId, active.id, active.name);
+    if (active.kind === 'canvas') return { kind: 'canvas', openDialog: () => setCanvasExportOpen(true) };
+    return undefined;
+  }, [active.kind, active.id, active.name, sessionId]);
+
+  const handleCanvasExport = async (options: CanvasExportOptions) => {
+    const editor = canvasRef.current?.editor;
+    if (!editor) return;
+    const { exportScratchCanvas } = await import('./download/exportCanvas');
+    await exportScratchCanvas(editor, active.name, options);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -467,9 +493,17 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
         <DocEditor sessionId={sessionId} scratchId={active.id} />
       ) : (
         <Suspense fallback={<div className="scratch-canvas-loading">Loading canvas…</div>}>
-          <CanvasEditor sessionId={sessionId} scratchId={active.id} />
+          <CanvasEditor ref={canvasRef} sessionId={sessionId} scratchId={active.id} />
         </Suspense>
       )}
+      {active.kind === 'canvas' ? (
+        <ExportCanvasDialog
+          open={canvasExportOpen}
+          onOpenChange={setCanvasExportOpen}
+          scratchName={active.name}
+          onExport={handleCanvasExport}
+        />
+      ) : null}
     </div>
   );
 }
