@@ -4,6 +4,7 @@ import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import { useEffect, useRef } from 'react';
 
+import { touchScratch } from './scratchStore';
 import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -39,6 +40,7 @@ export function DocEditor({ sessionId, scratchId }: Props) {
       saveTimerRef.current = setTimeout(() => {
         const json = instance.getJSON();
         void kvSet(keyAtSchedule, json);
+        touchScratch(sessionId, scratchId);
       }, SAVE_DEBOUNCE_MS);
     },
   });

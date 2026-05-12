@@ -3,6 +3,7 @@ import 'tldraw/tldraw.css';
 import { Tldraw, getSnapshot, loadSnapshot, type Editor } from 'tldraw';
 import { useCallback, useEffect, useRef } from 'react';
 
+import { touchScratch } from './scratchStore';
 import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
 
 const SAVE_DEBOUNCE_MS = 1000;
@@ -41,6 +42,7 @@ export function CanvasEditor({ sessionId, scratchId }: Props) {
             try {
               const snapshot = getSnapshot(editor.store);
               void kvSet(keyAtSchedule, snapshot);
+              touchScratch(sessionId, scratchId);
             } catch {
               // serialisation failure, swallow
             }
