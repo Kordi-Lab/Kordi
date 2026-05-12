@@ -12,6 +12,9 @@ const PER_CHUNK_BUDGET_OVERRIDES = [
   // tldraw is ~1.4 MB by design; the canvas-vendor chunk is loaded lazily on
   // the first canvas-scratch open (see app/desktop/src/features/scratch).
   { prefix: 'canvas-vendor', limit: 1_500_000 },
+  // pdfmake (with embedded vfs fonts) + docx is ~1.5 MB; the download-vendor
+  // chunk is loaded lazily on the first doc-scratch download.
+  { prefix: 'download-vendor', limit: 2_000_000 },
 ];
 
 function budgetFor(chunkName) {
