@@ -393,6 +393,9 @@ export function useCloudBridgeState({
 
     const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
+    const messageReplyToId = envelope.message.replyToMessageId?.trim()
+      || envelope.message.requestId?.trim()
+      || null;
     if (senderIsAgent) {
       const owner = participantByAccount.get(envelope.message.senderAccountId);
       nextState = await upsertCanonicalIdentity({
@@ -422,8 +425,11 @@ export function useCloudBridgeState({
         sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
         timestampMs: envelope.message.createdAtMs,
         deliveryState: 'complete',
+        requestId: messageReplyToId,
+        replyToMessageId: messageReplyToId,
       } : undefined,
       createdAtMs: envelope.message.createdAtMs,
+      parentMessageId: senderIsAgent ? messageReplyToId : null,
       status: envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
       sourceTransport: 'cloud-group',
       sourceEventId: `cloud-group:${cloudMessage.messageId}`,
@@ -433,10 +439,15 @@ export function useCloudBridgeState({
       incrementLocalSessionUnread?.(envelope.groupId, 1);
     }
 
+    const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
+    const groupMessageMentionsLocalAgent = cloudMessageMentionsLocalAgent(
+      envelope.message.text,
+      account,
+      { allowFirstPerson: groupMessageIsOwn },
+    );
     if (
       !senderIsAgent
-      && envelope.message.senderAccountId !== account.accountId
-      && cloudMessageMentionsLocalAgent(envelope.message.text, account, { allowFirstPerson: false })
+      && groupMessageMentionsLocalAgent
       && isRecentCloudAgentMention(cloudMessage.createdAt)
       && !processedCloudAgentMentionIdsRef.current.has(envelope.message.id)
     ) {
@@ -444,6 +455,44 @@ export function useCloudBridgeState({
       void (async () => {
         const session = await loadSession();
         if (!session?.token) throw new Error('Not signed in.');
+        const agentIdentityId = `agent:cloud:${account.accountId}`;
+        const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
+        await upsertCanonicalIdentity({
+          id: agentIdentityId,
+          kind: 'agent',
+          displayName: agentDisplayName,
+          ownerIdentityId: localHumanIdentityId,
+          source: 'local',
+          sourceHostId: 'cloud',
+          bridgeNodeId: `cloud-agent:${account.accountId}`,
+          humanId: account.accountId,
+          agentId: `cloud-agent:${account.accountId}`,
+          avatarKey: `cloud-agent:${account.accountId}`,
+          profileImageUrl: null,
+          metadata: { accountId: account.accountId, cloudGroupAgent: true },
+        });
+        const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
+        const processingState = await appendCanonicalMessage({
+          id: processingMessageId,
+          sessionId: envelope.groupId,
+          senderIdentityId: agentIdentityId,
+          senderRole: 'owned-agent',
+          messageKind: 'agent-turn',
+          contentText: 'processing...',
+          content: {
+            sender: 'My Kordi',
+            timestampMs: Date.now(),
+            deliveryState: 'processing',
+            requestId: envelope.message!.id,
+            replyToMessageId: envelope.message!.id,
+          },
+          createdAtMs: Date.now(),
+          parentMessageId: envelope.message!.id,
+          status: 'processing',
+          sourceTransport: 'cloud-group-agent',
+          sourceEventId: `cloud-group-agent:${processingMessageId}`,
+        });
+        setCanonicalSessionState(processingState);
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
@@ -463,24 +512,10 @@ export function useCloudBridgeState({
           : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
         const targetAccountIds = [...participantByAccount.keys()].filter((accountId) => accountId !== account.accountId);
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
-        await upsertCanonicalIdentity({
-          id: `agent:cloud:${account.accountId}`,
-          kind: 'agent',
-          displayName: `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`,
-          ownerIdentityId: localHumanIdentityId,
-          source: 'local',
-          sourceHostId: 'cloud',
-          bridgeNodeId: `cloud-agent:${account.accountId}`,
-          humanId: account.accountId,
-          agentId: `cloud-agent:${account.accountId}`,
-          avatarKey: `cloud-agent:${account.accountId}`,
-          profileImageUrl: null,
-          metadata: { accountId: account.accountId, cloudGroupAgent: true },
-        });
         const responseState = await appendCanonicalMessage({
           id: responseMessageId,
           sessionId: envelope.groupId,
-          senderIdentityId: `agent:cloud:${account.accountId}`,
+          senderIdentityId: agentIdentityId,
           senderRole: 'owned-agent',
           messageKind: 'agent-turn',
           contentText: responseText,
@@ -488,8 +523,11 @@ export function useCloudBridgeState({
             sender: 'My Kordi',
             timestampMs: Date.now(),
             deliveryState: 'complete',
+            requestId: envelope.message!.id,
+            replyToMessageId: envelope.message!.id,
           },
           createdAtMs: Date.now(),
+          parentMessageId: envelope.message!.id,
           status: 'complete',
           sourceTransport: 'cloud-group-agent',
           sourceEventId: `cloud-group-agent:${responseMessageId}`,
@@ -509,7 +547,9 @@ export function useCloudBridgeState({
             text: responseText,
             createdAtMs: Date.now(),
             senderKind: 'agent',
-            senderDisplayName: `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`,
+            senderDisplayName: agentDisplayName,
+            replyToMessageId: envelope.message!.id,
+            requestId: envelope.message!.id,
           },
         });
         const sent = await Promise.allSettled(

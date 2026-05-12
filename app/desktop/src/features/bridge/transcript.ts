@@ -164,10 +164,25 @@ function historicalBridgeProcessingPlaceholderIds(conversation: DesktopBridgeCon
   const staleIds = new Set<string>();
   conversation.messages.forEach((message, index) => {
     if (!isBridgeProcessingResponsePlaceholder(conversation, message)) return;
-    const hasNewerTranscriptActivity = conversation.messages.slice(index + 1).some((laterMessage) => (
+    const requestId = message.requestId?.trim();
+    const newerMessages = conversation.messages.slice(index + 1);
+    const hasMatchingRequest = requestId
+      ? conversation.messages.some((candidate) => (
+        candidate.requestId?.trim() === requestId
+        && (candidate.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND || candidate.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND)
+      ))
+      : false;
+    const hasTerminalResponseForSameRequest = requestId
+      ? newerMessages.some((laterMessage) => (
+        laterMessage.requestId?.trim() === requestId
+        && isBridgeAgentResponseDirection(laterMessage)
+        && !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
+      ))
+      : false;
+    const hasNewerTranscriptActivityWithoutThread = (!requestId || !hasMatchingRequest) && newerMessages.some((laterMessage) => (
       !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
     ));
-    if (hasNewerTranscriptActivity) staleIds.add(message.id);
+    if (hasTerminalResponseForSameRequest || hasNewerTranscriptActivityWithoutThread) staleIds.add(message.id);
   });
   return staleIds;
 }

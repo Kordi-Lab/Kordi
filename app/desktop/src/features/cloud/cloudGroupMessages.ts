@@ -38,6 +38,8 @@ export type CloudGroupControlEnvelope = {
     createdAtMs: number;
     senderKind?: 'human' | 'agent' | null;
     senderDisplayName?: string | null;
+    replyToMessageId?: string | null;
+    requestId?: string | null;
   } | null;
 };
 
@@ -121,6 +123,8 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         createdAtMs,
         senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
         senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
+        replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
+        requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
       };
     }
     return {

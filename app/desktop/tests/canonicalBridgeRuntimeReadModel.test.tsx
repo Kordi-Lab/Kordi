@@ -1185,3 +1185,49 @@ test('canonical read model preserves fresh bridge session-relay processing place
 
   assert.equal(messages.some((message) => message.turn?.status === 'processing'), true);
 });
+
+test('canonical read model anchors cloud group agent progress and replies to their request', () => {
+  const sessionId = 'session:group:cloud-sequence';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:me',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: "Me's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:me', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@MesKordi hello', content: { sender: 'Peer' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
+      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: 'My Kordi', deliveryState: 'processing', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'processing', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-processing' },
+      { id: 'msg:response', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello from Kordi.', content: { sender: 'My Kordi', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: [] } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
+  const agentTurns = conversation?.messages.filter((message) => message.turn) ?? [];
+
+  assert.deepEqual(conversation?.messages.map((message) => message.id), ['msg:request', 'msg:response']);
+  assert.equal(agentTurns.length, 1);
+  assert.equal(agentTurns[0]?.replyToMessageId, 'msg:request');
+  assert.equal(agentTurns[0]?.turn?.replyToMessageId, 'msg:request');
+});

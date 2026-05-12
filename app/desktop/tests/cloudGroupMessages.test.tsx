@@ -33,7 +33,14 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
       { accountId: 'acct_b', displayName: 'Bob', avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`, role: 'person' },
     ],
-    message: { id: 'msg_1', senderAccountId: 'acct_a', text: 'hello group', createdAtMs: 123 },
+    message: {
+      id: 'msg_1',
+      senderAccountId: 'acct_a',
+      text: 'hello group',
+      createdAtMs: 123,
+      replyToMessageId: 'msg_request',
+      requestId: 'msg_request',
+    },
   });
 
   const parsed = parseCloudGroupControl(body);
@@ -41,6 +48,8 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.groupId, 'session:group:one');
   assert.equal(parsed?.participants[1]?.avatarUrl, `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`);
   assert.equal(parsed?.message?.text, 'hello group');
+  assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
+  assert.equal(parsed?.message?.requestId, 'msg_request');
 });
 
 test('cloud group messages carry concrete session id separately from shared group space id', () => {

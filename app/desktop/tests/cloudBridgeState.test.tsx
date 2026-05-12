@@ -393,6 +393,51 @@ test('active cloud agent conversations do not remove the contact conversation', 
   assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer'), true);
 });
 
+test('cloud parallel agent mentions keep request-specific processing and replies', () => {
+  const firstRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_first_agent_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi check openclaw',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const secondRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_second_agent_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi are you ok?',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T10:01:00Z',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_first_agent_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_first_agent_request', text: 'OpenClaw is an agent project.' }),
+    direction: 'incoming',
+    createdAt: '2026-05-11T10:02:00Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [firstRequest, secondRequest, firstResponse] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const firstRequestViewId = 'bridge-message:bridge:cloud:acct_peer:person:msg_first_agent_request';
+  const secondRequestViewId = 'bridge-message:bridge:cloud:acct_peer:person:msg_second_agent_request';
+  const firstReply = view.messages.find((candidate) => candidate.id?.includes('msg_first_agent_response'));
+  const pendingReplies = view.messages.filter((candidate) => candidate.turn?.status === 'processing');
+
+  assert.equal(firstReply?.replyToMessageId, firstRequestViewId);
+  assert.equal(pendingReplies.length, 1);
+  assert.equal(pendingReplies[0]?.replyToMessageId, secondRequestViewId);
+});
+
 test('cloud human mentions do not start cloud-agent processing UI', () => {
   const humanMention: CloudMessage = {
     ...message,
