@@ -767,7 +767,14 @@ export function LmStudioModelControlCenter({
                   : 'border-white/10 bg-white/[0.045] text-slate-200',
               )}
               >
-                {actionError ?? actionMessage}
+                <div>{actionError ?? actionMessage}</div>
+                {setupNeedsInstallRefresh ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <AuthActionButton className={modelControlStopClass} onClick={refreshLmStudioInstall} disabled={activeAction === 'refresh-install'}>
+                      <Download className="h-3.5 w-3.5" /> {activeAction === 'refresh-install' ? 'Repairing…' : (setupAction('refresh-install')?.label ?? 'Repair lms install')}
+                    </AuthActionButton>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
