@@ -29,7 +29,7 @@ test('canonical group conversation title prefers synced custom group name over f
       createdByIdentityId: 'human:me',
       primaryIdentityId: null,
       relationshipIdentityId: null,
-      metadata: { customName: '1111', groupId: sessionId, groupSpaceId: sessionId },
+      metadata: { customName: '1111', groupId: sessionId, groupSpaceId: sessionId, createdFrom: 'cloud-group-sync' },
       createdAtMs: 1,
       updatedAtMs: 2,
       lastMessageAtMs: 2,

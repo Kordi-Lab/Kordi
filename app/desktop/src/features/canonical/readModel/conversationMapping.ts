@@ -209,8 +209,10 @@ export function sessionConversationDisplayTitle(
   options: { preferFallback?: boolean } = {},
 ) {
   const metadata = sessionMetadata(session);
-  const groupCustomName = session.kind === 'group' ? stringValue(metadata.customName) : null;
-  return groupCustomName
+  const cloudGroupCustomName = session.kind === 'group' && stringValue(metadata.createdFrom) === 'cloud-group-sync'
+    ? stringValue(metadata.customName)
+    : null;
+  return cloudGroupCustomName
     ?? directPersonContactTitle(session, participants)
     ?? sessionDisplayTitle(messages, fallback, options);
 }

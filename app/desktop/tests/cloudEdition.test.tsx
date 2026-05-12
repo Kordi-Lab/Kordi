@@ -116,7 +116,7 @@ test('social buttons render icon marks and no provider text label', () => {
   assert.match(markup, /data-provider="github"[\s\S]*?<svg/);
   assert.doesNotMatch(markup, /data-provider="x"/);
   // The Google brand fingerprint (a known fill colour from the canonical 4-color G).
-  assert.match(markup, /fill="#FFC107"/);
+  assert.match(markup, /fill="#FBBC05"/);
   // The visible provider names should NOT appear inside the social buttons themselves.
   assert.doesNotMatch(markup, /<button[^>]*data-provider="google"[^>]*>[^<]*Google/);
   assert.doesNotMatch(markup, /<button[^>]*data-provider="github"[^>]*>[^<]*GitHub/);
