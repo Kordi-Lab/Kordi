@@ -436,6 +436,10 @@ test('cloud parallel agent mentions keep request-specific processing and replies
   assert.equal(firstReply?.replyToMessageId, firstRequestViewId);
   assert.equal(pendingReplies.length, 1);
   assert.equal(pendingReplies[0]?.replyToMessageId, secondRequestViewId);
+  assert.deepEqual(pendingReplies[0]?.turn?.pendingBridgeAgentRequest, {
+    conversationId: 'bridge:cloud:acct_peer:person',
+    requestId: 'msg_second_agent_request',
+  });
 });
 
 test('cloud human mentions do not start cloud-agent processing UI', () => {

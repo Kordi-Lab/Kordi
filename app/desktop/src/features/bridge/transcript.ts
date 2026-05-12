@@ -377,6 +377,10 @@ export function mapBridgeConversationToViewModel(
           succeeded: responseCancelled ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
           error: localTurn?.error ?? null,
           replyToMessageId,
+          pendingBridgeAgentRequest: isLiveAgentReply && message.requestId?.trim() ? {
+            conversationId: conversation.id,
+            requestId: message.requestId.trim(),
+          } : null,
         },
       }];
     }
