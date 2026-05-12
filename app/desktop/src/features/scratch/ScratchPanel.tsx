@@ -1,10 +1,12 @@
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowLeft, Brush, Copy, FileText, HelpCircle, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, Brush, Copy, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 import { DocEditor } from './DocEditor';
 import {
   createScratch,
+  deleteScratch,
   duplicateScratch,
   formatRelativeTime,
   renameScratch,
@@ -15,46 +17,115 @@ import {
 import type { ScratchKind, ScratchMetadata } from './types';
 
 const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-200 outline-none transition data-[highlighted]:bg-white/10 data-[highlighted]:text-white';
+const MENU_ITEM_DESTRUCTIVE_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-red-300 outline-none transition data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200';
 
-function ScratchActionsMenu({
-  onRename,
-  onDuplicate,
+function ConfirmDeleteDialog({
+  open,
+  onOpenChange,
+  scratchName,
+  onConfirm,
 }: {
-  onRename: () => void;
-  onDuplicate: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scratchName: string;
+  onConfirm: () => void;
 }) {
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-white/5 hover:text-white"
-          title="More actions"
-          aria-label="More actions"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          side="bottom"
-          sideOffset={6}
-          collisionPadding={8}
-          className="z-50 min-w-[160px] rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] p-1.5 text-[13px] text-slate-200 shadow-2xl backdrop-blur-md"
-        >
-          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onRename}>
-            <Pencil className="h-3.5 w-3.5 opacity-70" />
-            <span>Rename</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onDuplicate}>
-            <Copy className="h-3.5 w-3.5 opacity-70" />
-            <span>Duplicate</span>
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[400px] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] p-5 text-slate-200 shadow-2xl">
+          <AlertDialog.Title className="mb-2 text-[14px] font-semibold text-white">
+            Delete this scratch?
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mb-4 text-[12px] text-slate-400">
+            &ldquo;{scratchName}&rdquo; will be permanently removed. This cannot be undone.
+          </AlertDialog.Description>
+          <div className="flex justify-end gap-2">
+            <AlertDialog.Cancel asChild>
+              <button
+                type="button"
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-[12px] text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="rounded-md border border-red-500/40 bg-red-500/20 px-3 py-1.5 text-[12px] font-medium text-red-100 transition hover:bg-red-500/30"
+              >
+                Delete
+              </button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
+function ScratchActionsMenu({
+  scratchName,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  scratchName: string;
+  onRename: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-white/5 hover:text-white"
+            title="More actions"
+            aria-label="More actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="end"
+            side="bottom"
+            sideOffset={6}
+            collisionPadding={8}
+            className="z-50 min-w-[160px] rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] p-1.5 text-[13px] text-slate-200 shadow-2xl backdrop-blur-md"
+          >
+            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onRename}>
+              <Pencil className="h-3.5 w-3.5 opacity-70" />
+              <span>Rename</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onDuplicate}>
+              <Copy className="h-3.5 w-3.5 opacity-70" />
+              <span>Duplicate</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-white/10" />
+            <DropdownMenu.Item className={MENU_ITEM_DESTRUCTIVE_CLASS} onSelect={() => setConfirmOpen(true)}>
+              <Trash2 className="h-3.5 w-3.5 opacity-80" />
+              <span>Delete</span>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <ConfirmDeleteDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        scratchName={scratchName}
+        onConfirm={() => {
+          onDelete();
+          setConfirmOpen(false);
+        }}
+      />
+    </>
   );
 }
 
@@ -209,9 +280,13 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                   </button>
                   <div className="shrink-0 pr-1">
                     <ScratchActionsMenu
+                      scratchName={scratch.name}
                       onRename={() => setEditingId(scratch.id)}
                       onDuplicate={() => {
                         duplicateScratch(sessionId, scratch.id);
+                      }}
+                      onDelete={() => {
+                        deleteScratch(sessionId, scratch.id);
                       }}
                     />
                   </div>
@@ -293,9 +368,13 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <ScratchActionsMenu
+          scratchName={active.name}
           onRename={() => setEditingName(true)}
           onDuplicate={() => {
             duplicateScratch(sessionId, active.id);
+          }}
+          onDelete={() => {
+            deleteScratch(sessionId, active.id);
           }}
         />
       </div>
