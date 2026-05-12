@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { kvGet, kvSet } from './storage/indexedDb';
+import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
 
 const EMPTY: readonly ScratchMetadata[] = Object.freeze([]);
@@ -121,6 +121,37 @@ export function setActiveScratchId(sessionId: string, scratchId: string | null) 
   if (!sessionId) return;
   activeScratchBySession.set(sessionId, scratchId);
   notify();
+}
+
+export function duplicateScratch(sessionId: string, scratchId: string): ScratchMetadata | null {
+  if (!sessionId || !scratchId) return null;
+  const list = scratchListBySession.get(sessionId);
+  if (!list) return null;
+  const source = list.find((s) => s.id === scratchId);
+  if (!source) return null;
+  const now = Date.now();
+  const meta: ScratchMetadata = {
+    id: `scratch_${uuid()}`,
+    kind: source.kind,
+    name: `${source.name} (copy)`,
+    createdAt: now,
+    updatedAt: now,
+  };
+  scratchListBySession.set(sessionId, [meta, ...list]);
+  notify();
+  persistList(sessionId);
+  // Copy content asynchronously; missing source content is fine (new scratch is empty)
+  void (async () => {
+    try {
+      const content = await kvGet<unknown>(scratchStorageKey(sessionId, scratchId));
+      if (content !== null && content !== undefined) {
+        await kvSet(scratchStorageKey(sessionId, meta.id), content);
+      }
+    } catch {
+      // ignore: duplicate proceeds with empty content
+    }
+  })();
+  return meta;
 }
 
 export function renameScratch(sessionId: string, scratchId: string, name: string) {
