@@ -21,6 +21,7 @@ export default defineConfig({
         codeSplitting: {
           minSize: 20_000,
           groups: [
+            { name: 'editor-vendor', test: /[\\/]node_modules[\\/](@tiptap|tiptap-markdown|prosemirror-.+)[\\/]/ },
             { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
             { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
             { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },
