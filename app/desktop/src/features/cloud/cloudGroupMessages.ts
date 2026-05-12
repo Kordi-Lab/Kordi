@@ -146,35 +146,65 @@ export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelo
   return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
 }
 
+function cloudTitleUpdateNoticeRequest(input: {
+  envelope: CloudGroupControlEnvelope;
+  actorIdentityId: string;
+  createdAtMs: number;
+  cloudMessageId: string;
+  scope: 'group' | 'session';
+  title: string | null;
+}): AppendCanonicalMessageRequest | null {
+  const title = cloudGroupNonGenericTitle(input.title);
+  const actorIdentityId = cleanText(input.actorIdentityId);
+  if (!title || !actorIdentityId) return null;
+  const actorDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
+  const cloudMessageId = cleanText(input.cloudMessageId) || `${input.envelope.groupId}:${input.createdAtMs}`;
+  const noticeKind = input.scope === 'group' ? 'group-title-update' : 'session-title-update';
+  const transport = input.scope === 'group' ? 'cloud-group-title-update' : 'cloud-group-session-title-update';
+  return {
+    id: `cloud-${input.scope}-title-notice:${cloudMessageId}`,
+    sessionId: input.envelope.groupId,
+    senderIdentityId: actorIdentityId,
+    senderRole: 'system',
+    messageKind: 'status',
+    contentText: `${actorDisplayName} changed the ${input.scope} name to ${title}`,
+    content: {
+      kind: noticeKind,
+      scope: input.scope,
+      title,
+      actorDisplayName,
+    },
+    createdAtMs: input.createdAtMs,
+    status: 'complete',
+    sourceTransport: transport,
+    sourceEventId: `${transport}:${cloudMessageId}`,
+  };
+}
+
+export function cloudGroupTitleUpdateNoticeRequest(input: {
+  envelope: CloudGroupControlEnvelope;
+  actorIdentityId: string;
+  createdAtMs: number;
+  cloudMessageId: string;
+}): AppendCanonicalMessageRequest | null {
+  return cloudTitleUpdateNoticeRequest({
+    ...input,
+    scope: 'group',
+    title: shouldApplyCloudGroupTitleUpdate(input.envelope) ? input.envelope.groupTitle : null,
+  });
+}
+
 export function cloudSessionTitleUpdateNoticeRequest(input: {
   envelope: CloudGroupControlEnvelope;
   actorIdentityId: string;
   createdAtMs: number;
   cloudMessageId: string;
 }): AppendCanonicalMessageRequest | null {
-  const title = cloudSessionTitleUpdateTitle(input.envelope);
-  const actorIdentityId = cleanText(input.actorIdentityId);
-  if (!title || !actorIdentityId) return null;
-  const actorDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
-  const cloudMessageId = cleanText(input.cloudMessageId) || `${input.envelope.groupId}:${input.createdAtMs}`;
-  return {
-    id: `cloud-session-title-notice:${cloudMessageId}`,
-    sessionId: input.envelope.groupId,
-    senderIdentityId: actorIdentityId,
-    senderRole: 'system',
-    messageKind: 'status',
-    contentText: `${actorDisplayName} changed the session name to ${title}`,
-    content: {
-      kind: 'session-title-update',
-      scope: 'session',
-      title,
-      actorDisplayName,
-    },
-    createdAtMs: input.createdAtMs,
-    status: 'complete',
-    sourceTransport: 'cloud-group-session-title-update',
-    sourceEventId: `cloud-group-session-title-update:${cloudMessageId}`,
-  };
+  return cloudTitleUpdateNoticeRequest({
+    ...input,
+    scope: 'session',
+    title: cloudSessionTitleUpdateTitle(input.envelope),
+  });
 }
 
 function encodeBase64Url(value: string): string {

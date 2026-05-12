@@ -57,6 +57,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
+  cloudGroupTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
@@ -355,9 +356,24 @@ export function useCloudBridgeState({
       .map(([, identityId]) => identityId);
     const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
     const explicitGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? cloudGroupNonGenericTitle(envelope.groupTitle) : null;
+    const isSelfAuthoredControl = envelope.actor.accountId === account.accountId || envelope.createdByAccountId === account.accountId;
     const groupTitle = explicitGroupTitle || 'Cloud group';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
+    const groupMetadata = {
+      schemaVersion: 1,
+      kind: 'chat-group',
+      ...(explicitGroupTitle ? { customName: explicitGroupTitle } : {}),
+      groupId: groupSpaceId,
+      groupSpaceId,
+      adminIdentityIds: [createdByIdentityId],
+      initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
+      initialParticipantNames: participantNames,
+      memberApprovalPolicy: 'under-50-open',
+      createdFrom: 'cloud-group-sync',
+    };
+    const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
+    const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
     nextState = await openOrCreateCanonicalSession({
       id: envelope.groupId,
       kind: 'group',
@@ -367,18 +383,7 @@ export function useCloudBridgeState({
       primaryIdentityId: null,
       relationshipIdentityId: null,
       participantIdentityIds,
-      metadata: {
-        schemaVersion: 1,
-        kind: 'chat-group',
-        customName: explicitGroupTitle ?? null,
-        groupId: groupSpaceId,
-        groupSpaceId,
-        adminIdentityIds: [createdByIdentityId],
-        initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
-        initialParticipantNames: participantNames,
-        memberApprovalPolicy: 'under-50-open',
-        createdFrom: 'cloud-group-sync',
-      },
+      metadata: groupMetadata,
     });
     setCanonicalSessionState(nextState);
 
@@ -390,16 +395,17 @@ export function useCloudBridgeState({
         requestedByIdentityId: actorIdentityId,
       });
       setCanonicalSessionState(nextState);
-      const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
-      const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
-        envelope,
-        actorIdentityId,
-        createdAtMs: Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now(),
-        cloudMessageId: cloudMessage.messageId,
-      });
-      if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-        nextState = await appendCanonicalMessage(noticeRequest);
-        setCanonicalSessionState(nextState);
+      if (!isSelfAuthoredControl) {
+        const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
+          envelope,
+          actorIdentityId,
+          createdAtMs: controlCreatedAtMs,
+          cloudMessageId: cloudMessage.messageId,
+        });
+        if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
+          nextState = await appendCanonicalMessage(noticeRequest);
+          setCanonicalSessionState(nextState);
+        }
       }
     }
 
@@ -407,20 +413,21 @@ export function useCloudBridgeState({
       nextState = await updateCanonicalSessionMetadata({
         sessionId: envelope.groupId,
         requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
-        metadata: {
-          schemaVersion: 1,
-          kind: 'chat-group',
-          customName: explicitGroupTitle ?? null,
-          groupId: groupSpaceId,
-          groupSpaceId,
-          adminIdentityIds: [createdByIdentityId],
-          initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
-          initialParticipantNames: participantNames,
-          memberApprovalPolicy: 'under-50-open',
-          createdFrom: 'cloud-group-sync',
-        },
+        metadata: groupMetadata,
       });
       setCanonicalSessionState(nextState);
+      if (!isSelfAuthoredControl) {
+        const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
+          envelope,
+          actorIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+          createdAtMs: controlCreatedAtMs,
+          cloudMessageId: cloudMessage.messageId,
+        });
+        if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
+          nextState = await appendCanonicalMessage(noticeRequest);
+          setCanonicalSessionState(nextState);
+        }
+      }
     }
 
     if (envelope.kind !== 'group-message' || !envelope.message) return;

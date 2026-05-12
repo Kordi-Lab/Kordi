@@ -25,6 +25,7 @@ import {
   shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
   cloudSessionTitleUpdateTitle,
+  cloudGroupTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateNoticeRequest,
   shouldRouteMentionThroughCloudGroup,
 } from '../src/features/cloud/cloudGroupMessages';
@@ -228,6 +229,34 @@ test('only explicit group title update controls mutate the shared group name', (
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
+});
+
+test('group title updates build a remote visible group rename notice separately from session titles', () => {
+  const request = cloudGroupTitleUpdateNoticeRequest({
+    envelope: {
+      kind: 'group-title-update',
+      groupId: 'session:group:cloud',
+      groupSpaceId: 'space:cloud',
+      groupTitle: 'Good group',
+      createdByAccountId: 'acct_sender',
+      actor: { accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null },
+      participants: [{ accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null }],
+      message: null,
+    },
+    actorIdentityId: 'human:cloud:acct_sender',
+    createdAtMs: 1234,
+    cloudMessageId: 'cloud-msg-group-rename',
+  });
+
+  assert.equal(request?.id, 'cloud-group-title-notice:cloud-msg-group-rename');
+  assert.equal(request?.sessionId, 'session:group:cloud');
+  assert.equal(request?.contentText, '杨谢 changed the group name to Good group');
+  assert.deepEqual(request?.content, {
+    kind: 'group-title-update',
+    scope: 'group',
+    title: 'Good group',
+    actorDisplayName: '杨谢',
+  });
 });
 
 test('session title updates build a remote visible rename notice without changing group metadata', () => {
