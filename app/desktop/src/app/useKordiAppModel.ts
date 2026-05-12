@@ -1382,10 +1382,6 @@ export function useKordiAppModel() {
           throw new Error('A group session needs at least 2 other people.');
         }
 
-        const adminIds = sourceSessionId
-          ? uniqueStrings(activeGroupAdminIds(canonicalSessionState, sourceSessionId))
-          : [];
-        const metadataAdminIds = adminIdentityIdsFromMetadata(sourceMetadata);
         const customName = metadataString(sourceMetadata, 'customName') || space.title;
         const participantNames = members.map((member) => member.name);
         const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
@@ -1405,7 +1401,7 @@ export function useKordiAppModel() {
             customName,
             groupId: groupSpaceId,
             groupSpaceId,
-            adminIdentityIds: uniqueStrings([creatorIdentityId, ...adminIds, ...metadataAdminIds]),
+            adminIdentityIds: [creatorIdentityId],
             initialContactIds: metadataStringArray(sourceMetadata, 'initialContactIds'),
             initialParticipantNames: uniqueStrings([
               ...metadataStringArray(sourceMetadata, 'initialParticipantNames'),
