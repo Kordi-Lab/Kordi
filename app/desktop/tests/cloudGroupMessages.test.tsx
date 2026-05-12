@@ -25,6 +25,7 @@ import {
   shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
   cloudSessionTitleUpdateTitle,
+  cloudSessionTitleUpdateNoticeRequest,
   shouldRouteMentionThroughCloudGroup,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
@@ -227,6 +228,36 @@ test('only explicit group title update controls mutate the shared group name', (
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
+});
+
+test('session title updates build a remote visible rename notice without changing group metadata', () => {
+  const request = cloudSessionTitleUpdateNoticeRequest({
+    envelope: {
+      kind: 'session-title-update',
+      groupId: 'session:group:cloud',
+      groupSpaceId: 'space:cloud',
+      groupTitle: 'Sprint follow-up',
+      createdByAccountId: 'acct_sender',
+      actor: { accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null },
+      participants: [{ accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null }],
+      message: null,
+    },
+    actorIdentityId: 'human:cloud:acct_sender',
+    createdAtMs: 1234,
+    cloudMessageId: 'cloud-msg-rename',
+  });
+
+  assert.equal(request?.id, 'cloud-session-title-notice:cloud-msg-rename');
+  assert.equal(request?.sessionId, 'session:group:cloud');
+  assert.equal(request?.senderRole, 'system');
+  assert.equal(request?.messageKind, 'status');
+  assert.equal(request?.contentText, '杨谢 changed the session name to Sprint follow-up');
+  assert.deepEqual(request?.content, {
+    kind: 'session-title-update',
+    scope: 'session',
+    title: 'Sprint follow-up',
+    actorDisplayName: '杨谢',
+  });
 });
 
 test('cloud group local agent requests are considered handled after a synced processing or final response', () => {
