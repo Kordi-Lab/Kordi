@@ -1,4 +1,10 @@
-use std::{process::Command, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    thread,
+    time::Duration,
+};
 
 use futures_util::stream::{self, StreamExt};
 use serde::Serialize;
@@ -9,7 +15,7 @@ mod parsing;
 
 use environment::{
     add_lm_studio_bin_to_shell_path, find_lm_studio_app_path, find_lm_studio_bin_dir,
-    lm_studio_environment, lms_command,
+    find_lm_studio_home_dir, lm_studio_environment, lms_command,
 };
 use parsing::{
     canonical_lm_studio_model_id, collect_rest_loaded_llm_model_ids,
@@ -98,12 +104,7 @@ pub async fn desktop_lm_studio_environment() -> Result<DesktopLmStudioEnvironmen
 
 #[tauri::command]
 pub async fn desktop_lm_studio_open_app() -> Result<DesktopLmStudioCommandResult, String> {
-    let app_path = find_lm_studio_app_path().ok_or_else(|| {
-        "LM Studio.app was not found in /Applications or ~/Applications.".to_string()
-    })?;
-    let mut command = Command::new("/usr/bin/open");
-    command.arg(&app_path);
-    run_command(command, format!("open {}", app_path.display())).await
+    open_lm_studio_app_command().await
 }
 
 #[tauri::command]
@@ -267,9 +268,62 @@ pub async fn desktop_lm_studio_install() -> Result<DesktopLmStudioCommandResult,
         );
     }
 
-    let mut command = Command::new("/bin/sh");
-    command.arg("-c").arg(LM_STUDIO_INSTALL_COMMAND);
-    run_command(command, LM_STUDIO_INSTALL_COMMAND.to_string()).await
+    run_lm_studio_installer().await
+}
+
+#[tauri::command]
+pub async fn desktop_lm_studio_refresh_install() -> Result<DesktopLmStudioCommandResult, String> {
+    if !cfg!(target_family = "unix") {
+        return Err(
+            "LM Studio install repair is currently supported on macOS and Linux.".to_string(),
+        );
+    }
+
+    let mut steps = Vec::new();
+    steps.extend(quit_lm_studio_for_refresh());
+
+    if let Some(home) = find_lm_studio_home_dir() {
+        let removed = remove_lms_passkey_files_in_home(&home)?;
+        if removed.is_empty() {
+            steps.push(format!(
+                "No stale lms passkey files found in {}.",
+                home.display()
+            ));
+        } else {
+            steps.push(format!(
+                "Removed {} stale lms passkey file(s). Local models were left untouched.",
+                removed.len()
+            ));
+        }
+    } else {
+        steps.push(
+            "LM Studio home was not found yet; installer will recreate it if needed.".to_string(),
+        );
+    }
+
+    let installer = run_lm_studio_installer().await?;
+    steps.push("Ran the official LM Studio install/update helper.".to_string());
+
+    match open_lm_studio_app_command().await {
+        Ok(_) => {
+            steps.push("Opened LM Studio so it can recreate a fresh lms CLI passkey.".to_string())
+        }
+        Err(error) => steps.push(format!(
+            "Installer finished, but Kordi could not reopen LM Studio automatically: {error}"
+        )),
+    }
+
+    let installer_output = result_output_summary(&installer);
+    if !installer_output.is_empty() {
+        steps.push(format!("Installer output: {installer_output}"));
+    }
+
+    Ok(DesktopLmStudioCommandResult {
+        command: "refresh LM Studio lms install".to_string(),
+        status_code: Some(0),
+        stdout: steps.join("\n"),
+        stderr: installer.stderr,
+    })
 }
 
 #[tauri::command]
@@ -738,6 +792,114 @@ fn lm_studio_rest_models_endpoint(base_url: &str) -> Result<reqwest::Url, String
     validate_lm_studio_local_url(url)
 }
 
+async fn run_lm_studio_installer() -> Result<DesktopLmStudioCommandResult, String> {
+    let mut command = Command::new("/bin/sh");
+    command.arg("-c").arg(LM_STUDIO_INSTALL_COMMAND);
+    run_command(command, LM_STUDIO_INSTALL_COMMAND.to_string()).await
+}
+
+async fn open_lm_studio_app_command() -> Result<DesktopLmStudioCommandResult, String> {
+    let app_path = find_lm_studio_app_path().ok_or_else(|| {
+        "LM Studio.app was not found in /Applications or ~/Applications.".to_string()
+    })?;
+    let mut command = Command::new("/usr/bin/open");
+    command.arg(&app_path);
+    run_command(command, format!("open {}", app_path.display())).await
+}
+
+fn quit_lm_studio_for_refresh() -> Vec<String> {
+    let mut steps = Vec::new();
+
+    if cfg!(target_os = "macos") {
+        let _ = Command::new("/usr/bin/osascript")
+            .arg("-e")
+            .arg("tell application \"LM Studio\" to quit")
+            .output();
+        steps.push("Asked LM Studio to quit.".to_string());
+        thread::sleep(Duration::from_millis(1200));
+    }
+
+    for (program, args, label) in [
+        (
+            "pkill",
+            &["-x", "llmster"][..],
+            "Stopped LM Studio background runtime processes.",
+        ),
+        (
+            "pkill",
+            &["-f", ".lmstudio/llmster"][..],
+            "Stopped LM Studio bundled runtime helpers.",
+        ),
+        (
+            "pkill",
+            &["-f", "LM Studio.app"][..],
+            "Stopped remaining LM Studio app processes.",
+        ),
+    ] {
+        if Command::new(program)
+            .args(args)
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            steps.push(label.to_string());
+        }
+    }
+
+    steps
+}
+
+fn lms_passkey_files_in_home(home: &Path) -> Result<Vec<PathBuf>, String> {
+    let internal = home.join(".internal");
+    if !internal.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(&internal)
+        .map_err(|err| format!("Unable to inspect {}: {err}", internal.display()))?
+    {
+        let entry =
+            entry.map_err(|err| format!("Unable to inspect {}: {err}", internal.display()))?;
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("lms-key"))
+        {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn remove_lms_passkey_files_in_home(home: &Path) -> Result<Vec<PathBuf>, String> {
+    let paths = lms_passkey_files_in_home(home)?;
+    for path in &paths {
+        fs::remove_file(path)
+            .map_err(|err| format!("Unable to remove {}: {err}", path.display()))?;
+    }
+    Ok(paths)
+}
+
+fn result_output_summary(result: &DesktopLmStudioCommandResult) -> String {
+    result
+        .stdout
+        .trim()
+        .lines()
+        .chain(result.stderr.trim().lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn validate_lm_studio_local_url(url: reqwest::Url) -> Result<reqwest::Url, String> {
     let is_loopback = matches!(url.scheme(), "http" | "https")
         && url.host_str().is_some_and(|host| {
@@ -784,12 +946,31 @@ async fn run_command(
         } else {
             result.stderr.trim()
         };
-        Err(if detail.is_empty() {
-            format!("`{display_command}` failed")
-        } else {
-            format!("`{display_command}` failed: {detail}")
-        })
+        Err(friendly_lms_command_failure(&display_command, detail))
     }
+}
+
+fn lms_output_mentions_invalid_passkey(value: &str) -> bool {
+    let normalized = value.to_lowercase();
+    normalized.contains("invalid passkey")
+        || (normalized.contains("failed to authenticate") && normalized.contains("lms cli client"))
+}
+
+fn friendly_lms_command_failure(display_command: &str, detail: &str) -> String {
+    if detail.trim().is_empty() {
+        return format!("`{display_command}` failed");
+    }
+
+    if lms_output_mentions_invalid_passkey(detail) {
+        return format!(
+            "LM Studio rejected the lms CLI passkey while running `{display_command}`. \
+This usually means the running LM Studio app and the lms CLI/key on disk are out of sync. \
+Quit LM Studio completely. Open LM Studio again, then in Kordi open Authentication → LM Studio and click Check setup / Refresh installed. \
+If it still fails, update LM Studio and click Add lms to PATH so Kordi uses LM Studio's bundled CLI.\n\nOriginal lms output:\n{detail}"
+        );
+    }
+
+    format!("`{display_command}` failed: {detail}")
 }
 
 fn clean_command_output(value: &str) -> String {
@@ -866,8 +1047,8 @@ fn truncate_output(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        context_search_step, lm_studio_models_endpoint, load_context_fallbacks,
-        server_status_from_output,
+        context_search_step, friendly_lms_command_failure, lm_studio_models_endpoint,
+        load_context_fallbacks, remove_lms_passkey_files_in_home, server_status_from_output,
     };
 
     #[test]
@@ -898,5 +1079,46 @@ mod tests {
         let stopped = server_status_from_output("", "The server is not running.\n");
         assert!(!stopped.running);
         assert_eq!(stopped.detail, "The server is not running.");
+    }
+
+    #[test]
+    fn lms_passkey_failure_is_reported_with_recovery_steps() {
+        let raw = "[LMStudioClient][Repository][ClientPort][WsClientTransport:AuthenticatedWsClientTransport] WebSocket error: Error: Failed to authenticate: Invalid passkey for lms CLI client. Please make sure you are using the lms shipped with LM Studio.\nError: WebSocket connection closed";
+        let message = friendly_lms_command_failure("lms ls --json", raw);
+
+        assert!(message.contains("LM Studio rejected the lms CLI passkey"));
+        assert!(message.contains("Quit LM Studio completely"));
+        assert!(message.contains("Open LM Studio again"));
+        assert!(message.contains("Add lms to PATH"));
+        assert!(message.contains("Original lms output"));
+    }
+
+    #[test]
+    fn lms_non_passkey_failure_keeps_command_context() {
+        let message = friendly_lms_command_failure("lms ls --json", "boom");
+        assert_eq!(message, "`lms ls --json` failed: boom");
+    }
+
+    #[test]
+    fn lms_passkey_cleanup_removes_only_lms_key_files() {
+        let home =
+            std::env::temp_dir().join(format!("kordi-lms-passkey-cleanup-{}", std::process::id()));
+        let internal = home.join(".internal");
+        let models = home.join("models");
+        std::fs::create_dir_all(&internal).unwrap();
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(internal.join("lms-key-2"), "stale-passkey").unwrap();
+        std::fs::write(internal.join("lms-key-backup"), "stale-passkey").unwrap();
+        std::fs::write(internal.join("settings.json"), "{}").unwrap();
+        std::fs::write(models.join("model.gguf"), "model").unwrap();
+
+        let removed = remove_lms_passkey_files_in_home(&home).unwrap();
+
+        assert_eq!(removed.len(), 2);
+        assert!(!internal.join("lms-key-2").exists());
+        assert!(!internal.join("lms-key-backup").exists());
+        assert!(internal.join("settings.json").exists());
+        assert!(models.join("model.gguf").exists());
+        let _ = std::fs::remove_dir_all(home);
     }
 }

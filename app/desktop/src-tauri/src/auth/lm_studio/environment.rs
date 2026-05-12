@@ -109,7 +109,7 @@ fn resolve_lms_path() -> Option<ResolvedCommandPath> {
     None
 }
 
-fn find_lm_studio_home_dir() -> Option<PathBuf> {
+pub(super) fn find_lm_studio_home_dir() -> Option<PathBuf> {
     let home = home_dir()?;
     let pointer = home.join(".lmstudio-home-pointer");
     if let Ok(value) = fs::read_to_string(pointer) {

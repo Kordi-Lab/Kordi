@@ -248,6 +248,10 @@ export async function installLmStudioDesktop() {
   return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_install');
 }
 
+export async function refreshLmStudioInstallDesktop() {
+  return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_refresh_install');
+}
+
 export async function getLmStudioModelDesktop(model: string) {
   return invokeDesktop<DesktopLmStudioCommandResult>('desktop_lm_studio_get_model', { model });
 }
