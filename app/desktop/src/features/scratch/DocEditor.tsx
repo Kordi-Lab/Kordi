@@ -1,3 +1,4 @@
+import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -23,13 +24,11 @@ export function DocEditor({ sessionId, scratchId }: Props) {
     extensions: [
       StarterKit,
       Markdown.configure({ html: false, transformPastedText: true, transformCopiedText: true }),
+      Placeholder.configure({
+        placeholder: 'Start typing… Markdown shortcuts work: # heading, - list, **bold**, `code`',
+      }),
     ],
     content: '',
-    editorProps: {
-      attributes: {
-        'data-placeholder': 'Start typing… Markdown shortcuts work: # heading, - list, **bold**, `code`',
-      },
-    },
     onUpdate: ({ editor: instance }) => {
       if (skipNextUpdateRef.current) {
         skipNextUpdateRef.current = false;
