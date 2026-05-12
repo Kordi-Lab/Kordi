@@ -3,7 +3,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowLeft, Brush, ChevronRight, Copy, Download, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 
-import { DocEditor, type DocEditorHandle } from './DocEditor';
+import { DocEditor } from './DocEditor';
 import type { TiptapNode } from './download/tiptapToPdfmake';
 import {
   createScratch,
@@ -15,13 +15,47 @@ import {
   useActiveScratchId,
   useScratchList,
 } from './scratchStore';
+import { kvGet, scratchStorageKey } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
 
 type DownloadHandlers = {
-  markdown: () => void | Promise<void>;
+  markdown: () => Promise<void>;
   pdf: () => Promise<void>;
   docx: () => Promise<void>;
 };
+
+const EMPTY_DOC: TiptapNode = { type: 'doc', content: [] };
+
+function buildDocDownloadHandlers(sessionId: string, scratchId: string, scratchName: string): DownloadHandlers {
+  const loadJson = async (): Promise<TiptapNode> => {
+    const stored = await kvGet<TiptapNode>(scratchStorageKey(sessionId, scratchId));
+    return stored && typeof stored === 'object' ? stored : EMPTY_DOC;
+  };
+  return {
+    markdown: async () => {
+      const [{ exportScratchMarkdown, renderJsonToMarkdown }, json] = await Promise.all([
+        import('./download/exportMarkdown'),
+        loadJson(),
+      ]);
+      const md = renderJsonToMarkdown(json);
+      exportScratchMarkdown(md, scratchName);
+    },
+    pdf: async () => {
+      const [{ exportScratchPdf }, json] = await Promise.all([
+        import('./download/exportPdf'),
+        loadJson(),
+      ]);
+      await exportScratchPdf(json, scratchName);
+    },
+    docx: async () => {
+      const [{ exportScratchDocx }, json] = await Promise.all([
+        import('./download/exportDocx'),
+        loadJson(),
+      ]);
+      await exportScratchDocx(json, scratchName);
+    },
+  };
+}
 
 const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-200 outline-none transition data-[highlighted]:bg-white/10 data-[highlighted]:text-white';
 const MENU_ITEM_DESTRUCTIVE_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-red-300 outline-none transition data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200';
@@ -327,6 +361,11 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                       onDelete={() => {
                         deleteScratch(sessionId, scratch.id);
                       }}
+                      onDownload={
+                        scratch.kind === 'doc'
+                          ? buildDocDownloadHandlers(sessionId, scratch.id, scratch.name)
+                          : undefined
+                      }
                     />
                   </div>
                 </li>
@@ -363,31 +402,12 @@ function NewScratchButton({
 
 function ScratchEditorView({ sessionId, active }: { sessionId: string; active: ScratchMetadata }) {
   const [editingName, setEditingName] = useState(false);
-  const docRef = useRef<DocEditorHandle>(null);
   const KindIcon = active.kind === 'canvas' ? Brush : FileText;
 
-  const downloadHandlers = useMemo<DownloadHandlers | undefined>(() => {
-    if (active.kind !== 'doc') return undefined;
-    return {
-      markdown: async () => {
-        const markdown = docRef.current?.getMarkdown() ?? '';
-        const { exportScratchMarkdown } = await import('./download/exportMarkdown');
-        exportScratchMarkdown(markdown, active.name);
-      },
-      pdf: async () => {
-        const json = docRef.current?.editor?.getJSON() as TiptapNode | undefined;
-        if (!json) return;
-        const { exportScratchPdf } = await import('./download/exportPdf');
-        await exportScratchPdf(json, active.name);
-      },
-      docx: async () => {
-        const json = docRef.current?.editor?.getJSON() as TiptapNode | undefined;
-        if (!json) return;
-        const { exportScratchDocx } = await import('./download/exportDocx');
-        await exportScratchDocx(json, active.name);
-      },
-    };
-  }, [active.kind, active.name]);
+  const downloadHandlers = useMemo<DownloadHandlers | undefined>(
+    () => (active.kind === 'doc' ? buildDocDownloadHandlers(sessionId, active.id, active.name) : undefined),
+    [active.kind, active.id, active.name, sessionId],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -444,7 +464,7 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
         />
       </div>
       {active.kind === 'doc' ? (
-        <DocEditor ref={docRef} sessionId={sessionId} scratchId={active.id} />
+        <DocEditor sessionId={sessionId} scratchId={active.id} />
       ) : (
         <Suspense fallback={<div className="scratch-canvas-loading">Loading canvas…</div>}>
           <CanvasEditor sessionId={sessionId} scratchId={active.id} />
