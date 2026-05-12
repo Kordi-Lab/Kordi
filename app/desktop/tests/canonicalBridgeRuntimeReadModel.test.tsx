@@ -4,6 +4,52 @@ import { test } from 'node:test';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { cloudGroupAgentConversationId } from '../src/features/cloud/cloudGroupMessages';
 
+test('canonical group conversation title prefers synced custom group name over first message', () => {
+  const sessionId = 'session:group:cloud-room';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'New session',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { customName: '1111', groupId: sessionId, groupSpaceId: sessionId },
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      lastMessageAtMs: 2,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:1', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hi every', content: { sender: 'Me', timeLabel: '13:10' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:1' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never);
+
+  const conversations = readModel.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '');
+  assert.equal(conversations.find((conversation) => conversation.id === sessionId)?.name, '1111');
+});
+
 test('canonical read model keeps shared bridge transcript with local owned-agent tool details', () => {
   const sessionId = 'session:bridge:humans:shared';
   const canonicalState = {

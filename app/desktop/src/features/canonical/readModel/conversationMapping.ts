@@ -208,7 +208,10 @@ export function sessionConversationDisplayTitle(
   fallback: string,
   options: { preferFallback?: boolean } = {},
 ) {
-  return directPersonContactTitle(session, participants)
+  const metadata = sessionMetadata(session);
+  const groupCustomName = session.kind === 'group' ? stringValue(metadata.customName) : null;
+  return groupCustomName
+    ?? directPersonContactTitle(session, participants)
     ?? sessionDisplayTitle(messages, fallback, options);
 }
 
