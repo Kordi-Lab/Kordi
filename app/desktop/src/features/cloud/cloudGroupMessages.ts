@@ -73,15 +73,30 @@ function uniqueByAccount(participants: CloudGroupParticipant[]) {
   for (const participant of participants) {
     const accountId = cleanText(participant.accountId);
     const displayName = cleanText(participant.displayName) || accountId;
-    if (!accountId || byAccountId.has(accountId)) continue;
+    if (!accountId) continue;
+    const avatarUrl = cleanText(participant.avatarUrl) || null;
+    const existing = byAccountId.get(accountId);
+    if (existing) {
+      byAccountId.set(accountId, {
+        ...existing,
+        displayName: existing.displayName === accountId ? displayName : existing.displayName,
+        avatarUrl: existing.avatarUrl || avatarUrl,
+        role: existing.role ?? participant.role ?? 'person',
+      });
+      continue;
+    }
     byAccountId.set(accountId, {
       accountId,
       displayName,
-      avatarUrl: cleanText(participant.avatarUrl) || null,
+      avatarUrl,
       role: participant.role ?? 'person',
     });
   }
   return [...byAccountId.values()];
+}
+
+export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant[]): CloudGroupParticipant[] {
+  return uniqueByAccount(participants);
 }
 
 function encodeBase64Url(value: string): string {

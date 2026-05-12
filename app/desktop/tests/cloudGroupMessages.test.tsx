@@ -12,6 +12,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
   cloudGroupTargetAccountIds,
+  cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
@@ -50,6 +51,17 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.text, 'hello group');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
   assert.equal(parsed?.message?.requestId, 'msg_request');
+});
+
+test('cloud group participant merge preserves later real avatar urls', () => {
+  assert.deepEqual(cloudGroupUniqueParticipants([
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/a.png', role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/b.png', role: 'person' },
+  ]), [
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/a.png', role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/b.png', role: 'person' },
+  ]);
 });
 
 test('cloud group messages carry concrete session id separately from shared group space id', () => {

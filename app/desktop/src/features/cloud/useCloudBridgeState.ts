@@ -53,6 +53,7 @@ import {
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
+  cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
@@ -365,7 +366,12 @@ export function useCloudBridgeState({
     });
     setCanonicalSessionState(nextState);
 
-    if (envelope.kind === 'group-title-update' || envelope.kind === 'group-update' || envelope.kind === 'group-invite') {
+    if (
+      envelope.kind === 'group-title-update'
+      || envelope.kind === 'group-update'
+      || envelope.kind === 'group-invite'
+      || (envelope.kind === 'group-message' && Boolean(envelope.groupTitle?.trim()))
+    ) {
       nextState = await updateCanonicalSessionMetadata({
         sessionId: envelope.groupId,
         requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
@@ -889,15 +895,35 @@ export function useCloudBridgeState({
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');
-    const targetAccountIds = [...new Set(input.targetAccountIds.map((value) => value.trim()).filter(Boolean))]
-      .filter((accountId) => accountId !== account.accountId);
-    if (targetAccountIds.length === 0) return;
+    const relatedGroupControls = Object.values(messagesByPeer)
+      .flat()
+      .flatMap((cloudMessage) => {
+        const envelope = parseCloudGroupControl(cloudMessage.body);
+        if (!envelope || envelope.groupId !== input.groupId) return [];
+        return [{
+          envelope,
+          createdAtMs: Date.parse(cloudMessage.createdAt) || 0,
+        }];
+      })
+      .sort((left, right) => left.createdAtMs - right.createdAtMs);
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
     const actor = input.actor ?? cloudGroupSelfParticipant(account, input.kind === 'group-message' ? 'person' : 'admin');
-    const participants = input.participants?.length
+    const inputParticipants = input.participants?.length
       ? input.participants
       : cloudGroupParticipantsForBridgeSessionParticipants(account, input.bridgeParticipants ?? []);
+    const participants = cloudGroupUniqueParticipants([
+      ...inputParticipants,
+      ...relatedGroupControls.flatMap((control) => control.envelope.participants),
+    ]);
+    const targetAccountIds = [...new Set([
+      ...input.targetAccountIds.map((value) => value.trim()).filter(Boolean),
+      ...participants.map((participant) => participant.accountId.trim()).filter(Boolean),
+    ])].filter((accountId) => accountId !== account.accountId);
+    if (targetAccountIds.length === 0) return;
+    const groupTitle = input.groupTitle
+      ?? [...relatedGroupControls].reverse().find((control) => control.envelope.groupTitle?.trim())?.envelope.groupTitle
+      ?? null;
     const message = input.message
       ? {
           ...input.message,
@@ -908,7 +934,7 @@ export function useCloudBridgeState({
       kind: input.kind,
       groupId: input.groupId,
       groupSpaceId: input.groupSpaceId ?? null,
-      groupTitle: input.groupTitle ?? null,
+      groupTitle,
       createdByAccountId: input.createdByAccountId?.trim() || account.accountId,
       actor,
       participants,
@@ -923,7 +949,7 @@ export function useCloudBridgeState({
     }
     const firstFailure = firstCloudGroupSendFailure(results);
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Cloud group message failed.'));
-  }, [account, client, mergeMessage, refreshCloudBridgeMessages]);
+  }, [account, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
